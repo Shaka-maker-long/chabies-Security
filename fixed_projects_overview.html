@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Projects Overview</title>
+  <!-- Bootstrap 5 CSS and Icons are included by Home.html -->
+  <?!= include('Stylesheet'); ?> <!-- Include the main stylesheet for consistent theme -->
+  <style>
+    /* Table container with fixed height and scroll */
+    .table-container {
+      max-height: calc(100vh - var(--fixed-header-height-desktop) - 40px);
+      overflow-y: auto;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+    }
+    /* Make date columns consistent width */
+    .date-column {
+      min-width: 120px;
+      max-width: 120px;
+    }
+    /* Loading spinner center alignment */
+    .loading-spinner-wrapper {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 150px;
+    }
+    .spinner-border {
+        width: 3rem;
+        height: 3rem;
+    }
+    /* Department filter styling */
+    #departmentFilter { /* Ensure this ID matches the select element below */
+        max-width: 200px; /* Adjust width of dropdown */
+        margin-left: 10px; /* Space between refresh and department filter */
+    }
+    /* Styling for the new apply button */
+    #applyDepartmentFilterBtn {
+        margin-left: 10px; /* Space between dropdown and button */
+        height: calc(1.5em + 0.75rem + 2px); /* Match height of form-select-sm */
+    }
+
+    /* Padding for the content below the sticky header */
+    .table-section-wrapper {
+        padding: 20px;
+    }
+
+    @media (max-width: 768px) {
+        .table-container {
+            max-height: calc(100vh - var(--fixed-header-height-mobile) - 40px);
+        }
+        .table-section-wrapper {
+            padding: 15px;
+        }
+        /* Adjust layout for dropdown and button on mobile */
+        .card-header .d-flex.ms-auto {
+            flex-direction: column;
+            align-items: stretch !important;
+            width: 100%;
+            margin-top: 10px !important;
+        }
+        #departmentFilter, #applyDepartmentFilterBtn, #refreshData, #clearAllFilters {
+            width: 100%;
+            margin-left: 0 !important;
+            margin-right: 0 !important;
+            margin-bottom: 5px;
+        }
+    }
+  </style>
+</head>
+<body>
+  <div class="container-fluid p-0">
+    <!-- Sticky Header Area -->
+    <div class="projects-fixed-header-area">
+      <!-- Buttons -->
+      <div class="main-content-buttons mb-3 d-flex flex-wrap justify-content-start">
+        <button type="button" class="btn btn-primary me-2 mb-2" data-target-section="add-project-section">
+          <i class="bi bi-plus-circle"></i> Add Project
+        </button>
+        <button type="button" class="btn btn-primary me-2 mb-2" data-target-section="update-status-section">
+          <i class="bi bi-pencil-square"></i> Update Status
+        </button>
+        <button type="button" class="btn btn-primary me-2 mb-2" data-target-section="reschedule-project-section">
+          <i class="bi bi-calendar-event"></i> Reschedule
+        </button>
+        <button type="button" class="btn btn-primary me-2 mb-2" data-target-section="delete-project-section">
+          <i class="bi bi-trash"></i> Delete
+        </button>
+        <button type="button" class="btn btn-primary me-2 mb-2" data-target-section="update-project-number-section">
+          <i class="bi bi-123"></i> Update #
+        </button>
+        <button type="button" class="btn btn-primary me-2 mb-2" data-target-section="change-consultant-section">
+          <i class="bi bi-people"></i> Change Consultant
+        </button>
+      </div>
+
+      <!-- Status Dashboard (now included directly here) -->
+      <?!= include('Projects/StatusDashboard'); ?>
+
+    </div>
+    <!-- End Sticky Header Area -->
+
+    <!-- Table Section Wrapper (scrollable content below sticky header) -->
+    <div class="table-section-wrapper">
+      <div class="card shadow-sm">
+        <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center flex-wrap py-2">
+          <h5 class="mb-0 me-3" id="currentSheetTitle">Projects Overview</h5>
+          <div class="d-flex align-items-center ms-auto mt-1 mt-md-0">
+            <button id="refreshData" class="btn btn-sm btn-outline-primary me-2" title="Refresh Data">
+              <i class="bi bi-arrow-clockwise"></i> <span class="d-none d-sm-inline">Refresh</span>
+            </button>
+            <button id="clearAllFilters" class="btn btn-sm btn-outline-warning me-2 d-none" title="Clear All Filters">
+              <i class="bi bi-x-circle"></i> <span class="d-none d-sm-inline">Clear Filters</span>
+            </button>
+            <!-- Department Filter Dropdown -->
+            <select class="form-select form-select-sm w-auto" id="departmentFilter" title="Filter by Department">
+              <option value="">All Departments</option>
+              <!-- Options will be populated by JS -->
+            </select>
+            <!-- NEW: Apply Filter Button -->
+            <button id="applyDepartmentFilterBtn" class="btn btn-sm btn-outline-info" title="Apply Department Filter">
+              <i class="bi bi-funnel"></i> <span class="d-none d-sm-inline">Apply</span>
+            </button>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div class="text-center my-3 loading-spinner-wrapper" id="tableLoading">
+            <div class="spinner-border text-primary" role="status">
+              <span class="visually-hidden">Loading table data...</span>
+            </div>
+          </div>
+          <div id="tableError" class="alert alert-danger m-2 d-none" role="alert"></div>
+          <div class="table-container">
+            <table class="table table-hover table-striped table-dark mb-0" id="dataTable">
+              <thead id="tableHeader"></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap JS Bundle with Popper -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // Global variables accessible through window object because this script is included.
+    window.currentSheetData = { headers: [], data: [], hasStatusColumn: false, departmentColIndex: -1 };
+    window.currentStatusFilter = null;
+    window.currentDepartmentFilter = null;
+    const PROJECTS_SHEET_NAME = "Projects";
+
+    // Define the custom status order for sorting
+    const STATUS_SORT_ORDER = {
+      'report outstanding': 0,
+      'report in progress': 1,
+      'report on review': 2,
+      'submission delayed': 3,
+      'submitted to client': 4
+    };
+
+    /**
+     * Initializes the projects table and its filters.
+     * This function is called by Home.html when the 'view-projects-section' is displayed.
+     */
+    window.initializeProjectsTable = function() {
+      console.log("VIEW_PROJECTS_SCRIPT: initializeProjectsTable called. Starting setup...");
+      showLoading('table', true);
+
+      // Set up all event listeners FIRST to ensure they're ready
+      setupEventListeners();
+
+      // Load unique departments for the dropdown
+      loadDepartmentsDropdown();
+
+      // Load all project data, and clear filters initially if this is a fresh load
+      loadSheetData(PROJECTS_SHEET_NAME, true);
+
+      // Listen for custom event from StatusDashboard.html to toggle status filter
+      // Ensure only one listener is active for this custom event
+      document.removeEventListener('toggle-status-filter', handleStatusFilterToggle);
+      document.addEventListener('toggle-status-filter', handleStatusFilterToggle);
+
+      console.log("VIEW_PROJECTS_SCRIPT: initializeProjectsTable complete.");
+    };
+
+    /**
+     * Named function for status filter toggle event handler.
+     */
+    function handleStatusFilterToggle(e) {
+      console.log("VIEW_PROJECTS_SCRIPT: Custom event 'toggle-status-filter' received for status:", e.detail.status);
+      toggleStatusFilter(e.detail.status);
+    }
+
+    /**
+     * Sets up event listeners for refresh, clear filters, department filter, and action buttons.
+     */
+    function setupEventListeners() {
+      console.log("VIEW_PROJECTS_SCRIPT: ***ENTERED setupEventListeners FUNCTION***"); // CRITICAL DEBUG LOG
+
+      // Action Buttons (Add Project, Update Status, etc.)
+      document.querySelectorAll('.main-content-buttons .btn').forEach(button => {
+        // Use a named function to allow for easier removal if ever needed, though here it's fine.
+        button.addEventListener('click', function handleActionButtonClick(event) {
+          const targetSectionId = event.currentTarget.dataset.targetSection;
+          console.log("VIEW_PROJECTS_SCRIPT: Action button clicked. Dispatching 'show-content' for:", targetSectionId);
+          document.dispatchEvent(new CustomEvent('show-content', { detail: { id: targetSectionId } }));
+        });
+      });
+      console.log("VIEW_PROJECTS_SCRIPT: Action button listeners attached.");
+
+      const refreshButton = document.getElementById('refreshData');
+      if (refreshButton) {
+        refreshButton.addEventListener('click', refreshAllData);
+        console.log("VIEW_PROJECTS_SCRIPT: Refresh button listener attached.");
+      } else { console.warn("VIEW_PROJECTS_SCRIPT: Refresh button not found."); }
+
+      const clearFiltersButton = document.getElementById('clearAllFilters');
+      if (clearFiltersButton) {
+        clearFiltersButton.addEventListener('click', clearAllFilters);
+        console.log("VIEW_PROJECTS_SCRIPT: Clear All Filters button listener attached.");
+      } else { console.warn("VIEW_PROJECTS_SCRIPT: Clear All Filters button not found."); }
+
+      const applyDepartmentFilterBtn = document.getElementById('applyDepartmentFilterBtn');
+      const departmentFilterDropdown = document.getElementById('departmentFilter');
+
+      // CRITICAL DEBUG LOGS TO CHECK IF ELEMENTS ARE FOUND
+      console.log("VIEW_PROJECTS_SCRIPT: Attempting to find button with ID 'applyDepartmentFilterBtn':", applyDepartmentFilterBtn);
+      console.log("VIEW_PROJECTS_SCRIPT: Attempting to find dropdown with ID 'departmentFilter':", departmentFilterDropdown);
+
+      if (applyDepartmentFilterBtn && departmentFilterDropdown) {
+        applyDepartmentFilterBtn.addEventListener('click', handleApplyDepartmentFilterClick);
+        console.log("VIEW_PROJECTS_SCRIPT: 'Apply Department Filter' button listener attached.");
+        
+        // Also add change event listener to the dropdown for immediate filtering
+        departmentFilterDropdown.addEventListener('change', handleDepartmentFilterChange);
+        console.log("VIEW_PROJECTS_SCRIPT: Department dropdown change listener attached.");
+      } else {
+        // This error message is crucial if elements are not found
+        console.error("VIEW_PROJECTS_SCRIPT: 'Apply Department Filter' button or 'departmentFilter' dropdown NOT FOUND. Department filtering will not work.");
+      }
+
+      console.log("VIEW_PROJECTS_SCRIPT: All event listeners attachment attempt complete.");
+    }
+
+    /**
+     * Handles the change event for the department filter dropdown.
+     * This provides immediate filtering without needing to click the Apply button.
+     */
+    function handleDepartmentFilterChange() {
+        console.log("VIEW_PROJECTS_SCRIPT: --- Department Filter Dropdown CHANGED! ---");
+        const departmentFilterDropdown = document.getElementById('departmentFilter');
+        if (departmentFilterDropdown) {
+            window.currentDepartmentFilter = departmentFilterDropdown.value === "" ? null : departmentFilterDropdown.value;
+            console.log("VIEW_PROJECTS_SCRIPT: Dropdown selected value:", departmentFilterDropdown.value);
+            console.log("VIEW_PROJECTS_SCRIPT: Updated window.currentDepartmentFilter:", window.currentDepartmentFilter);
+            applyFilters(); // Re-apply all current filters to update the table
+            updateClearAllFiltersButtonVisibility();
+        }
+    }
+
+    /**
+     * Handles the click event for the "Apply Filter" button.
+     * This function now reads the value from the dropdown and applies the filter.
+     */
+    function handleApplyDepartmentFilterClick() {
+        console.log("VIEW_PROJECTS_SCRIPT: --- 'Apply Department Filter' Button CLICKED! ---"); // CRITICAL DEBUG LOG
+        const departmentFilterDropdown = document.getElementById('departmentFilter');
+        if (departmentFilterDropdown) {
+            // Set the currentDepartmentFilter based on the dropdown's value
+            window.currentDepartmentFilter = departmentFilterDropdown.value === "" ? null : departmentFilterDropdown.value;
+            console.log("VIEW_PROJECTS_SCRIPT: Dropdown selected value:", departmentFilterDropdown.value);
+            console.log("VIEW_PROJECTS_SCRIPT: Updated window.currentDepartmentFilter:", window.currentDepartmentFilter);
+            applyFilters(); // Re-apply all current filters to update the table
+            updateClearAllFiltersButtonVisibility();
+        } else {
+            console.error("VIEW_PROJECTS_SCRIPT: 'departmentFilter' dropdown not found when apply button was clicked.");
+        }
+    }
+
+    /**
+     * Refreshes all data on the dashboard.
+     */
+    function refreshAllData() {
+      console.log("VIEW_PROJECTS_SCRIPT: Initiating full data refresh.");
+      if (typeof loadStatusDashboard === 'function') {
+          loadStatusDashboard(); // Assuming this function is global from StatusDashboard.html
+      } else {
+          console.warn("VIEW_PROJECTS_SCRIPT: loadStatusDashboard() not found. Status dashboard might not refresh.");
+      }
+
+      loadDepartmentsDropdown(); // Refresh departments dropdown in case new ones were added
+      loadSheetData(PROJECTS_SHEET_NAME, false); // Reload project data, preserving current filters
+    }
+
+    /**
+     * Controls the visibility of loading spinners and error messages for the table.
+     * @param {string} type - 'table' or 'status'
+     * @param {boolean} isLoading - true to show loading, false to hide.
+     */
+    function showLoading(type, isLoading) {
+      const loadingEl = document.getElementById(type + 'Loading');
+      const errorEl = document.getElementById(type + 'Error');
+      // For table, contentEl is the parent of the table itself
+      const contentEl = (type === 'status' ? document.querySelector('.compact-status-dashboard .card-body .row') : document.getElementById('dataTable').closest('.table-container'));
+
+      if (loadingEl) {
+        loadingEl.style.display = isLoading ? 'flex' : 'none';
+      }
+      if (isLoading) {
+          if (errorEl) errorEl.classList.add('d-none');
+          if (contentEl) contentEl.style.display = 'none'; // Hide content while loading
+      } else {
+          if (contentEl) contentEl.style.display = ''; // Show content when loading is done
+      }
+    }
+
+    /**
+     * Displays or hides an error message.
+     * @param {string} type - 'table' or 'status'
+     * @param {string|null} message - The error message to display, or null to hide.
+     */
+    function showError(type, message) {
+      const errorEl = document.getElementById(type + 'Error');
+      if (errorEl) {
+        errorEl.textContent = message || '';
+        errorEl.classList.toggle('d-none', !message);
+        if (message) {
+            showLoading(type, false); // If showing error, hide loading spinner
+        }
+      }
+    }
+
+    /**
+     * Loads unique department names and populates the dropdown filter.
+     */
+    function loadDepartmentsDropdown() {
+      console.log("VIEW_PROJECTS_SCRIPT: Fetching unique departments for dropdown.");
+      const departmentFilterDropdown = document.getElementById('departmentFilter');
+      if (!departmentFilterDropdown) {
+          console.warn("VIEW_PROJECTS_SCRIPT: 'departmentFilter' element not found. Cannot populate dropdown.");
+          return;
+      }
+
+      departmentFilterDropdown.innerHTML = '<option value="">All Departments</option>'; // Always start with "All" option
+
+      // Check if google.script.run is available (for Google Apps Script environment)
+      if (typeof google !== 'undefined' && google.script && google.script.run) {
+        google.script.run
+          .withSuccessHandler(function(departments) {
+            console.log("VIEW_PROJECTS_SCRIPT: Departments received from server:", departments);
+            if (Array.isArray(departments) && departments.length > 0) {
+              departments.forEach(dept => {
+                if (dept && String(dept).trim() !== '') { // Ensure department is not empty/null/whitespace
+                    const option = document.createElement('option');
+                    option.value = dept;
+                    option.textContent = dept;
+                    departmentFilterDropdown.appendChild(option);
+                }
+              });
+              // Restore previous selection if still valid after repopulating
+              if (window.currentDepartmentFilter && departments.includes(window.currentDepartmentFilter)) {
+                  departmentFilterDropdown.value = window.currentDepartmentFilter;
+                  console.log("VIEW_PROJECTS_SCRIPT: Restoring previous department filter selection:", window.currentDepartmentFilter);
+              } else {
+                  // If previous filter is invalid or not set, ensure dropdown shows "All Departments"
+                  window.currentDepartmentFilter = null;
+                  departmentFilterDropdown.value = "";
+                  console.log("VIEW_PROJECTS_SCRIPT: Department filter reset to 'All Departments'.");
+              }
+            } else {
+                console.log("VIEW_PROJECTS_SCRIPT: No unique departments returned from server (sheet might be empty or column missing).");
+            }
+          })
+          .withFailureHandler(function(error) {
+            console.error("VIEW_PROJECTS_SCRIPT: Failed to load departments for dropdown:", error);
+            showError('table', 'Failed to load departments: ' + error.message);
+          })
+          .getUniqueDepartments();
+      } else {
+        // Fallback for testing without Google Apps Script
+        console.warn("VIEW_PROJECTS_SCRIPT: google.script.run not available. Using mock data for testing.");
+        const mockDepartments = ['Engineering', 'Marketing', 'Sales', 'HR', 'Finance'];
+        mockDepartments.forEach(dept => {
+          const option = document.createElement('option');
+          option.value = dept;
+          option.textContent = dept;
+          departmentFilterDropdown.appendChild(option);
+        });
+      }
+    }
+
+    /**
+     * Loads and renders data from the "Projects" sheet.
+     * @param {string} sheetName - The name of the Google Sheet tab to load.
+     * @param {boolean} clearFiltersOnInit - If true, clears filters after loading data (typically on initial page load).
+     */
+    function loadSheetData(sheetName, clearFiltersOnInit = false) {
+        console.log(`VIEW_PROJECTS_SCRIPT: Fetching project data for sheet: ${sheetName}. Clear filters on init: ${clearFiltersOnInit}.`);
+
+        if (clearFiltersOnInit) {
+            // Only clear status filter. Department filter will be reset by loadDepartmentsDropdown.
+            window.currentStatusFilter = null;
+            document.querySelectorAll('.compact-status-dashboard .status-card').forEach(card => card.classList.remove('active'));
+            console.log("VIEW_PROJECTS_SCRIPT: Initial load - status filter cleared.");
+        }
+        updateClearAllFiltersButtonVisibility(); // Update button after filter changes
+
+        document.getElementById('currentSheetTitle').textContent = `Projects Overview`;
+        showLoading('table', true);
+        showError('table', null); // Clear any previous errors
+
+        // Check if google.script.run is available
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          google.script.run
+              .withSuccessHandler(function(response) {
+                  showLoading('table', false);
+
+                  window.currentSheetData = { headers: [], data: [], hasStatusColumn: false, departmentColIndex: -1 };
+
+                  if (response && Array.isArray(response.headers) && Array.isArray(response.data)) {
+                      window.currentSheetData.headers = response.headers;
+                      window.currentSheetData.data = response.data;
+                      window.currentSheetData.hasStatusColumn = window.currentSheetData.headers.includes('Status');
+
+                      // Find department column index (case-insensitive and trim-safe)
+                      const departmentHeaderNormalized = 'department';
+                      window.currentSheetData.departmentColIndex = window.currentSheetData.headers.findIndex(header =>
+                          String(header || '').trim().toLowerCase() === departmentHeaderNormalized
+                      );
+
+                      console.log("VIEW_PROJECTS_SCRIPT: Data successfully loaded from server.");
+                      console.log("VIEW_PROJECTS_SCRIPT: Headers:", window.currentSheetData.headers);
+                      console.log("VIEW_PROJECTS_SCRIPT: Department Column Index (robust check):", window.currentSheetData.departmentColIndex);
+                      if (window.currentSheetData.data.length > 0) {
+                          console.log("VIEW_PROJECTS_SCRIPT: First row data sample:", window.currentSheetData.data[0]);
+                      } else {
+                          console.log("VIEW_PROJECTS_SCRIPT: No data rows found in the sheet.");
+                      }
+
+                      if (window.currentSheetData.headers.length > 0) {
+                          applyFilters(); // Apply all current filters to the full data
+                      } else {
+                          console.warn("VIEW_PROJECTS_SCRIPT: No headers found from sheet. Cannot render table or apply filters.");
+                          renderTable([], []); // Render empty table
+                      }
+                  } else {
+                      console.error('VIEW_PROJECTS_SCRIPT: getSheetData returned an unexpected structure:', response);
+                      showError('table', 'Invalid data received from server. Check sheet format.');
+                  }
+              })
+              .withFailureHandler(function(error) {
+                  console.error('VIEW_PROJECTS_SCRIPT: Failed to load project data from server:', error);
+                  showLoading('table', false);
+                  showError('table', 'Failed to load project data: ' + error.message);
+              })
+              .getSheetData(sheetName);
+        } else {
+          // Fallback for testing without Google Apps Script
+          console.warn("VIEW_PROJECTS_SCRIPT: google.script.run not available. Using mock data for testing.");
+          const mockData = {
+            headers: ['Project #', 'Department', 'Status', 'Survey Date', 'Lab Date', 'Report Date', 'Client Submission'],
+            data: [
+              ['P001', 'Engineering', 'report outstanding', '2024-01-15', '2024-01-20', '', ''],
+              ['P002', 'Marketing', 'report in progress', '2024-01-10', '2024-01-15', '2024-01-25', ''],
+              ['P003', 'Sales', 'report on review', '2024-01-05', '2024-01-10', '2024-01-20', '2024-01-30'],
+              ['P004', 'Engineering', 'submission delayed', '2024-01-20', '2024-01-25', '2024-02-05', ''],
+              ['P005', 'HR', 'submitted to client', '2024-01-12', '2024-01-18', '2024-01-28', '2024-02-01']
+            ]
+          };
+          
+          window.currentSheetData = { 
+            headers: mockData.headers, 
+            data: mockData.data, 
+            hasStatusColumn: true, 
+            departmentColIndex: 1 
+          };
+          
+          showLoading('table', false);
+          applyFilters();
+        }
+    }
+
+    /**
+     * Toggles the status filter.
+     * @param {string} status - The status to filter by.
+     */
+    function toggleStatusFilter(status) {
+      console.log("VIEW_PROJECTS_SCRIPT: Toggling status filter for:", status);
+      if (window.currentStatusFilter === status) {
+        window.currentStatusFilter = null; // Turn off filter if already active
+      } else {
+        window.currentStatusFilter = status; // Set new filter
+      }
+
+      // Update UI for status cards
+      document.querySelectorAll('.compact-status-dashboard .status-card').forEach(card => {
+        card.classList.remove('active');
+        if (window.currentStatusFilter && card.dataset.status === window.currentStatusFilter) {
+          card.classList.add('active');
+        }
+      });
+      applyFilters(); // Re-apply all current filters
+      updateClearAllFiltersButtonVisibility();
+    }
+
+    /**
+     * Applies filters (status, then department) and then sorts the data.
+     */
+    function applyFilters() {
+      console.log("VIEW_PROJECTS_SCRIPT: Applying filters and sorting...");
+      console.log("  Current Status Filter:", window.currentStatusFilter);
+      console.log("  Current Department Filter:", window.currentDepartmentFilter);
+      console.log("  Department Column Index:", window.currentSheetData.departmentColIndex);
+
+      let filteredData = window.currentSheetData.data;
+
+      // 1. Apply Status Filter
+      if (window.currentSheetData.hasStatusColumn && window.currentStatusFilter) {
+        const statusIndex = window.currentSheetData.headers.indexOf('Status');
+        if (statusIndex !== -1) {
+          filteredData = filteredData.filter(row => {
+            const rowStatus = String(row[statusIndex] || '').trim().toLowerCase();
+            return rowStatus === window.currentStatusFilter.toLowerCase();
+          });
+          console.log(`  Status Filter Applied ('${window.currentStatusFilter}'). Data count: ${filteredData.length}`);
+        } else {
+            console.warn("VIEW_PROJECTS_SCRIPT: Status filter active, but 'Status' column not found in headers.");
+        }
+      } else {
+          console.log("  No Status Filter active or 'Status' column missing.");
+      }
+
+      // 2. Apply Department Filter
+      // Ensure departmentColIndex is valid AND a department is actually selected
+      if (window.currentSheetData.departmentColIndex !== -1 && window.currentDepartmentFilter !== null && window.currentDepartmentFilter !== '') {
+          const filterValueTrimmedLower = window.currentDepartmentFilter.toLowerCase();
+          filteredData = filteredData.filter(row => {
+              const rowDepartmentRaw = row[window.currentSheetData.departmentColIndex];
+              const rowDepartmentTrimmedLower = String(rowDepartmentRaw || '').trim().toLowerCase();
+
+              const isMatch = rowDepartmentTrimmedLower === filterValueTrimmedLower;
+
+              // Detailed Debug Log for Department Filter - UNCOMMENT THIS FOR VERY DETAILED ROW-BY-ROW DEBUGGING
+              // console.log(`    Dept Filter Check: Row Dept '${rowDepartmentRaw}' -> '${rowDepartmentTrimmedLower}' vs Filter '${filterValueTrimmedLower}'. Match: ${isMatch}`);
+              return isMatch;
+          });
+          console.log(`  Department Filter Applied ('${window.currentDepartmentFilter}'). Data count: ${filteredData.length}`);
+      } else {
+          console.log("  No Department Filter active or 'Department' column missing/invalid.");
+      }
+
+      // 3. Apply Sorting Logic (Department then Status)
+      if (filteredData.length > 0 && window.currentSheetData.headers.length > 0) {
+        const departmentIndex = window.currentSheetData.departmentColIndex;
+        const statusIndex = window.currentSheetData.headers.indexOf('Status');
+
+        if (departmentIndex === -1 && statusIndex === -1) {
+            console.warn("VIEW_PROJECTS_SCRIPT: Sorting Warning: Neither 'Department' nor 'Status' columns found for sorting.");
+        } else {
+            filteredData.sort((rowA, rowB) => {
+              // Primary sort: Department (alphabetical)
+              let deptA = (departmentIndex !== -1) ? String(rowA[departmentIndex] || '').trim().toLowerCase() : '';
+              let deptB = (departmentIndex !== -1) ? String(rowB[departmentIndex] || '').trim().toLowerCase() : '';
+
+              if (deptA < deptB) return -1;
+              if (deptA > deptB) return 1;
+
+              // Secondary sort: Status (custom order)
+              if (statusIndex !== -1) {
+                let statusA = String(rowA[statusIndex] || '').trim().toLowerCase();
+                let statusB = String(rowB[statusIndex] || '').trim().toLowerCase();
+
+                const orderA = STATUS_SORT_ORDER[statusA] !== undefined ? STATUS_SORT_ORDER[statusA] : 99; // Assign high value for unknown statuses
+                const orderB = STATUS_SORT_ORDER[statusB] !== undefined ? STATUS_SORT_ORDER[statusB] : 99;
+
+                if (orderA < orderB) return -1;
+                if (orderA > orderB) return 1;
+              }
+              return 0; // If departments and statuses are the same, maintain original order
+            });
+            console.log("  Data sorted by Department and Status.");
+        }
+      } else {
+          console.log("  No data to sort or missing headers.");
+      }
+
+      renderTable(window.currentSheetData.headers, filteredData);
+      console.log("VIEW_PROJECTS_SCRIPT: Filters and sorting applied, table rendered.");
+    }
+
+
+    /**
+     * Renders the HTML table with the provided headers and data.
+     * @param {Array<string>} headers - Array of column headers.
+     * @param {Array<Array<any>>} data - 2D array of table data.
+     */
+    function renderTable(headers, data) {
+        console.log("VIEW_PROJECTS_SCRIPT: Attempting to render table with", data.length, "rows.");
+        const headerRow = document.getElementById('tableHeader');
+        const tableBody = document.getElementById('tableBody');
+
+        if (!headerRow || !tableBody) {
+            console.error("VIEW_PROJECTS_SCRIPT: Table header or body element not found! Cannot render table.");
+            return;
+        }
+
+        headerRow.innerHTML = '';
+        tableBody.innerHTML = '';
+
+        if (!headers || headers.length === 0) {
+            console.log("VIEW_PROJECTS_SCRIPT: No headers provided for rendering.");
+            tableBody.innerHTML = '<tr><td colspan="100%" class="text-center py-4 text-muted">No headers found in the Projects sheet.</td></tr>';
+            return;
+        }
+
+        const headerCells = headers.map(header => {
+            const isDateOrSubmission = ['survey', 'lab', 'report', 'client'].includes(header.toLowerCase()) || header.toLowerCase().includes('date') || header.toLowerCase().includes('submissi');
+            return `<th class="${isDateOrSubmission ? 'date-column' : ''}">${header}</th>`;
+        }).join('');
+
+        headerRow.innerHTML = `<tr>${headerCells}</tr>`;
+        console.log("VIEW_PROJECTS_SCRIPT: Table headers rendered.");
+
+        if (!data || data.length === 0) {
+            console.log("VIEW_PROJECTS_SCRIPT: No data rows after filtering/sorting. Displaying 'No records found' message.");
+            tableBody.innerHTML = `<tr class="table-info"><td colspan="${headers.length}" class="text-center py-4">No records found matching current criteria.</td></tr>`;
+            return;
+        }
+
+        const rows = data.map(row => {
+            const cells = headers.map((header, i) => {
+                const value = i < row.length ? row[i] : '';
+                const isDateOrSubmission = ['survey', 'lab', 'report', 'client'].includes(header.toLowerCase()) || header.toLowerCase().includes('date') || header.toLowerCase().includes('submissi');
+                return `<td class="${isDateOrSubmission ? 'date-column' : ''}">${formatCellValue(value, header)}</td>`;
+            }).join('');
+            return `<tr>${cells}</tr>`;
+        }).join('');
+
+        tableBody.innerHTML = rows;
+        console.log(`VIEW_PROJECTS_SCRIPT: Rendered ${data.length} data rows.`);
+    }
+
+    /**
+     * Formats cell values, especially dates coming from Google Sheets.
+     * @param {*} value - The raw cell value.
+     * @param {string} header - The column header, used to determine if it's a date column.
+     * @returns {string} - The formatted string value for display.
+     */
+    function formatCellValue(value, header) {
+      if (value === null || value === undefined || value === '') {
+        return '<span class="text-muted">-</span>';
+      }
+
+      const strValue = String(value);
+
+      const isDateOrSubmissionHeader = ['survey', 'lab', 'report', 'client'].includes(header.toLowerCase()) || header.toLowerCase().includes('date') || header.toLowerCase().includes('submissi');
+
+      if (isDateOrSubmissionHeader) {
+        try {
+          // Append 'T00:00:00' to ensure date is parsed consistently in local timezone
+          const date = new Date(strValue + 'T00:00:00');
+          if (!isNaN(date.getTime())) {
+            return date.toLocaleDateString('en-GB', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric'
+            });
+          }
+        } catch (e) {
+          console.warn(`VIEW_PROJECTS_SCRIPT: Error formatting date for value '${strValue}' under header '${header}':`, e);
+          // Fallback to original string if date formatting fails
+        }
+      }
+      return strValue;
+    }
+
+    /**
+     * Clears all active filters and re-renders the table with all data.
+     */
+    function clearAllFilters() {
+      console.log("VIEW_PROJECTS_SCRIPT: Clearing all filters.");
+
+      // Reset status filter
+      window.currentStatusFilter = null;
+      document.querySelectorAll('.compact-status-dashboard .status-card').forEach(card => {
+        card.classList.remove('active');
+      });
+      console.log("VIEW_PROJECTS_SCRIPT: Status filter cleared.");
+
+      // Reset department filter and dropdown
+      window.currentDepartmentFilter = null;
+      const departmentFilterDropdown = document.getElementById('departmentFilter');
+      if (departmentFilterDropdown) {
+          departmentFilterDropdown.value = ""; // Reset dropdown to "All Departments"
+          console.log("VIEW_PROJECTS_SCRIPT: Department filter and dropdown reset to 'All Departments'.");
+      } else {
+          console.warn("VIEW_PROJECTS_SCRIPT: Department filter dropdown not found during clearAllFilters.");
+      }
+
+      applyFilters(); // Re-apply filters to ensure all data is shown
+      updateClearAllFiltersButtonVisibility();
+    }
+
+    /**
+     * Updates the visibility of the "Clear All Filters" button based on filter state.
+     */
+    function updateClearAllFiltersButtonVisibility() {
+      const showClearBtn = window.currentStatusFilter || (window.currentDepartmentFilter && window.currentDepartmentFilter !== "");
+      const clearFiltersButton = document.getElementById('clearAllFilters');
+      if (clearFiltersButton) {
+          clearFiltersButton.classList.toggle('d-none', !showClearBtn);
+          console.log(`VIEW_PROJECTS_SCRIPT: 'Clear All Filters' button visibility: ${showClearBtn ? 'visible' : 'hidden'}.`);
+      } else {
+          console.warn("VIEW_PROJECTS_SCRIPT: 'Clear All Filters' button element not found.");
+      }
+    }
+</script>
+</body>
+</html>
