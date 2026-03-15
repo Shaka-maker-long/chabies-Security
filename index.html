@@ -3,160 +3,305 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chabies Security Services</title>
-    <link rel="stylesheet" href="style.css">
+    <title>Chabies Security Services | Your Security, Our Commitment</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Added Alpine.js for the Click-to-Zoom feature -->
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
-        header {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            background-color: white;
-            z-index: 1000;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
         body {
-            padding-top: 150px;
-        }
-        .logo {
-            width: 120px;
-            height: 120px;
-            border-radius: 50%;
-            object-fit: cover;
-            display: block;
-        }
-        .contact-form {
-            display: none;
-        }
-        .header-container {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 0 10%;
-        }
-        .text-center {
-            text-align: center;
-        }
-        .hero h1 {
-            font-family: 'Arial Black', sans-serif;
-            font-size: 3em;
+            font-family: 'Inter', sans-serif;
+            background-color: #050505;
             color: white;
-            margin-bottom: 10px;
+            scroll-behavior: smooth;
         }
+
+        /* ISO 26 Liquid Glass Effect */
+        .glass {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 28px;
+            transition: all 0.4s ease;
+        }
+
+        .glass:hover {
+            background: rgba(255, 255, 255, 0.07);
+            border: 1px solid rgba(59, 130, 246, 0.4);
+            transform: translateY(-5px);
+        }
+
+        .glass-nav {
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #ffffff 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .input-glass {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 12px;
+            color: white;
+            outline: none;
+            transition: 0.3s;
+        }
+
+        .input-glass:focus {
+            border-color: #3b82f6;
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .hero-glow {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            height: 600px;
+            background: radial-gradient(circle at 50% 30%, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        [x-cloak] { display: none !important; }
     </style>
-    <script>
-        function toggleContactForm() {
-            var form = document.getElementById('contact-form');
-            if (form.style.display === 'none' || form.style.display === '') {
-                form.style.display = 'block';
-            } else {
-                form.style.display = 'none';
-            }
-        }
-    </script>
 </head>
-<body>
+<body class="overflow-x-hidden" x-data="{ 
+    zoomOpen: false, 
+    activeImg: '', 
+    activeTitle: '', 
+    activeDesc: '' 
+}">
 
-    <header>
-        <div class="container header-container">
-            <img src="logo.jpeg" alt="Chabies Security Services Logo" class="logo">
-            <nav>
-                <ul class="nav-links">
-                    <li><a href="#">Home</a></li>
-                    <li><a href="#services">Services</a></li>
-                    <li><a href="#contact">Contact</a></li>
-                </ul>
-            </nav>
+    <!-- Navigation -->
+    <nav class="fixed top-0 w-full z-50 glass-nav px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-4">
+            <!-- LOGO MADE BIGGER AS REQUESTED -->
+            <img src="logo.jpg" alt="Logo" class="w-16 h-16 md:w-20 md:h-20 rounded-full border border-white/20 object-cover shadow-lg shadow-blue-500/20">
+            <div class="leading-none">
+                <div class="text-xl md:text-2xl font-bold tracking-tight uppercase text-white">Chabies</div>
+                <div class="text-[8px] tracking-[0.4em] text-blue-500 font-bold uppercase mt-1">Security Services</div>
+            </div>
         </div>
-    </header>
+        <div class="hidden md:flex space-x-8 text-sm font-medium text-gray-400">
+            <a href="#" class="hover:text-white transition">Home</a>
+            <a href="#info" class="hover:text-white transition">About</a>
+            <a href="#services" class="hover:text-white transition">Services</a>
+            <a href="#contact" class="hover:text-white transition">Contact</a>
+        </div>
+        <a href="#contact" class="bg-white text-black px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest hover:scale-105 transition active:scale-95">Inquire</a>
+    </nav>
 
-    <section class="hero">
-        <div class="overlay"></div>
-        <div class="container text-center">
-            <h1>Chabies Security Services</h1>
-            <h2>Your Security, Our Commitment</h2>
-            <p>Expert security solutions tailored to your needs.</p>
-        </div>
-    </section>
+    <!-- Hero Section -->
+    <section class="relative pt-64 pb-24 px-6">
+        <div class="hero-glow"></div>
+        <div class="max-w-5xl mx-auto text-center">
+            <span class="inline-block px-4 py-1.5 mb-6 glass text-[10px] font-bold uppercase tracking-[0.2em] text-blue-400">Reg: 2019/176674/07</span>
+            
+            <!-- ADDED GUN AND HANDCUFFS ICONS -->
+            <div class="flex items-center justify-center gap-4 mb-4">
+                <i data-lucide="crosshair" class="text-blue-500 w-8 h-8 opacity-50"></i>
+                <h1 class="text-5xl md:text-8xl font-bold gradient-text tracking-tighter leading-tight">Your Security,<br>Our Commitment.</h1>
+                <i data-lucide="handcuffs" class="text-blue-500 w-8 h-8 opacity-50"></i>
+            </div>
 
-<section id="info" class="info">
-    <div class="container info-grid">
-        <div class="info-box">
-            <h2 class="section-title">About Us</h2>
-            <p>Chabies Security Services provides exceptional security solutions with highly trained professionals dedicated to ensuring your safety and peace of mind. We have been proudly serving our clients with integrity and excellence.</p>
-        </div>
-        <div class="info-box">
-            <h2 class="section-title">Our Vision</h2>
-            <p>To be a leading security services provider known for reliability, professionalism, and innovation in safeguarding our clients' assets and well-being.</p>
-        </div>
-        <div class="info-box">
-            <h2 class="section-title">Our Mission</h2>
-            <p>To deliver exceptional security services through a commitment to excellence, continuous training, and understanding the unique needs of each client.</p>
-        </div>
-    </div>
-</section>
-
-    <section id="services" class="services">
-        <div class="container">
-            <h2 class="section-title text-center">OUR SERVICES</h2>
-            <div class="service-grid">
-                <div class="service-box">
-                    <h3 class="service-title">Alarms</h3>
-                    <img src="alarms.png" alt="Alarms">
-                    <p class="service-text">State-of-the-art alarm systems with 24/7 monitoring to detect and respond to any security breaches.</p>    
-                </div>
-                <div class="service-box">
-                    <h3 class="service-title">Armed Response</h3>
-                    <img src="armed-response.jpg" alt="Armed Response">
-                    <p class="service-text">Fast and effective armed response teams to handle security threats and emergencies promptly.</p>
-                </div>
-                <div class="service-box">
-                    <h3 class="service-title">CCTV</h3>
-                    <img src="cctv.png" alt="CCTV">
-                    <p class="service-text">Advanced surveillance systems providing real-time monitoring and recording to enhance security.</p>
-                </div>
-                <div class="service-box">
-                    <h3 class="service-title">Guarding and Patrol</h3>
-                    <img src="guarding.jpg" alt="Guarding and Patrol">
-                    <p class="service-text">Highly trained security personnel providing patrol and monitoring services to ensure the safety of your premises.</p>
-                </div>                
-                <div class="service-box">
-                    <h3 class="service-title">K9 Unit</h3>
-                    <img src="k9.jpg" alt="K9 Unit">
-                    <p class="service-text">Highly trained security dogs and handlers for specialized security operations and threat detection.</p>
-                </div>   
-                <div class="service-box">
-                    <h3 class="service-title">Special Events</h3>
-                    <img src="event.jpg" alt="Special Events">
-                    <p class="service-text">Reliable security solutions for special events, ensuring crowd control, VIP protection, and overall event safety.</p>
-                </div>                
+            <p class="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed font-light">
+                Expert security solutions tailored to your needs. Protecting life, property, and peace of mind since 2016.
+            </p>
+            <div class="flex flex-col sm:flex-row justify-center gap-4">
+                <button onclick="location.href='#contact'" class="bg-blue-600 px-8 py-4 rounded-2xl font-semibold shadow-lg shadow-blue-500/20 hover:scale-105 transition">Secure Your Premises</button>
+                <button onclick="location.href='#services'" class="glass px-8 py-4 rounded-2xl font-semibold hover:bg-white/10 transition">View Capabilities</button>
             </div>
         </div>
     </section>
 
-    <section id="contact" class="contact">
-        <div class="container text-center">
-            <h2 class="section-title">Contact Us</h2>
-            <button class="btn" onclick="toggleContactForm()">Write a Message</button>
-            <form id="contact-form" class="contact-form" action="https://formspree.io/f/xqaerpyo" method="POST">
-                <input type="text" name="name" placeholder="Your Name" required>
-                <input type="email" name="email" placeholder="Your Email" required>
-                <textarea name="message" placeholder="Your Message" required></textarea>
-                <button type="submit" class="btn">Send Message</button>
+    <!-- Info Section (About, Vision, Mission) -->
+    <section id="info" class="py-20 px-6 max-w-7xl mx-auto">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="glass p-10">
+                <h2 class="text-blue-500 text-xs font-bold uppercase tracking-widest mb-4">About Us</h2>
+                <p class="text-gray-300 leading-relaxed text-sm">Chabies Security Services provides exceptional security solutions with highly trained professionals dedicated to ensuring your safety and peace of mind. We have been proudly serving our clients with integrity and excellence.</p>
+            </div>
+            <div class="glass p-10">
+                <h2 class="text-blue-500 text-xs font-bold uppercase tracking-widest mb-4">Our Vision</h2>
+                <p class="text-gray-300 leading-relaxed text-sm">To be a leading security services provider known for reliability, professionalism, and innovation in safeguarding our clients' assets and well-being.</p>
+            </div>
+            <div class="glass p-10">
+                <h2 class="text-blue-500 text-xs font-bold uppercase tracking-widest mb-4">Our Mission</h2>
+                <p class="text-gray-300 leading-relaxed text-sm">To deliver exceptional security services through a commitment to excellence, continuous training, and understanding the unique needs of each client.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Services Section (Click feature added to cards) -->
+    <section id="services" class="py-24 px-6 bg-[#080808]">
+        <div class="max-w-7xl mx-auto">
+            <div class="mb-16 text-center">
+                <h2 class="text-4xl md:text-5xl font-bold mb-4">Professional Services</h2>
+                <div class="w-20 h-1 bg-blue-600 mx-auto rounded-full"></div>
+                <p class="text-gray-500 mt-4 text-xs uppercase tracking-widest">Click any card to expand details</p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <!-- Alarms -->
+                <div @click="zoomOpen = true; activeImg = 'alarms.jpg'; activeTitle = 'Alarms'; activeDesc = 'State-of-the-art alarm systems with 24/7 monitoring to detect and respond to any security breaches.'" 
+                    class="glass overflow-hidden flex flex-col h-full cursor-pointer hover:border-blue-500 transition-all group">
+                    <img src="alarms.jpg" alt="Alarms" class="w-full h-48 object-cover opacity-60 group-hover:opacity-100 transition duration-500">
+                    <div class="p-8">
+                        <h3 class="text-xl font-bold mb-3 flex items-center gap-2 text-white">
+                            <i data-lucide="bell" class="text-blue-500 w-5 h-5"></i> Alarms
+                        </h3>
+                        <p class="text-gray-400 text-sm">State-of-the-art alarm systems with 24/7 monitoring to detect and respond to any security breaches.</p>
+                    </div>
+                </div>
+
+                <!-- Armed Response -->
+                <div @click="zoomOpen = true; activeImg = 'https://images.unsplash.com/photo-1582139329536-e7284fece509?auto=format&fit=crop&q=80&w=800'; activeTitle = 'Armed Response'; activeDesc = 'Fast and effective armed response teams to handle security threats and emergencies promptly.'" 
+                    class="glass overflow-hidden flex flex-col h-full cursor-pointer hover:border-blue-500 transition-all group">
+                    <img src="https://images.unsplash.com/photo-1582139329536-e7284fece509?auto=format&fit=crop&q=80&w=800" alt="Armed Response" class="w-full h-48 object-cover opacity-60 group-hover:opacity-100 transition duration-500">
+                    <div class="p-8">
+                        <h3 class="text-xl font-bold mb-3 flex items-center gap-2 text-white">
+                            <i data-lucide="shield-alert" class="text-blue-500 w-5 h-5"></i> Armed Response
+                        </h3>
+                        <p class="text-gray-400 text-sm">Fast and effective armed response teams to handle security threats and emergencies promptly.</p>
+                    </div>
+                </div>
+
+                <!-- CCTV -->
+                <div @click="zoomOpen = true; activeImg = 'cctv.jpg'; activeTitle = 'CCTV'; activeDesc = 'Advanced surveillance systems providing real-time monitoring and recording to enhance security.'" 
+                    class="glass overflow-hidden flex flex-col h-full cursor-pointer hover:border-blue-500 transition-all group">
+                    <img src="cctv.jpg" alt="CCTV" class="w-full h-48 object-cover opacity-60 group-hover:opacity-100 transition duration-500">
+                    <div class="p-8">
+                        <h3 class="text-xl font-bold mb-3 flex items-center gap-2 text-white">
+                            <i data-lucide="camera" class="text-blue-500 w-5 h-5"></i> CCTV
+                        </h3>
+                        <p class="text-gray-400 text-sm">Advanced surveillance systems providing real-time monitoring and recording to enhance security.</p>
+                    </div>
+                </div>
+
+                <!-- Guarding -->
+                <div @click="zoomOpen = true; activeImg = 'https://images.unsplash.com/photo-1557597774-9d2739f85a76?auto=format&fit=crop&q=80&w=800'; activeTitle = 'Guarding & Patrol'; activeDesc = 'Highly trained security personnel providing patrol and monitoring services to ensure safety.'" 
+                    class="glass overflow-hidden flex flex-col h-full cursor-pointer hover:border-blue-500 transition-all group">
+                    <img src="https://images.unsplash.com/photo-1557597774-9d2739f85a76?auto=format&fit=crop&q=80&w=800" alt="Guarding" class="w-full h-48 object-cover opacity-60 group-hover:opacity-100 transition duration-500">
+                    <div class="p-8">
+                        <h3 class="text-xl font-bold mb-3 flex items-center gap-2 text-white">
+                            <i data-lucide="user-check" class="text-blue-500 w-5 h-5"></i> Guarding & Patrol
+                        </h3>
+                        <p class="text-gray-400 text-sm">Highly trained security personnel providing patrol and monitoring services to ensure safety.</p>
+                    </div>
+                </div>
+
+                <!-- K9 -->
+                <div @click="zoomOpen = true; activeImg = 'https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?auto=format&fit=crop&q=80&w=800'; activeTitle = 'K9 Unit'; activeDesc = 'Highly trained security dogs and handlers for specialized security operations and threat detection.'" 
+                    class="glass overflow-hidden flex flex-col h-full cursor-pointer hover:border-blue-500 transition-all group">
+                    <img src="https://images.unsplash.com/photo-1589941013453-ec89f33b5e95?auto=format&fit=crop&q=80&w=800" alt="K9" class="w-full h-48 object-cover opacity-60 group-hover:opacity-100 transition duration-500">
+                    <div class="p-8">
+                        <h3 class="text-xl font-bold mb-3 flex items-center gap-2 text-white">
+                            <i data-lucide="dog" class="text-blue-500 w-5 h-5"></i> K9 Unit
+                        </h3>
+                        <p class="text-gray-400 text-sm">Highly trained security dogs and handlers for specialized security operations and threat detection.</p>
+                    </div>
+                </div>
+
+                <!-- Special Events -->
+                <div @click="zoomOpen = true; activeImg = 'event.jpg'; activeTitle = 'Special Events'; activeDesc = 'Reliable solutions for crowd control, VIP protection, and overall event safety.'" 
+                    class="glass overflow-hidden flex flex-col h-full cursor-pointer hover:border-blue-500 transition-all group">
+                    <img src="event.jpg" alt="Events" class="w-full h-48 object-cover opacity-60 group-hover:opacity-100 transition duration-500">
+                    <div class="p-8">
+                        <h3 class="text-xl font-bold mb-3 flex items-center gap-2 text-white">
+                            <i data-lucide="users" class="text-blue-500 w-5 h-5"></i> Special Events
+                        </h3>
+                        <p class="text-gray-400 text-sm">Reliable solutions for crowd control, VIP protection, and overall event safety.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- THE ZOOM OVERLAY (Modal) -->
+    <div x-show="zoomOpen" x-cloak x-transition.opacity 
+        class="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4 md:p-10">
+        
+        <div @click.away="zoomOpen = false" class="glass max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col md:flex-row shadow-2xl border-blue-500/50">
+            <!-- Image Side -->
+            <div class="w-full md:w-1/2 h-64 md:h-auto overflow-hidden">
+                <img :src="activeImg" class="w-full h-full object-cover">
+            </div>
+            
+            <!-- Content Side -->
+            <div class="w-full md:w-1/2 p-10 flex flex-col justify-center relative">
+                <!-- EXIT BUTTON -->
+                <button @click="zoomOpen = false" class="absolute top-6 right-6 text-gray-400 hover:text-white transition">
+                    <i data-lucide="x-circle" class="w-8 h-8"></i>
+                </button>
+
+                <h2 class="text-4xl md:text-5xl font-bold mb-6 gradient-text" x-text="activeTitle"></h2>
+                <p class="text-gray-300 text-lg md:text-xl leading-relaxed mb-8" x-text="activeDesc"></p>
+                
+                <div class="flex gap-4">
+                    <button @click="zoomOpen = false; location.href='#contact'" class="bg-blue-600 px-6 py-3 rounded-xl font-bold hover:scale-105 transition">Request This Service</button>
+                    <button @click="zoomOpen = false" class="border border-white/20 px-6 py-3 rounded-xl hover:bg-white/10 transition">Close Preview</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Section -->
+    <section id="contact" class="py-24 px-6 max-w-3xl mx-auto">
+        <div class="glass p-10 text-center">
+            <h2 class="text-3xl font-bold mb-4 text-white">Contact Our Command Center</h2>
+            <p class="text-gray-400 mb-10 text-sm">Complete the form below for a rapid response from our tactical team.</p>
+            
+            <form action="https://formspree.io/f/xqaerpyo" method="POST" class="flex flex-col gap-4 text-left">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input type="text" name="name" placeholder="Your Full Name" required class="input-glass">
+                    <input type="email" name="email" placeholder="Your Email Address" required class="input-glass">
+                </div>
+                <textarea name="message" rows="5" placeholder="Details of your security requirements..." required class="input-glass"></textarea>
+                <button type="submit" class="bg-white text-black font-bold py-4 rounded-xl hover:bg-blue-500 hover:text-white transition duration-300 uppercase tracking-widest text-xs">Dispatch Message</button>
             </form>
         </div>
     </section>
 
-    <footer>
-        <div class="container">
-            <ul class="footer-details">
-                <li>Contact Number: 014 715 3115</li>
-                <li>Mobile / WhatsApp: 0609100244</li>
-                <li>Email: Info.chabies@gmail.com</li>
-                <li>Location: Stand 9605 Ext 10 Modimolle, Nylstroom, South Africa, 0510</li>
-            </ul>
-            <p class="footer-text">&copy; 2016 Chabies Security Services. All rights reserved.</p>
+    <!-- Footer -->
+    <footer class="py-16 px-6 border-t border-white/5 bg-black">
+        <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 text-sm">
+            <div>
+                <div class="font-bold text-white text-lg mb-6 uppercase">CHABIES SECURITY</div>
+                <p class="text-gray-500">Stand 9605 Ext 10 Modimolle,<br>Nylstroom, South Africa, 0510</p>
+            </div>
+            <div>
+                <div class="text-blue-500 font-bold mb-6">COMMUNICATION</div>
+                <p class="text-gray-400 mb-2 font-medium">Office: 014 715 3115</p>
+                <p class="text-gray-400 mb-2 font-medium">Mobile: 060 910 0244</p>
+                <p class="text-gray-400">Info.chabies@gmail.com</p>
+            </div>
+            <div>
+                <div class="text-blue-500 font-bold mb-6">COMPLIANCE</div>
+                <p class="text-gray-500">PSIRA Registered</p>
+                <p class="text-gray-500">NBCPSS Compliant</p>
+                <p class="text-gray-500">Licensed since 2016</p>
+            </div>
+            <div>
+                <div class="text-blue-500 font-bold mb-6">LEGAL</div>
+                <p class="text-gray-600">© 2016 Chabies Security Services. All rights reserved.</p>
+            </div>
         </div>
     </footer>
 
+    <script>
+        // Initialize Lucide Icons
+        lucide.createIcons();
+    </script>
 </body>
 </html>
