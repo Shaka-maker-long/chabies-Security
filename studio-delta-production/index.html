@@ -1744,39 +1744,50 @@
       enterDashboard();
     }
 
-    function initApp() {
-      // Fire both backend calls in parallel; hide loader after both return.
-      let usersLoaded = false;
-      let profilesLoaded = false;
-      function checkAllLoaded() {
-        if (usersLoaded && profilesLoaded) {
-          document.getElementById('loader').classList.add('d-none');
-          if (restoreSession()) {
-            setLoggedIn(true);
-            if (session.isAdmin) document.getElementById('adminLinks').classList.remove('d-none-view');
-            updateFloorLink();
-            if (session.isAdmin && !session.role) {
-              loadProductionOverview();
-              loadIdleWorkers();
-            } else if (session.role) {
-              enterDashboard();
-            } else {
-              routeAfterLogin();
-            }
-          }
-        }
-      }
+    function prefetchSupportData() {
       google.script.run.withSuccessHandler(data => {
-        appData.users = data;
-        usersLoaded = true;
-        checkAllLoaded();
-      }).withFailureHandler(() => { usersLoaded = true; checkAllLoaded(); }).getUsersAndRoles();
-
+        appData.users = data || [];
+      }).getUsersAndRoles();
       google.script.run.withSuccessHandler(profiles => {
         appData.steelProfiles = profiles || [];
-        profilesLoaded = true;
-        checkAllLoaded();
-      }).withFailureHandler(() => { profilesLoaded = true; checkAllLoaded(); }).getSteelProfiles();
+      }).getSteelProfiles();
+    }
+    function ensureSteelProfiles(cb) {
+      if (appData.steelProfiles && appData.steelProfiles.length) {
+        if (cb) cb();
+        return;
+      }
+      google.script.run.withSuccessHandler(profiles => {
+        appData.steelProfiles = profiles || [];
+        if (cb) cb();
+      }).withFailureHandler(() => { if (cb) cb(); }).getSteelProfiles();
+    }
+    function ensureUsers(cb) {
+      if (appData.users && appData.users.length) {
+        if (cb) cb();
+        return;
+      }
+      google.script.run.withSuccessHandler(data => {
+        appData.users = data || [];
+        if (cb) cb();
+      }).withFailureHandler(() => { if (cb) cb(); }).getUsersAndRoles();
+    }
+    function initApp() {
+      document.getElementById('loader').classList.add('d-none');
+      prefetchSupportData();
+      if (restoreSession()) {
+        setLoggedIn(true);
+        if (session.isAdmin) document.getElementById('adminLinks').classList.remove('d-none-view');
+        updateFloorLink();
+        if (session.isAdmin && !session.role) {
+          loadProductionOverview();
+          loadIdleWorkers();
+        } else if (session.role) {
+          enterDashboard();
+        } else {
+          routeAfterLogin();
+        }
+      }
     }
 
     function renderRoles() { showTaskPicker(); }
@@ -2009,17 +2020,26 @@
     function startAutoRefresh() {
       if (refreshInterval) clearInterval(refreshInterval);
       refreshInterval = setInterval(() => { 
-        // Don't refresh if a modal is open OR if we are currently submitting data
+        if (document.hidden) return;
         if (!document.querySelector('.modal.show') && !isSubmitting) {
             loadDashboard(true); 
         }
-      }, 30000); 
+      }, 60000); 
     }
     function stopAutoRefresh() { if (refreshInterval) clearInterval(refreshInterval); }
 
+    let dashInFlight = false;
     function loadDashboard(silent = false) {
+      if (dashInFlight && silent) return;
+      dashInFlight = true;
       if(!silent) document.getElementById('container-available').innerHTML = '<div class="spinner-border"></div>';
+      if (session.name) {
+        google.script.run.withSuccessHandler(notice => {
+          if (notice && notice.resumedOrder) showSwitchBanner(notice);
+        }).popWorkerNotice(session.name);
+      }
       google.script.run.withSuccessHandler(orders => {
+        dashInFlight = false;
         appData.currentOrders = orders; // Cache orders for the modal
         
         // 1. Only Siya can see the Powder Coating List Button
@@ -2215,10 +2235,7 @@
         });
 
         filterDashboard(); 
-        google.script.run.withSuccessHandler(notice => {
-          if (notice && notice.resumedOrder) showSwitchBanner(notice);
-        }).popWorkerNotice(session.name);
-      }).getOrdersForRole(session.role, session.name);
+      }).withFailureHandler(() => { dashInFlight = false; }).getOrdersForRole(session.role, session.name);
     }
     
     function continueToStartModal() {
@@ -2467,6 +2484,9 @@
     }
 
 function openSteelModal() {
+      ensureSteelProfiles(() => openSteelModalReady());
+    }
+    function openSteelModalReady() {
       // Reset inputs
       document.getElementById('steelSizeInput').value = '';
       const customInput = document.getElementById('steelCustomProfile');
@@ -2571,6 +2591,9 @@ function openSteelModal() {
     }
 
     function openWelderSteelModal() {
+      ensureUsers(() => ensureSteelProfiles(() => openWelderSteelModalReady()));
+    }
+    function openWelderSteelModalReady() {
       // 1. Reset Form & Disable Order Select while loading
       const orderSelect = document.getElementById('wsOrderSelect');
       orderSelect.innerHTML = '<option value="">-- Loading Welding Orders... --</option>';
@@ -2584,7 +2607,9 @@ function openSteelModal() {
       document.getElementById('wsSizeInput').value = '';
 
       // 2. Populate Welders List
-      const welders = appData.users.filter(u => u.role === 'Welding');
+      const welders = appData.users.filter(u =>
+        u.role === 'Welding' || (u.tasks && u.tasks.indexOf('Welding') !== -1) || /weld/i.test(u.role || '')
+      );
       welders.forEach(w => {
           document.getElementById('wsWorkerSelect').innerHTML += `<option value="${w.name}">${w.name}</option>`;
       });

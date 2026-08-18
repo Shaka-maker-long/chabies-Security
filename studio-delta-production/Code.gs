@@ -48,6 +48,9 @@ var TASK_ALIAS_MAP = {
 };
 
 function ensureUsersSheetTasksColumn() {
+  try {
+    if (CacheService.getScriptCache().get("usersTasksCol")) return;
+  } catch (e) {}
   var ss = getSpreadsheet();
   var sheet = getSheetOrDie(ss, TAB_USERS);
   var lastCol = Math.max(sheet.getLastColumn(), 1);
@@ -62,6 +65,7 @@ function ensureUsersSheetTasksColumn() {
   if (!found) {
     sheet.getRange(1, 4).setValue("Tasks");
   }
+  try { CacheService.getScriptCache().put("usersTasksCol", "1", 21600); } catch (e) {}
 }
 
 function canonicalTaskName(raw) {
@@ -131,15 +135,11 @@ function readUserRowProfile(row) {
 }
 
 function getUserProfileByName(workerName) {
-  var ss = getSpreadsheet();
-  var sheet = getSheetOrDie(ss, TAB_USERS);
-  var data = sheet.getDataRange().getValues();
   var needle = String(workerName || "").trim().toLowerCase();
   if (!needle) return null;
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0] || "").trim().toLowerCase() === needle) {
-      return readUserRowProfile(data[i]);
-    }
+  var users = getUsersAndRoles();
+  for (var i = 0; i < users.length; i++) {
+    if (String(users[i].name || "").trim().toLowerCase() === needle) return users[i];
   }
   return null;
 }
@@ -170,6 +170,9 @@ function getSteelProfiles() {
     return[];
   }
 
+  var cachedSteel = floorCacheGet("steel");
+  if (cachedSteel) return cachedSteel;
+
   // Read existing profiles
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) {
@@ -189,12 +192,11 @@ function getSteelProfiles() {
     }
     if (name) profiles.push({ category: cat, name: name });
   }
+  floorCachePut("steel", profiles, CACHE_TTL_STEEL);
   return profiles;
 }
 
 function doGet() {
-  try { ensureIdleTrigger(); } catch (e) {}
-  try { ensureUsersSheetTasksColumn(); } catch (e) {}
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
     .setTitle('Studio Delta Production')
@@ -202,54 +204,106 @@ function doGet() {
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0'); 
 }
 
+function lazySetup() {
+  try { ensureIdleTrigger(); } catch (e) {}
+  try { ensureUsersSheetTasksColumn(); } catch (e) {}
+}
+
+var _ssMemo = null;
+var _sheetMemo = {};
+
 function getSpreadsheet() {
+  if (_ssMemo) return _ssMemo;
   if (SHEET_ID && SHEET_ID !== "1pdvAFTIyd5sf8Wbf38MSd4cfk3mb3McPqJrYeM8SOYk") {
-    return SpreadsheetApp.openById(SHEET_ID);
+    _ssMemo = SpreadsheetApp.openById(SHEET_ID);
+  } else {
+    _ssMemo = SpreadsheetApp.getActiveSpreadsheet();
   }
-  
-  return SpreadsheetApp.getActiveSpreadsheet();
+  return _ssMemo;
 }
 
 function getSheetOrDie(ss, tabName) {
+  if (_sheetMemo[tabName]) return _sheetMemo[tabName];
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) throw new Error("Missing Tab: '" + tabName + "'. Please create it.");
+  _sheetMemo[tabName] = sheet;
   return sheet;
 }
 
-function getPlateCuttingStatus(ss, orderNum) {
-  var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logData = logSheet.getDataRange().getValues();
-  
-  // Loop backwards to find the most recent entry
-  for (var i = logData.length - 1; i >= 1; i--) { 
-    var logOrderNum = logData[i][1]; 
-    var logRole = logData[i][3]; 
-    var logWorker = logData[i][2]; 
-    var logEndTime = logData[i][6]; 
-    var meta = parseLogMeta(logData[i].length > 12 ? logData[i][12] : "");
-    var pauseStart = getOpenPauseStart(meta) || logData[i][9];
-    var pauseReason = "";
-    if (meta.pauses && meta.pauses.length) pauseReason = meta.pauses[meta.pauses.length - 1].reason || "";
-    if (!pauseReason) pauseReason = logData[i].length > 11 ? logData[i][11] : "";
+function getSheetGrid(ss, tabName, numCols) {
+  var sheet = getSheetOrDie(ss, tabName);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 1) return [];
+  var lastCol = sheet.getLastColumn();
+  if (lastCol < 1) return [];
+  var cols = numCols ? Math.min(numCols, lastCol) : lastCol;
+  return sheet.getRange(1, 1, lastRow, cols).getValues();
+}
 
-    if (String(logOrderNum) == String(orderNum) && String(logRole).trim() === 'Plate Cutting') {
-      if (!logEndTime) {
-        return {
-          status: 'Plate Cutting',
-          assigned: logWorker,
-          isPaused: !!pauseStart,
-          pauseReason: pauseReason || "",
-          logId: logData[i][0],
-          batchId: meta.batchId || "",
-          isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1)
-        };
-      } else {
-        return {status: 'Finished', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false};
-      }
-    }
+var CACHE_TTL_FLOOR = 20;
+var CACHE_TTL_USERS = 45;
+var CACHE_TTL_STEEL = 300;
+var CACHE_TTL_ADMIN = 25;
+
+function floorCacheGen() {
+  try { return CacheService.getScriptCache().get("floorGen") || "0"; } catch (e) { return "0"; }
+}
+function bumpFloorCache() {
+  try { CacheService.getScriptCache().put("floorGen", String(new Date().getTime()), 21600); } catch (e) {}
+}
+function floorCacheGet(key) {
+  try {
+    var raw = CacheService.getScriptCache().get(floorCacheGen() + ":" + key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function floorCachePut(key, value, ttl) {
+  try {
+    var s = JSON.stringify(value);
+    if (s.length > 90000) return;
+    CacheService.getScriptCache().put(floorCacheGen() + ":" + key, s, ttl || CACHE_TTL_FLOOR);
+  } catch (e) {}
+}
+
+function emptyPlateStatus() {
+  return {status: '', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false};
+}
+
+function plateStatusFromLogRow(row) {
+  var meta = parseLogMeta(row.length > 12 ? row[12] : "");
+  var pauseStart = getOpenPauseStart(meta) || row[9];
+  var pauseReason = "";
+  if (meta.pauses && meta.pauses.length) pauseReason = meta.pauses[meta.pauses.length - 1].reason || "";
+  if (!pauseReason) pauseReason = row.length > 11 ? row[11] : "";
+  if (!row[6]) {
+    return {
+      status: 'Plate Cutting',
+      assigned: row[2],
+      isPaused: !!pauseStart,
+      pauseReason: pauseReason || "",
+      logId: row[0],
+      batchId: meta.batchId || "",
+      isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1)
+    };
   }
-  
-  return {status: '', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false}; 
+  return {status: 'Finished', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false};
+}
+
+function buildPlateStatusMap(logData) {
+  var map = {};
+  for (var i = logData.length - 1; i >= 1; i--) {
+    if (String(logData[i][3]).trim() !== 'Plate Cutting') continue;
+    var orderNum = String(logData[i][1]);
+    if (map.hasOwnProperty(orderNum)) continue;
+    map[orderNum] = plateStatusFromLogRow(logData[i]);
+  }
+  return map;
+}
+
+function getPlateCuttingStatus(ss, orderNum) {
+  var logData = getSheetGrid(ss, TAB_LOGS, 13);
+  var map = buildPlateStatusMap(logData);
+  return map[String(orderNum)] || emptyPlateStatus();
 }
 
 function setPlateCuttingStatus(ss, orderNum, status, worker) {
@@ -269,22 +323,26 @@ function clearPlateCuttingStatus(ss, orderNum) {
 
 // --- CORE: USERS & LOGIN ---
 function getUsersAndRoles() {
+  var cached = floorCacheGet("users");
+  if (cached) return cached;
+  lazySetup();
   var ss = getSpreadsheet();
-  var sheet = getSheetOrDie(ss, TAB_USERS); 
-  var data = sheet.getDataRange().getValues();
+  var data = getSheetGrid(ss, TAB_USERS, 4);
   if (data.length <= 1) return []; 
-  data.shift(); // Remove header
-  return data.map(function(row) {
-    var profile = readUserRowProfile(row);
-    return {
+  var users = [];
+  for (var i = 1; i < data.length; i++) {
+    var profile = readUserRowProfile(data[i]);
+    users.push({
       name: profile.name,
       role: profile.role,
       jobTitle: profile.jobTitle,
       isAdmin: profile.isAdmin,
       isQcOnly: profile.isQcOnly,
       tasks: profile.tasks
-    };
-  });
+    });
+  }
+  floorCachePut("users", users, CACHE_TTL_USERS);
+  return users;
 }
 
 // Helper function for case-insensitive status comparison
@@ -339,6 +397,7 @@ function verifyLogin(role, name, password) {
 }
 
 function verifyGlobalLogin(name, password) {
+  lazySetup();
   var ss = getSpreadsheet();
   try { ensureUsersSheetTasksColumn(); } catch (e) {}
   var sheet = getSheetOrDie(ss, TAB_USERS);
@@ -384,11 +443,15 @@ function getOrdersForRole(role, workerName) {
   if (workerName && role && role !== "Admin" && !workerCanPerformTask(workerName, role)) {
     return [];
   }
+  lazySetup();
+  var cacheKey = "orders:" + String(role || "");
+  var cached = floorCacheGet(cacheKey);
+  if (cached) return cached;
   var ss = getSpreadsheet();
-  var sheet = getSheetOrDie(ss, TAB_ORDERS);
-  var data = sheet.getDataRange().getValues();
-  
-  var activeAssignments = getActiveAssignments(ss);
+  var data = getSheetGrid(ss, TAB_ORDERS, 7);
+  var logData = getSheetGrid(ss, TAB_LOGS, 13);
+  var activeAssignments = getActiveAssignmentsFromData(logData);
+  var plateMap = (role === 'Plate Cutting') ? buildPlateStatusMap(logData) : {};
   var relevantOrders = [];
   
   var mainVisibilityMap = {
@@ -430,7 +493,7 @@ function getOrdersForRole(role, workerName) {
     var isBatched = assignment ? assignment.isBatched : false;
 
     if (role === 'Plate Cutting') {
-      var plateInfo = getPlateCuttingStatus(ss, orderNum); 
+      var plateInfo = plateMap[String(orderNum)] || emptyPlateStatus();
       var isStageValid = plateCuttingStages.indexOf(mainStatusLower) > -1;
       var isAlreadyActive = plateInfo.status === 'Plate Cutting';
       var isNotFinished = plateInfo.status !== 'Finished';
@@ -471,6 +534,7 @@ function getOrdersForRole(role, workerName) {
       });
     }
   }
+  floorCachePut(cacheKey, relevantOrders, CACHE_TTL_FLOOR);
   return relevantOrders;
 }
 
@@ -595,7 +659,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
     };
     
   } finally {
-    lock.releaseLock();
+    try { bumpFloorCache(); } catch (ignore2) {} lock.releaseLock();
   }
 }
 
@@ -762,7 +826,7 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
   } catch(e) {
     return { success: false, error: e.toString() };
   } finally {
-    try { lock.releaseLock(); } catch (ignore) {}
+    try { try { bumpFloorCache(); } catch (ignore2) {} lock.releaseLock(); } catch (ignore) {}
   }
 }
 
@@ -813,7 +877,7 @@ function logWelderSteel(orderNum, workerName, item) {
   } catch(e) {
     return { success: false, error: e.toString() };
   } finally {
-    lock.releaseLock();
+    try { bumpFloorCache(); } catch (ignore2) {} lock.releaseLock();
   }
 }
 
@@ -1155,6 +1219,9 @@ function formatDurationServer(totalMins) {
 
 // --- ADMIN: FETCH ALL DATA ---
 function getAdminDashboardData() {
+  var cached = floorCacheGet("adminDash");
+  if (cached) return cached;
+  lazySetup();
   var ss = getSpreadsheet();
   
   // 1. Get Logs
@@ -1220,7 +1287,9 @@ function getAdminDashboardData() {
     }
   }
 
-  return { logs: logs, orders: orders };
+  var adminPayload = { logs: logs, orders: orders };
+  floorCachePut("adminDash", adminPayload, CACHE_TTL_ADMIN);
+  return adminPayload;
 }
 
 // --- UTILS ---
@@ -1260,35 +1329,31 @@ function getNextStatus(current) {
  * IT IGNORES PLATE CUTTING so parallel work can happen.
  */
 function getActiveAssignments(ss) {
-  var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logData = logSheet.getDataRange().getValues();
-  var assignments = {};
+  return getActiveAssignmentsFromData(getSheetGrid(ss, TAB_LOGS, 13));
+}
 
+function getActiveAssignmentsFromData(logData) {
+  var assignments = {};
   for (var i = 1; i < logData.length; i++) {
+    if (logData[i][6]) continue;
     var orderNum = logData[i][1];
-    var worker = logData[i][2];
-    var role = logData[i][3];
-    var endTime = logData[i][6];
+    if (!orderNum) continue;
+    var roleStr = String(logData[i][3]).trim();
+    if (roleStr === 'Plate Cutting' || roleStr === 'Out for Delivery' || roleStr === 'Indirect') continue;
     var meta = parseLogMeta(logData[i].length > 12 ? logData[i][12] : "");
     if (meta.entryType === "indirect") continue;
-
     var pauseStart = getOpenPauseStart(meta) || logData[i][9];
     var pauseReason = "";
     if (meta.pauses && meta.pauses.length) pauseReason = meta.pauses[meta.pauses.length - 1].reason || "";
     if (!pauseReason) pauseReason = logData[i].length > 11 ? logData[i][11] : "";
-
-    var roleStr = String(role).trim();
-
-    if (!endTime && orderNum && roleStr !== 'Plate Cutting' && roleStr !== 'Out for Delivery' && roleStr !== 'Indirect') {
-      assignments[orderNum] = {
-        worker: worker,
-        isPaused: !!pauseStart,
-        pauseReason: pauseReason || "",
-        logId: logData[i][0],
-        batchId: meta.batchId || "",
-        isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1)
-      };
-    }
+    assignments[orderNum] = {
+      worker: logData[i][2],
+      isPaused: !!pauseStart,
+      pauseReason: pauseReason || "",
+      logId: logData[i][0],
+      batchId: meta.batchId || "",
+      isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1)
+    };
   }
   return assignments;
 }
@@ -1786,7 +1851,7 @@ function workerPauseOrder(rowIndex, orderNum, workerName, reason) {
   } catch(e) {
     return {success: false, message: e.toString()};
   } finally {
-    lock.releaseLock();
+    try { bumpFloorCache(); } catch (ignore2) {} lock.releaseLock();
   }
 }
 
@@ -1803,7 +1868,7 @@ function workerResumeOrder(rowIndex, orderNum, workerName) {
   } catch(e) {
     return {success: false, message: e.toString()};
   } finally {
-    lock.releaseLock();
+    try { bumpFloorCache(); } catch (ignore2) {} lock.releaseLock();
   }
 }
 
@@ -1831,7 +1896,7 @@ function adminPauseOrder(orderNum) {
   } catch(e) {
     return {success: false, message: e.toString()};
   } finally {
-    lock.releaseLock();
+    try { bumpFloorCache(); } catch (ignore2) {} lock.releaseLock();
   }
 }
 
@@ -1859,7 +1924,7 @@ function adminResumeOrder(orderNum) {
   } catch(e) {
     return {success: false, message: e.toString()};
   } finally {
-    lock.releaseLock();
+    try { bumpFloorCache(); } catch (ignore2) {} lock.releaseLock();
   }
 }
 
@@ -1915,7 +1980,7 @@ function processPdfQueue() {
       file.setName("ERROR_" + file.getName());
     }
   } finally {
-    lock.releaseLock();
+    try { bumpFloorCache(); } catch (ignore2) {} lock.releaseLock();
   }
 }
 
@@ -2446,15 +2511,23 @@ function leaveBatchForOrder(workerName, keepOrder) {
     writeLogMeta(logSheet, j + 1, m);
     syncLegacyPauseCells(logSheet, j + 1, m, logs[j][4]);
   }
+  bumpFloorCache();
   return { success: true };
 }
 
 function ensureIdleTrigger() {
+  try {
+    if (CacheService.getScriptCache().get("idleTriggerOk")) return;
+  } catch (e) {}
   var triggers = ScriptApp.getProjectTriggers();
   for (var i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === "checkIdleWorkers") return;
+    if (triggers[i].getHandlerFunction() === "checkIdleWorkers") {
+      try { CacheService.getScriptCache().put("idleTriggerOk", "1", 21600); } catch (e2) {}
+      return;
+    }
   }
   ScriptApp.newTrigger("checkIdleWorkers").timeBased().everyMinutes(5).create();
+  try { CacheService.getScriptCache().put("idleTriggerOk", "1", 21600); } catch (e3) {}
 }
 
 function getIdleAlertSheet(ss) {
@@ -2622,6 +2695,7 @@ function assignIndirectTask(workerName, taskName, assignedBy) {
       idleSheet.getRange(i + 1, 7).setValue(taskName);
     }
   }
+  bumpFloorCache();
   return { success: true };
 }
 

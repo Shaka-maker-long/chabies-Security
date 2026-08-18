@@ -39,6 +39,8 @@ Add a **Tasks** column (column D). The first time the app opens it will create t
 
 The tablet remembers the last login until they tap Log Out.
 
+Floor screens cache order lists for about 20 seconds and only reread the spreadsheet after a start, pause, finish, or similar change. Auto-refresh is once a minute while the tab is visible.
+
 ## First deploy
 
 1. Replace the existing `Code.gs` and `index` HTML with these files.
