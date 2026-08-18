@@ -1695,6 +1695,8 @@
       'Welding': 'bi-lightning',
       'Grinding': 'bi-disc',
       'Quality Control': 'bi-clipboard-check',
+      'Paint Preparation': 'bi-brush',
+      'Painting': 'bi-palette',
       'Assembly': 'bi-box-seam'
     };
 
@@ -2177,7 +2179,7 @@
                }
              }
              else if(isLocked) innerBtn = `<button class="btn btn-secondary w-100 position-relative" style="z-index: 10;" disabled>LOCKED BY ${o.assigned}</button>`;
-             else innerBtn = `<button class="btn btn-primary w-100 position-relative" style="z-index: 10;" onclick="event.stopPropagation(); event.preventDefault(); preStart(${o.rowIndex}, '${o.order}')">START</button>`;
+             else innerBtn = availableStartButtons(o);
           }
           let btn = `<div class="action-btn-container w-100">${innerBtn}</div>`;
 
@@ -2285,8 +2287,29 @@
       }).withFailureHandler(() => { dashInFlight = false; }).pollFloor(session.role, session.name);
     }
     
+    function startTaskForOrder(o) {
+      const st = String(o && o.status || '').toLowerCase();
+      if (st === 'paint preparation') return 'Paint Preparation';
+      if (st === 'painting') return 'Painting';
+      if (st === 'assembly') return 'Assembly';
+      return session.role;
+    }
+
+    function availableStartButtons(o) {
+      const st = String(o.status || '').toLowerCase();
+      const start = (label, task, extraClass) =>
+        `<button class="btn ${extraClass || 'btn-primary'} flex-grow-1 position-relative" style="z-index: 10; flex-basis: 0;" onclick="event.stopPropagation(); event.preventDefault(); preStart(${o.rowIndex}, '${o.order}', '${task}')">${label}</button>`;
+      if (st === 'ready for assembly' && session.role === 'Assembly') {
+        return `<div class="d-flex gap-2 position-relative w-100 flex-wrap" style="z-index: 10;">${start('ASSEMBLE', 'Assembly', 'btn-primary')}${start('PAINT PREP', 'Paint Preparation', 'btn-outline-dark')}</div>`;
+      }
+      if (st === 'ready for assembly' && session.role === 'Paint Preparation') {
+        return start('START PAINT PREP', 'Paint Preparation');
+      }
+      return start('START', startTaskForOrder(o));
+    }
+
     function continueToStartModal() {
-      if (session.role === 'Assembly') {
+      if ((session.pendingStartTask || session.role) === 'Assembly') {
         document.getElementById('glassCheckOrder').innerText = session.activeOrder;
         if (glassCheckModal) glassCheckModal.show();
       } else {
@@ -2295,14 +2318,15 @@
       }
     }
 
-    function preStart(row, ord) { 
+    function preStart(row, ord, startTask) { 
       session.pendingRow = row; 
       session.activeOrder = ord;
+      session.pendingStartTask = startTask || startTaskForOrder((appData.currentOrders || []).find(o => o.rowIndex === row)) || session.role;
       session.pendingBatchRows = null;
       session.pendingBatchMates = [];
 
       const current = (appData.currentOrders || []).find(o => o.rowIndex === row);
-      if (session.role === 'Assembly' && current && current.productName) {
+      if ((session.pendingStartTask || session.role) === 'Assembly' && current && current.productName) {
         const mates = (appData.currentOrders || []).filter(o =>
           o.rowIndex !== row &&
           o.productName &&
@@ -2371,7 +2395,7 @@
            showAlert(res.message || res.error || "Could not start");
            loadDashboard();
         }
-      }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).startOrder(session.pendingRow, session.name, session.role, session.pendingBatchRows);
+      }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).startOrder(session.pendingRow, session.name, session.pendingStartTask || session.role, session.pendingBatchRows);
     }
 
     function prePause(row, ord) {
@@ -2478,7 +2502,7 @@
       
       // 3. EXCEPTIONS: GRINDING, POWDER COATING & DELIVERY (Skip Checklist)
       // Added "out for delivery" here so it skips the popup form
-      if(session.role === 'Grinding' || statusText === 'powder coating' || statusText === 'out for delivery') { 
+      if(session.role === 'Grinding' || statusText === 'powder coating' || statusText === 'out for delivery' || statusText === 'paint preparation' || statusText === 'painting') { 
         showConfirm("Finish " + (statusText || "Task") + "?", () => submitQC(true)); 
         return; 
       }

@@ -9,6 +9,7 @@ Timezone: **Africa/Johannesburg**. The paid shift is **07:45–15:45** with a **
 - One person has **one running clock**. Extra open jobs are paused automatically.
 - Same product, same process (e.g. assembly slats for two matching gates) can be **batched**: one clock, time split across the orders. Use **Work this order only** to leave the batch.
 - When plate cutting finishes on an order, welders waiting on that plate are **auto-switched** back. They can tap **Still on other job** if they are not ready.
+- **Ready for Assembly** can go to **Assembly** or **Paint Preparation**. Assemblers see both buttons. Paint prep finish → **Ready for Painting**. Painters (Users task `Painting`) see those orders; painting finish → **Ready for Assembly** so assembly can happen.
 - If nobody has a running job for more than ~10 minutes during shift hours (07:45–15:45 weekdays), **Admin and QC who currently have the app open** get a popup modal listing those idle people. Assign an **indirect task** from the popup (or from Admin → Workers). Starting a real order closes that task. Idle alerts are **not** emailed.
 
 ## New spreadsheet pieces
@@ -37,6 +38,7 @@ Add a **Tasks** column (column D). The first time the app opens it will create t
 - **Admin** sees Production, Workers, Metrics, QC Reports, Activity, and can open any floor task.
 - **Quality Control / QC** only sees QC work.
 - Anyone else only sees the tasks listed. `Welding, Tagging` (or a role like `Welder Tagger`) means they pick Welding or Tagging after login, and only those boards appear.
+- Painters need `Painting` on the Tasks column. Assemblers with `Assembly` also get **Paint prep** on Ready for Assembly cards (no extra task required).
 - If Tasks is blank, the app reads the Role cell (`Welder Tagger` → Welding + Tagging).
 
 The tablet does **not** remember the last login. After Log Out (or a refresh) everyone sees the login screen again.
@@ -53,4 +55,4 @@ Assembly and Final QC must log **which backboard was used**, the same way plate/
 
 ## Activity report
 
-Admin sidebar → **Activity**. Daily / weekly / monthly view of what each person did, with regular hours capped at 8h per day and overtime shown separately.
+Admin sidebar → **Activity**. Daily / weekly / monthly view of what each person did, with regular hours capped at 7.5h per day and overtime shown separately.

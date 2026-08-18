@@ -30,7 +30,7 @@ var IDLE_GRACE_MINS = 10;
 var INDIRECT_TASKS = ["Cleaning", "Maintenance", "Material handling", "Waiting for materials", "Waiting for plate", "Meeting", "Training", "Other"];
 
 
-var KNOWN_FLOOR_TASKS = ["Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding", "Quality Control", "Assembly"];
+var KNOWN_FLOOR_TASKS = ["Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding", "Quality Control", "Paint Preparation", "Painting", "Assembly"];
 
 var TASK_ALIAS_MAP = {
   "profile cutting": "Profile Cutting",
@@ -51,7 +51,12 @@ var TASK_ALIAS_MAP = {
   "pre-powder": "Quality Control",
   "powder coating": "Quality Control",
   "assembly": "Assembly",
-  "assembler": "Assembly"
+  "assembler": "Assembly",
+  "paint preparation": "Paint Preparation",
+  "paint prep": "Paint Preparation",
+  "painting preparation": "Paint Preparation",
+  "painting": "Painting",
+  "painter": "Painting"
 };
 
 function ensureUsersSheetTasksColumn() {
@@ -156,7 +161,10 @@ function workerCanPerformTask(workerName, task) {
   if (!profile) return false;
   if (profile.isAdmin) return true;
   var want = canonicalTaskName(task) || String(task || "").trim();
-  return profile.tasks.indexOf(want) !== -1;
+  if (profile.tasks.indexOf(want) !== -1) return true;
+  // Assemblers may start Paint Preparation from Ready for Assembly without a separate login task.
+  if (want === "Paint Preparation" && profile.tasks.indexOf("Assembly") !== -1) return true;
+  return false;
 }
 
 
@@ -593,7 +601,9 @@ function getOrdersForRole(role, workerName) {
       'Ready for Final QC', 'Final QC',
       'Ready for Delivery', 'Out for Delivery'
     ],
-    'Assembly': ['Ready for Assembly', 'Assembly']
+    'Assembly': ['Ready for Assembly', 'Assembly', 'Paint Preparation'],
+    'Paint Preparation': ['Ready for Assembly', 'Paint Preparation'],
+    'Painting': ['Ready for Painting', 'Painting']
   };
 
   var plateCuttingStages = [
@@ -726,19 +736,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
       var orderNum = orderRow[1];
       var currentStatus = orderRow[2];
 
-      var nextStatus = "";
-      if (role === 'Plate Cutting') {
-        nextStatus = "Plate Cutting";
-      } else {
-        nextStatus = getNextStatus(currentStatus);
-        if (nextStatus && nextStatus.startsWith("Ready")) {
-          while (nextStatus && nextStatus.startsWith("Ready")) { 
-            var temp = getNextStatus(nextStatus); 
-            if (!temp) break; 
-            nextStatus = temp;
-          }
-        }
-      }
+      var nextStatus = getStartStatusForRole(currentStatus, role);
 
       if (role === 'Plate Cutting') {
         var plateInfo = plateMap[String(orderNum)] || emptyPlateStatus();
@@ -1423,6 +1421,14 @@ function getAdminDashboardData() {
 
 // --- UTILS ---
 function getNextStatus(current) {
+  var currentTrimmed = String(current).trim();
+  var currentLower = currentTrimmed.toLowerCase();
+
+  // Optional paint loop: Ready for Assembly can go to Paint Preparation instead of Assembly.
+  if (currentLower === "paint preparation") return "Ready for Painting";
+  if (currentLower === "ready for painting") return "Painting";
+  if (currentLower === "painting") return "Ready for Assembly";
+
   var flow = [
     "Not Yet Started", 
     "Ready for Steelwork", "Profile Cutting", 
@@ -1430,27 +1436,46 @@ function getNextStatus(current) {
     "Ready for Welding", "Welding", 
     "Ready for Grinding", "Grinding", 
     "Ready for Pre-Powder Coating", "Pre-Powder Coating",
-    "Ready for Powder Coating", // <--- ADDED THIS STEP
+    "Ready for Powder Coating",
     "Powder Coating", 
     "Ready for Assembly", "Assembly", 
     "Ready for Final QC", "Final QC",
     "Ready for Delivery", "Out for Delivery", 
     "Delivered"
   ];
-  
-  // Case-insensitive search for current status
-  var currentTrimmed = String(current).trim();
-  var currentLower = currentTrimmed.toLowerCase();
+
   var idx = -1;
-  
   for (var i = 0; i < flow.length; i++) {
     if (flow[i].toLowerCase() === currentLower) {
       idx = i;
       break;
     }
   }
-  
+
   return (idx > -1 && idx < flow.length - 1) ? flow[idx + 1] : current; 
+}
+
+function getStartStatusForRole(currentStatus, role) {
+  var currentLower = String(currentStatus || "").trim().toLowerCase();
+  var roleLower = String(role || "").trim().toLowerCase();
+  if (roleLower === "plate cutting") return "Plate Cutting";
+  if (currentLower === "ready for assembly" && roleLower === "paint preparation") {
+    return "Paint Preparation";
+  }
+  if (currentLower === "ready for painting" && (roleLower === "painting" || roleLower === "painter")) {
+    return "Painting";
+  }
+  if (currentLower === "paint preparation") return "Paint Preparation";
+  if (currentLower === "painting") return "Painting";
+  var nextStatus = getNextStatus(currentStatus);
+  if (nextStatus && String(nextStatus).indexOf("Ready") === 0) {
+    while (nextStatus && String(nextStatus).indexOf("Ready") === 0) {
+      var temp = getNextStatus(nextStatus);
+      if (!temp || temp === nextStatus) break;
+      nextStatus = temp;
+    }
+  }
+  return nextStatus;
 }
 
 /**
@@ -1501,8 +1526,8 @@ function isAllowedStatus(status) {
     // Powder Coating
     "ready for pre-powder coating", "pre-powder coating",
     "ready for powder coating", "powder coating", 
-    // Assembly & QC
-    "ready for assembly", "assembly", 
+    // Assembly, painting & QC
+    "ready for assembly", "paint preparation", "ready for painting", "painting", "assembly", 
     "ready for final qc", "final qc",
     // Delivery
     "ready for delivery", "out for delivery"
@@ -1667,6 +1692,8 @@ function sortProcessesByWorkflow(processes) {
     'Welding',
     'Grinding',
     'Powder Coating',
+    'Paint Preparation',
+    'Painting',
     'Assembly'
   ];
   
