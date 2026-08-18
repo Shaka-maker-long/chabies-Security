@@ -20,6 +20,25 @@ Timezone: **Africa/Johannesburg**. A standard work day is **8 hours (480 minutes
 
 Legacy pause columns J/K/L are still written for older reports.
 
+## Users sheet (login once)
+
+Workers log in **once** with name + access code. They no longer pick a role first.
+
+Add a **Tasks** column (column D). The first time the app opens it will create the header if it is missing.
+
+| Name | Role | Password | Tasks |
+| --- | --- | --- | --- |
+| Sipho | Welder Tagger | 1234 | Welding, Tagging |
+| Thabo | Quality Control | 1234 | Quality Control |
+| Admin | Admin | **** | |
+
+- **Admin** sees Production, Workers, Metrics, QC Reports, Activity, and can open any floor task.
+- **Quality Control / QC** only sees QC work.
+- Anyone else only sees the tasks listed. `Welding, Tagging` (or a role like `Welder Tagger`) means they pick Welding or Tagging after login, and only those boards appear.
+- If Tasks is blank, the app reads the Role cell (`Welder Tagger` → Welding + Tagging).
+
+The tablet remembers the last login until they tap Log Out.
+
 ## First deploy
 
 1. Replace the existing `Code.gs` and `index` HTML with these files.

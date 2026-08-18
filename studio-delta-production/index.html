@@ -3,7 +3,7 @@
 <head>
   <base target="_top">
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta</title>
   
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
@@ -448,28 +448,9 @@
        RESPONSIVE — MOBILE
        ===================================================== */
     @media (max-width: 768px) {
-      .mobile-menu-btn { display: flex; }
-      .mobile-backdrop { display: block; }
-      .container-fluid { padding-left: 12px !important; padding-right: 12px !important; padding-top: 68px !important; }
-      h1.display-4 { font-size: 2rem; }
       h2 { font-size: 1.5rem; }
       h3 { font-size: 1.25rem; }
-      h4 { font-size: 1.1rem; }
-      .sidebar { width: 280px; left: -280px; box-shadow: var(--shadow-lg); }
-      .sidebar.mobile-open { left: 0; }
-      .sidebar-link { padding: 14px 12px; }
-      .sidebar-link i { font-size: 1.7rem; }
-      .sidebar-link .link-text { font-size: 0.8rem; }
-      .main-content { margin-left: 0; }
-      .card { margin-bottom: 1rem; }
-      .card-body { padding: 1rem; }
-      .btn { padding: 0.7rem 1rem; font-size: 0.9rem; min-height: 44px; }
-      .btn-sm { min-height: 36px; }
-      .nav-pills { flex-direction: column; }
-      .nav-pills .nav-link { margin-bottom: 0.4rem; text-align: center; }
-      .form-control { font-size: 16px; padding: 0.7rem; min-height: 44px; }
-      .modal-dialog { margin: 0.5rem; }
-      .table { font-size: 0.82rem; }
+      .form-control, .form-select { font-size: 16px; min-height: 44px; }
       #sigCanvas { height: 150px; }
       #adminProdTabs { flex-wrap: wrap; }
       #adminProdTabs .nav-link { font-size: 0.82rem; padding: 0.5rem; }
@@ -684,9 +665,108 @@
     .idle-card { border: 1px dashed var(--border-strong); }
     .product-sub { font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
     .hours-regular { font-variant-numeric: tabular-nums; }
+
+    /* =====================================================
+       LOGIN + TASK PICKER + RESPONSIVE SHELL
+       ===================================================== */
+    body:not(.is-logged-in) .sidebar,
+    body:not(.is-logged-in) .mobile-menu-btn,
+    body:not(.is-logged-in) .mobile-backdrop {
+      display: none !important;
+    }
+    body:not(.is-logged-in) .main-content { margin-left: 0; }
+    body:not(.is-logged-in) .main-content .container-fluid {
+      padding-top: 24px;
+      min-height: 100dvh;
+    }
+
+    .login-shell {
+      min-height: calc(100dvh - 80px);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 24px 0 40px;
+    }
+    .login-card .form-control {
+      min-height: 48px;
+      font-size: 16px;
+    }
+    .task-card {
+      cursor: pointer;
+      min-height: 120px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-align: center;
+      padding: 24px 16px;
+    }
+    .task-card i { font-size: 1.8rem; color: var(--text-secondary); }
+    .task-card h4 { margin: 0; font-size: 1.15rem; }
+    .dash-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .order-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+    @media (min-width: 992px) {
+      :root { --sidebar-width: 220px; }
+      .sidebar { padding: 20px 12px; }
+      .sidebar-header { text-align: left; padding: 0 8px 8px; }
+      .sidebar-header h5 { font-size: 0.95rem; letter-spacing: 0.12em; }
+      .sidebar-link {
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 12px;
+        padding: 11px 14px;
+      }
+      .sidebar-link i { font-size: 1.25rem; margin-bottom: 0; }
+      .sidebar-link .link-text { font-size: 0.85rem; text-align: left; }
+      .theme-toggle-btn { flex-direction: row; gap: 8px; }
+      .theme-toggle-btn i { font-size: 1.1rem; }
+      .main-content .container-fluid { padding: 32px 2rem 4rem; }
+      .order-grid { grid-template-columns: 1fr 1fr; gap: 1rem; }
+      .checkbox-wrapper-16 { margin-bottom: 0; }
+      .view-section.container { max-width: 1180px; }
+    }
+    @media (max-width: 991.98px) {
+      .mobile-menu-btn { display: flex; top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left)); }
+      .mobile-backdrop { display: block; }
+      .container-fluid { padding-left: 12px !important; padding-right: 12px !important; padding-top: 72px !important; }
+      .sidebar {
+        width: min(300px, 86vw);
+        left: -310px;
+        padding-top: max(16px, env(safe-area-inset-top));
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+        box-shadow: var(--shadow-lg);
+      }
+      .sidebar.mobile-open { left: 0; }
+      .sidebar-link { flex-direction: row; justify-content: flex-start; gap: 12px; padding: 14px 14px; }
+      .sidebar-link i { margin-bottom: 0; }
+      .main-content { margin-left: 0; }
+      .nav-pills { flex-wrap: nowrap; overflow-x: auto; }
+      .nav-pills .nav-link { white-space: nowrap; min-height: 44px; }
+      #batchActionContainer { flex-direction: column; align-items: stretch !important; gap: 8px; }
+      .floor-banner.show { flex-direction: column; align-items: stretch; }
+      .table-responsive { -webkit-overflow-scrolling: touch; }
+    }
+    @media (max-width: 575.98px) {
+      h1.display-4 { font-size: 2rem; }
+      .dash-head h4 { font-size: 1.15rem; }
+      .card-body { padding: 1rem; }
+      .btn { min-height: 44px; }
+      .modal-dialog { margin: 0.6rem; }
+    }
   </style>
 </head>
-<body>
+<body class="">
 
   <div id="loader" class="position-fixed top-0 start-0 w-100 h-100 bg-white d-flex flex-column justify-content-center align-items-center" style="z-index:9999;">
     <h2 class="brand-font mb-3">STUDIO DELTA</h2>
@@ -705,9 +785,13 @@
     <div class="sidebar-header">
       <h5 class="brand-font mb-0">STUDIO DELTA</h5>
     </div>
-    <a id="link-roles" class="sidebar-link active" onclick="navTo('view-roles')">
+    <a id="link-roles" class="sidebar-link active" onclick="goHome()">
       <i class="bi bi-house-door"></i>
       <span class="link-text">Home</span>
+    </a>
+    <a id="link-floor" class="sidebar-link d-none-view" onclick="showTaskPicker()">
+      <i class="bi bi-tools"></i>
+      <span class="link-text">Floor</span>
     </a>
     <div id="adminLinks" class="d-none-view">
       <a id="link-prod" class="sidebar-link" onclick="loadProductionOverview()">
@@ -744,30 +828,36 @@
   <div class="container-fluid">
     
     <div id="view-global-login" class="view-section container">
-      <div class="text-center mb-5 mt-5">
-        <h1 class="display-4 fw-bold">Studio Delta</h1>
-        <p class="text-muted small text-uppercase">Production Management System</p>
-      </div>
-      <div class="row justify-content-center">
-        <div class="col-md-6 col-lg-4">
-          <div class="card p-4 shadow-sm animate-card">
-            <h4 class="mb-4 text-center">App Login</h4>
-            <div class="mb-3">
-              <label class="form-label">Name</label>
-              <input type="text" id="globalLoginName" class="form-control" placeholder="Enter your name">
+      <div class="login-shell">
+        <div class="text-center mb-4">
+          <h1 class="display-4 fw-bold">Studio Delta</h1>
+          <p class="text-muted small text-uppercase mb-0">Production Management System</p>
+        </div>
+        <div class="row justify-content-center">
+          <div class="col-12 col-sm-8 col-md-6 col-lg-4">
+            <div class="card p-4 shadow-sm animate-card login-card">
+              <h4 class="mb-2 text-center">Log in</h4>
+              <p class="text-muted small text-center mb-4">One login. Then pick the work you will do today.</p>
+              <div class="mb-3">
+                <label class="form-label">Name</label>
+                <input type="text" id="globalLoginName" class="form-control" placeholder="Your name" autocomplete="username" autocapitalize="words">
+              </div>
+              <div class="mb-4">
+                <label class="form-label">Access code</label>
+                <input type="password" id="globalLoginPass" class="form-control" placeholder="Access code" autocomplete="current-password">
+              </div>
+              <button id="btnGlobalLogin" class="btn btn-primary w-100 py-2 fw-bold" onclick="submitGlobalLogin()">LOG IN</button>
             </div>
-            <div class="mb-4">
-              <label class="form-label">Password</label>
-              <input type="password" id="globalLoginPass" class="form-control" placeholder="Enter access code">
-            </div>
-            <button id="btnGlobalLogin" class="btn btn-primary w-100 py-2 fw-bold" onclick="submitGlobalLogin()">UNLOCK APP</button>
           </div>
         </div>
       </div>
     </div>
 
     <div id="view-roles" class="view-section container d-none-view">
-      <div class="text-center mb-5"><h1 class="display-4 fw-bold">Studio Delta</h1><p class="text-muted small text-uppercase">Production Management System</p></div>
+      <div class="text-center mb-4 mt-2">
+        <h1 class="h2 fw-bold mb-1">Choose your work</h1>
+        <p class="text-muted mb-0" id="taskPickSubtitle">Select the task you will do now.</p>
+      </div>
       <div class="row g-3" id="roleGrid"></div>
     </div>
 
@@ -788,8 +878,12 @@
           <button class="btn btn-sm btn-warning" id="btnStillOnOther" onclick="undoSwitch()">STILL ON OTHER JOB</button>
         </div>
       </div>
-      <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-2">
-        <div><h4 class="m-0" id="dashUser">User</h4><small class="text-muted text-uppercase" id="dashRole">Role</small></div>
+      <div class="dash-head mb-4 border-bottom pb-3">
+        <div>
+          <h4 class="m-0" id="dashUser">User</h4>
+          <small class="text-muted text-uppercase" id="dashRole">Role</small>
+        </div>
+        <button id="btnSwitchTask" class="btn btn-outline-dark btn-sm d-none" onclick="showTaskPicker()">Switch task</button>
       </div>
       
       <div class="row mb-3">
@@ -833,8 +927,8 @@
       </div>
       
       <div class="tab-content">
-        <div class="tab-pane fade show active" id="pane-available"><div id="container-available"></div></div>
-        <div class="tab-pane fade" id="pane-progress"><div id="container-progress"></div></div>
+        <div class="tab-pane fade show active" id="pane-available"><div id="container-available" class="order-grid"></div></div>
+        <div class="tab-pane fade" id="pane-progress"><div id="container-progress" class="order-grid"></div></div>
       </div>
     </div>
 
@@ -1304,7 +1398,7 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     let appData = { users:[], workerStats: {}, currentOrders:[], steelProfiles:[] };
-    let session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, pendingBatchRows: null, pendingBatchMates: [] };
+    let session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, tasks: [], jobTitle: '', pendingBatchRows: null, pendingBatchMates: [] };
     let activityChart = null;
     let batchWorkModal = null;
     let refreshInterval = null;
@@ -1315,7 +1409,7 @@
     let comparisonChart = null;
     
     // Mobile breakpoint constant
-    const MOBILE_BREAKPOINT = 768;
+    const MOBILE_BREAKPOINT = 992;
 
     // --- QC DATA ---
     const QC_DATA = {
@@ -1428,6 +1522,10 @@
     document.addEventListener('DOMContentLoaded', () => {
       // Initialize mobile menu first (doesn't depend on Bootstrap)
       initMobileMenu();
+      ['globalLoginName', 'globalLoginPass'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') submitGlobalLogin(); });
+      });
       
       // Initialize Bootstrap modals (wrapped in try-catch in case Bootstrap doesn't load)
       try {
@@ -1515,7 +1613,8 @@
       document.getElementById(viewId).classList.remove('d-none-view');
       document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
       let linkId = '';
-      if(viewId === 'view-global-login' || viewId === 'view-roles' || viewId === 'view-users' || viewId === 'view-dashboard') linkId = 'link-roles';
+      if(viewId === 'view-global-login' || viewId === 'view-users' || viewId === 'view-dashboard') linkId = 'link-roles';
+      if(viewId === 'view-roles') linkId = document.getElementById('link-floor') && !document.getElementById('link-floor').classList.contains('d-none-view') ? 'link-floor' : 'link-roles';
       if(viewId === 'view-admin-prod') linkId = 'link-prod';
       if(viewId === 'view-admin-workers') linkId = 'link-work';
       if(viewId === 'view-admin-metrics') linkId = 'link-metrics';
@@ -1525,6 +1624,126 @@
       if(viewId !== 'view-dashboard') stopAutoRefresh();
     }
 
+    const TASK_ICONS = {
+      'Profile Cutting': 'bi-scissors',
+      'Plate Cutting': 'bi-square',
+      'Tagging': 'bi-tag',
+      'Welding': 'bi-lightning',
+      'Grinding': 'bi-disc',
+      'Quality Control': 'bi-clipboard-check',
+      'Assembly': 'bi-box-seam'
+    };
+
+    function persistSession() {
+      try {
+        localStorage.setItem('sd-session', JSON.stringify({
+          name: session.name,
+          role: session.role,
+          isAdmin: session.isAdmin,
+          isQcOnly: session.isQcOnly,
+          tasks: session.tasks || [],
+          jobTitle: session.jobTitle || ''
+        }));
+      } catch (e) {}
+    }
+    function clearPersistedSession() {
+      try { localStorage.removeItem('sd-session'); } catch (e) {}
+    }
+    function restoreSession() {
+      try {
+        const raw = localStorage.getItem('sd-session');
+        if (!raw) return false;
+        const s = JSON.parse(raw);
+        if (!s || !s.name) return false;
+        session.name = s.name;
+        session.role = s.role || null;
+        session.isAdmin = !!s.isAdmin;
+        session.isQcOnly = !!s.isQcOnly;
+        session.tasks = s.tasks || [];
+        session.jobTitle = s.jobTitle || '';
+        return true;
+      } catch (e) { return false; }
+    }
+    function setLoggedIn(on) {
+      document.body.classList.toggle('is-logged-in', !!on);
+    }
+    function applyLoginProfile(res) {
+      session.name = res.name;
+      session.jobTitle = res.jobTitle || res.role || '';
+      session.isAdmin = !!res.isAdmin;
+      session.isQcOnly = !!res.isQcOnly;
+      session.tasks = res.tasks || [];
+      session.role = null;
+      setLoggedIn(true);
+      if (session.isAdmin) {
+        document.getElementById('adminLinks').classList.remove('d-none-view');
+      } else {
+        document.getElementById('adminLinks').classList.add('d-none-view');
+      }
+      persistSession();
+      updateFloorLink();
+      routeAfterLogin();
+    }
+    function updateFloorLink() {
+      const el = document.getElementById('link-floor');
+      if (!el) return;
+      const show = !!session.name && (session.isAdmin || ((session.tasks || []).length > 1));
+      el.classList.toggle('d-none-view', !show);
+    }
+    function routeAfterLogin() {
+      if (session.isAdmin) {
+        loadProductionOverview();
+        loadIdleWorkers();
+        return;
+      }
+      if (session.isQcOnly || (session.tasks && session.tasks.length === 1)) {
+        selectFloorTask(session.tasks[0] || 'Quality Control');
+        return;
+      }
+      showTaskPicker();
+    }
+    function goHome() {
+      if (!session.name) {
+        navTo('view-global-login');
+        return;
+      }
+      if (session.isAdmin) {
+        loadProductionOverview();
+        return;
+      }
+      if (session.tasks && session.tasks.length > 1) {
+        showTaskPicker();
+        return;
+      }
+      enterDashboard();
+    }
+    function showTaskPicker() {
+      const grid = document.getElementById('roleGrid');
+      const sub = document.getElementById('taskPickSubtitle');
+      const tasks = (session.isAdmin ? Object.keys(TASK_ICONS) : (session.tasks || [])).slice();
+      if (sub) {
+        sub.innerText = session.isAdmin
+          ? 'Admin — pick a floor task, or use Production in the menu.'
+          : ('Hi ' + session.name + '. What are you doing now?');
+      }
+      grid.innerHTML = '';
+      if (!tasks.length) {
+        grid.innerHTML = '<div class="col-12"><div class="card p-4">No tasks are assigned to you yet. Ask admin to add them on the Users sheet, column Tasks.</div></div>';
+      } else {
+        tasks.forEach(r => {
+          const icon = TASK_ICONS[r] || 'bi-gear';
+          grid.innerHTML += '<div class="col-12 col-sm-6 col-lg-4"><div class="card h-100 role-card task-card" onclick="selectFloorTask(\'' + r.replace(/'/g, "\\'") + '\')"><i class="bi ' + icon + '"></i><h4>' + r + '</h4></div></div>';
+        });
+      }
+      navTo('view-roles');
+    }
+    function selectFloorTask(r) {
+      session.role = r;
+      persistSession();
+      document.getElementById('adminLinks').classList.toggle('d-none-view', !session.isAdmin);
+      enterDashboard();
+    }
+
     function initApp() {
       // Fire both backend calls in parallel; hide loader after both return.
       let usersLoaded = false;
@@ -1532,11 +1751,23 @@
       function checkAllLoaded() {
         if (usersLoaded && profilesLoaded) {
           document.getElementById('loader').classList.add('d-none');
+          if (restoreSession()) {
+            setLoggedIn(true);
+            if (session.isAdmin) document.getElementById('adminLinks').classList.remove('d-none-view');
+            updateFloorLink();
+            if (session.isAdmin && !session.role) {
+              loadProductionOverview();
+              loadIdleWorkers();
+            } else if (session.role) {
+              enterDashboard();
+            } else {
+              routeAfterLogin();
+            }
+          }
         }
       }
       google.script.run.withSuccessHandler(data => {
         appData.users = data;
-        renderRoles();
         usersLoaded = true;
         checkAllLoaded();
       }).withFailureHandler(() => { usersLoaded = true; checkAllLoaded(); }).getUsersAndRoles();
@@ -1548,14 +1779,9 @@
       }).withFailureHandler(() => { profilesLoaded = true; checkAllLoaded(); }).getSteelProfiles();
     }
 
-    function renderRoles() {
-      const grid = document.getElementById('roleGrid'); grid.innerHTML = '';
-      [...new Set(appData.users.map(u => u.role))].sort().forEach(r => {
-        grid.innerHTML += `<div class="col-sm-6 col-md-4 col-lg-3"><div class="card p-4 text-center h-100 role-card" onclick="selectRole('${r}')"><h4>${r}</h4></div></div>`;
-      });
-    }
+    function renderRoles() { showTaskPicker(); }
 
-    function selectRole(r) { session.role = r; if(r.toLowerCase() === 'admin') promptPass('Admin'); else renderUsers(r); }
+    function selectRole(r) { selectFloorTask(r); }
     function renderUsers(r) {
       const list = document.getElementById('userList'); document.getElementById('selectedRoleTitle').innerText = r; list.innerHTML = '';
       appData.users.filter(u => u.role === r).forEach(u => list.innerHTML += `<button class="list-group-item list-group-item-action py-3 fw-bold" onclick="promptPass('${u.name}')">${u.name}</button>`);
@@ -1578,14 +1804,14 @@
       
       const btn = document.getElementById('btnGlobalLogin');
       const origText = btn.innerHTML;
-      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> UNLOCKING...';
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> LOGGING IN...';
       btn.disabled = true;
 
       google.script.run.withSuccessHandler(res => {
         btn.innerHTML = origText;
         btn.disabled = false;
         if(res.success) {
-          navTo('view-roles');
+          applyLoginProfile(res);
         } else {
           showAlert(res.error);
         }
@@ -1602,7 +1828,8 @@
         if(res.success) { 
           session.isAdmin = res.isAdmin; 
           if (passModal) passModal.hide(); 
-          if(session.role === 'Admin') {
+          persistSession();
+          if(session.role === 'Admin' || session.isAdmin) {
             document.getElementById('adminLinks').classList.remove('d-none-view');
             loadProductionOverview();
             loadIdleWorkers();
@@ -1615,8 +1842,11 @@
     }
     
     function logout() { 
-      session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, pendingBatchRows: null, pendingBatchMates: [] }; 
-      document.getElementById('adminLinks').classList.add('d-none-view'); 
+      session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, tasks: [], jobTitle: '', pendingBatchRows: null, pendingBatchMates: [] }; 
+      clearPersistedSession();
+      setLoggedIn(false);
+      document.getElementById('adminLinks').classList.add('d-none-view');
+      updateFloorLink();
       document.getElementById('globalLoginName').value = '';
       document.getElementById('globalLoginPass').value = '';
       navTo('view-global-login'); 
@@ -1765,7 +1995,12 @@
     function enterDashboard() {
       navTo('view-dashboard');
       document.getElementById('dashUser').innerText = session.name;
-      document.getElementById('dashRole').innerText = session.role;
+      document.getElementById('dashRole').innerText = session.role || session.jobTitle || '';
+      const sw = document.getElementById('btnSwitchTask');
+      if (sw) {
+        const canSwitch = session.isAdmin || ((session.tasks || []).length > 1);
+        sw.classList.toggle('d-none', !canSwitch);
+      }
       const tabEl = document.querySelector('#dashTabs button[data-bs-target="#pane-available"]');
       if(tabEl) new bootstrap.Tab(tabEl).show();
       loadDashboard(false);

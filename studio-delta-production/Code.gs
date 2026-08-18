@@ -22,6 +22,137 @@ var STANDARD_DAY_MINS = 8 * 60;
 var IDLE_GRACE_MINS = 10;
 var INDIRECT_TASKS = ["Cleaning", "Maintenance", "Material handling", "Waiting for materials", "Waiting for plate", "Meeting", "Training", "Other"];
 
+
+var KNOWN_FLOOR_TASKS = ["Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding", "Quality Control", "Assembly"];
+
+var TASK_ALIAS_MAP = {
+  "profile cutting": "Profile Cutting",
+  "profile cutter": "Profile Cutting",
+  "steelwork": "Profile Cutting",
+  "plate cutting": "Plate Cutting",
+  "plate cutter": "Plate Cutting",
+  "plate": "Plate Cutting",
+  "tagging": "Tagging",
+  "tagger": "Tagging",
+  "welding": "Welding",
+  "welder": "Welding",
+  "grinding": "Grinding",
+  "grinder": "Grinding",
+  "quality control": "Quality Control",
+  "qc": "Quality Control",
+  "final qc": "Quality Control",
+  "pre-powder": "Quality Control",
+  "powder coating": "Quality Control",
+  "assembly": "Assembly",
+  "assembler": "Assembly"
+};
+
+function ensureUsersSheetTasksColumn() {
+  var ss = getSpreadsheet();
+  var sheet = getSheetOrDie(ss, TAB_USERS);
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var found = false;
+  for (var i = 0; i < headers.length; i++) {
+    if (String(headers[i]).trim().toLowerCase() === "tasks") {
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    sheet.getRange(1, 4).setValue("Tasks");
+  }
+}
+
+function canonicalTaskName(raw) {
+  var s = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (!s) return "";
+  if (TASK_ALIAS_MAP[s]) return TASK_ALIAS_MAP[s];
+  for (var i = 0; i < KNOWN_FLOOR_TASKS.length; i++) {
+    if (KNOWN_FLOOR_TASKS[i].toLowerCase() === s) return KNOWN_FLOOR_TASKS[i];
+  }
+  return "";
+}
+
+function parseUserTasks(roleCell, tasksCell) {
+  var role = String(roleCell || "").trim();
+  var extra = String(tasksCell || "").trim();
+  var roleLower = role.toLowerCase();
+  var isAdmin = roleLower === "admin";
+  if (isAdmin) {
+    return { isAdmin: true, isQcOnly: false, tasks: KNOWN_FLOOR_TASKS.slice(), jobTitle: role || "Admin" };
+  }
+
+  var found = [];
+  function addTask(name) {
+    if (!name) return;
+    if (found.indexOf(name) === -1) found.push(name);
+  }
+
+  var source = extra || role;
+  var parts = String(source).split(/[,/&+|]+/);
+  for (var p = 0; p < parts.length; p++) {
+    addTask(canonicalTaskName(parts[p]));
+  }
+
+  if (found.length === 0) {
+    var blob = String(source).toLowerCase();
+    var keys = Object.keys(TASK_ALIAS_MAP).sort(function(a, b) { return b.length - a.length; });
+    for (var k = 0; k < keys.length; k++) {
+      var key = keys[k];
+      var re = new RegExp("(^|[^a-z])" + key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "([^a-z]|$)", "i");
+      if (re.test(blob)) addTask(TASK_ALIAS_MAP[key]);
+    }
+  }
+
+  var qcOnlyRole = roleLower === "quality control" || roleLower === "qc";
+  if (qcOnlyRole) {
+    return { isAdmin: false, isQcOnly: true, tasks: ["Quality Control"], jobTitle: role || "Quality Control" };
+  }
+
+  var isQcOnly = found.length === 1 && found[0] === "Quality Control";
+  if (found.length === 0 && role) {
+    addTask(canonicalTaskName(role));
+  }
+  return { isAdmin: false, isQcOnly: isQcOnly, tasks: found, jobTitle: role || (found[0] || "") };
+}
+
+function readUserRowProfile(row) {
+  var name = String(row[0] || "").trim();
+  var parsed = parseUserTasks(row[1], row.length > 3 ? row[3] : "");
+  return {
+    name: name,
+    role: String(row[1] || "").trim(),
+    jobTitle: parsed.jobTitle,
+    isAdmin: parsed.isAdmin,
+    isQcOnly: parsed.isQcOnly,
+    tasks: parsed.tasks
+  };
+}
+
+function getUserProfileByName(workerName) {
+  var ss = getSpreadsheet();
+  var sheet = getSheetOrDie(ss, TAB_USERS);
+  var data = sheet.getDataRange().getValues();
+  var needle = String(workerName || "").trim().toLowerCase();
+  if (!needle) return null;
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0] || "").trim().toLowerCase() === needle) {
+      return readUserRowProfile(data[i]);
+    }
+  }
+  return null;
+}
+
+function workerCanPerformTask(workerName, task) {
+  var profile = getUserProfileByName(workerName);
+  if (!profile) return false;
+  if (profile.isAdmin) return true;
+  var want = canonicalTaskName(task) || String(task || "").trim();
+  return profile.tasks.indexOf(want) !== -1;
+}
+
+
 // --- STEP 1: CENTRALIZED STEEL PROFILE MANAGEMENT ---
 /**
  * Returns an array of all steel profile names from the hidden "Steel_Profiles" tab.
@@ -63,6 +194,7 @@ function getSteelProfiles() {
 
 function doGet() {
   try { ensureIdleTrigger(); } catch (e) {}
+  try { ensureUsersSheetTasksColumn(); } catch (e) {}
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
     .setTitle('Studio Delta Production')
@@ -142,7 +274,17 @@ function getUsersAndRoles() {
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) return []; 
   data.shift(); // Remove header
-  return data.map(function(row) { return { name: row[0], role: row[1] }; });
+  return data.map(function(row) {
+    var profile = readUserRowProfile(row);
+    return {
+      name: profile.name,
+      role: profile.role,
+      jobTitle: profile.jobTitle,
+      isAdmin: profile.isAdmin,
+      isQcOnly: profile.isQcOnly,
+      tasks: profile.tasks
+    };
+  });
 }
 
 // Helper function for case-insensitive status comparison
@@ -198,6 +340,7 @@ function verifyLogin(role, name, password) {
 
 function verifyGlobalLogin(name, password) {
   var ss = getSpreadsheet();
+  try { ensureUsersSheetTasksColumn(); } catch (e) {}
   var sheet = getSheetOrDie(ss, TAB_USERS);
   var data = sheet.getDataRange().getValues();
   
@@ -217,11 +360,19 @@ function verifyGlobalLogin(name, password) {
     var rowPass = data[i][2];
 
     if (lowerName === rowName && rowName !== "") {
-      if (String(password) == String(rowPass)) {
-        return { success: true };
-      }
-      if (adminPassword && String(password) == String(adminPassword)) {
-        return { success: true };
+      var ok = String(password) == String(rowPass);
+      if (!ok && adminPassword && String(password) == String(adminPassword)) ok = true;
+      if (ok) {
+        var profile = readUserRowProfile(data[i]);
+        return {
+          success: true,
+          name: profile.name,
+          role: profile.role,
+          jobTitle: profile.jobTitle,
+          isAdmin: profile.isAdmin,
+          isQcOnly: profile.isQcOnly,
+          tasks: profile.tasks
+        };
       }
     }
   }
@@ -230,6 +381,9 @@ function verifyGlobalLogin(name, password) {
 }
 
 function getOrdersForRole(role, workerName) {
+  if (workerName && role && role !== "Admin" && !workerCanPerformTask(workerName, role)) {
+    return [];
+  }
   var ss = getSpreadsheet();
   var sheet = getSheetOrDie(ss, TAB_ORDERS);
   var data = sheet.getDataRange().getValues();
@@ -339,6 +493,10 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
     }
     if (rowsToStart.indexOf(parseInt(rowIndex, 10)) === -1) {
       rowsToStart.unshift(parseInt(rowIndex, 10));
+    }
+
+    if (!workerCanPerformTask(workerName, role)) {
+      throw new Error(workerName + " is not assigned to " + role + ". Ask admin to add it on the Users sheet.");
     }
 
     closeIndirectTasksForWorker(ss, workerName);
