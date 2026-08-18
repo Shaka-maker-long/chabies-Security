@@ -683,7 +683,7 @@ function pollFloor(role, workerName) {
   };
 }
 
-function startOrder(rowIndex, workerName, role, batchRowIndices) {
+function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000); 
   
@@ -710,8 +710,6 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
       throw new Error(workerName + " is not assigned to " + role + ". Ask admin to add it on the Users sheet.");
     }
 
-    closeIndirectTasksForWorker(ss, workerName, pack);
-
     var batchId = rowsToStart.length > 1 ? Utilities.getUuid() : "";
     var batchShare = rowsToStart.length > 1 ? rowsToStart.length : 1;
     var exceptOrders = [];
@@ -720,10 +718,15 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
       exceptOrders.push(orderData[er - 1] ? orderData[er - 1][1] : "");
     }
 
-    var pauseReason = (role === "Welding")
-      ? ("Waiting for plate / switched to " + exceptOrders[0])
-      : ("Switched to order " + exceptOrders[0]);
-    autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, pauseReason, batchId, pack);
+    var runningOthers = listRunningOrdersForWorker(pack.values, workerName, exceptOrders);
+    if (runningOthers.length && !isUserPauseReason(switchReason)) {
+      return { success: false, needsSwitchReason: true, runningOrders: runningOthers, message: "Choose why you are leaving the current order." };
+    }
+
+    closeIndirectTasksForWorker(ss, workerName, pack);
+    if (runningOthers.length) {
+      autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, switchReason, batchId, pack);
+    }
 
     var started = [];
     var startTime = new Date();
@@ -1961,9 +1964,9 @@ function generatePowderCoatingList(listData, workerName) {
   }
 }
 
-function batchStartOrders(rowIndices, workerName, role) {
+function batchStartOrders(rowIndices, workerName, role, switchReason) {
   try {
-    return startOrder(rowIndices[0], workerName, role, rowIndices);
+    return startOrder(rowIndices[0], workerName, role, rowIndices, switchReason);
   } catch(e) {
     Logger.log("Batch start error: " + e);
     return {success: false, error: e.toString()};
@@ -1987,6 +1990,9 @@ function workerPauseOrder(rowIndex, orderNum, workerName, reason) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
+    if (!isUserPauseReason(reason)) {
+      return { success: false, message: "Choose a pause reason: No materials, Touch up (with order number), or Other." };
+    }
     var ss = getSpreadsheet();
     var logSheet = getSheetOrDie(ss, TAB_LOGS);
     var pack = getLogPack(ss);
@@ -2013,14 +2019,21 @@ function workerPauseOrder(rowIndex, orderNum, workerName, reason) {
   }
 }
 
-function workerResumeOrder(rowIndex, orderNum, workerName) {
+function workerResumeOrder(rowIndex, orderNum, workerName, switchReason) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     var ss = getSpreadsheet();
-    autoPauseWorkerOtherJobs(ss, workerName, [orderNum], "Switched to order " + orderNum, "");
-    closeIndirectTasksForWorker(ss, workerName);
-    var ok = resumeWorkerLog(ss, workerName, orderNum);
+    var pack = getLogPack(ss);
+    var runningOthers = listRunningOrdersForWorker(pack.values, workerName, [orderNum]);
+    if (runningOthers.length && !isUserPauseReason(switchReason)) {
+      return { success: false, needsSwitchReason: true, runningOrders: runningOthers, message: "Choose why you are leaving the current order." };
+    }
+    if (runningOthers.length) {
+      autoPauseWorkerOtherJobs(ss, workerName, [orderNum], switchReason, "", pack);
+    }
+    closeIndirectTasksForWorker(ss, workerName, pack);
+    var ok = resumeWorkerLog(ss, workerName, orderNum, pack);
     if (!ok) return {success: false, message: "No paused tasks found for you on this order."};
     return {success: true};
   } catch(e) {
@@ -2422,7 +2435,7 @@ function calculateWorkMinutesFromLog(row) {
   return calculateWorkMinutesMeta(start, end, task, meta, row[10]);
 }
 
-function splitWorkByDay(row) {
+function getWorkBoutsFromLog(row) {
   var start = row[5] ? new Date(row[5]) : null;
   if (start && isNaN(start.getTime())) start = null;
   if (!start) return [];
@@ -2430,50 +2443,80 @@ function splitWorkByDay(row) {
   var end = row[6] ? new Date(row[6]) : new Date();
   if (end && isNaN(end.getTime())) end = new Date();
   if (end.getTime() <= start.getTime()) return [];
-  var task = row[4];
   var meta = parseLogMeta(row.length > 12 ? row[12] : "");
-  if (row[9] && !hasOpenPause(meta.pauses)) {
-    meta.pauses = getPauseIntervalsForRow(row);
-  }
-  var hasPauseTimes = meta.pauses && meta.pauses.length > 0;
-  var fullRaw = 0;
-  if (!hasPauseTimes && row[10]) {
-    fullRaw = calcRawServerMins(start, end, task);
-  }
-  var slices = [];
-  var endStamp = sastDayStamp(end);
-  var cursor = sastWallToDate(start, 0, 0);
-  var safety = 0;
-  while (sastDayStamp(cursor) <= endStamp && safety < 400) {
-    safety++;
-    var dayStamp = sastDayStamp(cursor);
-    var dayStart = sastWallToDate(cursor, 0, 0);
-    var nextMidnight = addSastDays(dayStart, 1);
-    var sliceStartMs = Math.max(start.getTime(), dayStart.getTime());
-    var sliceEndMs = Math.min(end.getTime(), nextMidnight.getTime());
-    if (sliceEndMs > sliceStartMs) {
-      var sliceStart = new Date(sliceStartMs);
-      var sliceEnd = new Date(sliceEndMs);
-      var mins = 0;
-      if (hasPauseTimes) {
-        mins = calculateWorkMinutesMeta(sliceStart, sliceEnd, task, meta, 0);
-      } else if (row[10] && fullRaw > 0) {
-        var sliceRaw = calcRawServerMins(sliceStart, sliceEnd, task);
-        mins = Math.max(0, sliceRaw - (parseFloat(row[10]) || 0) * (sliceRaw / fullRaw));
-      } else {
-        mins = calculateWorkMinutesMeta(sliceStart, sliceEnd, task, meta, 0);
-      }
-      if (mins > 0) {
-        var stillRunning = isOpen && dayStamp === sastDayStamp(end);
-        slices.push({
-          dayStamp: dayStamp,
-          start: sliceStart,
-          end: stillRunning ? null : sliceEnd,
-          mins: mins
-        });
-      }
+  var pauses = (meta.pauses && meta.pauses.length) ? meta.pauses.slice() : getPauseIntervalsForRow(row);
+  pauses.sort(function(a, b) { return new Date(a.start).getTime() - new Date(b.start).getTime(); });
+  var bouts = [];
+  var cursor = start.getTime();
+  var endMs = end.getTime();
+  for (var i = 0; i < pauses.length; i++) {
+    var ps = new Date(pauses[i].start).getTime();
+    if (isNaN(ps)) continue;
+    var pe = pauses[i].end ? new Date(pauses[i].end).getTime() : endMs;
+    if (isNaN(pe)) pe = endMs;
+    if (ps > cursor) {
+      bouts.push({
+        start: new Date(cursor),
+        end: new Date(Math.min(ps, endMs)),
+        stopReason: String(pauses[i].reason || ""),
+        stillRunning: false
+      });
     }
-    cursor = addSastDays(cursor, 1);
+    if (pe > cursor) cursor = pe;
+    if (cursor >= endMs) break;
+  }
+  if (endMs > cursor) {
+    bouts.push({
+      start: new Date(cursor),
+      end: new Date(endMs),
+      stopReason: "",
+      stillRunning: isOpen
+    });
+  }
+  return bouts;
+}
+
+function splitWorkByDay(row) {
+  var task = row[4];
+  var emptyMeta = defaultLogMeta();
+  var slices = [];
+  var bouts = getWorkBoutsFromLog(row);
+  for (var b = 0; b < bouts.length; b++) {
+    var bout = bouts[b];
+    var endStamp = sastDayStamp(bout.end);
+    var cursor = sastWallToDate(bout.start, 0, 0);
+    var safety = 0;
+    var daySlices = [];
+    while (sastDayStamp(cursor) <= endStamp && safety < 400) {
+      safety++;
+      var dayStamp = sastDayStamp(cursor);
+      var dayStart = sastWallToDate(cursor, 0, 0);
+      var nextMidnight = addSastDays(dayStart, 1);
+      var sliceStartMs = Math.max(bout.start.getTime(), dayStart.getTime());
+      var sliceEndMs = Math.min(bout.end.getTime(), nextMidnight.getTime());
+      if (sliceEndMs > sliceStartMs) {
+        var sliceStart = new Date(sliceStartMs);
+        var sliceEnd = new Date(sliceEndMs);
+        var mins = calculateWorkMinutesMeta(sliceStart, sliceEnd, task, emptyMeta, 0);
+        if (mins > 0) {
+          daySlices.push({
+            dayStamp: dayStamp,
+            start: sliceStart,
+            end: sliceEnd,
+            mins: mins,
+            stopReason: "",
+            stillRunning: false
+          });
+        }
+      }
+      cursor = addSastDays(cursor, 1);
+    }
+    if (daySlices.length) {
+      daySlices[daySlices.length - 1].stopReason = bout.stopReason || "";
+      daySlices[daySlices.length - 1].stillRunning = !!bout.stillRunning;
+      if (bout.stillRunning) daySlices[daySlices.length - 1].end = null;
+    }
+    for (var s = 0; s < daySlices.length; s++) slices.push(daySlices[s]);
   }
   return slices;
 }
@@ -2503,6 +2546,33 @@ function addPauseToMeta(meta, reason) {
     reason: reason || ""
   });
   return meta;
+}
+
+function isUserPauseReason(reason) {
+  var r = String(reason || "").trim();
+  if (r === "No materials") return true;
+  if (/^Touch up #\S+/i.test(r)) return true;
+  if (/^Other:\s+\S/.test(r)) return true;
+  return false;
+}
+
+function listRunningOrdersForWorker(logs, workerName, exceptOrders) {
+  var exceptMap = {};
+  (exceptOrders || []).forEach(function(o) { exceptMap[String(o)] = true; });
+  var running = [];
+  var seen = {};
+  for (var i = 1; i < logs.length; i++) {
+    if (logs[i][6]) continue;
+    if (String(logs[i][2] || "").trim() !== String(workerName || "").trim()) continue;
+    var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
+    if (meta.entryType === "indirect") continue;
+    if (hasOpenPause(meta.pauses) || logs[i][9]) continue;
+    var ord = String(logs[i][1] || "");
+    if (!ord || exceptMap[ord] || seen[ord]) continue;
+    seen[ord] = true;
+    running.push({ order: ord, task: logs[i][4], role: logs[i][3] });
+  }
+  return running;
 }
 
 function closeOpenPauseInMeta(meta, atTime) {
@@ -3003,6 +3073,7 @@ function getActivityReport(period, refDateMs, workerFilter) {
         end: slice.end ? slice.end.getTime() : null,
         minutes: slice.mins,
         date: dayStamp,
+        stopReason: slice.stopReason || "",
         entryType: rowMeta.entryType || "production"
       };
       byWorker[worker].days[dayStamp].minutes += slice.mins;
