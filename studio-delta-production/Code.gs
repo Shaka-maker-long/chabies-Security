@@ -7,6 +7,8 @@ var TAB_RATES = "Rates";
 var FOLDER_NAME = "Studio_Delta_QC_Records";
 var TAB_STEEL_PROFILES = "Steel_Profiles";
 var TAB_STEEL_USAGE = "Steel_Usage";
+var TAB_BACKBOARDS = "Backboards";
+var TAB_BACKBOARD_USAGE = "Backboard_Usage";
 
 var TEMP_ID_PRE_POWDER = "18gdKTtaJFqG7EALy-OofLoBxcJ873U4sUTUks3_2oEo";
 var TEMP_ID_FINISHED   = "1WXW4F_PIjcA5v2ZSqJDptQrKtlikiVuqOeUy706rV7I";
@@ -196,6 +198,87 @@ function getSteelProfiles() {
   return profiles;
 }
 
+function getBackboards() {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(TAB_BACKBOARDS);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_BACKBOARDS);
+    sheet.hideSheet();
+    sheet.appendRow(["Category", "Profile Name"]);
+    return [];
+  }
+
+  var cached = floorCacheGet("backboards");
+  if (cached) return cached;
+
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    return [];
+  }
+
+  var profiles = [];
+  for (var i = 1; i < data.length; i++) {
+    var cat = String(data[i][0]).trim();
+    var name = String(data[i][1]).trim();
+    if (!name && cat) {
+      name = cat;
+      cat = "Uncategorized";
+    }
+    if (name) profiles.push({ category: cat, name: name });
+  }
+  floorCachePut("backboards", profiles, CACHE_TTL_BACKBOARD);
+  return profiles;
+}
+
+function processNeedsBackboard(role, processName) {
+  var r = String(role || "").trim().toLowerCase();
+  var p = String(processName || "").trim().toLowerCase();
+  return r === "assembly" || p === "assembly" || p === "final qc";
+}
+
+function writeBackboardUsage(ss, orderNum, workerName, processName, backboardUsageData) {
+  if (!backboardUsageData || backboardUsageData.length === 0) return;
+  var usageSheet = ss.getSheetByName(TAB_BACKBOARD_USAGE);
+  if (!usageSheet) {
+    usageSheet = ss.insertSheet(TAB_BACKBOARD_USAGE);
+    usageSheet.hideSheet();
+    usageSheet.appendRow(["Timestamp", "Order #", "Worker", "Process", "Type", "Size"]);
+  }
+
+  var profilesSheet = ss.getSheetByName(TAB_BACKBOARDS);
+  if (!profilesSheet) {
+    getBackboards();
+    profilesSheet = ss.getSheetByName(TAB_BACKBOARDS);
+  }
+  var existingProfileData = profilesSheet ? profilesSheet.getDataRange().getValues() : [];
+  var existingProfileNames = [];
+  for (var p = 1; p < existingProfileData.length; p++) {
+    var pv = String(existingProfileData[p][1] || existingProfileData[p][0]).trim().toLowerCase();
+    if (pv) existingProfileNames.push(pv);
+  }
+
+  backboardUsageData.forEach(function(item) {
+    var usageName = item.category && item.category !== "Uncategorized" ? (item.category + " - " + item.type) : item.type;
+    usageSheet.appendRow([
+      new Date(),
+      orderNum,
+      workerName,
+      processName,
+      usageName,
+      item.size
+    ]);
+
+    if (item.isCustom && profilesSheet) {
+      var newProfileLower = String(item.type).trim().toLowerCase();
+      if (newProfileLower && existingProfileNames.indexOf(newProfileLower) === -1) {
+        profilesSheet.appendRow([item.category || "Custom", String(item.type).trim()]);
+        existingProfileNames.push(newProfileLower);
+      }
+    }
+  });
+}
+
 function doGet() {
   return HtmlService.createTemplateFromFile('index')
     .evaluate()
@@ -243,6 +326,7 @@ function getSheetGrid(ss, tabName, numCols) {
 var CACHE_TTL_FLOOR = 20;
 var CACHE_TTL_USERS = 45;
 var CACHE_TTL_STEEL = 300;
+var CACHE_TTL_BACKBOARD = 300;
 var CACHE_TTL_ADMIN = 25;
 
 function floorCacheGen() {
@@ -664,7 +748,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
 }
 
 // STEP 2: Added steelUsageData as the 7th parameter. orderNumHint is 8th (optional).
-function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerName, steelUsageData, orderNumHint) {
+function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerName, steelUsageData, orderNumHint, backboardUsageData) {
   var lock = LockService.getScriptLock();
   lock.waitLock(120000); 
   
@@ -707,6 +791,11 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
     if (role === 'Profile Cutting' || role === 'Plate Cutting') {
       if (!steelUsageData || steelUsageData.length === 0) {
         throw new Error("Server rejected: Steel material usage must be logged before finishing " + role + ".");
+      }
+    }
+    if (processNeedsBackboard(role, processName)) {
+      if (!backboardUsageData || backboardUsageData.length === 0) {
+        throw new Error("Server rejected: Backboard used must be logged before finishing " + (processName || role) + ".");
       }
     }
 
@@ -763,6 +852,8 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
         }
       });
     }
+
+    writeBackboardUsage(ss, orderNum, workerName, processName, backboardUsageData);
 
     var resultStr = qcData ? qcData.map(function(i){return i.q+": "+i.a}).join("\n") : "Complete";
     logSheet.getRange(rowToUpdate, 7).setValue(endTime);
@@ -2619,20 +2710,6 @@ function checkIdleWorkers() {
     ]);
     alerted.push(name + " (" + role + ")");
   }
-
-  if (alerted.length > 0 && ALERT_EMAIL_RECIPIENT) {
-    try {
-      MailApp.sendEmail({
-        to: ALERT_EMAIL_RECIPIENT,
-        subject: "Idle workers need a task assigned (" + alerted.length + ")",
-        htmlBody: "<p>The following workers have no running job during shift hours:</p><ul><li>" +
-                  alerted.join("</li><li>") +
-                  "</li></ul><p>Open Studio Delta Production → Activity / Idle workers and assign a non-order task.</p>"
-      });
-    } catch (e) {
-      Logger.log("Idle email failed: " + e);
-    }
-  }
 }
 
 function getIdleWorkers() {
@@ -2653,6 +2730,38 @@ function getIdleWorkers() {
     }
   }
   return { workers: list, tasks: INDIRECT_TASKS };
+}
+
+function heartbeatKey(name) {
+  return "hb_" + String(name || "").trim().toLowerCase();
+}
+
+function userSeesIdleAlerts(workerName) {
+  var profile = getUserProfileByName(workerName);
+  if (!profile) return false;
+  if (profile.isAdmin || profile.isQcOnly) return true;
+  if (profile.tasks && profile.tasks.indexOf("Quality Control") !== -1) return true;
+  var role = String(profile.role || "").toLowerCase();
+  return role === "qc" || role === "quality control";
+}
+
+function markStaffHeartbeat(workerName) {
+  if (!workerName || !userSeesIdleAlerts(workerName)) return;
+  try {
+    var cache = CacheService.getScriptCache();
+    cache.put(heartbeatKey(workerName), JSON.stringify({ name: workerName, t: new Date().getTime() }), 120);
+  } catch (e) {}
+}
+
+function pollIdleAlerts(workerName) {
+  lazySetup();
+  if (!workerName) return { ok: false, alerts: [], canAssign: false, tasks: INDIRECT_TASKS };
+  markStaffHeartbeat(workerName);
+  if (!userSeesIdleAlerts(workerName)) {
+    return { ok: true, alerts: [], canAssign: false, tasks: INDIRECT_TASKS };
+  }
+  var data = getIdleWorkers();
+  return { ok: true, alerts: data.workers || [], canAssign: true, tasks: data.tasks || INDIRECT_TASKS };
 }
 
 function assignIndirectTask(workerName, taskName, assignedBy) {

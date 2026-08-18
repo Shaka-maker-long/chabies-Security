@@ -1341,6 +1341,64 @@
     </div>
   </div>
 
+  <!-- Backboard Selection Modal (Assembly / Final QC) -->
+  <div class="modal fade" id="backboardModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title brand-font">Select Backboard</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-3">
+          <div class="mb-3">
+            <label class="form-label fw-bold">1. Select Category</label>
+            <select id="backboardCategorySelect" class="form-select border-dark" onchange="onBackboardCategoryChange()">
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">2. Select Backboard</label>
+            <select id="backboardProfileSelect" class="form-select border-dark" onchange="onBackboardProfileChange()">
+            </select>
+            <input type="text" id="backboardCustomProfile" class="form-control mt-2 d-none" placeholder="Enter custom backboard name">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-bold">3. Size / Area</label>
+            <div class="d-flex gap-2">
+              <input type="number" id="backboardSizeInput" class="form-control border-dark" placeholder="E.g. 2.5" min="0" step="0.01">
+              <select id="backboardUnitSelect" class="form-select border-dark" style="width: 100px;">
+                <option value="m²">m²</option>
+                <option value="mm">mm</option>
+                <option value="sheet">sheet</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">CANCEL</button>
+          <button type="button" class="btn btn-dark" onclick="addBackboardFromModal()">ADD BACKBOARD</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Idle workers popup for active Admin / QC -->
+  <div class="modal fade" id="idleAlertModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title brand-font">Idle workers</h5>
+        </div>
+        <div class="modal-body p-3">
+          <p class="text-muted small mb-3">These people have no running job during shift hours. Assign a task so they stay on the clock.</p>
+          <div id="idleAlertList"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" onclick="dismissIdleAlertModal()">Later</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Log Welder Steel Modal -->
   <div class="modal fade" id="welderSteelModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -1397,8 +1455,12 @@
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
-    let appData = { users:[], workerStats: {}, currentOrders:[], steelProfiles:[] };
+    let appData = { users:[], workerStats: {}, currentOrders:[], steelProfiles:[], backboards:[] };
     let session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, tasks: [], jobTitle: '', pendingBatchRows: null, pendingBatchMates: [] };
+    let idleAlertModal = null;
+    let backboardSelectionModal = null;
+    let idlePollTimer = null;
+    let idleAlertDismissedKey = '';
     let activityChart = null;
     let batchWorkModal = null;
     let refreshInterval = null;
@@ -1538,6 +1600,8 @@
         confirmModal = new bootstrap.Modal('#confirmModal');
         weeklyDetailsModal = new bootstrap.Modal('#weeklyDetailsModal');
         steelSelectionModal = new bootstrap.Modal('#steelModal');
+        backboardSelectionModal = new bootstrap.Modal('#backboardModal');
+        idleAlertModal = new bootstrap.Modal('#idleAlertModal');
         welderSteelModal = new bootstrap.Modal('#welderSteelModal');
         batchWorkModal = new bootstrap.Modal('#batchWorkModal');
         
@@ -1635,34 +1699,13 @@
     };
 
     function persistSession() {
-      try {
-        localStorage.setItem('sd-session', JSON.stringify({
-          name: session.name,
-          role: session.role,
-          isAdmin: session.isAdmin,
-          isQcOnly: session.isQcOnly,
-          tasks: session.tasks || [],
-          jobTitle: session.jobTitle || ''
-        }));
-      } catch (e) {}
+      // Session is in-memory only. Every page load must show login first.
     }
     function clearPersistedSession() {
       try { localStorage.removeItem('sd-session'); } catch (e) {}
     }
     function restoreSession() {
-      try {
-        const raw = localStorage.getItem('sd-session');
-        if (!raw) return false;
-        const s = JSON.parse(raw);
-        if (!s || !s.name) return false;
-        session.name = s.name;
-        session.role = s.role || null;
-        session.isAdmin = !!s.isAdmin;
-        session.isQcOnly = !!s.isQcOnly;
-        session.tasks = s.tasks || [];
-        session.jobTitle = s.jobTitle || '';
-        return true;
-      } catch (e) { return false; }
+      return false;
     }
     function setLoggedIn(on) {
       document.body.classList.toggle('is-logged-in', !!on);
@@ -1682,6 +1725,7 @@
       }
       persistSession();
       updateFloorLink();
+      startIdleAlertPolling();
       routeAfterLogin();
     }
     function updateFloorLink() {
@@ -1751,6 +1795,9 @@
       google.script.run.withSuccessHandler(profiles => {
         appData.steelProfiles = profiles || [];
       }).getSteelProfiles();
+      google.script.run.withSuccessHandler(profiles => {
+        appData.backboards = profiles || [];
+      }).getBackboards();
     }
     function ensureSteelProfiles(cb) {
       if (appData.steelProfiles && appData.steelProfiles.length) {
@@ -1761,6 +1808,16 @@
         appData.steelProfiles = profiles || [];
         if (cb) cb();
       }).withFailureHandler(() => { if (cb) cb(); }).getSteelProfiles();
+    }
+    function ensureBackboards(cb) {
+      if (appData.backboards && appData.backboards.length) {
+        if (cb) cb();
+        return;
+      }
+      google.script.run.withSuccessHandler(profiles => {
+        appData.backboards = profiles || [];
+        if (cb) cb();
+      }).withFailureHandler(() => { if (cb) cb(); }).getBackboards();
     }
     function ensureUsers(cb) {
       if (appData.users && appData.users.length) {
@@ -1774,20 +1831,12 @@
     }
     function initApp() {
       document.getElementById('loader').classList.add('d-none');
+      clearPersistedSession();
       prefetchSupportData();
-      if (restoreSession()) {
-        setLoggedIn(true);
-        if (session.isAdmin) document.getElementById('adminLinks').classList.remove('d-none-view');
-        updateFloorLink();
-        if (session.isAdmin && !session.role) {
-          loadProductionOverview();
-          loadIdleWorkers();
-        } else if (session.role) {
-          enterDashboard();
-        } else {
-          routeAfterLogin();
-        }
-      }
+      setLoggedIn(false);
+      document.getElementById('adminLinks').classList.add('d-none-view');
+      updateFloorLink();
+      navTo('view-global-login');
     }
 
     function renderRoles() { showTaskPicker(); }
@@ -1840,6 +1889,8 @@
           session.isAdmin = res.isAdmin; 
           if (passModal) passModal.hide(); 
           persistSession();
+          setLoggedIn(true);
+          startIdleAlertPolling();
           if(session.role === 'Admin' || session.isAdmin) {
             document.getElementById('adminLinks').classList.remove('d-none-view');
             loadProductionOverview();
@@ -1855,6 +1906,9 @@
     function logout() { 
       session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, tasks: [], jobTitle: '', pendingBatchRows: null, pendingBatchMates: [] }; 
       clearPersistedSession();
+      stopIdleAlertPolling();
+      idleAlertDismissedKey = '';
+      if (idleAlertModal) idleAlertModal.hide();
       setLoggedIn(false);
       document.getElementById('adminLinks').classList.add('d-none-view');
       updateFloorLink();
@@ -2459,6 +2513,20 @@
         document.getElementById('qcChecklistContainer').innerHTML += materialHtml;
       }
 
+      if (qcKey === 'Assembly' || qcKey === 'Final QC') {
+        const backboardHtml = `
+          <div id="backboardLoggingSection" class="mt-4 pt-3 border-top">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <label class="fw-bold">Backboard Used <span class="text-danger">*</span></label>
+              <button type="button" class="btn btn-sm btn-outline-dark" onclick="openBackboardModal()">
+                <i class="bi bi-plus"></i> Select Backboard
+              </button>
+            </div>
+            <div id="backboardRowsContainer"></div>
+          </div>`;
+        document.getElementById('qcChecklistContainer').innerHTML += backboardHtml;
+      }
+
       document.getElementById('qcOrderNum').innerText = ord;
       
       // 5. PHOTO INPUTS
@@ -2588,6 +2656,108 @@ function openSteelModal() {
       container.appendChild(row);
 
       if (steelSelectionModal) steelSelectionModal.hide();
+    }
+
+    function openBackboardModal() {
+      ensureBackboards(() => openBackboardModalReady());
+    }
+    function openBackboardModalReady() {
+      document.getElementById('backboardSizeInput').value = '';
+      const customInput = document.getElementById('backboardCustomProfile');
+      customInput.value = '';
+      customInput.classList.add('d-none');
+
+      const categories = [...new Set((appData.backboards || []).map(p => p.category))];
+      if (!categories.includes("Custom")) categories.push("Custom");
+
+      const catSelect = document.getElementById('backboardCategorySelect');
+      catSelect.innerHTML = '<option value="">-- Choose Category --</option>' +
+        categories.map(c => `<option value="${c}">${c}</option>`).join('');
+
+      document.getElementById('backboardProfileSelect').innerHTML = '<option value="">-- Select Category First --</option>';
+
+      if (backboardSelectionModal) backboardSelectionModal.show();
+    }
+
+    function onBackboardCategoryChange() {
+      const cat = document.getElementById('backboardCategorySelect').value;
+      const profSelect = document.getElementById('backboardProfileSelect');
+      const customInput = document.getElementById('backboardCustomProfile');
+      customInput.classList.add('d-none');
+
+      if (!cat) {
+        profSelect.innerHTML = '<option value="">-- Select Category First --</option>';
+        return;
+      }
+
+      if (cat === 'Custom') {
+         profSelect.innerHTML = '<option value="__custom__">-- Enter Custom Backboard --</option>';
+         customInput.classList.remove('d-none');
+         return;
+      }
+
+      const profiles = (appData.backboards || []).filter(p => p.category === cat);
+      let html = '<option value="">-- Choose Backboard --</option>';
+      html += profiles.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+      html += '<option value="__custom__">+ Add Custom Backboard</option>';
+      profSelect.innerHTML = html;
+    }
+
+    function onBackboardProfileChange() {
+      const val = document.getElementById('backboardProfileSelect').value;
+      const customInput = document.getElementById('backboardCustomProfile');
+      if (val === '__custom__') {
+        customInput.classList.remove('d-none');
+        customInput.focus();
+      } else {
+        customInput.classList.add('d-none');
+      }
+    }
+
+    function addBackboardFromModal() {
+      const cat = document.getElementById('backboardCategorySelect').value;
+      const profVal = document.getElementById('backboardProfileSelect').value;
+      const customName = document.getElementById('backboardCustomProfile').value.trim();
+      const size = document.getElementById('backboardSizeInput').value.trim();
+      const unit = document.getElementById('backboardUnitSelect').value;
+
+      if (!cat || !profVal || !size) {
+        showAlert("Please select a category, backboard, and enter a size/area.");
+        return;
+      }
+
+      const isCustom = (profVal === '__custom__');
+      const finalName = isCustom ? customName : profVal;
+
+      if (isCustom && !finalName) {
+         showAlert("Please enter a custom backboard name.");
+         return;
+      }
+
+      const container = document.getElementById('backboardRowsContainer');
+      const rowId = 'brow-' + Date.now();
+      const fullSize = size + ' ' + unit;
+
+      const row = document.createElement('div');
+      row.className = 'backboard-row d-flex justify-content-between align-items-center mb-2 p-2 border rounded bg-light';
+      row.id = rowId;
+      row.dataset.category = cat;
+      row.dataset.name = finalName;
+      row.dataset.size = fullSize;
+      row.dataset.custom = isCustom;
+
+      row.innerHTML = `
+        <div>
+          <div class="fw-bold">${finalName}</div>
+          <div class="small text-muted">${cat} | ${fullSize}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="document.getElementById('${rowId}').remove()" title="Remove">
+          <i class="bi bi-trash"></i>
+        </button>
+      `;
+      container.appendChild(row);
+
+      if (backboardSelectionModal) backboardSelectionModal.hide();
     }
 
     function openWelderSteelModal() {
@@ -2741,7 +2911,7 @@ function openSteelModal() {
     async function submitQC(skip=false) {
       if(isSubmitting) return; // Prevent double clicks
       
-      let d = [], sig = '', fileData = [], dSteel = [];
+      let d = [], sig = '', fileData = [], dSteel = [], dBackboard = [];
       const card = document.getElementById(`card-${session.pendingRow}`);
 
       try {
@@ -2825,6 +2995,30 @@ function openSteelModal() {
                 showAlert("Invalid material row detected. Please check your entries."); return;
               }
             }
+
+            const backboardSection = document.getElementById('backboardLoggingSection');
+            if (backboardSection) {
+              const backboardRows = document.querySelectorAll('#backboardRowsContainer .backboard-row');
+              if (backboardRows.length === 0) {
+                showAlert("Please add at least one backboard used."); return;
+              }
+              let backboardValid = true;
+              backboardRows.forEach(rowEl => {
+                const type = rowEl.dataset.name;
+                const category = rowEl.dataset.category;
+                const size = rowEl.dataset.size;
+                const isCustom = rowEl.dataset.custom === 'true';
+
+                if (!type || !size) {
+                  backboardValid = false;
+                } else {
+                  dBackboard.push({ category: category, type: type, size: size, isCustom: isCustom });
+                }
+              });
+              if (!backboardValid) {
+                showAlert("Invalid backboard row detected. Please check your entries."); return;
+              }
+            }
           }
           
           // 4. UI FEEDBACK: SHOW LOADING STATE
@@ -2889,7 +3083,7 @@ function openSteelModal() {
               }
               loadDashboard(true);
             })
-            .finishOrder(session.pendingRow, (session.logIds && session.logIds[session.activeOrder]) || session.logId, d, sig, fileData, session.name, dSteel, session.activeOrder);
+            .finishOrder(session.pendingRow, (session.logIds && session.logIds[session.activeOrder]) || session.logId, d, sig, fileData, session.name, dSteel, session.activeOrder, dBackboard);
 
       } catch (err) {
           isSubmitting = false;
@@ -4462,28 +4656,97 @@ function openSteelModal() {
           box.innerHTML = '<span class="text-muted small">No idle workers right now.</span>';
           return;
         }
-        box.innerHTML = workers.map(w => {
-          const opts = tasks.map(task => '<option value="'+task+'">'+task+'</option>').join('');
-          const since = w.idleSince ? new Date(w.idleSince).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'unknown';
-          return `<div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-            <strong>${w.worker}</strong>
-            <span class="badge bg-light text-dark border">${w.role}</span>
-            <span class="small text-muted">idle since ${since}</span>
-            <select class="form-select form-select-sm" style="max-width:220px" id="idle-task-${w.row}">${opts}</select>
-            <button class="btn btn-sm btn-dark" onclick="assignIdleTask('${w.worker}', ${w.row})">ASSIGN TASK</button>
-          </div>`;
-        }).join('');
+        box.innerHTML = workers.map(w => idleWorkerRowHtml(w, tasks, 'idle-task-')).join('');
       }).withFailureHandler(err => {
         box.innerHTML = '<span class="text-danger small">'+err+'</span>';
       }).getIdleWorkers();
     }
 
-    function assignIdleTask(worker, row) {
-      const sel = document.getElementById('idle-task-' + row);
+    function idleWorkerRowHtml(w, tasks, idPrefix) {
+      const opts = tasks.map(task => '<option value="'+task+'">'+task+'</option>').join('');
+      const since = w.idleSince ? new Date(w.idleSince).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'unknown';
+      const nameAttr = String(w.worker || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+      const nameJs = JSON.stringify(String(w.worker || ''));
+      return `<div class="d-flex flex-wrap gap-2 align-items-center mb-2" data-idle-worker="${nameAttr}">
+            <strong>${nameAttr}</strong>
+            <span class="badge bg-light text-dark border">${w.role || ''}</span>
+            <span class="small text-muted">idle since ${since}</span>
+            <select class="form-select form-select-sm" style="max-width:220px" id="${idPrefix}${w.row}">${opts}</select>
+            <button class="btn btn-sm btn-dark" onclick="assignIdleTask(${nameJs}, ${w.row}, '${idPrefix}')">ASSIGN TASK</button>
+          </div>`;
+    }
+
+    function sessionSeesIdleAlerts() {
+      if (!session.name) return false;
+      if (session.isAdmin || session.isQcOnly) return true;
+      if (session.role === 'Quality Control') return true;
+      return (session.tasks || []).indexOf('Quality Control') !== -1;
+    }
+
+    function startIdleAlertPolling() {
+      stopIdleAlertPolling();
+      if (!sessionSeesIdleAlerts()) return;
+      pollIdleAlertsNow();
+      idlePollTimer = setInterval(() => {
+        if (document.hidden) return;
+        pollIdleAlertsNow();
+      }, 20000);
+    }
+
+    function stopIdleAlertPolling() {
+      if (idlePollTimer) clearInterval(idlePollTimer);
+      idlePollTimer = null;
+    }
+
+    function idleFingerprint(workers) {
+      return (workers || []).map(w => String(w.worker || '')).sort().join('|');
+    }
+
+    function pollIdleAlertsNow() {
+      if (!session.name || !sessionSeesIdleAlerts()) return;
+      google.script.run.withSuccessHandler(res => {
+        const workers = (res && res.alerts) || [];
+        const tasks = (res && res.tasks) || [];
+        const workersPage = document.getElementById('idleWorkersList');
+        if (workersPage && document.getElementById('view-admin-workers') && !document.getElementById('view-admin-workers').classList.contains('d-none-view')) {
+          loadIdleWorkers();
+        }
+        showIdleAlertPopup(workers, tasks);
+      }).withFailureHandler(() => {}).pollIdleAlerts(session.name);
+    }
+
+    function showIdleAlertPopup(workers, tasks) {
+      const box = document.getElementById('idleAlertList');
+      if (!box) return;
+      const key = idleFingerprint(workers);
+      if (!workers.length) {
+        idleAlertDismissedKey = '';
+        if (idleAlertModal) idleAlertModal.hide();
+        return;
+      }
+      if (key === idleAlertDismissedKey) return;
+      const idleEl = document.getElementById('idleAlertModal');
+      const alreadyOpen = idleEl && idleEl.classList.contains('show');
+      const otherModalOpen = !!document.querySelector('.modal.show') && !alreadyOpen;
+      if (otherModalOpen) return;
+      box.innerHTML = workers.map(w => idleWorkerRowHtml(w, tasks, 'idle-popup-task-')).join('');
+      if (idleAlertModal && !alreadyOpen) idleAlertModal.show();
+    }
+
+    function dismissIdleAlertModal() {
+      const names = Array.from(document.querySelectorAll('#idleAlertList [data-idle-worker]')).map(el => el.dataset.idleWorker);
+      idleAlertDismissedKey = names.sort().join('|');
+      if (idleAlertModal) idleAlertModal.hide();
+    }
+
+    function assignIdleTask(worker, row, idPrefix) {
+      const prefix = idPrefix || 'idle-task-';
+      const sel = document.getElementById(prefix + row);
       const task = sel ? sel.value : 'Other';
       google.script.run.withSuccessHandler(res => {
         if (!res.success) showAlert(res.message || 'Assign failed');
         loadIdleWorkers();
+        pollIdleAlertsNow();
       }).assignIndirectTask(worker, task, session.name);
     }
 
