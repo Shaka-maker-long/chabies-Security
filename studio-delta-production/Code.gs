@@ -1362,8 +1362,53 @@ function formatDurationServer(totalMins) {
 }
 
 // --- ADMIN: FETCH ALL DATA ---
+function weekLabelSast(date) {
+  if (!date) return "Unknown Week";
+  return Utilities.formatDate(date, TZ_JOBURG, "yyyy - 'Week' ww");
+}
+
+function getDashboardDaySlices(row) {
+  var start = row[5] ? new Date(row[5]) : null;
+  if (start && isNaN(start.getTime())) start = null;
+  if (!start) return [];
+  var raw = splitWorkByDay(row, null, null);
+  var byDay = {};
+  var order = [];
+  for (var i = 0; i < raw.length; i++) {
+    var s = raw[i];
+    var stamp = s.dayStamp;
+    if (!stamp) continue;
+    if (!byDay[stamp]) {
+      byDay[stamp] = {
+        date: stamp,
+        start: s.start ? s.start.getTime() : null,
+        end: s.end ? s.end.getTime() : null,
+        durationMins: s.mins || 0,
+        week: weekLabelSast(s.start || start),
+        stillRunning: !!s.stillRunning,
+        stopReason: s.stopReason || ""
+      };
+      order.push(stamp);
+    } else {
+      var rec = byDay[stamp];
+      rec.durationMins += (s.mins || 0);
+      if (s.start && (rec.start === null || s.start.getTime() < rec.start)) rec.start = s.start.getTime();
+      if (s.stillRunning) {
+        rec.stillRunning = true;
+        rec.end = null;
+      } else if (!rec.stillRunning && s.end && (rec.end === null || s.end.getTime() > rec.end)) {
+        rec.end = s.end.getTime();
+      }
+      if (s.stopReason) rec.stopReason = s.stopReason;
+    }
+  }
+  var out = [];
+  for (var j = 0; j < order.length; j++) out.push(byDay[order[j]]);
+  return out;
+}
+
 function getAdminDashboardData() {
-  var cached = floorCacheGet("adminDash");
+  var cached = floorCacheGet("adminDash:v2");
   if (cached) return cached;
   var ss = getSpreadsheet();
   
@@ -1379,6 +1424,9 @@ function getAdminDashboardData() {
     var endObj = row[6] ? new Date(row[6]) : null;
     if (endObj && isNaN(endObj.getTime())) endObj = null;
     var openStart = getOpenPauseStart(meta);
+    var daySlices = getDashboardDaySlices(row);
+    var sliceTotal = 0;
+    for (var si = 0; si < daySlices.length; si++) sliceTotal += daySlices[si].durationMins;
     
     return {
       order: row[1],
@@ -1395,8 +1443,9 @@ function getAdminDashboardData() {
       batchShare: meta.batchShare || 1,
       batchSplitAt: meta.batchSplitAt || null,
       entryType: meta.entryType || "production",
-      durationMins: calculateWorkMinutesFromLog(row),
-      week: weekStr
+      durationMins: daySlices.length ? sliceTotal : calculateWorkMinutesFromLog(row),
+      week: weekStr,
+      daySlices: daySlices
     };
   });
 
@@ -1418,7 +1467,7 @@ function getAdminDashboardData() {
   }
 
   var adminPayload = { logs: logs, orders: orders };
-  floorCachePut("adminDash", adminPayload, CACHE_TTL_ADMIN);
+  floorCachePut("adminDash:v2", adminPayload, CACHE_TTL_ADMIN);
   return adminPayload;
 }
 

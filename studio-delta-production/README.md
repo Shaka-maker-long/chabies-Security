@@ -2,11 +2,11 @@
 
 Google Apps Script shop-floor app for Studio Delta (South Africa). Paste `Code.gs` and `index.html` into the Apps Script project bound to the production spreadsheet. The HTML file **must** be named `index` in the script editor.
 
-Timezone: **Africa/Johannesburg**. The paid shift is **07:45–15:45** with a **30-minute break 12:00–12:30** (7.5 hours / 450 minutes). Minutes after that on a calendar day are overtime. Overnight jobs are split by calendar day on Activity (e.g. 14:00 yesterday–10:00 today → yesterday 14:00–15:45 and today 07:45–10:00).
+Timezone: **Africa/Johannesburg**. The paid shift is **07:45–15:45** with a **30-minute break 12:00–12:30** (7.5 hours / 450 minutes). Minutes after that on a calendar day are overtime. Overnight jobs are split by calendar day on Activity and on Admin → Workers (e.g. 14:00 yesterday–10:00 today → yesterday 14:00–15:45 and today 07:45–10:00).
 
 ## Floor rules
 
-- One person has **one running clock**. Extra open jobs are paused automatically. Pausing or switching requires **No materials**, **Touch up** (plus the order number), or **Other**. Activity splits those hours by day and shows each bout with the pause reason — not a single start-minus-end total.
+- One person has **one running clock**. Extra open jobs are paused automatically. Pausing or switching requires **No materials**, **Touch up** (plus the order number), or **Other**. Activity and the Workers hour log split those hours by calendar day and show each bout with the pause reason — not a single start-minus-end total.
 - Same product, same process (e.g. assembly slats for two matching gates) can be **batched**: one clock, time split across the orders. Use **Work this order only** to leave the batch.
 - When plate cutting finishes on an order, welders waiting on that plate are **auto-switched** back. They can tap **Still on other job** if they are not ready.
 - **Ready for Assembly** can go to **Assembly** or **Paint Preparation**. Assemblers see both buttons. Paint prep finish → **Ready for Painting**. Painters (Users task `Painting`) see those orders; painting finish → **Ready for Assembly** so assembly can happen.
@@ -55,4 +55,4 @@ Assembly and Final QC must log **which backboard was used**, the same way plate/
 
 ## Activity report
 
-Admin sidebar → **Activity**. Daily / weekly / monthly view of what each person did, with regular hours capped at 7.5h per day and overtime shown separately. Overnight jobs and pause/resume bouts are split by calendar day, and each pause shows **when** and **why**.
+Admin sidebar → **Activity**. Daily / weekly / monthly view of what each person did, with regular hours capped at 7.5h per day and overtime shown separately. Overnight jobs and pause/resume bouts are split by calendar day, and each pause shows **when** and **why**. Admin → **Workers** uses the same per-day split for the hour log (one row per calendar day) and weekly totals.

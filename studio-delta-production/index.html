@@ -3482,6 +3482,42 @@ function openSteelModal() {
       el.classList.add('active');
     }
 
+    function expandWorkerDaySlices(log) {
+      if (Array.isArray(log.daySlices) && log.daySlices.length) {
+        return log.daySlices.map(s => ({
+          order: log.order,
+          worker: log.worker,
+          task: log.task,
+          start: s.start,
+          end: s.stillRunning ? null : s.end,
+          durationMins: Number(s.durationMins) || 0,
+          week: s.week || log.week,
+          date: s.date,
+          stillRunning: !!s.stillRunning,
+          stopReason: s.stopReason || '',
+          pauseStart: (s.stillRunning && log.pauseStart && (!s.start || log.pauseStart >= s.start)) ? log.pauseStart : null,
+          pausedMins: 0
+        }));
+      }
+      const dur = (typeof log.durationMins === 'number')
+        ? log.durationMins
+        : calculateWorkMinutes(log.start, log.end, log.task, log.pausedMins, log.pauseStart);
+      return [{
+        order: log.order,
+        worker: log.worker,
+        task: log.task,
+        start: log.start,
+        end: log.end,
+        durationMins: dur,
+        week: log.week,
+        date: null,
+        stillRunning: !log.end,
+        stopReason: '',
+        pauseStart: log.pauseStart,
+        pausedMins: log.pausedMins
+      }];
+    }
+
     function loadWorkerStats() {
       navTo('view-admin-workers');
       loadIdleWorkers();
@@ -3520,8 +3556,8 @@ function openSteelModal() {
                           r.isChangeoverTracked = true;
                           r.changeoverMins = calculateWorkMinutes(maxEndBefore, r.start, 'Changeover');
                           
-                          // Safeguard: If gap >= 435 mins (full shift length), assume worker was absent.
-                          if (r.changeoverMins >= 435) {
+                          // Safeguard: If gap >= 450 mins (paid shift length), assume worker was absent.
+                          if (r.changeoverMins >= 450) {
                               r.changeoverMins = 0;
                               r.isChangeoverTracked = false;
                           }
@@ -3540,32 +3576,42 @@ function openSteelModal() {
            });
         });
 
-        // 3. Build Stats
+        // 3. Build Stats — overnight jobs count on each calendar day, matching Activity
         rawLogs.forEach(r => {
           if(!r.worker) return;
           if(!appData.workerStats[r.worker]) appData.workerStats[r.worker] = { totalMins: 0, weeks: {} };
-          const dur = calculateWorkMinutes(r.start, r.end, r.task, r.pausedMins, r.pauseStart);
-          appData.workerStats[r.worker].totalMins += dur;
-          r.durationMins = dur;
-          
-          // Group into weekly buckets
-          const weekKey = r.week || 'Unknown Week';
-          if(!appData.workerStats[r.worker].weeks[weekKey]) {
-            appData.workerStats[r.worker].weeks[weekKey] = { 
-              totalMins: 0, 
-              logs:[], 
-              uniqueOrders: new Set(),
-              totalChangeoverMins: 0,
-              changeoverCount: 0 
-            };
-          }
-          
-          appData.workerStats[r.worker].weeks[weekKey].totalMins += dur;
-          appData.workerStats[r.worker].weeks[weekKey].logs.push(r);
-          if(r.order) appData.workerStats[r.worker].weeks[weekKey].uniqueOrders.add(r.order);
-          
-          // Apply changeover stats (Even if it is 0, to reward efficiency)
+          const slices = expandWorkerDaySlices(r);
+          r.durationMins = slices.reduce((sum, s) => sum + (s.durationMins || 0), 0);
+
+          slices.forEach(slice => {
+            const dur = slice.durationMins || 0;
+            appData.workerStats[r.worker].totalMins += dur;
+            const weekKey = slice.week || r.week || 'Unknown Week';
+            if(!appData.workerStats[r.worker].weeks[weekKey]) {
+              appData.workerStats[r.worker].weeks[weekKey] = {
+                totalMins: 0,
+                logs:[],
+                uniqueOrders: new Set(),
+                totalChangeoverMins: 0,
+                changeoverCount: 0
+              };
+            }
+            appData.workerStats[r.worker].weeks[weekKey].totalMins += dur;
+            appData.workerStats[r.worker].weeks[weekKey].logs.push(slice);
+            if(r.order) appData.workerStats[r.worker].weeks[weekKey].uniqueOrders.add(r.order);
+          });
+
           if (r.isChangeoverTracked) {
+              const weekKey = (slices[0] && slices[0].week) || r.week || 'Unknown Week';
+              if(!appData.workerStats[r.worker].weeks[weekKey]) {
+                appData.workerStats[r.worker].weeks[weekKey] = {
+                  totalMins: 0,
+                  logs:[],
+                  uniqueOrders: new Set(),
+                  totalChangeoverMins: 0,
+                  changeoverCount: 0
+                };
+              }
               appData.workerStats[r.worker].weeks[weekKey].totalChangeoverMins += r.changeoverMins;
               appData.workerStats[r.worker].weeks[weekKey].changeoverCount += 1;
           }
@@ -3846,13 +3892,20 @@ function openSteelModal() {
 
       h += '<div class="modern-table-wrap"><table class="modern-table" id="workerLogTable"><thead><tr><th>Date</th><th>Order</th><th>Task</th><th>Start</th><th>End</th><th style="text-align:right">Duration</th></tr></thead><tbody>';
 
-      weekData.logs.sort((a, b) => b.start - a.start).forEach(l => {
-        const d = l.start ? new Date(l.start).toLocaleDateString() : '-';
+      weekData.logs.sort((a, b) => (b.start || 0) - (a.start || 0)).forEach(l => {
+        const d = l.date
+          ? new Date(l.date + 'T12:00:00').toLocaleDateString()
+          : (l.start ? new Date(l.start).toLocaleDateString() : '-');
         const s = l.start ? new Date(l.start).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '-';
-        const e = l.end ? new Date(l.end).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '<span class="badge bg-success">Running</span>';
+        const running = l.stillRunning || !l.end;
+        const e = running
+          ? '<span class="badge bg-success">Running</span>'
+          : new Date(l.end).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
         let durDisplay = formatDuration(l.durationMins);
-        if(!l.end) durDisplay = `<span class="badge bg-success live-timer" data-start="${l.start}" data-task="${l.task}" data-pmins="${l.pausedMins || 0}" data-pstart="${l.pauseStart || ''}">${durDisplay}</span>`;
-        h += `<tr data-order="${String(l.order).toLowerCase()}"><td>${d}</td><td><strong>${l.order}</strong></td><td>${l.task}</td><td>${s}</td><td>${e}</td><td style="text-align:right">${durDisplay}</td></tr>`;
+        if(running) {
+          durDisplay = `<span class="badge bg-success live-timer" data-start="${l.start}" data-task="${l.task}" data-pmins="${l.pausedMins || 0}" data-pstart="${l.pauseStart || ''}">${durDisplay}</span>`;
+        }
+        h += `<tr data-order="${String(l.order || '').toLowerCase()}"><td>${d}</td><td><strong>${l.order || ''}</strong></td><td>${l.task || ''}</td><td>${s}</td><td>${e}</td><td style="text-align:right">${durDisplay}</td></tr>`;
       });
 
       h += '</tbody></table></div>';
