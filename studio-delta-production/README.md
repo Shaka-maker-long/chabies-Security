@@ -41,7 +41,7 @@ Add a **Tasks** column (column D). The first time the app opens it will create t
 
 The tablet does **not** remember the last login. After Log Out (or a refresh) everyone sees the login screen again.
 
-Floor screens cache order lists for about 20 seconds and only reread the spreadsheet after a start, pause, finish, or similar change. Auto-refresh is once a minute while the tab is visible.
+Floor boards read only the latest production-log rows (not the whole history) and cache the order list for about 90 seconds. Start/pause/finish reuse that same log slice instead of rereading the sheet several times. Auto-refresh is once a minute while the tab is visible.
 
 Assembly and Final QC must log **which backboard was used**, the same way plate/profile cutting logs steel. Add backboard names on the `Backboards` sheet (Category, Profile Name), or pick Custom during QC.
 

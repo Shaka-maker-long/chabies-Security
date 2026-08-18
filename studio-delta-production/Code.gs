@@ -313,21 +313,64 @@ function getSheetOrDie(ss, tabName) {
   return sheet;
 }
 
+var _gridMemo = {};
 function getSheetGrid(ss, tabName, numCols) {
+  var key = tabName + ":" + String(numCols || 0);
+  if (_gridMemo[key]) return _gridMemo[key];
   var sheet = getSheetOrDie(ss, tabName);
   var lastRow = sheet.getLastRow();
   if (lastRow < 1) return [];
   var lastCol = sheet.getLastColumn();
   if (lastCol < 1) return [];
   var cols = numCols ? Math.min(numCols, lastCol) : lastCol;
-  return sheet.getRange(1, 1, lastRow, cols).getValues();
+  var values = sheet.getRange(1, 1, lastRow, cols).getValues();
+  _gridMemo[key] = values;
+  return values;
 }
 
-var CACHE_TTL_FLOOR = 20;
-var CACHE_TTL_USERS = 45;
+var LOG_SCAN_MAX = 1500;
+var _logPackMemo = null;
+var _logPackFull = false;
+
+function getLogPack(ss, forceFull) {
+  if (_logPackMemo && (!forceFull || _logPackFull)) return _logPackMemo;
+  var sheet = getSheetOrDie(ss, TAB_LOGS);
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow < 1 || lastCol < 1) {
+    _logPackMemo = { values: [[]], fromRow: 2 };
+    _logPackFull = true;
+    return _logPackMemo;
+  }
+  var cols = Math.min(13, lastCol);
+  var header = sheet.getRange(1, 1, 1, cols).getValues();
+  if (lastRow === 1) {
+    _logPackMemo = { values: header, fromRow: 2 };
+    _logPackFull = true;
+    return _logPackMemo;
+  }
+  var from = 2;
+  if (!forceFull && (lastRow - 1) > LOG_SCAN_MAX) {
+    from = lastRow - LOG_SCAN_MAX + 1;
+  }
+  var body = sheet.getRange(from, 1, lastRow - from + 1, cols).getValues();
+  _logPackMemo = { values: header.concat(body), fromRow: from };
+  _logPackFull = (from === 2);
+  return _logPackMemo;
+}
+
+function packSheetRow(pack, valuesIndex) {
+  return pack.fromRow + valuesIndex - 1;
+}
+function packValuesIndex(pack, sheetRow) {
+  return sheetRow - pack.fromRow + 1;
+}
+
+var CACHE_TTL_FLOOR = 90;
+var CACHE_TTL_USERS = 180;
 var CACHE_TTL_STEEL = 300;
 var CACHE_TTL_BACKBOARD = 300;
-var CACHE_TTL_ADMIN = 25;
+var CACHE_TTL_ADMIN = 60;
 
 function floorCacheGen() {
   try { return CacheService.getScriptCache().get("floorGen") || "0"; } catch (e) { return "0"; }
@@ -385,8 +428,7 @@ function buildPlateStatusMap(logData) {
 }
 
 function getPlateCuttingStatus(ss, orderNum) {
-  var logData = getSheetGrid(ss, TAB_LOGS, 13);
-  var map = buildPlateStatusMap(logData);
+  var map = buildPlateStatusMap(getLogPack(ss).values);
   return map[String(orderNum)] || emptyPlateStatus();
 }
 
@@ -409,7 +451,6 @@ function clearPlateCuttingStatus(ss, orderNum) {
 function getUsersAndRoles() {
   var cached = floorCacheGet("users");
   if (cached) return cached;
-  lazySetup();
   var ss = getSpreadsheet();
   var data = getSheetGrid(ss, TAB_USERS, 4);
   if (data.length <= 1) return []; 
@@ -481,11 +522,10 @@ function verifyLogin(role, name, password) {
 }
 
 function verifyGlobalLogin(name, password) {
-  lazySetup();
   var ss = getSpreadsheet();
-  try { ensureUsersSheetTasksColumn(); } catch (e) {}
   var sheet = getSheetOrDie(ss, TAB_USERS);
-  var data = sheet.getDataRange().getValues();
+  var data = getSheetGrid(ss, TAB_USERS, 4);
+  if (!data.length) data = sheet.getDataRange().getValues();
   
   // 1. Find the Admin Password first (Master Key)
   var adminPassword = null;
@@ -527,13 +567,12 @@ function getOrdersForRole(role, workerName) {
   if (workerName && role && role !== "Admin" && !workerCanPerformTask(workerName, role)) {
     return [];
   }
-  lazySetup();
   var cacheKey = "orders:" + String(role || "");
   var cached = floorCacheGet(cacheKey);
   if (cached) return cached;
   var ss = getSpreadsheet();
   var data = getSheetGrid(ss, TAB_ORDERS, 7);
-  var logData = getSheetGrid(ss, TAB_LOGS, 13);
+  var logData = getLogPack(ss).values;
   var activeAssignments = getActiveAssignmentsFromData(logData);
   var plateMap = (role === 'Plate Cutting') ? buildPlateStatusMap(logData) : {};
   var relevantOrders = [];
@@ -622,6 +661,13 @@ function getOrdersForRole(role, workerName) {
   return relevantOrders;
 }
 
+function pollFloor(role, workerName) {
+  return {
+    orders: getOrdersForRole(role, workerName),
+    notice: workerName ? popWorkerNotice(workerName) : null
+  };
+}
+
 function startOrder(rowIndex, workerName, role, batchRowIndices) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000); 
@@ -631,6 +677,8 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
     var sheet = getSheetOrDie(ss, TAB_ORDERS);
     var logSheet = getSheetOrDie(ss, TAB_LOGS);
     var overviewSheet = ss.getSheetByName(TAB_OVERVIEW);
+    var orderData = getSheetGrid(ss, TAB_ORDERS, 7);
+    var pack = getLogPack(ss);
 
     var rowsToStart = [];
     if (batchRowIndices && batchRowIndices.length) {
@@ -647,27 +695,31 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
       throw new Error(workerName + " is not assigned to " + role + ". Ask admin to add it on the Users sheet.");
     }
 
-    closeIndirectTasksForWorker(ss, workerName);
+    closeIndirectTasksForWorker(ss, workerName, pack);
 
     var batchId = rowsToStart.length > 1 ? Utilities.getUuid() : "";
     var batchShare = rowsToStart.length > 1 ? rowsToStart.length : 1;
     var exceptOrders = [];
     for (var e = 0; e < rowsToStart.length; e++) {
-      exceptOrders.push(sheet.getRange(rowsToStart[e], 2).getValue());
+      var er = rowsToStart[e];
+      exceptOrders.push(orderData[er - 1] ? orderData[er - 1][1] : "");
     }
 
     var pauseReason = (role === "Welding")
       ? ("Waiting for plate / switched to " + exceptOrders[0])
       : ("Switched to order " + exceptOrders[0]);
-    autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, pauseReason, batchId);
+    autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, pauseReason, batchId, pack);
 
     var started = [];
     var startTime = new Date();
+    var plateMap = (role === 'Plate Cutting') ? buildPlateStatusMap(pack.values) : {};
+    var activeAssignments = (role === 'Plate Cutting') ? {} : getActiveAssignmentsFromData(pack.values);
 
     for (var r = 0; r < rowsToStart.length; r++) {
       var thisRow = rowsToStart[r];
-      var orderNum = sheet.getRange(thisRow, 2).getValue();
-      var currentStatus = sheet.getRange(thisRow, 3).getValue();
+      var orderRow = orderData[thisRow - 1] || [];
+      var orderNum = orderRow[1];
+      var currentStatus = orderRow[2];
 
       var nextStatus = "";
       if (role === 'Plate Cutting') {
@@ -684,7 +736,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
       }
 
       if (role === 'Plate Cutting') {
-        var plateInfo = getPlateCuttingStatus(ss, orderNum);
+        var plateInfo = plateMap[String(orderNum)] || emptyPlateStatus();
         if (plateInfo.assigned !== "" && plateInfo.assigned !== workerName) {
           throw new Error("Plate Cutting is already being done by " + plateInfo.assigned);
         }
@@ -693,7 +745,6 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
           continue;
         }
       } else {
-        var activeAssignments = getActiveAssignments(ss); 
         var currentAssignment = activeAssignments[orderNum];
         var currentAssigned = currentAssignment ? currentAssignment.worker : ""; 
         if (currentAssigned !== "" && currentAssigned !== workerName) {
@@ -704,7 +755,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
           continue;
         }
         if (currentAssigned === workerName && currentAssignment && currentAssignment.isPaused) {
-          resumeWorkerLog(ss, workerName, orderNum);
+          resumeWorkerLog(ss, workerName, orderNum, pack);
           started.push({ order: orderNum, rowIndex: thisRow, logId: currentAssignment.logId, newStatus: currentStatus, resumed: true });
           continue;
         }
@@ -717,8 +768,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
       meta.entryType = "production";
 
       if (role !== 'Plate Cutting') {
-        sheet.getRange(thisRow, 3).setValue(nextStatus); 
-        sheet.getRange(thisRow, 4).setValue(workerName); 
+        sheet.getRange(thisRow, 3, 1, 2).setValues([[nextStatus, workerName]]);
       }
 
       logSheet.appendRow([
@@ -733,7 +783,6 @@ function startOrder(rowIndex, workerName, role, batchRowIndices) {
       started.push({ order: orderNum, rowIndex: thisRow, logId: uniqueId, newStatus: nextStatus });
     }
     
-    SpreadsheetApp.flush();
     return {
       success: true,
       newStatus: started[0] ? started[0].newStatus : "",
@@ -759,15 +808,19 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
     var overviewSheet = ss.getSheetByName(TAB_OVERVIEW);
     var endTime = new Date(); 
     
-    var logs = logSheet.getDataRange().getValues();
+    var pack = getLogPack(ss);
     var orderNum = orderNumHint || sheet.getRange(rowIndex, 2).getValue();
-    var rowToUpdate = findOpenLogRow(logs, logId, orderNum, workerName);
+    var rowToUpdate = findOpenLogRow(pack, logId, orderNum, workerName);
+    if (rowToUpdate === -1) {
+      pack = getLogPack(ss, true);
+      rowToUpdate = findOpenLogRow(pack, logId, orderNum, workerName);
+    }
     
     if (rowToUpdate === -1) {
       throw new Error("Could not find active log entry for " + workerName + " on this order.");
     }
 
-    var logRow = logs[rowToUpdate-1];
+    var logRow = pack.values[packValuesIndex(pack, rowToUpdate)];
     var role = logRow[3];
     var processName = logRow[4];
     var startTime = logRow[5] ? new Date(logRow[5]) : null;
@@ -1312,22 +1365,20 @@ function formatDurationServer(totalMins) {
 function getAdminDashboardData() {
   var cached = floorCacheGet("adminDash");
   if (cached) return cached;
-  lazySetup();
   var ss = getSpreadsheet();
   
-  // 1. Get Logs
-  var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logData = logSheet.getDataRange().getValues();
-  logData.shift(); 
+  var logData = getLogPack(ss).values.slice(1);
   var logs = logData.map(function(row) {
+    var meta = parseLogMeta(row.length > 12 ? row[12] : "");
     var ts = row[6] ? new Date(row[6]) : (row[5] ? new Date(row[5]) : null);
-    if (ts && isNaN(ts.getTime())) ts = null; // Guard against Invalid Date
+    if (ts && isNaN(ts.getTime())) ts = null;
     var weekStr = ts ? Utilities.formatDate(ts, "Africa/Johannesburg", "yyyy - 'Week' ww") : "Unknown Week";
     
     var startObj = row[5] ? new Date(row[5]) : null;
     if (startObj && isNaN(startObj.getTime())) startObj = null;
     var endObj = row[6] ? new Date(row[6]) : null;
     if (endObj && isNaN(endObj.getTime())) endObj = null;
+    var openStart = getOpenPauseStart(meta);
     
     return {
       order: row[1],
@@ -1337,31 +1388,19 @@ function getAdminDashboardData() {
       start: startObj ? startObj.getTime() : null,
       end: endObj ? endObj.getTime() : null,
       qc: row[7],
-      pauseStart: (function() {
-        var meta = parseLogMeta(row.length > 12 ? row[12] : "");
-        var openStart = getOpenPauseStart(meta);
-        if (openStart) return new Date(openStart).getTime();
-        return row[9] ? new Date(row[9]).getTime() : null;
-      })(),
-      pausedMins: (function() {
-        var meta = parseLogMeta(row.length > 12 ? row[12] : "");
-        var closed = cumulativePauseMinsFromMeta(meta, row[4]);
-        if (closed) return closed;
-        return parseFloat(row[10]) || 0;
-      })(),
-      pauseIntervals: getPauseIntervalsForRow(row),
-      batchId: parseLogMeta(row.length > 12 ? row[12] : "").batchId || "",
-      batchShare: parseLogMeta(row.length > 12 ? row[12] : "").batchShare || 1,
-      batchSplitAt: parseLogMeta(row.length > 12 ? row[12] : "").batchSplitAt || null,
-      entryType: parseLogMeta(row.length > 12 ? row[12] : "").entryType || "production",
+      pauseStart: openStart ? new Date(openStart).getTime() : (row[9] ? new Date(row[9]).getTime() : null),
+      pausedMins: cumulativePauseMinsFromMeta(meta, row[4]) || parseFloat(row[10]) || 0,
+      pauseIntervals: (meta.pauses && meta.pauses.length) ? meta.pauses : getPauseIntervalsForRow(row),
+      batchId: meta.batchId || "",
+      batchShare: meta.batchShare || 1,
+      batchSplitAt: meta.batchSplitAt || null,
+      entryType: meta.entryType || "production",
       durationMins: calculateWorkMinutesFromLog(row),
       week: weekStr
     };
   });
 
-  // 2. Get Orders (AND FILTER THEM)
-  var orderSheet = getSheetOrDie(ss, TAB_ORDERS);
-  var orderData = orderSheet.getDataRange().getValues();
+  var orderData = getSheetGrid(ss, TAB_ORDERS, 3).slice();
   orderData.shift(); 
   
   var orders = [];
@@ -1420,7 +1459,7 @@ function getNextStatus(current) {
  * IT IGNORES PLATE CUTTING so parallel work can happen.
  */
 function getActiveAssignments(ss) {
-  return getActiveAssignmentsFromData(getSheetGrid(ss, TAB_LOGS, 13));
+  return getActiveAssignmentsFromData(getLogPack(ss).values);
 }
 
 function getActiveAssignmentsFromData(logData) {
@@ -1924,15 +1963,17 @@ function workerPauseOrder(rowIndex, orderNum, workerName, reason) {
   try {
     var ss = getSpreadsheet();
     var logSheet = getSheetOrDie(ss, TAB_LOGS);
-    var logs = logSheet.getDataRange().getValues();
+    var pack = getLogPack(ss);
+    var logs = pack.values;
     var pausedSomething = false;
     for (var i = logs.length - 1; i >= 1; i--) {
       if (String(logs[i][1]) === String(orderNum) && String(logs[i][2]).trim() === String(workerName).trim() && !logs[i][6]) {
          var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
          if (!hasOpenPause(meta.pauses) && !logs[i][9]) {
+            var sheetRow = packSheetRow(pack, i);
             meta = addPauseToMeta(meta, reason);
-            writeLogMeta(logSheet, i + 1, meta);
-            syncLegacyPauseCells(logSheet, i + 1, meta, logs[i][4]);
+            writeLogMeta(logSheet, sheetRow, meta);
+            syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
             pausedSomething = true;
          }
       }
@@ -1969,15 +2010,17 @@ function adminPauseOrder(orderNum) {
   try {
     var ss = getSpreadsheet();
     var logSheet = getSheetOrDie(ss, TAB_LOGS);
-    var logs = logSheet.getDataRange().getValues();
+    var pack = getLogPack(ss);
+    var logs = pack.values;
     var pausedSomething = false;
     for (var i = logs.length - 1; i >= 1; i--) {
       if (String(logs[i][1]) === String(orderNum) && !logs[i][6]) {
          var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
          if (!hasOpenPause(meta.pauses) && !logs[i][9]) {
+            var sheetRow = packSheetRow(pack, i);
             meta = addPauseToMeta(meta, "Admin pause");
-            writeLogMeta(logSheet, i + 1, meta);
-            syncLegacyPauseCells(logSheet, i + 1, meta, logs[i][4]);
+            writeLogMeta(logSheet, sheetRow, meta);
+            syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
             pausedSomething = true;
          }
       }
@@ -1997,15 +2040,17 @@ function adminResumeOrder(orderNum) {
   try {
     var ss = getSpreadsheet();
     var logSheet = getSheetOrDie(ss, TAB_LOGS);
-    var logs = logSheet.getDataRange().getValues();
+    var pack = getLogPack(ss);
+    var logs = pack.values;
     var resumedSomething = false;
     for (var i = logs.length - 1; i >= 1; i--) {
       if (String(logs[i][1]) === String(orderNum) && !logs[i][6]) {
          var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
          if (hasOpenPause(meta.pauses) || logs[i][9]) {
+            var sheetRow = packSheetRow(pack, i);
             meta = closeOpenPauseInMeta(meta, new Date());
-            writeLogMeta(logSheet, i + 1, meta);
-            syncLegacyPauseCells(logSheet, i + 1, meta, logs[i][4]);
+            writeLogMeta(logSheet, sheetRow, meta);
+            syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
             resumedSomething = true;
          }
       }
@@ -2427,59 +2472,63 @@ function findOrderRowByNumber(orderSheet, orderNum) {
   return -1;
 }
 
-function findOpenLogRow(logs, logId, orderNum, workerName) {
-  var rowToUpdate = -1;
+function findOpenLogRow(pack, logId, orderNum, workerName) {
+  var logs = pack.values;
+  var valuesIndex = -1;
   if (logId) {
     var normalizedLogId = String(logId).trim();
     for (var i = 1; i < logs.length; i++) {
       if (String(logs[i][0]).trim() === normalizedLogId) {
-        rowToUpdate = i + 1;
+        valuesIndex = i;
         break;
       }
     }
   }
-  if (rowToUpdate !== -1) {
-    var r = logs[rowToUpdate - 1];
+  if (valuesIndex !== -1) {
+    var r = logs[valuesIndex];
     var matchesOrder = !orderNum || String(r[1]) === String(orderNum);
     var matchesWorker = !workerName || String(r[2]).trim() === String(workerName).trim();
     var isOpen = !r[6];
-    if (!matchesOrder || !matchesWorker || !isOpen) rowToUpdate = -1;
+    if (!matchesOrder || !matchesWorker || !isOpen) valuesIndex = -1;
   }
-  if (rowToUpdate === -1 && orderNum && workerName) {
+  if (valuesIndex === -1 && orderNum && workerName) {
     for (var j = logs.length - 1; j >= 1; j--) {
       if (String(logs[j][1]) === String(orderNum) &&
           String(logs[j][2]).trim() === String(workerName).trim() &&
           !logs[j][6]) {
-        rowToUpdate = j + 1;
+        valuesIndex = j;
         break;
       }
     }
   }
-  return rowToUpdate;
+  return valuesIndex === -1 ? -1 : packSheetRow(pack, valuesIndex);
 }
 
-function closeIndirectTasksForWorker(ss, workerName) {
+function closeIndirectTasksForWorker(ss, workerName, pack) {
+  pack = pack || getLogPack(ss);
   var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logs = logSheet.getDataRange().getValues();
+  var logs = pack.values;
   var closed = 0;
   var now = new Date();
   for (var i = 1; i < logs.length; i++) {
     var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
     var isIndirect = meta.entryType === "indirect" || String(logs[i][3]).trim() === "Indirect";
     if (isIndirect && String(logs[i][2]).trim() === String(workerName).trim() && !logs[i][6]) {
+      var sheetRow = packSheetRow(pack, i);
       meta = closeOpenPauseInMeta(meta, now);
-      logSheet.getRange(i + 1, 7).setValue(now);
-      writeLogMeta(logSheet, i + 1, meta);
-      syncLegacyPauseCells(logSheet, i + 1, meta, logs[i][4]);
+      logSheet.getRange(sheetRow, 7).setValue(now);
+      writeLogMeta(logSheet, sheetRow, meta);
+      syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
       closed++;
     }
   }
   return closed;
 }
 
-function autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, reason, exceptBatchId) {
+function autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, reason, exceptBatchId, pack) {
+  pack = pack || getLogPack(ss);
   var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logs = logSheet.getDataRange().getValues();
+  var logs = pack.values;
   var exceptMap = {};
   (exceptOrders || []).forEach(function(o) { exceptMap[String(o)] = true; });
   var paused = [];
@@ -2491,25 +2540,28 @@ function autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, reason, exceptBa
     if (exceptMap[String(logs[i][1])]) continue;
     if (exceptBatchId && meta.batchId && meta.batchId === exceptBatchId) continue;
     if (hasOpenPause(meta.pauses) || logs[i][9]) continue;
+    var sheetRow = packSheetRow(pack, i);
     meta = addPauseToMeta(meta, reason || "Switched job");
-    writeLogMeta(logSheet, i + 1, meta);
-    syncLegacyPauseCells(logSheet, i + 1, meta, logs[i][4]);
+    writeLogMeta(logSheet, sheetRow, meta);
+    syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
     paused.push(String(logs[i][1]));
   }
   return paused;
 }
 
-function resumeWorkerLog(ss, workerName, orderNum) {
+function resumeWorkerLog(ss, workerName, orderNum, pack) {
+  pack = pack || getLogPack(ss);
   var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logs = logSheet.getDataRange().getValues();
+  var logs = pack.values;
   for (var i = logs.length - 1; i >= 1; i--) {
     if (String(logs[i][1]) === String(orderNum) &&
         String(logs[i][2]).trim() === String(workerName).trim() &&
         !logs[i][6]) {
+      var sheetRow = packSheetRow(pack, i);
       var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
       meta = closeOpenPauseInMeta(meta, new Date());
-      writeLogMeta(logSheet, i + 1, meta);
-      syncLegacyPauseCells(logSheet, i + 1, meta, logs[i][4]);
+      writeLogMeta(logSheet, sheetRow, meta);
+      syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
       return true;
     }
   }
@@ -2517,8 +2569,8 @@ function resumeWorkerLog(ss, workerName, orderNum) {
 }
 
 function autoSwitchWeldersAfterPlate(ss, orderNum) {
-  var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logs = logSheet.getDataRange().getValues();
+  var pack = getLogPack(ss);
+  var logs = pack.values;
   var switched = [];
   for (var i = 1; i < logs.length; i++) {
     var role = String(logs[i][3]).trim();
@@ -2530,9 +2582,9 @@ function autoSwitchWeldersAfterPlate(ss, orderNum) {
     var isPaused = hasOpenPause(meta.pauses) || !!logs[i][9];
     if (!isPaused) continue;
 
-    var pausedOthers = autoPauseWorkerOtherJobs(ss, worker, [orderNum], "Plate ready on " + orderNum, meta.batchId);
-    closeIndirectTasksForWorker(ss, worker);
-    resumeWorkerLog(ss, worker, orderNum);
+    var pausedOthers = autoPauseWorkerOtherJobs(ss, worker, [orderNum], "Plate ready on " + orderNum, meta.batchId, pack);
+    closeIndirectTasksForWorker(ss, worker, pack);
+    resumeWorkerLog(ss, worker, orderNum, pack);
     var notice = {
       type: "plate-ready",
       worker: worker,
@@ -2578,7 +2630,8 @@ function undoAutoSwitch(workerName) {
 function leaveBatchForOrder(workerName, keepOrder) {
   var ss = getSpreadsheet();
   var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logs = logSheet.getDataRange().getValues();
+  var pack = getLogPack(ss);
+  var logs = pack.values;
   var now = new Date();
   var batchId = "";
   for (var i = logs.length - 1; i >= 1; i--) {
@@ -2599,8 +2652,9 @@ function leaveBatchForOrder(workerName, keepOrder) {
     if (String(logs[j][1]) !== String(keepOrder)) {
       m = addPauseToMeta(m, "Batch cut done — assembling " + keepOrder);
     }
-    writeLogMeta(logSheet, j + 1, m);
-    syncLegacyPauseCells(logSheet, j + 1, m, logs[j][4]);
+    var sheetRow = packSheetRow(pack, j);
+    writeLogMeta(logSheet, sheetRow, m);
+    syncLegacyPauseCells(logSheet, sheetRow, m, logs[j][4]);
   }
   bumpFloorCache();
   return { success: true };
@@ -2681,8 +2735,7 @@ function alreadyAlertedToday(idleSheet, workerName) {
 function checkIdleWorkers() {
   if (!isWithinShiftNow()) return;
   var ss = getSpreadsheet();
-  var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logs = logSheet.getDataRange().getValues();
+  var logs = getLogPack(ss).values;
   var users = getUsersAndRoles();
   var idleSheet = getIdleAlertSheet(ss);
   var now = new Date();
@@ -2768,7 +2821,7 @@ function assignIndirectTask(workerName, taskName, assignedBy) {
   if (!workerName || !taskName) return { success: false, message: "Worker and task are required." };
   var ss = getSpreadsheet();
   var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logs = logSheet.getDataRange().getValues();
+  var logs = getLogPack(ss).values;
   if (workerHasRunningJob(logs, workerName)) {
     return { success: false, message: workerName + " already has a running job." };
   }

@@ -1789,15 +1789,8 @@
     }
 
     function prefetchSupportData() {
-      google.script.run.withSuccessHandler(data => {
-        appData.users = data || [];
-      }).getUsersAndRoles();
-      google.script.run.withSuccessHandler(profiles => {
-        appData.steelProfiles = profiles || [];
-      }).getSteelProfiles();
-      google.script.run.withSuccessHandler(profiles => {
-        appData.backboards = profiles || [];
-      }).getBackboards();
+      // Steel, backboards, and users load on demand so login and the floor
+      // are not competing with extra spreadsheet reads.
     }
     function ensureSteelProfiles(cb) {
       if (appData.steelProfiles && appData.steelProfiles.length) {
@@ -2086,15 +2079,15 @@
     function loadDashboard(silent = false) {
       if (dashInFlight && silent) return;
       dashInFlight = true;
-      if(!silent) document.getElementById('container-available').innerHTML = '<div class="spinner-border"></div>';
-      if (session.name) {
-        google.script.run.withSuccessHandler(notice => {
-          if (notice && notice.resumedOrder) showSwitchBanner(notice);
-        }).popWorkerNotice(session.name);
+      const av = document.getElementById('container-available');
+      if (!silent && av && !av.querySelector('[id^="card-"]') && !av.querySelector('.checkbox-wrapper-16')) {
+        av.innerHTML = '<div class="spinner-border"></div>';
       }
-      google.script.run.withSuccessHandler(orders => {
+      google.script.run.withSuccessHandler(payload => {
         dashInFlight = false;
-        appData.currentOrders = orders; // Cache orders for the modal
+        const orders = (payload && payload.orders) ? payload.orders : (Array.isArray(payload) ? payload : []);
+        if (payload && payload.notice && payload.notice.resumedOrder) showSwitchBanner(payload.notice);
+        appData.currentOrders = orders;
         
         // 1. Only Siya can see the Powder Coating List Button
         const btnPowder = document.getElementById('btnPowderList');
@@ -2289,7 +2282,7 @@
         });
 
         filterDashboard(); 
-      }).withFailureHandler(() => { dashInFlight = false; }).getOrdersForRole(session.role, session.name);
+      }).withFailureHandler(() => { dashInFlight = false; }).pollFloor(session.role, session.name);
     }
     
     function continueToStartModal() {
