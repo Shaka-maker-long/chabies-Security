@@ -372,6 +372,11 @@ function getLogPack(ss, forceFull) {
   return _logPackMemo;
 }
 
+function invalidateLogPack() {
+  _logPackMemo = null;
+  _logPackFull = false;
+}
+
 function packSheetRow(pack, valuesIndex) {
   return pack.fromRow + valuesIndex - 1;
 }
@@ -684,7 +689,94 @@ function pollFloor(role, workerName) {
   };
 }
 
-function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason) {
+function uniqueOrderNums(arr) {
+  var out = [];
+  var seen = {};
+  for (var i = 0; i < (arr || []).length; i++) {
+    var o = String(arr[i] || "").trim();
+    if (!o || seen[o]) continue;
+    seen[o] = true;
+    out.push(o);
+  }
+  return out;
+}
+
+function joinWorkerOrdersTogether(ss, workerName, extraOrderNums, pack) {
+  pack = pack || getLogPack(ss);
+  var logSheet = getSheetOrDie(ss, TAB_LOGS);
+  var overviewSheet = ss.getSheetByName(TAB_OVERVIEW);
+  var now = new Date();
+  var logs = pack.values;
+  var targetMap = {};
+  (extraOrderNums || []).forEach(function(o) {
+    var n = String(o || "").trim();
+    if (n) targetMap[n] = true;
+  });
+  var open = [];
+  for (var i = 1; i < logs.length; i++) {
+    if (logs[i][6]) continue;
+    if (String(logs[i][2] || "").trim() !== String(workerName || "").trim()) continue;
+    var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
+    if (meta.entryType === "indirect") continue;
+    var paused = hasOpenPause(meta.pauses) || !!logs[i][9];
+    var ord = String(logs[i][1] || "");
+    open.push({ valuesIndex: i, meta: meta, order: ord, paused: paused });
+    if (!paused && ord) targetMap[ord] = true;
+  }
+  var targetOrders = uniqueOrderNums(Object.keys(targetMap));
+  var share = targetOrders.length;
+  if (share < 2) {
+    return { batchId: "", batchShare: 1, handled: {} };
+  }
+
+  var batchId = "";
+  for (var r = 0; r < open.length; r++) {
+    if (open[r].paused) continue;
+    if (targetOrders.indexOf(open[r].order) === -1) continue;
+    if (open[r].meta.batchId && !open[r].meta.batchSplitAt) {
+      batchId = open[r].meta.batchId;
+      break;
+    }
+  }
+  if (!batchId) batchId = Utilities.getUuid();
+
+  var handled = {};
+  for (var j = 0; j < open.length; j++) {
+    var rec = open[j];
+    if (targetOrders.indexOf(rec.order) === -1) continue;
+    if (rec.paused) {
+      rec.meta = closeOpenPauseInMeta(rec.meta, now);
+      writeLogPauseState(logSheet, packSheetRow(pack, rec.valuesIndex), rec.meta, logs[rec.valuesIndex][4]);
+    }
+    var sameBatch = rec.meta.batchId === batchId && !rec.meta.batchSplitAt && Number(rec.meta.batchShare || 1) === share;
+    if (sameBatch && !rec.paused) {
+      handled[rec.order] = true;
+      continue;
+    }
+    var sheetRow = packSheetRow(pack, rec.valuesIndex);
+    logSheet.getRange(sheetRow, 7).setValue(now);
+    pack.values[rec.valuesIndex][6] = now;
+
+    var newMeta = defaultLogMeta();
+    newMeta.batchId = batchId;
+    newMeta.batchShare = share;
+    newMeta.entryType = rec.meta.entryType || "production";
+    var row = pack.values[rec.valuesIndex];
+    var uniqueId = Utilities.getUuid();
+    logSheet.appendRow([
+      uniqueId, row[1], row[2], row[3], row[4], now, "", "", "",
+      "", "", "", JSON.stringify(newMeta)
+    ]);
+    if (overviewSheet) {
+      overviewSheet.appendRow([uniqueId, row[1], row[2], row[4], now, "", ""]);
+    }
+    handled[rec.order] = true;
+  }
+  invalidateLogPack();
+  return { batchId: batchId, batchShare: share, handled: handled };
+}
+
+function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, workTogether) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000); 
   
@@ -711,16 +803,25 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason) {
       throw new Error(workerName + " is not assigned to " + role + ". Ask admin to add it on the Users sheet.");
     }
 
-    var batchId = rowsToStart.length > 1 ? Utilities.getUuid() : "";
-    var batchShare = rowsToStart.length > 1 ? rowsToStart.length : 1;
     var exceptOrders = [];
     for (var e = 0; e < rowsToStart.length; e++) {
       var er = rowsToStart[e];
       exceptOrders.push(orderData[er - 1] ? orderData[er - 1][1] : "");
     }
 
+    var batchId = rowsToStart.length > 1 ? Utilities.getUuid() : "";
+    var batchShare = rowsToStart.length > 1 ? rowsToStart.length : 1;
     var runningOthers = listRunningOrdersForWorker(pack.values, workerName, exceptOrders);
-    if (runningOthers.length && !isUserPauseReason(switchReason)) {
+
+    if (workTogether) {
+      var join = joinWorkerOrdersTogether(ss, workerName, exceptOrders, pack);
+      if (join.batchId) {
+        batchId = join.batchId;
+        batchShare = join.batchShare;
+      }
+      runningOthers = [];
+      pack = getLogPack(ss);
+    } else if (runningOthers.length && !isUserPauseReason(switchReason)) {
       return { success: false, needsSwitchReason: true, runningOrders: runningOthers, message: "Choose why you are leaving the current order." };
     }
 
@@ -2013,9 +2114,9 @@ function generatePowderCoatingList(listData, workerName) {
   }
 }
 
-function batchStartOrders(rowIndices, workerName, role, switchReason) {
+function batchStartOrders(rowIndices, workerName, role, switchReason, workTogether) {
   try {
-    return startOrder(rowIndices[0], workerName, role, rowIndices, switchReason);
+    return startOrder(rowIndices[0], workerName, role, rowIndices, switchReason, workTogether);
   } catch(e) {
     Logger.log("Batch start error: " + e);
     return {success: false, error: e.toString()};
@@ -2067,13 +2168,23 @@ function workerPauseOrder(rowIndex, orderNum, workerName, reason) {
   }
 }
 
-function workerResumeOrder(rowIndex, orderNum, workerName, switchReason) {
+function workerResumeOrder(rowIndex, orderNum, workerName, switchReason, workTogether) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     var ss = getSpreadsheet();
     var pack = getLogPack(ss);
     var runningOthers = listRunningOrdersForWorker(pack.values, workerName, [orderNum]);
+    if (workTogether) {
+      closeIndirectTasksForWorker(ss, workerName, pack);
+      var join = joinWorkerOrdersTogether(ss, workerName, [orderNum], pack);
+      pack = getLogPack(ss);
+      var okTogether = resumeWorkerLog(ss, workerName, orderNum, pack);
+      if (!okTogether && !(join.handled && join.handled[String(orderNum)])) {
+        return {success: false, message: "No paused tasks found for you on this order."};
+      }
+      return {success: true, batchId: join.batchId || ""};
+    }
     if (runningOthers.length && !isUserPauseReason(switchReason)) {
       return { success: false, needsSwitchReason: true, runningOrders: runningOthers, message: "Choose why you are leaving the current order." };
     }

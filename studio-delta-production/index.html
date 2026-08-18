@@ -1199,6 +1199,21 @@
       </div>
     </div>
   </div>
+  <div class="modal fade" id="runningChoiceModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content p-4 text-center">
+        <h3 class="brand-font mb-2">Already working</h3>
+        <p class="mb-3" id="runningChoiceMsg">You already have an order running.</p>
+        <div id="runningChoiceList" class="text-start mb-3 small"></div>
+        <p class="small text-muted mb-3">Together = one clock, time split across the orders. Switch = pause the current order (you will need a reason) and start the new one.</p>
+        <div class="d-grid gap-2">
+          <button class="btn btn-dark" id="btnWorkTogether" onclick="confirmWorkTogether()">Work on A and B</button>
+          <button class="btn btn-outline-dark" id="btnSwitchOrders" onclick="confirmSwitchFromRunning()">Switch from A to B</button>
+          <button class="btn btn-link text-muted" data-bs-dismiss="modal">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="modal fade" id="qcModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title brand-font">Checklist</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body p-4">
     <div class="mb-3"><strong>Order:</strong> <span id="qcOrderNum"></span></div>
     <div id="qcChecklistContainer"></div>
@@ -1465,13 +1480,14 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
   <script>
     let appData = { users:[], workerStats: {}, currentOrders:[], steelProfiles:[], backboards:[] };
-    let session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, tasks: [], jobTitle: '', pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pauseModalMode: 'pause' };
+    let session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, tasks: [], jobTitle: '', pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pauseModalMode: 'pause' };
     let idleAlertModal = null;
     let backboardSelectionModal = null;
     let idlePollTimer = null;
     let idleAlertDismissedKey = '';
     let activityChart = null;
     let batchWorkModal = null;
+    let runningChoiceModal = null;
     let refreshInterval = null;
     let liveTimerInterval = null;
     let hasSigned = false;
@@ -1613,6 +1629,7 @@
         idleAlertModal = new bootstrap.Modal('#idleAlertModal');
         welderSteelModal = new bootstrap.Modal('#welderSteelModal');
         batchWorkModal = new bootstrap.Modal('#batchWorkModal');
+        runningChoiceModal = new bootstrap.Modal('#runningChoiceModal');
         
         document.getElementById('confirmBtnYes').onclick = () => { if (confirmModal) confirmModal.hide(); if(confirmCallback) confirmCallback(); };
         
@@ -1908,7 +1925,7 @@
     }
     
     function logout() { 
-      session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, tasks: [], jobTitle: '', pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pauseModalMode: 'pause' }; 
+      session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, tasks: [], jobTitle: '', pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pauseModalMode: 'pause' }; 
       clearPersistedSession();
       stopIdleAlertPolling();
       idleAlertDismissedKey = '';
@@ -1988,7 +2005,20 @@
     function batchStart() {
         const selected = Array.from(document.querySelectorAll('.batch-select:checked')).map(el => parseInt(el.value));
         if(selected.length === 0) return;
-        
+        const running = myRunningOrders(selected);
+        if (running.length && !session.pendingWorkTogether && !session.pendingSwitchReason && !session.skipRunningChoice) {
+          session.pendingStartMode = 'batch-start';
+          session.pendingRow = selected[0];
+          session.pendingBatchRows = selected;
+          const newNames = selected.map(rowIndex => {
+            const o = (appData.currentOrders || []).find(ord => ord.rowIndex === rowIndex);
+            return o ? o.order : ('#' + rowIndex);
+          });
+          showRunningChoiceModal(running, newNames);
+          return;
+        }
+        session.skipRunningChoice = false;
+
         isSubmitting = true;
         const btn = document.getElementById('btnBatchStart');
         const origText = btn.innerHTML;
@@ -2007,6 +2037,14 @@
                 if (res && res.needsSwitchReason) {
                   session.pendingRow = selected[0];
                   session.pendingBatchRows = selected;
+                  if (!session.skipRunningChoice && !session.pendingWorkTogether) {
+                    session.pendingStartMode = 'batch-start';
+                    showRunningChoiceModal(res.runningOrders, session.activeOrder || selected.map(rowIndex => {
+                      const o = (appData.currentOrders || []).find(ord => ord.rowIndex === rowIndex);
+                      return o ? o.order : '';
+                    }));
+                    return;
+                  }
                   openLeaveReasonModal('switch-start', res.runningOrders);
                   return;
                 }
@@ -2014,6 +2052,8 @@
                   showAlert(res.message || res.error || "Could not start");
                 }
                 session.pendingSwitchReason = null;
+                session.pendingWorkTogether = false;
+                session.skipRunningChoice = false;
                 loadDashboard(true);
             })
             .withFailureHandler(err => {
@@ -2023,7 +2063,7 @@
                 showAlert("Error: " + err);
                 loadDashboard(true);
             })
-            .batchStartOrders(selected, session.name, session.role, session.pendingSwitchReason);
+            .batchStartOrders(selected, session.name, session.role, session.pendingSwitchReason, !!session.pendingWorkTogether);
     }
     
     function batchFinish() {
@@ -2186,7 +2226,7 @@
           } else {
              if (isMine) {
                if (o.isPaused) {
-                 innerBtn = `<button class="btn btn-success w-100 position-relative" style="z-index: 10;" onclick="event.stopPropagation(); event.preventDefault(); confirmResume(${o.rowIndex}, '${o.order}')">RESUME</button>`;
+                 innerBtn = `<button class="btn btn-success w-100 position-relative" style="z-index: 10;" onclick="event.stopPropagation(); event.preventDefault(); preResume(${o.rowIndex}, '${o.order}')">RESUME</button>`;
                } else {
                  innerBtn = `
                    <div class="d-flex gap-2 position-relative w-100 flex-wrap" style="z-index: 10;">
@@ -2337,13 +2377,79 @@
       }
     }
 
-    function preStart(row, ord, startTask) { 
-      session.pendingRow = row; 
-      session.activeOrder = ord;
-      session.pendingStartTask = startTask || startTaskForOrder((appData.currentOrders || []).find(o => o.rowIndex === row)) || session.role;
-      session.pendingBatchRows = null;
-      session.pendingBatchMates = [];
+    function formatOrderNames(names) {
+      const list = (names || []).filter(Boolean).map(n => String(n));
+      if (!list.length) return '';
+      if (list.length === 1) return list[0];
+      if (list.length === 2) return list[0] + ' and ' + list[1];
+      return list.slice(0, -1).join(', ') + ' and ' + list[list.length - 1];
+    }
 
+    function myRunningOrders(exceptRows) {
+      const except = new Set((exceptRows || []).map(n => parseInt(n, 10)));
+      return (appData.currentOrders || []).filter(o =>
+        o.assigned === session.name &&
+        !o.isPaused &&
+        !except.has(o.rowIndex)
+      );
+    }
+
+    function showRunningChoiceModal(running, newOrderNames) {
+      session.pendingRunningOrders = running || [];
+      const runningNames = (running || []).map(o => o.order).filter(Boolean);
+      const newNames = Array.isArray(newOrderNames) ? newOrderNames : [newOrderNames];
+      const fromLabel = formatOrderNames(runningNames) || 'the current order';
+      const toLabel = formatOrderNames(newNames) || 'the new order';
+      const togetherLabel = formatOrderNames(runningNames.concat(newNames));
+      document.getElementById('runningChoiceMsg').innerText =
+        'You have ' + fromLabel + ' running. Work together, or switch to ' + toLabel + '?';
+      document.getElementById('runningChoiceList').innerHTML =
+        '<div><strong>Running:</strong> ' + fromLabel + '</div><div><strong>New:</strong> ' + toLabel + '</div>';
+      document.getElementById('btnWorkTogether').innerText = 'Work on ' + togetherLabel;
+      document.getElementById('btnSwitchOrders').innerText = 'Switch from ' + fromLabel + ' to ' + toLabel;
+      if (runningChoiceModal) runningChoiceModal.show();
+    }
+
+    function confirmWorkTogether() {
+      session.pendingWorkTogether = true;
+      session.skipRunningChoice = true;
+      if (runningChoiceModal) runningChoiceModal.hide();
+      if (session.pendingStartMode === 'resume') {
+        confirmResume(session.pendingRow, session.activeOrder);
+        return;
+      }
+      if (session.pendingStartMode === 'batch-start') {
+        batchStart();
+        return;
+      }
+      if (session.startConfirmed) {
+        confirmStart();
+        return;
+      }
+      continueToStartModal();
+    }
+
+    function confirmSwitchFromRunning() {
+      session.pendingWorkTogether = false;
+      session.skipRunningChoice = true;
+      if (runningChoiceModal) runningChoiceModal.hide();
+      if (session.pendingStartMode === 'resume') {
+        confirmResume(session.pendingRow, session.activeOrder);
+        return;
+      }
+      if (session.pendingStartMode === 'batch-start') {
+        batchStart();
+        return;
+      }
+      if (session.startConfirmed) {
+        openLeaveReasonModal('switch-start', session.pendingRunningOrders);
+        return;
+      }
+      offerSameProductOrStart();
+    }
+
+    function offerSameProductOrStart() {
+      const row = session.pendingRow;
       const current = (appData.currentOrders || []).find(o => o.rowIndex === row);
       if ((session.pendingStartTask || session.role) === 'Assembly' && current && current.productName) {
         const mates = (appData.currentOrders || []).filter(o =>
@@ -2356,7 +2462,7 @@
         if (mates.length) {
           session.pendingBatchMates = mates;
           document.getElementById('batchWorkMsg').innerText =
-            current.productName + ' on ' + ord + ' matches ' + mates.length + ' other order(s). Cut slats together?';
+            current.productName + ' on ' + session.activeOrder + ' matches ' + mates.length + ' other order(s). Cut slats together?';
           document.getElementById('batchWorkList').innerHTML = mates.map(m =>
             '<div><strong>' + m.order + '</strong> · ' + (m.productName || '') + '</div>'
           ).join('');
@@ -2365,6 +2471,26 @@
         }
       }
       continueToStartModal();
+    }
+
+    function preStart(row, ord, startTask) { 
+      session.pendingRow = row; 
+      session.activeOrder = ord;
+      session.pendingStartTask = startTask || startTaskForOrder((appData.currentOrders || []).find(o => o.rowIndex === row)) || session.role;
+      session.pendingBatchRows = null;
+      session.pendingBatchMates = [];
+      session.pendingWorkTogether = false;
+      session.pendingSwitchReason = null;
+      session.skipRunningChoice = false;
+      session.pendingStartMode = 'start';
+      session.startConfirmed = false;
+
+      const running = myRunningOrders([row]);
+      if (running.length) {
+        showRunningChoiceModal(running, ord);
+        return;
+      }
+      offerSameProductOrStart();
     }
 
     function confirmBatchTogether() {
@@ -2383,6 +2509,7 @@
     function confirmStart() {
       if (isSubmitting) return; 
       isSubmitting = true;
+      session.startConfirmed = true;
       if (startModal) startModal.hide();
       
       // NEW: Reset the Phase Filter to "All" so the user can see their newly started order
@@ -2411,15 +2538,21 @@
            }
            session.pendingBatchRows = null;
            session.pendingSwitchReason = null;
+           session.pendingWorkTogether = false;
+           session.skipRunningChoice = false;
            loadDashboard(true);
         } else if (res.needsSwitchReason) {
            loadDashboard(true);
-           openLeaveReasonModal('switch-start', res.runningOrders);
-        } else {
+           if (!session.skipRunningChoice && !session.pendingWorkTogether) {
+             session.pendingStartMode = 'start';
+             showRunningChoiceModal(res.runningOrders, session.activeOrder);
+           } else {
+             openLeaveReasonModal('switch-start', res.runningOrders);
+           } else {
            showAlert(res.message || res.error || "Could not start");
            loadDashboard();
         }
-      }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).startOrder(session.pendingRow, session.name, session.pendingStartTask || session.role, session.pendingBatchRows, session.pendingSwitchReason);
+      }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).startOrder(session.pendingRow, session.name, session.pendingStartTask || session.role, session.pendingBatchRows, session.pendingSwitchReason, !!session.pendingWorkTogether);
     }
 
     function onPauseReasonChange() {
@@ -2520,6 +2653,21 @@
       }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).workerPauseOrder(session.pendingRow, session.activeOrder, session.name, reason);
     }
 
+    function preResume(row, ord) {
+      session.pendingRow = row;
+      session.activeOrder = ord;
+      session.pendingStartMode = 'resume';
+      session.pendingWorkTogether = false;
+      session.pendingSwitchReason = null;
+      session.skipRunningChoice = false;
+      const running = myRunningOrders([row]);
+      if (running.length) {
+        showRunningChoiceModal(running, ord);
+        return;
+      }
+      confirmResume(row, ord);
+    }
+
     function confirmResume(row, ord) {
       if (isSubmitting) return;
       isSubmitting = true;
@@ -2537,15 +2685,21 @@
         isSubmitting = false;
         if(res.success) {
            session.pendingSwitchReason = null;
+           session.pendingWorkTogether = false;
+           session.skipRunningChoice = false;
            loadDashboard(true);
         } else if (res.needsSwitchReason) {
            loadDashboard(true);
-           openLeaveReasonModal('switch-resume', res.runningOrders);
-        } else {
+           if (!session.skipRunningChoice && !session.pendingWorkTogether) {
+             session.pendingStartMode = 'resume';
+             showRunningChoiceModal(res.runningOrders, session.activeOrder);
+           } else {
+             openLeaveReasonModal('switch-resume', res.runningOrders);
+           } else {
            showAlert(res.message);
            loadDashboard();
         }
-      }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).workerResumeOrder(session.pendingRow, session.activeOrder, session.name, session.pendingSwitchReason);
+      }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).workerResumeOrder(session.pendingRow, session.activeOrder, session.name, session.pendingSwitchReason, !!session.pendingWorkTogether);
     }
 
 
