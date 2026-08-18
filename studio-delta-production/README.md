@@ -2,14 +2,14 @@
 
 Google Apps Script shop-floor app for Studio Delta (South Africa). Paste `Code.gs` and `index.html` into the Apps Script project bound to the production spreadsheet. The HTML file **must** be named `index` in the script editor.
 
-Timezone: **Africa/Johannesburg**. A standard work day is **8 hours (480 minutes)**. Anything above that on a calendar day is overtime.
+Timezone: **Africa/Johannesburg**. The paid shift is **07:45–15:45** with a **30-minute break 12:00–12:30** (7.5 hours / 450 minutes). Minutes after that on a calendar day are overtime. Overnight jobs are split by calendar day on Activity (e.g. 14:00 yesterday–10:00 today → yesterday 14:00–15:45 and today 07:45–10:00).
 
 ## Floor rules
 
 - One person has **one running clock**. Extra open jobs are paused automatically.
 - Same product, same process (e.g. assembly slats for two matching gates) can be **batched**: one clock, time split across the orders. Use **Work this order only** to leave the batch.
 - When plate cutting finishes on an order, welders waiting on that plate are **auto-switched** back. They can tap **Still on other job** if they are not ready.
-- If nobody has a running job for more than ~10 minutes during shift hours (07:00–17:00 weekdays), **Admin and QC who currently have the app open** get a popup modal listing those idle people. Assign an **indirect task** from the popup (or from Admin → Workers). Starting a real order closes that task. Idle alerts are **not** emailed.
+- If nobody has a running job for more than ~10 minutes during shift hours (07:45–15:45 weekdays), **Admin and QC who currently have the app open** get a popup modal listing those idle people. Assign an **indirect task** from the popup (or from Admin → Workers). Starting a real order closes that task. Idle alerts are **not** emailed.
 
 ## New spreadsheet pieces
 

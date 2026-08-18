@@ -1127,7 +1127,7 @@
     
     <div id="view-admin-activity" class="view-section container d-none-view">
       <h2 class="brand-font mb-3">Employee Activity</h2>
-      <p class="text-muted">A standard day is 8 hours. Time beyond that is overtime.</p>
+      <p class="text-muted">A standard day is the 07:45–15:45 shift minus the 12:00–12:30 break (7.5 hours). Time beyond that is overtime. Overnight jobs are split by calendar day.</p>
       <div class="row g-2 mb-3">
         <div class="col-md-3">
           <select id="activityPeriod" class="form-select border-dark" onchange="loadActivityReport()">
@@ -3161,13 +3161,13 @@ function openSteelModal() {
         let day = current.getDay();
         if (day === 0 || day === 6) {
           current.setDate(current.getDate() + 1);
-          current.setHours(7, 30, 0, 0);
+          current.setHours(7, 45, 0, 0);
           continue;
         }
         
-        let shiftStart = new Date(current); shiftStart.setHours(7, 30, 0, 0);
+        let shiftStart = new Date(current); shiftStart.setHours(7, 45, 0, 0);
         let lunchStart = new Date(current); lunchStart.setHours(12, 0, 0, 0);
-        let lunchEnd   = new Date(current); lunchEnd.setHours(13, 0, 0, 0);
+        let lunchEnd   = new Date(current); lunchEnd.setHours(12, 30, 0, 0);
         let shiftEnd   = new Date(current); shiftEnd.setHours(15, 45, 0, 0);
         
         let windowStart = (current > shiftStart) ? current : shiftStart;
@@ -3184,7 +3184,7 @@ function openSteelModal() {
         if (end < shiftEnd) break; 
         else { 
             current.setDate(current.getDate() + 1); 
-            current.setHours(7, 30, 0, 0); 
+            current.setHours(7, 45, 0, 0); 
         }
       }
       return totalMinutes;
@@ -3194,6 +3194,14 @@ function openSteelModal() {
       let h = Math.floor(totalMins / 60);
       let m = Math.floor(totalMins % 60);
       return (h < 10 ? "0"+h : h) + ":" + (m < 10 ? "0"+m : m);
+    }
+
+    function formatClock(ms) {
+      if (!ms) return '';
+      const d = new Date(ms);
+      const h = d.getHours();
+      const m = d.getMinutes();
+      return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
     }
 
     function startLiveTimers() {
@@ -4826,7 +4834,9 @@ function openSteelModal() {
         html += `<div class="small text-muted mb-1">What they did</div><ul class="mb-0">`;
         (w.tasks || []).slice(0, 40).forEach(task => {
           const kind = task.entryType === 'indirect' ? 'Non-order' : (task.order || '');
-          html += `<li><strong>${task.task}</strong> · ${kind} · ${formatDuration(task.minutes)}${task.end ? '' : ' (running)'}</li>`;
+          const when = task.date ? ' · ' + task.date : '';
+          const clock = task.start ? (' · ' + formatClock(task.start) + '–' + (task.end ? formatClock(task.end) : 'now')) : '';
+          html += `<li><strong>${task.task}</strong> · ${kind}${when}${clock} · ${formatDuration(task.minutes)}${task.end ? '' : ' (running)'}</li>`;
         });
         html += `</ul></div>`;
       });

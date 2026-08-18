@@ -20,7 +20,12 @@ var QUEUE_FOLDER_ID = "1MRl3nX7-4d8dmrjQU0UrCbzCf6Ilymub";
 var TAB_IDLE = "Idle_Alerts";
 var TZ_JOBURG = "Africa/Johannesburg";
 var SAST_OFFSET_MS = 2 * 60 * 60 * 1000; // South Africa has no DST
-var STANDARD_DAY_MINS = 8 * 60;
+var STANDARD_DAY_MINS = 7 * 60 + 30; // paid shift: 07:45-15:45 minus 30 min lunch
+var SHIFT_START_MINS = 7 * 60 + 45;
+var SHIFT_END_MINS = 15 * 60 + 45;
+var LUNCH_START_MINS = 12 * 60;
+var LUNCH_END_MINS = 12 * 60 + 30;
+var SHIFT_DURATION = STANDARD_DAY_MINS;
 var IDLE_GRACE_MINS = 10;
 var INDIRECT_TASKS = ["Cleaning", "Maintenance", "Material handling", "Waiting for materials", "Waiting for plate", "Meeting", "Training", "Other"];
 
@@ -1303,12 +1308,6 @@ function calcRawServerMins(start, end, taskName) {
     return (end.getTime() - start.getTime()) / 1000 / 60;
   }
 
-  var SHIFT_START_MINS = 7 * 60 + 30;
-  var LUNCH_START_MINS = 12 * 60;
-  var LUNCH_END_MINS   = 13 * 60;
-  var SHIFT_END_MINS   = 15 * 60 + 45;
-  var SHIFT_DURATION   = 435;
-
   function getWorkingMins(startDate, endDate) {
      var sMins = sastMinsOfDay(startDate);
      var eMins = sastMinsOfDay(endDate);
@@ -1348,7 +1347,7 @@ function calcRawServerMins(start, end, taskName) {
 
     var endDow = sastDayOfWeek(end);
     if (endDow !== 0 && endDow !== 6) {
-      totalMinutes += getWorkingMins(sastWallToDate(end, 7, 30), end);
+      totalMinutes += getWorkingMins(sastWallToDate(end, Math.floor(SHIFT_START_MINS / 60), SHIFT_START_MINS % 60), end);
     }
   }
 
@@ -2324,7 +2323,7 @@ function isWithinShiftNow() {
   var dow = sastDayOfWeek(now);
   if (dow === 0 || dow === 6) return false;
   var mins = sastMinsOfDay(now);
-  return mins >= (7 * 60 + 30) && mins <= (15 * 60 + 45);
+  return mins >= SHIFT_START_MINS && mins < SHIFT_END_MINS;
 }
 
 function getPauseIntervalsForRow(row) {
@@ -2394,6 +2393,62 @@ function calculateWorkMinutesFromLog(row) {
     meta.pauses = getPauseIntervalsForRow(row);
   }
   return calculateWorkMinutesMeta(start, end, task, meta, row[10]);
+}
+
+function splitWorkByDay(row) {
+  var start = row[5] ? new Date(row[5]) : null;
+  if (start && isNaN(start.getTime())) start = null;
+  if (!start) return [];
+  var isOpen = !row[6];
+  var end = row[6] ? new Date(row[6]) : new Date();
+  if (end && isNaN(end.getTime())) end = new Date();
+  if (end.getTime() <= start.getTime()) return [];
+  var task = row[4];
+  var meta = parseLogMeta(row.length > 12 ? row[12] : "");
+  if (row[9] && !hasOpenPause(meta.pauses)) {
+    meta.pauses = getPauseIntervalsForRow(row);
+  }
+  var hasPauseTimes = meta.pauses && meta.pauses.length > 0;
+  var fullRaw = 0;
+  if (!hasPauseTimes && row[10]) {
+    fullRaw = calcRawServerMins(start, end, task);
+  }
+  var slices = [];
+  var endStamp = sastDayStamp(end);
+  var cursor = sastWallToDate(start, 0, 0);
+  var safety = 0;
+  while (sastDayStamp(cursor) <= endStamp && safety < 400) {
+    safety++;
+    var dayStamp = sastDayStamp(cursor);
+    var dayStart = sastWallToDate(cursor, 0, 0);
+    var nextMidnight = addSastDays(dayStart, 1);
+    var sliceStartMs = Math.max(start.getTime(), dayStart.getTime());
+    var sliceEndMs = Math.min(end.getTime(), nextMidnight.getTime());
+    if (sliceEndMs > sliceStartMs) {
+      var sliceStart = new Date(sliceStartMs);
+      var sliceEnd = new Date(sliceEndMs);
+      var mins = 0;
+      if (hasPauseTimes) {
+        mins = calculateWorkMinutesMeta(sliceStart, sliceEnd, task, meta, 0);
+      } else if (row[10] && fullRaw > 0) {
+        var sliceRaw = calcRawServerMins(sliceStart, sliceEnd, task);
+        mins = Math.max(0, sliceRaw - (parseFloat(row[10]) || 0) * (sliceRaw / fullRaw));
+      } else {
+        mins = calculateWorkMinutesMeta(sliceStart, sliceEnd, task, meta, 0);
+      }
+      if (mins > 0) {
+        var stillRunning = isOpen && dayStamp === sastDayStamp(end);
+        slices.push({
+          dayStamp: dayStamp,
+          start: sliceStart,
+          end: stillRunning ? null : sliceEnd,
+          mins: mins
+        });
+      }
+    }
+    cursor = addSastDays(cursor, 1);
+  }
+  return slices;
 }
 
 function hasOpenPause(pauses) {
@@ -2877,36 +2932,56 @@ function getActivityReport(period, refDateMs, workerFilter) {
     return Utilities.formatDate(dateObj, TZ_JOBURG, "yyyy-MM") === refMonth;
   }
 
+  function inRangeStamp(stamp) {
+    if (!stamp) return false;
+    if (period === "day") return stamp === refStamp;
+    if (period === "month") return String(stamp).slice(0, 7) === refMonth;
+    var parts = String(stamp).split("-");
+    if (parts.length < 3) return false;
+    var noon = sastWallToDate(new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 10, 0, 0)), 12, 0);
+    return inRange(noon);
+  }
+
   var byWorker = {};
   var allWorkerNames = {};
   for (var i = 1; i < logData.length; i++) {
     var worker = String(logData[i][2] || "").trim();
     if (!worker) continue;
     var start = logData[i][5] ? new Date(logData[i][5]) : null;
-    var end = logData[i][6] ? new Date(logData[i][6]) : new Date();
-    var anchor = logData[i][6] ? new Date(logData[i][6]) : start;
-    if (!anchor || isNaN(anchor) || !inRange(anchor)) continue;
+    if (!start || isNaN(start.getTime())) continue;
+
+    var slices = splitWorkByDay(logData[i]);
+    var anyInRange = false;
+    for (var s = 0; s < slices.length; s++) {
+      if (inRangeStamp(slices[s].dayStamp)) { anyInRange = true; break; }
+    }
+    if (!anyInRange) continue;
     allWorkerNames[worker] = true;
     if (workerFilter && String(workerFilter).trim() && String(workerFilter).trim().toLowerCase() !== worker.toLowerCase()) continue;
 
-    var mins = calculateWorkMinutesFromLog(logData[i]);
-    var dayStamp = sastDayStamp(anchor);
+    var rowMeta = parseLogMeta(logData[i].length > 12 ? logData[i][12] : "");
     if (!byWorker[worker]) byWorker[worker] = { worker: worker, days: {}, tasks: [] };
-    if (!byWorker[worker].days[dayStamp]) {
-      byWorker[worker].days[dayStamp] = { date: dayStamp, minutes: 0, overtime: 0, regular: 0, tasks: [] };
+    for (var s = 0; s < slices.length; s++) {
+      var slice = slices[s];
+      if (!inRangeStamp(slice.dayStamp)) continue;
+      var dayStamp = slice.dayStamp;
+      if (!byWorker[worker].days[dayStamp]) {
+        byWorker[worker].days[dayStamp] = { date: dayStamp, minutes: 0, overtime: 0, regular: 0, tasks: [] };
+      }
+      var task = {
+        order: logData[i][1],
+        role: logData[i][3],
+        task: logData[i][4],
+        start: slice.start ? slice.start.getTime() : null,
+        end: slice.end ? slice.end.getTime() : null,
+        minutes: slice.mins,
+        date: dayStamp,
+        entryType: rowMeta.entryType || "production"
+      };
+      byWorker[worker].days[dayStamp].minutes += slice.mins;
+      byWorker[worker].days[dayStamp].tasks.push(task);
+      byWorker[worker].tasks.push(task);
     }
-    var task = {
-      order: logData[i][1],
-      role: logData[i][3],
-      task: logData[i][4],
-      start: start ? start.getTime() : null,
-      end: logData[i][6] ? new Date(logData[i][6]).getTime() : null,
-      minutes: mins,
-      entryType: parseLogMeta(logData[i].length > 12 ? logData[i][12] : "").entryType || "production"
-    };
-    byWorker[worker].days[dayStamp].minutes += mins;
-    byWorker[worker].days[dayStamp].tasks.push(task);
-    byWorker[worker].tasks.push(task);
   }
 
   var workers = [];
