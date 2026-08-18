@@ -380,6 +380,7 @@ function packValuesIndex(pack, sheetRow) {
 }
 
 var CACHE_TTL_FLOOR = 90;
+var CACHE_TTL_ACTIVITY = 45;
 var CACHE_TTL_USERS = 180;
 var CACHE_TTL_STEEL = 300;
 var CACHE_TTL_BACKBOARD = 300;
@@ -918,8 +919,7 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
     logSheet.getRange(rowToUpdate, 7).setValue(endTime);
     logSheet.getRange(rowToUpdate, 8).setValue(resultStr);
     if(signatureUrl) logSheet.getRange(rowToUpdate, 9).setValue(signatureUrl);
-    writeLogMeta(logSheet, rowToUpdate, meta);
-    syncLegacyPauseCells(logSheet, rowToUpdate, meta, processName);
+    writeLogPauseState(logSheet, rowToUpdate, meta, processName);
 
     SpreadsheetApp.flush();
 
@@ -2004,8 +2004,7 @@ function workerPauseOrder(rowIndex, orderNum, workerName, reason) {
          if (!hasOpenPause(meta.pauses) && !logs[i][9]) {
             var sheetRow = packSheetRow(pack, i);
             meta = addPauseToMeta(meta, reason);
-            writeLogMeta(logSheet, sheetRow, meta);
-            syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
+            writeLogPauseState(logSheet, sheetRow, meta, logs[i][4]);
             pausedSomething = true;
          }
       }
@@ -2058,8 +2057,7 @@ function adminPauseOrder(orderNum) {
          if (!hasOpenPause(meta.pauses) && !logs[i][9]) {
             var sheetRow = packSheetRow(pack, i);
             meta = addPauseToMeta(meta, "Admin pause");
-            writeLogMeta(logSheet, sheetRow, meta);
-            syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
+            writeLogPauseState(logSheet, sheetRow, meta, logs[i][4]);
             pausedSomething = true;
          }
       }
@@ -2088,8 +2086,7 @@ function adminResumeOrder(orderNum) {
          if (hasOpenPause(meta.pauses) || logs[i][9]) {
             var sheetRow = packSheetRow(pack, i);
             meta = closeOpenPauseInMeta(meta, new Date());
-            writeLogMeta(logSheet, sheetRow, meta);
-            syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
+            writeLogPauseState(logSheet, sheetRow, meta, logs[i][4]);
             resumedSomething = true;
          }
       }
@@ -2332,6 +2329,21 @@ function writeLogMeta(logSheet, rowNum, meta) {
   logSheet.getRange(rowNum, 13).setValue(JSON.stringify(meta));
 }
 
+function writeLogPauseState(logSheet, rowNum, meta, taskName) {
+  meta = meta || defaultLogMeta();
+  var openStart = getOpenPauseStart(meta);
+  var lastReason = "";
+  if (meta.pauses && meta.pauses.length) {
+    lastReason = meta.pauses[meta.pauses.length - 1].reason || "";
+  }
+  logSheet.getRange(rowNum, 10, 1, 4).setValues([[
+    openStart ? new Date(openStart) : "",
+    cumulativePauseMinsFromMeta(meta, taskName),
+    openStart ? lastReason : "",
+    JSON.stringify(meta)
+  ]]);
+}
+
 function asSast(date) {
   return new Date(date.getTime() + SAST_OFFSET_MS);
 }
@@ -2476,24 +2488,35 @@ function getWorkBoutsFromLog(row) {
   return bouts;
 }
 
-function splitWorkByDay(row) {
+function splitWorkByDay(row, rangeFrom, rangeTo) {
   var task = row[4];
   var emptyMeta = defaultLogMeta();
   var slices = [];
+  var rangeFromMs = rangeFrom ? rangeFrom.getTime() : 0;
+  var rangeToMs = rangeTo ? rangeTo.getTime() : 0;
   var bouts = getWorkBoutsFromLog(row);
   for (var b = 0; b < bouts.length; b++) {
     var bout = bouts[b];
-    var endStamp = sastDayStamp(bout.end);
-    var cursor = sastWallToDate(bout.start, 0, 0);
+    var boutStartMs = bout.start.getTime();
+    var boutEndMs = bout.end.getTime();
+    if (rangeToMs && boutStartMs >= rangeToMs) continue;
+    if (rangeFromMs && boutEndMs <= rangeFromMs) continue;
+    if (rangeFromMs && boutStartMs < rangeFromMs) boutStartMs = rangeFromMs;
+    if (rangeToMs && boutEndMs > rangeToMs) boutEndMs = rangeToMs;
+    if (boutEndMs <= boutStartMs) continue;
+    var clippedStart = new Date(boutStartMs);
+    var clippedEnd = new Date(boutEndMs);
+    var endStamp = sastDayStamp(clippedEnd);
+    var cursor = sastWallToDate(clippedStart, 0, 0);
     var safety = 0;
     var daySlices = [];
-    while (sastDayStamp(cursor) <= endStamp && safety < 400) {
+    while (sastDayStamp(cursor) <= endStamp && safety < 40) {
       safety++;
       var dayStamp = sastDayStamp(cursor);
       var dayStart = sastWallToDate(cursor, 0, 0);
       var nextMidnight = addSastDays(dayStart, 1);
-      var sliceStartMs = Math.max(bout.start.getTime(), dayStart.getTime());
-      var sliceEndMs = Math.min(bout.end.getTime(), nextMidnight.getTime());
+      var sliceStartMs = Math.max(clippedStart.getTime(), dayStart.getTime());
+      var sliceEndMs = Math.min(clippedEnd.getTime(), nextMidnight.getTime());
       if (sliceEndMs > sliceStartMs) {
         var sliceStart = new Date(sliceStartMs);
         var sliceEnd = new Date(sliceEndMs);
@@ -2512,13 +2535,31 @@ function splitWorkByDay(row) {
       cursor = addSastDays(cursor, 1);
     }
     if (daySlices.length) {
-      daySlices[daySlices.length - 1].stopReason = bout.stopReason || "";
-      daySlices[daySlices.length - 1].stillRunning = !!bout.stillRunning;
-      if (bout.stillRunning) daySlices[daySlices.length - 1].end = null;
+      var pauseInRange = !rangeToMs || bout.end.getTime() <= rangeToMs;
+      var still = !!bout.stillRunning && (!rangeToMs || bout.end.getTime() <= rangeToMs);
+      daySlices[daySlices.length - 1].stopReason = pauseInRange ? (bout.stopReason || "") : "";
+      daySlices[daySlices.length - 1].stillRunning = still;
+      if (still) daySlices[daySlices.length - 1].end = null;
     }
     for (var s = 0; s < daySlices.length; s++) slices.push(daySlices[s]);
   }
   return slices;
+}
+
+function getActivityPeriodBounds(period, ref) {
+  var day0 = sastWallToDate(ref, 0, 0);
+  if (period === "day") {
+    return { from: day0, to: addSastDays(day0, 1) };
+  }
+  if (period === "month") {
+    var ym = Utilities.formatDate(ref, TZ_JOBURG, "yyyy-MM").split("-");
+    var y = Number(ym[0]);
+    var m = Number(ym[1]);
+    var from = sastWallToDate(new Date(Date.UTC(y, m - 1, 1, 10, 0, 0)), 0, 0);
+    var next = m === 12 ? new Date(Date.UTC(y + 1, 0, 1, 10, 0, 0)) : new Date(Date.UTC(y, m, 1, 10, 0, 0));
+    return { from: from, to: sastWallToDate(next, 0, 0) };
+  }
+  return { from: addSastDays(day0, -8), to: addSastDays(day0, 8) };
 }
 
 function hasOpenPause(pauses) {
@@ -2669,8 +2710,7 @@ function closeIndirectTasksForWorker(ss, workerName, pack) {
       var sheetRow = packSheetRow(pack, i);
       meta = closeOpenPauseInMeta(meta, now);
       logSheet.getRange(sheetRow, 7).setValue(now);
-      writeLogMeta(logSheet, sheetRow, meta);
-      syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
+      writeLogPauseState(logSheet, sheetRow, meta, logs[i][4]);
       closed++;
     }
   }
@@ -2694,8 +2734,7 @@ function autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, reason, exceptBa
     if (hasOpenPause(meta.pauses) || logs[i][9]) continue;
     var sheetRow = packSheetRow(pack, i);
     meta = addPauseToMeta(meta, reason || "Switched job");
-    writeLogMeta(logSheet, sheetRow, meta);
-    syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
+    writeLogPauseState(logSheet, sheetRow, meta, logs[i][4]);
     paused.push(String(logs[i][1]));
   }
   return paused;
@@ -2712,8 +2751,7 @@ function resumeWorkerLog(ss, workerName, orderNum, pack) {
       var sheetRow = packSheetRow(pack, i);
       var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
       meta = closeOpenPauseInMeta(meta, new Date());
-      writeLogMeta(logSheet, sheetRow, meta);
-      syncLegacyPauseCells(logSheet, sheetRow, meta, logs[i][4]);
+      writeLogPauseState(logSheet, sheetRow, meta, logs[i][4]);
       return true;
     }
   }
@@ -2805,8 +2843,7 @@ function leaveBatchForOrder(workerName, keepOrder) {
       m = addPauseToMeta(m, "Batch cut done — assembling " + keepOrder);
     }
     var sheetRow = packSheetRow(pack, j);
-    writeLogMeta(logSheet, sheetRow, m);
-    syncLegacyPauseCells(logSheet, sheetRow, m, logs[j][4]);
+    writeLogPauseState(logSheet, sheetRow, m, logs[j][4]);
   }
   bumpFloorCache();
   return { success: true };
@@ -3014,13 +3051,21 @@ function assignIndirectTask(workerName, taskName, assignedBy) {
 }
 
 function getActivityReport(period, refDateMs, workerFilter) {
-  var ss = getSpreadsheet();
-  var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logData = logSheet.getDataRange().getValues();
   var ref = refDateMs ? new Date(Number(refDateMs)) : new Date();
   var refStamp = sastDayStamp(ref);
   var refWeek = Utilities.formatDate(ref, TZ_JOBURG, "yyyy-'W'ww");
   var refMonth = Utilities.formatDate(ref, TZ_JOBURG, "yyyy-MM");
+  var cacheKey = "activity:" + String(period || "day") + ":" + (period === "day" ? refStamp : (period === "week" ? refWeek : refMonth)) + ":" + String(workerFilter || "").trim().toLowerCase();
+  var cached = floorCacheGet(cacheKey);
+  if (cached) return cached;
+  var ss = getSpreadsheet();
+  var logSheet = getSheetOrDie(ss, TAB_LOGS);
+  var lastRow = logSheet.getLastRow();
+  var lastCol = Math.min(13, logSheet.getLastColumn());
+  var logData = lastRow < 2 ? [[]] : logSheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var bounds = getActivityPeriodBounds(period, ref);
+  var fromMs = bounds.from.getTime();
+  var toMs = bounds.to.getTime();
 
   function inRange(dateObj) {
     if (!dateObj) return false;
@@ -3046,8 +3091,12 @@ function getActivityReport(period, refDateMs, workerFilter) {
     if (!worker) continue;
     var start = logData[i][5] ? new Date(logData[i][5]) : null;
     if (!start || isNaN(start.getTime())) continue;
+    var end = logData[i][6] ? new Date(logData[i][6]) : new Date();
+    if (end && isNaN(end.getTime())) end = new Date();
+    if (start.getTime() >= toMs) continue;
+    if (end.getTime() <= fromMs) continue;
 
-    var slices = splitWorkByDay(logData[i]);
+    var slices = splitWorkByDay(logData[i], bounds.from, bounds.to);
     var anyInRange = false;
     for (var s = 0; s < slices.length; s++) {
       if (inRangeStamp(slices[s].dayStamp)) { anyInRange = true; break; }
@@ -3110,7 +3159,7 @@ function getActivityReport(period, refDateMs, workerFilter) {
     });
   }
 
-  return {
+  var result = {
     period: period,
     refDate: ref.getTime(),
     label: period === "day" ? refStamp : (period === "week" ? refWeek : refMonth),
@@ -3118,4 +3167,6 @@ function getActivityReport(period, refDateMs, workerFilter) {
     allWorkerNames: Object.keys(allWorkerNames).sort(),
     workers: workers
   };
+  floorCachePut(cacheKey, result, CACHE_TTL_ACTIVITY);
+  return result;
 }

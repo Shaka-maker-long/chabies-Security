@@ -1130,17 +1130,17 @@
       <p class="text-muted">A standard day is the 07:45–15:45 shift minus the 12:00–12:30 break (7.5 hours). Time beyond that is overtime. Overnight jobs are split by calendar day.</p>
       <div class="row g-2 mb-3">
         <div class="col-md-3">
-          <select id="activityPeriod" class="form-select border-dark" onchange="loadActivityReport()">
+          <select id="activityPeriod" class="form-select border-dark" onchange="scheduleActivityReport()">
             <option value="day">Daily</option>
             <option value="week">Weekly</option>
             <option value="month">Monthly</option>
           </select>
         </div>
         <div class="col-md-3">
-          <input type="date" id="activityDate" class="form-control border-dark" onchange="loadActivityReport()">
+          <input type="date" id="activityDate" class="form-control border-dark" onchange="scheduleActivityReport()">
         </div>
         <div class="col-md-3">
-          <select id="activityWorker" class="form-select border-dark" onchange="loadActivityReport()">
+          <select id="activityWorker" class="form-select border-dark" onchange="scheduleActivityReport()">
             <option value="">All workers</option>
           </select>
         </div>
@@ -4871,14 +4871,26 @@ function openSteelModal() {
       }).assignIndirectTask(worker, task, session.name);
     }
 
+    let activityLoadTimer = null;
+    let fillingActivityWorkers = false;
+    function todayInputDate() {
+      const d = new Date();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return d.getFullYear() + '-' + m + '-' + day;
+    }
+    function scheduleActivityReport() {
+      if (fillingActivityWorkers) return;
+      clearTimeout(activityLoadTimer);
+      activityLoadTimer = setTimeout(loadActivityReport, 150);
+    }
     function loadActivityReport() {
       navTo('view-admin-activity');
       const periodEl = document.getElementById('activityPeriod');
       const dateEl = document.getElementById('activityDate');
       const workerEl = document.getElementById('activityWorker');
       if (dateEl && !dateEl.value) {
-        const d = new Date();
-        dateEl.value = d.toISOString().slice(0,10);
+        dateEl.value = todayInputDate();
       }
       const period = periodEl ? periodEl.value : 'day';
       const refMs = dateEl && dateEl.value ? new Date(dateEl.value + 'T12:00:00').getTime() : Date.now();
@@ -4902,7 +4914,9 @@ function openSteelModal() {
         Object.keys(names).sort().forEach(n => {
           html += '<option value="' + n + '"' + (n === current ? ' selected' : '') + '>' + n + '</option>';
         });
+        fillingActivityWorkers = true;
         workerEl.innerHTML = html;
+        fillingActivityWorkers = false;
       }
       let regular = 0, ot = 0, overDays = 0;
       (data.workers || []).forEach(w => {
