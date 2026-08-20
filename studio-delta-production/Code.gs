@@ -162,8 +162,8 @@ function workerCanPerformTask(workerName, task) {
   if (profile.isAdmin) return true;
   var want = canonicalTaskName(task) || String(task || "").trim();
   if (profile.tasks.indexOf(want) !== -1) return true;
-  // Assemblers may start Paint Preparation from Ready for Assembly without a separate login task.
-  if (want === "Paint Preparation" && profile.tasks.indexOf("Assembly") !== -1) return true;
+  // Assemblers and painters may start Paint Preparation without a separate login task.
+  if (want === "Paint Preparation" && (profile.tasks.indexOf("Assembly") !== -1 || profile.tasks.indexOf("Painting") !== -1)) return true;
   return false;
 }
 
@@ -609,7 +609,7 @@ function getOrdersForRole(role, workerName) {
     ],
     'Assembly': ['Ready for Assembly', 'Assembly', 'Paint Preparation'],
     'Paint Preparation': ['Ready for Assembly', 'Paint Preparation'],
-    'Painting': ['Ready for Painting', 'Painting']
+    'Painting': ['Ready for Assembly', 'Paint Preparation', 'Ready for Painting', 'Painting']
   };
 
   var plateCuttingStages = [
@@ -1612,7 +1612,7 @@ function getStartStatusForRole(currentStatus, role) {
   var currentLower = String(currentStatus || "").trim().toLowerCase();
   var roleLower = String(role || "").trim().toLowerCase();
   if (roleLower === "plate cutting") return "Plate Cutting";
-  if (currentLower === "ready for assembly" && roleLower === "paint preparation") {
+  if (currentLower === "ready for assembly" && (roleLower === "paint preparation" || roleLower === "painting" || roleLower === "painter")) {
     return "Paint Preparation";
   }
   if (currentLower === "ready for painting" && (roleLower === "painting" || roleLower === "painter")) {

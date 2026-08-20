@@ -2361,7 +2361,7 @@
       if (st === 'ready for assembly' && session.role === 'Assembly') {
         return `<div class="d-flex gap-2 position-relative w-100 flex-wrap" style="z-index: 10;">${start('ASSEMBLE', 'Assembly', 'btn-primary')}${start('PAINT PREP', 'Paint Preparation', 'btn-outline-dark')}</div>`;
       }
-      if (st === 'ready for assembly' && session.role === 'Paint Preparation') {
+      if (st === 'ready for assembly' && (session.role === 'Paint Preparation' || session.role === 'Painting')) {
         return start('START PAINT PREP', 'Paint Preparation');
       }
       return start('START', startTaskForOrder(o));
