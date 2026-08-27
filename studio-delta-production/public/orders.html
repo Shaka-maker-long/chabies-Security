@@ -18,16 +18,23 @@
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
     button.ghost { background:#fff; color:#1d2939; }
     .wrap { overflow:auto; height:calc(100vh - 58px); }
-    table { border-collapse:collapse; min-width:2400px; background:#fff; font-size:12px; }
-    th, td { border:1px solid var(--line); padding:6px 8px; vertical-align:top; white-space:nowrap; }
-    th { position:sticky; top:0; background:var(--head); z-index:2; text-align:left; font-size:11px; letter-spacing:.02em; }
-    td input, td textarea, td select { width:100%; border:0; font:inherit; background:transparent; padding:0; }
-    td textarea { min-height:38px; white-space:pre-wrap; }
+    table { border-collapse:separate; border-spacing:0; min-width:4200px; background:#fff; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:6px 8px; vertical-align:top; white-space:nowrap; background:#fff; }
+    th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
+    td input, td textarea, td select { width:100%; min-width:100%; border:0; font:inherit; background:transparent; padding:0; }
+    td select { min-height:22px; }
+    td textarea { min-height:42px; white-space:pre-wrap; }
+    tr:focus-within td { outline:0; }
     tr:focus-within { outline:2px solid #98a2b3; outline-offset:-2px; }
-    .status-At\ Couriers, .st-couriers { background:var(--blue); }
+    .st-couriers { background:var(--blue); }
     .st-green { background:var(--green); }
-    .narrow { width:110px; }
-    .wide { min-width:280px; }
+    .freeze { position:sticky; z-index:3; box-shadow:1px 0 0 var(--line); }
+    th.freeze { z-index:6; background:var(--head); }
+    td.freeze { background:#fff; }
+    td.freeze.st-couriers { background:var(--blue); }
+    td.freeze.st-green { background:var(--green); }
+    .freeze-end { box-shadow:4px 0 8px rgba(16,24,40,.12); }
+    .wrap-text { white-space:normal; }
     .msg { font-size:12px; color:#667085; }
   </style>
 </head>
@@ -51,30 +58,40 @@
   </div>
   <script>
     const HEADERS = [
-      ["quote_number","QUOTE NUMBER"],
-      ["order_number","ORDER NUMBER"],
-      ["status","STATUS"],
-      ["assigned_operator","ASSIGNED OPERATOR"],
-      ["type","TYPE"],
-      ["category","CATERGORY"],
-      ["product","PRODUCT"],
-      ["variation","VARIATION"],
-      ["doors","DOORS"],
-      ["detailed_description","DETAILED DESCRIPTION"],
-      ["dimensions","DIMENSIONS"],
-      ["powder_coating","POWDER COATING"],
-      ["client_name","CLIENT NAME"],
-      ["client_number","CLIENT NUMBER"],
-      ["email","EMAIL ADDRESS"],
-      ["payment_date","PAYMENT DATE"],
-      ["address","ADDRESS"],
-      ["province","PROVINCE"],
-      ["price_incl_vat","PRICE (Incl VAT)"],
-      ["price_excl_vat","PRICE (Excl VAT)"],
-      ["month_of_sale","MONTH OF SALE"],
-      ["source","SOURCE"],
-      ["city","CITY"]
+      ["quote_number","QUOTE NUMBER", 130, true],
+      ["order_number","ORDER NUMBER", 140, true],
+      ["status","STATUS", 150, true],
+      ["assigned_operator","ASSIGNED OPERATOR", 150, true],
+      ["type","TYPE", 130, true],
+      ["category","CATERGORY", 200, true],
+      ["product","PRODUCT", 240, true],
+      ["variation","VARIATION", 320, true],
+      ["doors","DOORS", 180, false],
+      ["detailed_description","DETAILED DESCRIPTION", 280, false],
+      ["dimensions","DIMENSIONS", 180, false],
+      ["powder_coating","POWDER COATING", 190, false],
+      ["client_name","CLIENT NAME", 170, false],
+      ["client_number","CLIENT NUMBER", 150, false],
+      ["email","EMAIL ADDRESS", 210, false],
+      ["payment_date","PAYMENT DATE", 130, false],
+      ["address","ADDRESS", 240, false],
+      ["province","PROVINCE", 150, false],
+      ["price_incl_vat","PRICE (Incl VAT)", 130, false],
+      ["price_excl_vat","PRICE (Excl VAT)", 130, false],
+      ["month_of_sale","MONTH OF SALE", 130, false],
+      ["source","SOURCE", 150, false],
+      ["city","CITY", 130, false]
     ];
+    const freezeLeft = {};
+    (function setFreezeOffsets() {
+      let left = 0;
+      HEADERS.forEach(([k, , width, freeze]) => {
+        if (freeze) {
+          freezeLeft[k] = left;
+          left += width;
+        }
+      });
+    })();
     let rows = [];
     let dropdowns = {};
     const DROP_FIELDS = {
@@ -89,25 +106,41 @@
       return "";
     }
 
+    function colStyle(k, width, freeze) {
+      let s = "width:" + width + "px;min-width:" + width + "px;max-width:" + width + "px;";
+      if (freeze) s += "left:" + freezeLeft[k] + "px;";
+      return s;
+    }
+    function colClass(k, width, freeze, extra) {
+      const parts = [];
+      if (extra) parts.push(extra);
+      if (freeze) parts.push("freeze");
+      if (k === "variation") parts.push("freeze-end");
+      return parts.join(" ");
+    }
+
     function render() {
       const q = document.getElementById("q").value.toLowerCase();
       const table = document.getElementById("grid");
       let html = "<thead><tr>";
-      HEADERS.forEach(([k, label]) => { html += "<th>" + label + "</th>"; });
+      HEADERS.forEach(([k, label, width, freeze]) => {
+        html += "<th class=\"" + colClass(k, width, freeze, "") + "\" style=\"" + colStyle(k, width, freeze) + "\">" + label + "</th>";
+      });
       html += "</tr></thead><tbody>";
       rows.forEach((row, i) => {
         const blob = HEADERS.map(([k]) => row[k] || "").join(" ").toLowerCase();
         if (q && blob.indexOf(q) === -1) return;
         html += "<tr data-i=\"" + i + "\">";
-        HEADERS.forEach(([k]) => {
+        HEADERS.forEach(([k, , width, freeze]) => {
           const extra = k === "status" ? statusClass(row[k]) : "";
-          const wide = k === "detailed_description" || k === "address" || k === "variation" ? "wide" : "narrow";
+          const cls = colClass(k, width, freeze, extra);
+          const style = colStyle(k, width, freeze);
           if (k === "detailed_description") {
-            html += "<td class=\"" + wide + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
+            html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
           } else if (DROP_FIELDS[k]) {
-            html += "<td class=\"" + extra + " " + wide + "\">" + selectHtml(k, row[k]) + "</td>";
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\">" + selectHtml(k, row[k]) + "</td>";
           } else {
-            html += "<td class=\"" + extra + " " + wide + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\"></td>";
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\"></td>";
           }
         });
         html += "</tr>";
@@ -118,9 +151,11 @@
         const tr = e.target.closest("tr");
         if (!tr) return;
         const i = Number(tr.getAttribute("data-i"));
-        rows[i][e.target.getAttribute("data-k")] = e.target.value;
-        if (e.target.getAttribute("data-k") === "status") {
-          e.target.parentElement.className = statusClass(e.target.value) + " narrow";
+        const k = e.target.getAttribute("data-k");
+        rows[i][k] = e.target.value;
+        if (k === "status") {
+          const width = 150;
+          e.target.parentElement.className = colClass("status", width, true, statusClass(e.target.value));
         }
       };
     }
