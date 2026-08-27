@@ -9,7 +9,3 @@ ENV NODE_ENV=production
 ENV DATA_DIR=/app/data
 EXPOSE 8080
 CMD ["node", "server/index.js"]
-ENV TZ=Africa/Johannesburg
-ENV NODE_ENV=production
-EXPOSE 8080
-CMD ["node", "server/index.js"]
