@@ -1,8 +1,48 @@
 # Studio Delta Production
 
-Google Apps Script shop-floor app for Studio Delta (South Africa). Paste `Code.gs` and `index.html` into the Apps Script project bound to the production spreadsheet. The HTML file **must** be named `index` in the script editor.
+Shop-floor app for Studio Delta (South Africa). The UI is the same `index.html` as before. **Google Sheets is still the database.** The live host is meant to be **Railway** (Node/Express). Apps Script paste deploy still works if you need a fallback: paste `Code.gs` and `index.html` into the bound script project (HTML file **must** be named `index` there).
 
 Timezone: **Africa/Johannesburg**. The paid shift is **07:45–15:45** with a **30-minute break 12:00–12:30** (7.5 hours / 450 minutes). Minutes after that on a calendar day are overtime. Overnight jobs are split by calendar day on Activity and on Admin → Workers (e.g. 14:00 yesterday–10:00 today → yesterday 14:00–15:45 and today 07:45–10:00).
+
+## Host on Railway (Google Sheets stays the DB)
+
+The GitHub repo is a website plus this app. Railway should build from the **repository root** `Dockerfile`, which copies `studio-delta-production/` only.
+
+1. In [Google Cloud](https://console.cloud.google.com/), create a project (or pick one) → **APIs & Services** → enable **Google Sheets API**, **Google Drive API**, **Google Docs API**. Enable **Gmail API** only if you want QC / powder-list / glass-alert emails.
+2. **IAM** → **Service accounts** → create one (e.g. `studio-delta-floor`) → **Keys** → JSON. Copy the JSON.
+3. Open the production spreadsheet → **Share** → add the service account email (`...@....iam.gserviceaccount.com`) as **Editor**.
+4. Share these Drive folders with the same email as **Editor** (same IDs already in `Code.gs`):
+   - QC reports folder
+   - PDF job-queue folder
+   - QC Google Doc templates (the service account must be able to copy them)
+   - Powder-coating list folder (or let the first generate create one in the service account’s Drive)
+5. In [Railway](https://railway.com/) → **New project** → **Deploy from GitHub** → this repo.
+6. Variables (service → **Variables**):
+
+   | Variable | Value |
+   | --- | --- |
+   | `SHEET_ID` | `1pdvAFTIyd5sf8Wbf38MSd4cfk3mb3McPqJrYeM8SOYk` (or your copy) |
+   | `TZ` | `Africa/Johannesburg` |
+   | `GOOGLE_SERVICE_ACCOUNT_JSON` | the **full JSON key** as one line |
+   | `GMAIL_SENDER` | optional. A Workspace mailbox the service account can send as (domain-wide delegation). If unset, the floor still works; QC PDFs / powder emails / glass alerts are skipped or fail softly. |
+
+7. **Settings → Networking → Generate domain**. Tablets open that HTTPS URL. Login is still name + access code from the `Users` sheet.
+8. Keep **one replica**. The in-memory lock/cache is per process.
+
+`GET /health` should return `"ok": true` and `"sheetsConfigured": true` after the variables are set. The first request loads the whole spreadsheet into memory, runs the same shop functions as Apps Script, then writes changes back.
+
+QC PDFs still fill worker / order / Yes-No answers. Inserting photos into the Google Doc template is not wired on Railway (text tags for missing photos stay as-is). Floor start / pause / finish does not need Drive.
+
+Local run (from `studio-delta-production/`):
+
+```bash
+cp .env.example .env   # then fill credentials
+npm install
+npm test
+npm start              # http://localhost:8080
+```
+
+Do **not** commit the JSON key or a `.env` file.
 
 ## Floor rules
 
@@ -51,7 +91,9 @@ Floor boards read only the latest production-log rows (not the whole history) an
 
 Assembly and Final QC must log **which backboard was used**, the same way plate/profile cutting logs steel. Add backboard names on the `Backboards` sheet (Category, Profile Name), or pick Custom during QC.
 
-## First deploy
+## Apps Script fallback (optional)
+
+Paste `Code.gs` and `index.html` into the bound Apps Script project. The HTML file **must** be named `index` in the script editor.
 
 1. Replace the existing `Code.gs` and `index` HTML with these files.
 2. Open the web app once as admin. `doGet` tries to create a 5-minute idle check trigger.
