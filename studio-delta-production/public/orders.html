@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta — Orders</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --blue:#cfe2f3; --green:#d9ead3; --ink:#1d2939; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    header a { color:#344054; text-decoration:none; font-size:13px; font-weight:600; }
+    header a.active { color:#000; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; }
+    input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:220px; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    button.ghost { background:#fff; color:#1d2939; }
+    .wrap { overflow:auto; height:calc(100vh - 58px); }
+    table { border-collapse:collapse; min-width:2400px; background:#fff; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:6px 8px; vertical-align:top; white-space:nowrap; }
+    th { position:sticky; top:0; background:var(--head); z-index:2; text-align:left; font-size:11px; letter-spacing:.02em; }
+    td input, td textarea, td select { width:100%; border:0; font:inherit; background:transparent; padding:0; }
+    td textarea { min-height:38px; white-space:pre-wrap; }
+    tr:focus-within { outline:2px solid #98a2b3; outline-offset:-2px; }
+    .status-At\ Couriers, .st-couriers { background:var(--blue); }
+    .st-green { background:var(--green); }
+    .narrow { width:110px; }
+    .wide { min-width:280px; }
+    .msg { font-size:12px; color:#667085; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>STUDIO DELTA</h1>
+    <a href="/">Floor</a>
+    <a class="active" href="/orders">Orders</a>
+    <a href="/schedule">Schedule</a>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <input type="search" id="q" placeholder="Search orders">
+      <button class="ghost" onclick="importSheets()">Import from Sheets</button>
+    <button class="ghost" onclick="addRow()">New order</button>
+      <button onclick="saveAll()">Save</button>
+    </div>
+  </header>
+  <div class="wrap">
+    <table id="grid"></table>
+  </div>
+  <script>
+    const HEADERS = [
+      ["quote_number","QUOTE NUMBER"],
+      ["order_number","ORDER NUMBER"],
+      ["status","STATUS"],
+      ["assigned_operator","ASSIGNED OPERATOR"],
+      ["type","TYPE"],
+      ["category","CATERGORY"],
+      ["product","PRODUCT"],
+      ["variation","VARIATION"],
+      ["doors","DOORS"],
+      ["detailed_description","DETAILED DESCRIPTION"],
+      ["dimensions","DIMENSIONS"],
+      ["powder_coating","POWDER COATING"],
+      ["client_name","CLIENT NAME"],
+      ["client_number","CLIENT NUMBER"],
+      ["email","EMAIL ADDRESS"],
+      ["payment_date","PAYMENT DATE"],
+      ["address","ADDRESS"],
+      ["province","PROVINCE"],
+      ["price_incl_vat","PRICE (Incl VAT)"],
+      ["price_excl_vat","PRICE (Excl VAT)"],
+      ["month_of_sale","MONTH OF SALE"],
+      ["source","SOURCE"],
+      ["city","CITY"]
+    ];
+    let rows = [];
+
+    function statusClass(s) {
+      const v = String(s || "").toLowerCase();
+      if (v.indexOf("courier") !== -1) return "st-couriers";
+      if (v.indexOf("complete") !== -1 || v.indexOf("ready") !== -1) return "st-green";
+      return "";
+    }
+
+    function render() {
+      const q = document.getElementById("q").value.toLowerCase();
+      const table = document.getElementById("grid");
+      let html = "<thead><tr>";
+      HEADERS.forEach(([k, label]) => { html += "<th>" + label + "</th>"; });
+      html += "</tr></thead><tbody>";
+      rows.forEach((row, i) => {
+        const blob = HEADERS.map(([k]) => row[k] || "").join(" ").toLowerCase();
+        if (q && blob.indexOf(q) === -1) return;
+        html += "<tr data-i=\"" + i + "\">";
+        HEADERS.forEach(([k]) => {
+          const extra = k === "status" ? statusClass(row[k]) : "";
+          const wide = k === "detailed_description" || k === "address" || k === "variation" ? "wide" : "narrow";
+          if (k === "detailed_description") {
+            html += "<td class=\"" + wide + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
+          } else {
+            html += "<td class=\"" + extra + " " + wide + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\"></td>";
+          }
+        });
+        html += "</tr>";
+      });
+      html += "</tbody>";
+      table.innerHTML = html;
+      table.oninput = (e) => {
+        const tr = e.target.closest("tr");
+        if (!tr) return;
+        const i = Number(tr.getAttribute("data-i"));
+        rows[i][e.target.getAttribute("data-k")] = e.target.value;
+        if (e.target.getAttribute("data-k") === "status") {
+          e.target.parentElement.className = statusClass(e.target.value) + " narrow";
+        }
+      };
+    }
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+    function escAttr(s) { return esc(s).replace(/"/g, "&quot;"); }
+
+    async function load() {
+      const r = await fetch("/api/office/orders");
+      const j = await r.json();
+      rows = j.rows || [];
+      document.getElementById("status").textContent = rows.length + " orders (saved in the app, not Google Sheets)";
+      render();
+    }
+    async function importSheets() {
+      document.getElementById("status").textContent = "Importing from Google Sheets…";
+      const r = await fetch("/api/office/import-sheets", { method: "POST" });
+      const j = await r.json();
+      if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      await load();
+      document.getElementById("status").textContent = "Imported " + j.imported + " orders";
+    }
+    function addRow() {
+      const blank = {};
+      HEADERS.forEach(([k]) => blank[k] = "");
+      blank.order_number = "S";
+      blank.status = "Not Yet Started";
+      rows.unshift(blank);
+      render();
+    }
+    async function saveAll() {
+      document.getElementById("status").textContent = "Saving…";
+      for (const row of rows) {
+        if (!String(row.order_number || "").trim()) continue;
+        const r = await fetch("/api/office/orders", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(row)
+        });
+        const j = await r.json();
+        if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      }
+      await load();
+      document.getElementById("status").textContent = "Saved";
+    }
+    document.getElementById("q").oninput = render;
+    load();
+  </script>
+</body>
+</html>

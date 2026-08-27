@@ -2,7 +2,7 @@
   "name": "studio-delta-production",
   "version": "1.0.0",
   "private": true,
-  "description": "Studio Delta floor app on Railway, Google Sheets as the database",
+  "description": "Studio Delta shop floor and office app on Railway",
   "main": "server/index.js",
   "scripts": {
     "start": "node server/index.js",
@@ -13,6 +13,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "express": "^4.21.2",
     "googleapis": "^144.0.0"
   }

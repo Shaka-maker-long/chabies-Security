@@ -4,6 +4,8 @@ process.env.SHEET_ID = process.env.SHEET_ID || "1pdvAFTIyd5sf8Wbf38MSd4cfk3mb3Mc
 const express = require("express");
 const path = require("path");
 const { callShopFunction } = require("./gas");
+const { mountOffice } = require("./office");
+require("./db");
 
 const app = express();
 app.disable("x-powered-by");
@@ -22,6 +24,15 @@ function serialize(work) {
 function hasGoogleAuth() {
   return !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
 }
+
+app.get("/orders", (_req, res) => {
+  res.sendFile(path.join(publicDir, "orders.html"));
+});
+app.get("/schedule", (_req, res) => {
+  res.sendFile(path.join(publicDir, "schedule.html"));
+});
+
+mountOffice(app);
 
 app.get("/health", (_req, res) => {
   res.json({

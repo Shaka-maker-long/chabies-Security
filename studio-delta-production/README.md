@@ -44,6 +44,17 @@ npm start              # http://localhost:8080
 
 Do **not** commit the JSON key or a `.env` file.
 
+## Office pages (not Google Sheets)
+
+The live floor still uses the spreadsheet until we finish moving it. Office **Orders** and **Schedule** already save in the app database (SQLite file on the server).
+
+- `/orders` — all ORDERS columns (quote, client, prices, etc.)
+- `/schedule` — order list + week grid (Mon–Fri)
+
+On Orders, **Import from Sheets** copies the ORDERS tab once into the app. After that, edit in the app.
+
+On Railway, add a **Volume** mounted at `/app/data` so orders survive deploys. Or we can switch this file to Postgres next.
+
 ## Floor rules
 
 - One person has **one running clock**. Starting or resuming another order asks **Switch from A to B** (pause A, start B — still needs a reason) or **Work on A and B** (one clock, time split; Together badge). **Work this order only** leaves a batch. Pausing or switching requires **No materials**, **Touch up** (plus the order number), or **Other**. Activity and the Workers hour log split those hours by calendar day and show each bout with the pause reason — not a single start-minus-end total.
