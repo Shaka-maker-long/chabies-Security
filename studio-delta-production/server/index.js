@@ -9,6 +9,7 @@ const { migrateJsonOrdersToWorkbook, normalizeOrdersSheet } = require("./db");
 initWorkbook();
 migrateJsonOrdersToWorkbook();
 normalizeOrdersSheet();
+try { require("./staff").usersSheet(); } catch (e) {}
 
 const app = express();
 app.disable("x-powered-by");
@@ -43,8 +44,17 @@ app.get("/dropdowns", (_req, res) => {
 app.get("/debtors", (_req, res) => {
   res.sendFile(path.join(publicDir, "debtors.html"));
 });
+app.get("/users", (_req, res) => {
+  res.sendFile(path.join(publicDir, "users.html"));
+});
+app.get("/durations", (_req, res) => {
+  res.sendFile(path.join(publicDir, "durations.html"));
+});
 app.get("/gas-client.js", (_req, res) => {
   res.type("application/javascript").sendFile(path.join(publicDir, "gas-client.js"));
+});
+app.get("/office-auth.js", (_req, res) => {
+  res.type("application/javascript").sendFile(path.join(publicDir, "office-auth.js"));
 });
 app.get("/", (_req, res) => {
   res.sendFile(indexHtml);

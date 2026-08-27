@@ -51,6 +51,10 @@ function cachePut(key, val, ttlSec) {
   cacheStore.set(key, { val, exp: ttlSec ? Date.now() + ttlSec * 1000 : 0 });
 }
 
+function clearShopCache() {
+  cacheStore.clear();
+}
+
 function isoWeek(date) {
   const sast = new Date(date.getTime() + SAST_OFFSET_MS);
   const utc = Date.UTC(sast.getUTCFullYear(), sast.getUTCMonth(), sast.getUTCDate());
@@ -259,7 +263,7 @@ const ALLOWED = new Set([
   "generatePowderCoatingList", "getQCReportsFast", "processPdfQueue",
   "undoAutoSwitch", "leaveBatchForOrder", "getIdleWorkers", "pollIdleAlerts", "assignIndirectTask",
   "getActivityReport", "getScheduleBoard", "generateWorkerSchedule", "insertScheduleTask", "clearWorkerScheduleFrom",
-  "checkIdleWorkers", "lazySetup"
+  "checkIdleWorkers", "lazySetup", "getTaskDuration"
 ]);
 
 let scriptSource = null;
@@ -371,4 +375,4 @@ async function callShopFunction(fnName, args) {
   return jsonSafe(result);
 }
 
-module.exports = { callShopFunction, ALLOWED, jsonSafe, getCachedWorkbook };
+module.exports = { callShopFunction, ALLOWED, jsonSafe, getCachedWorkbook, clearShopCache };

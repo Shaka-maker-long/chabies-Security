@@ -18,6 +18,29 @@ const {
   normalizeOrdersSheet
 } = require("./db");
 const { importGoogleWorkbook, tabCounts } = require("./workbook-store");
+const staff = require("./staff");
+
+function requireOffice(req, res, next) {
+  const profile = staff.readSession(req);
+  if (!profile) {
+    res.status(401).json({ ok: false, error: "Log in as Admin first." });
+    return;
+  }
+  if (!profile.canSeeOffice) {
+    res.status(403).json({ ok: false, error: "Production users can only use the floor." });
+    return;
+  }
+  req.office = profile;
+  next();
+}
+
+function requireDebtors(req, res, next) {
+  if (!req.office || !req.office.canSeeDebtors) {
+    res.status(403).json({ ok: false, error: "You cannot see Debtors." });
+    return;
+  }
+  next();
+}
 
 function workdays(fromIso, days) {
   const out = [];
@@ -40,11 +63,59 @@ function mondayOf(dateIso) {
 }
 
 function mountOffice(app) {
-  app.get("/api/office/orders", (_req, res) => {
+  app.post("/api/office/login", (req, res) => {
+    const profile = staff.verifyUser((req.body && req.body.name) || "", (req.body && req.body.password) || "");
+    if (!profile) {
+      res.status(401).json({ ok: false, error: "Incorrect name or access code" });
+      return;
+    }
+    if (!profile.canSeeOffice) {
+      res.status(403).json({ ok: false, error: "Production users can only use the floor." });
+      return;
+    }
+    res.json({ ok: true, ...staff.createSession(profile) });
+  });
+
+  app.get("/api/office/me", (req, res) => {
+    const profile = staff.readSession(req);
+    if (!profile) {
+      res.status(401).json({ ok: false, error: "Log in as Admin first." });
+      return;
+    }
+    res.json({ ok: true, profile });
+  });
+
+  app.get("/api/office/users", requireOffice, (_req, res) => {
+    res.json({ ok: true, rows: staff.listUsers(), tasks: staff.FLOOR_TASKS });
+  });
+  app.put("/api/office/users", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, row: staff.upsertUser(req.body || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.delete("/api/office/users/:name", requireOffice, (req, res) => {
+    staff.deleteUser(req.params.name);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/office/durations", requireOffice, (_req, res) => {
+    res.json({ ok: true, rows: staff.listDurations(), tasks: staff.FLOOR_TASKS });
+  });
+  app.put("/api/office/durations", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, rows: staff.setDurations((req.body && req.body.rows) || []) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/orders", requireOffice, (_req, res) => {
     res.json({ ok: true, rows: listOrders().map(decorateMoney), fields: ORDER_FIELDS, vatRate: VAT_RATE });
   });
 
-  app.put("/api/office/orders", (req, res) => {
+  app.put("/api/office/orders", requireOffice, (req, res) => {
     try {
       const row = upsertOrder(req.body || {});
       res.json({ ok: true, row });
@@ -53,12 +124,12 @@ function mountOffice(app) {
     }
   });
 
-  app.delete("/api/office/orders/:orderNumber", (req, res) => {
+  app.delete("/api/office/orders/:orderNumber", requireOffice, (req, res) => {
     deleteOrder(req.params.orderNumber);
     res.json({ ok: true });
   });
 
-  app.get("/api/office/schedule", (req, res) => {
+  app.get("/api/office/schedule", requireOffice, (req, res) => {
     const start = mondayOf(req.query.start);
     const days = workdays(start, 15);
     const fromDay = days[0];
@@ -71,7 +142,7 @@ function mountOffice(app) {
     });
   });
 
-  app.put("/api/office/schedule/row", (req, res) => {
+  app.put("/api/office/schedule/row", requireOffice, (req, res) => {
     try {
       const row = upsertScheduleRow(req.body || {});
       res.json({ ok: true, row });
@@ -80,7 +151,7 @@ function mountOffice(app) {
     }
   });
 
-  app.put("/api/office/schedule/cell", (req, res) => {
+  app.put("/api/office/schedule/cell", requireOffice, (req, res) => {
     const { rowId, day, value } = req.body || {};
     if (!rowId || !day) {
       res.status(400).json({ ok: false, error: "rowId and day are required" });
@@ -90,7 +161,7 @@ function mountOffice(app) {
     res.json({ ok: true });
   });
 
-  app.post("/api/office/import-sheets", async (_req, res) => {
+  app.post("/api/office/import-sheets", requireOffice, async (_req, res) => {
     try {
       const book = await importGoogleWorkbook();
       normalizeOrdersSheet();
@@ -106,11 +177,11 @@ function mountOffice(app) {
     }
   });
 
-  app.get("/api/office/dropdowns", (_req, res) => {
+  app.get("/api/office/dropdowns", requireOffice, (_req, res) => {
     res.json({ ok: true, dropdowns: listDropdowns(), keys: DROPDOWN_KEYS });
   });
 
-  app.post("/api/office/dropdowns/:field", (req, res) => {
+  app.post("/api/office/dropdowns/:field", requireOffice, (req, res) => {
     try {
       const dropdowns = addDropdownItem(req.params.field, (req.body && req.body.value) || "");
       res.json({ ok: true, dropdowns });
@@ -119,7 +190,7 @@ function mountOffice(app) {
     }
   });
 
-  app.delete("/api/office/dropdowns/:field", (req, res) => {
+  app.delete("/api/office/dropdowns/:field", requireOffice, (req, res) => {
     try {
       const value = (req.body && req.body.value) || req.query.value || "";
       const dropdowns = removeDropdownItem(req.params.field, value);
@@ -129,11 +200,11 @@ function mountOffice(app) {
     }
   });
 
-  app.get("/api/office/debtors", (_req, res) => {
+  app.get("/api/office/debtors", requireOffice, requireDebtors, (_req, res) => {
     res.json({ ok: true, rows: listDebtors(), vatRate: VAT_RATE });
   });
 
-  app.post("/api/office/orders/:orderNumber/payments", (req, res) => {
+  app.post("/api/office/orders/:orderNumber/payments", requireOffice, requireDebtors, (req, res) => {
     try {
       const row = recordPayment(
         req.params.orderNumber,

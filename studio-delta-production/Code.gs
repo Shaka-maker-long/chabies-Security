@@ -68,17 +68,28 @@ function ensureUsersSheetTasksColumn() {
   var sheet = getSheetOrDie(ss, TAB_USERS);
   var lastCol = Math.max(sheet.getLastColumn(), 1);
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-  var found = false;
+  var foundTasks = false;
+  var foundAccess = false;
+  var foundDebtors = false;
   for (var i = 0; i < headers.length; i++) {
-    if (String(headers[i]).trim().toLowerCase() === "tasks") {
-      found = true;
-      break;
-    }
+    var h = String(headers[i]).trim().toLowerCase();
+    if (h === "tasks") foundTasks = true;
+    if (h === "access") foundAccess = true;
+    if (h === "see debtors" || h === "debtors") foundDebtors = true;
   }
-  if (!found) {
-    sheet.getRange(1, 4).setValue("Tasks");
-  }
+  if (!foundTasks) sheet.getRange(1, 4).setValue("Tasks");
+  if (!foundAccess) sheet.getRange(1, 5).setValue("Access");
+  if (!foundDebtors) sheet.getRange(1, 6).setValue("See Debtors");
   try { CacheService.getScriptCache().put("usersTasksCol", "1", 21600); } catch (e) {}
+}
+
+function parseAccessLabel(accessCell, roleCell) {
+  var a = String(accessCell || "").trim().toLowerCase();
+  if (a === "admin") return "Admin";
+  if (a === "production") return "Production";
+  var r = String(roleCell || "").trim().toLowerCase();
+  if (r === "admin") return "Admin";
+  return "Production";
 }
 
 function canonicalTaskName(raw) {
@@ -91,11 +102,11 @@ function canonicalTaskName(raw) {
   return "";
 }
 
-function parseUserTasks(roleCell, tasksCell) {
+function parseUserTasks(roleCell, tasksCell, forceAdmin) {
   var role = String(roleCell || "").trim();
   var extra = String(tasksCell || "").trim();
   var roleLower = role.toLowerCase();
-  var isAdmin = roleLower === "admin";
+  var isAdmin = !!forceAdmin || roleLower === "admin";
   if (isAdmin) {
     return { isAdmin: true, isQcOnly: false, tasks: KNOWN_FLOOR_TASKS.slice(), jobTitle: role || "Admin" };
   }
@@ -136,12 +147,18 @@ function parseUserTasks(roleCell, tasksCell) {
 
 function readUserRowProfile(row) {
   var name = String(row[0] || "").trim();
-  var parsed = parseUserTasks(row[1], row.length > 3 ? row[3] : "");
+  var access = parseAccessLabel(row.length > 4 ? row[4] : "", row[1]);
+  var isAdmin = access === "Admin";
+  var parsed = parseUserTasks(row[1], row.length > 3 ? row[3] : "", isAdmin);
+  var debtorsCell = String(row.length > 5 ? row[5] : "").trim().toLowerCase();
   return {
     name: name,
     role: String(row[1] || "").trim(),
     jobTitle: parsed.jobTitle,
-    isAdmin: parsed.isAdmin,
+    access: access,
+    isAdmin: isAdmin,
+    canSeeOffice: isAdmin,
+    canSeeDebtors: isAdmin && debtorsCell !== "no",
     isQcOnly: parsed.isQcOnly,
     tasks: parsed.tasks
   };
@@ -413,7 +430,28 @@ function floorCachePut(key, value, ttl) {
 }
 
 function emptyPlateStatus() {
-  return {status: '', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false};
+  return {status: '', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: ""};
+}
+
+function pauseAccounting(meta, legacyPauseStart) {
+  var pauses = (meta && meta.pauses) || [];
+  var pauseMs = 0;
+  var pausedAt = 0;
+  for (var i = 0; i < pauses.length; i++) {
+    var ps = pauses[i].start ? new Date(pauses[i].start).getTime() : 0;
+    if (!ps) continue;
+    if (pauses[i].end) {
+      var pe = new Date(pauses[i].end).getTime();
+      if (pe > ps) pauseMs += (pe - ps);
+    } else {
+      pausedAt = ps;
+    }
+  }
+  if (!pausedAt && legacyPauseStart) {
+    var legacy = new Date(legacyPauseStart).getTime();
+    if (legacy) pausedAt = legacy;
+  }
+  return { pauseMs: pauseMs, pausedAt: pausedAt || "" };
 }
 
 function plateStatusFromLogRow(row) {
@@ -422,6 +460,7 @@ function plateStatusFromLogRow(row) {
   var pauseReason = "";
   if (meta.pauses && meta.pauses.length) pauseReason = meta.pauses[meta.pauses.length - 1].reason || "";
   if (!pauseReason) pauseReason = row.length > 11 ? row[11] : "";
+  var acc = pauseAccounting(meta, pauseStart);
   if (!row[6]) {
     return {
       status: 'Plate Cutting',
@@ -430,10 +469,13 @@ function plateStatusFromLogRow(row) {
       pauseReason: pauseReason || "",
       logId: row[0],
       batchId: meta.batchId || "",
-      isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1)
+      isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1),
+      startTime: row[5] || "",
+      pauseMs: acc.pauseMs,
+      pausedAt: acc.pausedAt
     };
   }
-  return {status: 'Finished', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false};
+  return {status: 'Finished', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: ""};
 }
 
 function buildPlateStatusMap(logData) {
@@ -472,7 +514,7 @@ function getUsersAndRoles() {
   var cached = floorCacheGet("users");
   if (cached) return cached;
   var ss = getSpreadsheet();
-  var data = getSheetGrid(ss, TAB_USERS, 4);
+  var data = getSheetGrid(ss, TAB_USERS, 6);
   if (data.length <= 1) return []; 
   var users = [];
   for (var i = 1; i < data.length; i++) {
@@ -481,7 +523,10 @@ function getUsersAndRoles() {
       name: profile.name,
       role: profile.role,
       jobTitle: profile.jobTitle,
+      access: profile.access,
       isAdmin: profile.isAdmin,
+      canSeeOffice: profile.canSeeOffice,
+      canSeeDebtors: profile.canSeeDebtors,
       isQcOnly: profile.isQcOnly,
       tasks: profile.tasks
     });
@@ -510,7 +555,7 @@ function verifyLogin(role, name, password) {
   // 1. Find the Admin Password first (Master Key)
   var adminPassword = null;
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).toLowerCase() === 'admin') {
+    if (String(data[i][1]).toLowerCase() === "admin" || String(data[i][4] || "").toLowerCase() === "admin") {
       adminPassword = data[i][2];
       break;
     }
@@ -544,13 +589,13 @@ function verifyLogin(role, name, password) {
 function verifyGlobalLogin(name, password) {
   var ss = getSpreadsheet();
   var sheet = getSheetOrDie(ss, TAB_USERS);
-  var data = getSheetGrid(ss, TAB_USERS, 4);
+  var data = getSheetGrid(ss, TAB_USERS, 6);
   if (!data.length) data = sheet.getDataRange().getValues();
   
   // 1. Find the Admin Password first (Master Key)
   var adminPassword = null;
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).toLowerCase() === 'admin') {
+    if (String(data[i][1]).toLowerCase() === "admin" || String(data[i][4] || "").toLowerCase() === "admin") {
       adminPassword = data[i][2];
       break;
     }
@@ -572,7 +617,10 @@ function verifyGlobalLogin(name, password) {
           name: profile.name,
           role: profile.role,
           jobTitle: profile.jobTitle,
+          access: profile.access,
           isAdmin: profile.isAdmin,
+          canSeeOffice: profile.canSeeOffice,
+          canSeeDebtors: profile.canSeeDebtors,
           isQcOnly: profile.isQcOnly,
           tasks: profile.tasks
         };
@@ -655,7 +703,11 @@ function getOrdersForRole(role, workerName) {
           isPlateOrder: true,
           logId: plateInfo.logId || "",
           batchId: plateInfo.batchId || "",
-          isBatched: !!plateInfo.isBatched
+          isBatched: !!plateInfo.isBatched,
+          startedAt: plateInfo.startTime || "",
+          targetMinutes: getTaskDurationMinutes(productName, "Plate Cutting"),
+          pauseMs: plateInfo.pauseMs || 0,
+          pausedAt: plateInfo.pausedAt || ""
         });
       }
       continue; 
@@ -675,12 +727,41 @@ function getOrdersForRole(role, workerName) {
         isPlateOrder: false,
         logId: logId || "",
         batchId: batchId || "",
-        isBatched: !!isBatched
+        isBatched: !!isBatched,
+        startedAt: assignment && assignment.startTime ? assignment.startTime : "",
+        targetMinutes: getTaskDurationMinutes(productName, role),
+        pauseMs: assignment ? (assignment.pauseMs || 0) : 0,
+        pausedAt: assignment ? (assignment.pausedAt || "") : ""
       });
     }
   }
   floorCachePut(cacheKey, relevantOrders, CACHE_TTL_FLOOR);
   return relevantOrders;
+}
+
+function getTaskDurationMinutes(product, process) {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName("Task_Durations");
+  var rows = [];
+  if (sheet && sheet.getLastRow() >= 2) {
+    var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
+    for (var i = 0; i < grid.length; i++) {
+      var prod = String(grid[i][0] || "").trim();
+      var proc = String(grid[i][1] || "").trim();
+      var mins = Number(grid[i][2]) || 0;
+      if (prod && proc && mins > 0) rows.push({ product: prod, process: proc, minutes: mins });
+    }
+  }
+  var p = String(product || "").trim().toLowerCase();
+  var t = String(process || "").trim().toLowerCase();
+  for (var r = 0; r < rows.length; r++) {
+    if (rows[r].product.toLowerCase() === p && rows[r].process.toLowerCase() === t) return rows[r].minutes;
+  }
+  return 0;
+}
+
+function getTaskDuration(product, process) {
+  return { minutes: getTaskDurationMinutes(product, process) };
 }
 
 function pollFloor(role, workerName) {
@@ -1654,13 +1735,17 @@ function getActiveAssignmentsFromData(logData) {
     var pauseReason = "";
     if (meta.pauses && meta.pauses.length) pauseReason = meta.pauses[meta.pauses.length - 1].reason || "";
     if (!pauseReason) pauseReason = logData[i].length > 11 ? logData[i][11] : "";
+    var acc = pauseAccounting(meta, pauseStart);
     assignments[orderNum] = {
       worker: logData[i][2],
       isPaused: !!pauseStart,
       pauseReason: pauseReason || "",
       logId: logData[i][0],
       batchId: meta.batchId || "",
-      isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1)
+      isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1),
+      startTime: logData[i][5] || "",
+      pauseMs: acc.pauseMs,
+      pausedAt: acc.pausedAt
     };
   }
   return assignments;

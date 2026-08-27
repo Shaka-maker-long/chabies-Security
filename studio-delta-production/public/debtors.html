@@ -33,10 +33,13 @@
     <a href="/orders">Orders</a>
     <a href="/schedule">Schedule</a>
     <a href="/dropdowns">Dropdowns</a>
-    <a class="active" href="/debtors">Debtors</a>
+    <a href="/durations">Task times</a>
+    <a href="/users">Users</a>
+    <a class="active" data-nav="debtors" href="/debtors">Debtors</a>
     <div class="tools" id="status"></div>
   </header>
   <div class="wrap" id="wrap"></div>
+  <script src="/office-auth.js"></script>
   <script>
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
     function pretty(iso) {
@@ -74,9 +77,8 @@
           e.preventDefault();
           const tr = form.closest("tr");
           const order = tr.getAttribute("data-order");
-          const r = await fetch("/api/office/orders/" + encodeURIComponent(order) + "/payments", {
+          const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(order) + "/payments", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ amount: form.amount.value, note: form.note.value })
           });
           const j = await r.json();
@@ -86,11 +88,11 @@
       });
     }
     async function load() {
-      const r = await fetch("/api/office/debtors");
+      const r = await sdOfficeFetch("/api/office/debtors");
       const j = await r.json();
       render(j.rows || []);
     }
-    load();
+    sdRequireOffice("debtors").then((p) => { if (p) load(); });
   </script>
 </body>
 </html>

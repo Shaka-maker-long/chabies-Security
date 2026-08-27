@@ -33,7 +33,9 @@
     <a href="/orders">Orders</a>
     <a class="active" href="/schedule">Schedule</a>
     <a href="/dropdowns">Dropdowns</a>
-    <a href="/debtors">Debtors</a>
+    <a href="/durations">Task times</a>
+    <a href="/users">Users</a>
+    <a data-nav="debtors" href="/debtors">Debtors</a>
     <div class="tools">
       <span class="msg" id="status"></span>
       <button class="ghost" onclick="shift(-7)">← Week</button>
@@ -42,6 +44,7 @@
     </div>
   </header>
   <div class="wrap"><table id="grid"></table></div>
+  <script src="/office-auth.js"></script>
   <script>
     const LEFT = [
       ["order_number","ORDER"],
@@ -123,23 +126,21 @@
         const value = e.target.value;
         if (!row.cells) row.cells = {};
         row.cells[day] = value;
-        await fetch("/api/office/schedule/cell", {
+        await sdOfficeFetch("/api/office/schedule/cell", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ rowId: id, day, value })
         });
         return;
       }
       row[e.target.dataset.k] = e.target.value;
-      await fetch("/api/office/schedule/row", {
+      await sdOfficeFetch("/api/office/schedule/row", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(row)
       });
     }
 
     async function load() {
-      const r = await fetch("/api/office/schedule?start=" + encodeURIComponent(start));
+      const r = await sdOfficeFetch("/api/office/schedule?start=" + encodeURIComponent(start));
       const j = await r.json();
       start = j.start;
       days = j.days;
@@ -154,16 +155,15 @@
       load();
     }
     async function addRow() {
-      const r = await fetch("/api/office/schedule/row", {
+      const r = await sdOfficeFetch("/api/office/schedule/row", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ order_number: "S", item_type: "Standard", status: "" })
       });
       const j = await r.json();
       if (!j.ok) { alert(j.error); return; }
       load();
     }
-    load();
+    sdRequireOffice("schedule").then((p) => { if (p) load(); });
   </script>
 </body>
 </html>

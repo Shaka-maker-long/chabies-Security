@@ -33,10 +33,13 @@
     <a href="/orders">Orders</a>
     <a href="/schedule">Schedule</a>
     <a class="active" href="/dropdowns">Dropdowns</a>
-    <a href="/debtors">Debtors</a>
+    <a href="/durations">Task times</a>
+    <a href="/users">Users</a>
+    <a data-nav="debtors" href="/debtors">Debtors</a>
     <div class="tools" id="status"></div>
   </header>
   <main id="lists"></main>
+  <script src="/office-auth.js"></script>
   <script>
     const LABELS = {
       type: "TYPE",
@@ -66,9 +69,8 @@
         form.onsubmit = async (e) => {
           e.preventDefault();
           const value = form.value.value;
-          const r = await fetch("/api/office/dropdowns/" + form.getAttribute("data-field"), {
+          const r = await sdOfficeFetch("/api/office/dropdowns/" + form.getAttribute("data-field"), {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ value })
           });
           const j = await r.json();
@@ -82,7 +84,7 @@
         btn.onclick = async () => {
           const field = btn.getAttribute("data-field");
           const value = decodeURIComponent(btn.getAttribute("data-value"));
-          const r = await fetch("/api/office/dropdowns/" + field + "?value=" + encodeURIComponent(value), {
+          const r = await sdOfficeFetch("/api/office/dropdowns/" + field + "?value=" + encodeURIComponent(value), {
             method: "DELETE"
           });
           const j = await r.json();
@@ -95,13 +97,13 @@
     }
 
     async function load() {
-      const r = await fetch("/api/office/dropdowns");
+      const r = await sdOfficeFetch("/api/office/dropdowns");
       const j = await r.json();
       dropdowns = j.dropdowns || {};
       document.getElementById("status").textContent = "Add or delete the lists used on Orders";
       render();
     }
-    load();
+    sdRequireOffice("dropdowns").then((p) => { if (p) load(); });
   </script>
 </body>
 </html>

@@ -10,7 +10,7 @@ const ORDER_HEADERS = [
 ];
 
 const SEED_TABS = {
-  Users: [["Name", "Role", "Password", "Tasks"]],
+  Users: [["Name", "Role", "Password", "Tasks", "Access", "See Debtors"]],
   ORDERS: [ORDER_HEADERS.slice()],
   Production_Log: [[
     "ID", "Order #", "Worker", "Process", "Status", "Start", "End", "Result", "Signature",
@@ -23,7 +23,8 @@ const SEED_TABS = {
   Backboards: [["Category", "Profile Name"]],
   Backboard_Usage: [["Timestamp", "Order", "Worker", "Process", "Type", "Size"]],
   Idle_Alerts: [["Date", "Worker", "Idle Since", "Minutes", "Noted", "Status", "Task"]],
-  Schedule: [["Worker", "Block Start", "Block End", "Process", "Order", "Notes"]]
+  Schedule: [["Worker", "Block Start", "Block End", "Process", "Order", "Notes"]],
+  Task_Durations: [["Product", "Process", "Minutes"]]
 };
 
 function dataDir() {

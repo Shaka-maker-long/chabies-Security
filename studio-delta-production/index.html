@@ -203,7 +203,16 @@
     .card:hover { box-shadow: var(--shadow-md); }
     .role-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-md); }
     .role-card:active { transform: scale(0.98); }
-    .card-body { padding: 1.1rem 1.25rem; }
+    .task-countdown {
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin: 0.2rem 0 0.7rem;
+      color: var(--text-primary);
+    }
+    .task-countdown.over {
+      color: #b42318;
+    }
 
     /* =====================================================
        BUTTONS
@@ -823,7 +832,15 @@
         <i class="bi bi-list-ul"></i>
         <span class="link-text">Dropdowns</span>
       </a>
-      <a id="link-debtors" class="sidebar-link" href="/debtors">
+      <a id="link-users" class="sidebar-link" href="/users">
+        <i class="bi bi-person-plus"></i>
+        <span class="link-text">Users</span>
+      </a>
+      <a id="link-durations" class="sidebar-link" href="/durations">
+        <i class="bi bi-hourglass-split"></i>
+        <span class="link-text">Task times</span>
+      </a>
+      <a id="link-debtors" class="sidebar-link" data-nav="debtors" href="/debtors">
         <i class="bi bi-cash-coin"></i>
         <span class="link-text">Debtors</span>
       </a>
@@ -1644,7 +1661,7 @@
   </script>
   <script>
     let appData = { users:[], workerStats: {}, currentOrders:[], steelProfiles:[], backboards:[] };
-    let session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, tasks: [], jobTitle: '', pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pauseModalMode: 'pause' };
+    let session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, canSeeOffice: false, canSeeDebtors: false, access: '', tasks: [], jobTitle: '', overtimeWarned: {}, pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pauseModalMode: 'pause' };
     let idleAlertModal = null;
     let backboardSelectionModal = null;
     let idlePollTimer = null;
@@ -1654,6 +1671,7 @@
     let runningChoiceModal = null;
     let insertScheduleModal = null;
     let refreshInterval = null;
+    let countdownInterval = null;
     let liveTimerInterval = null;
     let hasSigned = false;
     let confirmCallback = null;
@@ -1910,19 +1928,121 @@
     function setLoggedIn(on) {
       document.body.classList.toggle('is-logged-in', !!on);
     }
+    function applyAdminLinks() {
+      const links = document.getElementById('adminLinks');
+      if (links) links.classList.toggle('d-none-view', !session.canSeeOffice);
+      const debtors = document.getElementById('link-debtors');
+      if (debtors) debtors.style.display = session.canSeeDebtors ? '' : 'none';
+    }
+    function parseStartMs(value) {
+      if (!value) return 0;
+      if (typeof value === 'number') return value;
+      const n = Number(value);
+      if (n && !isNaN(n) && String(value).trim() !== '' && !String(value).includes('-') && !String(value).includes(':')) return n;
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? 0 : d.getTime();
+    }
+    function remainingCountdownMs(o, now) {
+      const target = Number(o && o.targetMinutes) || 0;
+      if (target <= 0) return null;
+      const start = parseStartMs(o.startedAt);
+      if (!start) return null;
+      const pauseMs = Number(o.pauseMs) || 0;
+      const pausedAt = parseStartMs(o.pausedAt);
+      const end = (o.isPaused && pausedAt) ? pausedAt : now;
+      return target * 60 * 1000 - Math.max(0, end - start - pauseMs);
+    }
+    function formatCountdown(ms) {
+      const over = ms <= 0;
+      const abs = Math.abs(ms);
+      const totalSec = Math.floor(abs / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      const mm = h ? String(m).padStart(2, '0') : String(m);
+      const ss = String(s).padStart(2, '0');
+      const text = (h ? h + ':' : '') + mm + ':' + ss;
+      return { over, text };
+    }
+    function countdownHtml(o) {
+      const rem = remainingCountdownMs(o, Date.now());
+      if (rem == null) return '';
+      const f = formatCountdown(rem);
+      return '<div class="task-countdown' + (f.over ? ' over' : '') +
+        '" data-order="' + String(o.order || '').replace(/"/g, '') +
+        '" data-started="' + parseStartMs(o.startedAt) +
+        '" data-target="' + (Number(o.targetMinutes) || 0) +
+        '" data-pausems="' + (Number(o.pauseMs) || 0) +
+        '" data-pausedat="' + (o.isPaused ? parseStartMs(o.pausedAt) : 0) +
+        '">' + (f.over ? 'Time up · ' : 'Time left · ') + f.text + '</div>';
+    }
+    function syncCardCountdown(card, o) {
+      if (!card) return;
+      const body = card.querySelector('.card-body');
+      if (!body) return;
+      const html = countdownHtml(o);
+      const old = body.querySelector('.task-countdown');
+      if (!html) {
+        if (old) old.remove();
+        return;
+      }
+      const wrap = document.createElement('div');
+      wrap.innerHTML = html;
+      const next = wrap.firstElementChild;
+      if (old) old.replaceWith(next);
+      else {
+        const actions = body.querySelector('.action-btn-container');
+        if (actions) body.insertBefore(next, actions);
+        else body.appendChild(next);
+      }
+    }
+    function tickCountdowns() {
+      document.querySelectorAll('.task-countdown').forEach((el) => {
+        const target = Number(el.getAttribute('data-target')) || 0;
+        const start = Number(el.getAttribute('data-started')) || 0;
+        if (!target || !start) return;
+        const pauseMs = Number(el.getAttribute('data-pausems')) || 0;
+        const pausedAt = Number(el.getAttribute('data-pausedat')) || 0;
+        const end = pausedAt || Date.now();
+        const rem = target * 60000 - Math.max(0, end - start - pauseMs);
+        const f = formatCountdown(rem);
+        el.classList.toggle('over', f.over);
+        el.textContent = (f.over ? 'Time up · ' : 'Time left · ') + f.text;
+        const order = el.getAttribute('data-order');
+        if (f.over && order && session.overtimeWarned && !session.overtimeWarned[order]) {
+          session.overtimeWarned[order] = true;
+          showAlert('Time is up for order ' + order + '. Finish when the work is done — the clock will not stop the job.');
+        }
+      });
+    }
+    function syncOfficeLogin(name, pass, profile) {
+      if (!profile || !profile.canSeeOffice) {
+        try { localStorage.removeItem('sd-office'); } catch (e) {}
+        return;
+      }
+      fetch('/api/office/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name, password: pass })
+      }).then((r) => r.json()).then((j) => {
+        if (j && j.ok) {
+          try { localStorage.setItem('sd-office', JSON.stringify(j)); } catch (e) {}
+        }
+      }).catch(() => {});
+    }
     function applyLoginProfile(res) {
       session.name = res.name;
       session.jobTitle = res.jobTitle || res.role || '';
       session.isAdmin = !!res.isAdmin;
+      session.canSeeOffice = !!res.canSeeOffice;
+      session.canSeeDebtors = !!res.canSeeDebtors;
+      session.access = res.access || (session.canSeeOffice ? 'Admin' : 'Production');
       session.isQcOnly = !!res.isQcOnly;
       session.tasks = res.tasks || [];
       session.role = null;
+      session.overtimeWarned = {};
       setLoggedIn(true);
-      if (session.isAdmin) {
-        document.getElementById('adminLinks').classList.remove('d-none-view');
-      } else {
-        document.getElementById('adminLinks').classList.add('d-none-view');
-      }
+      applyAdminLinks();
       persistSession();
       updateFloorLink();
       startIdleAlertPolling();
@@ -1931,13 +2051,17 @@
     function updateFloorLink() {
       const el = document.getElementById('link-floor');
       if (!el) return;
-      const show = !!session.name && (session.isAdmin || ((session.tasks || []).length > 1));
+      const show = !!session.name && (session.canSeeOffice || ((session.tasks || []).length > 1));
       el.classList.toggle('d-none-view', !show);
     }
     function routeAfterLogin() {
-      if (session.isAdmin) {
+      if (session.canSeeOffice) {
         loadProductionOverview();
         loadIdleWorkers();
+        return;
+      }
+      if (!(session.tasks && session.tasks.length)) {
+        showTaskPicker();
         return;
       }
       if (session.isQcOnly || (session.tasks && session.tasks.length === 1)) {
@@ -1951,7 +2075,7 @@
         navTo('view-global-login');
         return;
       }
-      if (session.isAdmin) {
+      if (session.canSeeOffice) {
         loadProductionOverview();
         return;
       }
@@ -1964,15 +2088,15 @@
     function showTaskPicker() {
       const grid = document.getElementById('roleGrid');
       const sub = document.getElementById('taskPickSubtitle');
-      const tasks = (session.isAdmin ? Object.keys(TASK_ICONS) : (session.tasks || [])).slice();
+      const tasks = (session.canSeeOffice ? Object.keys(TASK_ICONS) : (session.tasks || [])).slice();
       if (sub) {
-        sub.innerText = session.isAdmin
+        sub.innerText = session.canSeeOffice
           ? 'Admin — pick a floor task, or use Production in the menu.'
           : ('Hi ' + session.name + '. What are you doing now?');
       }
       grid.innerHTML = '';
       if (!tasks.length) {
-        grid.innerHTML = '<div class="col-12"><div class="card p-4">No tasks are assigned to you yet. Ask admin to add them on the Users sheet, column Tasks.</div></div>';
+        grid.innerHTML = '<div class="col-12"><div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div></div>';
       } else {
         tasks.forEach(r => {
           const icon = TASK_ICONS[r] || 'bi-gear';
@@ -1984,7 +2108,8 @@
     function selectFloorTask(r) {
       session.role = r;
       persistSession();
-      document.getElementById('adminLinks').classList.toggle('d-none-view', !session.isAdmin);
+      document.getElementById('adminLinks').classList.toggle('d-none-view', !session.canSeeOffice);
+      applyAdminLinks();
       enterDashboard();
     }
 
@@ -2028,6 +2153,7 @@
       prefetchSupportData();
       setLoggedIn(false);
       document.getElementById('adminLinks').classList.add('d-none-view');
+      applyAdminLinks();
       updateFloorLink();
       navTo('view-global-login');
     }
@@ -2065,6 +2191,7 @@
         btn.disabled = false;
         if(res.success) {
           applyLoginProfile(res);
+          syncOfficeLogin(name, pass, res);
         } else {
           showAlert(res.error);
         }
@@ -2079,17 +2206,18 @@
       const p = document.getElementById('inputPass').value;
       google.script.run.withSuccessHandler(res => {
         if(res.success) { 
-          session.isAdmin = res.isAdmin; 
+          session.isAdmin = res.isAdmin;
+          session.canSeeOffice = !!res.isAdmin;
+          session.canSeeDebtors = !!res.isAdmin;
           if (passModal) passModal.hide(); 
           persistSession();
           setLoggedIn(true);
           startIdleAlertPolling();
+          applyAdminLinks();
           if(session.role === 'Admin' || session.isAdmin) {
-            document.getElementById('adminLinks').classList.remove('d-none-view');
             loadProductionOverview();
             loadIdleWorkers();
           } else {
-            document.getElementById('adminLinks').classList.add('d-none-view');
             enterDashboard();
           }
         } else showAlert(res.error);
@@ -2097,13 +2225,15 @@
     }
     
     function logout() { 
-      session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, tasks: [], jobTitle: '', pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pauseModalMode: 'pause' }; 
+      session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, canSeeOffice: false, canSeeDebtors: false, access: '', tasks: [], jobTitle: '', overtimeWarned: {}, pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pauseModalMode: 'pause' }; 
       clearPersistedSession();
+      try { localStorage.removeItem('sd-office'); } catch (e) {}
       stopIdleAlertPolling();
       idleAlertDismissedKey = '';
       if (idleAlertModal) idleAlertModal.hide();
       setLoggedIn(false);
       document.getElementById('adminLinks').classList.add('d-none-view');
+      applyAdminLinks();
       updateFloorLink();
       document.getElementById('globalLoginName').value = '';
       document.getElementById('globalLoginPass').value = '';
@@ -2289,7 +2419,7 @@
       document.getElementById('dashRole').innerText = session.role || session.jobTitle || '';
       const sw = document.getElementById('btnSwitchTask');
       if (sw) {
-        const canSwitch = session.isAdmin || ((session.tasks || []).length > 1);
+        const canSwitch = session.canSeeOffice || ((session.tasks || []).length > 1);
         sw.classList.toggle('d-none', !canSwitch);
       }
       const tabEl = document.querySelector('#dashTabs button[data-bs-target="#pane-available"]');
@@ -2299,14 +2429,24 @@
     }
     function startAutoRefresh() {
       if (refreshInterval) clearInterval(refreshInterval);
+      if (countdownInterval) clearInterval(countdownInterval);
       refreshInterval = setInterval(() => { 
         if (document.hidden) return;
         if (!document.querySelector('.modal.show') && !isSubmitting) {
             loadDashboard(true); 
         }
-      }, 60000); 
+      }, 60000);
+      countdownInterval = setInterval(() => {
+        if (document.hidden) return;
+        tickCountdowns();
+      }, 1000);
     }
-    function stopAutoRefresh() { if (refreshInterval) clearInterval(refreshInterval); }
+    function stopAutoRefresh() {
+      if (refreshInterval) clearInterval(refreshInterval);
+      if (countdownInterval) clearInterval(countdownInterval);
+      refreshInterval = null;
+      countdownInterval = null;
+    }
 
     let dashInFlight = false;
     function loadDashboard(silent = false) {
@@ -2459,6 +2599,7 @@
               const oldBtn = btnContainer.querySelector('.action-btn-container') || btnContainer.querySelector('button');
               if (oldBtn) oldBtn.outerHTML = btn;
             }
+            syncCardCountdown(liveCard, o);
             // Move card to correct container if assignment changed
             const showInProgress = isMine || (o.status === 'In Progress' && !isLocked);
             const targetContainer = showInProgress ? pr : av;
@@ -2486,6 +2627,7 @@
                       ${productLine}
                       <div>${statusBadge}<span class="badge bg-dark">${o.status}</span></div>
                     </div>
+                    ${countdownHtml(o)}
                     ${btn}
                   </div>
                 </div>
@@ -2500,7 +2642,8 @@
                     ${productLine}
                     <div>${statusBadge}<span class="badge bg-dark">${o.status}</span></div>
                   </div>
-                  ${btn}
+                    ${countdownHtml(o)}
+                    ${btn}
                 </div>
               </div>`;
             }
@@ -2514,7 +2657,8 @@
           }
         });
 
-        filterDashboard(); 
+        filterDashboard();
+        tickCountdowns(); 
       }).withFailureHandler(() => { dashInFlight = false; }).pollFloor(session.role, session.name);
     }
     

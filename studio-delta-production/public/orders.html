@@ -45,7 +45,9 @@
     <a class="active" href="/orders">Orders</a>
     <a href="/schedule">Schedule</a>
     <a href="/dropdowns">Dropdowns</a>
-    <a href="/debtors">Debtors</a>
+    <a href="/durations">Task times</a>
+    <a href="/users">Users</a>
+    <a data-nav="debtors" href="/debtors">Debtors</a>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search orders">
@@ -57,6 +59,7 @@
   <div class="wrap">
     <table id="grid"></table>
   </div>
+  <script src="/office-auth.js"></script>
   <script>
     const HEADERS = [
       ["quote_number","QUOTE NUMBER", 96, true],
@@ -229,8 +232,8 @@
 
     async function load() {
       const [ordersRes, dropRes] = await Promise.all([
-        fetch("/api/office/orders"),
-        fetch("/api/office/dropdowns")
+        sdOfficeFetch("/api/office/orders"),
+        sdOfficeFetch("/api/office/dropdowns")
       ]);
       const j = await ordersRes.json();
       const d = await dropRes.json();
@@ -242,7 +245,7 @@
     async function importSheets() {
       if (!confirm("Copy Users, orders, production logs, steel and backboards from Google into Railway? This replaces the current shop data on Railway.")) return;
       document.getElementById("status").textContent = "Importing from Google Sheets…";
-      const r = await fetch("/api/office/import-sheets", { method: "POST" });
+      const r = await sdOfficeFetch("/api/office/import-sheets", { method: "POST" });
       const j = await r.json();
       if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
       await load();
@@ -260,9 +263,8 @@
       document.getElementById("status").textContent = "Saving…";
       for (const row of rows) {
         if (!String(row.order_number || "").trim()) continue;
-        const r = await fetch("/api/office/orders", {
+        const r = await sdOfficeFetch("/api/office/orders", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(row)
         });
         const j = await r.json();
@@ -273,7 +275,7 @@
     }
     document.getElementById("q").oninput = render;
     window.addEventListener("resize", () => { render(); });
-    load();
+    sdRequireOffice("orders").then((p) => { if (p) load(); });
   </script>
 </body>
 </html>

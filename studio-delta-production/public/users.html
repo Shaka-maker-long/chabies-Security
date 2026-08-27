@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta — Users</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    header a { color:#344054; text-decoration:none; font-size:13px; font-weight:600; }
+    header a.active { color:#000; }
+    .wrap { padding:16px; }
+    table { border-collapse:collapse; width:100%; background:#fff; font-size:13px; }
+    th, td { border:1px solid var(--line); padding:8px; vertical-align:top; }
+    th { background:var(--head); text-align:left; }
+    .tasks { display:flex; flex-wrap:wrap; gap:6px 10px; }
+    label.t { font-size:12px; display:flex; gap:4px; align-items:center; }
+    input, select { border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:6px 10px; font-weight:600; cursor:pointer; }
+    button.ghost { background:#fff; color:#1d2939; }
+    .msg { font-size:12px; color:#667085; margin-left:auto; }
+    p.help { color:#667085; font-size:13px; max-width:860px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>STUDIO DELTA</h1>
+    <a href="/">Floor</a>
+    <a href="/orders">Orders</a>
+    <a href="/schedule">Schedule</a>
+    <a href="/dropdowns">Dropdowns</a>
+    <a href="/durations">Task times</a>
+    <a class="active" href="/users">Users</a>
+    <a data-nav="debtors" href="/debtors">Debtors</a>
+    <span class="msg" id="status"></span>
+    <button onclick="addRow()">Add user</button>
+    <button onclick="saveAll()">Save</button>
+  </header>
+  <div class="wrap">
+    <p class="help"><b>Production</b> people only see the floor tasks you tick — not Orders, Debtors, or other office pages. <b>Admin</b> can open office pages. Untick <b>See debtors</b> if that admin must not see money still owing.</p>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Access</th><th>Job title</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th></th></tr>
+      </thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+  <script src="/office-auth.js"></script>
+  <script>
+    const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
+    let rows = [];
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+    function render() {
+      const body = document.getElementById("body");
+      body.innerHTML = rows.map((u, i) => {
+        const tasks = TASKS.map((t) => "<label class='t'><input type='checkbox' data-i='"+i+"' data-task='"+t+"'"+(u.tasks.indexOf(t)>=0?" checked":"")+"> "+t+"</label>").join("");
+        const debtDisabled = u.access !== "Admin" ? " disabled" : "";
+        return "<tr>" +
+          "<td><input data-i='"+i+"' data-k='name' value='"+esc(u.name)+"'></td>" +
+          "<td><select data-i='"+i+"' data-k='access'><option"+(u.access==="Production"?" selected":"")+">Production</option><option"+(u.access==="Admin"?" selected":"")+">Admin</option></select></td>" +
+          "<td><input data-i='"+i+"' data-k='role' value='"+esc(u.role)+"'></td>" +
+          "<td><input data-i='"+i+"' data-k='password' placeholder='Leave blank to keep' value=''></td>" +
+          "<td><div class='tasks'>"+tasks+"</div></td>" +
+          "<td><input type='checkbox' data-i='"+i+"' data-k='seeDebtors'"+(u.canSeeDebtors?" checked":"")+debtDisabled+"></td>" +
+          "<td><button class='ghost' data-del='"+i+"'>Delete</button></td></tr>";
+      }).join("");
+      body.oninput = body.onchange = (e) => {
+        const i = Number(e.target.getAttribute("data-i"));
+        if (Number.isNaN(i)) return;
+        const k = e.target.getAttribute("data-k");
+        const task = e.target.getAttribute("data-task");
+        if (task) {
+          const set = new Set(rows[i].tasks);
+          if (e.target.checked) set.add(task); else set.delete(task);
+          rows[i].tasks = TASKS.filter((t) => set.has(t));
+        } else if (k === "seeDebtors") {
+          rows[i].canSeeDebtors = e.target.checked;
+          rows[i].seeDebtors = e.target.checked ? "Yes" : "No";
+        } else if (k) {
+          rows[i][k] = e.target.value;
+          if (k === "access") {
+            if (rows[i].access === "Admin") {
+              rows[i].canSeeDebtors = true;
+              rows[i].seeDebtors = "Yes";
+            } else {
+              rows[i].canSeeDebtors = false;
+              rows[i].seeDebtors = "No";
+            }
+            render();
+          }
+        }
+      };
+      body.onclick = async (e) => {
+        const i = e.target.getAttribute("data-del");
+        if (i == null) return;
+        const name = rows[Number(i)].name;
+        if (name) {
+          const r = await sdOfficeFetch("/api/office/users/" + encodeURIComponent(name), { method: "DELETE" });
+          const j = await r.json();
+          if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+        }
+        rows.splice(Number(i), 1);
+        render();
+      };
+    }
+    function addRow() {
+      rows.unshift({ name: "", access: "Production", role: "", password: "", tasks: [], canSeeDebtors: false, seeDebtors: "No" });
+      render();
+    }
+    async function saveAll() {
+      document.getElementById("status").textContent = "Saving…";
+      for (const u of rows) {
+        if (!String(u.name || "").trim()) continue;
+        const r = await sdOfficeFetch("/api/office/users", { method: "PUT", body: JSON.stringify(u) });
+        const j = await r.json();
+        if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      }
+      await load();
+      document.getElementById("status").textContent = "Saved";
+    }
+    async function load() {
+      const r = await sdOfficeFetch("/api/office/users");
+      const j = await r.json();
+      if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      rows = j.rows || [];
+      render();
+      document.getElementById("status").textContent = rows.length + " users";
+    }
+    sdRequireOffice("users").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>
