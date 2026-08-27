@@ -269,6 +269,28 @@ function loadScript() {
   return scriptSource;
 }
 
+const SHEET_CACHE_MS = Number(process.env.SHEET_CACHE_MS || 30000);
+let workbookCache = null;
+
+async function getCachedWorkbook() {
+  const sheetId = process.env.SHEET_ID;
+  if (!sheetId) throw new Error("SHEET_ID is not set");
+  const now = Date.now();
+  if (
+    workbookCache &&
+    workbookCache.spreadsheetId === sheetId &&
+    now - workbookCache.loadedAt < SHEET_CACHE_MS
+  ) {
+    return workbookCache.book;
+  }
+  const auth = getAuth();
+  const client = await auth.getClient();
+  const book = new Spreadsheet(client, sheetId);
+  await book.load();
+  workbookCache = { book, spreadsheetId: sheetId, loadedAt: now };
+  return book;
+}
+
 function jsonSafe(value) {
   if (value instanceof Date) return value.getTime();
   if (Array.isArray(value)) return value.map(jsonSafe);
@@ -284,12 +306,7 @@ async function callShopFunction(fnName, args) {
   if (!/^[A-Za-z0-9_]+$/.test(fnName) || !ALLOWED.has(fnName)) {
     throw new Error("Unknown function: " + fnName);
   }
-  const sheetId = process.env.SHEET_ID;
-  if (!sheetId) throw new Error("SHEET_ID is not set");
-  const auth = getAuth();
-  const client = await auth.getClient();
-  const workbook = new Spreadsheet(client, sheetId);
-  await workbook.load();
+  const workbook = await getCachedWorkbook();
 
   const sandbox = {
     SpreadsheetApp: createSpreadsheetApp(workbook),
@@ -361,7 +378,10 @@ async function callShopFunction(fnName, args) {
     throw e;
   }
   await workbook.flush();
+  if (workbookCache && workbookCache.book === workbook) {
+    workbookCache.loadedAt = Date.now();
+  }
   return jsonSafe(result);
 }
 
-module.exports = { callShopFunction, ALLOWED, jsonSafe };
+module.exports = { callShopFunction, ALLOWED, jsonSafe, getCachedWorkbook };

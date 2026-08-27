@@ -190,21 +190,28 @@ class Spreadsheet {
       fields: "sheets.properties"
     });
     const props = (meta.data.sheets || []).map((s) => s.properties);
-    await Promise.all(props.map(async (p) => {
-      const sheet = new Sheet(this, p);
-      const res = await sheetsApi.spreadsheets.values.get({
+    const ranges = props.map((p) => "'" + String(p.title).replace(/'/g, "''") + "'");
+    const valueRanges = [];
+    if (ranges.length) {
+      const batch = await sheetsApi.spreadsheets.values.batchGet({
         spreadsheetId: this.spreadsheetId,
-        range: "'" + p.title.replace(/'/g, "''") + "'",
+        ranges,
         valueRenderOption: "UNFORMATTED_VALUE",
         dateTimeRenderOption: "SERIAL_NUMBER"
       });
-      const values = res.data.values || [];
+      valueRanges.push.apply(valueRanges, batch.data.valueRanges || []);
+    }
+    this.sheetsByName = {};
+    for (let i = 0; i < props.length; i++) {
+      const p = props[i];
+      const sheet = new Sheet(this, p);
+      const values = (valueRanges[i] && valueRanges[i].values) || [];
       sheet.grid = values.map((row) => row.map(coerceRead));
       sheet.lastRow = values.length;
       sheet.lastCol = values.reduce((m, row) => Math.max(m, row.length), 0);
       sheet.loadedLastRow = values.length;
       this.sheetsByName[p.title] = sheet;
-    }));
+    }
     return this;
   }
   getSheetByName(name) {

@@ -58,9 +58,16 @@ app.post("/api/run", (req, res) => {
       const result = await callShopFunction(fn, args);
       res.json({ ok: true, result });
     } catch (e) {
+      const msg = (e && e.message) || String(e);
       console.error("[api/run]", fn, e && e.stack ? e.stack : e);
       if (!res.headersSent) {
-        res.status(400).json({ ok: false, error: (e && e.message) || String(e) });
+        const quota = /quota exceeded/i.test(msg);
+        res.status(quota ? 429 : 400).json({
+          ok: false,
+          error: quota
+            ? "Google Sheets is busy (too many reads this minute). Wait 60 seconds, then try again. Do not keep tapping."
+            : msg
+        });
       }
     }
   });
