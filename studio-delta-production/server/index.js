@@ -36,6 +36,9 @@ app.get("/schedule", (_req, res) => {
 app.get("/dropdowns", (_req, res) => {
   res.sendFile(path.join(publicDir, "dropdowns.html"));
 });
+app.get("/debtors", (_req, res) => {
+  res.sendFile(path.join(publicDir, "debtors.html"));
+});
 app.get("/gas-client.js", (_req, res) => {
   res.type("application/javascript").sendFile(path.join(publicDir, "gas-client.js"));
 });

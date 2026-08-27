@@ -6,8 +6,50 @@ const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
   "product", "variation", "doors", "detailed_description", "dimensions", "powder_coating",
   "client_name", "client_number", "email", "payment_date", "address", "province",
-  "price_incl_vat", "price_excl_vat", "month_of_sale", "source", "city"
+  "price_excl_vat", "price_incl_vat", "amount_paid", "month_of_sale", "source", "city"
 ];
+
+const VAT_RATE = 0.15;
+
+function parseMoney(s) {
+  const n = Number(String(s || "").replace(/,/g, "").replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+function money(n) {
+  return (Math.round(Number(n) * 100) / 100).toFixed(2);
+}
+
+function inclFromExcl(excl) {
+  const n = parseMoney(excl);
+  if (!n) return "";
+  return money(n * (1 + VAT_RATE));
+}
+
+function orderTotal(order) {
+  const incl = parseMoney(order && order.price_incl_vat);
+  if (incl) return incl;
+  return parseMoney(inclFromExcl(order && order.price_excl_vat));
+}
+
+function orderPaid(order) {
+  return parseMoney(order && order.amount_paid);
+}
+
+function orderOwing(order) {
+  return Math.max(0, Math.round((orderTotal(order) - orderPaid(order)) * 100) / 100);
+}
+
+function applyPriceAndPayments(payload, row, existing) {
+  if (payload.price_excl_vat) payload.price_incl_vat = inclFromExcl(payload.price_excl_vat);
+  payload.amount_paid = payload.amount_paid === "" || payload.amount_paid == null
+    ? (existing && existing.amount_paid) || "0.00"
+    : money(parseMoney(payload.amount_paid));
+  payload.payments = Array.isArray(row.payments)
+    ? row.payments
+    : (existing && Array.isArray(existing.payments) ? existing.payments : []);
+  return payload;
+}
 
 function emptyState() {
   return {
@@ -87,6 +129,7 @@ function upsertOrder(row) {
   payload.order_number = orderNumber;
   payload.updated_at = nowIso();
   const existing = state.orders.find((o) => o.order_number === orderNumber);
+  applyPriceAndPayments(payload, row, existing);
   if (existing) {
     Object.assign(existing, payload);
     save();
@@ -187,11 +230,50 @@ function removeDropdownItem(field, value) {
   return listDropdowns();
 }
 
+function decorateMoney(order) {
+  const total = orderTotal(order);
+  const paid = orderPaid(order);
+  const owing = orderOwing(order);
+  return {
+    ...order,
+    total: money(total),
+    paid: money(paid),
+    owing: money(owing),
+    is_debtor: total > 0 && owing > 0.001
+  };
+}
+
+function listDebtors() {
+  return listOrders().map(decorateMoney).filter((o) => o.is_debtor);
+}
+
+function recordPayment(orderNumber, amount, note) {
+  const order = state.orders.find((o) => o.order_number === String(orderNumber || "").trim());
+  if (!order) throw new Error("Order not found");
+  const add = parseMoney(amount);
+  if (add <= 0) throw new Error("Payment amount must be more than 0");
+  if (!Array.isArray(order.payments)) order.payments = [];
+  order.payments.push({
+    at: nowIso(),
+    amount: money(add),
+    note: String(note || "").trim()
+  });
+  order.amount_paid = money(orderPaid(order) + add);
+  if (!order.payment_date) order.payment_date = nowIso().slice(0, 10);
+  order.updated_at = nowIso();
+  save();
+  return decorateMoney(order);
+}
+
 module.exports = {
   db: null,
   dbPath,
   ORDER_FIELDS,
   DROPDOWN_KEYS,
+  VAT_RATE,
+  parseMoney,
+  money,
+  inclFromExcl,
   listOrders,
   upsertOrder,
   deleteOrder,
@@ -201,5 +283,8 @@ module.exports = {
   countOrders,
   listDropdowns,
   addDropdownItem,
-  removeDropdownItem
+  removeDropdownItem,
+  listDebtors,
+  recordPayment,
+  decorateMoney
 };

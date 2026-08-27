@@ -22,7 +22,7 @@
     th, td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
     th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
     td input, td textarea, td select { width:100%; min-width:100%; border:0; font:inherit; background:transparent; padding:0; }
-    td select { min-height:22px; }
+    td input[readonly] { color:#475467; background:#f8fafc; }
     td textarea { min-height:42px; white-space:pre-wrap; }
     tr:focus-within td { outline:0; }
     tr:focus-within { outline:2px solid #98a2b3; outline-offset:-2px; }
@@ -32,7 +32,7 @@
     th.freeze { z-index:6; background:var(--head); }
     td.freeze { background:#fff; }
     td.freeze.st-couriers { background:var(--blue); }
-    td.freeze.st-green { background:var(--green); }
+    td.freeze input, td.freeze select { text-overflow:ellipsis; }
     .freeze-end { box-shadow:4px 0 8px rgba(16,24,40,.12); }
     .wrap-text { white-space:normal; }
     .msg { font-size:12px; color:#667085; }
@@ -45,6 +45,7 @@
     <a class="active" href="/orders">Orders</a>
     <a href="/schedule">Schedule</a>
     <a href="/dropdowns">Dropdowns</a>
+    <a href="/debtors">Debtors</a>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search orders">
@@ -76,8 +77,10 @@
       ["payment_date","PAYMENT DATE", 130, false],
       ["address","ADDRESS", 240, false],
       ["province","PROVINCE", 150, false],
-      ["price_incl_vat","PRICE (Incl VAT)", 130, false],
-      ["price_excl_vat","PRICE (Excl VAT)", 130, false],
+      ["price_excl_vat","PRICE (Excl VAT)", 140, false],
+      ["price_incl_vat","PRICE (Incl VAT)", 140, false],
+      ["amount_paid","AMOUNT PAID", 130, false],
+      ["owing","OWING", 120, false],
       ["month_of_sale","MONTH OF SALE", 130, false],
       ["source","SOURCE", 150, false],
       ["city","CITY", 130, false]
@@ -112,6 +115,21 @@
       type: 1, category: 1, product: 1, variation: 1,
       doors: 1, powder_coating: 1, province: 1, source: 1
     };
+    const READONLY_FIELDS = { price_incl_vat: 1, owing: 1 };
+    const VAT_RATE = 0.15;
+    function parseMoney(s) {
+      const n = Number(String(s || "").replace(/,/g, "").replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+    }
+    function money(n) { return (Math.round(Number(n) * 100) / 100).toFixed(2); }
+    function inclFromExcl(excl) {
+      const n = parseMoney(excl);
+      return n ? money(n * (1 + VAT_RATE)) : "";
+    }
+    function owingOf(row) {
+      const total = parseMoney(row.price_incl_vat) || parseMoney(inclFromExcl(row.price_excl_vat));
+      return money(Math.max(0, total - parseMoney(row.amount_paid)));
+    }
 
     function statusClass(s) {
       const v = String(s || "").toLowerCase();
@@ -156,6 +174,9 @@
             html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
           } else if (DROP_FIELDS[k]) {
             html += "<td class=\"" + cls + "\" style=\"" + style + "\">" + selectHtml(k, row[k]) + "</td>";
+          } else if (READONLY_FIELDS[k]) {
+            const val = k === "owing" ? owingOf(row) : (row[k] || "");
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(val) + "\" readonly></td>";
           } else {
             html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\"></td>";
           }
@@ -170,6 +191,17 @@
         const i = Number(tr.getAttribute("data-i"));
         const k = e.target.getAttribute("data-k");
         rows[i][k] = e.target.value;
+        if (k === "price_excl_vat") {
+          rows[i].price_incl_vat = inclFromExcl(e.target.value);
+          const incl = tr.querySelector('input[data-k="price_incl_vat"]');
+          const owing = tr.querySelector('input[data-k="owing"]');
+          if (incl) incl.value = rows[i].price_incl_vat;
+          if (owing) owing.value = owingOf(rows[i]);
+        }
+        if (k === "amount_paid") {
+          const owing = tr.querySelector('input[data-k="owing"]');
+          if (owing) owing.value = owingOf(rows[i]);
+        }
         if (k === "status") {
           const width = colWidths[2];
           e.target.parentElement.className = colClass("status", width, true, statusClass(e.target.value));
@@ -233,6 +265,7 @@
       document.getElementById("status").textContent = "Saved";
     }
     document.getElementById("q").oninput = render;
+    window.addEventListener("resize", () => { render(); });
     load();
   </script>
 </body>

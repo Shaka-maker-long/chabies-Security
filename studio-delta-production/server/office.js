@@ -10,7 +10,11 @@ const {
   countOrders,
   listDropdowns,
   addDropdownItem,
-  removeDropdownItem
+  removeDropdownItem,
+  listDebtors,
+  recordPayment,
+  decorateMoney,
+  VAT_RATE
 } = require("./db");
 
 function workdays(fromIso, days) {
@@ -60,6 +64,7 @@ const HEADER_MAP = {
   "province": "province",
   "price (incl vat)": "price_incl_vat",
   "price (excl vat)": "price_excl_vat",
+  "amount paid": "amount_paid",
   "month of sale": "month_of_sale",
   "source": "source",
   "city": "city"
@@ -105,7 +110,7 @@ async function importOrdersFromSheets() {
 
 function mountOffice(app) {
   app.get("/api/office/orders", (_req, res) => {
-    res.json({ ok: true, rows: listOrders(), fields: ORDER_FIELDS });
+    res.json({ ok: true, rows: listOrders().map(decorateMoney), fields: ORDER_FIELDS, vatRate: VAT_RATE });
   });
 
   app.put("/api/office/orders", (req, res) => {
@@ -181,6 +186,23 @@ function mountOffice(app) {
       const value = (req.body && req.body.value) || req.query.value || "";
       const dropdowns = removeDropdownItem(req.params.field, value);
       res.json({ ok: true, dropdowns });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/debtors", (_req, res) => {
+    res.json({ ok: true, rows: listDebtors(), vatRate: VAT_RATE });
+  });
+
+  app.post("/api/office/orders/:orderNumber/payments", (req, res) => {
+    try {
+      const row = recordPayment(
+        req.params.orderNumber,
+        req.body && req.body.amount,
+        req.body && req.body.note
+      );
+      res.json({ ok: true, row, debtors: listDebtors() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
