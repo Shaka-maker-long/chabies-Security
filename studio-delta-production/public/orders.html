@@ -19,7 +19,7 @@
     button.ghost { background:#fff; color:#1d2939; }
     .wrap { overflow:auto; height:calc(100vh - 58px); }
     table { border-collapse:separate; border-spacing:0; min-width:4200px; background:#fff; font-size:12px; }
-    th, td { border:1px solid var(--line); padding:6px 8px; vertical-align:top; white-space:nowrap; background:#fff; }
+    th, td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
     th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
     td input, td textarea, td select { width:100%; min-width:100%; border:0; font:inherit; background:transparent; padding:0; }
     td select { min-height:22px; }
@@ -58,14 +58,14 @@
   </div>
   <script>
     const HEADERS = [
-      ["quote_number","QUOTE NUMBER", 130, true],
-      ["order_number","ORDER NUMBER", 140, true],
-      ["status","STATUS", 150, true],
-      ["assigned_operator","ASSIGNED OPERATOR", 150, true],
-      ["type","TYPE", 130, true],
-      ["category","CATERGORY", 200, true],
-      ["product","PRODUCT", 240, true],
-      ["variation","VARIATION", 320, true],
+      ["quote_number","QUOTE NUMBER", 96, true],
+      ["order_number","ORDER NUMBER", 108, true],
+      ["status","STATUS", 112, true],
+      ["assigned_operator","ASSIGNED OPERATOR", 108, true],
+      ["type","TYPE", 100, true],
+      ["category","CATERGORY", 128, true],
+      ["product","PRODUCT", 148, true],
+      ["variation","VARIATION", 168, true],
       ["doors","DOORS", 180, false],
       ["detailed_description","DETAILED DESCRIPTION", 280, false],
       ["dimensions","DIMENSIONS", 180, false],
@@ -83,15 +83,29 @@
       ["city","CITY", 130, false]
     ];
     const freezeLeft = {};
-    (function setFreezeOffsets() {
+    const colWidths = HEADERS.map((h) => h[2]);
+
+    function layoutFreeze() {
+      const wrap = document.querySelector(".wrap");
+      const avail = wrap && wrap.clientWidth ? wrap.clientWidth : window.innerWidth;
+      const maxFreeze = Math.max(420, Math.floor(avail * 0.45));
+      HEADERS.forEach((h, i) => { colWidths[i] = h[2]; });
+      let total = 0;
+      HEADERS.forEach((h, i) => { if (h[3]) total += colWidths[i]; });
+      if (total > maxFreeze) {
+        const scale = maxFreeze / total;
+        HEADERS.forEach((h, i) => {
+          if (h[3]) colWidths[i] = Math.max(72, Math.floor(h[2] * scale));
+        });
+      }
       let left = 0;
-      HEADERS.forEach(([k, , width, freeze]) => {
-        if (freeze) {
-          freezeLeft[k] = left;
-          left += width;
+      HEADERS.forEach((h, i) => {
+        if (h[3]) {
+          freezeLeft[h[0]] = left;
+          left += colWidths[i];
         }
       });
-    })();
+    }
     let rows = [];
     let dropdowns = {};
     const DROP_FIELDS = {
@@ -120,10 +134,12 @@
     }
 
     function render() {
+      layoutFreeze();
       const q = document.getElementById("q").value.toLowerCase();
       const table = document.getElementById("grid");
       let html = "<thead><tr>";
-      HEADERS.forEach(([k, label, width, freeze]) => {
+      HEADERS.forEach(([k, label, , freeze], i) => {
+        const width = colWidths[i];
         html += "<th class=\"" + colClass(k, width, freeze, "") + "\" style=\"" + colStyle(k, width, freeze) + "\">" + label + "</th>";
       });
       html += "</tr></thead><tbody>";
@@ -131,7 +147,8 @@
         const blob = HEADERS.map(([k]) => row[k] || "").join(" ").toLowerCase();
         if (q && blob.indexOf(q) === -1) return;
         html += "<tr data-i=\"" + i + "\">";
-        HEADERS.forEach(([k, , width, freeze]) => {
+        HEADERS.forEach(([k, , , freeze], c) => {
+          const width = colWidths[c];
           const extra = k === "status" ? statusClass(row[k]) : "";
           const cls = colClass(k, width, freeze, extra);
           const style = colStyle(k, width, freeze);
@@ -154,7 +171,7 @@
         const k = e.target.getAttribute("data-k");
         rows[i][k] = e.target.value;
         if (k === "status") {
-          const width = 150;
+          const width = colWidths[2];
           e.target.parentElement.className = colClass("status", width, true, statusClass(e.target.value));
         }
       };
