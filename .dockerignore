@@ -1,0 +1,9 @@
+.git
+*.png
+*.jpg
+*.jpeg
+*.css
+/index.html
+node_modules
+studio-delta-production/node_modules
+studio-delta-production/.env

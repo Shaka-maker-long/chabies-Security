@@ -1,0 +1,5 @@
+node_modules/
+studio-delta-production/node_modules/
+studio-delta-production/data/
+.env
+agent-tools/

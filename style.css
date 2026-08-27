@@ -1,0 +1,203 @@
+/* General Styles */
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+    background-color: #ffffff;
+    color: #333;
+}
+
+/* Header */
+.header-container {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 10%;
+    background-color: white;
+}
+
+.logo {
+    height: 60px;
+}
+
+.nav-links {
+    list-style: none;
+    display: flex;
+    gap: 30px;
+}
+
+.nav-links li a {
+    text-decoration: none;
+    color: #333;
+    font-size: 18px;
+    font-weight: bold;
+}
+
+/* Hero Section */
+.hero {
+    background: url('security-hero.jpg') no-repeat center center/cover;
+    position: relative;
+    color: #fff;
+    text-align: center;
+    padding: 100px 0;
+}
+
+.hero .overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 51, 102, 0.6);
+}
+
+.hero h2,
+.hero p {
+    position: relative;
+    z-index: 1;
+}
+
+.hero .btn {
+    display: inline-block;
+    padding: 12px 24px;
+    background-color: #0073e6;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 5px;
+    font-size: 16px;
+    margin-top: 10px;
+}
+
+
+/* Info Section */
+.info {
+    padding: 50px 0;
+}
+
+.info-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px; /* Space between containers */
+    justify-content: center; /* Center the containers */
+}
+
+.info-box {
+    flex: 1 1 calc(33.33% - 40px); /* 3 boxes per row on desktop */
+    background-color: #f8f8f8;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+    .info-box {
+        flex: 1 1 calc(50% - 20px); /* 2 boxes per row on tablets */
+    }
+}
+
+@media (max-width: 480px) {
+    .info-box {
+        flex: 1 1 100%; /* 1 box per row on mobile */
+    }
+}
+/* Services Section */
+.services {
+    padding: 50px 0;
+    text-align: center;
+}
+
+.section-title {
+    color: #0073e6;
+    font-size: 2em;
+    margin-bottom: 20px;
+}
+
+.service-grid {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.service-box {
+    flex: 1 1 calc(33% - 20px);
+    box-sizing: border-box;
+    padding: 20px;
+    background-color: #f8f8f8;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+@media (max-width: 768px) {
+    .service-box {
+        flex: 1 1 calc(50% - 20px);
+    }
+}
+
+@media (max-width: 480px) {
+    .service-box {
+        flex: 1 1 100%;
+    }
+}
+
+/* Services Section */
+/* Services Section */
+.service-box img {
+    width: 100%; /* Full width of the container */
+    height: 600px; /* Double the height (previously 200px) */
+    object-fit: cover; /* Ensures images cover the area uniformly */
+    border-radius: 8px; /* Rounded corners */
+}
+
+.service-title {
+    font-size: 20px;
+    color: #333;
+    margin-top: 10px;
+}
+
+.service-text {
+    font-size: 16px;
+    color: #555;
+}
+
+/* Contact Section */
+.contact {
+    background-color: #f0f8ff;
+    padding: 50px 0;
+    text-align: center;
+}
+
+form input,
+form textarea {
+    width: 100%;
+    padding: 12px;
+    margin: 10px 0;
+}
+
+form .btn {
+    padding: 12px 25px;
+    background-color: #003366;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+}
+
+/* Footer */
+footer {
+    background-color: #003366;
+    color: white;
+    padding: 15px 0;
+    text-align: center;
+    margin-top: 50px;
+}
+
+.hero h1 {
+    font-family: 'Arial Black', sans-serif;
+    font-size: 3em;
+    color: white;
+    position: relative;
+    z-index: 1;
+}
