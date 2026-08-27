@@ -16,6 +16,7 @@ const {
   decorateMoney,
   VAT_RATE
 } = require("./db");
+const { importGoogleWorkbook, tabCounts } = require("./workbook-store");
 
 function workdays(fromIso, days) {
   const out = [];
@@ -35,77 +36,6 @@ function mondayOf(dateIso) {
   const day = d.getDay() || 7;
   d.setDate(d.getDate() - day + 1);
   return d.toISOString().slice(0, 10);
-}
-
-function normHeader(s) {
-  return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-const HEADER_MAP = {
-  "quote number": "quote_number",
-  "order number": "order_number",
-  "status": "status",
-  "assigned operator": "assigned_operator",
-  "type": "type",
-  "catergory": "category",
-  "category": "category",
-  "product": "product",
-  "variation": "variation",
-  "doors": "doors",
-  "detailed description": "detailed_description",
-  "dimensions": "dimensions",
-  "powder coating": "powder_coating",
-  "client name": "client_name",
-  "client number": "client_number",
-  "email address": "email",
-  "email": "email",
-  "payment date": "payment_date",
-  "address": "address",
-  "province": "province",
-  "price (incl vat)": "price_incl_vat",
-  "price (excl vat)": "price_excl_vat",
-  "amount paid": "amount_paid",
-  "month of sale": "month_of_sale",
-  "source": "source",
-  "city": "city"
-};
-
-async function importOrdersFromSheets() {
-  const { google } = require("googleapis");
-  let credentials;
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-    credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    credentials = require(process.env.GOOGLE_APPLICATION_CREDENTIALS);
-  } else {
-    throw new Error("Google credentials are not set");
-  }
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"]
-  });
-  const sheets = google.sheets({ version: "v4", auth });
-  const spreadsheetId = process.env.SHEET_ID;
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: "ORDERS"
-  });
-  const values = res.data.values || [];
-  if (values.length < 2) return { imported: 0 };
-  const headers = values[0].map(normHeader);
-  let n = 0;
-  for (let i = 1; i < values.length; i++) {
-    const row = {};
-    headers.forEach((h, c) => {
-      const field = HEADER_MAP[h];
-      if (field) row[field] = values[i][c] || "";
-    });
-    if (row.order_number) {
-      upsertOrder(row);
-      n++;
-    }
-  }
-  return { imported: n };
 }
 
 function mountOffice(app) {
@@ -161,8 +91,14 @@ function mountOffice(app) {
 
   app.post("/api/office/import-sheets", async (_req, res) => {
     try {
-      const result = await importOrdersFromSheets();
-      res.json({ ok: true, ...result });
+      const book = await importGoogleWorkbook();
+      const tabs = tabCounts(book);
+      res.json({
+        ok: true,
+        imported: tabs.ORDERS || 0,
+        tabs,
+        message: "Copied Users, orders, production logs, steel and backboards from Google into Railway."
+      });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

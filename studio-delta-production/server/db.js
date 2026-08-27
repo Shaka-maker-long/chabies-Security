@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { DROPDOWN_KEYS, DEFAULT_DROPDOWNS } = require("./dropdowns-default");
+const { getBook, persistWorkbook, ORDER_HEADERS } = require("./workbook-store");
 
 const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
@@ -58,7 +59,8 @@ function emptyState() {
     schedule_cells: [],
     nextOrderId: 1,
     nextScheduleId: 1,
-    dropdowns: JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS))
+    dropdowns: JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS)),
+    paymentsByOrder: {}
   };
 }
 
@@ -95,8 +97,16 @@ try {
     orders: Array.isArray(parsed.orders) ? parsed.orders : [],
     schedule_rows: Array.isArray(parsed.schedule_rows) ? parsed.schedule_rows : [],
     schedule_cells: Array.isArray(parsed.schedule_cells) ? parsed.schedule_cells : [],
-    dropdowns
+    dropdowns,
+    paymentsByOrder: parsed.paymentsByOrder && typeof parsed.paymentsByOrder === "object" ? parsed.paymentsByOrder : {}
   };
+  if (!Object.keys(state.paymentsByOrder).length && Array.isArray(parsed.orders)) {
+    parsed.orders.forEach((o) => {
+      if (o && o.order_number && Array.isArray(o.payments) && o.payments.length) {
+        state.paymentsByOrder[o.order_number] = o.payments;
+      }
+    });
+  }
   console.log("[db] opened", dbPath, "orders", state.orders.length);
   if (!parsed.dropdowns) save();
 } catch (e) {
@@ -117,8 +127,112 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+const ORDER_HEADER_MAP = {
+  "quote number": "quote_number",
+  "order number": "order_number",
+  "status": "status",
+  "assigned operator": "assigned_operator",
+  "type": "type",
+  "catergory": "category",
+  "category": "category",
+  "product": "product",
+  "variation": "variation",
+  "doors": "doors",
+  "detailed description": "detailed_description",
+  "dimensions": "dimensions",
+  "powder coating": "powder_coating",
+  "client name": "client_name",
+  "client number": "client_number",
+  "email address": "email",
+  "email": "email",
+  "payment date": "payment_date",
+  "address": "address",
+  "province": "province",
+  "price (incl vat)": "price_incl_vat",
+  "price (excl vat)": "price_excl_vat",
+  "amount paid": "amount_paid",
+  "month of sale": "month_of_sale",
+  "source": "source",
+  "city": "city"
+};
+
+function normHeader(s) {
+  return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function cellStr(v) {
+  if (v == null || v === "") return "";
+  if (v instanceof Date) return v.toISOString();
+  return String(v);
+}
+
+function ordersSheet() {
+  const book = getBook();
+  let sheet = book.getSheetByName("ORDERS");
+  if (!sheet) sheet = book.insertSheet("ORDERS");
+  return sheet;
+}
+
+function headerLookup(sheet) {
+  const lastCol = Math.max(sheet.getLastColumn(), ORDER_HEADERS.length, 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0] || [];
+  const idx = {};
+  headers.forEach((h, i) => {
+    const field = ORDER_HEADER_MAP[normHeader(h)];
+    if (field) idx[field] = i;
+  });
+  return { headers, idx, lastCol };
+}
+
+function ensureOrderHeaders(sheet) {
+  let look = headerLookup(sheet);
+  if (look.idx.order_number == null || look.idx.status == null) {
+    sheet.getRange(1, 1, 1, ORDER_HEADERS.length).setValues([ORDER_HEADERS]);
+    look = headerLookup(sheet);
+  }
+  if (look.idx.amount_paid == null) {
+    const col = Math.max(sheet.getLastColumn(), look.headers.length) + 1;
+    sheet.getRange(1, col).setValue("AMOUNT PAID");
+    look = headerLookup(sheet);
+  }
+  return look;
+}
+
+function rowToOrder(row, idx, id) {
+  const o = { id };
+  for (const f of ORDER_FIELDS) {
+    const i = idx[f];
+    o[f] = i == null ? "" : cellStr(row[i]);
+  }
+  return o;
+}
+
 function listOrders() {
-  return state.orders.slice().sort((a, b) => Number(b.id) - Number(a.id));
+  const sheet = ordersSheet();
+  const { idx, lastCol } = ensureOrderHeaders(sheet);
+  const last = sheet.getLastRow();
+  if (last < 2) return [];
+  const grid = sheet.getRange(2, 1, last - 1, lastCol).getValues();
+  const out = [];
+  for (let i = 0; i < grid.length; i++) {
+    const row = rowToOrder(grid[i], idx, i + 2);
+    if (!String(row.order_number || "").trim()) continue;
+    if (state.paymentsByOrder && state.paymentsByOrder[row.order_number]) {
+      row.payments = state.paymentsByOrder[row.order_number];
+    }
+    out.push(row);
+  }
+  return out.reverse();
+}
+
+function findOrderSheetRow(sheet, idx, orderNumber) {
+  const last = sheet.getLastRow();
+  if (last < 2 || idx.order_number == null) return 0;
+  const values = sheet.getRange(2, idx.order_number + 1, last - 1, 1).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (String(values[i][0] || "").trim() === orderNumber) return i + 2;
+  }
+  return 0;
 }
 
 function upsertOrder(row) {
@@ -128,21 +242,40 @@ function upsertOrder(row) {
   for (const f of ORDER_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]);
   payload.order_number = orderNumber;
   payload.updated_at = nowIso();
-  const existing = state.orders.find((o) => o.order_number === orderNumber);
+  const existing = listOrders().find((o) => o.order_number === orderNumber);
   applyPriceAndPayments(payload, row, existing);
-  if (existing) {
-    Object.assign(existing, payload);
-    save();
-    return existing;
+  const sheet = ordersSheet();
+  const { idx, lastCol } = ensureOrderHeaders(sheet);
+  let rowNum = findOrderSheetRow(sheet, idx, orderNumber);
+  if (!rowNum) rowNum = sheet.getLastRow() + 1;
+  const width = Math.max(lastCol, 1);
+  const current = rowNum <= sheet.getLastRow()
+    ? sheet.getRange(rowNum, 1, 1, width).getValues()[0]
+    : [];
+  while (current.length < width) current.push("");
+  for (const f of ORDER_FIELDS) {
+    if (idx[f] == null) continue;
+    current[idx[f]] = payload[f] == null ? "" : payload[f];
   }
-  payload.id = state.nextOrderId++;
-  state.orders.push(payload);
+  sheet.getRange(rowNum, 1, 1, current.length).setValues([current]);
+  if (!state.paymentsByOrder) state.paymentsByOrder = {};
+  state.paymentsByOrder[orderNumber] = payload.payments || [];
   save();
+  persistWorkbook();
+  payload.id = rowNum;
+  payload.payments = state.paymentsByOrder[orderNumber];
   return payload;
 }
 
 function deleteOrder(orderNumber) {
-  state.orders = state.orders.filter((o) => o.order_number !== orderNumber);
+  const sheet = ordersSheet();
+  const { idx } = ensureOrderHeaders(sheet);
+  const rowNum = findOrderSheetRow(sheet, idx, String(orderNumber || "").trim());
+  if (rowNum) {
+    sheet.deleteRow(rowNum);
+    persistWorkbook();
+  }
+  if (state.paymentsByOrder) delete state.paymentsByOrder[orderNumber];
   save();
 }
 
@@ -200,7 +333,25 @@ function setScheduleCell(rowId, day, value, persist = true) {
 }
 
 function countOrders() {
-  return state.orders.length;
+  return listOrders().length;
+}
+
+function migrateJsonOrdersToWorkbook() {
+  const sheet = ordersSheet();
+  ensureOrderHeaders(sheet);
+  if (sheet.getLastRow() >= 2) return { migrated: 0 };
+  const leftover = (state.orders || []).filter((o) => o && String(o.order_number || "").trim());
+  leftover.forEach((o) => {
+    try {
+      upsertOrder(o);
+    } catch (e) {
+      console.error("[db] migrate order failed", o && o.order_number, e && e.message ? e.message : e);
+    }
+  });
+  if (leftover.length) {
+    console.log("[db] migrated", leftover.length, "json orders into Railway workbook");
+  }
+  return { migrated: leftover.length };
 }
 
 function listDropdowns() {
@@ -248,21 +399,28 @@ function listDebtors() {
 }
 
 function recordPayment(orderNumber, amount, note) {
-  const order = state.orders.find((o) => o.order_number === String(orderNumber || "").trim());
-  if (!order) throw new Error("Order not found");
+  const num = String(orderNumber || "").trim();
+  const existing = listOrders().find((o) => o.order_number === num);
+  if (!existing) throw new Error("Order not found");
   const add = parseMoney(amount);
   if (add <= 0) throw new Error("Payment amount must be more than 0");
-  if (!Array.isArray(order.payments)) order.payments = [];
-  order.payments.push({
+  if (!state.paymentsByOrder) state.paymentsByOrder = {};
+  const history = Array.isArray(state.paymentsByOrder[num])
+    ? state.paymentsByOrder[num].slice()
+    : (Array.isArray(existing.payments) ? existing.payments.slice() : []);
+  history.push({
     at: nowIso(),
     amount: money(add),
     note: String(note || "").trim()
   });
-  order.amount_paid = money(orderPaid(order) + add);
-  if (!order.payment_date) order.payment_date = nowIso().slice(0, 10);
-  order.updated_at = nowIso();
-  save();
-  return decorateMoney(order);
+  state.paymentsByOrder[num] = history;
+  const saved = upsertOrder({
+    ...existing,
+    amount_paid: money(orderPaid(existing) + add),
+    payment_date: existing.payment_date || nowIso().slice(0, 10),
+    payments: history
+  });
+  return decorateMoney(saved);
 }
 
 module.exports = {
@@ -286,5 +444,6 @@ module.exports = {
   removeDropdownItem,
   listDebtors,
   recordPayment,
-  decorateMoney
+  decorateMoney,
+  migrateJsonOrdersToWorkbook
 };

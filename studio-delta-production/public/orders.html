@@ -230,16 +230,17 @@
       const d = await dropRes.json();
       rows = j.rows || [];
       dropdowns = d.dropdowns || {};
-      document.getElementById("status").textContent = rows.length + " orders (saved in the app, not Google Sheets)";
+      document.getElementById("status").textContent = rows.length + " orders (Railway database — same as the floor)";
       render();
     }
     async function importSheets() {
+      if (!confirm("Copy Users, orders, production logs, steel and backboards from Google into Railway? This replaces the current shop data on Railway.")) return;
       document.getElementById("status").textContent = "Importing from Google Sheets…";
       const r = await fetch("/api/office/import-sheets", { method: "POST" });
       const j = await r.json();
       if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
       await load();
-      document.getElementById("status").textContent = "Imported " + j.imported + " orders";
+      document.getElementById("status").textContent = j.message || ("Imported " + j.imported + " orders");
     }
     function addRow() {
       const blank = {};

@@ -181,6 +181,48 @@ class Spreadsheet {
     this.sheetsByName = {};
     this.pendingAdds = [];
     this.pendingHides = [];
+    this.onFlush = null;
+  }
+  toJSON() {
+    const sheets = {};
+    for (const title of Object.keys(this.sheetsByName)) {
+      const sheet = this.sheetsByName[title];
+      sheet.ensureGrid();
+      const rows = [];
+      const n = Math.max(sheet.lastRow, sheet.grid.length);
+      const cols = Math.max(1, sheet.lastCol);
+      for (let i = 0; i < n; i++) {
+        const src = sheet.grid[i] || [];
+        const row = [];
+        for (let j = 0; j < Math.max(cols, src.length); j++) {
+          row.push(coerceWrite(src[j] === undefined || src[j] === null ? "" : src[j]));
+        }
+        rows.push(row);
+      }
+      sheets[title] = {
+        title,
+        hidden: !!sheet.hidden,
+        lastRow: sheet.lastRow,
+        lastCol: sheet.lastCol,
+        grid: rows
+      };
+    }
+    return { version: 1, sheets };
+  }
+  loadFromJSON(data) {
+    this.sheetsByName = {};
+    const sheets = (data && data.sheets) || {};
+    Object.keys(sheets).forEach((title) => {
+      const raw = sheets[title] || {};
+      const sheet = new Sheet(this, { title, sheetId: 1, hidden: !!raw.hidden });
+      sheet.grid = (raw.grid || []).map((row) => (row || []).map(coerceRead));
+      sheet.lastRow = Number(raw.lastRow) || sheet.grid.length;
+      sheet.lastCol = Number(raw.lastCol) || sheet.grid.reduce((m, row) => Math.max(m, row.length), 0);
+      sheet.loadedLastRow = sheet.lastRow;
+      sheet.dirty = false;
+      this.sheetsByName[title] = sheet;
+    });
+    return this;
   }
   async load() {
     const sheetsApi = google.sheets({ version: "v4", auth: this.client });
@@ -229,6 +271,18 @@ class Spreadsheet {
   }
   flushSyncPlaceholder() {}
   async flush() {
+    if (typeof this.onFlush === "function") {
+      for (const title of Object.keys(this.sheetsByName)) {
+        const sheet = this.sheetsByName[title];
+        sheet.dirty = false;
+        sheet.loadedLastRow = sheet.lastRow;
+        sheet.isNew = false;
+      }
+      this.pendingAdds = [];
+      this.pendingHides = [];
+      this.onFlush();
+      return;
+    }
     const sheetsApi = this.sheetsApi;
     const requests = [];
     for (const name of this.pendingAdds) {

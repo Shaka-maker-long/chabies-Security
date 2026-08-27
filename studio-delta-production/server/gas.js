@@ -4,7 +4,8 @@ const vm = require("vm");
 const { spawnSync } = require("child_process");
 const crypto = require("crypto");
 const { google } = require("googleapis");
-const { Spreadsheet, createSpreadsheetApp } = require("./sheets");
+const { createSpreadsheetApp } = require("./sheets");
+const { getBook, maybeImportGoogleOnce } = require("./workbook-store");
 
 const TZ = process.env.TZ || "Africa/Johannesburg";
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
@@ -269,26 +270,12 @@ function loadScript() {
   return scriptSource;
 }
 
-const SHEET_CACHE_MS = Number(process.env.SHEET_CACHE_MS || 30000);
 let workbookCache = null;
 
 async function getCachedWorkbook() {
-  const sheetId = process.env.SHEET_ID;
-  if (!sheetId) throw new Error("SHEET_ID is not set");
-  const now = Date.now();
-  if (
-    workbookCache &&
-    workbookCache.spreadsheetId === sheetId &&
-    now - workbookCache.loadedAt < SHEET_CACHE_MS
-  ) {
-    return workbookCache.book;
-  }
-  const auth = getAuth();
-  const client = await auth.getClient();
-  const book = new Spreadsheet(client, sheetId);
-  await book.load();
-  workbookCache = { book, spreadsheetId: sheetId, loadedAt: now };
-  return book;
+  await maybeImportGoogleOnce();
+  workbookCache = { book: getBook(), spreadsheetId: "railway-local", loadedAt: Date.now() };
+  return workbookCache.book;
 }
 
 function jsonSafe(value) {
