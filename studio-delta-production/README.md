@@ -46,7 +46,7 @@ Do **not** commit the JSON key or a `.env` file.
 
 ## Office pages (not Google Sheets)
 
-The live floor still uses the spreadsheet until we finish moving it. Office **Orders** and **Schedule** already save in the app database (SQLite file on the server).
+The live floor still uses the spreadsheet until we finish moving it. Office **Orders** and **Schedule** already save in the app database (a file on the server).
 
 - `/orders` — all ORDERS columns (quote, client, prices, etc.)
 - `/schedule` — order list + week grid (Mon–Fri)

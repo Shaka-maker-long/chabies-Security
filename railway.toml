@@ -5,5 +5,5 @@ watchPatterns = ["studio-delta-production/**", "Dockerfile", "railway.toml"]
 
 [deploy]
 healthcheckPath = "/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"

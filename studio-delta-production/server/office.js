@@ -1,4 +1,3 @@
-const { google } = require("googleapis");
 const {
   ORDER_FIELDS,
   listOrders,
@@ -63,6 +62,7 @@ const HEADER_MAP = {
 };
 
 async function importOrdersFromSheets() {
+  const { google } = require("googleapis");
   let credentials;
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
     credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);

@@ -12,21 +12,45 @@ function hasGoogleAuth() {
   return !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
 }
 
-app.get("/health", (_req, res) => {
-  res.json({
+function health(_req, res) {
+  res.status(200).json({
     ok: true,
     tz: process.env.TZ,
     sheetsConfigured: hasGoogleAuth() && !!process.env.SHEET_ID
   });
+}
+
+app.get("/health", health);
+app.head("/health", (_req, res) => res.status(200).end());
+app.get("/healthz", health);
+
+const publicDir = path.join(__dirname, "..", "public");
+const indexHtml = path.join(__dirname, "..", "index.html");
+
+app.get("/orders", (_req, res) => {
+  res.sendFile(path.join(publicDir, "orders.html"));
 });
+app.get("/schedule", (_req, res) => {
+  res.sendFile(path.join(publicDir, "schedule.html"));
+});
+app.get("/gas-client.js", (_req, res) => {
+  res.type("application/javascript").sendFile(path.join(publicDir, "gas-client.js"));
+});
+app.get("/", (_req, res) => {
+  res.sendFile(indexHtml);
+});
+
+try {
+  const { mountOffice } = require("./office");
+  mountOffice(app);
+} catch (e) {
+  console.error("[boot] office pages failed", e && e.stack ? e.stack : e);
+}
 
 const PORT = Number(process.env.PORT) || 8080;
 const server = app.listen(PORT, "0.0.0.0", () => {
   console.log("Studio Delta production listening on " + PORT + " (" + process.env.TZ + ")");
 });
-
-const publicDir = path.join(__dirname, "..", "public");
-const indexHtml = path.join(__dirname, "..", "index.html");
 
 let chain = Promise.resolve();
 function serialize(work) {
@@ -35,90 +59,71 @@ function serialize(work) {
   return run;
 }
 
-let callShopFunction = async () => {
-  throw new Error("Shop floor is still starting");
-};
+let callShopFunction = null;
 
-function loadShop() {
-  try {
-    require("./db");
-    const { mountOffice } = require("./office");
-    callShopFunction = require("./gas").callShopFunction;
-
-    app.get("/orders", (_req, res) => {
-      res.sendFile(path.join(publicDir, "orders.html"));
-    });
-    app.get("/schedule", (_req, res) => {
-      res.sendFile(path.join(publicDir, "schedule.html"));
-    });
-    mountOffice(app);
-    app.get("/gas-client.js", (_req, res) => {
-      res.type("application/javascript").sendFile(path.join(publicDir, "gas-client.js"));
-    });
-    app.get("/", (_req, res) => {
-      res.sendFile(indexHtml);
-    });
-    app.post("/api/run", (req, res) => {
-      const fn = req.body && req.body.fn;
-      const args = (req.body && req.body.args) || [];
-      serialize(async () => {
-        try {
-          if (!fn) {
-            res.status(400).json({ ok: false, error: "Missing fn" });
-            return;
-          }
-          if (!hasGoogleAuth()) {
-            res.status(503).json({
-              ok: false,
-              error: "Google credentials are not set. Add GOOGLE_SERVICE_ACCOUNT_JSON on Railway."
-            });
-            return;
-          }
-          const result = await callShopFunction(fn, args);
-          res.json({ ok: true, result });
-        } catch (e) {
-          const msg = (e && e.message) || String(e);
-          console.error("[api/run]", fn, e && e.stack ? e.stack : e);
-          if (!res.headersSent) {
-            const quota = /quota exceeded/i.test(msg);
-            res.status(quota ? 429 : 400).json({
-              ok: false,
-              error: quota
-                ? "Google Sheets is busy (too many reads this minute). Wait 60 seconds, then try again. Do not keep tapping."
-                : msg
-            });
-          }
-        }
-      });
-    });
-
-    if (!hasGoogleAuth()) {
-      console.warn("Google credentials are not set. Floor API calls will return 503 until Railway env is configured.");
-    } else {
-      serialize(() =>
-        callShopFunction("lazySetup", []).catch((e) => console.error("[lazySetup]", e.message || e))
-      );
-    }
-
-    const FIVE_MIN = 5 * 60 * 1000;
-    setInterval(() => {
-      if (!hasGoogleAuth()) return;
-      serialize(() =>
-        callShopFunction("checkIdleWorkers", []).catch((e) => console.error("[checkIdleWorkers]", e.message || e))
-      );
-      serialize(() =>
-        callShopFunction("processPdfQueue", []).catch((e) => console.error("[processPdfQueue]", e.message || e))
-      );
-    }, FIVE_MIN);
-  } catch (e) {
-    console.error("[boot] shop modules failed; /health is still up", e && e.stack ? e.stack : e);
-    app.get("/", (_req, res) => {
-      res.status(503).send("Studio Delta is starting. If this stays, check Railway logs for [boot] or [db].");
-    });
-  }
+function loadFloor() {
+  if (callShopFunction) return callShopFunction;
+  callShopFunction = require("./gas").callShopFunction;
+  return callShopFunction;
 }
 
-setImmediate(loadShop);
+app.post("/api/run", (req, res) => {
+  const fn = req.body && req.body.fn;
+  const args = (req.body && req.body.args) || [];
+  serialize(async () => {
+    try {
+      if (!fn) {
+        res.status(400).json({ ok: false, error: "Missing fn" });
+        return;
+      }
+      if (!hasGoogleAuth()) {
+        res.status(503).json({
+          ok: false,
+          error: "Google credentials are not set. Add GOOGLE_SERVICE_ACCOUNT_JSON on Railway."
+        });
+        return;
+      }
+      const result = await loadFloor()(fn, args);
+      res.json({ ok: true, result });
+    } catch (e) {
+      const msg = (e && e.message) || String(e);
+      console.error("[api/run]", fn, e && e.stack ? e.stack : e);
+      if (!res.headersSent) {
+        const quota = /quota exceeded/i.test(msg);
+        res.status(quota ? 429 : 400).json({
+          ok: false,
+          error: quota
+            ? "Google Sheets is busy (too many reads this minute). Wait 60 seconds, then try again. Do not keep tapping."
+            : msg
+        });
+      }
+    }
+  });
+});
+
+setTimeout(() => {
+  if (!hasGoogleAuth()) {
+    console.warn("Google credentials are not set. Floor API calls will return 503 until Railway env is configured.");
+    return;
+  }
+  try {
+    const run = loadFloor();
+    serialize(() => run("lazySetup", []).catch((e) => console.error("[lazySetup]", e.message || e)));
+  } catch (e) {
+    console.error("[boot] floor failed to load", e && e.stack ? e.stack : e);
+  }
+}, 90000);
+
+const FIVE_MIN = 5 * 60 * 1000;
+setInterval(() => {
+  if (!hasGoogleAuth() || !callShopFunction) return;
+  serialize(() =>
+    callShopFunction("checkIdleWorkers", []).catch((e) => console.error("[checkIdleWorkers]", e.message || e))
+  );
+  serialize(() =>
+    callShopFunction("processPdfQueue", []).catch((e) => console.error("[processPdfQueue]", e.message || e))
+  );
+}, FIVE_MIN);
 
 function shutdown() {
   server.close(() => process.exit(0));
