@@ -14,6 +14,12 @@ const { initWorkbook, getBook, persistWorkbook, workbookPath } = require("./work
 const db = require("./db");
 const { callShopFunction } = require("./gas");
 
+assert.strictEqual(db.formatRand(1150), "R 1,150.00");
+assert.strictEqual(db.formatPaymentDate("2026-07-13T22:00:00.000Z"), "14/07/2026");
+assert.strictEqual(db.formatMonthOfSale("2026-06-30T22:00:00.000Z"), "July 2026");
+assert.strictEqual(db.formatOrderId("S-1001"), "S-1001");
+assert.ok(/^\d+$/.test(db.formatOrderId(new Date("2026-06-30T22:00:00.000Z"))));
+
 initWorkbook();
 const book = getBook();
 book.getSheetByName("Users").appendRow(["Sipho", "Profile Cutting", "1234", "Profile Cutting"]);
@@ -110,8 +116,9 @@ const assemblyOrder = db.upsertOrder({
   assert.ok(boards.getLastRow() >= 2, "backboard usage row");
 
   const paid = db.recordPayment("S-1001", "150", "deposit");
-  assert.strictEqual(paid.paid, "150.00");
-  assert.ok(Number(paid.owing) > 0);
+  assert.strictEqual(paid.paid, "R 150.00");
+  assert.ok(paid.owing.indexOf("R ") === 0);
+  assert.ok(db.parseMoney(paid.owing) > 0);
   const debtors = db.listDebtors();
   assert.ok(debtors.some((o) => o.order_number === "S-1001"));
 

@@ -14,7 +14,8 @@ const {
   listDebtors,
   recordPayment,
   decorateMoney,
-  VAT_RATE
+  VAT_RATE,
+  normalizeOrdersSheet
 } = require("./db");
 const { importGoogleWorkbook, tabCounts } = require("./workbook-store");
 
@@ -92,6 +93,7 @@ function mountOffice(app) {
   app.post("/api/office/import-sheets", async (_req, res) => {
     try {
       const book = await importGoogleWorkbook();
+      normalizeOrdersSheet();
       const tabs = tabCounts(book);
       res.json({
         ok: true,

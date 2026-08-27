@@ -54,15 +54,15 @@
       }
       let html = "<table><thead><tr><th>ORDER</th><th>CLIENT</th><th>NUMBER</th><th>EMAIL</th><th>TOTAL (Incl VAT)</th><th>PAID</th><th>OWING</th><th>RECORD PAYMENT</th></tr></thead><tbody>";
       rows.forEach((row) => {
-        const hist = (row.payments || []).map((p) => pretty(p.at) + " R" + p.amount + (p.note ? " · " + p.note : "")).join("<br>");
+        const hist = (row.payments || []).map((p) => pretty(p.at) + " R " + String(p.amount || "").replace(/^R\s*/, "") + (p.note ? " · " + p.note : "")).join("<br>");
         html += "<tr data-order=\"" + esc(row.order_number) + "\">";
         html += "<td>" + esc(row.order_number) + "</td>";
         html += "<td>" + esc(row.client_name) + "</td>";
         html += "<td>" + esc(row.client_number) + "</td>";
         html += "<td>" + esc(row.email) + "</td>";
-        html += "<td>R " + esc(row.total) + "</td>";
-        html += "<td>R " + esc(row.paid) + "</td>";
-        html += "<td class=\"owing\">R " + esc(row.owing) + "</td>";
+        html += "<td>" + esc(row.total) + "</td>";
+        html += "<td>" + esc(row.paid) + "</td>";
+        html += "<td class=\"owing\">" + esc(row.owing) + "</td>";
         html += "<td><form class=\"pay\"><input name=\"amount\" type=\"number\" min=\"0.01\" step=\"0.01\" placeholder=\"Amount\"><input name=\"note\" placeholder=\"Note\"><button type=\"submit\">Add payment</button></form>";
         if (hist) html += "<div class=\"hist\">" + hist + "</div>";
         html += "</td></tr>";

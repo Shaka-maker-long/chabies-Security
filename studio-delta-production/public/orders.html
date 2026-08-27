@@ -122,13 +122,19 @@
       return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
     }
     function money(n) { return (Math.round(Number(n) * 100) / 100).toFixed(2); }
+    function formatRand(n) {
+      const v = parseMoney(n);
+      const neg = v < 0 ? "-" : "";
+      const [whole, frac] = money(Math.abs(v)).split(".");
+      return neg + "R " + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + frac;
+    }
     function inclFromExcl(excl) {
       const n = parseMoney(excl);
       return n ? money(n * (1 + VAT_RATE)) : "";
     }
     function owingOf(row) {
       const total = parseMoney(row.price_incl_vat) || parseMoney(inclFromExcl(row.price_excl_vat));
-      return money(Math.max(0, total - parseMoney(row.amount_paid)));
+      return formatRand(Math.max(0, total - parseMoney(row.amount_paid)));
     }
 
     function statusClass(s) {
@@ -192,7 +198,7 @@
         const k = e.target.getAttribute("data-k");
         rows[i][k] = e.target.value;
         if (k === "price_excl_vat") {
-          rows[i].price_incl_vat = inclFromExcl(e.target.value);
+          rows[i].price_incl_vat = e.target.value ? formatRand(inclFromExcl(e.target.value)) : "";
           const incl = tr.querySelector('input[data-k="price_incl_vat"]');
           const owing = tr.querySelector('input[data-k="owing"]');
           if (incl) incl.value = rows[i].price_incl_vat;

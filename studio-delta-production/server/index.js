@@ -4,10 +4,11 @@ process.env.SHEET_ID = process.env.SHEET_ID || "1pdvAFTIyd5sf8Wbf38MSd4cfk3mb3Mc
 const express = require("express");
 const path = require("path");
 const { initWorkbook, persistWorkbook, maybeImportGoogleOnce, hasGoogleAuth } = require("./workbook-store");
-const { migrateJsonOrdersToWorkbook } = require("./db");
+const { migrateJsonOrdersToWorkbook, normalizeOrdersSheet } = require("./db");
 
 initWorkbook();
 migrateJsonOrdersToWorkbook();
+normalizeOrdersSheet();
 
 const app = express();
 app.disable("x-powered-by");
