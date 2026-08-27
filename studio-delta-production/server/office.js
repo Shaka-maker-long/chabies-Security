@@ -1,12 +1,16 @@
 const {
   ORDER_FIELDS,
+  DROPDOWN_KEYS,
   listOrders,
   upsertOrder,
   deleteOrder,
   listSchedule,
   upsertScheduleRow,
   setScheduleCell,
-  countOrders
+  countOrders,
+  listDropdowns,
+  addDropdownItem,
+  removeDropdownItem
 } = require("./db");
 
 function workdays(fromIso, days) {
@@ -154,6 +158,29 @@ function mountOffice(app) {
     try {
       const result = await importOrdersFromSheets();
       res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/dropdowns", (_req, res) => {
+    res.json({ ok: true, dropdowns: listDropdowns(), keys: DROPDOWN_KEYS });
+  });
+
+  app.post("/api/office/dropdowns/:field", (req, res) => {
+    try {
+      const dropdowns = addDropdownItem(req.params.field, (req.body && req.body.value) || "");
+      res.json({ ok: true, dropdowns });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.delete("/api/office/dropdowns/:field", (req, res) => {
+    try {
+      const value = (req.body && req.body.value) || req.query.value || "";
+      const dropdowns = removeDropdownItem(req.params.field, value);
+      res.json({ ok: true, dropdowns });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

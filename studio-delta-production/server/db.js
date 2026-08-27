@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const { DROPDOWN_KEYS, DEFAULT_DROPDOWNS } = require("./dropdowns-default");
 
 const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
@@ -9,7 +10,14 @@ const ORDER_FIELDS = [
 ];
 
 function emptyState() {
-  return { orders: [], schedule_rows: [], schedule_cells: [], nextOrderId: 1, nextScheduleId: 1 };
+  return {
+    orders: [],
+    schedule_rows: [],
+    schedule_cells: [],
+    nextOrderId: 1,
+    nextScheduleId: 1,
+    dropdowns: JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS))
+  };
 }
 
 function pickDataFile() {
@@ -33,14 +41,22 @@ let state = emptyState();
 try {
   const raw = fs.readFileSync(dbPath, "utf8");
   const parsed = JSON.parse(raw);
+  const dropdowns = JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS));
+  if (parsed.dropdowns && typeof parsed.dropdowns === "object") {
+    for (const key of DROPDOWN_KEYS) {
+      if (Array.isArray(parsed.dropdowns[key])) dropdowns[key] = parsed.dropdowns[key];
+    }
+  }
   state = {
     ...emptyState(),
     ...parsed,
     orders: Array.isArray(parsed.orders) ? parsed.orders : [],
     schedule_rows: Array.isArray(parsed.schedule_rows) ? parsed.schedule_rows : [],
-    schedule_cells: Array.isArray(parsed.schedule_cells) ? parsed.schedule_cells : []
+    schedule_cells: Array.isArray(parsed.schedule_cells) ? parsed.schedule_cells : [],
+    dropdowns
   };
   console.log("[db] opened", dbPath, "orders", state.orders.length);
+  if (!parsed.dropdowns) save();
 } catch (e) {
   if (e && e.code !== "ENOENT") {
     console.error("[db] could not read", dbPath, e && e.message ? e.message : e);
@@ -144,15 +160,46 @@ function countOrders() {
   return state.orders.length;
 }
 
+function listDropdowns() {
+  const out = {};
+  for (const key of DROPDOWN_KEYS) {
+    out[key] = Array.isArray(state.dropdowns[key]) ? state.dropdowns[key].slice() : DEFAULT_DROPDOWNS[key].slice();
+  }
+  return out;
+}
+
+function addDropdownItem(field, value) {
+  if (!DROPDOWN_KEYS.includes(field)) throw new Error("Unknown dropdown");
+  const item = String(value || "").trim();
+  if (!item) throw new Error("Value is required");
+  if (!Array.isArray(state.dropdowns[field])) state.dropdowns[field] = [];
+  const exists = state.dropdowns[field].some((v) => String(v).toLowerCase() === item.toLowerCase());
+  if (!exists) state.dropdowns[field].push(item);
+  save();
+  return listDropdowns();
+}
+
+function removeDropdownItem(field, value) {
+  if (!DROPDOWN_KEYS.includes(field)) throw new Error("Unknown dropdown");
+  const item = String(value || "").trim();
+  state.dropdowns[field] = (state.dropdowns[field] || []).filter((v) => v !== item);
+  save();
+  return listDropdowns();
+}
+
 module.exports = {
   db: null,
   dbPath,
   ORDER_FIELDS,
+  DROPDOWN_KEYS,
   listOrders,
   upsertOrder,
   deleteOrder,
   listSchedule,
   upsertScheduleRow,
   setScheduleCell,
-  countOrders
+  countOrders,
+  listDropdowns,
+  addDropdownItem,
+  removeDropdownItem
 };

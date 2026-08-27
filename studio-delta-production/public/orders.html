@@ -37,6 +37,7 @@
     <a href="/">Floor</a>
     <a class="active" href="/orders">Orders</a>
     <a href="/schedule">Schedule</a>
+    <a href="/dropdowns">Dropdowns</a>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search orders">
@@ -75,6 +76,11 @@
       ["city","CITY"]
     ];
     let rows = [];
+    let dropdowns = {};
+    const DROP_FIELDS = {
+      type: 1, category: 1, product: 1, variation: 1,
+      doors: 1, powder_coating: 1, province: 1, source: 1
+    };
 
     function statusClass(s) {
       const v = String(s || "").toLowerCase();
@@ -98,6 +104,8 @@
           const wide = k === "detailed_description" || k === "address" || k === "variation" ? "wide" : "narrow";
           if (k === "detailed_description") {
             html += "<td class=\"" + wide + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
+          } else if (DROP_FIELDS[k]) {
+            html += "<td class=\"" + extra + " " + wide + "\">" + selectHtml(k, row[k]) + "</td>";
           } else {
             html += "<td class=\"" + extra + " " + wide + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\"></td>";
           }
@@ -118,11 +126,26 @@
     }
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
     function escAttr(s) { return esc(s).replace(/"/g, "&quot;"); }
+    function selectHtml(k, value) {
+      const current = String(value || "");
+      const opts = (dropdowns[k] || []).slice();
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      let h = "<select data-k=\"" + k + "\"><option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option value=\"" + escAttr(o) + "\"" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      return h + "</select>";
+    }
 
     async function load() {
-      const r = await fetch("/api/office/orders");
-      const j = await r.json();
+      const [ordersRes, dropRes] = await Promise.all([
+        fetch("/api/office/orders"),
+        fetch("/api/office/dropdowns")
+      ]);
+      const j = await ordersRes.json();
+      const d = await dropRes.json();
       rows = j.rows || [];
+      dropdowns = d.dropdowns || {};
       document.getElementById("status").textContent = rows.length + " orders (saved in the app, not Google Sheets)";
       render();
     }
