@@ -1964,17 +1964,28 @@
       const text = (h ? h + ':' : '') + mm + ':' + ss;
       return { over, text };
     }
+    function countdownShare(o) {
+      const n = Number(o && o.batchShare);
+      if (n > 1) return n;
+      return o && o.isBatched ? 2 : 1;
+    }
+    function countdownLabel(f, share) {
+      const split = share > 1 ? ' · split ' + share + ' ways' : '';
+      return (f.over ? 'Time up · ' : 'Time left · ') + f.text + split;
+    }
     function countdownHtml(o) {
       const rem = remainingCountdownMs(o, Date.now());
       if (rem == null) return '';
       const f = formatCountdown(rem);
+      const share = countdownShare(o);
       return '<div class="task-countdown' + (f.over ? ' over' : '') +
         '" data-order="' + String(o.order || '').replace(/"/g, '') +
         '" data-started="' + parseStartMs(o.startedAt) +
         '" data-target="' + (Number(o.targetMinutes) || 0) +
         '" data-pausems="' + (Number(o.pauseMs) || 0) +
         '" data-pausedat="' + (o.isPaused ? parseStartMs(o.pausedAt) : 0) +
-        '">' + (f.over ? 'Time up · ' : 'Time left · ') + f.text + '</div>';
+        '" data-share="' + share +
+        '">' + countdownLabel(f, share) + '</div>';
     }
     function syncCardCountdown(card, o) {
       if (!card) return;
@@ -2006,8 +2017,9 @@
         const end = pausedAt || Date.now();
         const rem = target * 60000 - Math.max(0, end - start - pauseMs);
         const f = formatCountdown(rem);
+        const share = Number(el.getAttribute('data-share')) || 1;
         el.classList.toggle('over', f.over);
-        el.textContent = (f.over ? 'Time up · ' : 'Time left · ') + f.text;
+        el.textContent = countdownLabel(f, share);
         const order = el.getAttribute('data-order');
         if (f.over && order && session.overtimeWarned && !session.overtimeWarned[order]) {
           session.overtimeWarned[order] = true;

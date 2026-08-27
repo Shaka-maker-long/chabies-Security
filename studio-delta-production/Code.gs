@@ -430,7 +430,7 @@ function floorCachePut(key, value, ttl) {
 }
 
 function emptyPlateStatus() {
-  return {status: '', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: ""};
+  return {status: '', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: "", batchShare: 1};
 }
 
 function pauseAccounting(meta, legacyPauseStart) {
@@ -472,10 +472,11 @@ function plateStatusFromLogRow(row) {
       isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1),
       startTime: row[5] || "",
       pauseMs: acc.pauseMs,
-      pausedAt: acc.pausedAt
+      pausedAt: acc.pausedAt,
+      batchShare: meta.batchShare || 1
     };
   }
-  return {status: 'Finished', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: ""};
+  return {status: 'Finished', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: "", batchShare: 1};
 }
 
 function buildPlateStatusMap(logData) {
@@ -707,7 +708,8 @@ function getOrdersForRole(role, workerName) {
           startedAt: plateInfo.startTime || "",
           targetMinutes: getTaskDurationMinutes(productName, "Plate Cutting"),
           pauseMs: plateInfo.pauseMs || 0,
-          pausedAt: plateInfo.pausedAt || ""
+          pausedAt: plateInfo.pausedAt || "",
+          batchShare: plateInfo.batchShare || 1
         });
       }
       continue; 
@@ -731,7 +733,8 @@ function getOrdersForRole(role, workerName) {
         startedAt: assignment && assignment.startTime ? assignment.startTime : "",
         targetMinutes: getTaskDurationMinutes(productName, role),
         pauseMs: assignment ? (assignment.pauseMs || 0) : 0,
-        pausedAt: assignment ? (assignment.pausedAt || "") : ""
+        pausedAt: assignment ? (assignment.pausedAt || "") : "",
+        batchShare: assignment ? (assignment.batchShare || 1) : 1
       });
     }
   }
@@ -1745,7 +1748,8 @@ function getActiveAssignmentsFromData(logData) {
       isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1),
       startTime: logData[i][5] || "",
       pauseMs: acc.pauseMs,
-      pausedAt: acc.pausedAt
+      pausedAt: acc.pausedAt,
+      batchShare: meta.batchShare || 1
     };
   }
   return assignments;

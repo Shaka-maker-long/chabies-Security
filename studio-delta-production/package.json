@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",
-    "test": "node server/sheets.test.js && node server/railway-db.test.js && node server/staff-access.test.js"
+    "test": "node server/sheets.test.js && node server/railway-db.test.js && node server/staff-access.test.js && node server/together-time.test.js"
   },
   "engines": {
     "node": ">=18"
