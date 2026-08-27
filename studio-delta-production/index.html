@@ -1694,14 +1694,17 @@
     })();
 
     document.addEventListener('DOMContentLoaded', () => {
-      // Initialize mobile menu first (doesn't depend on Bootstrap)
-      initMobileMenu();
-      ['globalLoginName', 'globalLoginPass'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') submitGlobalLogin(); });
-      });
-      
-      // Initialize Bootstrap modals (wrapped in try-catch in case Bootstrap doesn't load)
+      try { document.getElementById('loader').classList.add('d-none'); } catch (e) {}
+      try {
+        initMobileMenu();
+        ['globalLoginName', 'globalLoginPass'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') submitGlobalLogin(); });
+        });
+      } catch (e) {
+        console.warn('Menu init error:', e);
+      }
+
       try {
         passModal = new bootstrap.Modal('#passModal');
         startModal = new bootstrap.Modal('#startModal');
@@ -1721,7 +1724,6 @@
         
         document.getElementById('confirmBtnYes').onclick = () => { if (confirmModal) confirmModal.hide(); if(confirmCallback) confirmCallback(); };
         
-        // Initialize canvas when QC modal is fully shown to ensure proper dimensions
         document.getElementById('qcModal').addEventListener('shown.bs.modal', function () {
           initCanvas();
         });
@@ -1729,12 +1731,13 @@
         console.warn('Bootstrap modals not initialized:', e);
       }
       
-      initSigPad();
+      try { initSigPad(); } catch (e) { console.warn('Signature pad init error:', e); }
       try {
         initApp();
         startLiveTimers();
       } catch(e) {
-        console.warn('App initialization error (expected in local development):', e);
+        console.warn('App initialization error:', e);
+        try { document.getElementById('loader').classList.add('d-none'); } catch (e2) {}
       }
     });
     
@@ -1753,8 +1756,8 @@
         backdrop.classList.remove('show');
       }
       
-      menuBtn.addEventListener('click', toggleMobileMenu);
-      backdrop.addEventListener('click', closeMobileMenu);
+      if (menuBtn) menuBtn.addEventListener('click', toggleMobileMenu);
+      if (backdrop) backdrop.addEventListener('click', closeMobileMenu);
       
       // Close menu when navigation link is clicked
       document.querySelectorAll('.sidebar-link').forEach(link => {
@@ -1777,8 +1780,10 @@
     }
 
     function showAlert(msg) { 
-      document.getElementById('alertMsg').innerText = msg; 
-      if (alertModal) alertModal.show(); 
+      const el = document.getElementById('alertMsg');
+      if (el) el.innerText = msg; 
+      if (alertModal) alertModal.show();
+      else window.alert(msg);
     }
     function showConfirm(msg, cb) { 
       document.getElementById('confirmMsg').innerText = msg; 
@@ -4845,7 +4850,8 @@ function openSteelModal() {
     }
 
     function initSigPad() {
-      canvas = document.getElementById('sigCanvas'); 
+      canvas = document.getElementById('sigCanvas');
+      if (!canvas) return;
       ctx = canvas.getContext('2d');
       
       // Set initial drawing properties (will be properly set in initCanvas)
