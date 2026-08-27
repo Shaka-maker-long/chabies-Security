@@ -20,13 +20,29 @@ body.office-app.nav-collapsed { --sd-nav: var(--sd-nav-collapsed); }
   z-index: 1000;
   border-right: 1px solid var(--sd-line);
   padding: 16px 10px;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   gap: 4px;
   box-sizing: border-box;
   transition: width 0.2s ease, left 0.2s ease;
+}
+.sd-sidebar-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.sd-sidebar-footer {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid var(--sd-line);
 }
 .sd-sidebar-header {
   display: flex;
@@ -42,7 +58,7 @@ body.office-app.nav-collapsed { --sd-nav: var(--sd-nav-collapsed); }
   margin: 0;
   white-space: nowrap;
 }
-.sd-sidebar a, .sd-collapse-btn {
+.sd-sidebar a, .sd-collapse-btn, .sd-logout-btn {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -59,8 +75,8 @@ body.office-app.nav-collapsed { --sd-nav: var(--sd-nav-collapsed); }
   text-align: left;
   font-family: inherit;
 }
-.sd-sidebar a i, .sd-collapse-btn i { font-size: 1.2rem; min-width: 1.2rem; text-align: center; }
-.sd-sidebar a:hover, .sd-collapse-btn:hover {
+.sd-sidebar a i, .sd-collapse-btn i, .sd-logout-btn i { font-size: 1.2rem; min-width: 1.2rem; text-align: center; }
+.sd-sidebar a:hover, .sd-collapse-btn:hover, .sd-logout-btn:hover {
   background: #f2f4f7;
   color: #000;
 }
@@ -72,13 +88,15 @@ body.office-app.nav-collapsed { --sd-nav: var(--sd-nav-collapsed); }
 body.nav-collapsed .sd-link-text,
 body.nav-collapsed .sd-brand-text { display: none; }
 body.nav-collapsed .sd-sidebar a,
-body.nav-collapsed .sd-collapse-btn {
+body.nav-collapsed .sd-collapse-btn,
+body.nav-collapsed .sd-logout-btn {
   justify-content: center;
   padding: 10px 6px;
   gap: 0;
 }
 
-.sd-collapse-btn { margin-top: auto; color: var(--sd-muted); }
+.sd-collapse-btn { color: var(--sd-muted); }
+.sd-logout-btn { color: #b42318; }
 .sd-nav-burger, .sd-backdrop { display: none; }
 
 .sd-nav-burger {
@@ -113,7 +131,8 @@ body.nav-collapsed .sd-collapse-btn {
   body.nav-collapsed .sd-link-text,
   body.nav-collapsed .sd-brand-text { display: inline; }
   body.nav-collapsed .sd-sidebar a,
-  body.nav-collapsed .sd-collapse-btn {
+  body.nav-collapsed .sd-collapse-btn,
+  body.nav-collapsed .sd-logout-btn {
     justify-content: flex-start;
     padding: 10px 12px;
     gap: 12px;

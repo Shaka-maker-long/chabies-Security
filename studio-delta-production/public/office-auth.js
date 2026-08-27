@@ -57,6 +57,10 @@ function sdEnsureSheet(rel, extra) {
   if (extra) Object.keys(extra).forEach((k) => l.setAttribute(k, extra[k]));
   document.head.appendChild(l);
 }
+function sdOfficeLogout() {
+  try { localStorage.removeItem("sd-office"); } catch (e) {}
+  location.href = "/";
+}
 function sdMountOfficeShell(active) {
   if (document.getElementById("sdSidebar")) {
     sdApplyNavCollapsed();
@@ -66,13 +70,20 @@ function sdMountOfficeShell(active) {
   sdEnsureSheet("/office-shell.css");
   document.body.classList.add("office-app");
   const items = [
-    ["/", "floor", "bi-house-door", "Floor"],
+    ["/", "home", "bi-house-door", "Home"],
+    ["/?view=floor", "floor", "bi-tools", "Floor"],
     ["/orders", "orders", "bi-table", "Orders"],
-    ["/schedule", "schedule", "bi-calendar2-week", "Schedule"],
+    ["/schedule", "schedule", "bi-calendar2-week", "Office schedule"],
     ["/dropdowns", "dropdowns", "bi-list-ul", "Dropdowns"],
-    ["/durations", "durations", "bi-hourglass-split", "Task times"],
     ["/users", "users", "bi-person-plus", "Users"],
-    ["/debtors", "debtors", "bi-cash-coin", "Debtors"]
+    ["/durations", "durations", "bi-hourglass-split", "Task times"],
+    ["/debtors", "debtors", "bi-cash-coin", "Debtors"],
+    ["/?view=production", "production", "bi-clipboard-data", "Production"],
+    ["/?view=workers", "workers", "bi-people", "Workers"],
+    ["/?view=metrics", "metrics", "bi-bar-chart", "Metrics"],
+    ["/?view=qc", "qc", "bi-file-earmark-pdf", "QC Reports"],
+    ["/?view=activity", "activity", "bi-calendar3", "Activity"],
+    ["/?view=schedule", "floorschedule", "bi-calendar-week", "Schedule"]
   ];
   const nav = document.createElement("nav");
   nav.className = "sd-sidebar";
@@ -80,12 +91,17 @@ function sdMountOfficeShell(active) {
   nav.setAttribute("aria-label", "Main navigation");
   nav.innerHTML =
     '<div class="sd-sidebar-header"><h5 class="sd-brand-text">STUDIO DELTA</h5></div>' +
+    '<div class="sd-sidebar-scroll">' +
     items.map(([href, id, icon, label]) => {
       const on = id === active ? " active" : "";
       const debt = id === "debtors" ? " data-nav=\"debtors\"" : "";
       return '<a class="sd-link' + on + '" href="' + href + '"' + debt + '><i class="bi ' + icon + '"></i><span class="sd-link-text">' + label + "</span></a>";
     }).join("") +
-    '<button type="button" class="sd-collapse-btn" id="sdCollapseBtn" title="Hide menu"><i class="bi bi-chevron-left"></i><span class="sd-link-text">Hide menu</span></button>';
+    "</div>" +
+    '<div class="sd-sidebar-footer">' +
+    '<button type="button" class="sd-collapse-btn" id="sdCollapseBtn" title="Hide menu"><i class="bi bi-chevron-left"></i><span class="sd-link-text">Hide menu</span></button>' +
+    '<button type="button" class="sd-logout-btn" id="sdLogoutBtn"><i class="bi bi-box-arrow-right"></i><span class="sd-link-text">Log Out</span></button>' +
+    "</div>";
   const burger = document.createElement("button");
   burger.type = "button";
   burger.className = "sd-nav-burger";
@@ -101,6 +117,7 @@ function sdMountOfficeShell(active) {
   burger.onclick = () => document.body.classList.toggle("nav-open");
   backdrop.onclick = () => document.body.classList.remove("nav-open");
   document.getElementById("sdCollapseBtn").onclick = sdToggleNavCollapsed;
+  document.getElementById("sdLogoutBtn").onclick = sdOfficeLogout;
   sdApplyNavCollapsed();
 }
 function sdShowLogin(message) {

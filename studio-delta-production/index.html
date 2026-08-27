@@ -111,10 +111,16 @@
       box-shadow: var(--shadow-md);
       border-right: 1px solid var(--border);
       padding: 16px 8px;
-      overflow-y: auto;
+      overflow: hidden;
       display: flex;
       flex-direction: column;
       transition: background-color 0.3s ease, box-shadow 0.3s ease, left 0.3s ease;
+    }
+    .sidebar-scroll {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      min-height: 0;
     }
 
     .sidebar-header { margin-bottom: 18px; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; }
@@ -179,7 +185,7 @@
       box-shadow: var(--shadow-sm);
     }
 
-    .sidebar-footer { margin-top: auto; padding-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .sidebar-footer { margin-top: auto; padding-top: 16px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
     .sidebar-footer .btn { font-size: 0.7rem; padding: 0.45rem; }
 
     /* Theme toggle button in sidebar */
@@ -850,6 +856,7 @@
         <i class="bi bi-chevron-left" id="sidebarCollapseIcon"></i>
       </button>
     </div>
+    <div class="sidebar-scroll">
     <a id="link-roles" class="sidebar-link active" onclick="goHome()">
       <i class="bi bi-house-door"></i>
       <span class="link-text">Home</span>
@@ -907,6 +914,7 @@
         <i class="bi bi-calendar-week"></i>
         <span class="link-text">Schedule</span>
       </a>
+    </div>
     </div>
     <div class="sidebar-footer">
       <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Toggle Light/Dark Mode">
@@ -2130,7 +2138,20 @@
       const show = !!session.name && (session.canSeeOffice || ((session.tasks || []).length > 1));
       el.classList.toggle('d-none-view', !show);
     }
+    function requestedView() {
+      try { return new URLSearchParams(location.search).get('view') || ''; } catch (e) { return ''; }
+    }
     function routeAfterLogin() {
+      const view = requestedView();
+      if (session.canSeeOffice && view) {
+        if (view === 'production') { loadProductionOverview(); loadIdleWorkers(); return; }
+        if (view === 'workers') { loadWorkerStats(); return; }
+        if (view === 'metrics') { loadMetricsDashboard(); return; }
+        if (view === 'qc') { loadQCReports(); return; }
+        if (view === 'activity') { loadActivityReport(); return; }
+        if (view === 'schedule') { loadScheduleBoard(); return; }
+        if (view === 'floor') { showTaskPicker(); return; }
+      }
       if (session.canSeeOffice) {
         loadProductionOverview();
         loadIdleWorkers();
