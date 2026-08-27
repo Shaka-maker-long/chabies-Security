@@ -1,9 +1,11 @@
-FROM node:20-slim
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+FROM node:20-bookworm-slim
+RUN apt-get update && apt-get install -y python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 COPY . .
+RUN mkdir -p /app/data && chmod 777 /app/data
 ENV TZ=Africa/Johannesburg
 ENV NODE_ENV=production
 ENV DATA_DIR=/app/data

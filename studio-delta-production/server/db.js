@@ -1,12 +1,42 @@
 const fs = require("fs");
 const path = require("path");
-const Database = require("better-sqlite3");
 
-const dataDir = process.env.DATA_DIR || path.join(__dirname, "..", "data");
-fs.mkdirSync(dataDir, { recursive: true });
-const dbPath = process.env.SQLITE_PATH || path.join(dataDir, "studio-delta.sqlite");
-const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
+let Database = null;
+try {
+  Database = require("better-sqlite3");
+} catch (e) {
+  console.error("[db] better-sqlite3 failed to load:", e && e.message ? e.message : e);
+}
+
+function openSqlite() {
+  if (!Database) throw new Error("better-sqlite3 is not available");
+  const dataDir = process.env.DATA_DIR || path.join(__dirname, "..", "data");
+  const preferred = process.env.SQLITE_PATH || path.join(dataDir, "studio-delta.sqlite");
+  const fallback = path.join("/tmp", "studio-delta.sqlite");
+  const tries = [preferred];
+  if (fallback !== preferred) tries.push(fallback);
+  let lastErr;
+  for (const candidate of tries) {
+    try {
+      fs.mkdirSync(path.dirname(candidate), { recursive: true });
+      try {
+        fs.chmodSync(path.dirname(candidate), 0o777);
+      } catch (_) {
+        /* volume may not allow chmod */
+      }
+      const opened = new Database(candidate);
+      opened.pragma("journal_mode = WAL");
+      console.log("[db] opened", candidate);
+      return { db: opened, dbPath: candidate };
+    } catch (e) {
+      lastErr = e;
+      console.error("[db] could not open", candidate, e && e.message ? e.message : e);
+    }
+  }
+  throw lastErr || new Error("Could not open sqlite database");
+}
+
+const { db, dbPath } = openSqlite();
 
 db.exec(`
 CREATE TABLE IF NOT EXISTS users (
