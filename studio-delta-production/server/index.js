@@ -56,6 +56,9 @@ app.get("/gas-client.js", (_req, res) => {
 app.get("/office-auth.js", (_req, res) => {
   res.type("application/javascript").sendFile(path.join(publicDir, "office-auth.js"));
 });
+app.get("/office-shell.css", (_req, res) => {
+  res.type("text/css").sendFile(path.join(publicDir, "office-shell.css"));
+});
 app.get("/", (_req, res) => {
   res.sendFile(indexHtml);
 });

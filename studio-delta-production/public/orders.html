@@ -40,14 +40,7 @@
 </head>
 <body>
   <header>
-    <h1>STUDIO DELTA</h1>
-    <a href="/">Floor</a>
-    <a class="active" href="/orders">Orders</a>
-    <a href="/schedule">Schedule</a>
-    <a href="/dropdowns">Dropdowns</a>
-    <a href="/durations">Task times</a>
-    <a href="/users">Users</a>
-    <a data-nav="debtors" href="/debtors">Debtors</a>
+    <h1>Orders</h1>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search orders">
@@ -115,7 +108,7 @@
     let rows = [];
     let dropdowns = {};
     const DROP_FIELDS = {
-      type: 1, category: 1, product: 1, variation: 1,
+      status: 1, type: 1, category: 1, product: 1, variation: 1,
       doors: 1, powder_coating: 1, province: 1, source: 1
     };
     const READONLY_FIELDS = { price_incl_vat: 1, owing: 1 };
@@ -221,7 +214,7 @@
     function escAttr(s) { return esc(s).replace(/"/g, "&quot;"); }
     function selectHtml(k, value) {
       const current = String(value || "");
-      const opts = (dropdowns[k] || []).slice();
+      const opts = (k === "status" ? (typeof SD_ORDER_STATUSES !== "undefined" ? SD_ORDER_STATUSES.slice() : []) : (dropdowns[k] || [])).slice();
       if (current && opts.indexOf(current) === -1) opts.unshift(current);
       let h = "<select data-k=\"" + k + "\"><option value=\"\"></option>";
       opts.forEach((o) => {

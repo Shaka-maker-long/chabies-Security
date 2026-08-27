@@ -1,3 +1,17 @@
+const SD_ORDER_STATUSES = [
+  "Not Yet Started",
+  "Ready for Steelwork", "Profile Cutting",
+  "Ready for Tagging", "Tagging",
+  "Ready for Welding", "Welding",
+  "Ready for Grinding", "Grinding",
+  "Ready for Pre-Powder Coating", "Pre-Powder Coating",
+  "Ready for Powder Coating", "Powder Coating",
+  "Ready for Assembly", "Paint Preparation", "Ready for Painting", "Painting", "Assembly",
+  "Ready for Final QC", "Final QC",
+  "Ready for Delivery", "Out for Delivery",
+  "Delivered"
+];
+
 function sdOfficeProfile() {
   try { return JSON.parse(localStorage.getItem("sd-office") || "null"); } catch (e) { return null; }
 }
@@ -15,10 +29,84 @@ function sdHideDebtorsLinks(canSee) {
     a.style.display = canSee ? "" : "none";
   });
 }
+function sdNavCollapsed() {
+  return localStorage.getItem("sd-nav-collapsed") === "1";
+}
+function sdApplyNavCollapsed() {
+  const on = sdNavCollapsed();
+  document.body.classList.toggle("nav-collapsed", on);
+  document.documentElement.classList.toggle("nav-collapsed", on);
+  const btn = document.getElementById("sdCollapseBtn");
+  if (btn) {
+    const icon = btn.querySelector("i");
+    const label = btn.querySelector(".sd-link-text");
+    if (icon) icon.className = on ? "bi bi-chevron-right" : "bi bi-chevron-left";
+    if (label) label.textContent = on ? "Show menu" : "Hide menu";
+    btn.title = on ? "Show menu" : "Hide menu";
+  }
+}
+function sdToggleNavCollapsed() {
+  localStorage.setItem("sd-nav-collapsed", sdNavCollapsed() ? "0" : "1");
+  sdApplyNavCollapsed();
+}
+function sdEnsureSheet(rel, extra) {
+  if (document.querySelector('link[href="' + rel + '"]')) return;
+  const l = document.createElement("link");
+  l.rel = "stylesheet";
+  l.href = rel;
+  if (extra) Object.keys(extra).forEach((k) => l.setAttribute(k, extra[k]));
+  document.head.appendChild(l);
+}
+function sdMountOfficeShell(active) {
+  if (document.getElementById("sdSidebar")) {
+    sdApplyNavCollapsed();
+    return;
+  }
+  sdEnsureSheet("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
+  sdEnsureSheet("/office-shell.css");
+  document.body.classList.add("office-app");
+  const items = [
+    ["/", "floor", "bi-house-door", "Floor"],
+    ["/orders", "orders", "bi-table", "Orders"],
+    ["/schedule", "schedule", "bi-calendar2-week", "Schedule"],
+    ["/dropdowns", "dropdowns", "bi-list-ul", "Dropdowns"],
+    ["/durations", "durations", "bi-hourglass-split", "Task times"],
+    ["/users", "users", "bi-person-plus", "Users"],
+    ["/debtors", "debtors", "bi-cash-coin", "Debtors"]
+  ];
+  const nav = document.createElement("nav");
+  nav.className = "sd-sidebar";
+  nav.id = "sdSidebar";
+  nav.setAttribute("aria-label", "Main navigation");
+  nav.innerHTML =
+    '<div class="sd-sidebar-header"><h5 class="sd-brand-text">STUDIO DELTA</h5></div>' +
+    items.map(([href, id, icon, label]) => {
+      const on = id === active ? " active" : "";
+      const debt = id === "debtors" ? " data-nav=\"debtors\"" : "";
+      return '<a class="sd-link' + on + '" href="' + href + '"' + debt + '><i class="bi ' + icon + '"></i><span class="sd-link-text">' + label + "</span></a>";
+    }).join("") +
+    '<button type="button" class="sd-collapse-btn" id="sdCollapseBtn" title="Hide menu"><i class="bi bi-chevron-left"></i><span class="sd-link-text">Hide menu</span></button>';
+  const burger = document.createElement("button");
+  burger.type = "button";
+  burger.className = "sd-nav-burger";
+  burger.id = "sdNavBurger";
+  burger.setAttribute("aria-label", "Open menu");
+  burger.innerHTML = '<i class="bi bi-list"></i>';
+  const backdrop = document.createElement("div");
+  backdrop.className = "sd-backdrop";
+  backdrop.id = "sdBackdrop";
+  document.body.insertBefore(backdrop, document.body.firstChild);
+  document.body.insertBefore(nav, document.body.firstChild);
+  document.body.insertBefore(burger, document.body.firstChild);
+  burger.onclick = () => document.body.classList.toggle("nav-open");
+  backdrop.onclick = () => document.body.classList.remove("nav-open");
+  document.getElementById("sdCollapseBtn").onclick = sdToggleNavCollapsed;
+  sdApplyNavCollapsed();
+}
 function sdShowLogin(message) {
   return new Promise((resolve) => {
     const wrap = document.createElement("div");
-    wrap.style.cssText = "position:fixed;inset:0;background:#f8f9fc;display:flex;align-items:center;justify-content:center;z-index:99;font-family:Inter,system-ui,sans-serif";
+    wrap.style.cssText = "position:fixed;inset:0;background:#f8f9fc;display:flex;align-items:center;justify-content:center;z-index:2000;font-family:Inter,system-ui,sans-serif";
     wrap.innerHTML = '<form style="background:#fff;border:1px solid #d0d5dd;border-radius:12px;padding:24px;width:min(360px,92vw)">' +
       "<h2 style='margin:0 0 8px;font-size:18px'>Admin login</h2>" +
       "<p style='margin:0 0 16px;color:#667085;font-size:13px'>" + (message || "Office pages are for Admin only.") + "</p>" +
@@ -62,6 +150,7 @@ async function sdRequireOffice(page) {
     document.body.innerHTML = "<p style='font-family:sans-serif;padding:40px'>You do not have access to Debtors. <a href='/orders'>Orders</a></p>";
     return null;
   }
+  sdMountOfficeShell(page);
   sdHideDebtorsLinks(!!profile.canSeeDebtors);
   return profile;
 }
