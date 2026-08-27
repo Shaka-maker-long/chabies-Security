@@ -18,6 +18,7 @@ var POWDER_FOLDER_NAME = "Studio_Delta_Powder_Lists";
 var POWDER_EMAIL_RECIPIENT = "siyabonga.msiza@studiodelta.co.za";
 var QUEUE_FOLDER_ID = "1MRl3nX7-4d8dmrjQU0UrCbzCf6Ilymub";
 var TAB_IDLE = "Idle_Alerts";
+var TAB_SCHEDULE = "Schedule";
 var TZ_JOBURG = "Africa/Johannesburg";
 var SAST_OFFSET_MS = 2 * 60 * 60 * 1000; // South Africa has no DST
 var STANDARD_DAY_MINS = 7 * 60 + 30; // paid shift: 07:45-15:45 minus 30 min lunch
@@ -3329,4 +3330,511 @@ function getActivityReport(period, refDateMs, workerFilter) {
   };
   floorCachePut(cacheKey, result, CACHE_TTL_ACTIVITY);
   return result;
+}
+function getScheduleSheet(ss) {
+  ss = ss || getSpreadsheet();
+  var sheet = ss.getSheetByName(TAB_SCHEDULE);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_SCHEDULE);
+    sheet.appendRow(["Id", "Worker", "Process", "Order", "Product", "Title", "Start", "End", "DurationMins", "Kind", "Seq", "EstimateSource"]);
+  }
+  return sheet;
+}
+
+function normScheduleKey(s) {
+  return String(s || "").trim().toLowerCase();
+}
+
+function nextWorkInstant(date) {
+  var cursor = new Date(date.getTime());
+  var safety = 0;
+  while (safety++ < 30) {
+    var dow = sastDayOfWeek(cursor);
+    if (dow === 0) {
+      cursor = sastWallToDate(addSastDays(cursor, 1), 7, 45);
+      continue;
+    }
+    if (dow === 6) {
+      cursor = sastWallToDate(addSastDays(cursor, 2), 7, 45);
+      continue;
+    }
+    var mins = sastMinsOfDay(cursor);
+    if (mins < SHIFT_START_MINS) return sastWallToDate(cursor, 7, 45);
+    if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) return sastWallToDate(cursor, 12, 30);
+    if (mins >= SHIFT_END_MINS) {
+      cursor = sastWallToDate(addSastDays(cursor, 1), 7, 45);
+      continue;
+    }
+    return cursor;
+  }
+  return date;
+}
+
+function workWindowEnd(date) {
+  var mins = sastMinsOfDay(date);
+  if (mins < LUNCH_START_MINS) return sastWallToDate(date, 12, 0);
+  return sastWallToDate(date, 15, 45);
+}
+
+function layOutWorkingDuration(startDate, durationMins, meta) {
+  var remaining = Math.max(1, Math.round(Number(durationMins) || 0));
+  var cursor = nextWorkInstant(startDate);
+  var segs = [];
+  var safety = 0;
+  while (remaining > 0 && safety++ < 80) {
+    cursor = nextWorkInstant(cursor);
+    var winEnd = workWindowEnd(cursor);
+    var avail = (winEnd.getTime() - cursor.getTime()) / 60000;
+    if (avail < 0.5) {
+      cursor = new Date(winEnd.getTime() + 60000);
+      continue;
+    }
+    var take = Math.min(remaining, avail);
+    var end = new Date(cursor.getTime() + take * 60000);
+    segs.push({
+      worker: meta.worker,
+      process: meta.process || "",
+      order: meta.order || "",
+      product: meta.product || "",
+      title: meta.title || "",
+      kind: meta.kind || "order",
+      seq: meta.seq || 0,
+      estimateSource: meta.estimateSource || "",
+      start: cursor,
+      end: end,
+      durationMins: take
+    });
+    remaining -= take;
+    cursor = end;
+  }
+  return segs;
+}
+
+function getHistoricalProcessAverages() {
+  var cached = floorCacheGet("schedAvg");
+  if (cached) return cached;
+  var ss = getSpreadsheet();
+  var ordersSheet = getSheetOrDie(ss, TAB_ORDERS);
+  var ordersData = ordersSheet.getDataRange().getValues();
+  var orderProducts = {};
+  for (var i = 1; i < ordersData.length; i++) {
+    var on = String(ordersData[i][1] || "").trim();
+    var pn = String(ordersData[i][6] || "").trim();
+    if (on && pn) orderProducts[on] = pn;
+  }
+  var logSheet = getSheetOrDie(ss, TAB_LOGS);
+  var lastRow = logSheet.getLastRow();
+  var lastCol = Math.min(13, logSheet.getLastColumn());
+  var logData = lastRow < 2 ? [[]] : logSheet.getRange(1, 1, lastRow, lastCol).getValues();
+  var byProduct = {};
+  var byProcess = {};
+  function addAvg(map, key, mins) {
+    if (!key || !(mins > 0)) return;
+    if (!map[key]) map[key] = { total: 0, count: 0 };
+    map[key].total += mins;
+    map[key].count += 1;
+  }
+  for (var r = 1; r < logData.length; r++) {
+    if (!logData[r][6]) continue;
+    var meta = parseLogMeta(logData[r].length > 12 ? logData[r][12] : "");
+    if (meta.entryType === "indirect") continue;
+    var processName = String(logData[r][4] || "").trim();
+    if (!processName) continue;
+    var mins = calculateWorkMinutesFromLog(logData[r]);
+    if (!(mins > 0)) continue;
+    if (mins > STANDARD_DAY_MINS * 5) mins = STANDARD_DAY_MINS;
+    addAvg(byProcess, normScheduleKey(processName), mins);
+    var product = orderProducts[String(logData[r][1] || "").trim()] || "";
+    if (product) addAvg(byProduct, normScheduleKey(product) + "||" + normScheduleKey(processName), mins);
+  }
+  var result = { byProduct: byProduct, byProcess: byProcess };
+  floorCachePut("schedAvg", result, 300);
+  return result;
+}
+
+function estimateScheduleMinutes(product, process, averages) {
+  averages = averages || getHistoricalProcessAverages();
+  var pk = normScheduleKey(product) + "||" + normScheduleKey(process);
+  var prod = averages.byProduct[pk];
+  if (prod && prod.count > 0) {
+    return {
+      mins: Math.max(15, Math.round(prod.total / prod.count)),
+      source: "Same product × " + prod.count
+    };
+  }
+  var proc = averages.byProcess[normScheduleKey(process)];
+  if (proc && proc.count > 0) {
+    return {
+      mins: Math.max(15, Math.round(proc.total / proc.count)),
+      source: "Typical " + process + " × " + proc.count
+    };
+  }
+  return { mins: 120, source: "Default 2h (no history yet)" };
+}
+
+function readScheduleBlocks(ss) {
+  var sheet = getScheduleSheet(ss);
+  var last = sheet.getLastRow();
+  if (last < 2) return [];
+  var values = sheet.getRange(2, 1, last - 1, 12).getValues();
+  var blocks = [];
+  for (var i = 0; i < values.length; i++) {
+    var start = values[i][6] ? new Date(values[i][6]) : null;
+    var end = values[i][7] ? new Date(values[i][7]) : null;
+    if (start && isNaN(start.getTime())) start = null;
+    if (end && isNaN(end.getTime())) end = null;
+    if (!start || !end) continue;
+    blocks.push({
+      id: String(values[i][0] || ""),
+      worker: String(values[i][1] || ""),
+      process: String(values[i][2] || ""),
+      order: String(values[i][3] || ""),
+      product: String(values[i][4] || ""),
+      title: String(values[i][5] || ""),
+      start: start,
+      end: end,
+      startMs: start.getTime(),
+      endMs: end.getTime(),
+      durationMins: Number(values[i][8]) || Math.round((end.getTime() - start.getTime()) / 60000),
+      kind: String(values[i][9] || "order"),
+      seq: Number(values[i][10]) || 0,
+      estimateSource: String(values[i][11] || ""),
+      sheetRow: i + 2
+    });
+  }
+  return blocks;
+}
+
+function writeScheduleBlocks(ss, workerName, fromMs, newBlocks) {
+  var sheet = getScheduleSheet(ss);
+  var existing = readScheduleBlocks(ss);
+  var keep = [];
+  var toClear = [];
+  for (var i = 0; i < existing.length; i++) {
+    var b = existing[i];
+    if (String(b.worker) !== String(workerName)) {
+      keep.push(b);
+      continue;
+    }
+    if (b.endMs <= fromMs) {
+      keep.push(b);
+      continue;
+    }
+    toClear.push(b.sheetRow);
+  }
+  toClear.sort(function(a, b) { return b - a; });
+  for (var c = 0; c < toClear.length; c++) {
+    sheet.deleteRow(toClear[c]);
+  }
+  if (!newBlocks.length) return keep;
+  var rows = [];
+  for (var n = 0; n < newBlocks.length; n++) {
+    var bl = newBlocks[n];
+    rows.push([
+      Utilities.getUuid(),
+      workerName,
+      bl.process || "",
+      bl.order || "",
+      bl.product || "",
+      bl.title || "",
+      bl.start,
+      bl.end,
+      bl.durationMins || 0,
+      bl.kind || "order",
+      bl.seq || (n + 1),
+      bl.estimateSource || ""
+    ]);
+  }
+  sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 12).setValues(rows);
+  return keep.concat(newBlocks);
+}
+
+function collapseBlocksToItems(blocks) {
+  var items = [];
+  var cur = null;
+  function flush() {
+    if (cur) items.push(cur);
+    cur = null;
+  }
+  for (var i = 0; i < blocks.length; i++) {
+    var b = blocks[i];
+    var key = b.kind + "|" + (b.order || b.title || "");
+    if (cur && cur.key === key && b.kind === "order") {
+      cur.durationMins += b.durationMins;
+      continue;
+    }
+    flush();
+    cur = {
+      key: key,
+      worker: b.worker,
+      process: b.process,
+      order: b.order,
+      product: b.product,
+      title: b.title,
+      kind: b.kind,
+      seq: b.seq,
+      estimateSource: b.estimateSource,
+      durationMins: b.durationMins,
+      pinnedStart: b.kind === "other" ? b.start : null
+    };
+  }
+  flush();
+  return items;
+}
+
+function packItemsFrom(fromMs, items) {
+  var cursor = nextWorkInstant(new Date(fromMs));
+  var segs = [];
+  var pinned = [];
+  var floating = [];
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].kind === "other" && items[i].pinnedStart) pinned.push(items[i]);
+    else floating.push(items[i]);
+  }
+  pinned.sort(function(a, b) { return a.pinnedStart.getTime() - b.pinnedStart.getTime(); });
+  var p = 0;
+  var f = 0;
+  function placeOne(item, startAt) {
+    var laid = layOutWorkingDuration(startAt, item.durationMins, item);
+    for (var s = 0; s < laid.length; s++) segs.push(laid[s]);
+    if (laid.length) cursor = laid[laid.length - 1].end;
+    else cursor = startAt;
+  }
+  while (p < pinned.length || f < floating.length) {
+    var pin = p < pinned.length ? pinned[p] : null;
+    if (pin) {
+      var pinAt = nextWorkInstant(pin.pinnedStart);
+      while (f < floating.length && nextWorkInstant(cursor).getTime() + 30000 < pinAt.getTime()) {
+        var beforePin = nextWorkInstant(cursor);
+        if (beforePin.getTime() >= pinAt.getTime()) break;
+        var item = floating[f];
+        var winEnd = workWindowEnd(beforePin);
+        var room = Math.min(
+          (winEnd.getTime() - beforePin.getTime()) / 60000,
+          (pinAt.getTime() - beforePin.getTime()) / 60000
+        );
+        if (room < 0.5) {
+          cursor = pinAt;
+          break;
+        }
+        var take = Math.min(item.durationMins, room);
+        if (take >= item.durationMins - 0.5) {
+          placeOne(item, beforePin);
+          f++;
+        } else {
+          var part = {};
+          for (var k in item) part[k] = item[k];
+          part.durationMins = take;
+          placeOne(part, beforePin);
+          item.durationMins -= take;
+        }
+      }
+      var pinStart = pin.pinnedStart;
+      if (pinStart.getTime() < cursor.getTime()) pinStart = cursor;
+      placeOne(pin, pinStart);
+      p++;
+    } else {
+      placeOne(floating[f], cursor);
+      f++;
+    }
+  }
+  return segs;
+}
+
+function getScheduleBoard() {
+  var ss = getSpreadsheet();
+  var orderData = getSheetGrid(ss, TAB_ORDERS, 7);
+  var orders = [];
+  for (var i = 1; i < orderData.length; i++) {
+    var status = String(orderData[i][2] || "").trim();
+    var lower = status.toLowerCase();
+    if (!isAllowedStatus(status)) continue;
+    if (lower !== "not yet started" && lower !== "ready for steelwork") continue;
+    orders.push({
+      rowIndex: i + 1,
+      order: orderData[i][1],
+      status: status,
+      productName: orderData[i][6] || ""
+    });
+  }
+  var users = getUsersAndRoles();
+  var workers = [];
+  for (var u = 0; u < users.length; u++) {
+    if (!users[u].name || users[u].isAdmin) continue;
+    workers.push({
+      name: users[u].name,
+      tasks: users[u].tasks || [],
+      jobTitle: users[u].jobTitle || users[u].role || ""
+    });
+  }
+  var averages = getHistoricalProcessAverages();
+  var blocks = readScheduleBlocks(ss).map(function(b) {
+    return {
+      id: b.id,
+      worker: b.worker,
+      process: b.process,
+      order: b.order,
+      product: b.product,
+      title: b.title,
+      start: b.start.getTime(),
+      end: b.end.getTime(),
+      durationMins: b.durationMins,
+      kind: b.kind,
+      seq: b.seq,
+      estimateSource: b.estimateSource,
+      date: sastDayStamp(b.start)
+    };
+  });
+  return {
+    orders: orders,
+    workers: workers,
+    blocks: blocks,
+    processes: ["Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding", "Paint Preparation", "Painting", "Assembly"],
+    indirectTasks: INDIRECT_TASKS.slice(),
+    averages: averages
+  };
+}
+
+function generateWorkerSchedule(workerName, processName, orderNums, fromDateMs) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    workerName = String(workerName || "").trim();
+    processName = String(processName || "Profile Cutting").trim();
+    if (!workerName) return { success: false, message: "Pick a worker." };
+    var ss = getSpreadsheet();
+    var fromMs = fromDateMs ? Number(fromDateMs) : new Date().getTime();
+    var orderData = getSheetGrid(ss, TAB_ORDERS, 7);
+    var byNum = {};
+    for (var i = 1; i < orderData.length; i++) {
+      byNum[String(orderData[i][1]).trim()] = {
+        order: orderData[i][1],
+        product: orderData[i][6] || "",
+        status: orderData[i][2] || ""
+      };
+    }
+    var averages = getHistoricalProcessAverages();
+    var existing = readScheduleBlocks(ss).filter(function(b) {
+      return String(b.worker) === workerName && b.endMs > fromMs;
+    });
+    existing.sort(function(a, b) { return a.startMs - b.startMs; });
+    var pinnedOthers = collapseBlocksToItems(existing.filter(function(b) { return b.kind === "other"; }));
+    var floating = [];
+    for (var o = 0; o < (orderNums || []).length; o++) {
+      var num = String(orderNums[o] || "").trim();
+      var rec = byNum[num];
+      if (!rec) continue;
+      var est = estimateScheduleMinutes(rec.product, processName, averages);
+      floating.push({
+        worker: workerName,
+        process: processName,
+        order: rec.order,
+        product: rec.product,
+        title: rec.product ? (rec.order + " · " + rec.product) : rec.order,
+        kind: "order",
+        seq: o + 1,
+        estimateSource: est.source,
+        durationMins: est.mins,
+        pinnedStart: null
+      });
+    }
+    var items = pinnedOthers.concat(floating);
+    var segs = packItemsFrom(fromMs, items);
+    writeScheduleBlocks(ss, workerName, fromMs, segs);
+    return { success: true, blocks: segs.length };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) {}
+  }
+}
+
+function insertScheduleTask(workerName, title, durationMins, startMs, processName) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    workerName = String(workerName || "").trim();
+    title = String(title || "").trim();
+    durationMins = Math.max(15, Math.round(Number(durationMins) || 0));
+    if (!workerName || !title) return { success: false, message: "Worker and task name are required." };
+    var ss = getSpreadsheet();
+    var fromMs = startMs ? Number(startMs) : new Date().getTime();
+    var existing = readScheduleBlocks(ss).filter(function(b) {
+      return String(b.worker) === workerName;
+    });
+    existing.sort(function(a, b) { return a.startMs - b.startMs; });
+    var keepPrefix = [];
+    var later = [];
+    for (var i = 0; i < existing.length; i++) {
+      var b = existing[i];
+      if (b.endMs <= fromMs) {
+        keepPrefix.push(b);
+        continue;
+      }
+      if (b.startMs < fromMs && b.endMs > fromMs) {
+        var doneMins = Math.max(0, Math.round((fromMs - b.startMs) / 60000));
+        var left = Math.max(15, b.durationMins - doneMins);
+        later.push({
+          worker: workerName,
+          process: b.process,
+          order: b.order,
+          product: b.product,
+          title: b.title,
+          kind: b.kind,
+          seq: b.seq,
+          estimateSource: b.estimateSource,
+          durationMins: left,
+          pinnedStart: b.kind === "other" ? new Date(fromMs + durationMins * 60000) : null
+        });
+        continue;
+      }
+      later.push({
+        worker: workerName,
+        process: b.process,
+        order: b.order,
+        product: b.product,
+        title: b.title,
+        kind: b.kind,
+        seq: b.seq,
+        estimateSource: b.estimateSource,
+        durationMins: b.durationMins,
+        pinnedStart: b.kind === "other" ? b.start : null
+      });
+    }
+    var inserted = {
+      worker: workerName,
+      process: processName || "",
+      order: "",
+      product: "",
+      title: title,
+      kind: "other",
+      seq: 0,
+      estimateSource: "Inserted",
+      durationMins: durationMins,
+      pinnedStart: new Date(fromMs)
+    };
+    var items = [inserted].concat(later);
+    var segs = packItemsFrom(fromMs, items);
+    writeScheduleBlocks(ss, workerName, fromMs, segs);
+    return { success: true, blocks: segs.length };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) {}
+  }
+}
+
+function clearWorkerScheduleFrom(workerName, fromDateMs) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss = getSpreadsheet();
+    var fromMs = fromDateMs ? Number(fromDateMs) : new Date().getTime();
+    writeScheduleBlocks(ss, String(workerName || "").trim(), fromMs, []);
+    return { success: true };
+  } catch (e) {
+    return { success: false, message: e.toString() };
+  } finally {
+    try { lock.releaseLock(); } catch (e2) {}
+  }
 }

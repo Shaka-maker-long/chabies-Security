@@ -39,6 +39,10 @@ Add a **Tasks** column (column D). The first time the app opens it will create t
 - **Quality Control / QC** only sees QC work.
 - Anyone else only sees the tasks listed. `Welding, Tagging` (or a role like `Welder Tagger`) means they pick Welding or Tagging after login, and only those boards appear.
 - Painters need `Painting` on the Tasks column. That also lets them prep items for painting (no extra `Paint Preparation` task required). Assemblers with `Assembly` also get **Paint prep** on Ready for Assembly cards.
+
+## Worker schedule
+
+Admin sidebar → **Schedule**. Click Not Yet Started (and Ready for Steelwork) orders in the sequence they should be done, pick a process and a worker, then **Build calendar**. Block lengths come from past jobs of the same product and process (or a typical process time if that product is new). **Insert other task** (cleaning, meeting, etc.) pins a block on that worker’s calendar and pushes later work through 07:45–15:45, skipping lunch and weekends. This is a plan, not a live clock — the floor still starts/pauses/finishes as usual.
 - If Tasks is blank, the app reads the Role cell (`Welder Tagger` → Welding + Tagging).
 
 The tablet does **not** remember the last login. After Log Out (or a refresh) everyone sees the login screen again.

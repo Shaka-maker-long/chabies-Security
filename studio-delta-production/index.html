@@ -665,6 +665,13 @@
     .idle-card { border: 1px dashed var(--border-strong); }
     .product-sub { font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
     .hours-regular { font-variant-numeric: tabular-nums; }
+    .sched-order { cursor: pointer; border: 1px solid var(--border-strong); border-radius: 10px; padding: 10px 12px; background: var(--bg-surface); }
+    .sched-order.in-queue { border-color: var(--accent); background: var(--bg-surface-2); }
+    .sched-block { border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--border-strong); }
+    .sched-block.order { background: #f8fafc; }
+    .sched-block.other { background: #fff7ed; border-color: #fdba74; }
+    [data-theme="dark"] .sched-block.order { background: #18181b; }
+    [data-theme="dark"] .sched-block.other { background: #431407; }
 
     /* =====================================================
        LOGIN + TASK PICKER + RESPONSIVE SHELL
@@ -813,6 +820,10 @@
       <a id="link-activity" class="sidebar-link" onclick="loadActivityReport()">
         <i class="bi bi-calendar3"></i>
         <span class="link-text">Activity</span>
+      </a>
+      <a id="link-schedule" class="sidebar-link" onclick="loadScheduleBoard()">
+        <i class="bi bi-calendar-week"></i>
+        <span class="link-text">Schedule</span>
       </a>
     </div>
     <div class="sidebar-footer">
@@ -1159,6 +1170,50 @@
       <div id="activityTable" class="bg-white rounded shadow-sm"></div>
     </div>
 
+    <div id="view-admin-schedule" class="view-section container d-none-view">
+      <h2 class="brand-font mb-2">Worker schedule</h2>
+      <p class="text-muted">Click Not Yet Started orders in the order you want them done. The calendar uses past times for that product and process. Insert a non-order task and everything after it moves forward through 07:45–15:45 (lunch 12:00–12:30, weekdays only).</p>
+      <div class="row g-2 mb-3 align-items-end">
+        <div class="col-md-3">
+          <label class="form-label small fw-bold text-muted mb-1">Process</label>
+          <select id="schedProcess" class="form-select border-dark" onchange="onScheduleProcessChange()"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-bold text-muted mb-1">Worker calendar</label>
+          <select id="schedWorker" class="form-select border-dark" onchange="renderScheduleCalendar()"></select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small fw-bold text-muted mb-1">Start from</label>
+          <input type="date" id="schedFromDate" class="form-control border-dark">
+        </div>
+        <div class="col-md-3 d-grid gap-2">
+          <button class="btn btn-dark" onclick="generateScheduleNow()">Build calendar</button>
+        </div>
+      </div>
+      <div class="row g-3">
+        <div class="col-lg-5">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">Not yet started</h5>
+            <button class="btn btn-sm btn-outline-dark" onclick="queueAllNotStarted()">Add all in list order</button>
+          </div>
+          <div id="schedOrderList" class="bg-white rounded shadow-sm p-2" style="max-height: 420px; overflow:auto;"></div>
+          <h5 class="mt-3">Queue</h5>
+          <div id="schedQueue" class="bg-white rounded shadow-sm p-2 mb-2"></div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-outline-dark" onclick="clearScheduleQueue()">Clear queue</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="clearWorkerScheduleNow()">Clear this worker from start date</button>
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">Calendar</h5>
+            <button class="btn btn-sm btn-warning" onclick="openInsertScheduleTask()">Insert other task</button>
+          </div>
+          <div id="schedCalendar" class="bg-white rounded shadow-sm p-3"></div>
+        </div>
+      </div>
+    </div>
+
     <div id="view-admin-qc-reports" class="view-section container d-none-view">
       <h2 class="brand-font mb-4">Saved QC Reports</h2>
       
@@ -1225,7 +1280,37 @@
 
     <div class="mt-4"><label class="fw-bold">Signature</label><div class="border"><canvas id="sigCanvas"></canvas></div><button class="btn btn-sm btn-outline-secondary mt-2" onclick="clearSignature()">Clear</button></div>
   </div><div class="modal-footer"><button class="btn btn-primary" onclick="submitQC()">CONFIRM</button></div></div></div></div>
-  <div class="modal fade" id="alertModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body text-center p-4"><h5 class="mb-3" id="alertMsg"></h5><button class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button></div></div></div></div>
+  <div class="modal fade" id="insertScheduleModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content p-4">
+        <h3 class="brand-font mb-2">Insert other task</h3>
+        <p class="text-muted small">This sits on the worker calendar. Orders after this time are pushed through the shift (07:45–15:45, lunch skipped).</p>
+        <div class="mb-2">
+          <label class="form-label fw-bold">Task</label>
+          <select id="insertSchedPreset" class="form-select border-dark mb-2" onchange="onInsertSchedPreset()"></select>
+          <input id="insertSchedTitle" class="form-control border-dark" placeholder="Task name">
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="form-label fw-bold">Date</label>
+            <input type="date" id="insertSchedDate" class="form-control border-dark">
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-bold">Start</label>
+            <input type="time" id="insertSchedTime" class="form-control border-dark" value="07:45">
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold">Duration (minutes)</label>
+          <input type="number" id="insertSchedMins" class="form-control border-dark" value="60" min="15" step="15">
+        </div>
+        <div class="d-grid gap-2">
+          <button class="btn btn-dark" onclick="submitInsertScheduleTask()">Insert and reschedule</button>
+          <button class="btn btn-outline-dark" data-bs-dismiss="modal">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="modal fade" id="confirmModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body text-center p-4"><h5 class="mb-3" id="confirmMsg"></h5><div class="d-flex justify-content-center gap-2"><button class="btn btn-primary px-4" id="confirmBtnYes">YES</button><button class="btn btn-outline-dark px-4" data-bs-dismiss="modal">NO</button></div></div></div></div></div>
 
   <!-- Pause / switch-reason modal -->
@@ -1488,6 +1573,7 @@
     let activityChart = null;
     let batchWorkModal = null;
     let runningChoiceModal = null;
+    let insertScheduleModal = null;
     let refreshInterval = null;
     let liveTimerInterval = null;
     let hasSigned = false;
@@ -1630,6 +1716,7 @@
         welderSteelModal = new bootstrap.Modal('#welderSteelModal');
         batchWorkModal = new bootstrap.Modal('#batchWorkModal');
         runningChoiceModal = new bootstrap.Modal('#runningChoiceModal');
+        insertScheduleModal = new bootstrap.Modal('#insertScheduleModal');
         
         document.getElementById('confirmBtnYes').onclick = () => { if (confirmModal) confirmModal.hide(); if(confirmCallback) confirmCallback(); };
         
@@ -1710,6 +1797,7 @@
       if(viewId === 'view-admin-metrics') linkId = 'link-metrics';
       if(viewId === 'view-admin-qc-reports') linkId = 'link-reports';
       if(viewId === 'view-admin-activity') linkId = 'link-activity';
+      if(viewId === 'view-admin-schedule') linkId = 'link-schedule';
       const linkEl = document.getElementById(linkId); if(linkEl) linkEl.classList.add('active');
       if(viewId !== 'view-dashboard') stopAutoRefresh();
     }
@@ -5228,6 +5316,218 @@ function openSteelModal() {
       html += '</div>';
       
       document.getElementById('qcReportsContainer').innerHTML = html;
+    }
+
+    let scheduleData = null;
+    let scheduleQueue = [];
+
+    function schedEstimate(product, process) {
+      const av = scheduleData && scheduleData.averages;
+      if (!av) return { mins: 120, source: 'Default 2h' };
+      const pk = String(product || '').trim().toLowerCase() + '||' + String(process || '').trim().toLowerCase();
+      const prod = av.byProduct && av.byProduct[pk];
+      if (prod && prod.count) return { mins: Math.max(15, Math.round(prod.total / prod.count)), source: 'Same product × ' + prod.count };
+      const proc = av.byProcess && av.byProcess[String(process || '').trim().toLowerCase()];
+      if (proc && proc.count) return { mins: Math.max(15, Math.round(proc.total / proc.count)), source: 'Typical ' + process + ' × ' + proc.count };
+      return { mins: 120, source: 'Default 2h (no history yet)' };
+    }
+
+    function loadScheduleBoard() {
+      navTo('view-admin-schedule');
+      document.getElementById('schedOrderList').innerHTML = '<div class="p-4 text-center"><div class="spinner-border"></div></div>';
+      if (!document.getElementById('schedFromDate').value) {
+        const d = new Date();
+        document.getElementById('schedFromDate').value = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+      }
+      google.script.run.withSuccessHandler(data => {
+        scheduleData = data;
+        const procEl = document.getElementById('schedProcess');
+        const currentProc = procEl.value || 'Profile Cutting';
+        procEl.innerHTML = (data.processes || []).map(p => '<option value="'+p+'"'+(p===currentProc?' selected':'')+'>'+p+'</option>').join('');
+        onScheduleProcessChange();
+        renderScheduleOrders();
+        renderScheduleQueue();
+        renderScheduleCalendar();
+      }).withFailureHandler(err => {
+        document.getElementById('schedOrderList').innerHTML = '<div class="text-danger p-3">'+err+'</div>';
+      }).getScheduleBoard();
+    }
+
+    function onScheduleProcessChange() {
+      const process = document.getElementById('schedProcess').value;
+      const workers = (scheduleData && scheduleData.workers) || [];
+      const match = workers.filter(w => (w.tasks || []).indexOf(process) !== -1);
+      const list = match.length ? match : workers;
+      const el = document.getElementById('schedWorker');
+      const prev = el.value;
+      el.innerHTML = list.map(w => '<option value="'+w.name+'">'+w.name+'</option>').join('');
+      if (prev && list.some(w => w.name === prev)) el.value = prev;
+      renderScheduleOrders();
+      renderScheduleQueue();
+      renderScheduleCalendar();
+    }
+
+    function renderScheduleOrders() {
+      const box = document.getElementById('schedOrderList');
+      const process = document.getElementById('schedProcess').value;
+      const orders = (scheduleData && scheduleData.orders) || [];
+      if (!orders.length) {
+        box.innerHTML = '<div class="text-muted p-3">No Not Yet Started / Ready for Steelwork orders.</div>';
+        return;
+      }
+      box.innerHTML = orders.map(o => {
+        const est = schedEstimate(o.productName, process);
+        const on = scheduleQueue.indexOf(String(o.order)) !== -1;
+        return `<div class="sched-order ${on?'in-queue':''} mb-2" onclick="toggleScheduleOrder('${String(o.order).replace(/'/g, "\\'")}')">
+          <div class="d-flex justify-content-between gap-2">
+            <strong>${o.order}</strong>
+            <span class="badge bg-dark">${formatDuration(est.mins)}</span>
+          </div>
+          <div class="product-sub">${o.productName || 'No product name'} · ${o.status}</div>
+          <div class="small text-muted">${est.source}</div>
+        </div>`;
+      }).join('');
+    }
+
+    function renderScheduleQueue() {
+      const box = document.getElementById('schedQueue');
+      const process = document.getElementById('schedProcess').value;
+      if (!scheduleQueue.length) {
+        box.innerHTML = '<div class="text-muted p-2">Click orders on the left, in the sequence this worker should do them.</div>';
+        return;
+      }
+      box.innerHTML = scheduleQueue.map((num, i) => {
+        const o = ((scheduleData && scheduleData.orders) || []).find(x => String(x.order) === String(num));
+        const est = schedEstimate(o && o.productName, process);
+        return `<div class="d-flex align-items-center gap-2 mb-1">
+          <span class="badge bg-dark">${i+1}</span>
+          <div class="flex-grow-1"><strong>${num}</strong> <span class="text-muted small">${(o && o.productName) || ''}</span></div>
+          <span class="small">${formatDuration(est.mins)}</span>
+          <button class="btn btn-sm btn-outline-dark" onclick="moveScheduleQueue(${i},-1)">↑</button>
+          <button class="btn btn-sm btn-outline-dark" onclick="moveScheduleQueue(${i},1)">↓</button>
+        </div>`;
+      }).join('');
+    }
+
+    function toggleScheduleOrder(orderNum) {
+      const i = scheduleQueue.indexOf(String(orderNum));
+      if (i >= 0) scheduleQueue.splice(i, 1);
+      else scheduleQueue.push(String(orderNum));
+      renderScheduleOrders();
+      renderScheduleQueue();
+    }
+
+    function queueAllNotStarted() {
+      scheduleQueue = ((scheduleData && scheduleData.orders) || []).map(o => String(o.order));
+      renderScheduleOrders();
+      renderScheduleQueue();
+    }
+
+    function clearScheduleQueue() {
+      scheduleQueue = [];
+      renderScheduleOrders();
+      renderScheduleQueue();
+    }
+
+    function moveScheduleQueue(idx, dir) {
+      const j = idx + dir;
+      if (j < 0 || j >= scheduleQueue.length) return;
+      const tmp = scheduleQueue[idx];
+      scheduleQueue[idx] = scheduleQueue[j];
+      scheduleQueue[j] = tmp;
+      renderScheduleQueue();
+    }
+
+    function scheduleFromMs() {
+      const v = document.getElementById('schedFromDate').value;
+      if (!v) return Date.now();
+      return new Date(v + 'T07:45:00').getTime();
+    }
+
+    function generateScheduleNow() {
+      const worker = document.getElementById('schedWorker').value;
+      const process = document.getElementById('schedProcess').value;
+      if (!worker) { showAlert('Pick a worker'); return; }
+      if (!scheduleQueue.length) { showAlert('Click the orders in the order they should be done'); return; }
+      google.script.run.withSuccessHandler(res => {
+        if (!res || !res.success) { showAlert((res && res.message) || 'Could not build schedule'); return; }
+        loadScheduleBoard();
+      }).withFailureHandler(err => showAlert(err)).generateWorkerSchedule(worker, process, scheduleQueue, scheduleFromMs());
+    }
+
+    function clearWorkerScheduleNow() {
+      const worker = document.getElementById('schedWorker').value;
+      if (!worker) return;
+      showConfirm('Clear ' + worker + ' from the start date onward?', () => {
+        google.script.run.withSuccessHandler(res => {
+          if (!res || !res.success) { showAlert((res && res.message) || 'Could not clear'); return; }
+          loadScheduleBoard();
+        }).clearWorkerScheduleFrom(worker, scheduleFromMs());
+      });
+    }
+
+    function renderScheduleCalendar() {
+      const box = document.getElementById('schedCalendar');
+      const worker = document.getElementById('schedWorker').value;
+      if (!scheduleData) { box.innerHTML = ''; return; }
+      const blocks = (scheduleData.blocks || []).filter(b => b.worker === worker).sort((a,b) => a.start - b.start);
+      if (!blocks.length) {
+        box.innerHTML = '<div class="text-muted">No calendar yet for this worker. Queue orders and tap Build calendar.</div>';
+        return;
+      }
+      const byDay = {};
+      blocks.forEach(b => {
+        if (!byDay[b.date]) byDay[b.date] = [];
+        byDay[b.date].push(b);
+      });
+      const days = Object.keys(byDay).sort();
+      box.innerHTML = '<h4 class="mb-3">'+worker+'</h4>' + days.map(day => {
+        const rows = byDay[day].map(b => {
+          const start = new Date(b.start);
+          const end = new Date(b.end);
+          const clock = (d) => String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+          const label = b.kind === 'other' ? (b.title || 'Other task') : ('<strong>'+(b.order||'')+'</strong> · '+(b.product||b.title||''));
+          return `<div class="sched-block ${b.kind}">
+            <div class="d-flex justify-content-between gap-2">
+              <div>${clock(start)}–${clock(end)} · ${label}</div>
+              <strong>${formatDuration(b.durationMins)}</strong>
+            </div>
+            <div class="small text-muted">${b.process || ''} ${b.estimateSource ? '· '+b.estimateSource : ''}</div>
+          </div>`;
+        }).join('');
+        return `<div class="mb-3"><div class="fw-bold mb-2">${day}</div>${rows}</div>`;
+      }).join('');
+    }
+
+    function openInsertScheduleTask() {
+      const presets = (scheduleData && scheduleData.indirectTasks) || [];
+      const sel = document.getElementById('insertSchedPreset');
+      sel.innerHTML = '<option value="">Choose a task…</option>' + presets.map(t => '<option value="'+t+'">'+t+'</option>').join('') + '<option value="__other">Other</option>';
+      document.getElementById('insertSchedTitle').value = '';
+      document.getElementById('insertSchedDate').value = document.getElementById('schedFromDate').value;
+      if (insertScheduleModal) insertScheduleModal.show();
+    }
+
+    function onInsertSchedPreset() {
+      const v = document.getElementById('insertSchedPreset').value;
+      if (v && v !== '__other') document.getElementById('insertSchedTitle').value = v;
+    }
+
+    function submitInsertScheduleTask() {
+      const worker = document.getElementById('schedWorker').value;
+      const title = (document.getElementById('insertSchedTitle').value || '').trim();
+      const mins = parseInt(document.getElementById('insertSchedMins').value, 10);
+      const date = document.getElementById('insertSchedDate').value;
+      const time = document.getElementById('insertSchedTime').value || '07:45';
+      if (!worker) { showAlert('Pick a worker'); return; }
+      if (!title) { showAlert('Enter a task name'); return; }
+      if (!date) { showAlert('Pick a date'); return; }
+      const startMs = new Date(date + 'T' + time + ':00').getTime();
+      google.script.run.withSuccessHandler(res => {
+        if (!res || !res.success) { showAlert((res && res.message) || 'Could not insert'); return; }
+        if (insertScheduleModal) insertScheduleModal.hide();
+        loadScheduleBoard();
+      }).withFailureHandler(err => showAlert(err)).insertScheduleTask(worker, title, mins, startMs, document.getElementById('schedProcess').value);
     }
   </script>
 </body>
