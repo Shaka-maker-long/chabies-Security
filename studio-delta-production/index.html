@@ -2244,15 +2244,48 @@
         if (cb) cb();
       }).withFailureHandler(() => { if (cb) cb(); }).getUsersAndRoles();
     }
-    function initApp() {
-      document.getElementById('loader').classList.add('d-none');
-      clearPersistedSession();
-      prefetchSupportData();
+    function showFloorLogin() {
       setLoggedIn(false);
       document.getElementById('adminLinks').classList.add('d-none-view');
       applyAdminLinks();
       updateFloorLink();
       navTo('view-global-login');
+    }
+    function resumeOfficeSession(done) {
+      let office = null;
+      try { office = JSON.parse(localStorage.getItem('sd-office') || 'null'); } catch (e) {}
+      if (!office || !office.token || !office.canSeeOffice) {
+        done(false);
+        return;
+      }
+      let settled = false;
+      const finish = (ok, profile) => {
+        if (settled) return;
+        settled = true;
+        if (ok && profile) applyLoginProfile(Object.assign({}, office, profile, { success: true }));
+        done(ok);
+      };
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = setTimeout(() => { try { if (ctrl) ctrl.abort(); } catch (e) {} finish(false); }, 4000);
+      fetch('/api/office/me', { headers: { 'x-sd-token': office.token }, signal: ctrl ? ctrl.signal : undefined })
+        .then((r) => r.json())
+        .then((j) => {
+          clearTimeout(timer);
+          if (j && j.ok && j.profile && j.profile.canSeeOffice) finish(true, j.profile);
+          else finish(false);
+        })
+        .catch(() => {
+          clearTimeout(timer);
+          finish(false);
+        });
+    }
+    function initApp() {
+      clearPersistedSession();
+      prefetchSupportData();
+      resumeOfficeSession((ok) => {
+        try { document.getElementById('loader').classList.add('d-none'); } catch (e) {}
+        if (!ok) showFloorLogin();
+      });
     }
 
     function renderRoles() { showTaskPicker(); }

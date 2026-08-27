@@ -67,7 +67,7 @@ function sdMountOfficeShell(active) {
     return;
   }
   sdEnsureSheet("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
-  sdEnsureSheet("/office-shell.css");
+  sdEnsureSheet("/office-shell.css?v=fullmenu");
   document.body.classList.add("office-app");
   const items = [
     ["/", "home", "bi-house-door", "Home"],
@@ -118,6 +118,9 @@ function sdMountOfficeShell(active) {
   backdrop.onclick = () => document.body.classList.remove("nav-open");
   document.getElementById("sdCollapseBtn").onclick = sdToggleNavCollapsed;
   document.getElementById("sdLogoutBtn").onclick = sdOfficeLogout;
+  nav.querySelectorAll("a").forEach((a) => {
+    a.addEventListener("click", () => document.body.classList.remove("nav-open"));
+  });
   sdApplyNavCollapsed();
 }
 function sdShowLogin(message) {

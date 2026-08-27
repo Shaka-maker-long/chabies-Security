@@ -35,6 +35,7 @@ body.office-app.nav-collapsed { --sd-nav: var(--sd-nav-collapsed); }
   display: flex;
   flex-direction: column;
   gap: 4px;
+  scrollbar-width: thin;
 }
 .sd-sidebar-footer {
   flex-shrink: 0;
@@ -50,6 +51,7 @@ body.office-app.nav-collapsed { --sd-nav: var(--sd-nav-collapsed); }
   justify-content: space-between;
   gap: 8px;
   padding: 4px 6px 12px;
+  flex-shrink: 0;
 }
 .sd-sidebar-header h5 {
   font-family: Outfit, Inter, sans-serif;
@@ -62,7 +64,8 @@ body.office-app.nav-collapsed { --sd-nav: var(--sd-nav-collapsed); }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
+  padding: 8px 12px;
+  flex-shrink: 0;
   color: #344054;
   text-decoration: none;
   font-size: 13px;
@@ -97,6 +100,7 @@ body.nav-collapsed .sd-logout-btn {
 
 .sd-collapse-btn { color: var(--sd-muted); }
 .sd-logout-btn { color: #b42318; }
+.sd-logout-btn:hover { color: #b42318; }
 .sd-nav-burger, .sd-backdrop { display: none; }
 
 .sd-nav-burger {
