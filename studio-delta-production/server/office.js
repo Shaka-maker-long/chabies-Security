@@ -197,7 +197,7 @@ function mountOffice(app) {
 
   app.get("/api/office/enquiries/:enquiryNo/process", requireOffice, (req, res) => {
     try {
-      res.json({ ok: true, ...pipeline.processSnapshot(req.params.enquiryNo) });
+      res.json({ ok: true, me: req.office.name, ...pipeline.processSnapshot(req.params.enquiryNo) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
@@ -206,7 +206,7 @@ function mountOffice(app) {
   app.post("/api/office/enquiries/:enquiryNo/process", requireOffice, (req, res) => {
     try {
       const snap = pipeline.applyAction(req.params.enquiryNo, req.office.name, req.body || {});
-      res.json({ ok: true, ...snap });
+      res.json({ ok: true, me: req.office.name, ...snap });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

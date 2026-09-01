@@ -43,10 +43,18 @@ assert.throws(
 
 const costing = pipeline.applyAction("#1996", "Coster", { action: "assign_costing", assignee: "Coster" });
 assert.strictEqual(costing.row.status, "Costing");
+assert.ok(costing.actions.some((a) => a.id === "assign_costing" && a.label === "Change costing person"));
 const myCost = pipeline.listMyTasks("Coster");
 assert.strictEqual(myCost.length, 1);
 assert.strictEqual(myCost[0].kind, "cost_sheet");
 assert.strictEqual(pipeline.listMyTasks("Quoter").length, 0);
+
+const moved = pipeline.applyAction("#1996", "Coster", { action: "assign_costing", assignee: "Approver" });
+assert.ok(pipeline.listMyTasks("Approver").some((t) => t.kind === "cost_sheet"));
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet"));
+const self = pipeline.applyAction("#1996", "Approver", { action: "assign_costing", assignee: "Approver" });
+assert.ok(self.row.tasks.some((t) => t.kind === "cost_sheet" && t.status === "open" && t.assignee === "Approver"));
+pipeline.applyAction("#1996", "Approver", { action: "assign_costing", assignee: "Coster" });
 
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", { action: "assign_waiting", waiting_status: "Waiting on clients personal details", assignee: "Coster" }),
