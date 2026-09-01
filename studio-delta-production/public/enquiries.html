@@ -233,7 +233,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=login-users"></script>
-  <script src="/enquiry-process.js?v=quote-person"></script>
+  <script src="/enquiry-process.js?v=quote-no"></script>
   <script>
     const HEADERS = [
       ["enquiry_no", "ENQUIRY NO", 108, true],
@@ -257,7 +257,7 @@
     const DROP_FIELDS = {
       enquiry_source: 1, enquiry_type: 1, source: 1, province: 1
     };
-    const READONLY_FIELDS = { enquiry_no: 1, month_enquired: 1, date_quoted: 1 };
+    const READONLY_FIELDS = { enquiry_no: 1, month_enquired: 1, date_quoted: 1, quote_no: 1 };
     const DATE_FIELDS = { date_enquired: 1 };
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const freezeLeft = {};

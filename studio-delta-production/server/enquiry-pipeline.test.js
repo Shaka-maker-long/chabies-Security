@@ -129,7 +129,8 @@ assert.throws(
     file_base64: pdfB64,
     file_name: "quote.pdf",
     file_confirmed: false,
-    follow_up_assignee: "Quoter"
+    follow_up_assignee: "Quoter",
+    quote_no: "SOQ2361"
   }),
   /confirm/
 );
@@ -147,6 +148,22 @@ assert.throws(
   /value|Delivery/i
 );
 
+assert.throws(
+  () => pipeline.applyAction("#1996", "Quoter", {
+    action: "complete_quote",
+    products: [
+      { product: "Daphne Rectangular Mirror", category: "Mirror", value_excl_vat: "2500" },
+      { product: "Eve Patio Table", category: "Table", value_excl_vat: "1800.5" }
+    ],
+    delivery_excl_vat: "350",
+    file_base64: pdfB64,
+    file_name: "quote.pdf",
+    file_confirmed: true,
+    follow_up_assignee: "Quoter"
+  }),
+  /quotation number/i
+);
+
 const quoted = pipeline.applyAction("#1996", "Quoter", {
   action: "complete_quote",
   products: [
@@ -157,11 +174,15 @@ const quoted = pipeline.applyAction("#1996", "Quoter", {
   file_base64: pdfB64,
   file_name: "Michael Cost quote.pdf",
   file_confirmed: true,
-  follow_up_assignee: "Quoter"
+  follow_up_assignee: "Quoter",
+  quote_no: "SOQ2361"
 });
 assert.strictEqual(quoted.row.status, "Quoted");
 assert.strictEqual(quoted.row.has_quote_pdf, true);
 assert.ok(quoted.row.date_quoted);
+assert.strictEqual(quoted.row.quote_no, "SOQ2361");
+assert.strictEqual(quoted.quoteNo.next, "SOQ2362");
+assert.ok(quoted.quoteNo.recent.indexOf("SOQ2361") >= 0);
 assert.strictEqual(quoted.row.quote_total_excl_vat, "4650.50");
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up"));
 
@@ -253,5 +274,45 @@ assert.strictEqual(skipped.row.approval.comments, "Approval skipped");
 assert.strictEqual(skipped.row.quote_assignee, "Quoter");
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "quote" && t.enquiry_no === skip.enquiry_no));
 assert.ok(!pipeline.listMyTasks("Approver").some((t) => t.kind === "approval" && t.enquiry_no === skip.enquiry_no));
+
+assert.throws(
+  () => pipeline.applyAction(skip.enquiry_no, "Quoter", {
+    action: "complete_quote",
+    products: [{ product: "Eve Patio Table", category: "Table", value_excl_vat: "1000" }],
+    delivery_excl_vat: "100",
+    file_base64: pdfB64,
+    file_name: "quote.pdf",
+    file_confirmed: true,
+    follow_up_assignee: "Quoter",
+    quote_no: "SOQ2361"
+  }),
+  /already used/i
+);
+assert.throws(
+  () => pipeline.applyAction(skip.enquiry_no, "Quoter", {
+    action: "complete_quote",
+    products: [{ product: "Eve Patio Table", category: "Table", value_excl_vat: "1000" }],
+    delivery_excl_vat: "100",
+    file_base64: pdfB64,
+    file_name: "quote.pdf",
+    file_confirmed: true,
+    follow_up_assignee: "Quoter",
+    quote_no: "soq2361"
+  }),
+  /already used/i
+);
+const skipQuoted = pipeline.applyAction(skip.enquiry_no, "Quoter", {
+  action: "complete_quote",
+  products: [{ product: "Eve Patio Table", category: "Table", value_excl_vat: "1000" }],
+  delivery_excl_vat: "100",
+  file_base64: pdfB64,
+  file_name: "quote.pdf",
+  file_confirmed: true,
+  follow_up_assignee: "Quoter",
+  quote_no: "SOQ2400"
+});
+assert.strictEqual(skipQuoted.row.quote_no, "SOQ2400");
+assert.strictEqual(skipQuoted.quoteNo.next, "SOQ2401");
+assert.deepStrictEqual(skipQuoted.quoteNo.recent.slice(-2), ["SOQ2361", "SOQ2400"]);
 
 console.log("enquiry-pipeline.test.js ok");

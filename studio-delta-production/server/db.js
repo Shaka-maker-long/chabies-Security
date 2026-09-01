@@ -573,6 +573,77 @@ function nextEnquiryNo() {
   return formatEnquiryNo(max + 1);
 }
 
+function quoteNumberValue(raw) {
+  const m = String(raw || "").trim().toUpperCase().replace(/\s+/g, "").match(/^(?:SOQ)?(\d+)$/);
+  return m ? Number(m[1]) : 0;
+}
+
+function normalizeQuoteNo(raw, opts) {
+  const s = String(raw || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (!s) {
+    if (opts && opts.allowEmpty) return "";
+    throw new Error("Enter a quotation number");
+  }
+  const n = quoteNumberValue(s);
+  if (!n) throw new Error("Quotation number must look like SOQ2361");
+  return "SOQ" + n;
+}
+
+function collectQuoteNumbers(exceptEnquiryNo) {
+  const except = enquiryNumberValue(exceptEnquiryNo);
+  const out = [];
+  const seen = new Set();
+  function push(raw, source) {
+    const quoteNo = normalizeQuoteNo(raw, { allowEmpty: true });
+    if (!quoteNo) return;
+    const key = quoteNo.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ quote_no: quoteNo, n: quoteNumberValue(quoteNo), source: source || "" });
+  }
+  for (const row of state.enquiries || []) {
+    if (except && enquiryNumberValue(row && row.enquiry_no) === except) continue;
+    push(row && row.quote_no, row && row.enquiry_no);
+  }
+  try {
+    const sheet = ordersSheet();
+    const { idx } = ensureOrderHeaders(sheet);
+    const last = sheet.getLastRow();
+    if (idx.quote_number != null && last >= 2) {
+      const values = sheet.getRange(2, idx.quote_number + 1, last - 1, 1).getValues();
+      for (let i = 0; i < values.length; i++) push(values[i][0], "order");
+    }
+  } catch (e) {}
+  out.sort((a, b) => a.n - b.n);
+  return out;
+}
+
+function recentQuoteNos(limit) {
+  const n = Number(limit) > 0 ? Number(limit) : 5;
+  return collectQuoteNumbers().slice(-n).map((x) => x.quote_no);
+}
+
+function nextQuoteNo() {
+  const nums = collectQuoteNumbers().map((x) => x.n).filter((n) => n > 0);
+  const max = nums.length ? Math.max.apply(null, nums) : 0;
+  return "SOQ" + (max + 1);
+}
+
+function requireUniqueQuoteNo(raw, enquiryNo) {
+  const quoteNo = normalizeQuoteNo(raw);
+  const used = collectQuoteNumbers(enquiryNo).some((x) => x.quote_no === quoteNo);
+  if (used) throw new Error("Quotation number " + quoteNo + " is already used");
+  return quoteNo;
+}
+
+function quoteNoHint() {
+  const recent = recentQuoteNos(5);
+  return {
+    next: nextQuoteNo(),
+    recent
+  };
+}
+
 function monthFromEnquiryDate(v) {
   const d = asDate(v);
   if (!d) return "";
@@ -1015,6 +1086,7 @@ function upsertEnquiry(row, opts) {
     if (existing) {
       payload.status = existing.status || "New";
       payload.date_quoted = existing.date_quoted || payload.date_quoted;
+      payload.quote_no = existing.quote_no || "";
     } else if (CAPTURE_STATUSES.indexOf(payload.status) === -1) {
       payload.status = "New";
     }
@@ -1038,6 +1110,7 @@ function upsertEnquiry(row, opts) {
     if (!enquiryHasQuotePdf(payload.enquiry_no) && !row.quote_pdf_base64) {
       throw new Error("Upload and confirm the quote PDF before marking Quoted");
     }
+    payload.quote_no = requireUniqueQuoteNo(payload.quote_no || row.quote_no, payload.enquiry_no);
   }
 
   if (fromPipeline && row.quote_pdf_base64) {
@@ -1212,6 +1285,11 @@ module.exports = {
   upsertEnquiry,
   deleteEnquiry,
   nextEnquiryNo,
+  nextQuoteNo,
+  recentQuoteNos,
+  normalizeQuoteNo,
+  requireUniqueQuoteNo,
+  quoteNoHint,
   monthFromEnquiryDate,
   listEnquiryDropdowns,
   addEnquiryDropdownItem,

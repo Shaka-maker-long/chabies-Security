@@ -72,6 +72,7 @@
         ".sd-process-actions{display:flex;flex-direction:column;gap:10px}" +
         ".sd-process-form label{display:block;font-size:12px;font-weight:600;margin:8px 0 4px}" +
         ".sd-assignee{max-width:280px;width:100%}" +
+        ".sd-quote-no{max-width:180px;width:100%;border:1px solid #d0d5dd;border-radius:6px;padding:8px;font:inherit}" +
         ".sd-process-form textarea{min-height:72px}" +
         ".sd-process-preview{width:100%;min-height:220px;max-height:360px;border:1px solid #d0d5dd;border-radius:8px;background:#fff;overflow:auto}" +
         ".sd-process-preview iframe,.sd-process-preview img{width:100%;height:320px;border:0;object-fit:contain}" +
@@ -272,7 +273,16 @@
         assigneeSelect(row.quote_assignee || openAssignee(row, "quote"));
     }
     if (action.id === "complete_quote") {
-      return valuesTable(row, true) + fileBlock("application/pdf,.pdf", "Enter each product value and delivery excluding VAT here, then upload the quote PDF. DATE QUOTED is saved with the PDF.") +
+      const hint = (state.snap && state.snap.quoteNo) || {};
+      const recent = (hint.recent || []).slice();
+      const next = row.quote_no || hint.next || "";
+      const recentLine = recent.length
+        ? "Last quotation numbers: " + recent.join(", ") + "."
+        : "No quotation numbers yet.";
+      return valuesTable(row, true) +
+        "<label>Quotation number *<input class=\"sd-quote-no\" name=\"quote_no\" value=\"" + esc(next) + "\" autocomplete=\"off\"></label>" +
+        "<p class=\"sd-process-sub\">" + esc(recentLine) + " Default is the next number (" + esc(hint.next || next) + "). You can change it, but it cannot match an existing quotation.</p>" +
+        fileBlock("application/pdf,.pdf", "Enter each product value and delivery excluding VAT here, then upload the quote PDF. DATE QUOTED is saved with the PDF.") +
         "<label>Who follows up after 7 days?</label>" + assigneeSelect();
     }
     if (action.id === "complete_followup") {
@@ -312,6 +322,7 @@
     if (action.id === "complete_chase") body.next = field(form, "next");
     if (action.id === "complete_approval") body.decision = field(form, "decision");
     if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
+    if (action.id === "complete_quote") body.quote_no = field(form, "quote_no");
     if (action.id === "complete_order") body.drawing_required = field(form, "drawing_required");
     if (action.id === "close") body.status = field(form, "status");
     if (action.id === "complete_quote") Object.assign(body, readValues(form, row));
@@ -356,7 +367,7 @@
     document.getElementById("sdProcessSheetLink").href = "/enquiries";
     let html = "<div class=\"sd-process-card\"><div class=\"sd-process-meta\">" +
       "<span>Status <b>" + esc(row.status || "New") + "</b></span>" +
-      (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + "</span>" : "") +
+      (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_no ? " · " + esc(row.quote_no) : "") + "</span>" : "") +
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +
       "</div>";
     if (openTasks.length) {
