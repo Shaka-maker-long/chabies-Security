@@ -1236,6 +1236,96 @@ function removeEnquiryFiles(enquiryNo) {
   } catch (e) {}
 }
 
+function listEnquiryDeliverables(row) {
+  const src = row && typeof row === "object" ? row : {};
+  const items = [];
+  const mails = normalizeCorrespondence(src).mails || [];
+  mails.forEach((mail) => {
+    items.push({
+      group: "correspondence",
+      label: "CORRESPONDANCE",
+      title: mail.title || mail.filename || "Outlook email",
+      filename: mail.filename || ((mail.title || "email") + ".msg"),
+      kind: mail.kind || "",
+      from: mail.from || mail.from_email || "",
+      order_no: mail.order_no || "",
+      open: !!(mail.kind && mail.stored_as),
+      outlook: !!(mail.kind && mail.stored_as)
+    });
+  });
+  if (src.cost_sheet && src.cost_sheet.stored_as) {
+    items.push({
+      group: "cost_sheet",
+      label: "Cost sheet",
+      title: src.cost_sheet.filename || "Cost sheet",
+      filename: src.cost_sheet.filename || "cost-sheet",
+      kind: "cost_sheet",
+      from: "",
+      order_no: "",
+      open: true,
+      outlook: false
+    });
+  }
+  if (enquiryHasQuotePdf(src.enquiry_no)) {
+    items.push({
+      group: "quote",
+      label: "Quote PDF",
+      title: src.quote_pdf_name || "quote.pdf",
+      filename: src.quote_pdf_name || "quote.pdf",
+      kind: "quote",
+      from: "",
+      order_no: src.quote_no || "",
+      open: true,
+      outlook: false
+    });
+  }
+  const followUps = Array.isArray(src.follow_ups) ? src.follow_ups : [];
+  followUps.forEach((item, i) => {
+    const file = item && item.file;
+    if (!file || !file.stored_as) return;
+    items.push({
+      group: "follow_up",
+      label: item.label || ("Follow up " + (item.n || i + 1)),
+      title: file.filename || item.label || "Follow-up",
+      filename: file.filename || "follow-up",
+      kind: file.kind || ("follow_up_" + (item.n || i + 1)),
+      from: item.by || "",
+      order_no: "",
+      open: true,
+      outlook: false
+    });
+  });
+  const pop = src.client_outcome && src.client_outcome.file;
+  if (pop && pop.stored_as) {
+    items.push({
+      group: "pop",
+      label: "Proof of payment",
+      title: pop.filename || "POP",
+      filename: pop.filename || "pop",
+      kind: pop.kind || "pop",
+      from: src.client_outcome.decided_by || "",
+      order_no: "",
+      open: true,
+      outlook: false
+    });
+  }
+  const drawing = src.drawing && src.drawing.file;
+  if (drawing && drawing.stored_as) {
+    items.push({
+      group: "drawing",
+      label: "Drawing",
+      title: drawing.filename || "Drawing",
+      filename: drawing.filename || "drawing",
+      kind: drawing.kind || "drawing",
+      from: src.drawing.assignee || "",
+      order_no: "",
+      open: true,
+      outlook: false
+    });
+  }
+  return items;
+}
+
 function decorateEnquiry(row) {
   const products = normalizeEnquiryLines(row, null);
   const named = products.filter((p) => p.product);
@@ -1246,6 +1336,7 @@ function decorateEnquiry(row) {
   const openTasks = tasks.filter((t) => t.status === "open");
   const customSpecs = normalizeCustomSpecs(row, null);
   const enquiryType = String(row.enquiry_type || "").trim();
+  const deliverables = listEnquiryDeliverables(row);
   return {
     ...row,
     products,
@@ -1262,6 +1353,8 @@ function decorateEnquiry(row) {
     assigned_to: openTasks.map((t) => t.assignee).filter(Boolean).join(", "),
     custom_specs: customSpecs,
     design_description: String(row.design_description || "").trim(),
+    deliverables,
+    deliverable_count: deliverables.length,
     spec_summary: enquiryType === "New Design"
       ? String(row.design_description || row.request || "").trim()
       : customSpecSummary(customSpecs)
@@ -1557,6 +1650,7 @@ module.exports = {
   enquiryHasQuotePdf,
   saveEnquiryAttachment,
   readEnquiryAttachment,
+  listEnquiryDeliverables,
   normalizeEnquiryLines,
   todayEnquiryDate,
   nowIso,

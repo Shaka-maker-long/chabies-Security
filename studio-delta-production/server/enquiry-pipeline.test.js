@@ -299,6 +299,22 @@ assert.strictEqual(drawn.row.ready_for_orders, true);
 assert.ok(db.readEnquiryAttachment("#1996", "drawing"));
 assert.ok(db.readEnquiryAttachment("#1996", "pop"));
 assert.ok(db.readEnquiryAttachment("#1996", "cost_sheet"));
+const files = db.listEnquiryDeliverables(drawn.row);
+const groups = files.map((f) => f.group);
+["correspondence", "cost_sheet", "quote", "follow_up", "pop", "drawing"].forEach((g) => {
+  assert.ok(groups.indexOf(g) >= 0, "missing deliverable " + g);
+});
+assert.ok(files.filter((f) => f.open).every((f) => f.kind));
+assert.ok(drawn.row.deliverable_count >= 6);
+assert.ok(db.getEnquiry("#1996").deliverable_count >= 6);
+const emptyNew = db.upsertEnquiry({
+  date_enquired: "07/01/2026",
+  client_name: "No files yet",
+  product: "Air Chair",
+  status: "New"
+});
+assert.strictEqual(emptyNew.deliverable_count, 0);
+assert.deepStrictEqual(emptyNew.deliverables, []);
 
 const waiting = db.upsertEnquiry({
   date_enquired: "05/01/2026",

@@ -283,7 +283,8 @@ function decorateTask(row, task, dueAt) {
     product: row.product || "",
     enquiry_status: row.status || "",
     date_quoted: row.date_quoted || "",
-    correspondence_mails: correspondence.mails.length
+    correspondence_mails: correspondence.mails.length,
+    deliverable_count: (row.deliverable_count != null ? row.deliverable_count : correspondence.mails.length)
   };
 }
 

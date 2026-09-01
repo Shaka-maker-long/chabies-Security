@@ -233,7 +233,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=login-users"></script>
-  <script src="/enquiry-process.js?v=save-drop"></script>
+  <script src="/enquiry-process.js?v=files-always"></script>
   <script>
     const HEADERS = [
       ["enquiry_no", "ENQUIRY NO", 108, true],
@@ -424,7 +424,7 @@
           } else if (k === "comment") {
             html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
           } else if (k === "status") {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-process=\"" + i + "\">" + esc(row[k] || "New") + " · update</button></td>";
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-process=\"" + i + "\">" + esc(row[k] || "New") + (row.deliverable_count ? " · " + row.deliverable_count + " file" + (row.deliverable_count === 1 ? "" : "s") : "") + " · update</button></td>";
           } else if (DROP_FIELDS[k]) {
             html += "<td class=\"" + cls + "\" style=\"" + style + "\">" + selectHtml(k, row[k]) + "</td>";
           } else if (DATE_FIELDS[k]) {
