@@ -101,6 +101,10 @@ function mondayOf(dateIso) {
 }
 
 function sendEnquiryFile(res, enquiryNo, kind, download) {
+  if (/^correspondence_/i.test(String(kind || ""))) {
+    res.status(404).json({ ok: false, error: "Emails stay in Outlook. Open the link from the enquiry." });
+    return;
+  }
   const file = kind === "quote" || kind === "quote.pdf"
     ? readEnquiryQuotePdf(enquiryNo)
     : readEnquiryAttachment(enquiryNo, kind);
@@ -110,11 +114,10 @@ function sendEnquiryFile(res, enquiryNo, kind, download) {
   }
   const name = file.filename || "file";
   const mime = file.mime || (kind === "quote" || kind === "quote.pdf" ? "application/pdf" : "application/octet-stream");
-  const outlook = /\.msg$/i.test(name) || mime === "application/vnd.ms-outlook" || /\.eml$/i.test(name);
   res.setHeader("Content-Type", mime);
   res.setHeader(
     "Content-Disposition",
-    (outlook || download ? "attachment" : "inline") + "; filename=\"" + String(name).replace(/"/g, "") + "\""
+    (download ? "attachment" : "inline") + "; filename=\"" + String(name).replace(/"/g, "") + "\""
   );
   res.send(file.buffer);
 }
@@ -239,6 +242,19 @@ function mountOffice(app) {
     try {
       const snap = pipeline.applyAction(req.params.enquiryNo, req.office.name, req.body || {});
       res.json({ ok: true, me: req.office.name, ...snap });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/enquiries/:enquiryNo/outlook-mail", requireOffice, (req, res) => {
+    try {
+      const snap = pipeline.applyAction(req.params.enquiryNo, req.office.name, {
+        action: "add_correspondence",
+        correspondence_mails: [req.body || {}]
+      });
+      const mails = (snap.row && snap.row.correspondence && snap.row.correspondence.mails) || [];
+      res.json({ ok: true, me: req.office.name, mail_count: mails.length, ...snap });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

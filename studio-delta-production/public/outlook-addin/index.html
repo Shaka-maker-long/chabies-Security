@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta — Outlook</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    body { margin:0; font-family:Inter,system-ui,sans-serif; color:#1d2939; background:#f8f9fc; }
+    main { max-width:640px; margin:0 auto; padding:28px 18px 48px; }
+    h1 { font-family:Outfit,Inter,sans-serif; font-size:22px; margin:0 0 8px; }
+    p, li { color:#475467; font-size:15px; line-height:1.5; }
+    code { background:#fff; border:1px solid #d0d5dd; border-radius:4px; padding:1px 6px; font-size:13px; word-break:break-all; }
+    ol { padding-left:20px; }
+    a { color:#1d2939; font-weight:600; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Save emails from Outlook</h1>
+    <p>Studio Delta does not download or store .msg files. The email stays in Outlook. The app keeps a link so <b>Open in Outlook</b> launches Outlook desktop.</p>
+    <p>Install the button once on this PC:</p>
+    <ol>
+      <li>In Outlook, open any email.</li>
+      <li>Choose <b>Get Add-ins</b> (or File → Manage Add-ins).</li>
+      <li>Open <b>My add-ins</b> → <b>Add a custom add-in</b> → <b>Add from URL</b>.</li>
+      <li>Paste this URL:</li>
+    </ol>
+    <p><code id="manifest"></code></p>
+    <p>Then open the enquiry email in Outlook, click <b>Studio Delta</b> on the ribbon, pick the enquiry, and save. Nothing is downloaded.</p>
+    <p><a href="/enquiries">Back to Enquiries</a></p>
+  </main>
+  <script>
+    document.getElementById("manifest").textContent = location.origin + "/outlook-addin/manifest.xml";
+  </script>
+</body>
+</html>

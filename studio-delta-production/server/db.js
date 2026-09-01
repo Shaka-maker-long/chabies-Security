@@ -880,7 +880,7 @@ function normalizeEnquiryTasks(row) {
 function parseCorrespondenceName(filename) {
   const raw = String(filename || "").trim();
   const base = raw.replace(/\.(msg|eml)$/i, "");
-  const m = base.match(/Re_\s*Order\s*#?\s*([A-Za-z]?\d+)\s*[-–]\s*(.+)/i);
+  const m = base.match(/Re[_:]?\s*Order\s*#?\s*([A-Za-z]?\d+)\s*[-–]\s*(.+)/i);
   return {
     title: base || raw,
     order_no: m ? String(m[1]).trim().toUpperCase() : "",
@@ -896,27 +896,138 @@ function outlookMimeFor(filename, mime) {
   return mime || "application/octet-stream";
 }
 
+function restIdFromWebUrl(url) {
+  try {
+    const u = new URL(String(url || "").trim());
+    const item = u.searchParams.get("ItemID") || u.searchParams.get("itemid") || u.searchParams.get("itemId");
+    if (item) return item;
+    const m = String(u.pathname || "").match(/\/(?:id|deeplink\/read(?:item|m365)?)\/([^/]+)/i);
+    return m ? decodeURIComponent(m[1]) : "";
+  } catch (e) {
+    return "";
+  }
+}
+
+function sanitizeOutlookOpenUrl(url) {
+  const raw = String(url || "").trim();
+  if (!raw || /[\u0000-\u001f<>]/.test(raw)) return "";
+  if (/^outlook:\/*/i.test(raw)) {
+    const id = raw.replace(/^outlook:\/*/i, "").replace(/[^A-Za-z0-9+/=_-]/g, "");
+    return id ? "outlook:" + id : "";
+  }
+  if (/^ms-outlook:/i.test(raw)) {
+    if (/\s/.test(raw)) return "";
+    return raw;
+  }
+  if (!/^https:\/\//i.test(raw)) return "";
+  try {
+    const u = new URL(raw);
+    const host = String(u.hostname || "").toLowerCase();
+    const ok = host === "outlook.office.com" || host === "outlook.office365.com" || host === "outlook.live.com"
+      || host === "outlook.cloud.microsoft" || /\.outlook\.(office|office365|live)\.com$/.test(host);
+    if (!ok) return "";
+    u.hash = "";
+    return u.toString();
+  } catch (e) {
+    return "";
+  }
+}
+
+function parseOutlookLinks(text) {
+  const raw = String(text || "");
+  const found = [];
+  const seen = new Set();
+  const re = /(ms-outlook:[^\s"'<>]+|outlook:\/?\/?[A-Za-z0-9+/=_-]+|https:\/\/[^\s"'<>]+)/gi;
+  let m;
+  while ((m = re.exec(raw))) {
+    const url = sanitizeOutlookOpenUrl(m[1].replace(/[),.;]+$/, ""));
+    if (!url || seen.has(url)) continue;
+    seen.add(url);
+    found.push(url);
+  }
+  return found;
+}
+
+function outlookDesktopUrl(mail) {
+  const item = mail && typeof mail === "object" ? mail : {};
+  const entry = String(item.entry_id || "").replace(/^outlook:\/*/i, "").replace(/[^A-Za-z0-9+/=_-]/g, "");
+  if (entry) return "outlook:" + entry;
+  const rest = String(item.rest_id || "").trim() || restIdFromWebUrl(item.web_url || item.outlook_url || "") || String(item.item_id || "").trim();
+  if (rest) return "ms-outlook://emails/message/open?restID=" + encodeURIComponent(rest);
+  const open = sanitizeOutlookOpenUrl(item.outlook_url);
+  if (open && /^(outlook:|ms-outlook:)/i.test(open)) return open;
+  const mid = String(item.internet_message_id || "").trim();
+  if (mid) return "ms-outlook://search?querytext=" + encodeURIComponent(mid);
+  return open;
+}
+
+function mailDedupeKey(mail) {
+  const item = mail && typeof mail === "object" ? mail : {};
+  const rest = String(item.rest_id || "").trim().toLowerCase();
+  if (rest) return "rest:" + rest;
+  const mid = String(item.internet_message_id || "").trim().toLowerCase();
+  if (mid) return "mid:" + mid;
+  const entry = String(item.entry_id || "").replace(/^outlook:\/*/i, "").toLowerCase();
+  if (entry) return "entry:" + entry;
+  return "url:" + String(item.outlook_url || "").trim().toLowerCase();
+}
+
+function normalizeOutlookMail(from, index) {
+  const src = from && typeof from === "object" ? from : {};
+  const title = String(src.title || src.subject || src.filename || "").trim();
+  const parsed = parseCorrespondenceName(title);
+  const web = sanitizeOutlookOpenUrl(src.web_url);
+  const rest = String(src.rest_id || src.restId || "").trim() || restIdFromWebUrl(web) || restIdFromWebUrl(src.outlook_url);
+  const entry = String(src.entry_id || src.entryId || "").replace(/^outlook:\/*/i, "").replace(/[^A-Za-z0-9+/=_-]/g, "");
+  const mail = {
+    id: String(src.id || "").trim() || ("mail_" + (Number(index) + 1 || 1)),
+    title: parsed.title || title,
+    from: String(src.from_name || (typeof src.from === "string" ? src.from : (src.from && src.from.displayName) || "")).trim(),
+    from_email: String(src.from_email || src.fromEmail || (src.from && src.from.emailAddress) || "").trim(),
+    sent_at: String(src.sent_at || src.sentAt || src.dateTimeCreated || "").trim(),
+    order_no: String(src.order_no || parsed.order_no || "").trim(),
+    customer: String(src.customer || parsed.customer || "").trim(),
+    internet_message_id: String(src.internet_message_id || src.internetMessageId || "").trim(),
+    item_id: String(src.item_id || src.itemId || "").trim(),
+    rest_id: rest,
+    entry_id: entry,
+    web_url: web,
+    outlook_url: ""
+  };
+  mail.outlook_url = outlookDesktopUrl({ ...mail, outlook_url: src.outlook_url }) || sanitizeOutlookOpenUrl(src.outlook_url);
+  if (!mail.outlook_url) return null;
+  return mail;
+}
+
+function mailsFromPastedLinks(text) {
+  return parseOutlookLinks(text).map((url, i) => normalizeOutlookMail({
+    title: "Outlook email",
+    outlook_url: url,
+    web_url: /^https:/i.test(url) ? url : "",
+    rest_id: restIdFromWebUrl(url)
+  }, i)).filter(Boolean);
+}
+
 function normalizeCorrespondence(from) {
   const c = from && from.correspondence;
   if (!c || typeof c !== "object") {
-    return { path: "", saved_at: "", saved_by: "", files: [] };
+    return { saved_at: "", saved_by: "", mails: [] };
   }
-  const files = Array.isArray(c.files) ? c.files.filter((f) => f && f.stored_as).map((f) => {
-    const parsed = parseCorrespondenceName(f.filename || f.stored_as);
-    return {
-      ...f,
-      filename: f.filename || parsed.title,
-      mime: outlookMimeFor(f.filename, f.mime),
-      title: f.title || parsed.title,
-      order_no: f.order_no || parsed.order_no,
-      customer: f.customer || parsed.customer
-    };
-  }) : [];
+  const mails = [];
+  const seen = new Set();
+  const list = Array.isArray(c.mails) ? c.mails : [];
+  list.forEach((item, i) => {
+    const mail = normalizeOutlookMail(item, i);
+    if (!mail) return;
+    const key = mailDedupeKey(mail);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    mails.push(mail);
+  });
   return {
-    path: String(c.path || "").trim(),
     saved_at: c.saved_at || "",
     saved_by: String(c.saved_by || "").trim(),
-    files
+    mails
   };
 }
 
@@ -1350,6 +1461,12 @@ module.exports = {
   normalizeCustomSpecs,
   normalizeCorrespondence,
   parseCorrespondenceName,
+  parseOutlookLinks,
+  sanitizeOutlookOpenUrl,
+  outlookDesktopUrl,
+  normalizeOutlookMail,
+  mailsFromPastedLinks,
+  mailDedupeKey,
   outlookMimeFor,
   readEnquiryQuotePdf,
   saveEnquiryQuotePdf,

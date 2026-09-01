@@ -207,9 +207,11 @@ function availableActions(row) {
   if (openOfKind(row, "chase_info")) {
     actions.push({ id: "complete_chase", label: "Update chased information" });
   }
+  if (!closed) {
+    actions.push({ id: "add_correspondence", label: "Save email from Outlook" });
+  }
   if (statusAllows(row, ["Costing", "Re-Cost"])) {
     actions.push({ id: "assign_costing", label: "Change costing person" });
-    actions.push({ id: "add_correspondence", label: "Save Outlook emails" });
     actions.push({ id: "complete_cost_sheet", label: "Upload cost sheet" });
     actions.push({ id: "supplier_wait", label: "Waiting on supplier" });
   }
@@ -281,8 +283,7 @@ function decorateTask(row, task, dueAt) {
     product: row.product || "",
     enquiry_status: row.status || "",
     date_quoted: row.date_quoted || "",
-    correspondence_path: correspondence.path || "",
-    correspondence_files: correspondence.files.length
+    correspondence_mails: correspondence.mails.length
   };
 }
 
@@ -296,7 +297,8 @@ function processSnapshot(enquiryNo) {
     waitingStatuses: WAITING_STATUSES,
     closedStatuses: CLOSED_STATUSES.filter((s) => s !== "Rejected"),
     followUpDays: FOLLOW_UP_DAYS,
-    quoteNo: db.quoteNoHint()
+    quoteNo: db.quoteNoHint(),
+    outlookAddin: { manifest: "/outlook-addin/manifest.xml", install: "/outlook-addin" }
   };
 }
 
@@ -366,55 +368,40 @@ function assignCosting(row, actor, body) {
 
 function archiveCorrespondence(row, actor, body) {
   const existing = db.normalizeCorrespondence(row);
-  const pathIn = String((body && (body.correspondence_path || body.correspondencePath)) || "").trim();
   const next = {
-    path: pathIn || existing.path,
     saved_at: existing.saved_at,
     saved_by: existing.saved_by,
-    files: existing.files.slice()
+    mails: existing.mails.slice()
   };
-  if (pathIn && pathIn !== existing.path) {
-    next.saved_at = db.nowIso();
-    next.saved_by = actor;
+  const incoming = [];
+  if (Array.isArray(body && body.correspondence_mails)) {
+    incoming.push.apply(incoming, body.correspondence_mails);
   }
-  const uploads = [];
-  if (Array.isArray(body && body.correspondence_files)) {
-    for (const item of body.correspondence_files) {
-      if (item && (item.file_base64 || item.fileBase64)) uploads.push(item);
-    }
-  }
-  const raw = body && (body.file_base64 || body.fileBase64);
-  const oneName = (body && (body.file_name || body.filename)) || "";
-  if (raw) {
-    const isMail = /\.(msg|eml)$/i.test(oneName);
-    if (body.file_confirmed || body.fileConfirmed || isMail) {
-      uploads.push({ file_base64: raw, file_name: oneName || "correspondence.msg" });
-    }
-  }
-  const seen = new Set(next.files.map((f) => String(f.filename || "").toLowerCase()));
-  for (const item of uploads) {
-    const filename = String(item.file_name || item.filename || "correspondence.msg").trim() || "correspondence.msg";
-    const key = filename.toLowerCase();
-    if (seen.has(key)) continue;
+  incoming.push.apply(incoming, db.mailsFromPastedLinks((body && (body.correspondence_links || body.correspondenceLinks)) || ""));
+  const seen = new Set(next.mails.map((m) => db.mailDedupeKey(m)));
+  let added = 0;
+  incoming.forEach((item, i) => {
+    const mail = db.normalizeOutlookMail(item, next.mails.length + i);
+    if (!mail) return;
+    const key = db.mailDedupeKey(mail);
+    if (!key || seen.has(key)) return;
     seen.add(key);
-    const n = next.files.length + 1;
-    next.files.push(db.saveEnquiryAttachment(
-      row.enquiry_no,
-      "correspondence_" + n,
-      item.file_base64 || item.fileBase64,
-      filename
-    ));
+    mail.id = "mail_" + (next.mails.length + 1);
+    next.mails.push(mail);
+    added += 1;
+  });
+  if (added) {
     next.saved_at = db.nowIso();
     next.saved_by = actor;
   }
-  if (next.path || next.files.length) row.correspondence = next;
+  if (next.mails.length) row.correspondence = next;
+  return added;
 }
 
 function addCorrespondence(row, actor, body) {
-  archiveCorrespondence(row, actor, body);
-  const c = db.normalizeCorrespondence(row);
-  if (!c.path && !c.files.length) {
-    throw new Error("Save at least one Outlook email (.msg) or the CORRESPONDANCE folder path");
+  const added = archiveCorrespondence(row, actor, body);
+  if (!added) {
+    throw new Error("Save the email from Outlook (Studio Delta button) or paste Outlook’s Copy as link. Do not upload .msg files.");
   }
 }
 

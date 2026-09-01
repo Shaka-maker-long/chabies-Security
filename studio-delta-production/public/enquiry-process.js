@@ -1,6 +1,6 @@
 (function () {
   const KEEP_VALUES = { Quoted: 1, "Followed Up": 1, Ordered: 1 };
-  let state = { open: false, enquiryNo: "", focusTaskId: "", snap: null, file: { base64: "", name: "", url: "", confirmed: false, mime: "" }, correspondenceUploads: [] };
+  let state = { open: false, enquiryNo: "", focusTaskId: "", snap: null, file: { base64: "", name: "", url: "", confirmed: false, mime: "" } };
 
   function esc(s) {
     return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -78,7 +78,7 @@
         ".sd-correspondence h2{margin:0 0 6px;font-size:13px}" +
         ".sd-mail{width:100%;border-collapse:collapse;font-size:12px;background:#fff;margin-top:8px}" +
         ".sd-mail th,.sd-mail td{border:1px solid #d0d5dd;padding:6px 8px;text-align:left}" +
-        ".sd-mail button,.sd-mail a.sd-open-mail{margin:0}" +
+        ".sd-mail button,.sd-mail a.sd-open-mail{margin:0;display:inline-block;text-decoration:none}" +
         ".sd-path-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}" +
         ".sd-path-row code{font-size:12px;word-break:break-all;flex:1;min-width:160px}" +
         ".sd-process-form textarea{min-height:72px}" +
@@ -108,7 +108,6 @@
     document.getElementById("sdProcessMask").classList.remove("open");
     revokeFile();
     state.open = false;
-    state.correspondenceUploads = [];
     if (typeof window.sdOnEnquiryProcessClose === "function") window.sdOnEnquiryProcessClose();
   }
 
@@ -240,53 +239,6 @@
     if (ok) ok.onchange = (e) => { state.file.confirmed = !!e.target.checked; };
   }
 
-  function readFileAsDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-  function bindCorrespondence(form) {
-    const input = form && form.querySelector('[name="correspondence_files"]');
-    if (!input) return;
-    input.onchange = async (e) => {
-      const files = Array.prototype.slice.call((e.target.files || []), 0);
-      const chosen = form.querySelector("[data-corr-chosen]");
-      state.correspondenceUploads = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        state.correspondenceUploads.push({
-          file_base64: await readFileAsDataUrl(file),
-          file_name: file.name
-        });
-      }
-      if (chosen) {
-        chosen.textContent = files.length
-          ? files.length + " email" + (files.length === 1 ? "" : "s") + " ready to save: " + files.map((f) => f.name).join(", ")
-          : "";
-      }
-    };
-  }
-  async function openMailInOutlook(kind, filename) {
-    const r = await sdOfficeFetch(fileUrl(kind));
-    if (!r.ok) throw new Error("Could not open that email");
-    const blob = await r.blob();
-    const name = /\.(msg|eml)$/i.test(filename || "") ? filename : (filename || "email") + ".msg";
-    const type = /\.eml$/i.test(name) ? "message/rfc822" : "application/vnd.ms-outlook";
-    const file = new File([blob], name, { type });
-    const url = URL.createObjectURL(file);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-  }
-
   function filePayload(form) {
     return {
       file_base64: state.file.base64,
@@ -295,47 +247,34 @@
     };
   }
 
-  function folderHref(p) {
-    const raw = String(p || "").trim();
-    if (!raw) return "";
-    if (/^https?:\/\//i.test(raw)) return raw;
-    let s = raw.replace(/\\/g, "/");
-    if (/^[A-Za-z]:/.test(s)) s = "/" + s;
-    try { return "file://" + encodeURI(s); } catch (e) { return "file://" + s; }
+  function outlookHref(mail) {
+    return String((mail && mail.outlook_url) || "").trim();
   }
-  function correspondenceFields(row) {
-    const c = (row && row.correspondence) || {};
-    return "<label>Outlook emails (.msg)<input name=\"correspondence_files\" type=\"file\" accept=\".msg,.eml,application/vnd.ms-outlook,message/rfc822\" multiple></label>" +
-      "<p class=\"sd-process-sub\">These emails are the CORRESPONDANCE. Save them on this enquiry, then click one to open it in Outlook.</p>" +
-      "<p class=\"sd-process-sub\" data-corr-chosen></p>" +
-      "<label>CORRESPONDANCE folder (optional)<input class=\"sd-path\" name=\"correspondence_path\" value=\"" +
-      esc(c.path || "") + "\" placeholder=\"P:\\STUDIO DELTA\\ORDERS\\S260025 CLIENT NAME\\CORRESPONDANCE\"></label>" +
-      "<p class=\"sd-process-sub\">If the office PC has P: mapped, Open in Outlook can also use this folder.</p>";
+  function correspondenceFields() {
+    const origin = (location && location.origin) || "";
+    return "<p class=\"sd-process-sub\">Do not upload or download .msg files. In Outlook, open the email and click <b>Studio Delta</b> on the ribbon. The email stays in Outlook; this app only keeps a link.</p>" +
+      "<p class=\"sd-process-sub\"><a href=\"" + origin + "/outlook-addin\" target=\"_blank\" rel=\"noopener\">Install the Outlook button</a> once: Get Add-ins → My add-ins → Add a custom add-in → Add from URL → <code>" + origin + "/outlook-addin/manifest.xml</code></p>" +
+      "<label>Or paste Outlook’s Copy as link<textarea class=\"sd-path\" name=\"correspondence_links\" placeholder=\"In Outlook: right-click the email → Copy as link, then paste here. One email per line.\"></textarea></label>";
   }
   function correspondenceCard(row) {
     const c = (row && row.correspondence) || {};
-    if (!c.path && !(c.files && c.files.length)) return "";
-    let html = "<div class=\"sd-correspondence\"><h2>CORRESPONDANCE</h2>";
-    if (c.files && c.files.length) {
-      html += "<table class=\"sd-mail\"><thead><tr><th>Email</th><th>Order</th><th>Customer</th><th></th></tr></thead><tbody>" +
-        c.files.map((f) => {
-          const name = f.filename || f.title || "email.msg";
-          return "<tr>" +
-            "<td>" + esc(f.title || name) + "</td>" +
-            "<td>" + esc(f.order_no || "") + "</td>" +
-            "<td>" + esc(f.customer || "") + "</td>" +
-            "<td><button type=\"button\" data-open-mail=\"" + esc(f.kind || "") + "\" data-mail-name=\"" + esc(name) + "\">Open in Outlook</button></td>" +
-            "</tr>";
-        }).join("") +
-        "</tbody></table>";
-    }
-    if (c.path) {
-      html += "<p class=\"sd-process-sub\">Folder" + (c.saved_by ? " · saved by " + esc(c.saved_by) : "") + "</p>" +
-        "<div class=\"sd-path-row\"><code>" + esc(c.path) + "</code>" +
-        "<button type=\"button\" class=\"ghost\" data-copy-path=\"" + esc(c.path) + "\">Copy path</button>" +
-        "<a class=\"ghost\" href=\"" + esc(folderHref(c.path)) + "\" style=\"display:inline-block;padding:8px 12px;border:1px solid #1d2939;border-radius:6px;font-weight:600;color:#1d2939;text-decoration:none\">Open folder</a></div>";
-    }
-    return html + "</div>";
+    const mails = c.mails || [];
+    if (!mails.length) return "";
+    let html = "<div class=\"sd-correspondence\"><h2>CORRESPONDANCE</h2>" +
+      "<p class=\"sd-process-sub\">These emails stay in Outlook. Open in Outlook launches the desktop app — nothing is downloaded.</p>" +
+      "<table class=\"sd-mail\"><thead><tr><th>Email</th><th>From</th><th>Order</th><th></th></tr></thead><tbody>";
+    html += mails.map((f) => {
+      const href = outlookHref(f);
+      return "<tr>" +
+        "<td>" + esc(f.title || "Outlook email") + "</td>" +
+        "<td>" + esc(f.from || f.from_email || "") + "</td>" +
+        "<td>" + esc(f.order_no || "") + "</td>" +
+        "<td>" + (href
+          ? "<a class=\"sd-open-mail\" href=\"" + esc(href) + "\">Open in Outlook</a>"
+          : "") + "</td>" +
+        "</tr>";
+    }).join("");
+    return html + "</tbody></table></div>";
   }
   function formFor(action, row) {
     const waiting = (state.snap.waitingStatuses || []).map((s) => "<option>" + esc(s) + "</option>").join("");
@@ -346,10 +285,10 @@
     }
     if (action.id === "assign_costing") {
       return "<p class=\"sd-process-sub\">Any office Admin, including yourself.</p><label>Assign to</label>" + assigneeSelect(openAssignee(row, "cost_sheet")) +
-        correspondenceFields(row);
+        correspondenceFields();
     }
     if (action.id === "add_correspondence") {
-      return correspondenceFields(row);
+      return correspondenceFields();
     }
     if (action.id === "supplier_wait" || action.id === "complete_supplier") {
       return "<label>Assign to</label>" + assigneeSelect(openAssignee(row, action.id === "supplier_wait" ? "cost_sheet" : "supplier"));
@@ -359,7 +298,7 @@
         "<label>Waiting on<select name=\"waiting_status\">" + waiting + "</select></label>" +
         "<label>Assign to</label>" + assigneeSelect() +
         "<label>Comment<textarea name=\"comments\"></textarea></label>" +
-        correspondenceFields(row);
+        correspondenceFields();
     }
     if (action.id === "complete_cost_sheet") {
       return productNamesLine(row) + fileBlock(".xlsx,.xls,.csv,application/pdf,.pdf", "Upload the Excel cost sheet. Check the preview, then confirm it.") +
@@ -427,8 +366,7 @@
     if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
     if (action.id === "complete_quote") body.quote_no = field(form, "quote_no");
     if (action.id === "assign_costing" || action.id === "complete_chase" || action.id === "add_correspondence") {
-      body.correspondence_path = field(form, "correspondence_path");
-      body.correspondence_files = state.correspondenceUploads || [];
+      body.correspondence_links = field(form, "correspondence_links");
     }
     if (action.id === "complete_order") body.drawing_required = field(form, "drawing_required");
     if (action.id === "close") body.status = field(form, "status");
@@ -503,7 +441,6 @@
     body.innerHTML = html;
     body.querySelectorAll("form").forEach((form) => {
       bindFile(form);
-      bindCorrespondence(form);
       const card = form.closest("[data-action-i]");
       const i = Number((card || form).getAttribute("data-action-i"));
       const preview = form.querySelector("[data-preview]");
@@ -520,31 +457,16 @@
         const j = await r.json();
         if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
         state.snap = j;
-        state.correspondenceUploads = [];
         revokeFile();
         renderBody();
       };
     });
-    body.querySelectorAll("[data-copy-path]").forEach((btn) => {
-      btn.onclick = async (e) => {
-        e.preventDefault();
-        const p = btn.getAttribute("data-copy-path") || "";
-        try {
-          await navigator.clipboard.writeText(p);
-          btn.textContent = "Copied";
-          setTimeout(() => { btn.textContent = "Copy path"; }, 1500);
-        } catch (err) {
-          window.prompt("Copy this CORRESPONDANCE path", p);
-        }
-      };
-    });
-    body.querySelectorAll("[data-open-mail]").forEach((btn) => {
-      btn.onclick = async (e) => {
-        e.preventDefault();
-        try {
-          await openMailInOutlook(btn.getAttribute("data-open-mail"), btn.getAttribute("data-mail-name"));
-        } catch (err) {
-          btn.textContent = "Could not open";
+    body.querySelectorAll("a.sd-open-mail").forEach((a) => {
+      a.onclick = (e) => {
+        const href = a.getAttribute("href") || "";
+        if (/^(outlook:|ms-outlook:)/i.test(href)) {
+          e.preventDefault();
+          window.location.href = href;
         }
       };
     });
