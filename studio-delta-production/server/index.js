@@ -42,6 +42,9 @@ app.get("/orders", (_req, res) => {
 app.get("/enquiries", (_req, res) => {
   res.sendFile(path.join(publicDir, "enquiries.html"));
 });
+app.get("/tasks", (_req, res) => {
+  res.sendFile(path.join(publicDir, "tasks.html"));
+});
 app.get("/schedule", (_req, res) => {
   res.sendFile(path.join(publicDir, "schedule.html"));
 });
@@ -66,6 +69,10 @@ function noStore(res) {
 app.get("/office-auth.js", (_req, res) => {
   noStore(res);
   res.type("application/javascript").sendFile(path.join(publicDir, "office-auth.js"));
+});
+app.get("/enquiry-process.js", (_req, res) => {
+  noStore(res);
+  res.type("application/javascript").sendFile(path.join(publicDir, "enquiry-process.js"));
 });
 app.get("/office-shell.css", (_req, res) => {
   noStore(res);
