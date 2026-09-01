@@ -10,7 +10,6 @@
     main { max-width:640px; margin:0 auto; padding:28px 18px 48px; }
     h1 { font-family:Outfit,Inter,sans-serif; font-size:22px; margin:0 0 8px; }
     p, li { color:#475467; font-size:15px; line-height:1.5; }
-    code { background:#fff; border:1px solid #d0d5dd; border-radius:4px; padding:1px 6px; font-size:13px; word-break:break-all; }
     ol { padding-left:20px; }
     a { color:#1d2939; font-weight:600; }
   </style>
@@ -18,21 +17,15 @@
 <body>
   <main>
     <h1>Attach Outlook emails</h1>
-    <p>The Home bar in Outlook will not show Studio Delta. That is normal on this PC. You attach emails from the enquiry in the office app, not from a missing Add-ins button.</p>
-    <p><b>Use this every time:</b></p>
+    <p>This Outlook does not show Add-ins or Copy as link. That is normal. Attach emails from the enquiry in Studio Delta.</p>
     <ol>
-      <li>In Outlook, click the email once in Inbox or Sent. Do not use a draft you are still writing.</li>
-      <li>Right-click it and choose <b>Copy as link</b>. If that is missing, click the <b>…</b> on the far right of Home, or open the email and look on the Message tab.</li>
-      <li>In Studio Delta, open the enquiry → <b>Save email from Outlook</b> → paste the link → Save update.</li>
+      <li>Open the enquiry in Studio Delta → <b>Save email from Outlook</b>.</li>
+      <li>In Outlook, click the email once in Inbox or Sent.</li>
+      <li><b>Drag it</b> onto the box in Studio Delta, or right-click → <b>Copy</b> and paste into that box.</li>
+      <li>Click <b>Save update</b>.</li>
     </ol>
-    <p>The email stays in Outlook. <b>Open in Outlook</b> on the enquiry launches Outlook desktop. Nothing is downloaded.</p>
-    <p>Only if your company allows add-ins: click <b>File</b> (top left of Outlook) → <b>Get Add-ins</b> or <b>Manage Add-ins</b> → My add-ins → Add a custom add-in → Add from URL, and paste:</p>
-    <p><code id="manifest"></code></p>
-    <p>Most office PCs hide that on purpose. Pasting the link is enough.</p>
+    <p>The email stays in Outlook. The app does not keep a .msg file. <b>Open in Outlook</b> launches Outlook desktop.</p>
     <p><a href="/enquiries">Back to Enquiries</a></p>
   </main>
-  <script>
-    document.getElementById("manifest").textContent = location.origin + "/outlook-addin/manifest.xml";
-  </script>
 </body>
 </html>

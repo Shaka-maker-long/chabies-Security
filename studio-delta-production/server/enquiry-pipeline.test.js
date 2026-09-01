@@ -87,8 +87,19 @@ assert.throws(
     action: "add_correspondence",
     correspondence_files: [{ file_base64: "data:application/octet-stream;base64,QQ==", file_name: "note.msg" }]
   }),
-  /Copy as link|\.msg/
+  /Drag the email|Copy it|\.msg/
 );
+const fromDrop = pipeline.applyAction("#1996", "Coster", {
+  action: "add_correspondence",
+  correspondence_files: [{
+    file_base64: "data:application/octet-stream;base64," + Buffer.from("Message-ID: <s260023@studio-delta.test>\r\nSubject: Re: Order #S260023 - GERNOT CANTO\r\nFrom: Office\r\n").toString("base64"),
+    file_name: "Re_ Order #S260023 - GERNOT CANTO.msg"
+  }]
+});
+assert.strictEqual(fromDrop.row.correspondence.mails.length, 3);
+assert.strictEqual(fromDrop.row.correspondence.mails[2].order_no, "S260023");
+assert.ok(!fromDrop.row.correspondence.mails[2].stored_as);
+assert.ok(!db.readEnquiryAttachment("#1996", "correspondence_1"));
 
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", { action: "assign_waiting", waiting_status: "Waiting on clients personal details", assignee: "Coster" }),

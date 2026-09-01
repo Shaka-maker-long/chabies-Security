@@ -378,6 +378,14 @@ function archiveCorrespondence(row, actor, body) {
     incoming.push.apply(incoming, body.correspondence_mails);
   }
   incoming.push.apply(incoming, db.mailsFromPastedLinks((body && (body.correspondence_links || body.correspondenceLinks)) || ""));
+  if (Array.isArray(body && body.correspondence_files)) {
+    for (const item of body.correspondence_files) {
+      const raw = item && (item.file_base64 || item.fileBase64);
+      if (!raw) continue;
+      const mail = db.extractOutlookFromDataUrl(raw, item.file_name || item.filename || "");
+      if (mail) incoming.push(mail);
+    }
+  }
   const seen = new Set(next.mails.map((m) => db.mailDedupeKey(m)));
   let added = 0;
   incoming.forEach((item, i) => {
@@ -401,7 +409,7 @@ function archiveCorrespondence(row, actor, body) {
 function addCorrespondence(row, actor, body) {
   const added = archiveCorrespondence(row, actor, body);
   if (!added) {
-    throw new Error("Paste Outlook’s Copy as link. Do not upload .msg files.");
+    throw new Error("Drag the email from Outlook onto this box, or Copy it and paste here. Do not save a .msg file.");
   }
 }
 
