@@ -23,7 +23,10 @@ const TASK_TITLES = {
 };
 
 function officeAssignees() {
-  return staff.listUsers().filter((u) => u.canSeeOffice && u.name).map((u) => u.name);
+  return staff.listUsers()
+    .filter((u) => u.canSeeOffice && u.name)
+    .map((u) => u.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
 function requireAssignee(name) {
@@ -199,6 +202,7 @@ function availableActions(row) {
     actions.push({ id: "complete_chase", label: "Update chased information" });
   }
   if (statusAllows(row, ["Costing", "Re-Cost"])) {
+    actions.push({ id: "assign_costing", label: "Change costing person" });
     actions.push({ id: "complete_cost_sheet", label: "Upload cost sheet" });
     actions.push({ id: "supplier_wait", label: "Waiting on supplier" });
   }
@@ -331,11 +335,16 @@ function assignWaiting(row, actor, body) {
 }
 
 function assignCosting(row, _actor, body) {
-  if (!statusAllows(row, ["New"].concat(WAITING_STATUSES).concat(["Re-Cost"]))) {
-    if (row.status !== "Costing") throw new Error("Costing is assigned from capture once there is enough to cost");
+  if (!statusAllows(row, ["New"].concat(WAITING_STATUSES).concat(["Costing", "Re-Cost"]))) {
+    throw new Error("Costing is assigned from capture, or changed while the enquiry is still in costing");
   }
   if (!namedProducts(row).length) throw new Error("Add at least one product name before assigning costing");
   const assignee = requireAssignee(body.assignee);
+  const open = openOfKind(row, "cost_sheet");
+  if (open && statusAllows(row, ["Costing", "Re-Cost"])) {
+    open.assignee = assignee;
+    return;
+  }
   cancelOpenKind(row, "chase_info");
   cancelOpenKind(row, "cost_sheet");
   row.status = "Costing";

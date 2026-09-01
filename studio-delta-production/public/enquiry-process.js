@@ -14,7 +14,19 @@
   }
   function assigneeSelect(selected) {
     const names = (state.snap && state.snap.assignees) || [];
-    return "<select name=\"assignee\">" + optionList(names, selected || "") + "</select>";
+    const me = (state.snap && state.snap.me) || "";
+    const current = String(selected || "");
+    let html = "<select name=\"assignee\">";
+    html += "<option value=\"\"></option>";
+    names.forEach((n) => {
+      const label = n === me ? n + " (you)" : n;
+      html += "<option value=\"" + esc(n) + "\"" + (n === current ? " selected" : "") + ">" + esc(label) + "</option>";
+    });
+    return html + "</select>";
+  }
+  function openAssignee(row, kind) {
+    const t = ((row && row.tasks) || []).find((task) => task.kind === kind && task.status === "open");
+    return (t && t.assignee) || "";
   }
   function namedLines(row) {
     return ((row && row.products) || []).filter((p) => String(p.product || "").trim());
@@ -224,8 +236,11 @@
       return "<label>Waiting on<select name=\"waiting_status\">" + waiting + "</select></label>" +
         "<label>Assign to</label>" + assigneeSelect();
     }
-    if (action.id === "assign_costing" || action.id === "supplier_wait" || action.id === "complete_supplier") {
-      return "<label>Assign to</label>" + assigneeSelect();
+    if (action.id === "assign_costing") {
+      return "<p class=\"sd-process-sub\">Any office Admin, including yourself.</p><label>Assign to</label>" + assigneeSelect(openAssignee(row, "cost_sheet"));
+    }
+    if (action.id === "supplier_wait" || action.id === "complete_supplier") {
+      return "<label>Assign to</label>" + assigneeSelect(openAssignee(row, action.id === "supplier_wait" ? "cost_sheet" : "supplier"));
     }
     if (action.id === "complete_chase") {
       return "<label>What next?<select name=\"next\"><option value=\"costing\">Enough to cost — assign costing</option><option value=\"waiting\">Still waiting</option></select></label>" +
