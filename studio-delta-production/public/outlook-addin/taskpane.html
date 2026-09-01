@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Outfit:wght@600;700&amp;display=swap" rel="stylesheet">
+  <style>
+    body { margin:0; font-family:Inter,system-ui,sans-serif; color:#1d2939; background:#fff; }
+    main { padding:14px; }
+    h1 { font-family:Outfit,Inter,sans-serif; font-size:16px; margin:0 0 6px; }
+    p { margin:0 0 10px; font-size:13px; color:#475467; line-height:1.4; }
+    label { display:block; font-size:12px; font-weight:600; margin:10px 0 4px; }
+    input, select, button { width:100%; box-sizing:border-box; font:inherit; }
+    input, select { border:1px solid #d0d5dd; border-radius:6px; padding:8px; }
+    button { margin-top:12px; border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:10px; font-weight:600; cursor:pointer; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .mail { background:#f8fafc; border:1px solid #d0d5dd; border-radius:8px; padding:8px 10px; margin:0 0 10px; }
+    .mail strong { display:block; font-size:13px; }
+    .err { color:#b42318; font-size:12px; min-height:16px; }
+    .ok { color:#067647; font-size:13px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Save to Studio Delta</h1>
+    <p>This email stays in Outlook. The enquiry only stores a link, so clicking it later opens Outlook desktop.</p>
+    <div class="mail" id="mailCard">Open an email in Outlook first.</div>
+    <label>Enquiry
+      <input id="q" placeholder="Search number or client" autocomplete="off">
+    </label>
+    <label>Save onto
+      <select id="enquiry"></select>
+    </label>
+    <button type="button" id="save" disabled>Save this email</button>
+    <p class="err" id="err"></p>
+    <p class="ok" id="ok"></p>
+  </main>
+  <script src="/office-auth.js"></script>
+  <script>
+    let itemMeta = null;
+    let rows = [];
+
+    function setErr(t) { document.getElementById("err").textContent = t || ""; }
+    function setOk(t) { document.getElementById("ok").textContent = t || ""; }
+
+    function readItem() {
+      const item = Office.context.mailbox && Office.context.mailbox.item;
+      if (!item) return null;
+      const itemId = item.itemId || "";
+      let restId = "";
+      try {
+        if (itemId && Office.context.mailbox.convertToRestId) {
+          restId = Office.context.mailbox.convertToRestId(itemId, Office.MailboxEnums.RestVersion.v2_0) || "";
+        }
+      } catch (e) {}
+      const from = item.from || {};
+      return {
+        subject: item.subject || "",
+        title: item.subject || "",
+        from: from.displayName || "",
+        from_email: from.emailAddress || "",
+        sent_at: item.dateTimeCreated ? new Date(item.dateTimeCreated).toISOString() : "",
+        internet_message_id: item.internetMessageId || "",
+        item_id: itemId,
+        rest_id: restId
+      };
+    }
+
+    function renderMail() {
+      const card = document.getElementById("mailCard");
+      if (!itemMeta) {
+        card.textContent = "Open an email in Outlook first.";
+        return;
+      }
+      card.innerHTML = "<strong></strong><span></span>";
+      card.querySelector("strong").textContent = itemMeta.subject || "(no subject)";
+      card.querySelector("span").textContent = [itemMeta.from, itemMeta.from_email].filter(Boolean).join(" · ");
+    }
+
+    function fillSelect() {
+      const q = document.getElementById("q").value.toLowerCase();
+      const sel = document.getElementById("enquiry");
+      const current = sel.value;
+      const matches = rows.filter((r) => {
+        const blob = [r.enquiry_no, r.client_name, r.product, r.status].join(" ").toLowerCase();
+        return !q || blob.indexOf(q) >= 0;
+      }).slice(0, 40);
+      sel.innerHTML = matches.length
+        ? matches.map((r) => {
+          const label = (r.enquiry_no || "") + " · " + (r.client_name || "No client") + (r.status ? " (" + r.status + ")" : "");
+          return "<option value=\"" + String(r.enquiry_no).replace(/"/g, "") + "\">" + label.replace(/</g, "") + "</option>";
+        }).join("")
+        : "<option value=\"\">No matching enquiry</option>";
+      if (current && matches.some((r) => r.enquiry_no === current)) sel.value = current;
+    }
+
+    async function loadEnquiries() {
+      const r = await sdOfficeFetch("/api/office/enquiries");
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || "Could not load enquiries");
+      rows = j.rows || [];
+      rows.sort((a, b) => String(b.enquiry_no || "").localeCompare(String(a.enquiry_no || ""), undefined, { numeric: true }));
+      fillSelect();
+    }
+
+    async function saveMail() {
+      setErr("");
+      setOk("");
+      const enquiryNo = document.getElementById("enquiry").value;
+      if (!enquiryNo) { setErr("Choose an enquiry"); return; }
+      if (!itemMeta || (!itemMeta.item_id && !itemMeta.rest_id && !itemMeta.internet_message_id)) {
+        setErr("Outlook did not give a link for this email. Keep it open and try again.");
+        return;
+      }
+      const btn = document.getElementById("save");
+      btn.disabled = true;
+      try {
+        const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(enquiryNo) + "/outlook-mail", {
+          method: "POST",
+          body: JSON.stringify(itemMeta)
+        });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || "Could not save");
+        setOk("Saved on " + enquiryNo + ". In the office app, Open in Outlook launches this email — nothing is downloaded.");
+      } catch (e) {
+        setErr(e.message || String(e));
+      }
+      btn.disabled = false;
+    }
+
+    async function start() {
+      itemMeta = readItem();
+      renderMail();
+      try {
+        let profile = sdOfficeProfile();
+        if (profile && profile.token) {
+          const r = await fetch("/api/office/me", { headers: { "x-sd-token": profile.token } });
+          const j = await r.json();
+          if (!j.ok) profile = null;
+        }
+        if (!profile) {
+          await sdShowLogin("Log in with your Studio Delta office name and access code.");
+        }
+        await loadEnquiries();
+        document.getElementById("save").disabled = false;
+      } catch (e) {
+        setErr(e.message || String(e));
+      }
+    }
+
+    document.getElementById("q").oninput = fillSelect;
+    document.getElementById("save").onclick = saveMail;
+    Office.onReady(() => start());
+  </script>
+</body>
+</html>

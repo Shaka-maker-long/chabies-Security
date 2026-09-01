@@ -43,58 +43,52 @@ assert.throws(
 
 const costing = pipeline.applyAction("#1996", "Coster", {
   action: "assign_costing",
-  assignee: "Coster",
-  correspondence_path: "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE"
+  assignee: "Coster"
 });
 assert.strictEqual(costing.row.status, "Costing");
-assert.strictEqual(
-  costing.row.correspondence.path,
-  "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE"
-);
-assert.ok(costing.row.correspondence.saved_at);
-assert.strictEqual(costing.row.correspondence.saved_by, "Coster");
 assert.ok(costing.actions.some((a) => a.id === "assign_costing" && a.label === "Change costing person"));
+assert.ok(costing.actions.some((a) => a.id === "add_correspondence"));
 const myCost = pipeline.listMyTasks("Coster");
 assert.strictEqual(myCost.length, 1);
 assert.strictEqual(myCost[0].kind, "cost_sheet");
-assert.strictEqual(myCost[0].correspondence_path, "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE");
+assert.strictEqual(myCost[0].correspondence_mails, 0);
 assert.strictEqual(pipeline.listMyTasks("Quoter").length, 0);
 
 const moved = pipeline.applyAction("#1996", "Coster", { action: "assign_costing", assignee: "Approver" });
-assert.strictEqual(
-  moved.row.correspondence.path,
-  "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE"
-);
 assert.ok(pipeline.listMyTasks("Approver").some((t) => t.kind === "cost_sheet"));
 assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet"));
 const self = pipeline.applyAction("#1996", "Approver", { action: "assign_costing", assignee: "Approver" });
 assert.ok(self.row.tasks.some((t) => t.kind === "cost_sheet" && t.status === "open" && t.assignee === "Approver"));
 pipeline.applyAction("#1996", "Approver", { action: "assign_costing", assignee: "Coster" });
-const msg = "data:application/octet-stream;base64," + Buffer.from("From: office\nSubject: order emails\n").toString("base64");
 const withCopy = pipeline.applyAction("#1996", "Coster", {
   action: "assign_costing",
   assignee: "Coster",
-  correspondence_path: "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE",
-  file_base64: msg,
-  file_name: "Re_ Order #S260025 - LAUGE SORENSEN.msg",
-  file_confirmed: true
-});
-assert.strictEqual(withCopy.row.correspondence.files.length, 1);
-assert.ok(withCopy.row.correspondence.files[0].stored_as);
-assert.strictEqual(withCopy.row.correspondence.files[0].order_no, "S260025");
-assert.strictEqual(withCopy.row.correspondence.files[0].customer, "LAUGE SORENSEN");
-assert.ok(db.readEnquiryAttachment("#1996", "correspondence_1"));
-assert.strictEqual(db.readEnquiryAttachment("#1996", "correspondence_1").mime, "application/vnd.ms-outlook");
-const extraMail = pipeline.applyAction("#1996", "Coster", {
-  action: "add_correspondence",
-  correspondence_files: [{
-    file_base64: msg,
-    file_name: "Re_ Order #S260023 - GERNOT CANTO.msg"
+  correspondence_mails: [{
+    subject: "Re: Order #S260025 - LAUGE SORENSEN",
+    from: "Studio Delta",
+    rest_id: "AAMkADrestid025",
+    internet_message_id: "<s260025@studio-delta.test>"
   }]
 });
-assert.strictEqual(extraMail.row.correspondence.files.length, 2);
-assert.strictEqual(extraMail.row.correspondence.files[1].order_no, "S260023");
-assert.strictEqual(extraMail.row.correspondence.files[1].customer, "GERNOT CANTO");
+assert.strictEqual(withCopy.row.correspondence.mails.length, 1);
+assert.ok(!withCopy.row.correspondence.mails[0].stored_as);
+assert.ok(withCopy.row.correspondence.mails[0].outlook_url.indexOf("ms-outlook://") === 0);
+assert.strictEqual(withCopy.row.correspondence.mails[0].order_no, "S260025");
+assert.strictEqual(withCopy.row.correspondence.mails[0].customer, "LAUGE SORENSEN");
+assert.ok(!db.readEnquiryAttachment("#1996", "correspondence_1"));
+const extraMail = pipeline.applyAction("#1996", "Coster", {
+  action: "add_correspondence",
+  correspondence_links: "https://outlook.office.com/owa/?ItemID=AAMkADrestid023&exvsurl=1&viewmodel=ReadMessageItem"
+});
+assert.strictEqual(extraMail.row.correspondence.mails.length, 2);
+assert.ok(extraMail.row.correspondence.mails[1].outlook_url.indexOf("ms-outlook://") === 0);
+assert.throws(
+  () => pipeline.applyAction("#1996", "Coster", {
+    action: "add_correspondence",
+    correspondence_files: [{ file_base64: "data:application/octet-stream;base64,QQ==", file_name: "note.msg" }]
+  }),
+  /Copy as link|\.msg/
+);
 
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", { action: "assign_waiting", waiting_status: "Waiting on clients personal details", assignee: "Coster" }),

@@ -86,6 +86,11 @@ app.get("/office-shell.css", (_req, res) => {
   noStore(res);
   res.type("text/css").sendFile(path.join(publicDir, "office-shell.css"));
 });
+try {
+  require("./outlook-addin").mountOutlookAddin(app, publicDir);
+} catch (e) {
+  console.error("[boot] Outlook add-in failed", e && e.stack ? e.stack : e);
+}
 app.get("/", (_req, res) => {
   res.sendFile(indexHtml);
 });

@@ -147,15 +147,24 @@ assert.deepStrictEqual(db.recentQuoteNos(5), ["SOQ2360"]);
 assert.throws(() => db.requireUniqueQuoteNo("SOQ2360"), /already used/i);
 assert.strictEqual(db.requireUniqueQuoteNo("SOQ2360", qseq.enquiry_no), "SOQ2360");
 assert.strictEqual(db.parseCorrespondenceName("Re_ Order #S260023 - GERNOT CANTO.msg").order_no, "S260023");
-assert.strictEqual(db.parseCorrespondenceName("Re_ Order #S260025 - LAUGE SORENSEN.msg").customer, "LAUGE SORENSEN");
-assert.strictEqual(db.outlookMimeFor("note.msg", "application/octet-stream"), "application/vnd.ms-outlook");
+assert.strictEqual(db.parseCorrespondenceName("Re: Order #S260025 - LAUGE SORENSEN").customer, "LAUGE SORENSEN");
+assert.strictEqual(db.sanitizeOutlookOpenUrl("javascript:alert(1)"), "");
+assert.strictEqual(db.sanitizeOutlookOpenUrl("file:///P:/ORDERS/mail.msg"), "");
+assert.ok(db.outlookDesktopUrl({ rest_id: "AAMkADrest" }).indexOf("ms-outlook://emails/message/open?restID=") === 0);
+assert.deepStrictEqual(
+  db.parseOutlookLinks("see https://outlook.office.com/owa/?ItemID=ABC123&exvsurl=1"),
+  ["https://outlook.office.com/owa/?ItemID=ABC123&exvsurl=1"]
+);
 
 const linked = db.getEnquiryRaw("#1996");
 linked.correspondence = {
-  path: "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE",
   saved_at: "2026-04-20T13:21:00.000Z",
   saved_by: "Admin",
-  files: []
+  mails: [{
+    title: "Re: Order #S260025 - LAUGE SORENSEN",
+    rest_id: "AAMkKeep",
+    from: "Office"
+  }]
 };
 db.saveEnquiryRecord(linked);
 const kept = db.upsertEnquiry({
@@ -164,10 +173,9 @@ const kept = db.upsertEnquiry({
   client_name: "Michael Cost",
   comment: "keep correspondence"
 });
-assert.strictEqual(
-  kept.correspondence.path,
-  "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE"
-);
+assert.strictEqual(kept.correspondence.mails.length, 1);
+assert.ok(kept.correspondence.mails[0].outlook_url.indexOf("ms-outlook://") === 0);
+assert.strictEqual(kept.correspondence.mails[0].order_no, "S260025");
 
 const saved = JSON.parse(fs.readFileSync(db.dbPath, "utf8"));
 assert.strictEqual(saved.enquiries.length, 5);
