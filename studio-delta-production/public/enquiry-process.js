@@ -12,9 +12,9 @@
       return "<option" + (n === selected ? " selected" : "") + ">" + esc(n) + "</option>";
     })).join("");
   }
-  function assigneeSelect(id, selected) {
+  function assigneeSelect(selected) {
     const names = (state.snap && state.snap.assignees) || [];
-    return "<select id=\"" + id + "\">" + optionList(names, selected || "") + "</select>";
+    return "<select name=\"assignee\">" + optionList(names, selected || "") + "</select>";
   }
   function namedLines(row) {
     return ((row && row.products) || []).filter((p) => String(p.product || "").trim());
@@ -99,7 +99,7 @@
     return window.XLSX;
   }
 
-  async function previewFromFile(file) {
+  async function previewFromFile(file, box) {
     revokeFile();
     if (!file) return;
     state.file.name = file.name;
@@ -111,7 +111,6 @@
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
-    const box = document.getElementById("sdFilePreview");
     if (!box) return;
     const name = file.name.toLowerCase();
     if (file.type.indexOf("pdf") >= 0 || /\.pdf$/.test(name)) {
@@ -147,8 +146,7 @@
     box.innerHTML = "<p class=\"sd-process-sub\">Preview is not available for this file type. Check it, then confirm it is the correct file.</p>";
   }
 
-  async function showSaved(kind) {
-    const box = document.getElementById("sdFilePreview");
+  async function showSaved(kind, box) {
     if (!box) return;
     const r = await sdOfficeFetch(fileUrl(kind));
     if (!r.ok) return;
@@ -176,46 +174,46 @@
         "</td></tr>").join("") +
       "</tbody></table>" +
       "<label>Delivery excl VAT *" + (editable
-        ? "<input id=\"sdDelivery\" value=\"" + esc(row.delivery_excl_vat || "") + "\" inputmode=\"decimal\">"
+        ? "<input name=\"delivery_excl_vat\" value=\"" + esc(row.delivery_excl_vat || "") + "\" inputmode=\"decimal\">"
         : "</label><div>" + esc(row.delivery_excl_vat || "—") + "</div>") +
       (editable ? "</label>" : "");
   }
 
-  function readValues(row) {
+  function readValues(form, row) {
     const lines = namedLines(row).map((l, i) => {
-      const input = document.querySelector('input[data-val="' + i + '"]');
+      const input = form.querySelector('input[data-val="' + i + '"]');
       return { product: l.product, category: l.category || "", value_excl_vat: input ? input.value : l.value_excl_vat };
     });
-    const delivery = document.getElementById("sdDelivery");
+    const delivery = form.querySelector('[name="delivery_excl_vat"]');
     return { products: lines, delivery_excl_vat: delivery ? delivery.value : row.delivery_excl_vat };
   }
 
   function fileBlock(accept, hint) {
-    return "<label>File<input id=\"sdFileInput\" type=\"file\" accept=\"" + esc(accept) + "\"></label>" +
+    return "<label>File<input name=\"file\" type=\"file\" accept=\"" + esc(accept) + "\"></label>" +
       "<p class=\"sd-process-sub\">" + esc(hint) + "</p>" +
-      "<div class=\"sd-process-preview\" id=\"sdFilePreview\"></div>" +
-      "<label><input id=\"sdFileOk\" type=\"checkbox\"> This is the correct file</label>";
+      "<div class=\"sd-process-preview\" data-preview></div>" +
+      "<label><input name=\"file_ok\" type=\"checkbox\"> This is the correct file</label>";
   }
 
-  function bindFile() {
-    const input = document.getElementById("sdFileInput");
+  function bindFile(form) {
+    const input = form && form.querySelector('[name="file"]');
     if (!input) return;
     input.onchange = async (e) => {
       const file = e.target.files && e.target.files[0];
-      const ok = document.getElementById("sdFileOk");
+      const ok = form.querySelector('[name="file_ok"]');
       if (ok) ok.checked = false;
       state.file.confirmed = false;
-      await previewFromFile(file);
+      await previewFromFile(file, form.querySelector("[data-preview]"));
     };
-    const ok = document.getElementById("sdFileOk");
+    const ok = form.querySelector('[name="file_ok"]');
     if (ok) ok.onchange = (e) => { state.file.confirmed = !!e.target.checked; };
   }
 
-  function filePayload() {
+  function filePayload(form) {
     return {
       file_base64: state.file.base64,
       file_name: state.file.name,
-      file_confirmed: !!(document.getElementById("sdFileOk") && document.getElementById("sdFileOk").checked)
+      file_confirmed: !!(form.querySelector('[name="file_ok"]') && form.querySelector('[name="file_ok"]').checked)
     };
   }
 
@@ -223,77 +221,74 @@
     const waiting = (state.snap.waitingStatuses || []).map((s) => "<option>" + esc(s) + "</option>").join("");
     const closed = (state.snap.closedStatuses || []).map((s) => "<option>" + esc(s) + "</option>").join("");
     if (action.id === "assign_waiting") {
-      return "<label>Waiting on<select id=\"sdWaiting\">" + waiting + "</select></label>" +
-        "<label>Assign to</label>" + assigneeSelect("sdAssignee");
+      return "<label>Waiting on<select name=\"waiting_status\">" + waiting + "</select></label>" +
+        "<label>Assign to</label>" + assigneeSelect();
     }
     if (action.id === "assign_costing" || action.id === "supplier_wait" || action.id === "complete_supplier") {
-      return "<label>Assign to</label>" + assigneeSelect("sdAssignee");
+      return "<label>Assign to</label>" + assigneeSelect();
     }
     if (action.id === "complete_chase") {
-      return "<label>What next?<select id=\"sdNext\"><option value=\"costing\">Enough to cost — assign costing</option><option value=\"waiting\">Still waiting</option></select></label>" +
-        "<label>Waiting on<select id=\"sdWaiting\">" + waiting + "</select></label>" +
-        "<label>Assign to</label>" + assigneeSelect("sdAssignee") +
-        "<label>Comment<textarea id=\"sdComments\"></textarea></label>";
+      return "<label>What next?<select name=\"next\"><option value=\"costing\">Enough to cost — assign costing</option><option value=\"waiting\">Still waiting</option></select></label>" +
+        "<label>Waiting on<select name=\"waiting_status\">" + waiting + "</select></label>" +
+        "<label>Assign to</label>" + assigneeSelect() +
+        "<label>Comment<textarea name=\"comments\"></textarea></label>";
     }
     if (action.id === "complete_cost_sheet") {
       return valuesTable(row, true) + fileBlock(".xlsx,.xls,.csv,application/pdf,.pdf", "Upload the Excel cost sheet. Check the preview, then confirm it.") +
-        "<label>Request approval from</label>" + assigneeSelect("sdAssignee");
+        "<label>Request approval from</label>" + assigneeSelect();
     }
     if (action.id === "complete_approval") {
-      return (row.cost_sheet ? "<p class=\"sd-process-sub\">Cost sheet: " + esc(row.cost_sheet.filename || "cost sheet") + " — <a href=\"" + fileUrl("cost_sheet", true) + "\">download</a></p><div class=\"sd-process-preview\" id=\"sdFilePreview\"></div>" : "") +
+      return (row.cost_sheet ? "<p class=\"sd-process-sub\">Cost sheet: " + esc(row.cost_sheet.filename || "cost sheet") + " — <a href=\"" + fileUrl("cost_sheet", true) + "\">download</a></p><div class=\"sd-process-preview\" data-preview></div>" : "") +
         valuesTable(row, false) +
-        "<label>Decision<select id=\"sdDecision\"><option value=\"approve\">Approve — send to quote</option><option value=\"reject\">Reject — back to costing</option></select></label>" +
-        "<label>Comments (required if rejected)<textarea id=\"sdComments\"></textarea></label>" +
-        "<label>Next person (quote person if approved, costing if rejected)</label>" + assigneeSelect("sdAssignee");
+        "<label>Decision<select name=\"decision\"><option value=\"approve\">Approve — send to quote</option><option value=\"reject\">Reject — back to costing</option></select></label>" +
+        "<label>Comments (required if rejected)<textarea name=\"comments\"></textarea></label>" +
+        "<label>Next person (quote person if approved, costing if rejected)</label>" + assigneeSelect();
     }
     if (action.id === "complete_quote") {
       return valuesTable(row, true) + fileBlock("application/pdf,.pdf", "Upload the quote PDF, check the preview, then confirm it is the correct file. DATE QUOTED is saved with the PDF.") +
-        "<label>Who follows up after 7 days?</label>" + assigneeSelect("sdFollow");
+        "<label>Who follows up after 7 days?</label>" + assigneeSelect();
     }
     if (action.id === "complete_followup") {
       return fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "Upload a screenshot of the follow-up.") +
-        "<label>Who owns the next follow-up?</label>" + assigneeSelect("sdAssignee", row.follow_up_assignee);
+        "<label>Who owns the next follow-up?</label>" + assigneeSelect(row.follow_up_assignee);
     }
     if (action.id === "complete_reject") {
-      return "<label>Rejection reason *<textarea id=\"sdComments\"></textarea></label>";
+      return "<label>Rejection reason *<textarea name=\"comments\"></textarea></label>";
     }
     if (action.id === "complete_order") {
       return fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "Upload proof of payment (screenshot or PDF).") +
-        "<label>Requires drawing?<select id=\"sdDrawing\"><option value=\"\"></option><option value=\"no\">No — ready for Orders</option><option value=\"yes\">Yes — assign drawing</option></select></label>" +
-        "<label>Drawing assigned to</label>" + assigneeSelect("sdAssignee");
+        "<label>Requires drawing?<select name=\"drawing_required\"><option value=\"\"></option><option value=\"no\">No — ready for Orders</option><option value=\"yes\">Yes — assign drawing</option></select></label>" +
+        "<label>Drawing assigned to</label>" + assigneeSelect();
     }
     if (action.id === "complete_drawing") {
       return fileBlock("application/pdf,.pdf,image/*,.png,.jpg,.jpeg,.webp", "Upload the drawing, check the preview, then confirm it.");
     }
     if (action.id === "close") {
-      return "<label>Close as<select id=\"sdCloseStatus\">" + closed + "</select></label>" +
-        "<label>Note<textarea id=\"sdComments\"></textarea></label>";
+      return "<label>Close as<select name=\"status\">" + closed + "</select></label>" +
+        "<label>Note<textarea name=\"comments\"></textarea></label>";
     }
     return "";
   }
 
-  function collect(action, row) {
+  function field(form, name) {
+    const el = form.querySelector('[name="' + name + '"]');
+    return el ? String(el.value || "").trim() : "";
+  }
+
+  function collect(form, action, row) {
     const body = { action: action.id };
-    const assignee = document.getElementById("sdAssignee");
-    const waiting = document.getElementById("sdWaiting");
-    const comments = document.getElementById("sdComments");
-    if (assignee) body.assignee = assignee.value;
-    if (waiting) body.waiting_status = waiting.value;
-    if (comments) {
-      body.comments = comments.value;
-      body.reason = comments.value;
-    }
-    if (action.id === "complete_chase") body.next = (document.getElementById("sdNext") || {}).value;
-    if (action.id === "complete_approval") body.decision = (document.getElementById("sdDecision") || {}).value;
-    if (action.id === "complete_quote") body.follow_up_assignee = (document.getElementById("sdFollow") || {}).value;
-    if (action.id === "complete_order") {
-      const drawing = (document.getElementById("sdDrawing") || {}).value;
-      body.drawing_required = drawing;
-    }
-    if (action.id === "close") body.status = (document.getElementById("sdCloseStatus") || {}).value;
-    if (action.id === "complete_cost_sheet" || action.id === "complete_quote") Object.assign(body, readValues(row));
+    body.assignee = field(form, "assignee");
+    body.waiting_status = field(form, "waiting_status");
+    body.comments = field(form, "comments");
+    body.reason = body.comments;
+    if (action.id === "complete_chase") body.next = field(form, "next");
+    if (action.id === "complete_approval") body.decision = field(form, "decision");
+    if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
+    if (action.id === "complete_order") body.drawing_required = field(form, "drawing_required");
+    if (action.id === "close") body.status = field(form, "status");
+    if (action.id === "complete_cost_sheet" || action.id === "complete_quote") Object.assign(body, readValues(form, row));
     if (/complete_cost_sheet|complete_quote|complete_followup|complete_order|complete_drawing/.test(action.id)) {
-      Object.assign(body, filePayload());
+      Object.assign(body, filePayload(form));
     }
     return body;
   }
@@ -333,11 +328,10 @@
       html += "</div>";
     }
     body.innerHTML = html;
-    bindFile();
-    if (document.getElementById("sdFilePreview") && row.cost_sheet && !document.getElementById("sdFileInput")) {
-      showSaved("cost_sheet");
-    }
     body.querySelectorAll("form").forEach((form) => {
+      bindFile(form);
+      const preview = form.querySelector("[data-preview]");
+      if (preview && row.cost_sheet && !form.querySelector('[name="file"]')) showSaved("cost_sheet", preview);
       form.onsubmit = async (e) => {
         e.preventDefault();
         const i = Number(form.getAttribute("data-action-i"));
@@ -346,7 +340,7 @@
         err.textContent = "";
         const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/process", {
           method: "POST",
-          body: JSON.stringify(collect(action, row))
+          body: JSON.stringify(collect(form, action, row))
         });
         const j = await r.json();
         if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
