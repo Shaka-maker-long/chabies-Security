@@ -28,15 +28,11 @@
 </head>
 <body>
   <header>
-    <h1>STUDIO DELTA</h1>
-    <a href="/">Floor</a>
-    <a href="/orders">Orders</a>
-    <a href="/schedule">Schedule</a>
-    <a href="/dropdowns">Dropdowns</a>
-    <a class="active" href="/debtors">Debtors</a>
+    <h1>Debtors</h1>
     <div class="tools" id="status"></div>
   </header>
   <div class="wrap" id="wrap"></div>
+  <script src="/office-auth.js?v=fullmenu"></script>
   <script>
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
     function pretty(iso) {
@@ -54,15 +50,15 @@
       }
       let html = "<table><thead><tr><th>ORDER</th><th>CLIENT</th><th>NUMBER</th><th>EMAIL</th><th>TOTAL (Incl VAT)</th><th>PAID</th><th>OWING</th><th>RECORD PAYMENT</th></tr></thead><tbody>";
       rows.forEach((row) => {
-        const hist = (row.payments || []).map((p) => pretty(p.at) + " R" + p.amount + (p.note ? " · " + p.note : "")).join("<br>");
+        const hist = (row.payments || []).map((p) => pretty(p.at) + " R " + String(p.amount || "").replace(/^R\s*/, "") + (p.note ? " · " + p.note : "")).join("<br>");
         html += "<tr data-order=\"" + esc(row.order_number) + "\">";
         html += "<td>" + esc(row.order_number) + "</td>";
         html += "<td>" + esc(row.client_name) + "</td>";
         html += "<td>" + esc(row.client_number) + "</td>";
         html += "<td>" + esc(row.email) + "</td>";
-        html += "<td>R " + esc(row.total) + "</td>";
-        html += "<td>R " + esc(row.paid) + "</td>";
-        html += "<td class=\"owing\">R " + esc(row.owing) + "</td>";
+        html += "<td>" + esc(row.total) + "</td>";
+        html += "<td>" + esc(row.paid) + "</td>";
+        html += "<td class=\"owing\">" + esc(row.owing) + "</td>";
         html += "<td><form class=\"pay\"><input name=\"amount\" type=\"number\" min=\"0.01\" step=\"0.01\" placeholder=\"Amount\"><input name=\"note\" placeholder=\"Note\"><button type=\"submit\">Add payment</button></form>";
         if (hist) html += "<div class=\"hist\">" + hist + "</div>";
         html += "</td></tr>";
@@ -74,9 +70,8 @@
           e.preventDefault();
           const tr = form.closest("tr");
           const order = tr.getAttribute("data-order");
-          const r = await fetch("/api/office/orders/" + encodeURIComponent(order) + "/payments", {
+          const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(order) + "/payments", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ amount: form.amount.value, note: form.note.value })
           });
           const j = await r.json();
@@ -86,11 +81,11 @@
       });
     }
     async function load() {
-      const r = await fetch("/api/office/debtors");
+      const r = await sdOfficeFetch("/api/office/debtors");
       const j = await r.json();
       render(j.rows || []);
     }
-    load();
+    sdRequireOffice("debtors").then((p) => { if (p) load(); });
   </script>
 </body>
 </html>

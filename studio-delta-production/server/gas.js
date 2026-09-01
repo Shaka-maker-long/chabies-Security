@@ -4,7 +4,8 @@ const vm = require("vm");
 const { spawnSync } = require("child_process");
 const crypto = require("crypto");
 const { google } = require("googleapis");
-const { Spreadsheet, createSpreadsheetApp } = require("./sheets");
+const { createSpreadsheetApp } = require("./sheets");
+const { getBook, maybeImportGoogleOnce } = require("./workbook-store");
 
 const TZ = process.env.TZ || "Africa/Johannesburg";
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
@@ -48,6 +49,10 @@ function cacheGet(key) {
 }
 function cachePut(key, val, ttlSec) {
   cacheStore.set(key, { val, exp: ttlSec ? Date.now() + ttlSec * 1000 : 0 });
+}
+
+function clearShopCache() {
+  cacheStore.clear();
 }
 
 function isoWeek(date) {
@@ -258,7 +263,7 @@ const ALLOWED = new Set([
   "generatePowderCoatingList", "getQCReportsFast", "processPdfQueue",
   "undoAutoSwitch", "leaveBatchForOrder", "getIdleWorkers", "pollIdleAlerts", "assignIndirectTask",
   "getActivityReport", "getScheduleBoard", "generateWorkerSchedule", "insertScheduleTask", "clearWorkerScheduleFrom",
-  "checkIdleWorkers", "lazySetup"
+  "checkIdleWorkers", "lazySetup", "getTaskDuration"
 ]);
 
 let scriptSource = null;
@@ -271,50 +276,10 @@ function loadScript() {
 
 let workbookCache = null;
 
-function hasGoogleAuth() {
-  return !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
-}
-
-function invalidateWorkbookCache() {
-  workbookCache = null;
-}
-
-function localBookFromDb() {
-  const db = require("./db");
-  const snap = db.ensureWorkbook();
-  const book = Spreadsheet.fromSnapshot(snap);
-  workbookCache = { book, loadedAt: Date.now(), local: true };
-  return book;
-}
-
-async function importWorkbookFromGoogle() {
-  if (!hasGoogleAuth()) {
-    throw new Error("Google credentials are not set. Add GOOGLE_SERVICE_ACCOUNT_JSON for a one-time import.");
-  }
-  if (!process.env.SHEET_ID) throw new Error("SHEET_ID is not set");
-  const auth = getAuth();
-  const client = await auth.getClient();
-  const googleBook = new Spreadsheet(client, process.env.SHEET_ID);
-  await googleBook.load();
-  const db = require("./db");
-  db.replaceWorkbook(googleBook.toSnapshot(), { imported: true });
-  invalidateWorkbookCache();
-  return {
-    imported: db.countOrders(),
-    sheets: Object.keys(db.getWorkbookSnapshot().sheets),
-    importedAt: db.workbookImportedAt()
-  };
-}
-
 async function getCachedWorkbook() {
-  if (workbookCache && workbookCache.book) return workbookCache.book;
-  const db = require("./db");
-  if (db.hasLocalWorkbook()) return localBookFromDb();
-  if (hasGoogleAuth() && process.env.SHEET_ID) {
-    await importWorkbookFromGoogle();
-    return localBookFromDb();
-  }
-  return localBookFromDb();
+  await maybeImportGoogleOnce();
+  workbookCache = { book: getBook(), spreadsheetId: "railway-local", loadedAt: Date.now() };
+  return workbookCache.book;
 }
 
 function jsonSafe(value) {
@@ -410,12 +375,4 @@ async function callShopFunction(fnName, args) {
   return jsonSafe(result);
 }
 
-module.exports = {
-  callShopFunction,
-  ALLOWED,
-  jsonSafe,
-  getCachedWorkbook,
-  importWorkbookFromGoogle,
-  invalidateWorkbookCache,
-  hasGoogleAuth
-};
+module.exports = { callShopFunction, ALLOWED, jsonSafe, getCachedWorkbook, clearShopCache };

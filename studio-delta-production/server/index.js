@@ -3,35 +3,29 @@ process.env.SHEET_ID = process.env.SHEET_ID || "1pdvAFTIyd5sf8Wbf38MSd4cfk3mb3Mc
 
 const express = require("express");
 const path = require("path");
+const { initWorkbook, persistWorkbook, maybeImportGoogleOnce, hasGoogleAuth } = require("./workbook-store");
+const { migrateJsonOrdersToWorkbook, normalizeOrdersSheet } = require("./db");
+
+initWorkbook();
+migrateJsonOrdersToWorkbook();
+normalizeOrdersSheet();
+try {
+  const staff = require("./staff");
+  staff.usersSheet();
+  staff.seedLocalAdminIfEmpty();
+} catch (e) {}
 
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "50mb" }));
 
-function hasGoogleAuth() {
-  return !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
-}
-
 function health(_req, res) {
-  let store = {};
-  try {
-    const db = require("./db");
-    store = {
-      dataFile: db.dbPath,
-      orders: db.countOrders(),
-      importedAt: db.workbookImportedAt(),
-      localWorkbook: db.hasLocalWorkbook()
-    };
-  } catch (e) {
-    store = { error: e.message || String(e) };
-  }
   res.status(200).json({
     ok: true,
     tz: process.env.TZ,
-    floorStore: "local",
-    sheetsImportConfigured: hasGoogleAuth() && !!process.env.SHEET_ID,
-    sheetsConfigured: hasGoogleAuth() && !!process.env.SHEET_ID,
-    ...store
+    db: "railway",
+    sheetsConfigured: true,
+    googleImportAvailable: hasGoogleAuth() && !!process.env.SHEET_ID
   });
 }
 
@@ -45,6 +39,9 @@ const indexHtml = path.join(__dirname, "..", "index.html");
 app.get("/orders", (_req, res) => {
   res.sendFile(path.join(publicDir, "orders.html"));
 });
+app.get("/enquiries", (_req, res) => {
+  res.sendFile(path.join(publicDir, "enquiries.html"));
+});
 app.get("/schedule", (_req, res) => {
   res.sendFile(path.join(publicDir, "schedule.html"));
 });
@@ -54,8 +51,25 @@ app.get("/dropdowns", (_req, res) => {
 app.get("/debtors", (_req, res) => {
   res.sendFile(path.join(publicDir, "debtors.html"));
 });
+app.get("/users", (_req, res) => {
+  res.sendFile(path.join(publicDir, "users.html"));
+});
+app.get("/durations", (_req, res) => {
+  res.sendFile(path.join(publicDir, "durations.html"));
+});
 app.get("/gas-client.js", (_req, res) => {
   res.type("application/javascript").sendFile(path.join(publicDir, "gas-client.js"));
+});
+function noStore(res) {
+  res.set("Cache-Control", "no-store, max-age=0");
+}
+app.get("/office-auth.js", (_req, res) => {
+  noStore(res);
+  res.type("application/javascript").sendFile(path.join(publicDir, "office-auth.js"));
+});
+app.get("/office-shell.css", (_req, res) => {
+  noStore(res);
+  res.type("text/css").sendFile(path.join(publicDir, "office-shell.css"));
 });
 app.get("/", (_req, res) => {
   res.sendFile(indexHtml);
@@ -116,13 +130,15 @@ app.post("/api/run", (req, res) => {
 });
 
 setTimeout(() => {
-  try {
-    const run = loadFloor();
-    serialize(() => run("lazySetup", []).catch((e) => console.error("[lazySetup]", e.message || e)));
-  } catch (e) {
-    console.error("[boot] floor failed to load", e && e.stack ? e.stack : e);
-  }
-}, 5000);
+  maybeImportGoogleOnce()
+    .then(() => {
+      const run = loadFloor();
+      serialize(() => run("lazySetup", []).catch((e) => console.error("[lazySetup]", e.message || e)));
+    })
+    .catch((e) => {
+      console.error("[boot] floor failed to load", e && e.stack ? e.stack : e);
+    });
+}, 2000);
 
 const FIVE_MIN = 5 * 60 * 1000;
 setInterval(() => {
@@ -130,12 +146,14 @@ setInterval(() => {
   serialize(() =>
     callShopFunction("checkIdleWorkers", []).catch((e) => console.error("[checkIdleWorkers]", e.message || e))
   );
+  if (!hasGoogleAuth()) return;
   serialize(() =>
     callShopFunction("processPdfQueue", []).catch((e) => console.error("[processPdfQueue]", e.message || e))
   );
 }, FIVE_MIN);
 
 function shutdown() {
+  try { persistWorkbook(); } catch (e) {}
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();
 }

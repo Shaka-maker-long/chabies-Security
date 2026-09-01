@@ -1,6 +1,12 @@
 const fs = require("fs");
 const path = require("path");
 const { DROPDOWN_KEYS, DEFAULT_DROPDOWNS } = require("./dropdowns-default");
+const {
+  ENQUIRY_FIELDS,
+  ENQUIRY_DROPDOWN_KEYS,
+  DEFAULT_ENQUIRY_DROPDOWNS
+} = require("./enquiries-default");
+const { getBook, persistWorkbook, ORDER_HEADERS } = require("./workbook-store");
 
 const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
@@ -11,6 +17,12 @@ const ORDER_FIELDS = [
 
 const VAT_RATE = 0.15;
 
+const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December"
+];
+
 function parseMoney(s) {
   const n = Number(String(s || "").replace(/,/g, "").replace(/[^0-9.-]/g, ""));
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
@@ -18,6 +30,76 @@ function parseMoney(s) {
 
 function money(n) {
   return (Math.round(Number(n) * 100) / 100).toFixed(2);
+}
+
+function formatRand(n) {
+  const v = parseMoney(n);
+  const neg = v < 0 ? "-" : "";
+  const [whole, frac] = money(Math.abs(v)).split(".");
+  const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return neg + "R " + grouped + "." + frac;
+}
+
+function asDate(v) {
+  if (v instanceof Date && !isNaN(v.getTime())) return v;
+  if (typeof v === "number" && isFinite(v) && v >= 20000 && v <= 120000) {
+    const utcMs = Math.round((v - 25569) * 86400000);
+    return new Date(utcMs - SAST_OFFSET_MS);
+  }
+  const s = String(v || "").trim();
+  if (!s) return null;
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) {
+    return new Date(Date.UTC(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1])) - SAST_OFFSET_MS);
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(s) || /^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+function sastParts(d) {
+  const sast = new Date(d.getTime() + SAST_OFFSET_MS);
+  return { y: sast.getUTCFullYear(), m: sast.getUTCMonth(), day: sast.getUTCDate() };
+}
+
+function dateToSerial(d) {
+  return Math.round((d.getTime() + SAST_OFFSET_MS) / 86400000 + 25569);
+}
+
+function looksLikeConvertedDate(v) {
+  if (v instanceof Date) return true;
+  const s = String(v || "");
+  return /^\d{4}-\d{2}-\d{2}T/.test(s) || /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(s);
+}
+
+function formatOrderId(v) {
+  if (v == null || v === "") return "";
+  if (typeof v === "number" && isFinite(v)) return String(Math.round(v));
+  if (looksLikeConvertedDate(v)) {
+    const d = asDate(v);
+    if (d) return String(dateToSerial(d));
+  }
+  return String(v).trim();
+}
+
+function formatPaymentDate(v) {
+  if (v == null || v === "") return "";
+  const d = asDate(v);
+  if (!d) return String(v).replace(/T.*$/, "").trim();
+  const p = sastParts(d);
+  return String(p.day).padStart(2, "0") + "/" + String(p.m + 1).padStart(2, "0") + "/" + p.y;
+}
+
+function formatMonthOfSale(v) {
+  if (v == null || v === "") return "";
+  const s = String(v).trim();
+  if (/^[A-Za-z]+ \d{4}$/.test(s)) return s;
+  const d = asDate(v);
+  if (!d) return s.replace(/T.*$/, "");
+  const p = sastParts(d);
+  return MONTH_NAMES[p.m] + " " + p.y;
 }
 
 function inclFromExcl(excl) {
@@ -41,7 +123,10 @@ function orderOwing(order) {
 }
 
 function applyPriceAndPayments(payload, row, existing) {
-  if (payload.price_excl_vat) payload.price_incl_vat = inclFromExcl(payload.price_excl_vat);
+  if (payload.price_excl_vat) {
+    payload.price_excl_vat = money(parseMoney(payload.price_excl_vat));
+    payload.price_incl_vat = inclFromExcl(payload.price_excl_vat);
+  }
   payload.amount_paid = payload.amount_paid === "" || payload.amount_paid == null
     ? (existing && existing.amount_paid) || "0.00"
     : money(parseMoney(payload.amount_paid));
@@ -51,57 +136,6 @@ function applyPriceAndPayments(payload, row, existing) {
   return payload;
 }
 
-const ORDER_SHEET_HEADERS = [
-  "Quote Number", "Order Number", "Status", "Assigned Operator", "Type", "Catergory",
-  "Product", "Variation", "Doors", "Detailed Description", "Dimensions", "Powder Coating",
-  "Client Name", "Client Number", "Email Address", "Payment Date", "Address", "Province",
-  "Price (Excl VAT)", "Price (Incl VAT)", "Amount Paid", "Month of Sale", "Source", "City"
-];
-
-const HEADER_MAP = {
-  "quote number": "quote_number",
-  "order number": "order_number",
-  "order #": "order_number",
-  "status": "status",
-  "assigned operator": "assigned_operator",
-  "type": "type",
-  "catergory": "category",
-  "category": "category",
-  "product": "product",
-  "variation": "variation",
-  "doors": "doors",
-  "detailed description": "detailed_description",
-  "dimensions": "dimensions",
-  "powder coating": "powder_coating",
-  "client name": "client_name",
-  "client number": "client_number",
-  "email address": "email",
-  "email": "email",
-  "payment date": "payment_date",
-  "address": "address",
-  "province": "province",
-  "price (incl vat)": "price_incl_vat",
-  "price (excl vat)": "price_excl_vat",
-  "amount paid": "amount_paid",
-  "month of sale": "month_of_sale",
-  "source": "source",
-  "city": "city"
-};
-
-const REQUIRED_SHEETS = {
-  ORDERS: ORDER_SHEET_HEADERS,
-  Users: ["Name", "Role", "Password", "Tasks"],
-  Production_Log: ["Id", "Order #", "Worker", "Role", "Process", "Start", "End", "Result", "Signature", "PauseStart", "PauseEnd", "PauseReason", "Meta"],
-  Overview: ["Id", "Order #", "Worker", "Status", "Start", "End", "Notes"],
-  Steel_Profiles: ["Category", "Profile Name"],
-  Steel_Usage: ["Timestamp", "Order #", "Worker", "Process", "Profile Type", "Size / Length"],
-  Backboards: ["Category", "Profile Name"],
-  Backboard_Usage: ["Timestamp", "Order #", "Worker", "Process", "Type", "Size"],
-  Idle_Alerts: ["Date", "Worker", "Role", "IdleSince", "AlertedAt", "Status", "AssignedTask"],
-  Schedule: ["Id", "Worker", "Process", "Order", "Product", "Title", "Start", "End", "DurationMins", "Kind", "Seq", "EstimateSource"],
-  Rates: ["Item", "Rate"]
-};
-
 function emptyState() {
   return {
     orders: [],
@@ -110,7 +144,8 @@ function emptyState() {
     nextOrderId: 1,
     nextScheduleId: 1,
     dropdowns: JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS)),
-    workbook: { sheets: {}, importedAt: null }
+    paymentsByOrder: {},
+    enquiries: []
   };
 }
 
@@ -141,10 +176,6 @@ try {
       if (Array.isArray(parsed.dropdowns[key])) dropdowns[key] = parsed.dropdowns[key];
     }
   }
-  const workbook = parsed.workbook && typeof parsed.workbook === "object"
-    ? parsed.workbook
-    : { sheets: {}, importedAt: null };
-  if (!workbook.sheets || typeof workbook.sheets !== "object") workbook.sheets = {};
   state = {
     ...emptyState(),
     ...parsed,
@@ -152,16 +183,17 @@ try {
     schedule_rows: Array.isArray(parsed.schedule_rows) ? parsed.schedule_rows : [],
     schedule_cells: Array.isArray(parsed.schedule_cells) ? parsed.schedule_cells : [],
     dropdowns,
-    workbook
+    paymentsByOrder: parsed.paymentsByOrder && typeof parsed.paymentsByOrder === "object" ? parsed.paymentsByOrder : {},
+    enquiries: Array.isArray(parsed.enquiries) ? parsed.enquiries : []
   };
-  console.log(
-    "[db] opened",
-    dbPath,
-    "orders",
-    state.orders.length,
-    "workbookSheets",
-    Object.keys(state.workbook.sheets).length
-  );
+  if (!Object.keys(state.paymentsByOrder).length && Array.isArray(parsed.orders)) {
+    parsed.orders.forEach((o) => {
+      if (o && o.order_number && Array.isArray(o.payments) && o.payments.length) {
+        state.paymentsByOrder[o.order_number] = o.payments;
+      }
+    });
+  }
+  console.log("[db] opened", dbPath, "orders", state.orders.length);
   if (!parsed.dropdowns) save();
 } catch (e) {
   if (e && e.code !== "ENOENT") {
@@ -181,35 +213,197 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+const ORDER_HEADER_MAP = {
+  "quote number": "quote_number",
+  "order number": "order_number",
+  "status": "status",
+  "assigned operator": "assigned_operator",
+  "type": "type",
+  "catergory": "category",
+  "category": "category",
+  "product": "product",
+  "variation": "variation",
+  "doors": "doors",
+  "detailed description": "detailed_description",
+  "dimensions": "dimensions",
+  "powder coating": "powder_coating",
+  "client name": "client_name",
+  "client number": "client_number",
+  "email address": "email",
+  "email": "email",
+  "payment date": "payment_date",
+  "address": "address",
+  "province": "province",
+  "price (incl vat)": "price_incl_vat",
+  "price (excl vat)": "price_excl_vat",
+  "amount paid": "amount_paid",
+  "month of sale": "month_of_sale",
+  "source": "source",
+  "city": "city"
+};
+
+function normHeader(s) {
+  return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function cellStr(v) {
+  if (v == null || v === "") return "";
+  if (v instanceof Date) return formatPaymentDate(v);
+  return String(v);
+}
+
+function formatOrderField(field, v) {
+  if (field === "quote_number" || field === "order_number") return formatOrderId(v);
+  if (field === "payment_date") return formatPaymentDate(v);
+  if (field === "month_of_sale") return formatMonthOfSale(v);
+  if (field === "price_excl_vat" || field === "price_incl_vat" || field === "amount_paid") {
+    if (v === "" || v == null) return "";
+    return money(parseMoney(v));
+  }
+  return cellStr(v);
+}
+
+function ordersSheet() {
+  const book = getBook();
+  let sheet = book.getSheetByName("ORDERS");
+  if (!sheet) sheet = book.insertSheet("ORDERS");
+  return sheet;
+}
+
+function headerLookup(sheet) {
+  const lastCol = Math.max(sheet.getLastColumn(), ORDER_HEADERS.length, 1);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0] || [];
+  const idx = {};
+  headers.forEach((h, i) => {
+    const field = ORDER_HEADER_MAP[normHeader(h)];
+    if (field) idx[field] = i;
+  });
+  return { headers, idx, lastCol };
+}
+
+function ensureOrderHeaders(sheet) {
+  let look = headerLookup(sheet);
+  if (look.idx.order_number == null || look.idx.status == null) {
+    sheet.getRange(1, 1, 1, ORDER_HEADERS.length).setValues([ORDER_HEADERS]);
+    look = headerLookup(sheet);
+  }
+  if (look.idx.amount_paid == null) {
+    const col = Math.max(sheet.getLastColumn(), look.headers.length) + 1;
+    sheet.getRange(1, col).setValue("AMOUNT PAID");
+    look = headerLookup(sheet);
+  }
+  return look;
+}
+
+function rowToOrder(row, idx, id) {
+  const o = { id };
+  for (const f of ORDER_FIELDS) {
+    const i = idx[f];
+    o[f] = i == null ? "" : formatOrderField(f, row[i]);
+  }
+  return o;
+}
+
 function listOrders() {
-  return state.orders.slice().sort((a, b) => Number(b.id) - Number(a.id));
+  const sheet = ordersSheet();
+  const { idx, lastCol } = ensureOrderHeaders(sheet);
+  const last = sheet.getLastRow();
+  if (last < 2) return [];
+  const grid = sheet.getRange(2, 1, last - 1, lastCol).getValues();
+  const out = [];
+  for (let i = 0; i < grid.length; i++) {
+    const row = rowToOrder(grid[i], idx, i + 2);
+    if (!String(row.order_number || "").trim()) continue;
+    if (state.paymentsByOrder && state.paymentsByOrder[row.order_number]) {
+      row.payments = state.paymentsByOrder[row.order_number];
+    }
+    out.push(row);
+  }
+  return out.reverse();
+}
+
+function findOrderSheetRow(sheet, idx, orderNumber) {
+  const last = sheet.getLastRow();
+  if (last < 2 || idx.order_number == null) return 0;
+  const want = formatOrderId(orderNumber);
+  const values = sheet.getRange(2, idx.order_number + 1, last - 1, 1).getValues();
+  for (let i = 0; i < values.length; i++) {
+    if (formatOrderId(values[i][0]) === want) return i + 2;
+  }
+  return 0;
+}
+
+function normalizeOrdersSheet() {
+  const sheet = ordersSheet();
+  const { idx, lastCol } = ensureOrderHeaders(sheet);
+  const last = sheet.getLastRow();
+  if (last < 2) return { rewritten: 0 };
+  const grid = sheet.getRange(2, 1, last - 1, lastCol).getValues();
+  let rewritten = 0;
+  const fields = ["quote_number", "order_number", "payment_date", "month_of_sale"];
+  for (let i = 0; i < grid.length; i++) {
+    fields.forEach((f) => {
+      if (idx[f] == null) return;
+      const cur = grid[i][idx[f]];
+      const next = formatOrderField(f, cur);
+      const same = !(cur instanceof Date) && String(cur || "") === next;
+      if (!same) {
+        grid[i][idx[f]] = next;
+        rewritten++;
+      }
+    });
+  }
+  if (rewritten) {
+    sheet.getRange(2, 1, last - 1, lastCol).setValues(grid);
+    persistWorkbook();
+  }
+  return { rewritten };
 }
 
 function upsertOrder(row) {
-  const orderNumber = String(row.order_number || "").trim();
+  const orderNumber = formatOrderId(row.order_number);
   if (!orderNumber) throw new Error("Order number is required");
   const payload = {};
   for (const f of ORDER_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]);
+  payload.quote_number = formatOrderId(payload.quote_number);
   payload.order_number = orderNumber;
+  payload.payment_date = payload.payment_date ? formatPaymentDate(payload.payment_date) : "";
+  payload.month_of_sale = payload.month_of_sale ? formatMonthOfSale(payload.month_of_sale) : "";
   payload.updated_at = nowIso();
-  const existing = state.orders.find((o) => o.order_number === orderNumber);
+  const existing = listOrders().find((o) => o.order_number === orderNumber);
   applyPriceAndPayments(payload, row, existing);
-  if (existing) {
-    Object.assign(existing, payload);
-    applyOrderToWorkbook(existing);
-    save();
-    return existing;
+  const sheet = ordersSheet();
+  const { idx, lastCol } = ensureOrderHeaders(sheet);
+  let rowNum = findOrderSheetRow(sheet, idx, orderNumber);
+  if (!rowNum) rowNum = sheet.getLastRow() + 1;
+  const width = Math.max(lastCol, 1);
+  const current = rowNum <= sheet.getLastRow()
+    ? sheet.getRange(rowNum, 1, 1, width).getValues()[0]
+    : [];
+  while (current.length < width) current.push("");
+  for (const f of ORDER_FIELDS) {
+    if (idx[f] == null) continue;
+    current[idx[f]] = payload[f] == null ? "" : payload[f];
   }
-  payload.id = state.nextOrderId++;
-  state.orders.push(payload);
-  applyOrderToWorkbook(payload);
+  sheet.getRange(rowNum, 1, 1, current.length).setValues([current]);
+  if (!state.paymentsByOrder) state.paymentsByOrder = {};
+  state.paymentsByOrder[orderNumber] = payload.payments || [];
   save();
+  persistWorkbook();
+  payload.id = rowNum;
+  payload.payments = state.paymentsByOrder[orderNumber];
   return payload;
 }
 
 function deleteOrder(orderNumber) {
-  state.orders = state.orders.filter((o) => o.order_number !== orderNumber);
-  removeOrderFromWorkbook(orderNumber);
+  const sheet = ordersSheet();
+  const { idx } = ensureOrderHeaders(sheet);
+  const rowNum = findOrderSheetRow(sheet, idx, String(orderNumber || "").trim());
+  if (rowNum) {
+    sheet.deleteRow(rowNum);
+    persistWorkbook();
+  }
+  if (state.paymentsByOrder) delete state.paymentsByOrder[orderNumber];
   save();
 }
 
@@ -267,7 +461,25 @@ function setScheduleCell(rowId, day, value, persist = true) {
 }
 
 function countOrders() {
-  return state.orders.length;
+  return listOrders().length;
+}
+
+function migrateJsonOrdersToWorkbook() {
+  const sheet = ordersSheet();
+  ensureOrderHeaders(sheet);
+  if (sheet.getLastRow() >= 2) return { migrated: 0 };
+  const leftover = (state.orders || []).filter((o) => o && String(o.order_number || "").trim());
+  leftover.forEach((o) => {
+    try {
+      upsertOrder(o);
+    } catch (e) {
+      console.error("[db] migrate order failed", o && o.order_number, e && e.message ? e.message : e);
+    }
+  });
+  if (leftover.length) {
+    console.log("[db] migrated", leftover.length, "json orders into Railway workbook");
+  }
+  return { migrated: leftover.length };
 }
 
 function listDropdowns() {
@@ -303,9 +515,12 @@ function decorateMoney(order) {
   const owing = orderOwing(order);
   return {
     ...order,
-    total: money(total),
-    paid: money(paid),
-    owing: money(owing),
+    price_excl_vat: order.price_excl_vat ? formatRand(order.price_excl_vat) : "",
+    price_incl_vat: order.price_incl_vat ? formatRand(order.price_incl_vat) : "",
+    amount_paid: formatRand(order.amount_paid || 0),
+    total: formatRand(total),
+    paid: formatRand(paid),
+    owing: formatRand(owing),
     is_debtor: total > 0 && owing > 0.001
   };
 }
@@ -314,320 +529,111 @@ function listDebtors() {
   return listOrders().map(decorateMoney).filter((o) => o.is_debtor);
 }
 
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const FIRST_ENQUIRY_NO = 1996;
+
+function enquiryNumberValue(raw) {
+  const m = String(raw || "").trim().match(/#?\s*(\d+)/);
+  return m ? Number(m[1]) : 0;
+}
+
+function formatEnquiryNo(n) {
+  return "#" + String(n);
+}
+
+function nextEnquiryNo() {
+  let max = FIRST_ENQUIRY_NO - 1;
+  for (const row of state.enquiries || []) {
+    const n = enquiryNumberValue(row && row.enquiry_no);
+    if (n > max) max = n;
+  }
+  return formatEnquiryNo(max + 1);
+}
+
+function monthFromEnquiryDate(v) {
+  const d = asDate(v);
+  if (!d) return "";
+  return MONTH_SHORT[sastParts(d).m];
+}
+
+function listEnquiryDropdowns() {
+  const out = {};
+  for (const key of ENQUIRY_DROPDOWN_KEYS) {
+    out[key] = DEFAULT_ENQUIRY_DROPDOWNS[key].slice();
+  }
+  return out;
+}
+
+function listEnquiries() {
+  return (state.enquiries || []).slice().sort((a, b) => enquiryNumberValue(b.enquiry_no) - enquiryNumberValue(a.enquiry_no));
+}
+
+function upsertEnquiry(row) {
+  const payload = {};
+  for (const f of ENQUIRY_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]).trim();
+  if (!payload.enquiry_no) payload.enquiry_no = nextEnquiryNo();
+  if (!/^#\d+$/.test(payload.enquiry_no)) {
+    const n = enquiryNumberValue(payload.enquiry_no);
+    payload.enquiry_no = n ? formatEnquiryNo(n) : nextEnquiryNo();
+  }
+  payload.month_enquired = monthFromEnquiryDate(payload.date_enquired);
+  payload.updated_at = nowIso();
+  if (!state.enquiries) state.enquiries = [];
+  const existing = state.enquiries.find((o) => o.enquiry_no === payload.enquiry_no);
+  if (existing) {
+    Object.assign(existing, payload);
+    save();
+    return existing;
+  }
+  payload.id = (state.enquiries.reduce((m, o) => Math.max(m, Number(o.id) || 0), 0) || 0) + 1;
+  state.enquiries.push(payload);
+  save();
+  return payload;
+}
+
+function deleteEnquiry(enquiryNo) {
+  const want = String(enquiryNo || "").trim();
+  state.enquiries = (state.enquiries || []).filter((o) => o.enquiry_no !== want);
+  save();
+}
+
 function recordPayment(orderNumber, amount, note) {
-  const order = state.orders.find((o) => o.order_number === String(orderNumber || "").trim());
-  if (!order) throw new Error("Order not found");
+  const num = String(orderNumber || "").trim();
+  const existing = listOrders().find((o) => o.order_number === num);
+  if (!existing) throw new Error("Order not found");
   const add = parseMoney(amount);
   if (add <= 0) throw new Error("Payment amount must be more than 0");
-  if (!Array.isArray(order.payments)) order.payments = [];
-  order.payments.push({
+  if (!state.paymentsByOrder) state.paymentsByOrder = {};
+  const history = Array.isArray(state.paymentsByOrder[num])
+    ? state.paymentsByOrder[num].slice()
+    : (Array.isArray(existing.payments) ? existing.payments.slice() : []);
+  history.push({
     at: nowIso(),
     amount: money(add),
     note: String(note || "").trim()
   });
-  order.amount_paid = money(orderPaid(order) + add);
-  if (!order.payment_date) order.payment_date = nowIso().slice(0, 10);
-  order.updated_at = nowIso();
-  save();
-  return decorateMoney(order);
-}
-
-function cellStr(v) {
-  if (v == null || v === "") return "";
-  if (v instanceof Date) return v.toISOString();
-  return String(v);
-}
-
-function cellDisplay(v) {
-  if (v == null) return "";
-  if (v instanceof Date) {
-    const t = v.getTime();
-    if (!Number.isFinite(t)) return "";
-    return v.toISOString();
-  }
-  return String(v);
-}
-
-function normHeader(s) {
-  return String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function sheetMaxCol(grid) {
-  return (grid || []).reduce((m, row) => Math.max(m, (row || []).length), 0);
-}
-
-function ensureSheet(title) {
-  const wb = ensureWorkbookBare();
-  if (!wb.sheets[title]) {
-    const headers = REQUIRED_SHEETS[title] || ["Name"];
-    wb.sheets[title] = {
-      title,
-      hidden: /Usage|Profiles|Backboards|Idle_Alerts/.test(title),
-      lastRow: 1,
-      lastCol: headers.length,
-      grid: [headers.slice()]
-    };
-  }
-  const sheet = wb.sheets[title];
-  if (!Array.isArray(sheet.grid) || !sheet.grid.length) {
-    const headers = REQUIRED_SHEETS[title] || ["Name"];
-    sheet.grid = [headers.slice()];
-    sheet.lastRow = 1;
-    sheet.lastCol = headers.length;
-  }
-  return sheet;
-}
-
-function ensureWorkbookBare() {
-  if (!state.workbook || typeof state.workbook !== "object") {
-    state.workbook = { sheets: {}, importedAt: null };
-  }
-  if (!state.workbook.sheets || typeof state.workbook.sheets !== "object") {
-    state.workbook.sheets = {};
-  }
-  return state.workbook;
-}
-
-function ensureWorkbook() {
-  const wb = ensureWorkbookBare();
-  for (const title of Object.keys(REQUIRED_SHEETS)) {
-    if (!wb.sheets[title]) ensureSheet(title);
-  }
-  return wb;
-}
-
-function getWorkbookSnapshot() {
-  return ensureWorkbook();
-}
-
-function workbookImportedAt() {
-  return (state.workbook && state.workbook.importedAt) || null;
-}
-
-function hasLocalWorkbook() {
-  const sheets = state.workbook && state.workbook.sheets;
-  if (!sheets) return false;
-  const orders = sheets.ORDERS;
-  const users = sheets.Users;
-  const hasOrders = !!(orders && Array.isArray(orders.grid) && orders.grid.length > 1);
-  const hasUsers = !!(users && Array.isArray(users.grid) && users.grid.length > 1);
-  return hasOrders || hasUsers || !!workbookImportedAt();
-}
-
-function markWorkbookImported() {
-  ensureWorkbook().importedAt = nowIso();
-  save();
-}
-
-function replaceWorkbook(snapshot, opts) {
-  const imported = !opts || opts.imported !== false;
-  state.workbook = {
-    sheets: (snapshot && snapshot.sheets) || {},
-    importedAt: imported ? nowIso() : (snapshot && snapshot.importedAt) || workbookImportedAt()
-  };
-  ensureWorkbook();
-  syncOrdersFromWorkbook();
-  save();
-  return state.workbook;
-}
-
-function persistWorkbook() {
-  ensureWorkbook();
-  syncOrdersFromWorkbook();
-  save();
-}
-
-function headerIndexMap(headerRow) {
-  const map = {};
-  (headerRow || []).forEach((h, i) => {
-    const field = HEADER_MAP[normHeader(h)];
-    if (field && map[field] == null) map[field] = i;
+  state.paymentsByOrder[num] = history;
+  const saved = upsertOrder({
+    ...existing,
+    amount_paid: money(orderPaid(existing) + add),
+    payment_date: existing.payment_date || nowIso().slice(0, 10),
+    payments: history
   });
-  return map;
-}
-
-function applyOrderToWorkbook(order) {
-  if (!order || !order.order_number) return;
-  const sheet = ensureSheet("ORDERS");
-  const grid = sheet.grid;
-  if (!grid[0] || !grid[0].length) grid[0] = ORDER_SHEET_HEADERS.slice();
-  const idx = headerIndexMap(grid[0]);
-  let rowIndex = -1;
-  const orderCol = idx.order_number != null ? idx.order_number : 1;
-  for (let i = 1; i < grid.length; i++) {
-    if (String((grid[i] || [])[orderCol] || "").trim() === String(order.order_number).trim()) {
-      rowIndex = i;
-      break;
-    }
-  }
-  if (rowIndex < 0) {
-    grid.push([]);
-    rowIndex = grid.length - 1;
-  }
-  while (grid[rowIndex].length < grid[0].length) grid[rowIndex].push("");
-  for (const field of ORDER_FIELDS) {
-    const col = idx[field];
-    if (col == null) continue;
-    grid[rowIndex][col] = order[field] == null ? "" : String(order[field]);
-  }
-  sheet.lastRow = grid.length;
-  sheet.lastCol = Math.max(sheet.lastCol || 0, sheetMaxCol(grid));
-}
-
-function removeOrderFromWorkbook(orderNumber) {
-  const sheet = state.workbook && state.workbook.sheets && state.workbook.sheets.ORDERS;
-  if (!sheet || !Array.isArray(sheet.grid) || sheet.grid.length < 2) return;
-  const idx = headerIndexMap(sheet.grid[0]);
-  const orderCol = idx.order_number != null ? idx.order_number : 1;
-  const want = String(orderNumber || "").trim();
-  sheet.grid = sheet.grid.filter((row, i) => i === 0 || String((row || [])[orderCol] || "").trim() !== want);
-  sheet.lastRow = sheet.grid.length;
-}
-
-function rowFromSheet(headerRow, row) {
-  const out = {};
-  (headerRow || []).forEach((h, c) => {
-    const field = HEADER_MAP[normHeader(h)];
-    if (field) out[field] = cellDisplay((row || [])[c]);
-  });
-  return out;
-}
-
-function minutesBetween(start, end) {
-  const a = start instanceof Date ? start : (start ? new Date(start) : null);
-  const b = end instanceof Date ? end : (end ? new Date(end) : null);
-  if (!a || !b || isNaN(a.getTime()) || isNaN(b.getTime())) return 0;
-  return Math.max(0, Math.round((b.getTime() - a.getTime()) / 60000));
-}
-
-function pauseMinutes(metaRaw) {
-  let meta = metaRaw;
-  if (typeof metaRaw === "string" && metaRaw) {
-    try { meta = JSON.parse(metaRaw); } catch (e) { return 0; }
-  }
-  if (!meta || !Array.isArray(meta.pauses)) return 0;
-  let mins = 0;
-  for (const p of meta.pauses) {
-    mins += minutesBetween(p.start || p.from, p.end || p.to);
-  }
-  return mins;
-}
-
-function sheetRows(title) {
-  const sheet = state.workbook && state.workbook.sheets && state.workbook.sheets[title];
-  if (!sheet || !Array.isArray(sheet.grid) || sheet.grid.length < 2) return [];
-  return sheet.grid.slice(1);
-}
-
-function syncOrdersFromWorkbook() {
-  const sheet = ensureSheet("ORDERS");
-  const grid = sheet.grid || [];
-  if (grid.length < 2) {
-    syncFloorOntoOrders();
-    return;
-  }
-  const headers = grid[0];
-  for (let i = 1; i < grid.length; i++) {
-    const row = rowFromSheet(headers, grid[i]);
-    const orderNumber = String(row.order_number || "").trim();
-    if (!orderNumber) continue;
-    const existing = state.orders.find((o) => o.order_number === orderNumber);
-    const payload = {};
-    for (const f of ORDER_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]);
-    payload.order_number = orderNumber;
-    payload.updated_at = nowIso();
-    if (existing) {
-      if (!payload.amount_paid && existing.amount_paid) payload.amount_paid = existing.amount_paid;
-      if (!payload.price_excl_vat && existing.price_excl_vat) payload.price_excl_vat = existing.price_excl_vat;
-      if (!payload.price_incl_vat && existing.price_incl_vat) payload.price_incl_vat = existing.price_incl_vat;
-      if (!Array.isArray(payload.payments)) payload.payments = existing.payments || [];
-      Object.assign(existing, payload);
-    } else {
-      payload.id = state.nextOrderId++;
-      payload.payments = [];
-      if (!payload.amount_paid) payload.amount_paid = "0.00";
-      state.orders.push(payload);
-    }
-  }
-  syncFloorOntoOrders();
-}
-
-function syncFloorOntoOrders() {
-  const logsByOrder = {};
-  const steelByOrder = {};
-  const backboardByOrder = {};
-
-  for (const row of sheetRows("Production_Log")) {
-    const orderNum = String(row[1] || "").trim();
-    if (!orderNum) continue;
-    const start = row[5] || "";
-    const end = row[6] || "";
-    const meta = row[12] || "";
-    const duration = end ? Math.max(0, minutesBetween(start, end) - pauseMinutes(meta)) : 0;
-    if (!logsByOrder[orderNum]) logsByOrder[orderNum] = [];
-    logsByOrder[orderNum].push({
-      id: cellStr(row[0]),
-      worker: cellStr(row[2]),
-      role: cellStr(row[3]),
-      process: cellStr(row[4]),
-      start: cellStr(start),
-      end: cellStr(end),
-      result: cellStr(row[7]),
-      pause_reason: cellStr(row[11]),
-      meta: cellStr(meta),
-      duration_minutes: duration,
-      open: !end
-    });
-  }
-
-  for (const row of sheetRows("Steel_Usage")) {
-    const orderNum = String(row[1] || "").trim();
-    if (!orderNum) continue;
-    if (!steelByOrder[orderNum]) steelByOrder[orderNum] = [];
-    steelByOrder[orderNum].push({
-      at: cellStr(row[0]),
-      worker: cellStr(row[2]),
-      process: cellStr(row[3]),
-      type: cellStr(row[4]),
-      size: cellStr(row[5])
-    });
-  }
-
-  for (const row of sheetRows("Backboard_Usage")) {
-    const orderNum = String(row[1] || "").trim();
-    if (!orderNum) continue;
-    if (!backboardByOrder[orderNum]) backboardByOrder[orderNum] = [];
-    backboardByOrder[orderNum].push({
-      at: cellStr(row[0]),
-      worker: cellStr(row[2]),
-      process: cellStr(row[3]),
-      type: cellStr(row[4]),
-      size: cellStr(row[5])
-    });
-  }
-
-  for (const order of state.orders) {
-    const key = String(order.order_number || "").trim();
-    const logs = logsByOrder[key] || [];
-    const steel = steelByOrder[key] || [];
-    const backboard = backboardByOrder[key] || [];
-    order.work_logs = logs;
-    order.steel_usage = steel;
-    order.backboard_usage = backboard;
-    order.duration_minutes = logs.reduce((sum, log) => sum + (Number(log.duration_minutes) || 0), 0);
-  }
+  return decorateMoney(saved);
 }
 
 module.exports = {
   db: null,
   dbPath,
   ORDER_FIELDS,
-  ORDER_SHEET_HEADERS,
-  HEADER_MAP,
   DROPDOWN_KEYS,
   VAT_RATE,
   parseMoney,
   money,
+  formatRand,
+  formatOrderId,
+  formatPaymentDate,
+  formatMonthOfSale,
   inclFromExcl,
   listOrders,
   upsertOrder,
@@ -642,17 +648,13 @@ module.exports = {
   listDebtors,
   recordPayment,
   decorateMoney,
-  save,
-  ensureWorkbook,
-  ensureSheet,
-  getWorkbookSnapshot,
-  hasLocalWorkbook,
-  workbookImportedAt,
-  markWorkbookImported,
-  replaceWorkbook,
-  persistWorkbook,
-  applyOrderToWorkbook,
-  syncOrdersFromWorkbook,
-  syncFloorOntoOrders,
-  normHeader
+  migrateJsonOrdersToWorkbook,
+  normalizeOrdersSheet,
+  ENQUIRY_FIELDS,
+  listEnquiries,
+  upsertEnquiry,
+  deleteEnquiry,
+  nextEnquiryNo,
+  monthFromEnquiryDate,
+  listEnquiryDropdowns
 };

@@ -40,16 +40,11 @@
 </head>
 <body>
   <header>
-    <h1>STUDIO DELTA</h1>
-    <a href="/">Floor</a>
-    <a class="active" href="/orders">Orders</a>
-    <a href="/schedule">Schedule</a>
-    <a href="/dropdowns">Dropdowns</a>
-    <a href="/debtors">Debtors</a>
+    <h1>Orders</h1>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search orders">
-      <button class="ghost" onclick="importSheets()">Import from Sheets (once)</button>
+      <button class="ghost" onclick="importSheets()">Import from Sheets</button>
     <button class="ghost" onclick="addRow()">New order</button>
       <button onclick="saveAll()">Save</button>
     </div>
@@ -57,6 +52,7 @@
   <div class="wrap">
     <table id="grid"></table>
   </div>
+  <script src="/office-auth.js?v=fullmenu"></script>
   <script>
     const HEADERS = [
       ["quote_number","QUOTE NUMBER", 96, true],
@@ -112,7 +108,7 @@
     let rows = [];
     let dropdowns = {};
     const DROP_FIELDS = {
-      type: 1, category: 1, product: 1, variation: 1,
+      status: 1, type: 1, category: 1, product: 1, variation: 1,
       doors: 1, powder_coating: 1, province: 1, source: 1
     };
     const READONLY_FIELDS = { price_incl_vat: 1, owing: 1 };
@@ -122,13 +118,19 @@
       return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
     }
     function money(n) { return (Math.round(Number(n) * 100) / 100).toFixed(2); }
+    function formatRand(n) {
+      const v = parseMoney(n);
+      const neg = v < 0 ? "-" : "";
+      const [whole, frac] = money(Math.abs(v)).split(".");
+      return neg + "R " + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + frac;
+    }
     function inclFromExcl(excl) {
       const n = parseMoney(excl);
       return n ? money(n * (1 + VAT_RATE)) : "";
     }
     function owingOf(row) {
       const total = parseMoney(row.price_incl_vat) || parseMoney(inclFromExcl(row.price_excl_vat));
-      return money(Math.max(0, total - parseMoney(row.amount_paid)));
+      return formatRand(Math.max(0, total - parseMoney(row.amount_paid)));
     }
 
     function statusClass(s) {
@@ -192,7 +194,7 @@
         const k = e.target.getAttribute("data-k");
         rows[i][k] = e.target.value;
         if (k === "price_excl_vat") {
-          rows[i].price_incl_vat = inclFromExcl(e.target.value);
+          rows[i].price_incl_vat = e.target.value ? formatRand(inclFromExcl(e.target.value)) : "";
           const incl = tr.querySelector('input[data-k="price_incl_vat"]');
           const owing = tr.querySelector('input[data-k="owing"]');
           if (incl) incl.value = rows[i].price_incl_vat;
@@ -212,7 +214,7 @@
     function escAttr(s) { return esc(s).replace(/"/g, "&quot;"); }
     function selectHtml(k, value) {
       const current = String(value || "");
-      const opts = (dropdowns[k] || []).slice();
+      const opts = (k === "status" ? (typeof SD_ORDER_STATUSES !== "undefined" ? SD_ORDER_STATUSES.slice() : []) : (dropdowns[k] || [])).slice();
       if (current && opts.indexOf(current) === -1) opts.unshift(current);
       let h = "<select data-k=\"" + k + "\"><option value=\"\"></option>";
       opts.forEach((o) => {
@@ -223,23 +225,24 @@
 
     async function load() {
       const [ordersRes, dropRes] = await Promise.all([
-        fetch("/api/office/orders"),
-        fetch("/api/office/dropdowns")
+        sdOfficeFetch("/api/office/orders"),
+        sdOfficeFetch("/api/office/dropdowns")
       ]);
       const j = await ordersRes.json();
       const d = await dropRes.json();
       rows = j.rows || [];
       dropdowns = d.dropdowns || {};
-      document.getElementById("status").textContent = rows.length + " orders (Railway /app/data, same table as the floor)";
+      document.getElementById("status").textContent = rows.length + " orders (Railway database — same as the floor)";
       render();
     }
     async function importSheets() {
+      if (!confirm("Copy Users, orders, production logs, steel and backboards from Google into Railway? This replaces the current shop data on Railway.")) return;
       document.getElementById("status").textContent = "Importing from Google Sheets…";
-      const r = await fetch("/api/office/import-sheets", { method: "POST" });
+      const r = await sdOfficeFetch("/api/office/import-sheets", { method: "POST" });
       const j = await r.json();
       if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
       await load();
-      document.getElementById("status").textContent = "Imported " + j.imported + " orders into the app database";
+      document.getElementById("status").textContent = j.message || ("Imported " + j.imported + " orders");
     }
     function addRow() {
       const blank = {};
@@ -253,9 +256,8 @@
       document.getElementById("status").textContent = "Saving…";
       for (const row of rows) {
         if (!String(row.order_number || "").trim()) continue;
-        const r = await fetch("/api/office/orders", {
+        const r = await sdOfficeFetch("/api/office/orders", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(row)
         });
         const j = await r.json();
@@ -266,7 +268,7 @@
     }
     document.getElementById("q").oninput = render;
     window.addEventListener("resize", () => { render(); });
-    load();
+    sdRequireOffice("orders").then((p) => { if (p) load(); });
   </script>
 </body>
 </html>

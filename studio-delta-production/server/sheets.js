@@ -181,6 +181,48 @@ class Spreadsheet {
     this.sheetsByName = {};
     this.pendingAdds = [];
     this.pendingHides = [];
+    this.onFlush = null;
+  }
+  toJSON() {
+    const sheets = {};
+    for (const title of Object.keys(this.sheetsByName)) {
+      const sheet = this.sheetsByName[title];
+      sheet.ensureGrid();
+      const rows = [];
+      const n = Math.max(sheet.lastRow, sheet.grid.length);
+      const cols = Math.max(1, sheet.lastCol);
+      for (let i = 0; i < n; i++) {
+        const src = sheet.grid[i] || [];
+        const row = [];
+        for (let j = 0; j < Math.max(cols, src.length); j++) {
+          row.push(coerceWrite(src[j] === undefined || src[j] === null ? "" : src[j]));
+        }
+        rows.push(row);
+      }
+      sheets[title] = {
+        title,
+        hidden: !!sheet.hidden,
+        lastRow: sheet.lastRow,
+        lastCol: sheet.lastCol,
+        grid: rows
+      };
+    }
+    return { version: 1, sheets };
+  }
+  loadFromJSON(data) {
+    this.sheetsByName = {};
+    const sheets = (data && data.sheets) || {};
+    Object.keys(sheets).forEach((title) => {
+      const raw = sheets[title] || {};
+      const sheet = new Sheet(this, { title, sheetId: 1, hidden: !!raw.hidden });
+      sheet.grid = (raw.grid || []).map((row) => (row || []).map(coerceRead));
+      sheet.lastRow = Number(raw.lastRow) || sheet.grid.length;
+      sheet.lastCol = Number(raw.lastCol) || sheet.grid.reduce((m, row) => Math.max(m, row.length), 0);
+      sheet.loadedLastRow = sheet.lastRow;
+      sheet.dirty = false;
+      this.sheetsByName[title] = sheet;
+    });
+    return this;
   }
   async load() {
     const sheetsApi = google.sheets({ version: "v4", auth: this.client });
@@ -225,36 +267,20 @@ class Spreadsheet {
     sheet.lastCol = 0;
     this.sheetsByName[name] = sheet;
     this.pendingAdds.push(name);
-    if (this.local) {
-      const db = require("./db");
-      const snap = db.ensureWorkbook();
-      snap.sheets[name] = snap.sheets[name] || {
-        title: name,
-        hidden: false,
-        lastRow: 0,
-        lastCol: 0,
-        grid: sheet.grid
-      };
-      snap.sheets[name].grid = sheet.grid;
-    }
     return sheet;
   }
   flushSyncPlaceholder() {}
   async flush() {
-    if (this.local) {
-      const db = require("./db");
-      const snap = db.ensureWorkbook();
+    if (typeof this.onFlush === "function") {
       for (const title of Object.keys(this.sheetsByName)) {
         const sheet = this.sheetsByName[title];
-        sheet.ensureGrid();
-        snap.sheets[title] = snap.sheets[title] || { title };
-        snap.sheets[title].title = title;
-        snap.sheets[title].grid = sheet.grid;
-        snap.sheets[title].lastRow = sheet.lastRow;
-        snap.sheets[title].lastCol = sheet.lastCol;
-        snap.sheets[title].hidden = !!sheet.hidden;
+        sheet.dirty = false;
+        sheet.loadedLastRow = sheet.lastRow;
+        sheet.isNew = false;
       }
-      db.persistWorkbook();
+      this.pendingAdds = [];
+      this.pendingHides = [];
+      this.onFlush();
       return;
     }
     const sheetsApi = this.sheetsApi;
@@ -359,65 +385,6 @@ class Spreadsheet {
     }
   }
 }
-
-function hydrateCell(v) {
-  if (v && typeof v === "object" && v.$date) {
-    const d = new Date(v.$date);
-    return isNaN(d.getTime()) ? v.$date : d;
-  }
-  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) {
-    const normalized = v.indexOf("T") >= 0 ? v : v.replace(" ", "T");
-    const d = new Date(normalized);
-    if (!isNaN(d.getTime())) return d;
-  }
-  return coerceRead(v);
-}
-
-function maxCols(grid) {
-  return (grid || []).reduce((m, row) => Math.max(m, (row || []).length), 0);
-}
-
-Spreadsheet.fromSnapshot = function fromSnapshot(snap) {
-  const book = new Spreadsheet(null, "local");
-  book.local = true;
-  book.sheetsByName = {};
-  const sheets = (snap && snap.sheets) || {};
-  for (const title of Object.keys(sheets)) {
-    const s = sheets[title] || {};
-    if (!Array.isArray(s.grid)) s.grid = [];
-    for (let i = 0; i < s.grid.length; i++) {
-      const row = s.grid[i] || [];
-      for (let j = 0; j < row.length; j++) row[j] = hydrateCell(row[j]);
-    }
-    const sheet = new Sheet(book, {
-      title,
-      sheetId: s.sheetId || title.length,
-      hidden: !!s.hidden
-    });
-    sheet.grid = s.grid;
-    sheet.lastRow = s.lastRow || s.grid.length;
-    sheet.lastCol = s.lastCol || maxCols(s.grid);
-    sheet.loadedLastRow = sheet.lastRow;
-    book.sheetsByName[title] = sheet;
-  }
-  return book;
-};
-
-Spreadsheet.prototype.toSnapshot = function toSnapshot() {
-  const sheets = {};
-  for (const title of Object.keys(this.sheetsByName)) {
-    const sheet = this.sheetsByName[title];
-    sheet.ensureGrid();
-    sheets[title] = {
-      title,
-      hidden: !!sheet.hidden,
-      lastRow: sheet.lastRow,
-      lastCol: sheet.lastCol,
-      grid: sheet.grid
-    };
-  }
-  return { sheets };
-};
 
 function createSpreadsheetApp(workbook) {
   return {
