@@ -78,11 +78,13 @@ const costed = pipeline.applyAction("#1996", "Coster", {
   file_base64: csv,
   file_name: "cost.csv",
   file_confirmed: true,
-  assignee: "Approver"
+  assignee: "Approver",
+  quote_assignee: "Quoter"
 });
 assert.strictEqual(costed.row.status, "Costed");
 assert.strictEqual(costed.row.delivery_excl_vat, "");
 assert.strictEqual(costed.row.products[0].value_excl_vat, "");
+assert.strictEqual(costed.row.quote_assignee, "Quoter");
 assert.ok(costed.row.cost_sheet && costed.row.cost_sheet.stored_as);
 assert.strictEqual(pipeline.listMyTasks("Approver")[0].kind, "approval");
 
@@ -105,7 +107,8 @@ pipeline.applyAction("#1996", "Coster", {
   file_base64: csv,
   file_name: "cost.csv",
   file_confirmed: true,
-  assignee: "Approver"
+  assignee: "Approver",
+  quote_assignee: "Quoter"
 });
 
 const approved = pipeline.applyAction("#1996", "Approver", {
@@ -219,5 +222,36 @@ assert.throws(
   () => pipeline.applyAction(waiting.enquiry_no, "Approver", { action: "supplier_wait", assignee: "Coster" }),
   /costing/
 );
+
+const skip = db.upsertEnquiry({
+  date_enquired: "06/01/2026",
+  client_name: "Skip Approval",
+  product: "Eve Patio Table",
+  category: "Table",
+  status: "New"
+});
+pipeline.applyAction(skip.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+assert.throws(
+  () => pipeline.applyAction(skip.enquiry_no, "Coster", {
+    action: "complete_cost_sheet",
+    file_base64: csv,
+    file_name: "cost.csv",
+    file_confirmed: true
+  }),
+  /quoting person/i
+);
+const skipped = pipeline.applyAction(skip.enquiry_no, "Coster", {
+  action: "complete_cost_sheet",
+  file_base64: csv,
+  file_name: "cost.csv",
+  file_confirmed: true,
+  quote_assignee: "Quoter"
+});
+assert.strictEqual(skipped.row.status, "Costed");
+assert.strictEqual(skipped.row.approval.status, "approved");
+assert.strictEqual(skipped.row.approval.comments, "Approval skipped");
+assert.strictEqual(skipped.row.quote_assignee, "Quoter");
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "quote" && t.enquiry_no === skip.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Approver").some((t) => t.kind === "approval" && t.enquiry_no === skip.enquiry_no));
 
 console.log("enquiry-pipeline.test.js ok");
