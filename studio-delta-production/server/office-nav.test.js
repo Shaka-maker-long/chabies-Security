@@ -33,6 +33,13 @@ assert.ok(processJs.indexOf("productNamesLine") !== -1);
 assert.ok(processJs.indexOf("Enter each product value") !== -1);
 assert.ok(processJs.indexOf('complete_cost_sheet') !== -1);
 assert.ok(!/complete_cost_sheet[\s\S]{0,200}valuesTable/.test(processJs), "cost sheet must not ask for product values");
+assert.ok(processJs.indexOf("quote_assignee") !== -1);
+assert.ok(processJs.indexOf("Request approval from (optional)") !== -1);
+assert.ok(processJs.indexOf("Quoting person") !== -1);
+
+const enquiriesHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries.html"), "utf8");
+assert.ok(enquiriesHtml.indexOf('id="captureMask"') !== -1, "New enquiry must open a capture modal");
+assert.ok(enquiriesHtml.indexOf("openCapture") !== -1);
 
 const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
 assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");

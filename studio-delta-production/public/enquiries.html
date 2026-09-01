@@ -57,20 +57,27 @@
     .spec-row select, .spec-row input, .spec-row textarea, #designDesc { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; }
     #designDesc { min-height:140px; }
     .spec-row textarea { min-height:64px; }
+    .stack-form { display:flex; flex-direction:column; gap:12px; }
+    .stack-form label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; }
+    .stack-form input, .stack-form select, .stack-form textarea { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; font-weight:400; }
+    .stack-form textarea { min-height:72px; }
+    .stack-grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    .capture-sheet { width:min(720px, 96vw); }
     @media (max-width: 720px) {
       .pdf-box iframe { height:240px; }
       .spec-row { grid-template-columns: 1fr; }
+      .stack-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <header>
     <h1>Enquiries</h1>
-    <p class="msg" style="margin:0;max-width:460px">Custom needs Dimensions, Colour, or Other. New Design needs a full description. Status updates from <a href="/tasks">My tasks</a>.</p>
+    <p class="msg" style="margin:0;max-width:520px">New enquiry opens a form. Custom needs Dimensions, Colour, or Other. New Design needs a full description. Status updates from <a href="/tasks">My tasks</a>.</p>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search enquiries">
-      <button class="ghost" onclick="addRow()">New enquiry</button>
+      <button class="ghost" onclick="openCapture()">New enquiry</button>
       <button onclick="saveAll()">Save</button>
     </div>
   </header>
@@ -148,8 +155,85 @@
       </div>
     </div>
   </div>
+  <div class="mask" id="captureMask">
+    <div class="sheet capture-sheet" role="dialog" aria-modal="true">
+      <header>
+        <h1 id="captureTitle">New enquiry</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeCapture()">Cancel</button>
+          <button type="button" onclick="saveCapture()">Save enquiry</button>
+        </div>
+      </header>
+      <div class="body stack-form">
+        <p class="hint">Fill this form instead of scrolling the wide sheet. Products can be added here; Custom and New Design details stay in this window.</p>
+        <div class="stack-grid">
+          <label>Enquiry no
+            <input id="cap_enquiry_no" readonly>
+          </label>
+          <label>Date enquired *
+            <input id="cap_date_enquired" type="date">
+          </label>
+          <label>Enquiry source
+            <select id="cap_enquiry_source"></select>
+          </label>
+          <label>Enquiry type
+            <select id="cap_enquiry_type"></select>
+          </label>
+        </div>
+        <label>Client name *
+          <input id="cap_client_name" placeholder="Who is this for?">
+        </label>
+        <div class="stack-grid">
+          <label>How they found us
+            <select id="cap_source"></select>
+          </label>
+          <label>Province
+            <select id="cap_province"></select>
+          </label>
+          <label>Client email
+            <input id="cap_client_email" type="email" placeholder="optional">
+          </label>
+          <label>Client number
+            <input id="cap_client_number" placeholder="optional">
+          </label>
+        </div>
+        <div>
+          <p class="hint" style="margin:0 0 8px;color:#1d2939;font-weight:600">Products</p>
+          <div style="overflow:auto">
+            <table class="lines">
+              <thead>
+                <tr>
+                  <th>CATERGORY</th>
+                  <th>PRODUCT</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="captureLineBody"></tbody>
+            </table>
+          </div>
+          <div class="row-actions" style="margin-top:8px">
+            <button class="ghost" type="button" onclick="addCaptureLine()">Add product</button>
+          </div>
+        </div>
+        <div id="captureCustomBlock" style="display:none">
+          <p class="hint" style="margin:0 0 8px;color:#1d2939;font-weight:600">Custom specification</p>
+          <p class="hint">Is this Dimensions, Colour, or Other? If Other, specify what it is.</p>
+          <div id="captureSpecList" class="spec-grid"></div>
+        </div>
+        <div id="captureDesignBlock" style="display:none">
+          <label>New design description *
+            <textarea id="captureDesignDesc" placeholder="Describe the new design: what it is, materials, size, how it will be used."></textarea>
+          </label>
+        </div>
+        <label>Comment
+          <textarea id="cap_comment" placeholder="Anything costing should know"></textarea>
+        </label>
+        <div class="err" id="captureErr"></div>
+      </div>
+    </div>
+  </div>
   <script src="/office-auth.js?v=login-users"></script>
-  <script src="/enquiry-process.js?v=quote-values"></script>
+  <script src="/enquiry-process.js?v=quote-person"></script>
   <script>
     const HEADERS = [
       ["enquiry_no", "ENQUIRY NO", 108, true],
@@ -711,21 +795,197 @@
       await load();
       document.getElementById("status").textContent = "Saved";
     }
+    let capture = { open: false, products: [], specs: [] };
+    function fillCaptureSelect(id, key, selected) {
+      const el = document.getElementById(id);
+      const current = String(selected || "");
+      const opts = (dropdowns[key] || []).slice();
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      let h = "<option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      el.innerHTML = h;
+    }
+    function captureLineSelect(kind, value, idx) {
+      const current = String(value || "");
+      const opts = (dropdowns[kind] || []).slice();
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      let h = "<select data-cap-line=\"" + idx + "\" data-f=\"" + kind + "\">";
+      h += "<option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      return h + "</select>";
+    }
+    function renderCaptureLines() {
+      const body = document.getElementById("captureLineBody");
+      body.innerHTML = capture.products.map((line, idx) => {
+        return "<tr>" +
+          "<td>" + captureLineSelect("category", line.category, idx) + "</td>" +
+          "<td>" + captureLineSelect("product", line.product, idx) + "</td>" +
+          "<td><button type=\"button\" class=\"danger\" data-cap-del=\"" + idx + "\">Delete</button></td>" +
+          "</tr>";
+      }).join("");
+      body.onchange = (e) => {
+        const el = e.target;
+        const idx = Number(el.getAttribute("data-cap-line"));
+        const f = el.getAttribute("data-f");
+        if (!f || !capture.products[idx]) return;
+        capture.products[idx][f] = el.value;
+      };
+      body.onclick = (e) => {
+        const btn = e.target.closest("[data-cap-del]");
+        if (!btn) return;
+        const idx = Number(btn.getAttribute("data-cap-del"));
+        if (capture.products.length === 1) capture.products[0] = emptyLine();
+        else capture.products.splice(idx, 1);
+        renderCaptureLines();
+      };
+    }
+    function addCaptureLine() {
+      capture.products.push(emptyLine());
+      renderCaptureLines();
+    }
+    function captureSpecKindSelect(value, idx) {
+      const current = String(value || "");
+      const opts = (dropdowns.custom_spec || ["Dimensions", "Colour", "Other"]).slice();
+      if (current && current !== "Other" && opts.indexOf(current) === -1) opts.splice(opts.length - 1, 0, current);
+      let h = "<select data-cap-spec=\"" + idx + "\" data-f=\"kind\">";
+      h += "<option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      return h + "</select>";
+    }
+    function renderCaptureSpecs() {
+      const box = document.getElementById("captureSpecList");
+      box.innerHTML = capture.specs.map((spec, idx) => {
+        const otherOn = spec.kind === "Other" || (!spec.kind && spec.other);
+        return "<div class=\"spec-row\">" +
+          "<div><label class=\"hint\" style=\"display:block;margin-bottom:4px;color:#1d2939\">What is custom?</label>" + captureSpecKindSelect(spec.kind || "", idx) +
+          (otherOn ? "<input data-cap-spec=\"" + idx + "\" data-f=\"other\" placeholder=\"Specify what it is\" value=\"" + escAttr(spec.other || "") + "\" style=\"margin-top:6px\">" : "") +
+          "</div>" +
+          "<div><label class=\"hint\" style=\"display:block;margin-bottom:4px;color:#1d2939\">Details *</label>" +
+          "<textarea data-cap-spec=\"" + idx + "\" data-f=\"detail\" placeholder=\"" + (spec.kind === "Dimensions" ? "e.g. 1800 x 900 x 450" : spec.kind === "Colour" ? "e.g. matte black powder coat" : "Describe this custom change") + "\">" + esc(spec.detail || "") + "</textarea></div>" +
+          "<button type=\"button\" class=\"danger\" data-cap-del-spec=\"" + idx + "\">Delete</button>" +
+          "</div>";
+      }).join("") + "<button type=\"button\" class=\"ghost\" id=\"addCaptureSpecBtn\">Add another</button>";
+      box.onchange = box.oninput = (e) => {
+        const el = e.target;
+        const idx = Number(el.getAttribute("data-cap-spec"));
+        const f = el.getAttribute("data-f");
+        if (!f || !capture.specs[idx]) return;
+        capture.specs[idx][f] = el.value;
+        if (f === "kind") renderCaptureSpecs();
+      };
+      box.onclick = (e) => {
+        if (e.target.id === "addCaptureSpecBtn") {
+          capture.specs.push(emptySpec());
+          renderCaptureSpecs();
+          return;
+        }
+        const btn = e.target.closest("[data-cap-del-spec]");
+        if (!btn) return;
+        const idx = Number(btn.getAttribute("data-cap-del-spec"));
+        if (capture.specs.length === 1) capture.specs[0] = emptySpec();
+        else capture.specs.splice(idx, 1);
+        renderCaptureSpecs();
+      };
+    }
+    function toggleCaptureType() {
+      const type = document.getElementById("cap_enquiry_type").value;
+      document.getElementById("captureCustomBlock").style.display = type === "Custom" ? "" : "none";
+      document.getElementById("captureDesignBlock").style.display = type === "New Design" ? "" : "none";
+      if (type === "Custom") renderCaptureSpecs();
+    }
+    function openCapture() {
+      bumpNext();
+      capture.open = true;
+      capture.products = [emptyLine()];
+      capture.specs = [emptySpec()];
+      document.getElementById("captureTitle").textContent = "New enquiry " + nextNo;
+      document.getElementById("cap_enquiry_no").value = nextNo;
+      document.getElementById("cap_date_enquired").value = dmyToIso(todayDmy());
+      document.getElementById("cap_client_name").value = "";
+      document.getElementById("cap_client_email").value = "";
+      document.getElementById("cap_client_number").value = "";
+      document.getElementById("cap_comment").value = "";
+      document.getElementById("captureDesignDesc").value = "";
+      document.getElementById("captureErr").textContent = "";
+      fillCaptureSelect("cap_enquiry_source", "enquiry_source", "");
+      fillCaptureSelect("cap_enquiry_type", "enquiry_type", "");
+      fillCaptureSelect("cap_source", "source", "");
+      fillCaptureSelect("cap_province", "province", "");
+      renderCaptureLines();
+      toggleCaptureType();
+      document.getElementById("captureMask").classList.add("open");
+      document.getElementById("cap_client_name").focus();
+    }
+    function closeCapture() {
+      document.getElementById("captureMask").classList.remove("open");
+      capture.open = false;
+    }
+    window.addCaptureLine = addCaptureLine;
+    window.openCapture = openCapture;
+    window.closeCapture = closeCapture;
+    document.getElementById("cap_enquiry_type").onchange = toggleCaptureType;
+    async function saveCapture() {
+      const err = document.getElementById("captureErr");
+      err.textContent = "";
+      const client = String(document.getElementById("cap_client_name").value || "").trim();
+      if (!client) { err.textContent = "Enter the client name."; return; }
+      const dateIso = document.getElementById("cap_date_enquired").value;
+      if (!dateIso) { err.textContent = "Choose the date enquired."; return; }
+      const type = document.getElementById("cap_enquiry_type").value;
+      const payload = {
+        enquiry_no: document.getElementById("cap_enquiry_no").value,
+        date_enquired: isoToDmy(dateIso),
+        enquiry_source: document.getElementById("cap_enquiry_source").value,
+        enquiry_type: type,
+        client_name: client,
+        source: document.getElementById("cap_source").value,
+        client_email: document.getElementById("cap_client_email").value,
+        client_number: document.getElementById("cap_client_number").value,
+        province: document.getElementById("cap_province").value,
+        comment: document.getElementById("cap_comment").value,
+        status: "New",
+        products: capture.products.map((l) => ({
+          product: String(l.product || "").trim(),
+          category: String(l.category || "").trim(),
+          value_excl_vat: ""
+        })).filter((l) => l.product || l.category),
+        custom_specs: [],
+        design_description: ""
+      };
+      if (type === "Custom") {
+        const specs = capture.specs.map((s) => ({
+          kind: String(s.kind || "").trim(),
+          other: String(s.other || "").trim(),
+          detail: String(s.detail || "").trim()
+        })).filter((s) => s.kind || s.other || s.detail);
+        if (!specs.length) { err.textContent = "Choose Dimensions, Colour, or Other."; return; }
+        for (const spec of specs) {
+          if (spec.kind === "Other" && !spec.other) { err.textContent = "If it is Other, specify what it is."; return; }
+          if (!spec.detail) { err.textContent = "Write the details for each custom change."; return; }
+        }
+        payload.custom_specs = specs;
+      } else if (type === "New Design") {
+        const desc = String(document.getElementById("captureDesignDesc").value || "").trim();
+        if (desc.length < 20) { err.textContent = "Write a full description of the new design."; return; }
+        payload.design_description = desc;
+        payload.request = desc;
+      }
+      const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(payload) });
+      const j = await r.json();
+      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      closeCapture();
+      await load();
+      document.getElementById("status").textContent = "Saved " + ((j.row && j.row.enquiry_no) || payload.enquiry_no);
+    }
+    window.saveCapture = saveCapture;
     function addRow() {
-      bumpNext();
-      const blank = {};
-      HEADERS.forEach(([k]) => blank[k] = "");
-      blank.enquiry_no = nextNo;
-      blank.date_enquired = todayDmy();
-      blank.month_enquired = monthFromDmy(blank.date_enquired);
-      blank.status = "New";
-      blank.products = [emptyLine()];
-      blank.delivery_excl_vat = "";
-      blank.custom_specs = [];
-      blank.design_description = "";
-      rows.unshift(blank);
-      bumpNext();
-      render();
+      openCapture();
     }
     async function load() {
       const r = await sdOfficeFetch("/api/office/enquiries");
@@ -772,6 +1032,9 @@
     });
     document.getElementById("specMask").addEventListener("click", (e) => {
       if (e.target.id === "specMask") closeSpec(false);
+    });
+    document.getElementById("captureMask").addEventListener("click", (e) => {
+      if (e.target.id === "captureMask") closeCapture();
     });
     window.addEventListener("resize", () => { render(); });
     sdRequireOffice("enquiries").then((p) => { if (p) load(); });

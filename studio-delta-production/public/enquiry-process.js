@@ -10,11 +10,12 @@
       return "<option" + (n === selected ? " selected" : "") + ">" + esc(n) + "</option>";
     })).join("");
   }
-  function assigneeSelect(selected) {
+  function assigneeSelect(selected, fieldName) {
     const names = (state.snap && state.snap.assignees) || [];
     const me = (state.snap && state.snap.me) || "";
     const current = String(selected || "");
-    let html = "<select name=\"assignee\">";
+    const field = fieldName || "assignee";
+    let html = "<select name=\"" + esc(field) + "\" class=\"sd-assignee\">";
     html += "<option value=\"\"></option>";
     names.forEach((n) => {
       const label = n === me ? n + " (you)" : n;
@@ -70,7 +71,7 @@
         ".sd-process-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:13px;color:#475467}" +
         ".sd-process-actions{display:flex;flex-direction:column;gap:10px}" +
         ".sd-process-form label{display:block;font-size:12px;font-weight:600;margin:8px 0 4px}" +
-        ".sd-process-form input,.sd-process-form select,.sd-process-form textarea{width:100%;border:1px solid #d0d5dd;border-radius:6px;padding:8px;font:inherit}" +
+        ".sd-assignee{max-width:280px;width:100%}" +
         ".sd-process-form textarea{min-height:72px}" +
         ".sd-process-preview{width:100%;min-height:220px;max-height:360px;border:1px solid #d0d5dd;border-radius:8px;background:#fff;overflow:auto}" +
         ".sd-process-preview iframe,.sd-process-preview img{width:100%;height:320px;border:0;object-fit:contain}" +
@@ -258,14 +259,17 @@
     }
     if (action.id === "complete_cost_sheet") {
       return productNamesLine(row) + fileBlock(".xlsx,.xls,.csv,application/pdf,.pdf", "Upload the Excel cost sheet. Check the preview, then confirm it.") +
-        "<label>Request approval from</label>" + assigneeSelect();
+        "<label>Request approval from (optional)</label>" + assigneeSelect("", "assignee") +
+        "<p class=\"sd-process-sub\">Leave this empty to skip approval and send the enquiry to the quoting person.</p>" +
+        "<label>Quoting person *</label>" + assigneeSelect(row.quote_assignee || "", "quote_assignee");
     }
     if (action.id === "complete_approval") {
       return (row.cost_sheet ? "<p class=\"sd-process-sub\">Cost sheet: " + esc(row.cost_sheet.filename || "cost sheet") + " — <a href=\"" + fileUrl("cost_sheet", true) + "\">download</a></p><div class=\"sd-process-preview\" data-preview></div>" : "") +
         productNamesLine(row) +
         "<label>Decision<select name=\"decision\"><option value=\"approve\">Approve — send to quote</option><option value=\"reject\">Reject — back to costing</option></select></label>" +
         "<label>Comments (required if rejected)<textarea name=\"comments\"></textarea></label>" +
-        "<label>Next person (quote person if approved, costing if rejected)</label>" + assigneeSelect();
+        "<label>Next person (quote person if approved, costing if rejected)</label>" +
+        assigneeSelect(row.quote_assignee || openAssignee(row, "quote"));
     }
     if (action.id === "complete_quote") {
       return valuesTable(row, true) + fileBlock("application/pdf,.pdf", "Enter each product value and delivery excluding VAT here, then upload the quote PDF. DATE QUOTED is saved with the PDF.") +
@@ -301,6 +305,7 @@
   function collect(form, action, row) {
     const body = { action: action.id };
     body.assignee = field(form, "assignee");
+    body.quote_assignee = field(form, "quote_assignee");
     body.waiting_status = field(form, "waiting_status");
     body.comments = field(form, "comments");
     body.reason = body.comments;

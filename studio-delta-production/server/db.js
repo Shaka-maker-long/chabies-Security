@@ -812,6 +812,7 @@ function copyPipeline(from, to) {
   to.approval = cloneJson(from && from.approval, null);
   to.follow_ups = Array.isArray(from && from.follow_ups) ? cloneJson(from.follow_ups, []) : [];
   to.follow_up_assignee = String((from && from.follow_up_assignee) || "").trim();
+  to.quote_assignee = String((from && from.quote_assignee) || "").trim();
   to.client_outcome = cloneJson(from && from.client_outcome, null);
   to.drawing = cloneJson(from && from.drawing, null);
   to.ready_for_orders = !!(from && from.ready_for_orders);

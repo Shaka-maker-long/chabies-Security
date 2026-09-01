@@ -29,6 +29,12 @@ function officeAssignees() {
     .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
+function optionalAssignee(name) {
+  const n = String(name || "").trim();
+  if (!n) return "";
+  return requireAssignee(n);
+}
+
 function requireAssignee(name) {
   const n = String(name || "").trim();
   if (!n) throw new Error("Choose the office person this task is assigned to");
@@ -395,21 +401,38 @@ function completeCostSheet(row, actor, body) {
   if (!isSpreadsheet(filename, "") && !isPdf(filename, "", null) && !/\.csv$/i.test(filename)) {
     throw new Error("Cost sheet must be Excel (xlsx / xls), CSV, or PDF");
   }
+  const approver = optionalAssignee(body.assignee);
+  const quoter = optionalAssignee(body.quote_assignee);
+  if (!quoter) throw new Error("Choose the quoting person");
   row.cost_sheet = db.saveEnquiryAttachment(row.enquiry_no, "cost_sheet", raw, filename);
-  const approver = requireAssignee(body.assignee);
+  row.quote_assignee = quoter;
   closeOpenKind(row, "cost_sheet", actor);
   cancelOpenKind(row, "approval");
+  cancelOpenKind(row, "quote");
   row.status = "Costed";
+  if (approver) {
+    row.approval = {
+      requested_from: approver,
+      requested_at: db.nowIso(),
+      requested_by: actor,
+      status: "pending",
+      comments: "",
+      decided_by: "",
+      decided_at: ""
+    };
+    addTask(row, "approval", approver, { note: "Approve or reject the cost sheet" });
+    return;
+  }
   row.approval = {
-    requested_from: approver,
+    requested_from: "",
     requested_at: db.nowIso(),
     requested_by: actor,
-    status: "pending",
-    comments: "",
-    decided_by: "",
-    decided_at: ""
+    status: "approved",
+    comments: "Approval skipped",
+    decided_by: actor,
+    decided_at: db.nowIso()
   };
-  addTask(row, "approval", approver, { note: "Approve or reject the cost sheet" });
+  addTask(row, "quote", quoter);
 }
 
 function completeApproval(row, actor, body) {
@@ -437,7 +460,8 @@ function completeApproval(row, actor, body) {
   row.approval.comments = comments;
   row.approval.decided_by = actor;
   row.approval.decided_at = db.nowIso();
-  const quotePerson = requireAssignee(body.assignee);
+  const quotePerson = requireAssignee(body.assignee || row.quote_assignee);
+  row.quote_assignee = quotePerson;
   cancelOpenKind(row, "quote");
   addTask(row, "quote", quotePerson);
 }
