@@ -18,15 +18,15 @@
     button.danger { background:#fff; color:#b42318; border-color:#fda29b; }
     button:disabled { opacity:.55; cursor:not-allowed; }
     .wrap { overflow:auto; height:calc(100vh - 88px); }
-    table { border-collapse:separate; border-spacing:0; min-width:3200px; background:#fff; font-size:12px; }
-    th, td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
-    th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
-    th.has-filter::after { content:"▾"; float:right; color:#98a2b3; font-size:10px; padding-left:6px; }
+    #grid { border-collapse:separate; border-spacing:0; min-width:3200px; background:#fff; font-size:12px; }
+    #grid th, #grid td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
+    #grid th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
+    #grid th.has-filter::after { content:"▾"; float:right; color:#98a2b3; font-size:10px; padding-left:6px; }
     .empty { padding:28px 16px; color:var(--muted); font-size:13px; }
-    td input, td textarea, td select { width:100%; min-width:100%; border:0; font:inherit; background:transparent; padding:0; }
-    td input[readonly] { color:#475467; background:#f8fafc; }
-    td textarea { min-height:42px; white-space:pre-wrap; }
-    tr:focus-within { outline:2px solid #98a2b3; outline-offset:-2px; }
+    #grid td input, #grid td textarea, #grid td select { width:100%; min-width:100%; border:0; font:inherit; background:transparent; padding:0; }
+    #grid td input[readonly] { color:#475467; background:#f8fafc; }
+    #grid td textarea { min-height:42px; white-space:pre-wrap; }
+    #grid tr:focus-within { outline:2px solid #98a2b3; outline-offset:-2px; }
     .freeze { position:sticky; z-index:3; box-shadow:1px 0 0 var(--line); }
     th.freeze { z-index:6; background:var(--head); }
     td.freeze { background:#fff; }
@@ -233,7 +233,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=login-users"></script>
-  <script src="/enquiry-process.js?v=files-always"></script>
+  <script src="/enquiry-process.js?v=files-fit"></script>
   <script>
     const HEADERS = [
       ["enquiry_no", "ENQUIRY NO", 108, true],

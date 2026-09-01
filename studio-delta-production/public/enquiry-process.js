@@ -59,7 +59,7 @@
       css.textContent =
         ".sd-process-mask{position:fixed;inset:0;background:rgba(16,24,40,.45);z-index:50;display:none;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto}" +
         ".sd-process-mask.open{display:flex}" +
-        ".sd-process-sheet{width:min(860px,96vw);background:#fff;border-radius:12px;border:1px solid #d0d5dd;margin:12px auto;font-family:Inter,system-ui,sans-serif;color:#1d2939}" +
+        ".sd-process-sheet{width:min(860px,96vw);max-width:100%;background:#fff;border-radius:12px;border:1px solid #d0d5dd;margin:12px auto;font-family:Inter,system-ui,sans-serif;color:#1d2939;overflow:hidden}" +
         ".sd-process-sheet header{display:flex;gap:12px;align-items:flex-start;padding:16px;border-bottom:1px solid #d0d5dd}" +
         ".sd-process-sheet h1{font-size:18px;margin:0;font-family:Outfit,Inter,sans-serif}" +
         ".sd-process-sub{margin:4px 0 0;color:#667085;font-size:13px}" +
@@ -79,8 +79,15 @@
         ".sd-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;font-size:0}" +
         ".sd-drop span{pointer-events:none;display:block}" +
         ".sd-correspondence h2,.sd-files h2{margin:0 0 6px;font-size:13px}" +
+        ".sd-process-sheet table{min-width:0;width:100%;max-width:100%;table-layout:fixed}" +
+        ".sd-file-list{display:flex;flex-direction:column;gap:8px;margin-top:8px}" +
+        ".sd-file-row{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:8px 10px}" +
+        ".sd-file-row .sd-file-meta{min-width:0;flex:1}" +
+        ".sd-file-row .sd-file-type{font-size:11px;font-weight:600;letter-spacing:.02em;color:#667085}" +
+        ".sd-file-row .sd-file-name{font-size:13px;word-break:break-word}" +
+        ".sd-file-row button{margin:0;flex:0 0 auto}" +
         ".sd-mail{width:100%;border-collapse:collapse;font-size:12px;background:#fff;margin-top:8px}" +
-        ".sd-mail th,.sd-mail td{border:1px solid #d0d5dd;padding:6px 8px;text-align:left}" +
+        ".sd-mail th,.sd-mail td{border:1px solid #d0d5dd;padding:6px 8px;text-align:left;white-space:normal;word-break:break-word}" +
         ".sd-mail button,.sd-mail a.sd-open-mail{margin:0;display:inline-block;text-decoration:none}" +
         ".sd-path-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}" +
         ".sd-path-row code{font-size:12px;word-break:break-all;flex:1;min-width:160px}" +
@@ -347,21 +354,19 @@
     if (!items.length) {
       return html + "<p class=\"sd-process-sub\">No files on this enquiry yet.</p></div>";
     }
-    html += "<table class=\"sd-mail\"><thead><tr><th>Type</th><th>File</th><th></th></tr></thead><tbody>";
+    html += "<div class=\"sd-file-list\">";
     html += items.map((f) => {
       const open = f.open && f.kind
         ? "<button type=\"button\" class=\"ghost\" data-open-file=\"" + esc(f.kind) + "\" data-mail-name=\"" + esc(f.filename || f.title || "file") + "\" data-file-outlook=\"" + (f.outlook ? "1" : "0") + "\">" +
           (f.outlook ? "Open in Outlook" : "Open") + "</button>"
         : "<span class=\"sd-process-sub\">Not saved as a file</span>";
-      return "<tr>" +
-        "<td>" + esc(f.label || "File") + "</td>" +
-        "<td>" + esc(f.title || f.filename || "File") +
-          (f.from ? "<div class=\"sd-process-sub\">" + esc(f.from) + "</div>" : "") +
-        "</td>" +
-        "<td>" + open + "</td>" +
-        "</tr>";
+      return "<div class=\"sd-file-row\">" +
+        "<div class=\"sd-file-meta\"><div class=\"sd-file-type\">" + esc(f.label || "File") + "</div>" +
+        "<div class=\"sd-file-name\">" + esc(f.title || f.filename || "File") + "</div>" +
+        (f.from ? "<div class=\"sd-process-sub\">" + esc(f.from) + "</div>" : "") +
+        "</div>" + open + "</div>";
     }).join("");
-    return html + "</tbody></table></div>";
+    return html + "</div></div>";
   }
   function correspondenceCard(row) {
     return filesCard(row);
