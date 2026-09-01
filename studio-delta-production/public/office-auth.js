@@ -67,7 +67,7 @@ function sdMountOfficeShell(active) {
     return;
   }
   sdEnsureSheet("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
-  sdEnsureSheet("/office-shell.css?v=fullmenu");
+  sdEnsureSheet("/office-shell.css?v=persist-db");
   document.body.classList.add("office-app");
   const items = [
     ["/", "home", "bi-house-door", "Home"],
@@ -174,5 +174,19 @@ async function sdRequireOffice(page) {
   }
   sdMountOfficeShell(page);
   sdHideDebtorsLinks(!!profile.canSeeDebtors);
+  sdWarnPersistence();
   return profile;
+}
+function sdWarnPersistence() {
+  fetch("/health").then((r) => r.json()).then((j) => {
+    if (!j || (!j.usingEphemeralDisk && !j.warning)) return;
+    if (document.getElementById("sdPersistBanner")) return;
+    const bar = document.createElement("div");
+    bar.id = "sdPersistBanner";
+    bar.className = "sd-persist-banner";
+    bar.setAttribute("role", "alert");
+    bar.textContent = j.warning || "This Railway service has no volume. Enquiries and shop data are wiped on every deploy. In Railway, add a Volume mounted at /app/data.";
+    document.body.appendChild(bar);
+    document.body.classList.add("has-persist-warning");
+  }).catch(function () {});
 }

@@ -8,7 +8,7 @@ const {
   DEFAULT_ENQUIRY_DROPDOWNS,
   NEW_DESIGN_MIN_CHARS
 } = require("./enquiries-default");
-const { getBook, persistWorkbook, ORDER_HEADERS } = require("./workbook-store");
+const { getBook, persistWorkbook, ORDER_HEADERS, dataDir } = require("./workbook-store");
 
 const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
@@ -153,13 +153,15 @@ function emptyState() {
 }
 
 function pickDataFile() {
-  const dataDir = process.env.DATA_DIR || path.join(__dirname, "..", "data");
-  const preferred = process.env.OFFICE_DB_PATH || path.join(dataDir, "studio-delta.json");
+  const preferred = process.env.OFFICE_DB_PATH || path.join(dataDir(), "studio-delta.json");
   const fallback = path.join("/tmp", "studio-delta.json");
   for (const candidate of [preferred, fallback]) {
     try {
       fs.mkdirSync(path.dirname(candidate), { recursive: true });
       fs.accessSync(path.dirname(candidate), fs.constants.W_OK);
+      if (candidate === fallback && preferred !== fallback) {
+        console.error("[db] WARNING office data falling back to", candidate, "— this will be lost on deploy. Mount a Railway volume and set DATA_DIR.");
+      }
       return candidate;
     } catch (e) {
       console.error("[db] not writable", candidate, e && e.message ? e.message : e);
@@ -211,6 +213,23 @@ function save() {
   const tmp = dbPath + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(state));
   fs.renameSync(tmp, dbPath);
+}
+
+function persistenceInfo() {
+  const { storageInfo } = require("./workbook-store");
+  const info = storageInfo();
+  const preferred = process.env.OFFICE_DB_PATH || path.join(dataDir(), "studio-delta.json");
+  const fellBack = dbPath !== preferred;
+  return {
+    ...info,
+    officeDb: dbPath,
+    officeDbExists: fs.existsSync(dbPath),
+    enquiryCount: (state.enquiries || []).length,
+    usingEphemeralDisk: info.usingEphemeralDisk || fellBack,
+    warning: info.warning || (fellBack
+      ? "Office file could not be written to " + preferred + " and is using " + dbPath + " instead."
+      : null)
+  };
 }
 
 function nowIso() {
@@ -1079,6 +1098,8 @@ function recordPayment(orderNumber, amount, note) {
 module.exports = {
   db: null,
   dbPath,
+  persist: save,
+  persistenceInfo,
   ORDER_FIELDS,
   DROPDOWN_KEYS,
   VAT_RATE,

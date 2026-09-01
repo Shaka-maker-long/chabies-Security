@@ -27,10 +27,42 @@ const SEED_TABS = {
   Task_Durations: [["Product", "Process", "Minutes"]]
 };
 
+function onRailway() {
+  return !!(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_SERVICE_ID);
+}
+
 function dataDir() {
-  const dir = process.env.DATA_DIR || path.join(__dirname, "..", "data");
+  const volume = String(process.env.RAILWAY_VOLUME_MOUNT_PATH || "").trim();
+  const configured = String(process.env.DATA_DIR || "").trim();
+  // On Railway the volume is the durable disk. Docker also sets DATA_DIR=/app/data;
+  // if those paths differ, writing to DATA_DIR would be wiped on every deploy.
+  const dir = (onRailway() && volume) || configured || path.join(__dirname, "..", "data");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+function storageInfo() {
+  const dir = dataDir();
+  const volume = String(process.env.RAILWAY_VOLUME_MOUNT_PATH || "").trim();
+  const dataDirEnv = String(process.env.DATA_DIR || "").trim();
+  const railway = onRailway();
+  const ephemeral = railway && !volume;
+  let warning = null;
+  if (ephemeral) {
+    warning = "No Railway volume is attached. Files in " + dir + " are wiped on every deploy. Add a Volume mounted at /app/data.";
+  }
+  const bookFile = workbookPath();
+  return {
+    database: "JSON files on disk (not Google Sheets, not Postgres)",
+    dataDir: dir,
+    volumeMount: volume || null,
+    dataDirEnv: dataDirEnv || null,
+    onRailway: railway,
+    usingEphemeralDisk: ephemeral,
+    warning,
+    workbook: bookFile,
+    workbookExists: fs.existsSync(bookFile)
+  };
 }
 
 function workbookPath() {
@@ -182,5 +214,8 @@ module.exports = {
   importGoogleWorkbook,
   maybeImportGoogleOnce,
   workbookPath,
+  dataDir,
+  storageInfo,
+  onRailway,
   hasGoogleAuth
 };

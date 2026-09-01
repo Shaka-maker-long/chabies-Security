@@ -144,6 +144,11 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const ordersBoss = await fetch(base + "/api/office/orders", { headers: { "x-sd-token": boss.token } });
   assert.strictEqual(ordersBoss.status, 200);
 
+  const sessFile = path.join(dir, "office-sessions.json");
+  assert.ok(fs.existsSync(sessFile), "office sessions must be saved on disk");
+  const sess = JSON.parse(fs.readFileSync(sessFile, "utf8"));
+  assert.ok(sess[boss.token] && sess[boss.token].name === "Office Boss");
+
   server.close();
   console.log("staff-access.test.js ok");
 })().catch((e) => {

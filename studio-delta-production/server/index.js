@@ -3,8 +3,8 @@ process.env.SHEET_ID = process.env.SHEET_ID || "1pdvAFTIyd5sf8Wbf38MSd4cfk3mb3Mc
 
 const express = require("express");
 const path = require("path");
-const { initWorkbook, persistWorkbook, maybeImportGoogleOnce, hasGoogleAuth } = require("./workbook-store");
-const { migrateJsonOrdersToWorkbook, normalizeOrdersSheet } = require("./db");
+const { initWorkbook, persistWorkbook, maybeImportGoogleOnce, hasGoogleAuth, storageInfo } = require("./workbook-store");
+const { migrateJsonOrdersToWorkbook, normalizeOrdersSheet, persistenceInfo } = require("./db");
 
 initWorkbook();
 migrateJsonOrdersToWorkbook();
@@ -20,11 +20,23 @@ app.disable("x-powered-by");
 app.use(express.json({ limit: "80mb" }));
 
 function health(_req, res) {
+  let persist = {};
+  try { persist = persistenceInfo(); } catch (e) {
+    try { persist = storageInfo(); } catch (err) { persist = { error: String(err && err.message || err) }; }
+  }
   res.status(200).json({
     ok: true,
     tz: process.env.TZ,
-    db: "railway",
-    sheetsConfigured: true,
+    db: persist.usingEphemeralDisk ? "ephemeral" : "railway",
+    database: persist.database || "JSON files on disk (not Google Sheets, not Postgres)",
+    dataDir: persist.dataDir || null,
+    volumeMount: persist.volumeMount || null,
+    usingEphemeralDisk: !!persist.usingEphemeralDisk,
+    warning: persist.warning || null,
+    officeDb: persist.officeDb || null,
+    officeDbExists: !!persist.officeDbExists,
+    enquiryCount: persist.enquiryCount != null ? persist.enquiryCount : null,
+    workbookExists: !!persist.workbookExists,
     googleImportAvailable: hasGoogleAuth() && !!process.env.SHEET_ID
   });
 }
@@ -92,6 +104,13 @@ try {
 const PORT = Number(process.env.PORT) || 8080;
 const server = app.listen(PORT, "0.0.0.0", () => {
   console.log("Studio Delta production listening on " + PORT + " (" + process.env.TZ + ")");
+  try {
+    const info = persistenceInfo();
+    if (info.warning) console.error("[persist]", info.warning);
+    else console.log("[persist] dataDir", info.dataDir, "enquiries", info.enquiryCount, "workbook", info.workbookExists);
+  } catch (e) {
+    console.error("[persist] could not read storage info", e && e.message ? e.message : e);
+  }
 });
 
 let chain = Promise.resolve();
@@ -161,6 +180,8 @@ setInterval(() => {
 
 function shutdown() {
   try { persistWorkbook(); } catch (e) {}
+  try { require("./db").persist(); } catch (e) {}
+  try { require("./staff").persistSessions(); } catch (e) {}
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 5000).unref();
 }

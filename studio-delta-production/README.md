@@ -1,14 +1,30 @@
 # Studio Delta Production
 
-Shop-floor + office app for Studio Delta (South Africa). The UI is the same `index.html` as before. **The live database is on Railway** (a workbook file on the server volume). Google Sheets is only used to **copy data in once**, and for Drive QC PDFs / emails.
+Shop-floor + office app for Studio Delta (South Africa).
+
+## Current database (not Google Sheets, not Postgres)
+
+The live store is **JSON files on the Railway disk**. Google Sheets is only a one-time import (and Drive for QC PDFs). There is no SQL database.
+
+| File | What it holds |
+| --- | --- |
+| `DATA_DIR/floor-workbook.json` | Users, ORDERS, production logs, steel, backboards, idle alerts, schedule, task durations |
+| `DATA_DIR/studio-delta.json` | Enquiries, office extras, enquiry dropdowns, payments |
+| `DATA_DIR/office-sessions.json` | Office login sessions (so a restart does not log everyone out) |
+| `DATA_DIR/enquiry-quotes/` | Quote PDFs |
+| `DATA_DIR/enquiry-files/` | Cost sheets, follow-up screenshots, POP, drawings |
+
+On Railway, `DATA_DIR` is `/app/data` (set in the Dockerfile). **A Volume must be mounted at `/app/data`**. Without that volume every deploy starts with empty files: Users/ORDERS can reappear from Google import, but **enquiries and uploads are gone**.
+
+`GET /health` reports `dataDir`, `volumeMount`, `usingEphemeralDisk`, and `enquiryCount`. If `usingEphemeralDisk` is `true`, data will keep disappearing. Office pages also show a red banner in that case.
 
 Timezone: **Africa/Johannesburg**. The paid shift is **07:45–15:45** with a **30-minute break 12:00–12:30** (7.5 hours / 450 minutes). Minutes after that on a calendar day are overtime. Overnight jobs are split by calendar day on Activity and on Admin → Workers (e.g. 14:00 yesterday–10:00 today → yesterday 14:00–15:45 and today 07:45–10:00).
 
-## Host on Railway (Railway is the database)
+## Host on Railway (Railway volume is the database)
 
 The GitHub repo is a website plus this app. Railway should build from the **repository root** `Dockerfile`, which copies `studio-delta-production/` only.
 
-Floor start / pause / resume / finish, durations, steel usage, backboard usage, idle alerts, and order **STATUS** / **ASSIGNED OPERATOR** all save in Railway. The office **Orders** page reads the **same ORDERS table**, so a tablet clock updates the status the office sees.
+Floor start / pause / resume / finish, durations, steel usage, backboard usage, idle alerts, and order **STATUS** / **ASSIGNED OPERATOR** all save in those JSON files. The office **Orders** page reads the **same ORDERS table**, so a tablet clock updates the status the office sees.
 
 1. In [Google Cloud](https://console.cloud.google.com/), create a project (or pick one) → **APIs & Services** → enable **Google Sheets API**, **Google Drive API**, **Google Docs API**. Enable **Gmail API** only if you want QC / powder-list / glass-alert emails.
 2. **IAM** → **Service accounts** → create one (e.g. `studio-delta-floor`) → **Keys** → JSON. Copy the JSON.
@@ -31,9 +47,9 @@ Floor start / pause / resume / finish, durations, steel usage, backboard usage, 
 
 7. **Settings → Networking → Generate domain**. Tablets open that HTTPS URL. Login is still name + access code from the `Users` table (copied from Google on first boot if the Railway volume is empty).
 8. Keep **one replica**. The in-memory lock/cache is per process.
-9. Add a **Volume** mounted at **`/app/data`**. Without it, shop data is lost on every deploy. That folder holds `floor-workbook.json` (Users, ORDERS, Production_Log, steel, backboards, idle, schedule) plus office extras (dropdowns, payments).
+9. **Volume (required):** service → **Volumes** → add a volume, mount path **`/app/data`**. Confirm `GET /health` shows `"usingEphemeralDisk": false` and `volumeMount` of `/app/data`. Without this, shop data and enquiries are lost on every deploy.
 
-`GET /health` should return `"ok": true` and `"db": "railway"`. The first boot copies Google into Railway if Users and ORDERS are still empty. After that, Google is not the live store.
+`GET /health` should return `"ok": true`. After a volume is attached, `"db"` is `"railway"` and `"usingEphemeralDisk"` is `false`. The first boot copies Google into Railway if Users and ORDERS are still empty. After that, Google is not the live store.
 
 On **Orders**, **Import from Sheets** copies Users, orders, production logs, steel and backboards from Google **into Railway** (this replaces current Railway shop data). Use it once when you first move, or if you need a fresh copy.
 
