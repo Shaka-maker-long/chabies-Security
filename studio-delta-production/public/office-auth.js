@@ -67,7 +67,7 @@ function sdMountOfficeShell(active) {
     return;
   }
   sdEnsureSheet("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
-  sdEnsureSheet("/office-shell.css?v=persist-db");
+  sdEnsureSheet("/office-shell.css?v=login-users");
   document.body.classList.add("office-app");
   const items = [
     ["/", "home", "bi-house-door", "Home"],
@@ -131,12 +131,19 @@ function sdShowLogin(message) {
     wrap.style.cssText = "position:fixed;inset:0;background:#f8f9fc;display:flex;align-items:center;justify-content:center;z-index:2000;font-family:Inter,system-ui,sans-serif";
     wrap.innerHTML = '<form style="background:#fff;border:1px solid #d0d5dd;border-radius:12px;padding:24px;width:min(360px,92vw)">' +
       "<h2 style='margin:0 0 8px;font-size:18px'>Admin login</h2>" +
-      "<p style='margin:0 0 16px;color:#667085;font-size:13px'>" + (message || "Office pages are for Admin only.") + "</p>" +
+      "<p style='margin:0 0 16px;color:#667085;font-size:13px' data-login-hint>" + (message || "Office pages are for Admin. Use the same name and access code as the floor.") + "</p>" +
       "<label style='font-size:12px'>Name</label><input name='name' style='width:100%;margin:4px 0 12px;padding:8px;border:1px solid #d0d5dd;border-radius:6px'>" +
       "<label style='font-size:12px'>Access code</label><input name='password' type='password' style='width:100%;margin:4px 0 16px;padding:8px;border:1px solid #d0d5dd;border-radius:6px'>" +
       "<button style='width:100%;padding:10px;border:0;border-radius:6px;background:#1d2939;color:#fff;font-weight:600'>Log in</button>" +
       "<p style='margin:12px 0 0;text-align:center'><a href='/'>Back to floor</a></p></form>";
     document.body.appendChild(wrap);
+    fetch("/health").then((r) => r.json()).then((j) => {
+      const hint = wrap.querySelector("[data-login-hint]");
+      if (!hint || message) return;
+      if (j && j.usingEphemeralDisk) {
+        hint.textContent = "This Railway service has no volume, so logins reset on every deploy. Use your Users name and code. If that fails right after a deploy, wait a few seconds or try Admin / admin.";
+      }
+    }).catch(function () {});
     wrap.querySelector("form").onsubmit = async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);

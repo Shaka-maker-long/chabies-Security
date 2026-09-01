@@ -120,7 +120,7 @@ function mountOffice(app) {
   app.post("/api/office/login", (req, res) => {
     const profile = staff.verifyUser((req.body && req.body.name) || "", (req.body && req.body.password) || "");
     if (!profile) {
-      res.status(401).json({ ok: false, error: "Incorrect name or access code" });
+      res.status(401).json({ ok: false, error: staff.loginFailureMessage() });
       return;
     }
     if (!profile.canSeeOffice) {

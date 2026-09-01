@@ -592,6 +592,9 @@ function verifyGlobalLogin(name, password) {
   var sheet = getSheetOrDie(ss, TAB_USERS);
   var data = getSheetGrid(ss, TAB_USERS, 6);
   if (!data.length) data = sheet.getDataRange().getValues();
+  if (!data || data.length <= 1) {
+    return { success: false, error: "No Users loaded yet. Wait a few seconds and try again, or use Admin / admin." };
+  }
   
   // 1. Find the Admin Password first (Master Key)
   var adminPassword = null;

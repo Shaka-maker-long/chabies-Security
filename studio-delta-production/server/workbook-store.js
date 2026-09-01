@@ -70,6 +70,13 @@ function workbookPath() {
 }
 
 let book = null;
+let googleImportTried = false;
+
+const DEFAULT_SHEET_ID = "1pdvAFTIyd5sf8Wbf38MSd4cfk3mb3McPqJrYeM8SOYk";
+
+function sheetId() {
+  return String(process.env.SHEET_ID || DEFAULT_SHEET_ID).trim();
+}
 
 function writeBookFile(target) {
   const file = workbookPath();
@@ -154,6 +161,15 @@ function tabCounts(target) {
   return out;
 }
 
+function usersNeedGoogleCopy(target) {
+  const book = target || getBook();
+  if (usersEmpty(book)) return true;
+  const sheet = book.getSheetByName("Users");
+  if (!sheet || sheet.getLastRow() !== 2) return false;
+  const name = String(sheet.getRange(2, 1).getValue() || "").trim().toLowerCase();
+  return name === "admin";
+}
+
 function hasGoogleAuth() {
   return !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
 }
@@ -162,10 +178,10 @@ function googleMigrateEnabled() {
   const flag = String(process.env.GOOGLE_MIGRATE || "").trim().toLowerCase();
   return (flag === "1" || flag === "true" || flag === "yes")
     && hasGoogleAuth()
-    && !!String(process.env.SHEET_ID || "").trim();
+    && !!sheetId();
 }
 
-async function importGoogleWorkbook() {
+async function loadGoogleSpreadsheet() {
   const { google } = require("googleapis");
   let credentials;
   if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
@@ -175,14 +191,32 @@ async function importGoogleWorkbook() {
   } else {
     throw new Error("Google credentials are not set");
   }
-  if (!process.env.SHEET_ID) throw new Error("SHEET_ID is not set");
+  const id = sheetId();
+  if (!id) throw new Error("SHEET_ID is not set");
   const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ["https://www.googleapis.com/auth/spreadsheets.readonly"]
   });
   const client = await auth.getClient();
-  const remote = new Spreadsheet(client, process.env.SHEET_ID);
+  const remote = new Spreadsheet(client, id);
   await remote.load();
+  return remote;
+}
+
+function copySheetFromRemote(remote, local, title) {
+  const src = remote.getSheetByName(title);
+  if (!src || src.getLastRow() < 1) return false;
+  let dest = local.getSheetByName(title);
+  if (!dest) dest = local.insertSheet(title);
+  const lastCol = Math.max(src.getLastColumn(), 1);
+  const lastRow = src.getLastRow();
+  while (dest.getLastRow() > lastRow) dest.deleteRow(dest.getLastRow());
+  dest.getRange(1, 1, lastRow, lastCol).setValues(src.getRange(1, 1, lastRow, lastCol).getValues());
+  return true;
+}
+
+async function importGoogleWorkbook() {
+  const remote = await loadGoogleSpreadsheet();
   const local = getBook();
   local.loadFromJSON(remote.toJSON());
   attachPersist(local);
@@ -192,8 +226,33 @@ async function importGoogleWorkbook() {
   return local;
 }
 
+async function importGoogleUsersOnly() {
+  const remote = await loadGoogleSpreadsheet();
+  const local = getBook();
+  if (!copySheetFromRemote(remote, local, "Users")) {
+    throw new Error("The Google spreadsheet has no Users tab");
+  }
+  writeBookFile(local);
+  console.log("[workbook] copied Users from Google into Railway");
+  return local;
+}
+
 async function maybeImportGoogleOnce() {
-  // Railway is the live database. Google Sheets is never read on boot.
+  const local = getBook();
+  if (googleImportTried) return local;
+  googleImportTried = true;
+  if (!hasGoogleAuth()) return local;
+  if (!usersNeedGoogleCopy(local)) return local;
+  try {
+    if (ordersEmpty(local) && !productionLogHasRows(local)) {
+      await importGoogleWorkbook();
+      try { require("./db").copyEnquiriesFromWorkbook(getBook()); } catch (e) {}
+    } else {
+      await importGoogleUsersOnly();
+    }
+  } catch (e) {
+    console.error("[workbook] could not copy Users from Google:", e && e.message ? e.message : e);
+  }
   return getBook();
 }
 
@@ -209,6 +268,7 @@ module.exports = {
   importGoogleWorkbook,
   maybeImportGoogleOnce,
   googleMigrateEnabled,
+  usersNeedGoogleCopy,
   workbookPath,
   dataDir,
   storageInfo,
