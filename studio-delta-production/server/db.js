@@ -994,7 +994,11 @@ function normalizeOutlookMail(from, index) {
     rest_id: rest,
     entry_id: entry,
     web_url: web,
-    outlook_url: ""
+    outlook_url: "",
+    kind: String(src.kind || "").trim(),
+    stored_as: String(src.stored_as || "").trim(),
+    filename: String(src.filename || "").trim(),
+    mime: src.mime || ""
   };
   mail.outlook_url = outlookDesktopUrl({ ...mail, outlook_url: src.outlook_url }) || sanitizeOutlookOpenUrl(src.outlook_url);
   if (!mail.outlook_url) return null;
@@ -1195,8 +1199,13 @@ function readEnquiryAttachment(enquiryNo, kind) {
     const hit = list.find((f) => Number(f.n) === n);
     meta = hit && hit.file;
   } else if (/^correspondence_(\d+)$/.test(want)) {
+    const mails = (row.correspondence && Array.isArray(row.correspondence.mails)) ? row.correspondence.mails : [];
     const files = (row.correspondence && Array.isArray(row.correspondence.files)) ? row.correspondence.files : [];
-    meta = files.find((f) => f && f.kind === want) || files[Number(want.split("_").pop()) - 1] || null;
+    meta = mails.find((f) => f && f.kind === want)
+      || files.find((f) => f && f.kind === want)
+      || mails[Number(want.split("_").pop()) - 1]
+      || files[Number(want.split("_").pop()) - 1]
+      || null;
   }
   if (!meta || !meta.stored_as) return null;
   const file = path.join(enquiryFilesDir(enquiryNo), meta.stored_as);
@@ -1528,6 +1537,7 @@ module.exports = {
   mailDedupeKey,
   extractOutlookFromBuffer,
   extractOutlookFromDataUrl,
+  decodeDataUrl,
   outlookMimeFor,
   readEnquiryQuotePdf,
   saveEnquiryQuotePdf,

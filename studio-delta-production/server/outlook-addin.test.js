@@ -16,7 +16,7 @@ assert.ok(pane.indexOf("outlook-mail") !== -1);
 assert.ok(pane.indexOf("Nothing is downloaded") !== -1 || pane.indexOf("nothing is downloaded") !== -1);
 
 const processJs = fs.readFileSync(path.join(__dirname, "../public/enquiry-process.js"), "utf8");
-assert.ok(processJs.indexOf("a.download") === -1);
-assert.ok(processJs.indexOf("application/vnd.ms-outlook") === -1);
+assert.ok(processJs.indexOf("outlook_drop") !== -1);
+assert.ok(processJs.indexOf("Drop the Outlook email") !== -1);
 
 console.log("outlook-addin.test.js ok");

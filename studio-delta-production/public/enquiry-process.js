@@ -1,6 +1,6 @@
 (function () {
   const KEEP_VALUES = { Quoted: 1, "Followed Up": 1, Ordered: 1 };
-  let state = { open: false, enquiryNo: "", focusTaskId: "", snap: null, file: { base64: "", name: "", url: "", confirmed: false, mime: "" }, correspondenceMails: [] };
+  let state = { open: false, enquiryNo: "", focusTaskId: "", snap: null, file: { base64: "", name: "", url: "", confirmed: false, mime: "" }, correspondenceMails: [], correspondenceUploads: [] };
 
   function esc(s) {
     return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -74,8 +74,10 @@
         ".sd-assignee{max-width:280px;width:100%}" +
         ".sd-quote-no{max-width:180px;width:100%;border:1px solid #d0d5dd;border-radius:6px;padding:8px;font:inherit}" +
         ".sd-path{width:100%;border:1px solid #d0d5dd;border-radius:6px;padding:8px;font:inherit;font-size:12px}" +
-        ".sd-drop{border:1px dashed #98a2b3;border-radius:8px;padding:14px;background:#fff;text-align:center;font-size:13px;color:#475467;margin:8px 0}" +
+        ".sd-drop{position:relative;border:1px dashed #98a2b3;border-radius:8px;padding:18px 14px;background:#fff;text-align:center;font-size:13px;color:#475467;margin:8px 0;min-height:72px}" +
         ".sd-drop.over{border-color:#1d2939;background:#eef2f6}" +
+        ".sd-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;font-size:0}" +
+        ".sd-drop span{pointer-events:none;display:block}" +
         ".sd-correspondence h2{margin:0 0 6px;font-size:13px}" +
         ".sd-mail{width:100%;border-collapse:collapse;font-size:12px;background:#fff;margin-top:8px}" +
         ".sd-mail th,.sd-mail td{border:1px solid #d0d5dd;padding:6px 8px;text-align:left}" +
@@ -110,6 +112,7 @@
     revokeFile();
     state.open = false;
     state.correspondenceMails = [];
+    state.correspondenceUploads = [];
     if (typeof window.sdOnEnquiryProcessClose === "function") window.sdOnEnquiryProcessClose();
   }
 
@@ -252,91 +255,104 @@
   function outlookHref(mail) {
     return String((mail && mail.outlook_url) || "").trim();
   }
-  function linksFromClipboard(dt) {
-    if (!dt) return "";
-    return [dt.getData("text/html"), dt.getData("text/plain"), dt.getData("text/uri-list")].filter(Boolean).join("\n");
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   }
   function showAttached(form) {
     const el = form && form.querySelector("[data-corr-ready]");
     if (!el) return;
-    const n = (state.correspondenceMails || []).length;
-    el.textContent = n ? n + " email" + (n === 1 ? "" : "s") + " ready to save from Outlook." : "";
+    const names = (state.correspondenceUploads || []).map((f) => f.file_name).concat((state.correspondenceMails || []).map((m) => m.title)).filter(Boolean);
+    const uniq = [];
+    names.forEach((n) => { if (uniq.indexOf(n) === -1) uniq.push(n); });
+    el.textContent = uniq.length ? "Ready to save: " + uniq.join(", ") : "";
   }
   async function takeOutlookFile(file, form) {
-    const name = file && file.name || "";
-    if (file && file.size && (/\.(msg|eml)$/i.test(name) || /outlook|rfc822|ms-tnef/i.test(file.type || ""))) {
-      const buf = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let latin = "";
-      for (let i = 0; i < bytes.length; i++) latin += String.fromCharCode(bytes[i]);
-      const mid = (latin.match(/Message-ID:\s*(<[^>\s]+>)/i) || [])[1] || "";
-      const subject = ((latin.match(/Subject:\s*([^\r\n\x00]+)/i) || [])[1] || name.replace(/\.(msg|eml)$/i, "")).trim().slice(0, 180);
-      const from = ((latin.match(/From:\s*([^\r\n\x00]+)/i) || [])[1] || "").trim().slice(0, 120);
-      state.correspondenceMails.push({
-        title: subject || "Outlook email",
-        from,
-        internet_message_id: mid,
-        filename: name
-      });
-      showAttached(form);
-      return true;
+    if (!file || !file.size) return false;
+    let name = String(file.name || "outlook-email").trim() || "outlook-email";
+    if (!/\.(msg|eml)$/i.test(name)) name += ".msg";
+    const file_base64 = await readFileAsDataUrl(file);
+    const title = name.replace(/\.(msg|eml)$/i, "");
+    state.correspondenceUploads.push({ file_base64, file_name: name });
+    state.correspondenceMails.push({ title, filename: name });
+    showAttached(form);
+    return true;
+  }
+  async function openSavedOutlookMail(kind, filename) {
+    const r = await sdOfficeFetch(fileUrl(kind));
+    if (!r.ok) throw new Error("Could not open that email");
+    const blob = await r.blob();
+    const name = /\.(msg|eml)$/i.test(filename || "") ? filename : (filename || "email") + ".msg";
+    const type = /\.eml$/i.test(name) ? "message/rfc822" : "application/vnd.ms-outlook";
+    const file = new File([blob], name, { type });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: name });
+      return;
     }
-    return false;
+    const url = URL.createObjectURL(file);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
   }
   function bindOutlookAttach(form) {
     const box = form && form.querySelector("[data-outlook-drop]");
-    const input = form && form.querySelector('[name="correspondence_links"]');
-    if (!form || !box) return;
-    box.addEventListener("dragover", (e) => { e.preventDefault(); box.classList.add("over"); });
+    const picker = form && form.querySelector('[name="outlook_drop"]');
+    if (!form || !box || !picker) return;
+    ["dragenter", "dragover"].forEach((ev) => {
+      box.addEventListener(ev, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "copy";
+        box.classList.add("over");
+      });
+    });
     box.addEventListener("dragleave", () => box.classList.remove("over"));
     box.addEventListener("drop", async (e) => {
       e.preventDefault();
+      e.stopPropagation();
       box.classList.remove("over");
-      const dt = e.dataTransfer;
-      const text = linksFromClipboard(dt);
-      if (input && /outlook:|ms-outlook:|https:\/\/outlook\./i.test(text)) {
-        input.value = (input.value ? input.value + "\n" : "") + text;
-      }
-      const files = dt && dt.files ? Array.prototype.slice.call(dt.files, 0) : [];
+      const files = e.dataTransfer && e.dataTransfer.files ? Array.prototype.slice.call(e.dataTransfer.files, 0) : [];
       for (let i = 0; i < files.length; i++) await takeOutlookFile(files[i], form);
     });
-    form.addEventListener("paste", async (e) => {
-      const text = linksFromClipboard(e.clipboardData);
-      if (input && text && /outlook:|ms-outlook:|https:\/\/outlook\./i.test(text)) {
-        e.preventDefault();
-        input.value = (input.value ? input.value + "\n" : "") + text;
-      }
-      const items = e.clipboardData && e.clipboardData.items ? Array.prototype.slice.call(e.clipboardData.items, 0) : [];
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].kind === "file") {
-          const file = items[i].getAsFile();
-          if (file) await takeOutlookFile(file, form);
-        }
-      }
-    });
+    picker.onchange = async (e) => {
+      const files = Array.prototype.slice.call((e.target.files || []), 0);
+      for (let i = 0; i < files.length; i++) await takeOutlookFile(files[i], form);
+      picker.value = "";
+    };
   }
   function correspondenceFields() {
-    return "<p class=\"sd-process-sub\">Your Outlook has no Add-ins button and no Copy as link. Attach the email from here. Nothing is saved as a .msg file.</p>" +
-      "<div class=\"sd-drop\" data-outlook-drop>Drag the email from the Outlook list onto this box.<br>Or right-click the email → <b>Copy</b>, then click here and paste (Ctrl+V).</div>" +
-      "<p class=\"sd-process-sub\" data-corr-ready></p>" +
-      "<label>Or paste here<textarea class=\"sd-path\" name=\"correspondence_links\" placeholder=\"Paste here after Copy in Outlook\"></textarea></label>";
+    return "<p class=\"sd-process-sub\">Drag the email from the Outlook list (left-hand names) onto the box. Wait until the subject shows below, then Save update. Use Edge if Chrome blocks the drop.</p>" +
+      "<div class=\"sd-drop\" data-outlook-drop>" +
+      "<input name=\"outlook_drop\" type=\"file\" accept=\".msg,.eml,application/vnd.ms-outlook,message/rfc822\" multiple>" +
+      "<span>Drop the Outlook email here</span></div>" +
+      "<p class=\"sd-process-sub\" data-corr-ready></p>";
   }
   function correspondenceCard(row) {
     const c = (row && row.correspondence) || {};
     const mails = c.mails || [];
     if (!mails.length) return "";
     let html = "<div class=\"sd-correspondence\"><h2>CORRESPONDANCE</h2>" +
-      "<p class=\"sd-process-sub\">These emails stay in Outlook. Open in Outlook launches the desktop app — nothing is downloaded.</p>" +
+      "<p class=\"sd-process-sub\">Open in Outlook starts Outlook on this PC. If Windows asks, choose Open.</p>" +
       "<table class=\"sd-mail\"><thead><tr><th>Email</th><th>From</th><th>Order</th><th></th></tr></thead><tbody>";
     html += mails.map((f) => {
       const href = outlookHref(f);
+      const open = f.kind
+        ? "<button type=\"button\" class=\"ghost\" data-open-mail=\"" + esc(f.kind) + "\" data-mail-name=\"" + esc(f.filename || f.title || "email.msg") + "\">Open in Outlook</button>"
+        : (href ? "<a class=\"sd-open-mail\" href=\"" + esc(href) + "\">Open in Outlook</a>" : "");
       return "<tr>" +
         "<td>" + esc(f.title || "Outlook email") + "</td>" +
         "<td>" + esc(f.from || f.from_email || "") + "</td>" +
         "<td>" + esc(f.order_no || "") + "</td>" +
-        "<td>" + (href
-          ? "<a class=\"sd-open-mail\" href=\"" + esc(href) + "\">Open in Outlook</a>"
-          : "") + "</td>" +
+        "<td>" + open + "</td>" +
         "</tr>";
     }).join("");
     return html + "</tbody></table></div>";
@@ -431,7 +447,7 @@
     if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
     if (action.id === "complete_quote") body.quote_no = field(form, "quote_no");
     if (action.id === "assign_costing" || action.id === "complete_chase" || action.id === "add_correspondence") {
-      body.correspondence_links = field(form, "correspondence_links");
+      body.correspondence_files = state.correspondenceUploads || [];
       body.correspondence_mails = state.correspondenceMails || [];
     }
     if (action.id === "complete_order") body.drawing_required = field(form, "drawing_required");
@@ -464,6 +480,9 @@
       return action.id === focus;
     }
     if (actions.length === 1) return true;
+    if (/Costing|Re-Cost/.test(row.status || "") && actions.some((a) => a.id === "add_correspondence")) {
+      return action.id === "add_correspondence";
+    }
     if (actions.some((a) => a.id === "assign_costing")) return action.id === "assign_costing";
     return i === 0;
   }
@@ -525,8 +544,19 @@
         if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
         state.snap = j;
         state.correspondenceMails = [];
+        state.correspondenceUploads = [];
         revokeFile();
         renderBody();
+      };
+    });
+    body.querySelectorAll("[data-open-mail]").forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        try {
+          await openSavedOutlookMail(btn.getAttribute("data-open-mail"), btn.getAttribute("data-mail-name"));
+        } catch (err) {
+          btn.textContent = "Could not open";
+        }
       };
     });
     body.querySelectorAll("a.sd-open-mail").forEach((a) => {
