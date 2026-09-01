@@ -771,7 +771,7 @@ function normalizeEnquiryLines(row, existing) {
 }
 
 const KEEP_VALUE_STATUSES = [
-  "Costing", "Costed", "Quoted", "Followed Up", "Ordered", "Re-Cost", "Waiting on Supplier"
+  "Quoted", "Followed Up", "Ordered"
 ];
 const CAPTURE_STATUSES = [
   "New",

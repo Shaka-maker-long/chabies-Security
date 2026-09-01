@@ -390,8 +390,6 @@ function completeSupplier(row, actor, body) {
 
 function completeCostSheet(row, actor, body) {
   if (!statusAllows(row, ["Costing", "Re-Cost"])) throw new Error("Upload the cost sheet from Costing");
-  applyPricedBody(row, body);
-  requirePricedProducts(row);
   const filename = body.file_name || body.filename || "cost-sheet.xlsx";
   const raw = requireFile(body, "Upload the Excel cost sheet, check the preview, then confirm it");
   if (!isSpreadsheet(filename, "") && !isPdf(filename, "", null) && !/\.csv$/i.test(filename)) {
@@ -454,6 +452,7 @@ function completeQuote(row, actor, body) {
     throw new Error("The cost sheet must be approved before a quote PDF is issued");
   }
   applyPricedBody(row, body);
+  requirePricedProducts(row);
   const followPerson = requireAssignee(body.follow_up_assignee || body.assignee);
   const payload = {
     ...row,
