@@ -958,6 +958,8 @@ function outlookDesktopUrl(mail) {
   if (open && /^(outlook:|ms-outlook:)/i.test(open)) return open;
   const mid = String(item.internet_message_id || "").trim();
   if (mid) return "ms-outlook://search?querytext=" + encodeURIComponent(mid);
+  const title = String(item.title || item.subject || "").trim();
+  if (title) return "ms-outlook://search?querytext=" + encodeURIComponent(title);
   return open;
 }
 
@@ -999,13 +1001,70 @@ function normalizeOutlookMail(from, index) {
   return mail;
 }
 
+function extractOutlookFromBuffer(buf, filename) {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(buf || []);
+  if (!b.length) return null;
+  const latin = b.toString("latin1");
+  function asciiHeader(name) {
+    const m = latin.match(new RegExp(name + ":\\s*([^\\r\\n\\x00]+)", "i"));
+    return m ? String(m[1]).replace(/[\x00-\x08]/g, "").trim() : "";
+  }
+  function utf16Header(name) {
+    const needle = Buffer.from(name + ":", "utf16le");
+    const idx = b.indexOf(needle);
+    if (idx < 0) return "";
+    let out = "";
+    for (let i = idx + needle.length; i + 1 < b.length; i += 2) {
+      const c = b[i] | (b[i + 1] << 8);
+      if (!c || c === 10 || c === 13) break;
+      if (c >= 32) out += String.fromCharCode(c);
+      if (out.length > 180) break;
+    }
+    return out.trim();
+  }
+  const mid = (latin.match(/Message-ID:\s*(<[^>\s]+>)/i) || [])[1]
+    || (utf16Header("Message-ID").match(/<[^>\s]+>/) || [])[0]
+    || "";
+  const named = parseCorrespondenceName(filename);
+  const subject = (asciiHeader("Subject") || utf16Header("Subject")).slice(0, 180) || named.title;
+  const from = (asciiHeader("From") || utf16Header("From")).slice(0, 120);
+  if (!mid && !asciiHeader("Subject") && !utf16Header("Subject") && !named.order_no) return null;
+  return normalizeOutlookMail({
+    title: subject || "Outlook email",
+    from,
+    internet_message_id: mid,
+    filename
+  }, 0);
+}
+
+function extractOutlookFromDataUrl(dataUrl, filename) {
+  const s = String(dataUrl || "").trim();
+  if (!s) return null;
+  const m = s.match(/^data:[^;]*;base64,([\s\S]+)$/i);
+  const raw = m ? m[1] : (s.indexOf("base64,") >= 0 ? s.split("base64,").pop() : "");
+  if (!raw) return null;
+  try {
+    return extractOutlookFromBuffer(Buffer.from(raw, "base64"), filename);
+  } catch (e) {
+    return null;
+  }
+}
+
 function mailsFromPastedLinks(text) {
-  return parseOutlookLinks(text).map((url, i) => normalizeOutlookMail({
-    title: "Outlook email",
-    outlook_url: url,
-    web_url: /^https:/i.test(url) ? url : "",
-    rest_id: restIdFromWebUrl(url)
-  }, i)).filter(Boolean);
+  const raw = String(text || "");
+  const urls = parseOutlookLinks(raw);
+  if (urls.length) {
+    return urls.map((url, i) => normalizeOutlookMail({
+      title: "Outlook email",
+      outlook_url: url,
+      web_url: /^https:/i.test(url) ? url : "",
+      rest_id: restIdFromWebUrl(url)
+    }, i)).filter(Boolean);
+  }
+  const title = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
+  if (title.length < 3) return [];
+  const mail = normalizeOutlookMail({ title, subject: title }, 0);
+  return mail ? [mail] : [];
 }
 
 function normalizeCorrespondence(from) {
@@ -1467,6 +1526,8 @@ module.exports = {
   normalizeOutlookMail,
   mailsFromPastedLinks,
   mailDedupeKey,
+  extractOutlookFromBuffer,
+  extractOutlookFromDataUrl,
   outlookMimeFor,
   readEnquiryQuotePdf,
   saveEnquiryQuotePdf,

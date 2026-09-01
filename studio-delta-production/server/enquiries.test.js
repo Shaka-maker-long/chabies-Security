@@ -150,7 +150,11 @@ assert.strictEqual(db.parseCorrespondenceName("Re_ Order #S260023 - GERNOT CANTO
 assert.strictEqual(db.parseCorrespondenceName("Re: Order #S260025 - LAUGE SORENSEN").customer, "LAUGE SORENSEN");
 assert.strictEqual(db.sanitizeOutlookOpenUrl("javascript:alert(1)"), "");
 assert.strictEqual(db.sanitizeOutlookOpenUrl("file:///P:/ORDERS/mail.msg"), "");
-assert.ok(db.outlookDesktopUrl({ rest_id: "AAMkADrest" }).indexOf("ms-outlook://emails/message/open?restID=") === 0);
+assert.ok(db.outlookDesktopUrl({ title: "Checklist Manifesto" }).indexOf("ms-outlook://search") === 0);
+const extracted = db.extractOutlookFromBuffer(Buffer.from("Message-ID: <a@b.com>\r\nSubject: Re: Order #S260025 - LAUGE SORENSEN\r\nFrom: Office\r\n"), "mail.msg");
+assert.strictEqual(extracted.order_no, "S260025");
+assert.strictEqual(extracted.internet_message_id, "<a@b.com>");
+assert.ok(!db.extractOutlookFromDataUrl("data:application/octet-stream;base64,QQ==", "note.msg"));
 assert.deepStrictEqual(
   db.parseOutlookLinks("see https://outlook.office.com/owa/?ItemID=ABC123&exvsurl=1"),
   ["https://outlook.office.com/owa/?ItemID=ABC123&exvsurl=1"]
