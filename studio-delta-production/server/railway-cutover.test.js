@@ -18,11 +18,18 @@ const db = require("./db");
 store.initWorkbook();
 
 assert.strictEqual(store.googleMigrateEnabled(), false);
+assert.strictEqual(store.usersNeedGoogleCopy(), true);
 
 (async function main() {
   const book = await store.maybeImportGoogleOnce();
   assert.ok(book);
   assert.strictEqual(store.usersEmpty(), true);
+
+  const users = store.getBook().getSheetByName("Users");
+  users.getRange(2, 1, 1, 6).setValues([["Admin", "Admin", "admin", "", "Admin", "Yes"]]);
+  assert.strictEqual(store.usersNeedGoogleCopy(), true);
+  users.getRange(2, 1, 1, 6).setValues([["Siya", "Admin", "1234", "", "Admin", "Yes"]]);
+  assert.strictEqual(store.usersNeedGoogleCopy(), false);
 
   process.env.GOOGLE_SERVICE_ACCOUNT_JSON = "{\"type\":\"service_account\"}";
   process.env.SHEET_ID = "not-used";

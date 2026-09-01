@@ -26,6 +26,8 @@ Only if you still need the Google workbook on Railway:
 2. Open **Users** → **Copy old Google spreadsheet once** (Users, ORDERS, logs, and an Enquiries tab if it exists).
 3. **Remove `GOOGLE_MIGRATE`** so Google cannot overwrite Railway again.
 
+If Railway Users is empty on boot (for example after a deploy with no volume), the app copies Users from the old spreadsheet once so people can log in. That is not the live database. **Attach a volume at `/app/data`** or the next deploy will wipe logins again.
+
 Timezone: **Africa/Johannesburg**. The paid shift is **07:45–15:45** with a **30-minute break 12:00–12:30** (7.5 hours / 450 minutes). Minutes after that on a calendar day are overtime. Overnight jobs are split by calendar day on Activity and on Admin → Workers (e.g. 14:00 yesterday–10:00 today → yesterday 14:00–15:45 and today 07:45–10:00).
 
 ## Host on Railway

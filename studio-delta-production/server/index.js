@@ -2,17 +2,12 @@ process.env.TZ = process.env.TZ || "Africa/Johannesburg";
 
 const express = require("express");
 const path = require("path");
-const { initWorkbook, persistWorkbook, hasGoogleAuth, storageInfo, googleMigrateEnabled } = require("./workbook-store");
+const { initWorkbook, persistWorkbook, hasGoogleAuth, storageInfo, googleMigrateEnabled, maybeImportGoogleOnce } = require("./workbook-store");
 const { migrateJsonOrdersToWorkbook, normalizeOrdersSheet, persistenceInfo } = require("./db");
 
 initWorkbook();
 migrateJsonOrdersToWorkbook();
 normalizeOrdersSheet();
-try {
-  const staff = require("./staff");
-  staff.usersSheet();
-  staff.seedLocalAdminIfEmpty();
-} catch (e) {}
 
 const app = express();
 app.disable("x-powered-by");
@@ -36,9 +31,9 @@ function health(_req, res) {
     officeDbExists: !!persist.officeDbExists,
     enquiryCount: persist.enquiryCount != null ? persist.enquiryCount : null,
     workbookExists: !!persist.workbookExists,
-    sheetsLive: false,
     googleMigrateAvailable: googleMigrateEnabled(),
-    googleDriveOptional: hasGoogleAuth()
+    googleDriveOptional: hasGoogleAuth(),
+    sheetsLive: false
   });
 }
 
@@ -103,16 +98,37 @@ try {
 }
 
 const PORT = Number(process.env.PORT) || 8080;
-const server = app.listen(PORT, "0.0.0.0", () => {
-  console.log("Studio Delta production listening on " + PORT + " (" + process.env.TZ + ")");
+let server;
+
+async function boot() {
   try {
-    const info = persistenceInfo();
-    if (info.warning) console.error("[persist]", info.warning);
-    else console.log("[persist] dataDir", info.dataDir, "enquiries", info.enquiryCount, "workbook", info.workbookExists);
+    await Promise.race([
+      maybeImportGoogleOnce(),
+      new Promise((resolve) => setTimeout(resolve, 25000))
+    ]);
   } catch (e) {
-    console.error("[persist] could not read storage info", e && e.message ? e.message : e);
+    console.error("[boot] google copy failed", e && e.message ? e.message : e);
   }
-});
+  try {
+    const staff = require("./staff");
+    staff.usersSheet();
+    staff.seedLocalAdminIfEmpty();
+  } catch (e) {}
+  server = app.listen(PORT, "0.0.0.0", () => {
+    console.log("Studio Delta production listening on " + PORT + " (" + process.env.TZ + ")");
+    try {
+      const info = persistenceInfo();
+      if (info.warning) console.error("[persist]", info.warning);
+      else console.log("[persist] dataDir", info.dataDir, "enquiries", info.enquiryCount, "workbook", info.workbookExists);
+      try {
+        console.log("[boot] users", require("./staff").listUsers().length);
+      } catch (err) {}
+    } catch (e) {
+      console.error("[persist] could not read storage info", e && e.message ? e.message : e);
+    }
+  });
+}
+boot();
 
 let chain = Promise.resolve();
 function serialize(work) {
@@ -181,7 +197,8 @@ function shutdown() {
   try { persistWorkbook(); } catch (e) {}
   try { require("./db").persist(); } catch (e) {}
   try { require("./staff").persistSessions(); } catch (e) {}
-  server.close(() => process.exit(0));
+  if (server) server.close(() => process.exit(0));
+  else process.exit(0);
   setTimeout(() => process.exit(0), 5000).unref();
 }
 process.on("SIGTERM", shutdown);
