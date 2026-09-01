@@ -6,7 +6,7 @@
   <title>Studio Delta — Enquiries</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <style>
-    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; }
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
@@ -15,12 +15,14 @@
     input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:220px; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
     button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#fff; color:#b42318; border-color:#fda29b; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
     .wrap { overflow:auto; height:calc(100vh - 58px); }
     table { border-collapse:separate; border-spacing:0; min-width:3200px; background:#fff; font-size:12px; }
     th, td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
     th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
     th.has-filter::after { content:"▾"; float:right; color:#98a2b3; font-size:10px; padding-left:6px; }
-    .empty { padding:28px 16px; color:#667085; font-size:13px; }
+    .empty { padding:28px 16px; color:var(--muted); font-size:13px; }
     td input, td textarea, td select { width:100%; min-width:100%; border:0; font:inherit; background:transparent; padding:0; }
     td input[readonly] { color:#475467; background:#f8fafc; }
     td textarea { min-height:42px; white-space:pre-wrap; }
@@ -31,7 +33,27 @@
     td.freeze input, td.freeze select { text-overflow:ellipsis; }
     .freeze-end { box-shadow:4px 0 8px rgba(16,24,40,.12); }
     .wrap-text { white-space:normal; }
-    .msg { font-size:12px; color:#667085; }
+    .msg { font-size:12px; color:var(--muted); }
+    .cell-btn { width:100%; text-align:left; background:#fff; color:var(--ink); border:0; padding:2px 0; font:inherit; font-weight:500; }
+    .cell-btn span { color:var(--muted); font-weight:400; }
+    .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
+    .mask.open { display:flex; }
+    .sheet { width:min(920px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:24px auto; }
+    .sheet header { position:static; border-radius:12px 12px 0 0; }
+    .sheet .body { padding:16px; display:flex; flex-direction:column; gap:14px; }
+    .lines { width:100%; min-width:0; border-collapse:collapse; font-size:12px; }
+    .lines th, .lines td { border:1px solid var(--line); padding:6px; }
+    .lines select, .lines input { width:100%; border:1px solid var(--line); border-radius:4px; padding:6px; font:inherit; }
+    .row-actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .totals { display:flex; gap:18px; flex-wrap:wrap; font-size:13px; }
+    .totals b { font-family: Outfit, Inter, sans-serif; }
+    .hint { font-size:12px; color:var(--muted); margin:0; }
+    .pdf-box { display:grid; grid-template-columns: 1fr; gap:8px; }
+    .pdf-box iframe { width:100%; height:360px; border:1px solid var(--line); border-radius:8px; background:#f2f4f7; }
+    .err { color:#b42318; font-size:12px; min-height:16px; }
+    @media (max-width: 720px) {
+      .pdf-box iframe { height:240px; }
+    }
   </style>
 </head>
 <body>
@@ -47,7 +69,58 @@
   <div class="wrap">
     <table id="grid"></table>
   </div>
-  <script src="/office-auth.js?v=enquiries"></script>
+  <div class="mask" id="mask">
+    <div class="sheet" role="dialog" aria-modal="true">
+      <header>
+        <h1 id="modalTitle">Products</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeModal(false)">Cancel</button>
+          <button type="button" id="modalSave" onclick="confirmModal()">Save products</button>
+        </div>
+      </header>
+      <div class="body">
+        <p class="hint" id="modalHint"></p>
+        <div style="overflow:auto">
+          <table class="lines">
+            <thead>
+              <tr>
+                <th>CATERGORY</th>
+                <th>PRODUCT</th>
+                <th>VALUE (Excl VAT)</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="lineBody"></tbody>
+          </table>
+        </div>
+        <div class="row-actions">
+          <button class="ghost" type="button" onclick="addLine()">Add product</button>
+          <label class="quote-only">Delivery (Excl VAT)
+            <input id="delivery" inputmode="decimal" placeholder="0.00" style="margin-left:8px;width:120px;border:1px solid var(--line);border-radius:4px;padding:6px;font:inherit">
+          </label>
+        </div>
+        <div class="totals quote-only">
+          <div>Products <b id="totProducts">R 0.00</b></div>
+          <div>Delivery <b id="totDelivery">R 0.00</b></div>
+          <div>Total excl VAT <b id="totExcl">R 0.00</b></div>
+          <div>Incl VAT (15%) <b id="totIncl">R 0.00</b></div>
+        </div>
+        <div class="pdf-box quote-only">
+          <div class="row-actions">
+            <label>Quote PDF
+              <input id="pdfFile" type="file" accept="application/pdf,.pdf" style="margin-left:8px">
+            </label>
+            <button class="ghost" type="button" id="downloadPdf" onclick="downloadSavedPdf()" style="display:none">Download saved quote</button>
+          </div>
+          <p class="hint">Upload the quote, check the preview, then confirm it is the correct PDF. The quote date is saved when the PDF is stored.</p>
+          <iframe id="pdfPreview" title="Quote PDF preview"></iframe>
+          <label><input type="checkbox" id="pdfOk"> This is the correct quote PDF</label>
+        </div>
+        <div class="err" id="modalErr"></div>
+      </div>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=enquiries-quote"></script>
   <script>
     const HEADERS = [
       ["enquiry_no", "ENQUIRY NO", 108, true],
@@ -61,7 +134,7 @@
       ["client_number", "CLIENT NUMBER", 150, false],
       ["province", "PROVINCE", 150, false],
       ["category", "CATERGORY", 180, false],
-      ["product", "PRODUCT", 220, false],
+      ["product", "PRODUCT", 240, false],
       ["request", "REQUEST", 240, false],
       ["status", "STATUS", 220, false],
       ["date_quoted", "DATE QUOTED", 128, false],
@@ -69,18 +142,38 @@
       ["comment", "COMMENT", 260, false]
     ];
     const DROP_FIELDS = {
-      enquiry_source: 1, enquiry_type: 1, source: 1, province: 1,
-      category: 1, product: 1, status: 1
+      enquiry_source: 1, enquiry_type: 1, source: 1, province: 1, status: 1
     };
-    const READONLY_FIELDS = { enquiry_no: 1, month_enquired: 1 };
-    const DATE_FIELDS = { date_enquired: 1, date_quoted: 1 };
+    const READONLY_FIELDS = { enquiry_no: 1, month_enquired: 1, date_quoted: 1 };
+    const DATE_FIELDS = { date_enquired: 1 };
     const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const freezeLeft = {};
     const colWidths = HEADERS.map((h) => h[2]);
     let rows = [];
     let dropdowns = {};
     let nextNo = "#1996";
-
+    let vatRate = 0.15;
+    let modal = { open: false, i: -1, mode: "products", prevStatus: "", lines: [], pdfUrl: "", pdfBase64: "", pdfName: "", confirmed: false };
+    function emptyLine() { return { product: "", category: "", value_excl_vat: "" }; }
+    function ensureLines(row) {
+      if (!Array.isArray(row.products) || !row.products.length) {
+        row.products = [emptyLine()];
+        if (row.product) row.products[0].product = row.product.split(",")[0].trim();
+        if (row.category) row.products[0].category = row.category;
+      }
+      return row.products;
+    }
+    function namedLines(lines) { return (lines || []).filter((l) => String(l.product || "").trim()); }
+    function productLabel(row) {
+      const names = namedLines(ensureLines(row)).map((l) => l.product);
+      if (!names.length) return "Add product";
+      if (names.length === 1) return names[0];
+      return names[0] + " +" + (names.length - 1);
+    }
+    function categoryLabel(row) {
+      const cats = namedLines(ensureLines(row)).map((l) => l.category).filter(Boolean);
+      return cats[0] || "";
+    }
     function layoutFreeze() {
       const wrap = document.querySelector(".wrap");
       const avail = wrap && wrap.clientWidth ? wrap.clientWidth : window.innerWidth;
@@ -124,8 +217,7 @@
     function monthFromDmy(s) {
       const iso = dmyToIso(s);
       if (!iso) return "";
-      const parts = iso.split("-");
-      const mi = Number(parts[1]) - 1;
+      const mi = Number(iso.split("-")[1]) - 1;
       return MONTHS[mi] || "";
     }
     function bumpNext() {
@@ -146,6 +238,17 @@
     }
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
     function escAttr(s) { return esc(s).replace(/"/g, "&quot;"); }
+    function money(n) { return (Math.round(Number(n || 0) * 100) / 100).toFixed(2); }
+    function parseMoney(s) {
+      const n = Number(String(s || "").replace(/,/g, "").replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(n) ? n : 0;
+    }
+    function formatRand(n) {
+      const v = parseMoney(n);
+      const neg = v < 0 ? "-" : "";
+      const [whole, frac] = money(Math.abs(v)).split(".");
+      return neg + "R " + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + frac;
+    }
     function selectHtml(k, value) {
       const current = String(value || "");
       const opts = (dropdowns[k] || []).slice();
@@ -157,32 +260,52 @@
       });
       return h + "</select>";
     }
+    function lineSelect(kind, value, idx) {
+      const current = String(value || "");
+      const opts = (dropdowns[kind] || []).slice();
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      let h = "<select data-line=\"" + idx + "\" data-f=\"" + kind + "\">";
+      h += "<option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      return h + "</select>";
+    }
+    function searchBlob(row) {
+      return HEADERS.map(([k]) => row[k] || "").join(" ") + " " + namedLines(row.products).map((l) => l.product + " " + l.category).join(" ");
+    }
     function render() {
       layoutFreeze();
       const q = document.getElementById("q").value.toLowerCase();
       const table = document.getElementById("grid");
       let html = "<thead><tr>";
       HEADERS.forEach(([k, label, , freeze], i) => {
-        const filter = DROP_FIELDS[k] ? " has-filter" : "";
+        const filter = DROP_FIELDS[k] || k === "product" || k === "category" ? " has-filter" : "";
         html += "<th class=\"" + colClass(k, freeze) + filter + "\" style=\"" + colStyle(k, colWidths[i], freeze) + "\">" + label + "</th>";
       });
       html += "</tr></thead><tbody>";
       let shown = 0;
       rows.forEach((row, i) => {
-        const blob = HEADERS.map(([k]) => row[k] || "").join(" ").toLowerCase();
-        if (q && blob.indexOf(q) === -1) return;
+        if (q && searchBlob(row).toLowerCase().indexOf(q) === -1) return;
         shown += 1;
         html += "<tr data-i=\"" + i + "\">";
         HEADERS.forEach(([k, , , freeze], c) => {
           const width = colWidths[c];
           const cls = colClass(k, freeze);
           const style = colStyle(k, width, freeze);
-          if (k === "request" || k === "comment") {
+          if (k === "product") {
+            const extra = namedLines(ensureLines(row)).length > 1 ? " <span>" + namedLines(row.products).length + " products</span>" : "";
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-products=\"" + i + "\">" + esc(productLabel(row)) + extra + "</button></td>";
+          } else if (k === "category") {
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-products=\"" + i + "\">" + esc(categoryLabel(row) || "Add product") + "</button></td>";
+          } else if (k === "request" || k === "comment") {
             html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
           } else if (DROP_FIELDS[k]) {
             html += "<td class=\"" + cls + "\" style=\"" + style + "\">" + selectHtml(k, row[k]) + "</td>";
           } else if (DATE_FIELDS[k]) {
             html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input type=\"date\" data-k=\"" + k + "\" value=\"" + escAttr(dmyToIso(row[k])) + "\"></td>";
+          } else if (k === "date_quoted") {
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k] || "") + "\" readonly>" + (row.has_quote_pdf ? " PDF" : "") + "</td>";
           } else if (READONLY_FIELDS[k]) {
             html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\" readonly></td>";
           } else {
@@ -199,11 +322,18 @@
       }
       html += "</tbody>";
       table.innerHTML = html;
+      table.onclick = (e) => {
+        const btn = e.target.closest("[data-open-products]");
+        if (!btn) return;
+        const i = Number(btn.getAttribute("data-open-products"));
+        openModal(i, rows[i].status === "Quoted" ? "quote" : "products");
+      };
       table.oninput = table.onchange = (e) => {
         const tr = e.target.closest("tr");
         if (!tr) return;
         const i = Number(tr.getAttribute("data-i"));
         const k = e.target.getAttribute("data-k");
+        if (!k) return;
         if (DATE_FIELDS[k]) {
           const iso = e.target.value;
           rows[i][k] = iso ? isoToDmy(iso) : "";
@@ -214,8 +344,187 @@
           }
           return;
         }
+        if (k === "status") {
+          const prev = rows[i].status;
+          const next = e.target.value;
+          if (next === "Quoted" && prev !== "Quoted") {
+            e.target.value = prev || "New";
+            openModal(i, "quote", prev || "New");
+            return;
+          }
+          rows[i].status = next;
+          return;
+        }
         rows[i][k] = e.target.value;
       };
+    }
+    function setQuoteVisible(on) {
+      document.querySelectorAll(".quote-only").forEach((el) => { el.style.display = on ? "" : "none"; });
+    }
+    function renderLines() {
+      const body = document.getElementById("lineBody");
+      body.innerHTML = modal.lines.map((line, idx) => {
+        return "<tr>" +
+          "<td>" + lineSelect("category", line.category, idx) + "</td>" +
+          "<td>" + lineSelect("product", line.product, idx) + "</td>" +
+          "<td><input data-line=\"" + idx + "\" data-f=\"value_excl_vat\" value=\"" + escAttr(line.value_excl_vat) + "\" inputmode=\"decimal\" placeholder=\"0.00\"></td>" +
+          "<td><button type=\"button\" class=\"danger\" data-del=\"" + idx + "\">Delete</button></td>" +
+          "</tr>";
+      }).join("");
+      body.onchange = body.oninput = (e) => {
+        const el = e.target;
+        const idx = Number(el.getAttribute("data-line"));
+        const f = el.getAttribute("data-f");
+        if (!f || !modal.lines[idx]) return;
+        modal.lines[idx][f] = el.value;
+        if (f === "value_excl_vat") updateTotals();
+      };
+      body.onclick = (e) => {
+        const btn = e.target.closest("[data-del]");
+        if (!btn) return;
+        const idx = Number(btn.getAttribute("data-del"));
+        if (modal.lines.length === 1) modal.lines[0] = emptyLine();
+        else modal.lines.splice(idx, 1);
+        renderLines();
+        updateTotals();
+      };
+      updateTotals();
+    }
+    function addLine() {
+      modal.lines.push(emptyLine());
+      renderLines();
+    }
+    function updateTotals() {
+      const products = namedLines(modal.lines).reduce((s, l) => s + parseMoney(l.value_excl_vat), 0);
+      const delivery = parseMoney(document.getElementById("delivery").value);
+      document.getElementById("totProducts").textContent = formatRand(products);
+      document.getElementById("totDelivery").textContent = formatRand(delivery);
+      document.getElementById("totExcl").textContent = formatRand(products + delivery);
+      document.getElementById("totIncl").textContent = formatRand((products + delivery) * (1 + vatRate));
+    }
+    function revokePdf() {
+      if (modal.pdfUrl && modal.pdfUrl.indexOf("blob:") === 0) URL.revokeObjectURL(modal.pdfUrl);
+      modal.pdfUrl = "";
+    }
+    async function showSavedPdf(enquiryNo) {
+      const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(enquiryNo) + "/quote.pdf");
+      if (!r.ok) return;
+      const blob = await r.blob();
+      revokePdf();
+      modal.pdfUrl = URL.createObjectURL(blob);
+      document.getElementById("pdfPreview").src = modal.pdfUrl;
+    }
+    async function openModal(i, mode, prevStatus) {
+      const row = rows[i];
+      modal.open = true;
+      modal.i = i;
+      modal.mode = mode;
+      modal.prevStatus = prevStatus != null ? prevStatus : row.status;
+      modal.lines = ensureLines(row).map((l) => Object.assign({}, emptyLine(), l));
+      if (!modal.lines.length) modal.lines = [emptyLine()];
+      modal.pdfBase64 = "";
+      modal.pdfName = row.quote_pdf_name || "";
+      modal.confirmed = false;
+      document.getElementById("pdfOk").checked = false;
+      document.getElementById("pdfFile").value = "";
+      document.getElementById("delivery").value = row.delivery_excl_vat || "";
+      document.getElementById("modalErr").textContent = "";
+      document.getElementById("modalTitle").textContent = mode === "quote" ? "Quote " + row.enquiry_no : "Products " + row.enquiry_no;
+      document.getElementById("modalHint").textContent = mode === "quote"
+        ? "Add every product on this enquiry, enter values excluding VAT, add delivery, then upload the quote PDF and confirm the preview."
+        : "An enquiry can have one product or several. Add or delete lines, then save.";
+      document.getElementById("modalSave").textContent = mode === "quote" ? "Save quote" : "Save products";
+      document.getElementById("downloadPdf").style.display = row.has_quote_pdf ? "" : "none";
+      setQuoteVisible(mode === "quote");
+      renderLines();
+      document.getElementById("mask").classList.add("open");
+      revokePdf();
+      document.getElementById("pdfPreview").src = "about:blank";
+      if (mode === "quote" && row.has_quote_pdf) await showSavedPdf(row.enquiry_no);
+    }
+    function closeModal(saved) {
+      document.getElementById("mask").classList.remove("open");
+      revokePdf();
+      document.getElementById("pdfPreview").src = "about:blank";
+      if (!saved && modal.mode === "quote" && rows[modal.i] && rows[modal.i].status !== "Quoted") {
+        render();
+      }
+      modal.open = false;
+    }
+    document.getElementById("delivery").oninput = updateTotals;
+    document.getElementById("pdfOk").onchange = (e) => { modal.confirmed = !!e.target.checked; };
+    document.getElementById("pdfFile").onchange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      modal.confirmed = false;
+      document.getElementById("pdfOk").checked = false;
+      if (!file) return;
+      if (file.type && file.type !== "application/pdf" && !/\.pdf$/i.test(file.name)) {
+        document.getElementById("modalErr").textContent = "Upload a PDF file.";
+        return;
+      }
+      modal.pdfName = file.name;
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      modal.pdfBase64 = dataUrl;
+      revokePdf();
+      modal.pdfUrl = URL.createObjectURL(file);
+      document.getElementById("pdfPreview").src = modal.pdfUrl;
+      document.getElementById("modalErr").textContent = "";
+    };
+    async function downloadSavedPdf() {
+      const row = rows[modal.i];
+      const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(row.enquiry_no) + "/quote.pdf?download=1");
+      if (!r.ok) { document.getElementById("modalErr").textContent = "No saved PDF yet."; return; }
+      const blob = await r.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = row.quote_pdf_name || (row.enquiry_no + "-quote.pdf");
+      a.click();
+    }
+    async function confirmModal() {
+      const row = rows[modal.i];
+      const err = document.getElementById("modalErr");
+      err.textContent = "";
+      const lines = modal.lines.map((l) => ({
+        product: String(l.product || "").trim(),
+        category: String(l.category || "").trim(),
+        value_excl_vat: String(l.value_excl_vat || "").trim()
+      })).filter((l) => l.product || l.category || l.value_excl_vat);
+      if (!lines.length) lines.push(emptyLine());
+      if (modal.mode === "quote") {
+        if (!namedLines(lines).length) { err.textContent = "Add at least one product."; return; }
+        const missingVal = namedLines(lines).some((l) => l.value_excl_vat === "");
+        if (missingVal) { err.textContent = "Enter a value excluding VAT for each product."; return; }
+        if (String(document.getElementById("delivery").value || "").trim() === "") {
+          err.textContent = "Enter delivery excluding VAT (use 0 if there is no delivery charge).";
+          return;
+        }
+        if (!modal.pdfBase64 && !row.has_quote_pdf) { err.textContent = "Upload the quote PDF and check the preview."; return; }
+        if (modal.pdfBase64 && !modal.confirmed) { err.textContent = "Tick that this is the correct quote PDF before saving."; return; }
+      }
+      row.products = lines;
+      row.product = namedLines(lines).map((l) => l.product).join(", ");
+      row.category = namedLines(lines).map((l) => l.category).filter(Boolean)[0] || "";
+      row.delivery_excl_vat = document.getElementById("delivery").value;
+      const body = Object.assign({}, row);
+      if (modal.mode === "quote") {
+        body.status = "Quoted";
+        if (modal.pdfBase64) {
+          body.quote_pdf_base64 = modal.pdfBase64;
+          body.quote_pdf_name = modal.pdfName || "quote.pdf";
+          body.quote_pdf_confirmed = true;
+        }
+      }
+      const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(body) });
+      const j = await r.json();
+      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      closeModal(true);
+      await load();
+      document.getElementById("status").textContent = "Saved";
     }
     function addRow() {
       bumpNext();
@@ -225,6 +534,8 @@
       blank.date_enquired = todayDmy();
       blank.month_enquired = monthFromDmy(blank.date_enquired);
       blank.status = "New";
+      blank.products = [emptyLine()];
+      blank.delivery_excl_vat = "";
       rows.unshift(blank);
       bumpNext();
       render();
@@ -233,10 +544,12 @@
       const r = await sdOfficeFetch("/api/office/enquiries");
       const j = await r.json();
       if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      vatRate = Number(j.vatRate) || 0.15;
       rows = (j.rows || []).map((row) => {
         const copy = Object.assign({}, row);
         if (copy.date_enquired) copy.date_enquired = isoToDmy(copy.date_enquired);
         if (copy.date_quoted) copy.date_quoted = isoToDmy(copy.date_quoted);
+        copy.products = Array.isArray(copy.products) && copy.products.length ? copy.products : [emptyLine()];
         return copy;
       });
       dropdowns = j.dropdowns || {};
@@ -248,9 +561,16 @@
       document.getElementById("status").textContent = "Saving…";
       for (const row of rows) {
         if (!String(row.enquiry_no || "").trim()) continue;
+        if (row.status === "Quoted" && !row.has_quote_pdf) {
+          document.getElementById("status").textContent = row.enquiry_no + " needs a confirmed quote PDF";
+          openModal(rows.indexOf(row), "quote", "New");
+          return;
+        }
+        const payload = Object.assign({}, row);
+        delete payload.quote_pdf_base64;
         const r = await sdOfficeFetch("/api/office/enquiries", {
           method: "PUT",
-          body: JSON.stringify(row)
+          body: JSON.stringify(payload)
         });
         const j = await r.json();
         if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
@@ -259,6 +579,9 @@
       document.getElementById("status").textContent = "Saved";
     }
     document.getElementById("q").oninput = render;
+    document.getElementById("mask").addEventListener("click", (e) => {
+      if (e.target.id === "mask") closeModal(false);
+    });
     window.addEventListener("resize", () => { render(); });
     sdRequireOffice("enquiries").then((p) => { if (p) load(); });
   </script>
