@@ -289,10 +289,6 @@
     const name = /\.(msg|eml)$/i.test(filename || "") ? filename : (filename || "email") + ".msg";
     const type = /\.eml$/i.test(name) ? "message/rfc822" : "application/vnd.ms-outlook";
     const file = new File([blob], name, { type });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: name });
-      return;
-    }
     const url = URL.createObjectURL(file);
     const a = document.createElement("a");
     a.href = url;
@@ -341,13 +337,12 @@
     const mails = c.mails || [];
     if (!mails.length) return "";
     let html = "<div class=\"sd-correspondence\"><h2>CORRESPONDANCE</h2>" +
-      "<p class=\"sd-process-sub\">Open in Outlook starts Outlook on this PC. If Windows asks, choose Open.</p>" +
+      "<p class=\"sd-process-sub\">Open in Outlook should start the Outlook you already use (Home, ESET). Close the “new Outlook” welcome screen if it appears — that is the wrong app. If Windows asks, choose Open with Outlook, not Outlook (new).</p>" +
       "<table class=\"sd-mail\"><thead><tr><th>Email</th><th>From</th><th>Order</th><th></th></tr></thead><tbody>";
     html += mails.map((f) => {
-      const href = outlookHref(f);
       const open = f.kind
         ? "<button type=\"button\" class=\"ghost\" data-open-mail=\"" + esc(f.kind) + "\" data-mail-name=\"" + esc(f.filename || f.title || "email.msg") + "\">Open in Outlook</button>"
-        : (href ? "<a class=\"sd-open-mail\" href=\"" + esc(href) + "\">Open in Outlook</a>" : "");
+        : "";
       return "<tr>" +
         "<td>" + esc(f.title || "Outlook email") + "</td>" +
         "<td>" + esc(f.from || f.from_email || "") + "</td>" +
@@ -556,15 +551,6 @@
           await openSavedOutlookMail(btn.getAttribute("data-open-mail"), btn.getAttribute("data-mail-name"));
         } catch (err) {
           btn.textContent = "Could not open";
-        }
-      };
-    });
-    body.querySelectorAll("a.sd-open-mail").forEach((a) => {
-      a.onclick = (e) => {
-        const href = a.getAttribute("href") || "";
-        if (/^(outlook:|ms-outlook:)/i.test(href)) {
-          e.preventDefault();
-          window.location.href = href;
         }
       };
     });
