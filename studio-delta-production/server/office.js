@@ -21,7 +21,8 @@ const {
   deleteEnquiry,
   nextEnquiryNo,
   listEnquiryDropdowns,
-  ENQUIRY_FIELDS
+  ENQUIRY_FIELDS,
+  readEnquiryQuotePdf
 } = require("./db");
 const { importGoogleWorkbook, tabCounts } = require("./workbook-store");
 const staff = require("./staff");
@@ -141,7 +142,8 @@ function mountOffice(app) {
       rows: listEnquiries(),
       fields: ENQUIRY_FIELDS,
       nextEnquiryNo: nextEnquiryNo(),
-      dropdowns: listEnquiryDropdowns()
+      dropdowns: listEnquiryDropdowns(),
+      vatRate: VAT_RATE
     });
   });
 
@@ -157,6 +159,18 @@ function mountOffice(app) {
   app.delete("/api/office/enquiries/:enquiryNo", requireOffice, (req, res) => {
     deleteEnquiry(req.params.enquiryNo);
     res.json({ ok: true, nextEnquiryNo: nextEnquiryNo() });
+  });
+
+  app.get("/api/office/enquiries/:enquiryNo/quote.pdf", requireOffice, (req, res) => {
+    const file = readEnquiryQuotePdf(req.params.enquiryNo);
+    if (!file) {
+      res.status(404).json({ ok: false, error: "No quote PDF saved for this enquiry" });
+      return;
+    }
+    const download = String(req.query.download || "") === "1";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", (download ? "attachment" : "inline") + "; filename=\"" + (file.filename || "quote.pdf") + "\"");
+    res.send(file.buffer);
   });
 
   app.get("/api/office/schedule", requireOffice, (req, res) => {

@@ -564,8 +564,123 @@ function listEnquiryDropdowns() {
   return out;
 }
 
+function enquiryQuoteKey(enquiryNo) {
+  const n = enquiryNumberValue(enquiryNo);
+  if (!n) throw new Error("Missing enquiry number");
+  return String(n);
+}
+
+function enquiryQuotePdfPath(enquiryNo) {
+  const dir = path.join(path.dirname(dbPath), "enquiry-quotes");
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, enquiryQuoteKey(enquiryNo) + ".pdf");
+}
+
+function enquiryHasQuotePdf(enquiryNo) {
+  try {
+    return fs.existsSync(enquiryQuotePdfPath(enquiryNo));
+  } catch (e) {
+    return false;
+  }
+}
+
+function decodeEnquiryPdf(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  const b64 = s.replace(/^data:application\/pdf;base64,/i, "");
+  const buf = Buffer.from(b64, "base64");
+  if (buf.length < 5 || buf.slice(0, 5).toString("utf8") !== "%PDF-") {
+    throw new Error("Quote file must be a PDF");
+  }
+  return buf;
+}
+
+function saveEnquiryQuotePdf(enquiryNo, raw, filename) {
+  const buf = Buffer.isBuffer(raw) ? raw : decodeEnquiryPdf(raw);
+  if (!buf) throw new Error("Quote PDF is missing");
+  if (buf.length < 5 || buf.slice(0, 5).toString("utf8") !== "%PDF-") {
+    throw new Error("Quote file must be a PDF");
+  }
+  fs.writeFileSync(enquiryQuotePdfPath(enquiryNo), buf);
+  return {
+    quote_pdf_name: String(filename || "quote.pdf").replace(/[^\w.\- ()]/g, "").slice(0, 120) || "quote.pdf",
+    quote_pdf_uploaded_at: nowIso()
+  };
+}
+
+function readEnquiryQuotePdf(enquiryNo) {
+  const file = enquiryQuotePdfPath(enquiryNo);
+  if (!fs.existsSync(file)) return null;
+  const n = enquiryNumberValue(enquiryNo);
+  const row = (state.enquiries || []).find((r) => enquiryNumberValue(r.enquiry_no) === n) || {};
+  return {
+    buffer: fs.readFileSync(file),
+    filename: row.quote_pdf_name || (enquiryQuoteKey(enquiryNo) + ".pdf")
+  };
+}
+
+function removeEnquiryQuotePdf(enquiryNo) {
+  try {
+    const file = enquiryQuotePdfPath(enquiryNo);
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  } catch (e) {}
+}
+
+function todayEnquiryDate() {
+  const p = sastParts(new Date());
+  return String(p.day).padStart(2, "0") + "/" + String(p.m + 1).padStart(2, "0") + "/" + p.y;
+}
+
+function emptyEnquiryLine() {
+  return { product: "", category: "", value_excl_vat: "" };
+}
+
+function normalizeEnquiryLines(row, existing) {
+  let lines = Array.isArray(row && row.products) ? row.products : null;
+  if (!lines && existing && Array.isArray(existing.products)) lines = existing.products;
+  if (!lines) {
+    const product = String((row && row.product) || (existing && existing.product) || "").trim();
+    const category = String((row && row.category) || (existing && existing.category) || "").trim();
+    const value = (row && row.value_excl_vat) || "";
+    lines = product || category ? [{ product, category, value_excl_vat: value }] : [emptyEnquiryLine()];
+  }
+  const cleaned = [];
+  for (const line of lines) {
+    const product = String((line && line.product) || "").trim();
+    const category = String((line && line.category) || "").trim();
+    const rawVal = line && line.value_excl_vat != null ? String(line.value_excl_vat).trim() : "";
+    const value = rawVal === "" ? "" : money(parseMoney(rawVal));
+    if (!product && !category && !value) continue;
+    cleaned.push({ product, category, value_excl_vat: value });
+  }
+  if (!cleaned.length) cleaned.push(emptyEnquiryLine());
+  return cleaned;
+}
+
+function decorateEnquiry(row) {
+  const products = normalizeEnquiryLines(row, null);
+  const named = products.filter((p) => p.product);
+  const productsTotal = named.reduce((sum, p) => sum + parseMoney(p.value_excl_vat), 0);
+  const delivery = parseMoney(row.delivery_excl_vat);
+  const hasPdf = enquiryHasQuotePdf(row.enquiry_no);
+  return {
+    ...row,
+    products,
+    product: named.map((p) => p.product).join(", "),
+    category: named.map((p) => p.category).filter(Boolean)[0] || row.category || "",
+    delivery_excl_vat: row.delivery_excl_vat === "" || row.delivery_excl_vat == null ? "" : money(delivery),
+    products_total_excl_vat: money(productsTotal),
+    quote_total_excl_vat: money(productsTotal + delivery),
+    has_quote_pdf: hasPdf,
+    quote_pdf_name: hasPdf ? (row.quote_pdf_name || "quote.pdf") : ""
+  };
+}
+
 function listEnquiries() {
-  return (state.enquiries || []).slice().sort((a, b) => enquiryNumberValue(b.enquiry_no) - enquiryNumberValue(a.enquiry_no));
+  return (state.enquiries || [])
+    .slice()
+    .sort((a, b) => enquiryNumberValue(b.enquiry_no) - enquiryNumberValue(a.enquiry_no))
+    .map(decorateEnquiry);
 }
 
 function upsertEnquiry(row) {
@@ -577,22 +692,48 @@ function upsertEnquiry(row) {
     payload.enquiry_no = n ? formatEnquiryNo(n) : nextEnquiryNo();
   }
   payload.month_enquired = monthFromEnquiryDate(payload.date_enquired);
+  const existing = (state.enquiries || []).find((o) => o.enquiry_no === payload.enquiry_no);
+  payload.products = normalizeEnquiryLines(row, existing);
+  payload.product = payload.products.filter((p) => p.product).map((p) => p.product).join(", ");
+  payload.category = payload.products.map((p) => p.category).filter(Boolean)[0] || payload.category;
+  const deliveryRaw = row.delivery_excl_vat != null ? String(row.delivery_excl_vat).trim() : (existing && existing.delivery_excl_vat) || "";
+  payload.delivery_excl_vat = deliveryRaw === "" ? "" : money(parseMoney(deliveryRaw));
+  payload.quote_pdf_name = String((row.quote_pdf_name != null ? row.quote_pdf_name : (existing && existing.quote_pdf_name)) || "").trim();
+  payload.quote_pdf_uploaded_at = (row.quote_pdf_uploaded_at != null ? row.quote_pdf_uploaded_at : (existing && existing.quote_pdf_uploaded_at)) || "";
+
+  if (row.quote_pdf_base64) {
+    if (!row.quote_pdf_confirmed) throw new Error("Preview the quote PDF and confirm it is the correct file before saving");
+    const savedPdf = saveEnquiryQuotePdf(payload.enquiry_no, row.quote_pdf_base64, row.quote_pdf_name || "quote.pdf");
+    payload.quote_pdf_name = savedPdf.quote_pdf_name;
+    payload.quote_pdf_uploaded_at = savedPdf.quote_pdf_uploaded_at;
+    payload.date_quoted = todayEnquiryDate();
+  }
+
+  if (payload.status === "Quoted") {
+    const named = payload.products.filter((p) => p.product);
+    if (!named.length) throw new Error("Add at least one product before marking Quoted");
+    if (!enquiryHasQuotePdf(payload.enquiry_no) && !row.quote_pdf_base64) {
+      throw new Error("Upload and confirm the quote PDF before marking Quoted");
+    }
+    if (!payload.date_quoted) payload.date_quoted = todayEnquiryDate();
+  }
+
   payload.updated_at = nowIso();
   if (!state.enquiries) state.enquiries = [];
-  const existing = state.enquiries.find((o) => o.enquiry_no === payload.enquiry_no);
   if (existing) {
     Object.assign(existing, payload);
     save();
-    return existing;
+    return decorateEnquiry(existing);
   }
   payload.id = (state.enquiries.reduce((m, o) => Math.max(m, Number(o.id) || 0), 0) || 0) + 1;
   state.enquiries.push(payload);
   save();
-  return payload;
+  return decorateEnquiry(payload);
 }
 
 function deleteEnquiry(enquiryNo) {
   const want = String(enquiryNo || "").trim();
+  try { removeEnquiryQuotePdf(want); } catch (e) {}
   state.enquiries = (state.enquiries || []).filter((o) => o.enquiry_no !== want);
   save();
 }
@@ -656,5 +797,10 @@ module.exports = {
   deleteEnquiry,
   nextEnquiryNo,
   monthFromEnquiryDate,
-  listEnquiryDropdowns
+  listEnquiryDropdowns,
+  readEnquiryQuotePdf,
+  saveEnquiryQuotePdf,
+  enquiryHasQuotePdf,
+  normalizeEnquiryLines,
+  todayEnquiryDate
 };
