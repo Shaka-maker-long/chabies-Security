@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta — Enquiries</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; }
+    input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:220px; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    button.ghost { background:#fff; color:#1d2939; }
+    .wrap { overflow:auto; height:calc(100vh - 58px); }
+    table { border-collapse:separate; border-spacing:0; min-width:3200px; background:#fff; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
+    th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
+    th.has-filter::after { content:"▾"; float:right; color:#98a2b3; font-size:10px; padding-left:6px; }
+    .empty { padding:28px 16px; color:#667085; font-size:13px; }
+    td input, td textarea, td select { width:100%; min-width:100%; border:0; font:inherit; background:transparent; padding:0; }
+    td input[readonly] { color:#475467; background:#f8fafc; }
+    td textarea { min-height:42px; white-space:pre-wrap; }
+    tr:focus-within { outline:2px solid #98a2b3; outline-offset:-2px; }
+    .freeze { position:sticky; z-index:3; box-shadow:1px 0 0 var(--line); }
+    th.freeze { z-index:6; background:var(--head); }
+    td.freeze { background:#fff; }
+    td.freeze input, td.freeze select { text-overflow:ellipsis; }
+    .freeze-end { box-shadow:4px 0 8px rgba(16,24,40,.12); }
+    .wrap-text { white-space:normal; }
+    .msg { font-size:12px; color:#667085; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Enquiries</h1>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <input type="search" id="q" placeholder="Search enquiries">
+      <button class="ghost" onclick="addRow()">New enquiry</button>
+      <button onclick="saveAll()">Save</button>
+    </div>
+  </header>
+  <div class="wrap">
+    <table id="grid"></table>
+  </div>
+  <script src="/office-auth.js?v=enquiries"></script>
+  <script>
+    const HEADERS = [
+      ["enquiry_no", "ENQUIRY NO", 108, true],
+      ["date_enquired", "DATE ENQUIRED", 128, true],
+      ["month_enquired", "MONTH ENQUIRED", 128, true],
+      ["enquiry_source", "ENQUIRY SOURCE", 140, true],
+      ["enquiry_type", "ENQUIRY TYPE", 160, true],
+      ["client_name", "CLIENT NAME", 170, true],
+      ["source", "SOURCE", 150, false],
+      ["client_email", "CLIENT EMAIL", 210, false],
+      ["client_number", "CLIENT NUMBER", 150, false],
+      ["province", "PROVINCE", 150, false],
+      ["category", "CATERGORY", 180, false],
+      ["product", "PRODUCT", 220, false],
+      ["request", "REQUEST", 240, false],
+      ["status", "STATUS", 220, false],
+      ["date_quoted", "DATE QUOTED", 128, false],
+      ["quote_no", "QUOTE NO.", 120, false],
+      ["comment", "COMMENT", 260, false]
+    ];
+    const DROP_FIELDS = {
+      enquiry_source: 1, enquiry_type: 1, source: 1, province: 1,
+      category: 1, product: 1, status: 1
+    };
+    const READONLY_FIELDS = { enquiry_no: 1, month_enquired: 1 };
+    const DATE_FIELDS = { date_enquired: 1, date_quoted: 1 };
+    const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    const freezeLeft = {};
+    const colWidths = HEADERS.map((h) => h[2]);
+    let rows = [];
+    let dropdowns = {};
+    let nextNo = "#1996";
+
+    function layoutFreeze() {
+      const wrap = document.querySelector(".wrap");
+      const avail = wrap && wrap.clientWidth ? wrap.clientWidth : window.innerWidth;
+      const maxFreeze = Math.max(420, Math.floor(avail * 0.55));
+      HEADERS.forEach((h, i) => { colWidths[i] = h[2]; });
+      let total = 0;
+      HEADERS.forEach((h, i) => { if (h[3]) total += colWidths[i]; });
+      if (total > maxFreeze) {
+        const scale = maxFreeze / total;
+        HEADERS.forEach((h, i) => {
+          if (h[3]) colWidths[i] = Math.max(72, Math.floor(h[2] * scale));
+        });
+      }
+      let left = 0;
+      HEADERS.forEach((h, i) => {
+        if (h[3]) {
+          freezeLeft[h[0]] = left;
+          left += colWidths[i];
+        }
+      });
+    }
+    function todayDmy() {
+      const d = new Date();
+      const dd = String(d.getDate()).padStart(2, "0");
+      const mm = String(d.getMonth() + 1).padStart(2, "0");
+      return dd + "/" + mm + "/" + d.getFullYear();
+    }
+    function dmyToIso(s) {
+      const m = String(s || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+      if (/^\d{4}-\d{2}-\d{2}/.test(String(s || ""))) return String(s).slice(0, 10);
+      return "";
+    }
+    function isoToDmy(s) {
+      const raw = String(s || "").trim();
+      if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(raw)) return raw;
+      const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return m[3] + "/" + m[2] + "/" + m[1];
+      return raw;
+    }
+    function monthFromDmy(s) {
+      const iso = dmyToIso(s);
+      if (!iso) return "";
+      const parts = iso.split("-");
+      const mi = Number(parts[1]) - 1;
+      return MONTHS[mi] || "";
+    }
+    function bumpNext() {
+      const nums = rows.map((r) => Number(String(r.enquiry_no || "").replace(/\D/g, ""))).filter((n) => n);
+      const max = nums.length ? Math.max.apply(null, nums) : 1995;
+      nextNo = "#" + (max + 1);
+    }
+    function colStyle(k, width, freeze) {
+      let s = "width:" + width + "px;min-width:" + width + "px;max-width:" + width + "px;";
+      if (freeze) s += "left:" + freezeLeft[k] + "px;";
+      return s;
+    }
+    function colClass(k, freeze) {
+      const parts = [];
+      if (freeze) parts.push("freeze");
+      if (k === "client_name") parts.push("freeze-end");
+      return parts.join(" ");
+    }
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+    function escAttr(s) { return esc(s).replace(/"/g, "&quot;"); }
+    function selectHtml(k, value) {
+      const current = String(value || "");
+      const opts = (dropdowns[k] || []).slice();
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      let h = "<select data-k=\"" + k + "\">";
+      h += "<option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      return h + "</select>";
+    }
+    function render() {
+      layoutFreeze();
+      const q = document.getElementById("q").value.toLowerCase();
+      const table = document.getElementById("grid");
+      let html = "<thead><tr>";
+      HEADERS.forEach(([k, label, , freeze], i) => {
+        const filter = DROP_FIELDS[k] ? " has-filter" : "";
+        html += "<th class=\"" + colClass(k, freeze) + filter + "\" style=\"" + colStyle(k, colWidths[i], freeze) + "\">" + label + "</th>";
+      });
+      html += "</tr></thead><tbody>";
+      let shown = 0;
+      rows.forEach((row, i) => {
+        const blob = HEADERS.map(([k]) => row[k] || "").join(" ").toLowerCase();
+        if (q && blob.indexOf(q) === -1) return;
+        shown += 1;
+        html += "<tr data-i=\"" + i + "\">";
+        HEADERS.forEach(([k, , , freeze], c) => {
+          const width = colWidths[c];
+          const cls = colClass(k, freeze);
+          const style = colStyle(k, width, freeze);
+          if (k === "request" || k === "comment") {
+            html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
+          } else if (DROP_FIELDS[k]) {
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\">" + selectHtml(k, row[k]) + "</td>";
+          } else if (DATE_FIELDS[k]) {
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input type=\"date\" data-k=\"" + k + "\" value=\"" + escAttr(dmyToIso(row[k])) + "\"></td>";
+          } else if (READONLY_FIELDS[k]) {
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\" readonly></td>";
+          } else {
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\"></td>";
+          }
+        });
+        html += "</tr>";
+      });
+      if (!shown) {
+        const msg = q
+          ? "No enquiries match that search."
+          : "No enquiries yet. Use New enquiry — the number starts at #1996 and the month fills from the date.";
+        html += "<tr><td class=\"empty\" colspan=\"" + HEADERS.length + "\">" + msg + "</td></tr>";
+      }
+      html += "</tbody>";
+      table.innerHTML = html;
+      table.oninput = table.onchange = (e) => {
+        const tr = e.target.closest("tr");
+        if (!tr) return;
+        const i = Number(tr.getAttribute("data-i"));
+        const k = e.target.getAttribute("data-k");
+        if (DATE_FIELDS[k]) {
+          const iso = e.target.value;
+          rows[i][k] = iso ? isoToDmy(iso) : "";
+          if (k === "date_enquired") {
+            rows[i].month_enquired = monthFromDmy(rows[i].date_enquired);
+            const monthInput = tr.querySelector('input[data-k="month_enquired"]');
+            if (monthInput) monthInput.value = rows[i].month_enquired;
+          }
+          return;
+        }
+        rows[i][k] = e.target.value;
+      };
+    }
+    function addRow() {
+      bumpNext();
+      const blank = {};
+      HEADERS.forEach(([k]) => blank[k] = "");
+      blank.enquiry_no = nextNo;
+      blank.date_enquired = todayDmy();
+      blank.month_enquired = monthFromDmy(blank.date_enquired);
+      blank.status = "New";
+      rows.unshift(blank);
+      bumpNext();
+      render();
+    }
+    async function load() {
+      const r = await sdOfficeFetch("/api/office/enquiries");
+      const j = await r.json();
+      if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      rows = (j.rows || []).map((row) => {
+        const copy = Object.assign({}, row);
+        if (copy.date_enquired) copy.date_enquired = isoToDmy(copy.date_enquired);
+        if (copy.date_quoted) copy.date_quoted = isoToDmy(copy.date_quoted);
+        return copy;
+      });
+      dropdowns = j.dropdowns || {};
+      nextNo = j.nextEnquiryNo || "#1996";
+      document.getElementById("status").textContent = rows.length + " enquiries · next " + nextNo;
+      render();
+    }
+    async function saveAll() {
+      document.getElementById("status").textContent = "Saving…";
+      for (const row of rows) {
+        if (!String(row.enquiry_no || "").trim()) continue;
+        const r = await sdOfficeFetch("/api/office/enquiries", {
+          method: "PUT",
+          body: JSON.stringify(row)
+        });
+        const j = await r.json();
+        if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      }
+      await load();
+      document.getElementById("status").textContent = "Saved";
+    }
+    document.getElementById("q").oninput = render;
+    window.addEventListener("resize", () => { render(); });
+    sdRequireOffice("enquiries").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

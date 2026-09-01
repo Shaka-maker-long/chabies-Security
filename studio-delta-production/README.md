@@ -53,6 +53,7 @@ Do **not** commit the JSON key or a `.env` file.
 ## Office pages (same Railway database as the floor)
 
 - `/orders` — all ORDERS columns (quote, client, prices, etc.). Status and assigned operator are the same fields the floor writes.
+- `/enquiries` — Google-Sheet-style enquiry log. Numbers start at `#1996` and count up. **MONTH ENQUIRED** fills from **DATE ENQUIRED**. Columns through **CLIENT NAME** stay frozen while you scroll. Dropdowns match the office ENQUIRY sheet (source, type, province, category, product, status).
 - `/schedule` — order list + week grid (Mon–Fri)
 - `/dropdowns` — lists for Type, Category, Product, and the other order dropdowns
 - `/debtors` — orders not fully paid

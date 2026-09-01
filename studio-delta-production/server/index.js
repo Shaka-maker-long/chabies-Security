@@ -9,7 +9,11 @@ const { migrateJsonOrdersToWorkbook, normalizeOrdersSheet } = require("./db");
 initWorkbook();
 migrateJsonOrdersToWorkbook();
 normalizeOrdersSheet();
-try { require("./staff").usersSheet(); } catch (e) {}
+try {
+  const staff = require("./staff");
+  staff.usersSheet();
+  staff.seedLocalAdminIfEmpty();
+} catch (e) {}
 
 const app = express();
 app.disable("x-powered-by");
@@ -34,6 +38,9 @@ const indexHtml = path.join(__dirname, "..", "index.html");
 
 app.get("/orders", (_req, res) => {
   res.sendFile(path.join(publicDir, "orders.html"));
+});
+app.get("/enquiries", (_req, res) => {
+  res.sendFile(path.join(publicDir, "enquiries.html"));
 });
 app.get("/schedule", (_req, res) => {
   res.sendFile(path.join(publicDir, "schedule.html"));

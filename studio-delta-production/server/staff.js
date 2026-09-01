@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { getBook, persistWorkbook } = require("./workbook-store");
+const { getBook, persistWorkbook, hasGoogleAuth } = require("./workbook-store");
 
 const FLOOR_TASKS = [
   "Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding",
@@ -100,6 +100,20 @@ function rowToUser(row, id) {
     canSeeDebtors: isAdmin && debtors !== "no",
     seeDebtors: isAdmin && debtors !== "no" ? "Yes" : "No"
   };
+}
+
+function seedLocalAdminIfEmpty() {
+  if (hasGoogleAuth()) return false;
+  if (listUsers().length) return false;
+  upsertUser({
+    name: "Admin",
+    access: "Admin",
+    role: "Admin",
+    password: process.env.LOCAL_ADMIN_CODE || "admin",
+    seeDebtors: "Yes"
+  });
+  console.log("[staff] no Users yet — seeded local Admin (access code: admin)");
+  return true;
 }
 
 function listUsers() {
@@ -244,6 +258,7 @@ function durationMinutes(product, process) {
 module.exports = {
   FLOOR_TASKS,
   listUsers,
+  seedLocalAdminIfEmpty,
   upsertUser,
   deleteUser,
   verifyUser,

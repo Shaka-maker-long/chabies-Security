@@ -15,7 +15,13 @@ const {
   recordPayment,
   decorateMoney,
   VAT_RATE,
-  normalizeOrdersSheet
+  normalizeOrdersSheet,
+  listEnquiries,
+  upsertEnquiry,
+  deleteEnquiry,
+  nextEnquiryNo,
+  listEnquiryDropdowns,
+  ENQUIRY_FIELDS
 } = require("./db");
 const { importGoogleWorkbook, tabCounts } = require("./workbook-store");
 const staff = require("./staff");
@@ -127,6 +133,30 @@ function mountOffice(app) {
   app.delete("/api/office/orders/:orderNumber", requireOffice, (req, res) => {
     deleteOrder(req.params.orderNumber);
     res.json({ ok: true });
+  });
+
+  app.get("/api/office/enquiries", requireOffice, (_req, res) => {
+    res.json({
+      ok: true,
+      rows: listEnquiries(),
+      fields: ENQUIRY_FIELDS,
+      nextEnquiryNo: nextEnquiryNo(),
+      dropdowns: listEnquiryDropdowns()
+    });
+  });
+
+  app.put("/api/office/enquiries", requireOffice, (req, res) => {
+    try {
+      const row = upsertEnquiry(req.body || {});
+      res.json({ ok: true, row, nextEnquiryNo: nextEnquiryNo() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.delete("/api/office/enquiries/:enquiryNo", requireOffice, (req, res) => {
+    deleteEnquiry(req.params.enquiryNo);
+    res.json({ ok: true, nextEnquiryNo: nextEnquiryNo() });
   });
 
   app.get("/api/office/schedule", requireOffice, (req, res) => {

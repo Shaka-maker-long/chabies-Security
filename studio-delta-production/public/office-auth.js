@@ -73,6 +73,7 @@ function sdMountOfficeShell(active) {
     ["/", "home", "bi-house-door", "Home"],
     ["/?view=floor", "floor", "bi-tools", "Floor"],
     ["/orders", "orders", "bi-table", "Orders"],
+    ["/enquiries", "enquiries", "bi-journal-text", "Enquiries"],
     ["/schedule", "schedule", "bi-calendar2-week", "Office schedule"],
     ["/dropdowns", "dropdowns", "bi-list-ul", "Dropdowns"],
     ["/users", "users", "bi-person-plus", "Users"],

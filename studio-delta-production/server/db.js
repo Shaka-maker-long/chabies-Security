@@ -1,6 +1,11 @@
 const fs = require("fs");
 const path = require("path");
 const { DROPDOWN_KEYS, DEFAULT_DROPDOWNS } = require("./dropdowns-default");
+const {
+  ENQUIRY_FIELDS,
+  ENQUIRY_DROPDOWN_KEYS,
+  DEFAULT_ENQUIRY_DROPDOWNS
+} = require("./enquiries-default");
 const { getBook, persistWorkbook, ORDER_HEADERS } = require("./workbook-store");
 
 const ORDER_FIELDS = [
@@ -139,7 +144,8 @@ function emptyState() {
     nextOrderId: 1,
     nextScheduleId: 1,
     dropdowns: JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS)),
-    paymentsByOrder: {}
+    paymentsByOrder: {},
+    enquiries: []
   };
 }
 
@@ -177,7 +183,8 @@ try {
     schedule_rows: Array.isArray(parsed.schedule_rows) ? parsed.schedule_rows : [],
     schedule_cells: Array.isArray(parsed.schedule_cells) ? parsed.schedule_cells : [],
     dropdowns,
-    paymentsByOrder: parsed.paymentsByOrder && typeof parsed.paymentsByOrder === "object" ? parsed.paymentsByOrder : {}
+    paymentsByOrder: parsed.paymentsByOrder && typeof parsed.paymentsByOrder === "object" ? parsed.paymentsByOrder : {},
+    enquiries: Array.isArray(parsed.enquiries) ? parsed.enquiries : []
   };
   if (!Object.keys(state.paymentsByOrder).length && Array.isArray(parsed.orders)) {
     parsed.orders.forEach((o) => {
@@ -522,6 +529,74 @@ function listDebtors() {
   return listOrders().map(decorateMoney).filter((o) => o.is_debtor);
 }
 
+const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const FIRST_ENQUIRY_NO = 1996;
+
+function enquiryNumberValue(raw) {
+  const m = String(raw || "").trim().match(/#?\s*(\d+)/);
+  return m ? Number(m[1]) : 0;
+}
+
+function formatEnquiryNo(n) {
+  return "#" + String(n);
+}
+
+function nextEnquiryNo() {
+  let max = FIRST_ENQUIRY_NO - 1;
+  for (const row of state.enquiries || []) {
+    const n = enquiryNumberValue(row && row.enquiry_no);
+    if (n > max) max = n;
+  }
+  return formatEnquiryNo(max + 1);
+}
+
+function monthFromEnquiryDate(v) {
+  const d = asDate(v);
+  if (!d) return "";
+  return MONTH_SHORT[sastParts(d).m];
+}
+
+function listEnquiryDropdowns() {
+  const out = {};
+  for (const key of ENQUIRY_DROPDOWN_KEYS) {
+    out[key] = DEFAULT_ENQUIRY_DROPDOWNS[key].slice();
+  }
+  return out;
+}
+
+function listEnquiries() {
+  return (state.enquiries || []).slice().sort((a, b) => enquiryNumberValue(b.enquiry_no) - enquiryNumberValue(a.enquiry_no));
+}
+
+function upsertEnquiry(row) {
+  const payload = {};
+  for (const f of ENQUIRY_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]).trim();
+  if (!payload.enquiry_no) payload.enquiry_no = nextEnquiryNo();
+  if (!/^#\d+$/.test(payload.enquiry_no)) {
+    const n = enquiryNumberValue(payload.enquiry_no);
+    payload.enquiry_no = n ? formatEnquiryNo(n) : nextEnquiryNo();
+  }
+  payload.month_enquired = monthFromEnquiryDate(payload.date_enquired);
+  payload.updated_at = nowIso();
+  if (!state.enquiries) state.enquiries = [];
+  const existing = state.enquiries.find((o) => o.enquiry_no === payload.enquiry_no);
+  if (existing) {
+    Object.assign(existing, payload);
+    save();
+    return existing;
+  }
+  payload.id = (state.enquiries.reduce((m, o) => Math.max(m, Number(o.id) || 0), 0) || 0) + 1;
+  state.enquiries.push(payload);
+  save();
+  return payload;
+}
+
+function deleteEnquiry(enquiryNo) {
+  const want = String(enquiryNo || "").trim();
+  state.enquiries = (state.enquiries || []).filter((o) => o.enquiry_no !== want);
+  save();
+}
+
 function recordPayment(orderNumber, amount, note) {
   const num = String(orderNumber || "").trim();
   const existing = listOrders().find((o) => o.order_number === num);
@@ -574,5 +649,12 @@ module.exports = {
   recordPayment,
   decorateMoney,
   migrateJsonOrdersToWorkbook,
-  normalizeOrdersSheet
+  normalizeOrdersSheet,
+  ENQUIRY_FIELDS,
+  listEnquiries,
+  upsertEnquiry,
+  deleteEnquiry,
+  nextEnquiryNo,
+  monthFromEnquiryDate,
+  listEnquiryDropdowns
 };
