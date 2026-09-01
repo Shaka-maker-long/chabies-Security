@@ -144,6 +144,24 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const ordersBoss = await fetch(base + "/api/office/orders", { headers: { "x-sd-token": boss.token } });
   assert.strictEqual(ordersBoss.status, 200);
 
+  const backup = await fetch(base + "/api/office/backup", { headers: { "x-sd-token": boss.token } });
+  assert.strictEqual(backup.status, 200);
+  const pack = await backup.json();
+  assert.strictEqual(pack.database, "railway");
+  assert.ok(pack.workbook && pack.workbook.sheets);
+
+  const dbInfo = await fetch(base + "/api/office/database", { headers: { "x-sd-token": boss.token } });
+  const info = await dbInfo.json();
+  assert.strictEqual(info.live, "railway");
+  assert.strictEqual(info.sheetsLive, false);
+  assert.strictEqual(info.migrateAvailable, false);
+
+  const migrate = await fetch(base + "/api/office/migrate-from-google", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": boss.token }
+  });
+  assert.strictEqual(migrate.status, 400);
+
   const sessFile = path.join(dir, "office-sessions.json");
   assert.ok(fs.existsSync(sessFile), "office sessions must be saved on disk");
   const sess = JSON.parse(fs.readFileSync(sessFile, "utf8"));

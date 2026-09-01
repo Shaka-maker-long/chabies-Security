@@ -44,7 +44,6 @@
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search orders">
-      <button class="ghost" onclick="importSheets()">Import from Sheets</button>
     <button class="ghost" onclick="addRow()">New order</button>
       <button onclick="saveAll()">Save</button>
     </div>
@@ -232,17 +231,8 @@
       const d = await dropRes.json();
       rows = j.rows || [];
       dropdowns = d.dropdowns || {};
-      document.getElementById("status").textContent = rows.length + " orders (Railway database — same as the floor)";
+      document.getElementById("status").textContent = rows.length + " orders (Railway is the database)";
       render();
-    }
-    async function importSheets() {
-      if (!confirm("Copy Users, orders, production logs, steel and backboards from Google into Railway? This replaces the current shop data on Railway.")) return;
-      document.getElementById("status").textContent = "Importing from Google Sheets…";
-      const r = await sdOfficeFetch("/api/office/import-sheets", { method: "POST" });
-      const j = await r.json();
-      if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
-      await load();
-      document.getElementById("status").textContent = j.message || ("Imported " + j.imported + " orders");
     }
     function addRow() {
       const blank = {};

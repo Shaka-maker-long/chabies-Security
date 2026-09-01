@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { getBook, persistWorkbook, hasGoogleAuth, dataDir } = require("./workbook-store");
+const { getBook, persistWorkbook, dataDir } = require("./workbook-store");
 
 const FLOOR_TASKS = [
   "Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding",
@@ -145,7 +145,6 @@ function rowToUser(row, id) {
 }
 
 function seedLocalAdminIfEmpty() {
-  if (hasGoogleAuth()) return false;
   if (listUsers().length) return false;
   upsertUser({
     name: "Admin",

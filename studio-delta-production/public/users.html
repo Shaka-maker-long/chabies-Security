@@ -30,11 +30,15 @@
   <header>
     <h1>Users</h1>
     <span class="msg" id="status"></span>
+    <button class="ghost" onclick="downloadBackup()">Download backup</button>
     <button onclick="addRow()">Add user</button>
     <button onclick="saveAll()">Save</button>
   </header>
   <div class="wrap">
     <p class="help"><b>Production</b> people only see the floor tasks you tick — not Orders, Debtors, or other office pages. <b>Admin</b> can open office pages. Untick <b>See debtors</b> if that admin must not see money still owing.</p>
+    <p class="help">The live database is <b>Railway</b> (files on the server volume). Google Sheets is not used. Download a backup any time. To copy the old spreadsheet once, set <code>GOOGLE_MIGRATE=1</code> on Railway, then use the button below, then remove that variable.</p>
+    <p class="help" id="dbLine"></p>
+    <p class="help" id="migrateWrap" style="display:none"><button class="ghost" type="button" onclick="migrateGoogle()">Copy old Google spreadsheet once</button></p>
     <table>
       <thead>
         <tr><th>Name</th><th>Access</th><th>Job title</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th></th></tr>
@@ -115,6 +119,39 @@
       await load();
       document.getElementById("status").textContent = "Saved";
     }
+    async function downloadBackup() {
+      const r = await sdOfficeFetch("/api/office/backup");
+      if (!r.ok) {
+        document.getElementById("status").textContent = "Could not download backup";
+        return;
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "studio-delta-railway-backup.json";
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+    async function migrateGoogle() {
+      if (!confirm("This replaces Users, orders, and shop logs on Railway with the old Google spreadsheet. Enquiries already on Railway are kept, and any Enquiries tab in Google is copied in. Continue?")) return;
+      document.getElementById("status").textContent = "Copying from Google…";
+      const r = await sdOfficeFetch("/api/office/migrate-from-google", { method: "POST" });
+      const j = await r.json();
+      if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      await load();
+      document.getElementById("status").textContent = j.message || "Copied";
+    }
+    async function loadDb() {
+      const r = await sdOfficeFetch("/api/office/database");
+      const j = await r.json();
+      if (!j.ok) return;
+      const p = j.persist || {};
+      document.getElementById("dbLine").textContent = p.usingEphemeralDisk
+        ? "Warning: no Railway volume. Data will disappear on deploy. Mount a volume at /app/data."
+        : ("Saving to " + (p.dataDir || "Railway") + ". Enquiries on file: " + (p.enquiryCount == null ? "—" : p.enquiryCount) + ".");
+      document.getElementById("migrateWrap").style.display = j.migrateAvailable ? "" : "none";
+    }
     async function load() {
       const r = await sdOfficeFetch("/api/office/users");
       const j = await r.json();
@@ -122,6 +159,7 @@
       rows = j.rows || [];
       render();
       document.getElementById("status").textContent = rows.length + " users";
+      loadDb();
     }
     sdRequireOffice("users").then((p) => { if (p) load(); });
   </script>

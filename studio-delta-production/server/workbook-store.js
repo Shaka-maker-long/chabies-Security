@@ -70,7 +70,6 @@ function workbookPath() {
 }
 
 let book = null;
-let googleImportTried = false;
 
 function writeBookFile(target) {
   const file = workbookPath();
@@ -159,6 +158,13 @@ function hasGoogleAuth() {
   return !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
 }
 
+function googleMigrateEnabled() {
+  const flag = String(process.env.GOOGLE_MIGRATE || "").trim().toLowerCase();
+  return (flag === "1" || flag === "true" || flag === "yes")
+    && hasGoogleAuth()
+    && !!String(process.env.SHEET_ID || "").trim();
+}
+
 async function importGoogleWorkbook() {
   const { google } = require("googleapis");
   let credentials;
@@ -182,23 +188,12 @@ async function importGoogleWorkbook() {
   attachPersist(local);
   seedMissingTabs(local);
   writeBookFile(local);
-  googleImportTried = true;
-  console.log("[workbook] imported from Google Sheets");
+  console.log("[workbook] copied Google spreadsheet into Railway files");
   return local;
 }
 
 async function maybeImportGoogleOnce() {
-  const local = getBook();
-  if (googleImportTried) return local;
-  googleImportTried = true;
-  if (!hasGoogleAuth() || !process.env.SHEET_ID) return local;
-  if (!usersEmpty(local) || !ordersEmpty(local)) return local;
-  if (productionLogHasRows(local)) return local;
-  try {
-    await importGoogleWorkbook();
-  } catch (e) {
-    console.error("[workbook] google import failed", e && e.message ? e.message : e);
-  }
+  // Railway is the live database. Google Sheets is never read on boot.
   return getBook();
 }
 
@@ -213,6 +208,7 @@ module.exports = {
   tabCounts,
   importGoogleWorkbook,
   maybeImportGoogleOnce,
+  googleMigrateEnabled,
   workbookPath,
   dataDir,
   storageInfo,

@@ -981,7 +981,8 @@ function saveEnquiryRecord(row) {
 }
 
 function upsertEnquiry(row, opts) {
-  const fromPipeline = !!(opts && opts.fromPipeline);
+  const fromMigrate = !!(opts && opts.fromMigrate);
+  const fromPipeline = !!(opts && opts.fromPipeline) || fromMigrate;
   const payload = {};
   for (const f of ENQUIRY_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]).trim();
   if (!payload.enquiry_no) payload.enquiry_no = nextEnquiryNo();
@@ -1024,7 +1025,7 @@ function upsertEnquiry(row, opts) {
     payload.delivery_excl_vat = "";
   }
 
-  if (fromPipeline && payload.status === "Quoted") {
+  if (fromPipeline && !fromMigrate && payload.status === "Quoted") {
     const named = payload.products.filter((p) => p.product);
     if (!named.length) throw new Error("Add at least one product before marking Quoted");
     if (named.some((p) => p.value_excl_vat === "")) {
@@ -1060,6 +1061,79 @@ function upsertEnquiry(row, opts) {
   state.enquiries.push(payload);
   save();
   return decorateEnquiry(payload);
+}
+
+function enquiryHeaderField(header) {
+  const h = String(header || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  const aliases = {
+    enquiry_no: ["enquiry_no", "enquiry_number", "enquiry", "no"],
+    date_enquired: ["date_enquired", "date", "date_enquire"],
+    month_enquired: ["month_enquired", "month"],
+    enquiry_source: ["enquiry_source"],
+    enquiry_type: ["enquiry_type"],
+    client_name: ["client_name", "name", "customer", "customer_name"],
+    source: ["source"],
+    client_email: ["client_email", "email", "email_address"],
+    client_number: ["client_number", "number", "phone", "cell"],
+    province: ["province"],
+    category: ["category", "catergory"],
+    product: ["product"],
+    request: ["request"],
+    status: ["status"],
+    date_quoted: ["date_quoted"],
+    quote_no: ["quote_no", "quote_number"],
+    comment: ["comment", "comments"]
+  };
+  for (const field of Object.keys(aliases)) {
+    if (aliases[field].indexOf(h) !== -1) return field;
+  }
+  if (ENQUIRY_FIELDS.indexOf(h) !== -1) return h;
+  return "";
+}
+
+function copyEnquiriesFromWorkbook(book) {
+  if (!book || typeof book.getSheetByName !== "function") return { imported: 0 };
+  const sheet = book.getSheetByName("Enquiries")
+    || book.getSheetByName("ENQUIRIES")
+    || book.getSheetByName("Enquiry Log");
+  if (!sheet || sheet.getLastRow() < 2) return { imported: 0 };
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
+  const headers = (sheet.getRange(1, 1, 1, lastCol).getValues()[0] || []).map(enquiryHeaderField);
+  const grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+  let imported = 0;
+  grid.forEach((row) => {
+    const payload = {};
+    headers.forEach((field, i) => {
+      if (!field) return;
+      payload[field] = row[i];
+    });
+    if (!payload.enquiry_no && !payload.client_name && !payload.product) return;
+    if (!payload.status) payload.status = "New";
+    try {
+      upsertEnquiry(payload, { fromMigrate: true });
+      imported += 1;
+    } catch (e) {
+      console.error("[db] enquiry migrate failed", payload.enquiry_no, e && e.message ? e.message : e);
+    }
+  });
+  return { imported };
+}
+
+function railwayBackup() {
+  const workbook = getBook().toJSON();
+  let office = {};
+  try {
+    office = JSON.parse(fs.readFileSync(dbPath, "utf8"));
+  } catch (e) {
+    office = state;
+  }
+  return {
+    version: 1,
+    database: "railway",
+    exportedAt: nowIso(),
+    workbook,
+    office
+  };
 }
 
 function deleteEnquiry(enquiryNo) {
@@ -1100,6 +1174,8 @@ module.exports = {
   dbPath,
   persist: save,
   persistenceInfo,
+  railwayBackup,
+  copyEnquiriesFromWorkbook,
   ORDER_FIELDS,
   DROPDOWN_KEYS,
   VAT_RATE,

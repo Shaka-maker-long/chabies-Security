@@ -2,63 +2,58 @@
 
 Shop-floor + office app for Studio Delta (South Africa).
 
-## Current database (not Google Sheets, not Postgres)
+## Database: Railway only (not Google Sheets)
 
-The live store is **JSON files on the Railway disk**. Google Sheets is only a one-time import (and Drive for QC PDFs). There is no SQL database.
+The live store is **JSON files on the Railway volume**. There is no Postgres. Google Sheets is **not** read or written while the app runs. Floor clocks, orders, users, enquiries, quotes, and uploads all save on Railway.
 
 | File | What it holds |
 | --- | --- |
 | `DATA_DIR/floor-workbook.json` | Users, ORDERS, production logs, steel, backboards, idle alerts, schedule, task durations |
 | `DATA_DIR/studio-delta.json` | Enquiries, office extras, enquiry dropdowns, payments |
-| `DATA_DIR/office-sessions.json` | Office login sessions (so a restart does not log everyone out) |
+| `DATA_DIR/office-sessions.json` | Office login sessions |
 | `DATA_DIR/enquiry-quotes/` | Quote PDFs |
 | `DATA_DIR/enquiry-files/` | Cost sheets, follow-up screenshots, POP, drawings |
 
-On Railway, `DATA_DIR` is `/app/data` (set in the Dockerfile). **A Volume must be mounted at `/app/data`**. Without that volume every deploy starts with empty files: Users/ORDERS can reappear from Google import, but **enquiries and uploads are gone**.
+On Railway, `DATA_DIR` is `/app/data`. **A Volume must be mounted at `/app/data`**. Without it, every deploy wipes the database. Users → **Download backup** saves a JSON copy of shop + office data.
 
-`GET /health` reports `dataDir`, `volumeMount`, `usingEphemeralDisk`, and `enquiryCount`. If `usingEphemeralDisk` is `true`, data will keep disappearing. Office pages also show a red banner in that case.
+`GET /health` must show `"sheetsLive": false` and `"usingEphemeralDisk": false`. Office pages show a red banner if the volume is missing.
+
+### One-time copy from the old spreadsheet
+
+Only if you still need the Google workbook on Railway:
+
+1. Set `GOOGLE_MIGRATE=1`, `SHEET_ID`, and `GOOGLE_SERVICE_ACCOUNT_JSON`.
+2. Open **Users** → **Copy old Google spreadsheet once** (Users, ORDERS, logs, and an Enquiries tab if it exists).
+3. **Remove `GOOGLE_MIGRATE`** so Google cannot overwrite Railway again.
 
 Timezone: **Africa/Johannesburg**. The paid shift is **07:45–15:45** with a **30-minute break 12:00–12:30** (7.5 hours / 450 minutes). Minutes after that on a calendar day are overtime. Overnight jobs are split by calendar day on Activity and on Admin → Workers (e.g. 14:00 yesterday–10:00 today → yesterday 14:00–15:45 and today 07:45–10:00).
 
-## Host on Railway (Railway volume is the database)
+## Host on Railway
 
 The GitHub repo is a website plus this app. Railway should build from the **repository root** `Dockerfile`, which copies `studio-delta-production/` only.
 
-Floor start / pause / resume / finish, durations, steel usage, backboard usage, idle alerts, and order **STATUS** / **ASSIGNED OPERATOR** all save in those JSON files. The office **Orders** page reads the **same ORDERS table**, so a tablet clock updates the status the office sees.
-
-1. In [Google Cloud](https://console.cloud.google.com/), create a project (or pick one) → **APIs & Services** → enable **Google Sheets API**, **Google Drive API**, **Google Docs API**. Enable **Gmail API** only if you want QC / powder-list / glass-alert emails.
-2. **IAM** → **Service accounts** → create one (e.g. `studio-delta-floor`) → **Keys** → JSON. Copy the JSON.
-3. Open the production spreadsheet → **Share** → add the service account email (`...@....iam.gserviceaccount.com`) as **Viewer** (import is read-only) or **Editor** if you still use Drive QC.
-4. Share these Drive folders with the same email as **Editor** (same IDs already in `Code.gs`):
-   - QC reports folder
-   - PDF job-queue folder
-   - QC Google Doc templates (the service account must be able to copy them)
-   - Powder-coating list folder (or let the first generate create one in the service account’s Drive)
-5. In [Railway](https://railway.com/) → **New project** → **Deploy from GitHub** → this repo.
-6. Variables (service → **Variables**):
+1. In [Railway](https://railway.com/) → **New project** → **Deploy from GitHub** → this repo.
+2. Variables:
 
    | Variable | Value |
    | --- | --- |
-   | `SHEET_ID` | `1pdvAFTIyd5sf8Wbf38MSd4cfk3mb3McPqJrYeM8SOYk` (or your copy) — used for one-time import |
    | `TZ` | `Africa/Johannesburg` |
-   | `GOOGLE_SERVICE_ACCOUNT_JSON` | the **full JSON key** as one line (import + Drive QC) |
-   | `GMAIL_SENDER` | optional. A Workspace mailbox the service account can send as (domain-wide delegation). If unset, the floor still works; QC PDFs / powder emails / glass alerts are skipped or fail softly. |
    | `DATA_DIR` | `/app/data` (already set in Docker) |
+   | `GOOGLE_SERVICE_ACCOUNT_JSON` | optional. Only for Drive QC PDFs / powder emails, not for the database |
+   | `GMAIL_SENDER` | optional. Workspace mailbox for QC / powder / glass emails |
 
-7. **Settings → Networking → Generate domain**. Tablets open that HTTPS URL. Login is still name + access code from the `Users` table (copied from Google on first boot if the Railway volume is empty).
-8. Keep **one replica**. The in-memory lock/cache is per process.
-9. **Volume (required):** service → **Volumes** → add a volume, mount path **`/app/data`**. Confirm `GET /health` shows `"usingEphemeralDisk": false` and `volumeMount` of `/app/data`. Without this, shop data and enquiries are lost on every deploy.
+3. **Volume (required):** service → **Volumes** → mount path **`/app/data`**. Confirm `GET /health` shows `"usingEphemeralDisk": false`.
+4. **Settings → Networking → Generate domain**. Login is name + access code from the Railway `Users` table. If Users is empty, the app seeds **Admin** / **admin** — change that code on Users.
+5. Keep **one replica**.
 
-`GET /health` should return `"ok": true`. After a volume is attached, `"db"` is `"railway"` and `"usingEphemeralDisk"` is `false`. The first boot copies Google into Railway if Users and ORDERS are still empty. After that, Google is not the live store.
-
-On **Orders**, **Import from Sheets** copies Users, orders, production logs, steel and backboards from Google **into Railway** (this replaces current Railway shop data). Use it once when you first move, or if you need a fresh copy.
+Google Drive QC is optional. If you still generate QC PDFs: enable Sheets/Drive/Docs APIs, share the Drive folders with the service account (same IDs as `Code.gs`). Floor start / pause / finish does not need Google.
 
 QC PDFs still fill worker / order / Yes-No answers. Inserting photos into the Google Doc template is not wired on Railway (text tags for missing photos stay as-is). Floor start / pause / finish does not need Drive.
 
 Local run (from `studio-delta-production/`):
 
 ```bash
-cp .env.example .env   # then fill credentials if you want Google import
+cp .env.example .env   # Google credentials are optional (QC PDFs only)
 npm install
 npm test
 npm start              # http://localhost:8080
@@ -73,7 +68,7 @@ Do **not** commit the JSON key or a `.env` file.
 - `/tasks` — **My tasks**. Office Admins see the enquiries assigned to them and update the system from that queue (preview the file, confirm it, save). Follow-ups due 7 days after the quote or last follow-up show as overdue.
 - `/schedule` — order list + week grid (Mon–Fri)
 - `/dropdowns` — lists for Type, Category, Product, and the other order dropdowns
-- `/debtors` — orders not fully paid
+- `/users` — office and floor people, Railway backup download. Google Sheets is not used.
 
 ## Floor rules
 

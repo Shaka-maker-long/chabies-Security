@@ -23,9 +23,12 @@ const {
   listEnquiryDropdowns,
   ENQUIRY_FIELDS,
   readEnquiryQuotePdf,
-  readEnquiryAttachment
+  readEnquiryAttachment,
+  railwayBackup,
+  copyEnquiriesFromWorkbook,
+  persistenceInfo
 } = require("./db");
-const { importGoogleWorkbook, tabCounts } = require("./workbook-store");
+const { importGoogleWorkbook, tabCounts, googleMigrateEnabled } = require("./workbook-store");
 const staff = require("./staff");
 const pipeline = require("./enquiry-pipeline");
 
@@ -49,6 +52,32 @@ function requireDebtors(req, res, next) {
     return;
   }
   next();
+}
+
+async function migrateFromGoogle(_req, res) {
+  if (!googleMigrateEnabled()) {
+    res.status(400).json({
+      ok: false,
+      error: "Google Sheets is not the database. Set GOOGLE_MIGRATE=1, SHEET_ID, and Google credentials on Railway only to copy the old spreadsheet once, then remove GOOGLE_MIGRATE."
+    });
+    return;
+  }
+  try {
+    const book = await importGoogleWorkbook();
+    normalizeOrdersSheet();
+    const enquiries = copyEnquiriesFromWorkbook(book);
+    try { require("./gas").clearShopCache(); } catch (e) {}
+    const tabs = tabCounts(book);
+    res.json({
+      ok: true,
+      imported: tabs.ORDERS || 0,
+      tabs,
+      enquiries: enquiries.imported,
+      message: "Copied the old Google spreadsheet into Railway. Remove GOOGLE_MIGRATE so Google cannot overwrite this again."
+    });
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message || String(e) });
+  }
 }
 
 function workdays(fromIso, days) {
@@ -244,20 +273,26 @@ function mountOffice(app) {
     res.json({ ok: true });
   });
 
-  app.post("/api/office/import-sheets", requireOffice, async (_req, res) => {
-    try {
-      const book = await importGoogleWorkbook();
-      normalizeOrdersSheet();
-      const tabs = tabCounts(book);
-      res.json({
-        ok: true,
-        imported: tabs.ORDERS || 0,
-        tabs,
-        message: "Copied Users, orders, production logs, steel and backboards from Google into Railway."
-      });
-    } catch (e) {
-      res.status(400).json({ ok: false, error: e.message || String(e) });
-    }
+  app.post("/api/office/import-sheets", requireOffice, async (req, res) => {
+    migrateFromGoogle(req, res);
+  });
+
+  app.post("/api/office/migrate-from-google", requireOffice, migrateFromGoogle);
+
+  app.get("/api/office/database", requireOffice, (_req, res) => {
+    res.json({
+      ok: true,
+      live: "railway",
+      sheetsLive: false,
+      migrateAvailable: googleMigrateEnabled(),
+      persist: persistenceInfo()
+    });
+  });
+
+  app.get("/api/office/backup", requireOffice, (_req, res) => {
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Disposition", "attachment; filename=\"studio-delta-railway-" + stamp + ".json\"");
+    res.json(railwayBackup());
   });
 
   app.get("/api/office/dropdowns", requireOffice, (_req, res) => {

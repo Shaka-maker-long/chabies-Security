@@ -1,9 +1,8 @@
 process.env.TZ = process.env.TZ || "Africa/Johannesburg";
-process.env.SHEET_ID = process.env.SHEET_ID || "1pdvAFTIyd5sf8Wbf38MSd4cfk3mb3McPqJrYeM8SOYk";
 
 const express = require("express");
 const path = require("path");
-const { initWorkbook, persistWorkbook, maybeImportGoogleOnce, hasGoogleAuth, storageInfo } = require("./workbook-store");
+const { initWorkbook, persistWorkbook, hasGoogleAuth, storageInfo, googleMigrateEnabled } = require("./workbook-store");
 const { migrateJsonOrdersToWorkbook, normalizeOrdersSheet, persistenceInfo } = require("./db");
 
 initWorkbook();
@@ -37,7 +36,9 @@ function health(_req, res) {
     officeDbExists: !!persist.officeDbExists,
     enquiryCount: persist.enquiryCount != null ? persist.enquiryCount : null,
     workbookExists: !!persist.workbookExists,
-    googleImportAvailable: hasGoogleAuth() && !!process.env.SHEET_ID
+    sheetsLive: false,
+    googleMigrateAvailable: googleMigrateEnabled(),
+    googleDriveOptional: hasGoogleAuth()
   });
 }
 
@@ -147,7 +148,7 @@ app.post("/api/run", (req, res) => {
         res.status(quota ? 429 : 400).json({
           ok: false,
           error: quota
-            ? "Google Sheets is busy (too many reads this minute). Wait 60 seconds, then try again. Do not keep tapping."
+            ? "The shop is busy. Wait 60 seconds, then try again. Do not keep tapping."
             : msg
         });
       }
@@ -156,14 +157,12 @@ app.post("/api/run", (req, res) => {
 });
 
 setTimeout(() => {
-  maybeImportGoogleOnce()
-    .then(() => {
-      const run = loadFloor();
-      serialize(() => run("lazySetup", []).catch((e) => console.error("[lazySetup]", e.message || e)));
-    })
-    .catch((e) => {
-      console.error("[boot] floor failed to load", e && e.stack ? e.stack : e);
-    });
+  try {
+    const run = loadFloor();
+    serialize(() => run("lazySetup", []).catch((e) => console.error("[lazySetup]", e.message || e)));
+  } catch (e) {
+    console.error("[boot] floor failed to load", e && e.stack ? e.stack : e);
+  }
 }, 2000);
 
 const FIVE_MIN = 5 * 60 * 1000;

@@ -5,7 +5,7 @@ const { spawnSync } = require("child_process");
 const crypto = require("crypto");
 const { google } = require("googleapis");
 const { createSpreadsheetApp } = require("./sheets");
-const { getBook, maybeImportGoogleOnce } = require("./workbook-store");
+const { getBook } = require("./workbook-store");
 
 const TZ = process.env.TZ || "Africa/Johannesburg";
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
@@ -277,7 +277,6 @@ function loadScript() {
 let workbookCache = null;
 
 async function getCachedWorkbook() {
-  await maybeImportGoogleOnce();
   workbookCache = { book: getBook(), spreadsheetId: "railway-local", loadedAt: Date.now() };
   return workbookCache.book;
 }

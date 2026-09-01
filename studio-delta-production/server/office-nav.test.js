@@ -27,6 +27,12 @@ assert.ok(js.indexOf("sd-sidebar-scroll") !== -1);
 assert.ok(js.indexOf("sdLogoutBtn") !== -1);
 assert.ok(js.indexOf("sdWarnPersistence") !== -1);
 assert.ok(css.indexOf(".sd-persist-banner") !== -1);
+
+const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
+assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");
+const usersHtml = fs.readFileSync(path.join(__dirname, "../public/users.html"), "utf8");
+assert.ok(usersHtml.indexOf("Download backup") !== -1);
+assert.ok(usersHtml.indexOf("migrate-from-google") !== -1);
 assert.ok(floor.indexOf('href="/enquiries"') !== -1);
 assert.ok(floor.indexOf('href="/tasks"') !== -1);
 assert.ok(floor.indexOf("resumeOfficeSession") !== -1);
