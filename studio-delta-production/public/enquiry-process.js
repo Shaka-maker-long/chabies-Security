@@ -73,6 +73,11 @@
         ".sd-process-form label{display:block;font-size:12px;font-weight:600;margin:8px 0 4px}" +
         ".sd-assignee{max-width:280px;width:100%}" +
         ".sd-quote-no{max-width:180px;width:100%;border:1px solid #d0d5dd;border-radius:6px;padding:8px;font:inherit}" +
+        ".sd-path{width:100%;border:1px solid #d0d5dd;border-radius:6px;padding:8px;font:inherit;font-size:12px}" +
+        ".sd-correspondence{border:1px dashed #98a2b3;border-radius:10px;padding:10px 12px;background:#fff;margin-top:8px}" +
+        ".sd-correspondence h2{margin:0 0 6px;font-size:13px}" +
+        ".sd-path-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}" +
+        ".sd-path-row code{font-size:12px;word-break:break-all;flex:1;min-width:160px}" +
         ".sd-process-form textarea{min-height:72px}" +
         ".sd-process-preview{width:100%;min-height:220px;max-height:360px;border:1px solid #d0d5dd;border-radius:8px;background:#fff;overflow:auto}" +
         ".sd-process-preview iframe,.sd-process-preview img{width:100%;height:320px;border:0;object-fit:contain}" +
@@ -239,6 +244,42 @@
     };
   }
 
+  function folderHref(p) {
+    const raw = String(p || "").trim();
+    if (!raw) return "";
+    if (/^https?:\/\//i.test(raw)) return raw;
+    let s = raw.replace(/\\/g, "/");
+    if (/^[A-Za-z]:/.test(s)) s = "/" + s;
+    try { return "file://" + encodeURI(s); } catch (e) { return "file://" + s; }
+  }
+  function correspondenceFields(row) {
+    const c = (row && row.correspondence) || {};
+    return "<label>CORRESPONDANCE folder<input class=\"sd-path\" name=\"correspondence_path\" value=\"" +
+      esc(c.path || "") + "\" placeholder=\"P:\\STUDIO DELTA\\ORDERS\\S260025 CLIENT NAME\\CORRESPONDANCE\"></label>" +
+      "<p class=\"sd-process-sub\">Paste the folder from P:\\STUDIO DELTA\\ORDERS. That link is archived on this enquiry so costing can see the emails.</p>" +
+      "<label>Archive a copy of an email (optional)<input name=\"file\" type=\"file\" accept=\".msg,.eml,application/pdf,.pdf,image/*,.png,.jpg,.jpeg\"></label>" +
+      "<p class=\"sd-process-sub\">Railway cannot open the P: drive. Saving a copy keeps the Outlook item with this enquiry.</p>" +
+      "<div class=\"sd-process-preview\" data-preview></div>" +
+      "<label><input name=\"file_ok\" type=\"checkbox\"> This is the correct file</label>";
+  }
+  function correspondenceCard(row) {
+    const c = (row && row.correspondence) || {};
+    if (!c.path && !(c.files && c.files.length)) return "";
+    let html = "<div class=\"sd-correspondence\"><h2>CORRESPONDANCE</h2>";
+    if (c.path) {
+      html += "<p class=\"sd-process-sub\">Archived folder" + (c.saved_by ? " · saved by " + esc(c.saved_by) : "") + "</p>" +
+        "<div class=\"sd-path-row\"><code>" + esc(c.path) + "</code>" +
+        "<button type=\"button\" class=\"ghost\" data-copy-path=\"" + esc(c.path) + "\">Copy path</button>" +
+        "<a class=\"ghost\" href=\"" + esc(folderHref(c.path)) + "\" style=\"display:inline-block;padding:8px 12px;border:1px solid #1d2939;border-radius:6px;font-weight:600;color:#1d2939;text-decoration:none\">Open folder</a></div>" +
+        "<p class=\"sd-process-sub\">If Open folder is blocked by the browser, copy the path and paste it into File Explorer.</p>";
+    }
+    if (c.files && c.files.length) {
+      html += "<p class=\"sd-process-sub\">Archived copies</p>" + c.files.map((f) => {
+        return "<a href=\"" + fileUrl(f.kind || "correspondence_1", true) + "\">" + esc(f.filename || f.kind) + "</a>";
+      }).join("<br>");
+    }
+    return html + "</div>";
+  }
   function formFor(action, row) {
     const waiting = (state.snap.waitingStatuses || []).map((s) => "<option>" + esc(s) + "</option>").join("");
     const closed = (state.snap.closedStatuses || []).map((s) => "<option>" + esc(s) + "</option>").join("");
@@ -247,7 +288,8 @@
         "<label>Assign to</label>" + assigneeSelect();
     }
     if (action.id === "assign_costing") {
-      return "<p class=\"sd-process-sub\">Any office Admin, including yourself.</p><label>Assign to</label>" + assigneeSelect(openAssignee(row, "cost_sheet"));
+      return "<p class=\"sd-process-sub\">Any office Admin, including yourself.</p><label>Assign to</label>" + assigneeSelect(openAssignee(row, "cost_sheet")) +
+        correspondenceFields(row);
     }
     if (action.id === "supplier_wait" || action.id === "complete_supplier") {
       return "<label>Assign to</label>" + assigneeSelect(openAssignee(row, action.id === "supplier_wait" ? "cost_sheet" : "supplier"));
@@ -256,7 +298,8 @@
       return "<label>What next?<select name=\"next\"><option value=\"costing\">Enough to cost — assign costing</option><option value=\"waiting\">Still waiting</option></select></label>" +
         "<label>Waiting on<select name=\"waiting_status\">" + waiting + "</select></label>" +
         "<label>Assign to</label>" + assigneeSelect() +
-        "<label>Comment<textarea name=\"comments\"></textarea></label>";
+        "<label>Comment<textarea name=\"comments\"></textarea></label>" +
+        correspondenceFields(row);
     }
     if (action.id === "complete_cost_sheet") {
       return productNamesLine(row) + fileBlock(".xlsx,.xls,.csv,application/pdf,.pdf", "Upload the Excel cost sheet. Check the preview, then confirm it.") +
@@ -323,6 +366,10 @@
     if (action.id === "complete_approval") body.decision = field(form, "decision");
     if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
     if (action.id === "complete_quote") body.quote_no = field(form, "quote_no");
+    if (action.id === "assign_costing" || action.id === "complete_chase") {
+      body.correspondence_path = field(form, "correspondence_path");
+      Object.assign(body, filePayload(form));
+    }
     if (action.id === "complete_order") body.drawing_required = field(form, "drawing_required");
     if (action.id === "close") body.status = field(form, "status");
     if (action.id === "complete_quote") Object.assign(body, readValues(form, row));
@@ -369,7 +416,7 @@
       "<span>Status <b>" + esc(row.status || "New") + "</b></span>" +
       (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_no ? " · " + esc(row.quote_no) : "") + "</span>" : "") +
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +
-      "</div>";
+      "</div>" + correspondenceCard(row);
     if (openTasks.length) {
       html += "<h2>Assigned now</h2>" + openTasks.map((t) => {
         return "<span class=\"sd-task-pill\">" + esc(t.title) + " → " + esc(t.assignee) + "</span>";
@@ -414,6 +461,19 @@
         state.snap = j;
         revokeFile();
         renderBody();
+      };
+    });
+    body.querySelectorAll("[data-copy-path]").forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        const p = btn.getAttribute("data-copy-path") || "";
+        try {
+          await navigator.clipboard.writeText(p);
+          btn.textContent = "Copied";
+          setTimeout(() => { btn.textContent = "Copy path"; }, 1500);
+        } catch (err) {
+          window.prompt("Copy this CORRESPONDANCE path", p);
+        }
       };
     });
   }

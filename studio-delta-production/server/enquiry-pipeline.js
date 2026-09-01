@@ -270,6 +270,7 @@ function listMyTasks(userName) {
 }
 
 function decorateTask(row, task, dueAt) {
+  const correspondence = db.normalizeCorrespondence(row);
   return {
     ...task,
     due_at: dueAt || task.due_at || "",
@@ -278,7 +279,9 @@ function decorateTask(row, task, dueAt) {
     client_name: row.client_name || "",
     product: row.product || "",
     enquiry_status: row.status || "",
-    date_quoted: row.date_quoted || ""
+    date_quoted: row.date_quoted || "",
+    correspondence_path: correspondence.path || "",
+    correspondence_files: correspondence.files.length
   };
 }
 
@@ -341,12 +344,13 @@ function assignWaiting(row, actor, body) {
   addTask(row, "chase_info", assignee, { note: waiting });
 }
 
-function assignCosting(row, _actor, body) {
+function assignCosting(row, actor, body) {
   if (!statusAllows(row, ["New"].concat(WAITING_STATUSES).concat(["Costing", "Re-Cost"]))) {
     throw new Error("Costing is assigned from capture, or changed while the enquiry is still in costing");
   }
   if (!namedProducts(row).length) throw new Error("Add at least one product name before assigning costing");
   const assignee = requireAssignee(body.assignee);
+  archiveCorrespondence(row, actor, body);
   const open = openOfKind(row, "cost_sheet");
   if (open && statusAllows(row, ["Costing", "Re-Cost"])) {
     open.assignee = assignee;
@@ -358,6 +362,32 @@ function assignCosting(row, _actor, body) {
   addTask(row, "cost_sheet", assignee);
 }
 
+function archiveCorrespondence(row, actor, body) {
+  const existing = db.normalizeCorrespondence(row);
+  const pathIn = String((body && (body.correspondence_path || body.correspondencePath)) || "").trim();
+  const next = {
+    path: pathIn || existing.path,
+    saved_at: existing.saved_at,
+    saved_by: existing.saved_by,
+    files: existing.files.slice()
+  };
+  if (pathIn && pathIn !== existing.path) {
+    next.saved_at = db.nowIso();
+    next.saved_by = actor;
+  }
+  const raw = body && (body.file_base64 || body.fileBase64);
+  if (raw && (body.file_confirmed || body.fileConfirmed)) {
+    const n = next.files.length + 1;
+    const filename = (body.file_name || body.filename || "correspondence.msg");
+    next.files.push(db.saveEnquiryAttachment(row.enquiry_no, "correspondence_" + n, raw, filename));
+    if (!next.saved_at) {
+      next.saved_at = db.nowIso();
+      next.saved_by = actor;
+    }
+  }
+  if (next.path || next.files.length) row.correspondence = next;
+}
+
 function completeChase(row, actor, body) {
   const task = openOfKind(row, "chase_info");
   if (!task) throw new Error("No open chase task");
@@ -365,6 +395,7 @@ function completeChase(row, actor, body) {
   closeOpenKind(row, "chase_info", actor, body.comments || "");
   if (next === "costing") {
     if (!namedProducts(row).length) throw new Error("Add the product name(s) on the enquiry before sending to costing");
+    archiveCorrespondence(row, actor, body);
     row.status = "Costing";
     addTask(row, "cost_sheet", requireAssignee(body.assignee));
     return;

@@ -41,20 +41,47 @@ assert.throws(
   /office Admin/
 );
 
-const costing = pipeline.applyAction("#1996", "Coster", { action: "assign_costing", assignee: "Coster" });
+const costing = pipeline.applyAction("#1996", "Coster", {
+  action: "assign_costing",
+  assignee: "Coster",
+  correspondence_path: "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE"
+});
 assert.strictEqual(costing.row.status, "Costing");
+assert.strictEqual(
+  costing.row.correspondence.path,
+  "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE"
+);
+assert.ok(costing.row.correspondence.saved_at);
+assert.strictEqual(costing.row.correspondence.saved_by, "Coster");
 assert.ok(costing.actions.some((a) => a.id === "assign_costing" && a.label === "Change costing person"));
 const myCost = pipeline.listMyTasks("Coster");
 assert.strictEqual(myCost.length, 1);
 assert.strictEqual(myCost[0].kind, "cost_sheet");
+assert.strictEqual(myCost[0].correspondence_path, "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE");
 assert.strictEqual(pipeline.listMyTasks("Quoter").length, 0);
 
 const moved = pipeline.applyAction("#1996", "Coster", { action: "assign_costing", assignee: "Approver" });
+assert.strictEqual(
+  moved.row.correspondence.path,
+  "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE"
+);
 assert.ok(pipeline.listMyTasks("Approver").some((t) => t.kind === "cost_sheet"));
 assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet"));
 const self = pipeline.applyAction("#1996", "Approver", { action: "assign_costing", assignee: "Approver" });
 assert.ok(self.row.tasks.some((t) => t.kind === "cost_sheet" && t.status === "open" && t.assignee === "Approver"));
 pipeline.applyAction("#1996", "Approver", { action: "assign_costing", assignee: "Coster" });
+const msg = "data:application/octet-stream;base64," + Buffer.from("From: office\nSubject: order emails\n").toString("base64");
+const withCopy = pipeline.applyAction("#1996", "Coster", {
+  action: "assign_costing",
+  assignee: "Coster",
+  correspondence_path: "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE",
+  file_base64: msg,
+  file_name: "Re_ Order #S260025 - LAUGE SORENSEN.msg",
+  file_confirmed: true
+});
+assert.strictEqual(withCopy.row.correspondence.files.length, 1);
+assert.ok(withCopy.row.correspondence.files[0].stored_as);
+assert.ok(db.readEnquiryAttachment("#1996", "correspondence_1"));
 
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", { action: "assign_waiting", waiting_status: "Waiting on clients personal details", assignee: "Coster" }),

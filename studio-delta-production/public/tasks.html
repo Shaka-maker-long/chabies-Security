@@ -46,7 +46,7 @@
   </header>
   <div class="wrap" id="list"></div>
   <script src="/office-auth.js?v=login-users"></script>
-  <script src="/enquiry-process.js?v=quote-no"></script>
+  <script src="/enquiry-process.js?v=correspondence"></script>
   <script>
     let rows = [];
     let me = "";
@@ -77,6 +77,7 @@
             "<div class=\"grow\">" +
             "<h3>" + esc(row.enquiry_no) + " · " + esc(row.client_name || "No client name yet") + "</h3>" +
             "<p>" + esc(kindLabel(row)) + (row.product ? " · " + esc(row.product) : "") + "</p>" +
+            (row.correspondence_path ? "<p>CORRESPONDANCE · " + esc(row.correspondence_path) + "</p>" : "") +
             "<p><span class=\"pill" + (row.overdue ? " overdue" : "") + "\">" + esc(row.enquiry_status || "") + "</span>" +
             (row.overdue ? "<span class=\"pill overdue\">Overdue</span>" : "") +
             (row.due_at ? "<span class=\"pill\">Due " + esc(String(row.due_at).slice(0, 10)) + "</span>" : "") +
