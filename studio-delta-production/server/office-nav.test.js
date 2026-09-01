@@ -45,8 +45,11 @@ assert.ok(processJs.indexOf("data-open-file") !== -1);
 assert.ok(processJs.indexOf("Files") !== -1);
 assert.ok(processJs.indexOf("Every CORRESPONDANCE email") !== -1);
 
+assert.ok(processJs.indexOf("sd-file-row") !== -1);
 const enquiriesHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries.html"), "utf8");
 assert.ok(enquiriesHtml.indexOf('id="captureMask"') !== -1, "New enquiry must open a capture modal");
+assert.ok(enquiriesHtml.indexOf("#grid {") !== -1 || enquiriesHtml.indexOf("#grid{") !== -1);
+assert.ok(enquiriesHtml.indexOf("table { border-collapse:separate; border-spacing:0; min-width:3200px") === -1, "enquiry grid min-width must not apply to all tables");
 assert.ok(enquiriesHtml.indexOf("openCapture") !== -1);
 
 const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
