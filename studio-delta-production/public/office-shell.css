@@ -144,3 +144,22 @@ body.nav-collapsed .sd-logout-btn {
   .sd-collapse-btn { display: none; }
   body.office-app header { padding-left: 64px; }
 }
+
+.sd-persist-banner {
+  position: fixed;
+  top: 0;
+  left: var(--sd-nav);
+  right: 0;
+  z-index: 950;
+  background: #b42318;
+  color: #fff;
+  padding: 10px 16px 10px 20px;
+  font-size: 13px;
+  line-height: 1.45;
+  font-family: Inter, system-ui, sans-serif;
+}
+body.office-app.has-persist-warning { padding-top: 52px; }
+@media (max-width: 991.98px) {
+  .sd-persist-banner { left: 0; top: 56px; }
+  body.office-app.has-persist-warning { padding-top: 108px; }
+}
