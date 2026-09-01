@@ -252,9 +252,10 @@
   }
   function correspondenceFields() {
     const origin = (location && location.origin) || "";
-    return "<p class=\"sd-process-sub\">Do not upload or download .msg files. In Outlook, open the email and click <b>Studio Delta</b> on the ribbon. The email stays in Outlook; this app only keeps a link.</p>" +
-      "<p class=\"sd-process-sub\"><a href=\"" + origin + "/outlook-addin\" target=\"_blank\" rel=\"noopener\">Install the Outlook button</a> once: Get Add-ins → My add-ins → Add a custom add-in → Add from URL → <code>" + origin + "/outlook-addin/manifest.xml</code></p>" +
-      "<label>Or paste Outlook’s Copy as link<textarea class=\"sd-path\" name=\"correspondence_links\" placeholder=\"In Outlook: right-click the email → Copy as link, then paste here. One email per line.\"></textarea></label>";
+    return "<p class=\"sd-process-sub\">Home in Outlook will not show a Studio Delta button. You attach the email from here. Do not save a .msg file.</p>" +
+      "<p class=\"sd-process-sub\">In Outlook, click the email once in Inbox or Sent. Right-click it → <b>Copy as link</b>. If you do not see that, click the <b>…</b> on the far right of Home, or open the email and look on the Message tab. Paste the link below.</p>" +
+      "<label>Outlook link<textarea class=\"sd-path\" name=\"correspondence_links\" placeholder=\"Paste the Outlook link here. One email per line.\"></textarea></label>" +
+      "<p class=\"sd-process-sub\">Optional, only if your PC allows add-ins: <a href=\"" + origin + "/outlook-addin\" target=\"_blank\" rel=\"noopener\">File → Get Add-ins</a>.</p>";
   }
   function correspondenceCard(row) {
     const c = (row && row.correspondence) || {};
