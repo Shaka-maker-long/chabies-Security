@@ -129,7 +129,26 @@ assert.strictEqual(jumped.status, "New");
 assert.strictEqual(jumped.products[0].value_excl_vat, "");
 assert.strictEqual(jumped.has_quote_pdf, false);
 
+assert.strictEqual(db.nextQuoteNo(), "SOQ1");
+assert.deepStrictEqual(db.recentQuoteNos(3), []);
+assert.strictEqual(db.normalizeQuoteNo("soq 2361"), "SOQ2361");
+assert.throws(() => db.normalizeQuoteNo("ABC"), /look like/i);
+
+const qseq = db.upsertEnquiry({
+  date_enquired: "03/09/2026",
+  client_name: "Quote sequence",
+  enquiry_type: "Catologue"
+});
+const qraw = db.getEnquiryRaw(qseq.enquiry_no);
+qraw.quote_no = "SOQ2360";
+db.saveEnquiryRecord(qraw);
+assert.strictEqual(db.nextQuoteNo(), "SOQ2361");
+assert.deepStrictEqual(db.recentQuoteNos(5), ["SOQ2360"]);
+assert.throws(() => db.requireUniqueQuoteNo("SOQ2360"), /already used/i);
+assert.strictEqual(db.requireUniqueQuoteNo("SOQ2360", qseq.enquiry_no), "SOQ2360");
+assert.strictEqual(db.requireUniqueQuoteNo("2361"), "SOQ2361");
+
 const saved = JSON.parse(fs.readFileSync(db.dbPath, "utf8"));
-assert.strictEqual(saved.enquiries.length, 4);
+assert.strictEqual(saved.enquiries.length, 5);
 
 console.log("enquiries.test.js ok");

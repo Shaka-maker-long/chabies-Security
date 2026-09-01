@@ -36,6 +36,8 @@ assert.ok(!/complete_cost_sheet[\s\S]{0,200}valuesTable/.test(processJs), "cost 
 assert.ok(processJs.indexOf("quote_assignee") !== -1);
 assert.ok(processJs.indexOf("Request approval from (optional)") !== -1);
 assert.ok(processJs.indexOf("Quoting person") !== -1);
+assert.ok(processJs.indexOf("quote_no") !== -1);
+assert.ok(processJs.indexOf("Last quotation numbers") !== -1);
 
 const enquiriesHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries.html"), "utf8");
 assert.ok(enquiriesHtml.indexOf('id="captureMask"') !== -1, "New enquiry must open a capture modal");

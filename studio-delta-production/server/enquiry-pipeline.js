@@ -291,7 +291,8 @@ function processSnapshot(enquiryNo) {
     actions: availableActions(row),
     waitingStatuses: WAITING_STATUSES,
     closedStatuses: CLOSED_STATUSES.filter((s) => s !== "Rejected"),
-    followUpDays: FOLLOW_UP_DAYS
+    followUpDays: FOLLOW_UP_DAYS,
+    quoteNo: db.quoteNoHint()
   };
 }
 
@@ -477,6 +478,8 @@ function completeQuote(row, actor, body) {
   }
   applyPricedBody(row, body);
   requirePricedProducts(row);
+  const quoteNo = db.requireUniqueQuoteNo(body.quote_no, row.enquiry_no);
+  row.quote_no = quoteNo;
   const followPerson = requireAssignee(body.follow_up_assignee || body.assignee);
   const payload = {
     ...row,
