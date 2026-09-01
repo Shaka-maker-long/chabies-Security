@@ -28,6 +28,12 @@ assert.ok(js.indexOf("sdLogoutBtn") !== -1);
 assert.ok(js.indexOf("sdWarnPersistence") !== -1);
 assert.ok(css.indexOf(".sd-persist-banner") !== -1);
 
+const processJs = fs.readFileSync(path.join(__dirname, "../public/enquiry-process.js"), "utf8");
+assert.ok(processJs.indexOf("productNamesLine") !== -1);
+assert.ok(processJs.indexOf("Enter each product value") !== -1);
+assert.ok(processJs.indexOf('complete_cost_sheet') !== -1);
+assert.ok(!/complete_cost_sheet[\s\S]{0,200}valuesTable/.test(processJs), "cost sheet must not ask for product values");
+
 const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
 assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");
 const usersHtml = fs.readFileSync(path.join(__dirname, "../public/users.html"), "utf8");

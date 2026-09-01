@@ -65,27 +65,24 @@ const csv = "data:text/csv;base64," + Buffer.from("item,value\nMirror,2500\n").t
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", {
     action: "complete_cost_sheet",
-    products: [{ product: "Daphne Rectangular Mirror", category: "Mirror", value_excl_vat: "2500" }],
-    delivery_excl_vat: "",
     file_base64: csv,
     file_name: "cost.csv",
-    file_confirmed: true,
+    file_confirmed: false,
     assignee: "Approver"
   }),
-  /Delivery/
+  /Tick|confirm|correct file/i
 );
 
 const costed = pipeline.applyAction("#1996", "Coster", {
   action: "complete_cost_sheet",
-  products: [{ product: "Daphne Rectangular Mirror", category: "Mirror", value_excl_vat: "2500" }],
-  delivery_excl_vat: "350",
   file_base64: csv,
   file_name: "cost.csv",
   file_confirmed: true,
   assignee: "Approver"
 });
 assert.strictEqual(costed.row.status, "Costed");
-assert.strictEqual(costed.row.delivery_excl_vat, "350.00");
+assert.strictEqual(costed.row.delivery_excl_vat, "");
+assert.strictEqual(costed.row.products[0].value_excl_vat, "");
 assert.ok(costed.row.cost_sheet && costed.row.cost_sheet.stored_as);
 assert.strictEqual(pipeline.listMyTasks("Approver")[0].kind, "approval");
 
@@ -105,8 +102,6 @@ assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet"));
 
 pipeline.applyAction("#1996", "Coster", {
   action: "complete_cost_sheet",
-  products: [{ product: "Daphne Rectangular Mirror", category: "Mirror", value_excl_vat: "2500" }],
-  delivery_excl_vat: "350",
   file_base64: csv,
   file_name: "cost.csv",
   file_confirmed: true,
@@ -134,6 +129,19 @@ assert.throws(
     follow_up_assignee: "Quoter"
   }),
   /confirm/
+);
+
+assert.throws(
+  () => pipeline.applyAction("#1996", "Quoter", {
+    action: "complete_quote",
+    products: [{ product: "Daphne Rectangular Mirror", category: "Mirror", value_excl_vat: "" }],
+    delivery_excl_vat: "",
+    file_base64: pdfB64,
+    file_name: "quote.pdf",
+    file_confirmed: true,
+    follow_up_assignee: "Quoter"
+  }),
+  /value|Delivery/i
 );
 
 const quoted = pipeline.applyAction("#1996", "Quoter", {

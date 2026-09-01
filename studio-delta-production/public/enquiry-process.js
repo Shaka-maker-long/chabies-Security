@@ -1,7 +1,5 @@
 (function () {
-  const KEEP_VALUES = {
-    Costing: 1, Costed: 1, Quoted: 1, "Followed Up": 1, Ordered: 1, "Re-Cost": 1, "Waiting on Supplier": 1
-  };
+  const KEEP_VALUES = { Quoted: 1, "Followed Up": 1, Ordered: 1 };
   let state = { open: false, enquiryNo: "", focusTaskId: "", snap: null, file: { base64: "", name: "", url: "", confirmed: false, mime: "" } };
 
   function esc(s) {
@@ -80,6 +78,10 @@
         ".sd-process-preview th,.sd-process-preview td{border:1px solid #d0d5dd;padding:4px 6px}" +
         ".sd-process-err{color:#b42318;font-size:12px;min-height:16px}" +
         ".sd-process-form button{margin-top:10px}" +
+        ".sd-process-card summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}" +
+        ".sd-process-card summary h2{margin:0}" +
+        ".sd-process-card summary::-webkit-details-marker{display:none}" +
+        ".sd-process-card:not([open]) .sd-process-form{display:none}" +
         ".sd-process-sheet button{border:1px solid #1d2939;background:#1d2939;color:#fff;border-radius:6px;padding:8px 12px;font-weight:600;cursor:pointer}" +
         ".sd-process-sheet button.ghost{background:#fff;color:#1d2939}" +
         ".sd-task-pill{display:inline-block;background:#fff;border:1px solid #d0d5dd;border-radius:999px;padding:2px 8px;font-size:12px;margin:0 6px 6px 0}" +
@@ -175,6 +177,12 @@
     }
   }
 
+  function productNamesLine(row) {
+    const names = namedLines(row).map((l) => l.product);
+    if (!names.length) return "<p class=\"sd-process-sub\">Add product names on the Enquiries sheet first.</p>";
+    return "<p class=\"sd-process-sub\">Products: " + esc(names.join(", ")) + "</p>";
+  }
+
   function valuesTable(row, editable) {
     const lines = namedLines(row);
     if (!lines.length) return "<p class=\"sd-process-sub\">Add product names on the Enquiries sheet first.</p>";
@@ -249,18 +257,18 @@
         "<label>Comment<textarea name=\"comments\"></textarea></label>";
     }
     if (action.id === "complete_cost_sheet") {
-      return valuesTable(row, true) + fileBlock(".xlsx,.xls,.csv,application/pdf,.pdf", "Upload the Excel cost sheet. Check the preview, then confirm it.") +
+      return productNamesLine(row) + fileBlock(".xlsx,.xls,.csv,application/pdf,.pdf", "Upload the Excel cost sheet. Check the preview, then confirm it.") +
         "<label>Request approval from</label>" + assigneeSelect();
     }
     if (action.id === "complete_approval") {
       return (row.cost_sheet ? "<p class=\"sd-process-sub\">Cost sheet: " + esc(row.cost_sheet.filename || "cost sheet") + " — <a href=\"" + fileUrl("cost_sheet", true) + "\">download</a></p><div class=\"sd-process-preview\" data-preview></div>" : "") +
-        valuesTable(row, false) +
+        productNamesLine(row) +
         "<label>Decision<select name=\"decision\"><option value=\"approve\">Approve — send to quote</option><option value=\"reject\">Reject — back to costing</option></select></label>" +
         "<label>Comments (required if rejected)<textarea name=\"comments\"></textarea></label>" +
         "<label>Next person (quote person if approved, costing if rejected)</label>" + assigneeSelect();
     }
     if (action.id === "complete_quote") {
-      return valuesTable(row, true) + fileBlock("application/pdf,.pdf", "Upload the quote PDF, check the preview, then confirm it is the correct file. DATE QUOTED is saved with the PDF.") +
+      return valuesTable(row, true) + fileBlock("application/pdf,.pdf", "Enter each product value and delivery excluding VAT here, then upload the quote PDF. DATE QUOTED is saved with the PDF.") +
         "<label>Who follows up after 7 days?</label>" + assigneeSelect();
     }
     if (action.id === "complete_followup") {
@@ -301,11 +309,36 @@
     if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
     if (action.id === "complete_order") body.drawing_required = field(form, "drawing_required");
     if (action.id === "close") body.status = field(form, "status");
-    if (action.id === "complete_cost_sheet" || action.id === "complete_quote") Object.assign(body, readValues(form, row));
+    if (action.id === "complete_quote") Object.assign(body, readValues(form, row));
     if (/complete_cost_sheet|complete_quote|complete_followup|complete_order|complete_drawing/.test(action.id)) {
       Object.assign(body, filePayload(form));
     }
     return body;
+  }
+
+  function actionForTaskKind(kind) {
+    return {
+      chase_info: "complete_chase",
+      cost_sheet: "complete_cost_sheet",
+      supplier: "complete_supplier",
+      approval: "complete_approval",
+      quote: "complete_quote",
+      follow_up: "complete_followup",
+      pop: "complete_order",
+      drawing: "complete_drawing"
+    }[kind] || "";
+  }
+
+  function shouldExpandAction(action, i, row, actions) {
+    const focus = state.focusTaskId;
+    if (focus) {
+      const task = (row.tasks || []).find((t) => t.id === focus);
+      if (task) return action.id === actionForTaskKind(task.kind);
+      return action.id === focus;
+    }
+    if (actions.length === 1) return true;
+    if (actions.some((a) => a.id === "assign_costing")) return action.id === "assign_costing";
+    return i === 0;
   }
 
   function renderBody() {
@@ -335,21 +368,24 @@
     } else {
       html += "<div class=\"sd-process-actions\">";
       actions.forEach((action, i) => {
-        html += "<form class=\"sd-process-form sd-process-card\" data-action-i=\"" + i + "\">" +
-          "<h2>" + esc(action.label) + "</h2>" + formFor(action, row) +
+        const open = shouldExpandAction(action, i, row, actions);
+        html += "<details class=\"sd-process-card\" data-action-i=\"" + i + "\"" + (open ? " open" : "") + ">" +
+          "<summary><h2>" + esc(action.label) + "</h2></summary>" +
+          "<form class=\"sd-process-form\">" + formFor(action, row) +
           "<div class=\"sd-process-err\" data-err></div>" +
-          "<button type=\"submit\">Save update</button></form>";
+          "<button type=\"submit\">Save update</button></form></details>";
       });
       html += "</div>";
     }
     body.innerHTML = html;
     body.querySelectorAll("form").forEach((form) => {
       bindFile(form);
+      const card = form.closest("[data-action-i]");
+      const i = Number((card || form).getAttribute("data-action-i"));
       const preview = form.querySelector("[data-preview]");
       if (preview && row.cost_sheet && !form.querySelector('[name="file"]')) showSaved("cost_sheet", preview);
       form.onsubmit = async (e) => {
         e.preventDefault();
-        const i = Number(form.getAttribute("data-action-i"));
         const action = actions[i];
         const err = form.querySelector("[data-err]");
         err.textContent = "";
