@@ -382,8 +382,14 @@ function archiveCorrespondence(row, actor, body) {
     for (const item of body.correspondence_files) {
       const raw = item && (item.file_base64 || item.fileBase64);
       if (!raw) continue;
-      const mail = db.extractOutlookFromDataUrl(raw, item.file_name || item.filename || "");
-      if (mail) incoming.push(mail);
+      const filename = String(item.file_name || item.filename || "outlook-email.msg").trim() || "outlook-email.msg";
+      const extracted = db.extractOutlookFromDataUrl(raw, filename);
+      const decoded = db.decodeDataUrl ? db.decodeDataUrl(raw) : null;
+      const big = decoded && decoded.buffer && decoded.buffer.length > 64;
+      if (!extracted && !big) continue;
+      const n = next.mails.length + incoming.length + 1;
+      const saved = db.saveEnquiryAttachment(row.enquiry_no, "correspondence_" + n, raw, filename);
+      incoming.push(Object.assign({}, extracted || { title: saved.title || filename }, saved));
     }
   }
   const seen = new Set(next.mails.map((m) => db.mailDedupeKey(m)));
@@ -409,7 +415,7 @@ function archiveCorrespondence(row, actor, body) {
 function addCorrespondence(row, actor, body) {
   const added = archiveCorrespondence(row, actor, body);
   if (!added) {
-    throw new Error("Drag the email from Outlook onto this box, or Copy it and paste here. Do not save a .msg file.");
+    throw new Error("Drag the email from Outlook onto the box until the subject appears, then Save update.");
   }
 }
 

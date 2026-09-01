@@ -39,10 +39,8 @@ assert.ok(processJs.indexOf("Quoting person") !== -1);
 assert.ok(processJs.indexOf("quote_no") !== -1);
 assert.ok(processJs.indexOf("Last quotation numbers") !== -1);
 assert.ok(processJs.indexOf("CORRESPONDANCE") !== -1);
-assert.ok(processJs.indexOf("sd-open-mail") !== -1);
-assert.ok(processJs.indexOf("correspondence_links") !== -1);
-assert.ok(processJs.indexOf("correspondence_files") === -1);
-assert.ok(processJs.indexOf("application/vnd.ms-outlook") === -1);
+assert.ok(processJs.indexOf("outlook_drop") !== -1);
+assert.ok(processJs.indexOf("Drop the Outlook email") !== -1);
 
 const enquiriesHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries.html"), "utf8");
 assert.ok(enquiriesHtml.indexOf('id="captureMask"') !== -1, "New enquiry must open a capture modal");

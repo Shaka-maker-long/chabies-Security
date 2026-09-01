@@ -87,7 +87,7 @@ assert.throws(
     action: "add_correspondence",
     correspondence_files: [{ file_base64: "data:application/octet-stream;base64,QQ==", file_name: "note.msg" }]
   }),
-  /Drag the email|Copy it|\.msg/
+  /Drag the email|subject appears/
 );
 const fromDrop = pipeline.applyAction("#1996", "Coster", {
   action: "add_correspondence",
@@ -98,8 +98,8 @@ const fromDrop = pipeline.applyAction("#1996", "Coster", {
 });
 assert.strictEqual(fromDrop.row.correspondence.mails.length, 3);
 assert.strictEqual(fromDrop.row.correspondence.mails[2].order_no, "S260023");
-assert.ok(!fromDrop.row.correspondence.mails[2].stored_as);
-assert.ok(!db.readEnquiryAttachment("#1996", "correspondence_1"));
+assert.ok(fromDrop.row.correspondence.mails[2].stored_as);
+assert.ok(db.readEnquiryAttachment("#1996", fromDrop.row.correspondence.mails[2].kind));
 
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", { action: "assign_waiting", waiting_status: "Waiting on clients personal details", assignee: "Coster" }),

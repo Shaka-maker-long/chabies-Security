@@ -101,10 +101,6 @@ function mondayOf(dateIso) {
 }
 
 function sendEnquiryFile(res, enquiryNo, kind, download) {
-  if (/^correspondence_/i.test(String(kind || ""))) {
-    res.status(404).json({ ok: false, error: "Emails stay in Outlook. Open the link from the enquiry." });
-    return;
-  }
   const file = kind === "quote" || kind === "quote.pdf"
     ? readEnquiryQuotePdf(enquiryNo)
     : readEnquiryAttachment(enquiryNo, kind);
@@ -114,10 +110,11 @@ function sendEnquiryFile(res, enquiryNo, kind, download) {
   }
   const name = file.filename || "file";
   const mime = file.mime || (kind === "quote" || kind === "quote.pdf" ? "application/pdf" : "application/octet-stream");
-  res.setHeader("Content-Type", mime);
+  const outlook = /\.msg$/i.test(name) || mime === "application/vnd.ms-outlook" || /\.eml$/i.test(name);
+  res.setHeader("Content-Type", outlook ? (/\.eml$/i.test(name) ? "message/rfc822" : "application/vnd.ms-outlook") : mime);
   res.setHeader(
     "Content-Disposition",
-    (download ? "attachment" : "inline") + "; filename=\"" + String(name).replace(/"/g, "") + "\""
+    (outlook || download ? "attachment" : "inline") + "; filename=\"" + String(name).replace(/"/g, "") + "\""
   );
   res.send(file.buffer);
 }
