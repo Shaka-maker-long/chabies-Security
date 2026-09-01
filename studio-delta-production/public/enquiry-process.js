@@ -78,7 +78,7 @@
         ".sd-drop.over{border-color:#1d2939;background:#eef2f6}" +
         ".sd-drop input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;font-size:0}" +
         ".sd-drop span{pointer-events:none;display:block}" +
-        ".sd-correspondence h2{margin:0 0 6px;font-size:13px}" +
+        ".sd-correspondence h2,.sd-files h2{margin:0 0 6px;font-size:13px}" +
         ".sd-mail{width:100%;border-collapse:collapse;font-size:12px;background:#fff;margin-top:8px}" +
         ".sd-mail th,.sd-mail td{border:1px solid #d0d5dd;padding:6px 8px;text-align:left}" +
         ".sd-mail button,.sd-mail a.sd-open-mail{margin:0;display:inline-block;text-decoration:none}" +
@@ -280,22 +280,32 @@
     showAttached(form);
     return true;
   }
-  async function openSavedOutlookMail(kind, filename) {
-    const r = await sdOfficeFetch(fileUrl(kind));
-    if (!r.ok) throw new Error("Could not open that email");
+  async function openSavedFile(kind, filename, outlook) {
+    const r = await sdOfficeFetch(fileUrl(kind, !!outlook));
+    if (!r.ok) throw new Error("Could not open that file");
     const blob = await r.blob();
-    const name = /\.(msg|eml)$/i.test(filename || "") ? filename : (filename || "email") + ".msg";
-    const type = /\.eml$/i.test(name) ? "message/rfc822" : "application/vnd.ms-outlook";
+    const name = filename || "file";
+    const type = outlook
+      ? (/\.eml$/i.test(name) ? "message/rfc822" : "application/vnd.ms-outlook")
+      : (blob.type || "application/octet-stream");
     const file = new File([blob], name, { type });
     const url = URL.createObjectURL(file);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = name;
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    const download = !!outlook || /\.(msg|eml|xlsx|xls|csv)$/i.test(name);
+    if (download) {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } else {
+      window.open(url, "_blank", "noopener");
+    }
+    setTimeout(() => URL.revokeObjectURL(url), download ? 4000 : 60000);
+  }
+  async function openSavedOutlookMail(kind, filename) {
+    return openSavedFile(kind, filename, true);
   }
   function bindOutlookAttach(form) {
     const box = form && form.querySelector("[data-outlook-drop]");
@@ -330,25 +340,31 @@
       "<span>Drop the Outlook email here</span></div>" +
       "<p class=\"sd-process-sub\" data-corr-ready></p>";
   }
-  function correspondenceCard(row) {
-    const c = (row && row.correspondence) || {};
-    const mails = c.mails || [];
-    if (!mails.length) return "";
-    let html = "<div class=\"sd-correspondence\"><h2>CORRESPONDANCE</h2>" +
-      "<p class=\"sd-process-sub\">Open in Outlook should start the Outlook you already use (Home, ESET). Close the “new Outlook” welcome screen if it appears — that is the wrong app. If Windows asks, choose Open with Outlook, not Outlook (new).</p>" +
-      "<table class=\"sd-mail\"><thead><tr><th>Email</th><th>From</th><th>Order</th><th></th></tr></thead><tbody>";
-    html += mails.map((f) => {
-      const open = f.kind
-        ? "<button type=\"button\" class=\"ghost\" data-open-mail=\"" + esc(f.kind) + "\" data-mail-name=\"" + esc(f.filename || f.title || "email.msg") + "\">Open in Outlook</button>"
-        : "";
+  function filesCard(row) {
+    const items = (row && Array.isArray(row.deliverables)) ? row.deliverables : [];
+    let html = "<div class=\"sd-files sd-correspondence\"><h2>Files</h2>" +
+      "<p class=\"sd-process-sub\">Every CORRESPONDANCE email, cost sheet, quote PDF, follow-up screenshot, proof of payment, and drawing saved on this enquiry stays here. Open them at any time — not only while that step is open.</p>";
+    if (!items.length) {
+      return html + "<p class=\"sd-process-sub\">No files on this enquiry yet.</p></div>";
+    }
+    html += "<table class=\"sd-mail\"><thead><tr><th>Type</th><th>File</th><th></th></tr></thead><tbody>";
+    html += items.map((f) => {
+      const open = f.open && f.kind
+        ? "<button type=\"button\" class=\"ghost\" data-open-file=\"" + esc(f.kind) + "\" data-mail-name=\"" + esc(f.filename || f.title || "file") + "\" data-file-outlook=\"" + (f.outlook ? "1" : "0") + "\">" +
+          (f.outlook ? "Open in Outlook" : "Open") + "</button>"
+        : "<span class=\"sd-process-sub\">Not saved as a file</span>";
       return "<tr>" +
-        "<td>" + esc(f.title || "Outlook email") + "</td>" +
-        "<td>" + esc(f.from || f.from_email || "") + "</td>" +
-        "<td>" + esc(f.order_no || "") + "</td>" +
+        "<td>" + esc(f.label || "File") + "</td>" +
+        "<td>" + esc(f.title || f.filename || "File") +
+          (f.from ? "<div class=\"sd-process-sub\">" + esc(f.from) + "</div>" : "") +
+        "</td>" +
         "<td>" + open + "</td>" +
         "</tr>";
     }).join("");
     return html + "</tbody></table></div>";
+  }
+  function correspondenceCard(row) {
+    return filesCard(row);
   }
   function formFor(action, row) {
     const waiting = (state.snap.waitingStatuses || []).map((s) => "<option>" + esc(s) + "</option>").join("");
@@ -541,11 +557,13 @@
         renderBody();
       };
     });
-    body.querySelectorAll("[data-open-mail]").forEach((btn) => {
+    body.querySelectorAll("[data-open-file],[data-open-mail]").forEach((btn) => {
       btn.onclick = async (e) => {
         e.preventDefault();
         try {
-          await openSavedOutlookMail(btn.getAttribute("data-open-mail"), btn.getAttribute("data-mail-name"));
+          const kind = btn.getAttribute("data-open-file") || btn.getAttribute("data-open-mail");
+          const outlook = btn.getAttribute("data-file-outlook") === "1" || btn.hasAttribute("data-open-mail");
+          await openSavedFile(kind, btn.getAttribute("data-mail-name"), outlook);
         } catch (err) {
           btn.textContent = "Could not open";
         }
