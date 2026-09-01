@@ -168,7 +168,7 @@ function mountOffice(app) {
   app.put("/api/office/enquiries", requireOffice, (req, res) => {
     try {
       const row = upsertEnquiry(req.body || {});
-      res.json({ ok: true, row, nextEnquiryNo: nextEnquiryNo() });
+      res.json({ ok: true, row, nextEnquiryNo: nextEnquiryNo(), dropdowns: listEnquiryDropdowns() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

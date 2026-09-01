@@ -2,9 +2,11 @@ const fs = require("fs");
 const path = require("path");
 const { DROPDOWN_KEYS, DEFAULT_DROPDOWNS } = require("./dropdowns-default");
 const {
+  unique,
   ENQUIRY_FIELDS,
   ENQUIRY_DROPDOWN_KEYS,
-  DEFAULT_ENQUIRY_DROPDOWNS
+  DEFAULT_ENQUIRY_DROPDOWNS,
+  NEW_DESIGN_MIN_CHARS
 } = require("./enquiries-default");
 const { getBook, persistWorkbook, ORDER_HEADERS } = require("./workbook-store");
 
@@ -145,7 +147,8 @@ function emptyState() {
     nextScheduleId: 1,
     dropdowns: JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS)),
     paymentsByOrder: {},
-    enquiries: []
+    enquiries: [],
+    enquiry_dropdowns: {}
   };
 }
 
@@ -184,7 +187,8 @@ try {
     schedule_cells: Array.isArray(parsed.schedule_cells) ? parsed.schedule_cells : [],
     dropdowns,
     paymentsByOrder: parsed.paymentsByOrder && typeof parsed.paymentsByOrder === "object" ? parsed.paymentsByOrder : {},
-    enquiries: Array.isArray(parsed.enquiries) ? parsed.enquiries : []
+    enquiries: Array.isArray(parsed.enquiries) ? parsed.enquiries : [],
+    enquiry_dropdowns: parsed.enquiry_dropdowns && typeof parsed.enquiry_dropdowns === "object" ? parsed.enquiry_dropdowns : {}
   };
   if (!Object.keys(state.paymentsByOrder).length && Array.isArray(parsed.orders)) {
     parsed.orders.forEach((o) => {
@@ -557,11 +561,101 @@ function monthFromEnquiryDate(v) {
 }
 
 function listEnquiryDropdowns() {
+  const saved = state.enquiry_dropdowns && typeof state.enquiry_dropdowns === "object" ? state.enquiry_dropdowns : {};
   const out = {};
   for (const key of ENQUIRY_DROPDOWN_KEYS) {
-    out[key] = DEFAULT_ENQUIRY_DROPDOWNS[key].slice();
+    out[key] = unique([
+      ...(DEFAULT_ENQUIRY_DROPDOWNS[key] || []),
+      ...(Array.isArray(saved[key]) ? saved[key] : [])
+    ]);
   }
   return out;
+}
+
+function addEnquiryDropdownItem(field, value) {
+  if (ENQUIRY_DROPDOWN_KEYS.indexOf(field) === -1) throw new Error("Unknown enquiry dropdown");
+  const item = String(value || "").trim();
+  if (!item) throw new Error("Value is required");
+  if (!state.enquiry_dropdowns || typeof state.enquiry_dropdowns !== "object") state.enquiry_dropdowns = {};
+  if (!Array.isArray(state.enquiry_dropdowns[field])) state.enquiry_dropdowns[field] = [];
+  const all = listEnquiryDropdowns()[field] || [];
+  const exists = all.some((v) => String(v).toLowerCase() === item.toLowerCase());
+  if (!exists) state.enquiry_dropdowns[field].push(item);
+  save();
+  return listEnquiryDropdowns();
+}
+
+function emptyCustomSpec() {
+  return { kind: "", other: "", detail: "" };
+}
+
+function normalizeCustomSpecs(row, existing) {
+  let specs = Array.isArray(row && row.custom_specs) ? row.custom_specs : null;
+  if (!specs && existing && Array.isArray(existing.custom_specs)) specs = existing.custom_specs;
+  if (!specs) return [];
+  const cleaned = [];
+  for (const spec of specs) {
+    let kind = String((spec && spec.kind) || "").trim();
+    const other = String((spec && spec.other) || "").trim();
+    const detail = String((spec && spec.detail) || "").trim();
+    if (/^other$/i.test(kind) && other) kind = other;
+    if (!kind && !other && !detail) continue;
+    cleaned.push({ kind, other: /^other$/i.test(String((spec && spec.kind) || "")) ? other : "", detail });
+  }
+  return cleaned;
+}
+
+function customSpecSummary(specs) {
+  return (specs || [])
+    .filter((s) => s.kind && s.detail)
+    .map((s) => s.kind + ": " + s.detail)
+    .join("; ");
+}
+
+function rememberCustomSpecKinds(specs) {
+  for (const spec of specs || []) {
+    const kind = String(spec.kind || "").trim();
+    if (!kind || /^other$/i.test(kind)) continue;
+    addEnquiryDropdownItem("custom_spec", kind);
+  }
+}
+
+function applyEnquiryTypeDetails(payload, row, existing) {
+  const type = payload.enquiry_type;
+  payload.custom_specs = normalizeCustomSpecs(row, existing);
+  payload.design_description = String(
+    row.design_description != null ? row.design_description : (existing && existing.design_description) || ""
+  ).trim();
+
+  if (type === "Custom") {
+    payload.design_description = "";
+    if (!payload.custom_specs.length) {
+      throw new Error("For Custom, say whether it is Dimensions, Colour, or Other");
+    }
+    for (const spec of payload.custom_specs) {
+      if (!spec.kind || /^other$/i.test(spec.kind)) {
+        throw new Error("If it is Other, specify what the custom change is");
+      }
+      if (!spec.detail) {
+        throw new Error("Write the " + spec.kind.toLowerCase() + " for this custom enquiry");
+      }
+    }
+    rememberCustomSpecKinds(payload.custom_specs);
+    payload.request = customSpecSummary(payload.custom_specs);
+    return;
+  }
+
+  if (type === "New Design") {
+    payload.custom_specs = [];
+    if (payload.design_description.length < NEW_DESIGN_MIN_CHARS) {
+      throw new Error("For a New Design, write a full description of what it is");
+    }
+    payload.request = payload.design_description;
+    return;
+  }
+
+  payload.custom_specs = [];
+  payload.design_description = "";
 }
 
 function enquiryQuoteKey(enquiryNo) {
@@ -702,6 +796,8 @@ function copyPipeline(from, to) {
   to.client_outcome = cloneJson(from && from.client_outcome, null);
   to.drawing = cloneJson(from && from.drawing, null);
   to.ready_for_orders = !!(from && from.ready_for_orders);
+  to.custom_specs = normalizeCustomSpecs(from, null);
+  to.design_description = String((from && from.design_description) || "").trim();
 }
 
 function enquiryFilesDir(enquiryNo) {
@@ -812,6 +908,8 @@ function decorateEnquiry(row) {
   const hasPdf = enquiryHasQuotePdf(row.enquiry_no);
   const tasks = normalizeEnquiryTasks(row);
   const openTasks = tasks.filter((t) => t.status === "open");
+  const customSpecs = normalizeCustomSpecs(row, null);
+  const enquiryType = String(row.enquiry_type || "").trim();
   return {
     ...row,
     products,
@@ -825,7 +923,12 @@ function decorateEnquiry(row) {
     quote_pdf_name: hasPdf ? (row.quote_pdf_name || "quote.pdf") : "",
     ready_for_orders: !!row.ready_for_orders,
     open_task_count: openTasks.length,
-    assigned_to: openTasks.map((t) => t.assignee).filter(Boolean).join(", ")
+    assigned_to: openTasks.map((t) => t.assignee).filter(Boolean).join(", "),
+    custom_specs: customSpecs,
+    design_description: String(row.design_description || "").trim(),
+    spec_summary: enquiryType === "New Design"
+      ? String(row.design_description || row.request || "").trim()
+      : customSpecSummary(customSpecs)
   };
 }
 
@@ -869,6 +972,7 @@ function upsertEnquiry(row, opts) {
   }
   payload.month_enquired = monthFromEnquiryDate(payload.date_enquired);
   const existing = getEnquiryRaw(payload.enquiry_no);
+  if (!payload.enquiry_type && existing && existing.enquiry_type) payload.enquiry_type = existing.enquiry_type;
   payload.products = normalizeEnquiryLines(row, existing);
   payload.product = payload.products.filter((p) => p.product).map((p) => p.product).join(", ");
   payload.category = payload.products.map((p) => p.category).filter(Boolean)[0] || payload.category;
@@ -877,6 +981,14 @@ function upsertEnquiry(row, opts) {
   payload.quote_pdf_name = String((row.quote_pdf_name != null ? row.quote_pdf_name : (existing && existing.quote_pdf_name)) || "").trim();
   payload.quote_pdf_uploaded_at = (row.quote_pdf_uploaded_at != null ? row.quote_pdf_uploaded_at : (existing && existing.quote_pdf_uploaded_at)) || "";
   copyPipeline(existing || row, payload);
+  if (!fromPipeline) {
+    applyEnquiryTypeDetails(payload, row, existing);
+  } else {
+    payload.custom_specs = normalizeCustomSpecs(row, existing);
+    payload.design_description = String(
+      row.design_description != null ? row.design_description : (existing && existing.design_description) || ""
+    ).trim();
+  }
 
   if (!fromPipeline) {
     if (existing) {
@@ -1004,6 +1116,8 @@ module.exports = {
   nextEnquiryNo,
   monthFromEnquiryDate,
   listEnquiryDropdowns,
+  addEnquiryDropdownItem,
+  normalizeCustomSpecs,
   readEnquiryQuotePdf,
   saveEnquiryQuotePdf,
   enquiryHasQuotePdf,

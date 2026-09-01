@@ -20,12 +20,64 @@ const first = db.upsertEnquiry({
   enquiry_type: "Custom",
   client_name: "Michael Cost",
   product: "Daphne Rectangular Mirror",
-  status: "New"
+  status: "New",
+  custom_specs: [{ kind: "Dimensions", detail: "800 x 600" }]
 });
 assert.strictEqual(first.enquiry_no, "#1996");
 assert.strictEqual(first.month_enquired, "Nov");
 assert.strictEqual(first.products[0].product, "Daphne Rectangular Mirror");
 assert.strictEqual(first.products[0].value_excl_vat, "");
+assert.strictEqual(first.custom_specs[0].kind, "Dimensions");
+assert.ok(first.request.indexOf("Dimensions") >= 0);
+
+assert.throws(
+  () => db.upsertEnquiry({
+    date_enquired: "01/09/2026",
+    enquiry_type: "Custom",
+    client_name: "No Spec"
+  }),
+  /Dimensions, Colour, or Other/
+);
+
+assert.throws(
+  () => db.upsertEnquiry({
+    date_enquired: "01/09/2026",
+    enquiry_type: "Custom",
+    client_name: "Other missing",
+    custom_specs: [{ kind: "Other", other: "", detail: "something" }]
+  }),
+  /specify what/
+);
+
+const othered = db.upsertEnquiry({
+  date_enquired: "01/09/2026",
+  enquiry_type: "Custom",
+  client_name: "Handle job",
+  product: "Air Chair",
+  custom_specs: [{ kind: "Other", other: "Handle", detail: "brass D-pull" }]
+});
+assert.strictEqual(othered.custom_specs[0].kind, "Handle");
+assert.ok(db.listEnquiryDropdowns().custom_spec.indexOf("Handle") >= 0);
+assert.ok(db.listEnquiryDropdowns().custom_spec.indexOf("Dimensions") >= 0);
+
+assert.throws(
+  () => db.upsertEnquiry({
+    date_enquired: "01/09/2026",
+    enquiry_type: "New Design",
+    client_name: "Sketch",
+    design_description: "a table"
+  }),
+  /full description/
+);
+
+const design = db.upsertEnquiry({
+  date_enquired: "02/09/2026",
+  enquiry_type: "New Design",
+  client_name: "New brief",
+  design_description: "Steel dining table with a live-edge oak top and arched black base."
+});
+assert.ok(design.request.indexOf("live-edge") >= 0);
+assert.strictEqual(design.custom_specs.length, 0);
 
 const pricedTooSoon = db.upsertEnquiry({
   enquiry_no: "#1996",
@@ -43,14 +95,14 @@ const second = db.upsertEnquiry({
   client_name: "Sas Promotions",
   status: "Followed Up"
 });
-assert.strictEqual(second.enquiry_no, "#1997");
+assert.strictEqual(second.enquiry_no, "#1999");
 assert.strictEqual(second.month_enquired, "Jan");
 assert.strictEqual(second.status, "New");
-assert.strictEqual(db.nextEnquiryNo(), "#1998");
+assert.strictEqual(db.nextEnquiryNo(), "#2000");
 
 const listed = db.listEnquiries();
-assert.strictEqual(listed[0].enquiry_no, "#1997");
-assert.strictEqual(listed[1].enquiry_no, "#1996");
+assert.strictEqual(listed[0].enquiry_no, "#1999");
+assert.ok(listed.some((r) => r.enquiry_no === "#1996"));
 
 const drops = db.listEnquiryDropdowns();
 assert.ok(drops.enquiry_source.indexOf("Whatsapp") >= 0);
@@ -59,6 +111,9 @@ assert.ok(drops.product.indexOf("Violet Sideboard 3-Door") >= 0);
 assert.ok(drops.category.indexOf("Gate") >= 0);
 assert.ok(drops.status.indexOf("Waiting on clients specifictions") >= 0);
 assert.ok(drops.status.indexOf("Costing") >= 0);
+assert.ok(drops.custom_spec.indexOf("Handle") >= 0);
+assert.ok(drops.custom_spec.indexOf("Dimensions") >= 0);
+assert.ok(drops.custom_spec.indexOf("Colour") >= 0);
 
 const jumped = db.upsertEnquiry({
   enquiry_no: "#1996",
@@ -75,6 +130,6 @@ assert.strictEqual(jumped.products[0].value_excl_vat, "");
 assert.strictEqual(jumped.has_quote_pdf, false);
 
 const saved = JSON.parse(fs.readFileSync(db.dbPath, "utf8"));
-assert.strictEqual(saved.enquiries.length, 2);
+assert.strictEqual(saved.enquiries.length, 4);
 
 console.log("enquiries.test.js ok");

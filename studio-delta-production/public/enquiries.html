@@ -52,15 +52,21 @@
     .pdf-box iframe { width:100%; height:360px; border:1px solid var(--line); border-radius:8px; background:#f2f4f7; }
     .err { color:#b42318; font-size:12px; min-height:16px; }
     .quote-only { display:none; }
+    .spec-grid { display:flex; flex-direction:column; gap:10px; }
+    .spec-row { display:grid; grid-template-columns: 160px 1fr auto; gap:8px; align-items:start; }
+    .spec-row select, .spec-row input, .spec-row textarea, #designDesc { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; }
+    #designDesc { min-height:140px; }
+    .spec-row textarea { min-height:64px; }
     @media (max-width: 720px) {
       .pdf-box iframe { height:240px; }
+      .spec-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
 <body>
   <header>
     <h1>Enquiries</h1>
-    <p class="msg" style="margin:0;max-width:420px">Status is not a free list. Assign office staff; they update from <a href="/tasks">My tasks</a>.</p>
+    <p class="msg" style="margin:0;max-width:460px">Custom needs Dimensions, Colour, or Other. New Design needs a full description. Status updates from <a href="/tasks">My tasks</a>.</p>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search enquiries">
@@ -122,7 +128,27 @@
       </div>
     </div>
   </div>
-  <script src="/office-auth.js?v=my-tasks"></script>
+  <div class="mask" id="specMask">
+    <div class="sheet" role="dialog" aria-modal="true">
+      <header>
+        <h1 id="specTitle">Custom specification</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeSpec(false)">Cancel</button>
+          <button type="button" onclick="confirmSpec()">Save specification</button>
+        </div>
+      </header>
+      <div class="body">
+        <p class="hint" id="specHint"></p>
+        <div id="customBlock" class="spec-grid"></div>
+        <div id="designBlock" style="display:none">
+          <label class="hint" style="display:block;margin-bottom:6px;color:#1d2939;font-weight:600">Full description *</label>
+          <textarea id="designDesc" placeholder="Describe the new design: what it is, materials, size, how it will be used."></textarea>
+        </div>
+        <div class="err" id="specErr"></div>
+      </div>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=custom-spec"></script>
   <script src="/enquiry-process.js?v=my-tasks"></script>
   <script>
     const HEADERS = [
@@ -157,6 +183,8 @@
     let nextNo = "#1996";
     let vatRate = 0.15;
     let modal = { open: false, i: -1, mode: "products", prevStatus: "", lines: [], pdfUrl: "", pdfBase64: "", pdfName: "", confirmed: false };
+    let specModal = { open: false, i: -1, prevType: "", specs: [] };
+    function emptySpec() { return { kind: "", other: "", detail: "" }; }
     function emptyLine() { return { product: "", category: "", value_excl_vat: "" }; }
     function ensureLines(row) {
       if (!Array.isArray(row.products) || !row.products.length) {
@@ -301,7 +329,15 @@
             html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-products=\"" + i + "\">" + esc(productLabel(row)) + extra + "</button></td>";
           } else if (k === "category") {
             html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-products=\"" + i + "\">" + esc(categoryLabel(row) || "Add product") + "</button></td>";
-          } else if (k === "request" || k === "comment") {
+          } else if (k === "request") {
+            const type = row.enquiry_type;
+            if (type === "Custom" || type === "New Design") {
+              const label = row.spec_summary || (type === "Custom" ? "Add Dimensions, Colour, or Other" : "Add full description");
+              html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-spec=\"" + i + "\">" + esc(label) + "</button></td>";
+            } else {
+              html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
+            }
+          } else if (k === "comment") {
             html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
           } else if (k === "status") {
             html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-process=\"" + i + "\">" + esc(row[k] || "New") + " · update</button></td>";
@@ -335,8 +371,17 @@
           if (!row || !row.enquiry_no) return;
           const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(row) });
           const j = await r.json();
-          if (!j.ok) { document.getElementById("status").textContent = j.error || "Save the enquiry first"; return; }
+          if (!j.ok) {
+            document.getElementById("status").textContent = j.error || "Save the enquiry first";
+            if (/Custom|New Design|Dimensions|Colour/i.test(j.error || "")) openSpecModal(i);
+            return;
+          }
           sdOpenEnquiryProcess((j.row && j.row.enquiry_no) || row.enquiry_no);
+          return;
+        }
+        const specBtn = e.target.closest("[data-open-spec]");
+        if (specBtn) {
+          openSpecModal(Number(specBtn.getAttribute("data-open-spec")));
           return;
         }
         const btn = e.target.closest("[data-open-products]");
@@ -357,6 +402,19 @@
             rows[i].month_enquired = monthFromDmy(rows[i].date_enquired);
             const monthInput = tr.querySelector('input[data-k="month_enquired"]');
             if (monthInput) monthInput.value = rows[i].month_enquired;
+          }
+          return;
+        }
+        if (k === "enquiry_type") {
+          const prev = rows[i].enquiry_type;
+          rows[i].enquiry_type = e.target.value;
+          if (e.target.value === "Custom" || e.target.value === "New Design") {
+            openSpecModal(i, prev);
+          } else {
+            rows[i].custom_specs = [];
+            rows[i].design_description = "";
+            rows[i].spec_summary = "";
+            render();
           }
           return;
         }
@@ -541,6 +599,118 @@
       await load();
       document.getElementById("status").textContent = "Saved";
     }
+    function specKindSelect(value, idx) {
+      const current = String(value || "");
+      const opts = (dropdowns.custom_spec || ["Dimensions", "Colour", "Other"]).slice();
+      if (current && current !== "Other" && opts.indexOf(current) === -1) opts.splice(opts.length - 1, 0, current);
+      let h = "<select data-spec=\"" + idx + "\" data-f=\"kind\">";
+      h += "<option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      return h + "</select>";
+    }
+    function renderSpecs() {
+      const box = document.getElementById("customBlock");
+      box.innerHTML = specModal.specs.map((spec, idx) => {
+        const otherOn = spec.kind === "Other" || (!spec.kind && spec.other);
+        return "<div class=\"spec-row\">" +
+          "<div><label class=\"hint\" style=\"display:block;margin-bottom:4px;color:#1d2939\">What is custom?</label>" + specKindSelect(spec.kind || "", idx) +
+          (otherOn ? "<input data-spec=\"" + idx + "\" data-f=\"other\" placeholder=\"Specify what it is\" value=\"" + escAttr(spec.other || "") + "\" style=\"margin-top:6px\">" : "") +
+          "</div>" +
+          "<div><label class=\"hint\" style=\"display:block;margin-bottom:4px;color:#1d2939\">Details *</label>" +
+          "<textarea data-spec=\"" + idx + "\" data-f=\"detail\" placeholder=\"" + (spec.kind === "Dimensions" ? "e.g. 1800 x 900 x 450" : spec.kind === "Colour" ? "e.g. matte black powder coat" : "Describe this custom change") + "\">" + esc(spec.detail || "") + "</textarea></div>" +
+          "<button type=\"button\" class=\"danger\" data-del-spec=\"" + idx + "\">Delete</button>" +
+          "</div>";
+      }).join("") + "<button type=\"button\" class=\"ghost\" id=\"addSpecBtn\">Add another</button>";
+      box.onchange = box.oninput = (e) => {
+        const el = e.target;
+        const idx = Number(el.getAttribute("data-spec"));
+        const f = el.getAttribute("data-f");
+        if (!f || !specModal.specs[idx]) return;
+        specModal.specs[idx][f] = el.value;
+        if (f === "kind") renderSpecs();
+      };
+      box.onclick = (e) => {
+        if (e.target.id === "addSpecBtn") {
+          specModal.specs.push(emptySpec());
+          renderSpecs();
+          return;
+        }
+        const btn = e.target.closest("[data-del-spec]");
+        if (!btn) return;
+        const idx = Number(btn.getAttribute("data-del-spec"));
+        if (specModal.specs.length === 1) specModal.specs[0] = emptySpec();
+        else specModal.specs.splice(idx, 1);
+        renderSpecs();
+      };
+    }
+    function openSpecModal(i, prevType) {
+      const row = rows[i];
+      specModal.open = true;
+      specModal.i = i;
+      specModal.prevType = prevType != null ? prevType : row.enquiry_type;
+      specModal.specs = Array.isArray(row.custom_specs) && row.custom_specs.length
+        ? row.custom_specs.map((s) => Object.assign(emptySpec(), s))
+        : [emptySpec()];
+      document.getElementById("specErr").textContent = "";
+      document.getElementById("designDesc").value = row.design_description || "";
+      const custom = row.enquiry_type === "Custom";
+      document.getElementById("specTitle").textContent = custom ? "Custom " + (row.enquiry_no || "") : "New Design " + (row.enquiry_no || "");
+      document.getElementById("specHint").textContent = custom
+        ? "Is this Dimensions, Colour, or Other? If Other, specify what it is — that name is saved on the dropdown for next time. Then fill in the details."
+        : "Write a full description of the new design so costing and production know what it is.";
+      document.getElementById("customBlock").style.display = custom ? "" : "none";
+      document.getElementById("designBlock").style.display = custom ? "none" : "";
+      if (custom) renderSpecs();
+      document.getElementById("specMask").classList.add("open");
+    }
+    function closeSpec(saved) {
+      document.getElementById("specMask").classList.remove("open");
+      if (!saved && rows[specModal.i]) {
+        const row = rows[specModal.i];
+        const needs = row.enquiry_type === "Custom" || row.enquiry_type === "New Design";
+        const missingCustom = row.enquiry_type === "Custom" && !(row.custom_specs && row.custom_specs.length);
+        const missingDesign = row.enquiry_type === "New Design" && !String(row.design_description || "").trim();
+        if (needs && (missingCustom || missingDesign)) {
+          row.enquiry_type = specModal.prevType && specModal.prevType !== row.enquiry_type ? specModal.prevType : "";
+          render();
+        }
+      }
+      specModal.open = false;
+    }
+    async function confirmSpec() {
+      const row = rows[specModal.i];
+      const err = document.getElementById("specErr");
+      err.textContent = "";
+      if (row.enquiry_type === "Custom") {
+        const specs = specModal.specs.map((s) => ({
+          kind: String(s.kind || "").trim(),
+          other: String(s.other || "").trim(),
+          detail: String(s.detail || "").trim()
+        })).filter((s) => s.kind || s.other || s.detail);
+        if (!specs.length) { err.textContent = "Choose Dimensions, Colour, or Other."; return; }
+        for (const spec of specs) {
+          if (spec.kind === "Other" && !spec.other) { err.textContent = "If it is Other, specify what it is."; return; }
+          if (!spec.detail) { err.textContent = "Write the details for each custom change."; return; }
+        }
+        row.custom_specs = specs;
+        row.design_description = "";
+      } else {
+        const desc = String(document.getElementById("designDesc").value || "").trim();
+        if (desc.length < 20) { err.textContent = "Write a full description of the new design."; return; }
+        row.design_description = desc;
+        row.custom_specs = [];
+        row.request = desc;
+      }
+      const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(row) });
+      const j = await r.json();
+      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      if (j.dropdowns) dropdowns = j.dropdowns;
+      closeSpec(true);
+      await load();
+      document.getElementById("status").textContent = "Saved";
+    }
     function addRow() {
       bumpNext();
       const blank = {};
@@ -551,6 +721,8 @@
       blank.status = "New";
       blank.products = [emptyLine()];
       blank.delivery_excl_vat = "";
+      blank.custom_specs = [];
+      blank.design_description = "";
       rows.unshift(blank);
       bumpNext();
       render();
@@ -565,6 +737,7 @@
         if (copy.date_enquired) copy.date_enquired = isoToDmy(copy.date_enquired);
         if (copy.date_quoted) copy.date_quoted = isoToDmy(copy.date_quoted);
         copy.products = Array.isArray(copy.products) && copy.products.length ? copy.products : [emptyLine()];
+        copy.custom_specs = Array.isArray(copy.custom_specs) ? copy.custom_specs : [];
         return copy;
       });
       dropdowns = j.dropdowns || {};
@@ -583,7 +756,11 @@
           body: JSON.stringify(payload)
         });
         const j = await r.json();
-        if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+        if (!j.ok) {
+          document.getElementById("status").textContent = j.error;
+          if (/Custom|New Design|Dimensions|Colour/i.test(j.error || "")) openSpecModal(rows.indexOf(row));
+          return;
+        }
       }
       await load();
       document.getElementById("status").textContent = "Saved";
@@ -592,6 +769,9 @@
     document.getElementById("q").oninput = render;
     document.getElementById("mask").addEventListener("click", (e) => {
       if (e.target.id === "mask") closeModal(false);
+    });
+    document.getElementById("specMask").addEventListener("click", (e) => {
+      if (e.target.id === "specMask") closeSpec(false);
     });
     window.addEventListener("resize", () => { render(); });
     sdRequireOffice("enquiries").then((p) => { if (p) load(); });
