@@ -701,6 +701,23 @@ function upsertEnquiry(row) {
   payload.quote_pdf_name = String((row.quote_pdf_name != null ? row.quote_pdf_name : (existing && existing.quote_pdf_name)) || "").trim();
   payload.quote_pdf_uploaded_at = (row.quote_pdf_uploaded_at != null ? row.quote_pdf_uploaded_at : (existing && existing.quote_pdf_uploaded_at)) || "";
 
+  if (payload.status === "Quoted") {
+    const named = payload.products.filter((p) => p.product);
+    if (!named.length) throw new Error("Add at least one product before marking Quoted");
+    if (named.some((p) => p.value_excl_vat === "")) {
+      throw new Error("Enter a value excluding VAT for each product when quoting");
+    }
+    if (payload.delivery_excl_vat === "") {
+      throw new Error("Delivery excluding VAT is required when quoting");
+    }
+    if (!enquiryHasQuotePdf(payload.enquiry_no) && !row.quote_pdf_base64) {
+      throw new Error("Upload and confirm the quote PDF before marking Quoted");
+    }
+  } else {
+    payload.products = payload.products.map((p) => ({ ...p, value_excl_vat: "" }));
+    payload.delivery_excl_vat = "";
+  }
+
   if (row.quote_pdf_base64) {
     if (!row.quote_pdf_confirmed) throw new Error("Preview the quote PDF and confirm it is the correct file before saving");
     const savedPdf = saveEnquiryQuotePdf(payload.enquiry_no, row.quote_pdf_base64, row.quote_pdf_name || "quote.pdf");
@@ -709,14 +726,7 @@ function upsertEnquiry(row) {
     payload.date_quoted = todayEnquiryDate();
   }
 
-  if (payload.status === "Quoted") {
-    const named = payload.products.filter((p) => p.product);
-    if (!named.length) throw new Error("Add at least one product before marking Quoted");
-    if (!enquiryHasQuotePdf(payload.enquiry_no) && !row.quote_pdf_base64) {
-      throw new Error("Upload and confirm the quote PDF before marking Quoted");
-    }
-    if (!payload.date_quoted) payload.date_quoted = todayEnquiryDate();
-  }
+  if (payload.status === "Quoted" && !payload.date_quoted) payload.date_quoted = todayEnquiryDate();
 
   payload.updated_at = nowIso();
   if (!state.enquiries) state.enquiries = [];
