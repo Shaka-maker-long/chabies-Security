@@ -374,33 +374,57 @@ function archiveCorrespondence(row, actor, body) {
     mails: existing.mails.slice()
   };
   const incoming = [];
-  if (Array.isArray(body && body.correspondence_mails)) {
-    incoming.push.apply(incoming, body.correspondence_mails);
-  }
-  incoming.push.apply(incoming, db.mailsFromPastedLinks((body && (body.correspondence_links || body.correspondenceLinks)) || ""));
   if (Array.isArray(body && body.correspondence_files)) {
     for (const item of body.correspondence_files) {
       const raw = item && (item.file_base64 || item.fileBase64);
       if (!raw) continue;
       const filename = String(item.file_name || item.filename || "outlook-email.msg").trim() || "outlook-email.msg";
       const extracted = db.extractOutlookFromDataUrl(raw, filename);
-      const decoded = db.decodeDataUrl ? db.decodeDataUrl(raw) : null;
+      const decoded = db.decodeDataUrl(raw);
       const big = decoded && decoded.buffer && decoded.buffer.length > 64;
       if (!extracted && !big) continue;
       const n = next.mails.length + incoming.length + 1;
       const saved = db.saveEnquiryAttachment(row.enquiry_no, "correspondence_" + n, raw, filename);
-      incoming.push(Object.assign({}, extracted || { title: saved.title || filename }, saved));
+      incoming.push(Object.assign({}, extracted || {}, saved, {
+        title: (extracted && extracted.title) || saved.title || filename
+      }));
     }
   }
-  const seen = new Set(next.mails.map((m) => db.mailDedupeKey(m)));
+  if (Array.isArray(body && body.correspondence_mails)) {
+    incoming.push.apply(incoming, body.correspondence_mails);
+  }
+  incoming.push.apply(incoming, db.mailsFromPastedLinks((body && (body.correspondence_links || body.correspondenceLinks)) || ""));
+  const indexByKey = new Map();
+  function indexMail(mail, idx) {
+    (db.mailDedupeKeys ? db.mailDedupeKeys(mail) : [db.mailDedupeKey(mail)]).forEach((k) => {
+      if (k) indexByKey.set(k, idx);
+    });
+  }
+  next.mails.forEach((m, i) => indexMail(m, i));
   let added = 0;
   incoming.forEach((item, i) => {
     const mail = db.normalizeOutlookMail(item, next.mails.length + i);
     if (!mail) return;
-    const key = db.mailDedupeKey(mail);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
+    const keys = db.mailDedupeKeys ? db.mailDedupeKeys(mail) : [db.mailDedupeKey(mail)];
+    if (!keys.length) return;
+    let idx = -1;
+    for (let k = 0; k < keys.length; k++) {
+      if (indexByKey.has(keys[k])) {
+        idx = indexByKey.get(keys[k]);
+        break;
+      }
+    }
+    if (idx >= 0) {
+      const prev = next.mails[idx];
+      if (mail.stored_as) {
+        next.mails[idx] = Object.assign({}, prev, mail, { id: prev.id });
+        indexMail(next.mails[idx], idx);
+        added += 1;
+      }
+      return;
+    }
     mail.id = "mail_" + (next.mails.length + 1);
+    indexMail(mail, next.mails.length);
     next.mails.push(mail);
     added += 1;
   });

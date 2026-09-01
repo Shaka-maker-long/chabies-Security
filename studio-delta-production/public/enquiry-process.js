@@ -276,9 +276,7 @@
     let name = String(file.name || "outlook-email").trim() || "outlook-email";
     if (!/\.(msg|eml)$/i.test(name)) name += ".msg";
     const file_base64 = await readFileAsDataUrl(file);
-    const title = name.replace(/\.(msg|eml)$/i, "");
     state.correspondenceUploads.push({ file_base64, file_name: name });
-    state.correspondenceMails.push({ title, filename: name });
     showAttached(form);
     return true;
   }
@@ -443,7 +441,6 @@
     if (action.id === "complete_quote") body.quote_no = field(form, "quote_no");
     if (action.id === "assign_costing" || action.id === "complete_chase" || action.id === "add_correspondence") {
       body.correspondence_files = state.correspondenceUploads || [];
-      body.correspondence_mails = state.correspondenceMails || [];
     }
     if (action.id === "complete_order") body.drawing_required = field(form, "drawing_required");
     if (action.id === "close") body.status = field(form, "status");

@@ -963,15 +963,27 @@ function outlookDesktopUrl(mail) {
   return open;
 }
 
-function mailDedupeKey(mail) {
+function mailDedupeKeys(mail) {
   const item = mail && typeof mail === "object" ? mail : {};
+  const keys = [];
   const rest = String(item.rest_id || "").trim().toLowerCase();
-  if (rest) return "rest:" + rest;
+  if (rest) keys.push("rest:" + rest);
   const mid = String(item.internet_message_id || "").trim().toLowerCase();
-  if (mid) return "mid:" + mid;
+  if (mid) keys.push("mid:" + mid);
   const entry = String(item.entry_id || "").replace(/^outlook:\/*/i, "").toLowerCase();
-  if (entry) return "entry:" + entry;
-  return "url:" + String(item.outlook_url || "").trim().toLowerCase();
+  if (entry) keys.push("entry:" + entry);
+  const name = parseCorrespondenceName(item.title || item.filename || "").title
+    .replace(/\.(msg|eml)$/i, "")
+    .trim()
+    .toLowerCase();
+  if (name) keys.push("name:" + name);
+  const url = String(item.outlook_url || "").trim().toLowerCase();
+  if (url) keys.push("url:" + url);
+  return keys;
+}
+
+function mailDedupeKey(mail) {
+  return mailDedupeKeys(mail)[0] || "";
 }
 
 function normalizeOutlookMail(from, index) {
@@ -1001,7 +1013,7 @@ function normalizeOutlookMail(from, index) {
     mime: src.mime || ""
   };
   mail.outlook_url = outlookDesktopUrl({ ...mail, outlook_url: src.outlook_url }) || sanitizeOutlookOpenUrl(src.outlook_url);
-  if (!mail.outlook_url) return null;
+  if (!mail.outlook_url && !mail.stored_as && !mail.kind) return null;
   return mail;
 }
 
@@ -1082,9 +1094,9 @@ function normalizeCorrespondence(from) {
   list.forEach((item, i) => {
     const mail = normalizeOutlookMail(item, i);
     if (!mail) return;
-    const key = mailDedupeKey(mail);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
+    const keys = mailDedupeKeys(mail);
+    if (!keys.length || keys.some((k) => seen.has(k))) return;
+    keys.forEach((k) => seen.add(k));
     mails.push(mail);
   });
   return {
@@ -1535,6 +1547,7 @@ module.exports = {
   normalizeOutlookMail,
   mailsFromPastedLinks,
   mailDedupeKey,
+  mailDedupeKeys,
   extractOutlookFromBuffer,
   extractOutlookFromDataUrl,
   decodeDataUrl,
