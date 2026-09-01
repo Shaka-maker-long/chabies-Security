@@ -100,6 +100,36 @@ assert.strictEqual(fromDrop.row.correspondence.mails.length, 3);
 assert.strictEqual(fromDrop.row.correspondence.mails[2].order_no, "S260023");
 assert.ok(fromDrop.row.correspondence.mails[2].stored_as);
 assert.ok(db.readEnquiryAttachment("#1996", fromDrop.row.correspondence.mails[2].kind));
+const both = pipeline.applyAction("#1996", "Coster", {
+  action: "add_correspondence",
+  correspondence_mails: [{ title: "P21136 - District 6 Phase 5.msg" }],
+  correspondence_files: [{
+    file_base64: "data:application/octet-stream;base64," + Buffer.from("Message-ID: <p21136@studio-delta.test>\r\nSubject: P21136 - District 6 Phase 5\r\nFrom: Office\r\n").toString("base64"),
+    file_name: "P21136 - District 6 Phase 5.msg"
+  }]
+});
+const district = both.row.correspondence.mails.filter((m) => String(m.title || m.filename || "").indexOf("P21136") >= 0);
+assert.strictEqual(district.length, 1);
+assert.ok(district[0].stored_as);
+assert.ok(district[0].kind);
+assert.ok(db.readEnquiryAttachment("#1996", district[0].kind));
+const titleOnlyFirst = pipeline.applyAction("#1996", "Coster", {
+  action: "add_correspondence",
+  correspondence_mails: [{ title: "Ready to save subject.msg" }]
+});
+assert.ok(!titleOnlyFirst.row.correspondence.mails.find((m) => /Ready to save subject/i.test(m.title || "")).stored_as);
+const upgradeDrop = pipeline.applyAction("#1996", "Coster", {
+  action: "add_correspondence",
+  correspondence_files: [{
+    file_base64: "data:application/octet-stream;base64," + Buffer.alloc(80, 65).toString("base64"),
+    file_name: "Ready to save subject.msg"
+  }]
+});
+const upgraded = upgradeDrop.row.correspondence.mails.filter((m) => /Ready to save subject/i.test(m.title || m.filename || ""));
+assert.strictEqual(upgraded.length, 1);
+assert.ok(upgraded[0].stored_as);
+assert.ok(upgraded[0].kind);
+assert.ok(db.readEnquiryAttachment("#1996", upgraded[0].kind));
 
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", { action: "assign_waiting", waiting_status: "Waiting on clients personal details", assignee: "Coster" }),
