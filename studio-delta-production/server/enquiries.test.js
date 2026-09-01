@@ -148,6 +148,25 @@ assert.throws(() => db.requireUniqueQuoteNo("SOQ2360"), /already used/i);
 assert.strictEqual(db.requireUniqueQuoteNo("SOQ2360", qseq.enquiry_no), "SOQ2360");
 assert.strictEqual(db.requireUniqueQuoteNo("2361"), "SOQ2361");
 
+const linked = db.getEnquiryRaw("#1996");
+linked.correspondence = {
+  path: "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE",
+  saved_at: "2026-04-20T13:21:00.000Z",
+  saved_by: "Admin",
+  files: []
+};
+db.saveEnquiryRecord(linked);
+const kept = db.upsertEnquiry({
+  enquiry_no: "#1996",
+  date_enquired: "30/11/2025",
+  client_name: "Michael Cost",
+  comment: "keep correspondence"
+});
+assert.strictEqual(
+  kept.correspondence.path,
+  "P:\\STUDIO DELTA\\ORDERS\\S260025 LAUGE SORENSEN\\CORRESPONDANCE"
+);
+
 const saved = JSON.parse(fs.readFileSync(db.dbPath, "utf8"));
 assert.strictEqual(saved.enquiries.length, 5);
 

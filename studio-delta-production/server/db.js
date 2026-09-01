@@ -877,6 +877,20 @@ function normalizeEnquiryTasks(row) {
   }));
 }
 
+function normalizeCorrespondence(from) {
+  const c = from && from.correspondence;
+  if (!c || typeof c !== "object") {
+    return { path: "", saved_at: "", saved_by: "", files: [] };
+  }
+  const files = Array.isArray(c.files) ? c.files.filter((f) => f && f.stored_as) : [];
+  return {
+    path: String(c.path || "").trim(),
+    saved_at: c.saved_at || "",
+    saved_by: String(c.saved_by || "").trim(),
+    files
+  };
+}
+
 function copyPipeline(from, to) {
   to.tasks = normalizeEnquiryTasks(from);
   to.cost_sheet = cloneJson(from && from.cost_sheet, null);
@@ -884,6 +898,7 @@ function copyPipeline(from, to) {
   to.follow_ups = Array.isArray(from && from.follow_ups) ? cloneJson(from.follow_ups, []) : [];
   to.follow_up_assignee = String((from && from.follow_up_assignee) || "").trim();
   to.quote_assignee = String((from && from.quote_assignee) || "").trim();
+  to.correspondence = normalizeCorrespondence(from);
   to.client_outcome = cloneJson(from && from.client_outcome, null);
   to.drawing = cloneJson(from && from.drawing, null);
   to.ready_for_orders = !!(from && from.ready_for_orders);
@@ -911,6 +926,8 @@ function extFromUpload(filename, mime) {
   if (type.indexOf("jpeg") >= 0 || type.indexOf("jpg") >= 0) return ".jpg";
   if (type.indexOf("webp") >= 0) return ".webp";
   if (type.indexOf("gif") >= 0) return ".gif";
+  if (type.indexOf("outlook") >= 0 || type.indexOf("ms-outlook") >= 0) return ".msg";
+  if (type.indexOf("rfc822") >= 0 || type.indexOf("message") >= 0) return ".eml";
   if (type.indexOf("csv") >= 0) return ".csv";
   if (type.indexOf("spreadsheet") >= 0 || type.indexOf("xlsx") >= 0) return ".xlsx";
   if (type.indexOf("excel") >= 0 || type.indexOf("xls") >= 0) return ".xls";
@@ -973,6 +990,9 @@ function readEnquiryAttachment(enquiryNo, kind) {
     const list = Array.isArray(row.follow_ups) ? row.follow_ups : [];
     const hit = list.find((f) => Number(f.n) === n);
     meta = hit && hit.file;
+  } else if (/^correspondence_(\d+)$/.test(want)) {
+    const files = (row.correspondence && Array.isArray(row.correspondence.files)) ? row.correspondence.files : [];
+    meta = files.find((f) => f && f.kind === want) || files[Number(want.split("_").pop()) - 1] || null;
   }
   if (!meta || !meta.stored_as) return null;
   const file = path.join(enquiryFilesDir(enquiryNo), meta.stored_as);
@@ -1294,6 +1314,7 @@ module.exports = {
   listEnquiryDropdowns,
   addEnquiryDropdownItem,
   normalizeCustomSpecs,
+  normalizeCorrespondence,
   readEnquiryQuotePdf,
   saveEnquiryQuotePdf,
   enquiryHasQuotePdf,
