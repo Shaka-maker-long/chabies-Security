@@ -108,10 +108,13 @@ function sendEnquiryFile(res, enquiryNo, kind, download) {
     res.status(404).json({ ok: false, error: "No file saved for this enquiry" });
     return;
   }
-  res.setHeader("Content-Type", file.mime || (kind === "quote" || kind === "quote.pdf" ? "application/pdf" : "application/octet-stream"));
+  const name = file.filename || "file";
+  const mime = file.mime || (kind === "quote" || kind === "quote.pdf" ? "application/pdf" : "application/octet-stream");
+  const outlook = /\.msg$/i.test(name) || mime === "application/vnd.ms-outlook" || /\.eml$/i.test(name);
+  res.setHeader("Content-Type", mime);
   res.setHeader(
     "Content-Disposition",
-    (download ? "attachment" : "inline") + "; filename=\"" + (file.filename || "file") + "\""
+    (outlook || download ? "attachment" : "inline") + "; filename=\"" + String(name).replace(/"/g, "") + "\""
   );
   res.send(file.buffer);
 }

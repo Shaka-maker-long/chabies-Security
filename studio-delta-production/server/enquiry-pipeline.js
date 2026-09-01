@@ -209,6 +209,7 @@ function availableActions(row) {
   }
   if (statusAllows(row, ["Costing", "Re-Cost"])) {
     actions.push({ id: "assign_costing", label: "Change costing person" });
+    actions.push({ id: "add_correspondence", label: "Save Outlook emails" });
     actions.push({ id: "complete_cost_sheet", label: "Upload cost sheet" });
     actions.push({ id: "supplier_wait", label: "Waiting on supplier" });
   }
@@ -310,6 +311,7 @@ function applyAction(enquiryNo, actorName, body) {
   const handlers = {
     assign_waiting: assignWaiting,
     assign_costing: assignCosting,
+    add_correspondence: addCorrespondence,
     complete_chase: completeChase,
     supplier_wait: supplierWait,
     complete_supplier: completeSupplier,
@@ -375,17 +377,45 @@ function archiveCorrespondence(row, actor, body) {
     next.saved_at = db.nowIso();
     next.saved_by = actor;
   }
-  const raw = body && (body.file_base64 || body.fileBase64);
-  if (raw && (body.file_confirmed || body.fileConfirmed)) {
-    const n = next.files.length + 1;
-    const filename = (body.file_name || body.filename || "correspondence.msg");
-    next.files.push(db.saveEnquiryAttachment(row.enquiry_no, "correspondence_" + n, raw, filename));
-    if (!next.saved_at) {
-      next.saved_at = db.nowIso();
-      next.saved_by = actor;
+  const uploads = [];
+  if (Array.isArray(body && body.correspondence_files)) {
+    for (const item of body.correspondence_files) {
+      if (item && (item.file_base64 || item.fileBase64)) uploads.push(item);
     }
   }
+  const raw = body && (body.file_base64 || body.fileBase64);
+  const oneName = (body && (body.file_name || body.filename)) || "";
+  if (raw) {
+    const isMail = /\.(msg|eml)$/i.test(oneName);
+    if (body.file_confirmed || body.fileConfirmed || isMail) {
+      uploads.push({ file_base64: raw, file_name: oneName || "correspondence.msg" });
+    }
+  }
+  const seen = new Set(next.files.map((f) => String(f.filename || "").toLowerCase()));
+  for (const item of uploads) {
+    const filename = String(item.file_name || item.filename || "correspondence.msg").trim() || "correspondence.msg";
+    const key = filename.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const n = next.files.length + 1;
+    next.files.push(db.saveEnquiryAttachment(
+      row.enquiry_no,
+      "correspondence_" + n,
+      item.file_base64 || item.fileBase64,
+      filename
+    ));
+    next.saved_at = db.nowIso();
+    next.saved_by = actor;
+  }
   if (next.path || next.files.length) row.correspondence = next;
+}
+
+function addCorrespondence(row, actor, body) {
+  archiveCorrespondence(row, actor, body);
+  const c = db.normalizeCorrespondence(row);
+  if (!c.path && !c.files.length) {
+    throw new Error("Save at least one Outlook email (.msg) or the CORRESPONDANCE folder path");
+  }
 }
 
 function completeChase(row, actor, body) {

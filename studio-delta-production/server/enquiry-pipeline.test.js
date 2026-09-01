@@ -81,7 +81,20 @@ const withCopy = pipeline.applyAction("#1996", "Coster", {
 });
 assert.strictEqual(withCopy.row.correspondence.files.length, 1);
 assert.ok(withCopy.row.correspondence.files[0].stored_as);
+assert.strictEqual(withCopy.row.correspondence.files[0].order_no, "S260025");
+assert.strictEqual(withCopy.row.correspondence.files[0].customer, "LAUGE SORENSEN");
 assert.ok(db.readEnquiryAttachment("#1996", "correspondence_1"));
+assert.strictEqual(db.readEnquiryAttachment("#1996", "correspondence_1").mime, "application/vnd.ms-outlook");
+const extraMail = pipeline.applyAction("#1996", "Coster", {
+  action: "add_correspondence",
+  correspondence_files: [{
+    file_base64: msg,
+    file_name: "Re_ Order #S260023 - GERNOT CANTO.msg"
+  }]
+});
+assert.strictEqual(extraMail.row.correspondence.files.length, 2);
+assert.strictEqual(extraMail.row.correspondence.files[1].order_no, "S260023");
+assert.strictEqual(extraMail.row.correspondence.files[1].customer, "GERNOT CANTO");
 
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", { action: "assign_waiting", waiting_status: "Waiting on clients personal details", assignee: "Coster" }),
