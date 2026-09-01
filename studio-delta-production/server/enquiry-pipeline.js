@@ -401,7 +401,7 @@ function archiveCorrespondence(row, actor, body) {
 function addCorrespondence(row, actor, body) {
   const added = archiveCorrespondence(row, actor, body);
   if (!added) {
-    throw new Error("Save the email from Outlook (Studio Delta button) or paste Outlook’s Copy as link. Do not upload .msg files.");
+    throw new Error("Paste Outlook’s Copy as link. Do not upload .msg files.");
   }
 }
 
