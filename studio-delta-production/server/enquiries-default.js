@@ -19,8 +19,12 @@ const ENQUIRY_FIELDS = [
 ];
 
 const ENQUIRY_DROPDOWN_KEYS = [
-  "enquiry_source", "enquiry_type", "source", "status", "province", "category", "product"
+  "enquiry_source", "enquiry_type", "source", "status", "province", "category", "product",
+  "custom_spec"
 ];
+
+const DEFAULT_CUSTOM_SPECS = ["Dimensions", "Colour", "Other"];
+const NEW_DESIGN_MIN_CHARS = 20;
 
 const DEFAULT_ENQUIRY_DROPDOWNS = {
   enquiry_source: unique([
@@ -59,6 +63,7 @@ const DEFAULT_ENQUIRY_DROPDOWNS = {
     "TV Unit", "Vanity", "Wardrobe", "Waste Sorting Table", "Wine Pegs", "Wine Racks",
     "Worm Farm", "Partitions", "Delivery"
   ]),
+  custom_spec: unique(["Dimensions", "Colour", "Other"]),
   product: unique([
     "Air Bar Stool", "Air Chair", "Air Nook Chair", "Aircon Structure", "Aliana Dining Table",
     "Alice Corner Couch", "Amalia Side Table", "Amara Bed", "Amelia Arched Cabinet",
@@ -115,5 +120,7 @@ module.exports = {
   unique,
   ENQUIRY_FIELDS,
   ENQUIRY_DROPDOWN_KEYS,
-  DEFAULT_ENQUIRY_DROPDOWNS
+  DEFAULT_ENQUIRY_DROPDOWNS,
+  DEFAULT_CUSTOM_SPECS,
+  NEW_DESIGN_MIN_CHARS
 };
