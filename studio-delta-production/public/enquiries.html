@@ -51,6 +51,7 @@
     .pdf-box { display:grid; grid-template-columns: 1fr; gap:8px; }
     .pdf-box iframe { width:100%; height:360px; border:1px solid var(--line); border-radius:8px; background:#f2f4f7; }
     .err { color:#b42318; font-size:12px; min-height:16px; }
+    .quote-only { display:none; }
     @media (max-width: 720px) {
       .pdf-box iframe { height:240px; }
     }
@@ -86,7 +87,7 @@
               <tr>
                 <th>CATERGORY</th>
                 <th>PRODUCT</th>
-                <th>VALUE (Excl VAT)</th>
+                <th class="quote-only">VALUE (Excl VAT)</th>
                 <th></th>
               </tr>
             </thead>
@@ -95,8 +96,8 @@
         </div>
         <div class="row-actions">
           <button class="ghost" type="button" onclick="addLine()">Add product</button>
-          <label class="quote-only">Delivery (Excl VAT)
-            <input id="delivery" inputmode="decimal" placeholder="0.00" style="margin-left:8px;width:120px;border:1px solid var(--line);border-radius:4px;padding:6px;font:inherit">
+          <label class="quote-only">Delivery (Excl VAT) *
+            <input id="delivery" inputmode="decimal" placeholder="Required" style="margin-left:8px;width:120px;border:1px solid var(--line);border-radius:4px;padding:6px;font:inherit">
           </label>
         </div>
         <div class="totals quote-only">
@@ -359,15 +360,22 @@
       };
     }
     function setQuoteVisible(on) {
-      document.querySelectorAll(".quote-only").forEach((el) => { el.style.display = on ? "" : "none"; });
+      document.querySelectorAll(".quote-only").forEach((el) => {
+        if (!on) { el.style.display = "none"; return; }
+        if (el.tagName === "TH" || el.tagName === "TD") el.style.display = "table-cell";
+        else if (el.classList.contains("totals")) el.style.display = "flex";
+        else if (el.classList.contains("pdf-box")) el.style.display = "grid";
+        else el.style.display = "";
+      });
     }
     function renderLines() {
       const body = document.getElementById("lineBody");
+      const quote = modal.mode === "quote";
       body.innerHTML = modal.lines.map((line, idx) => {
         return "<tr>" +
           "<td>" + lineSelect("category", line.category, idx) + "</td>" +
           "<td>" + lineSelect("product", line.product, idx) + "</td>" +
-          "<td><input data-line=\"" + idx + "\" data-f=\"value_excl_vat\" value=\"" + escAttr(line.value_excl_vat) + "\" inputmode=\"decimal\" placeholder=\"0.00\"></td>" +
+          (quote ? "<td class=\"quote-only\" style=\"display:table-cell\"><input data-line=\"" + idx + "\" data-f=\"value_excl_vat\" value=\"" + escAttr(line.value_excl_vat) + "\" inputmode=\"decimal\" placeholder=\"0.00\"></td>" : "") +
           "<td><button type=\"button\" class=\"danger\" data-del=\"" + idx + "\">Delete</button></td>" +
           "</tr>";
       }).join("");
@@ -431,8 +439,8 @@
       document.getElementById("modalErr").textContent = "";
       document.getElementById("modalTitle").textContent = mode === "quote" ? "Quote " + row.enquiry_no : "Products " + row.enquiry_no;
       document.getElementById("modalHint").textContent = mode === "quote"
-        ? "Add every product on this enquiry, enter values excluding VAT, add delivery, then upload the quote PDF and confirm the preview."
-        : "An enquiry can have one product or several. Add or delete lines, then save.";
+        ? "Now enter a value excluding VAT for each product, enter delivery excluding VAT, upload the quote PDF, check the preview, and confirm it is the correct file."
+        : "Add the product name (one or more). Values are only entered later, when the enquiry is Quoted.";
       document.getElementById("modalSave").textContent = mode === "quote" ? "Save quote" : "Save products";
       document.getElementById("downloadPdf").style.display = row.has_quote_pdf ? "" : "none";
       setQuoteVisible(mode === "quote");
@@ -489,18 +497,21 @@
       const row = rows[modal.i];
       const err = document.getElementById("modalErr");
       err.textContent = "";
-      const lines = modal.lines.map((l) => ({
+      let lines = modal.lines.map((l) => ({
         product: String(l.product || "").trim(),
         category: String(l.category || "").trim(),
         value_excl_vat: String(l.value_excl_vat || "").trim()
       })).filter((l) => l.product || l.category || l.value_excl_vat);
       if (!lines.length) lines.push(emptyLine());
+      if (modal.mode !== "quote") {
+        lines = lines.map((l) => ({ product: l.product, category: l.category, value_excl_vat: "" }));
+      }
       if (modal.mode === "quote") {
         if (!namedLines(lines).length) { err.textContent = "Add at least one product."; return; }
         const missingVal = namedLines(lines).some((l) => l.value_excl_vat === "");
         if (missingVal) { err.textContent = "Enter a value excluding VAT for each product."; return; }
         if (String(document.getElementById("delivery").value || "").trim() === "") {
-          err.textContent = "Enter delivery excluding VAT (use 0 if there is no delivery charge).";
+          err.textContent = "Delivery excluding VAT is required.";
           return;
         }
         if (!modal.pdfBase64 && !row.has_quote_pdf) { err.textContent = "Upload the quote PDF and check the preview."; return; }
@@ -509,7 +520,7 @@
       row.products = lines;
       row.product = namedLines(lines).map((l) => l.product).join(", ");
       row.category = namedLines(lines).map((l) => l.category).filter(Boolean)[0] || "";
-      row.delivery_excl_vat = document.getElementById("delivery").value;
+      if (modal.mode === "quote") row.delivery_excl_vat = document.getElementById("delivery").value;
       const body = Object.assign({}, row);
       if (modal.mode === "quote") {
         body.status = "Quoted";
