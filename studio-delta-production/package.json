@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node server/index.js",
-    "test": "node server/sheets.test.js && node server/railway-db.test.js && node server/staff-access.test.js && node server/together-time.test.js && node server/office-nav.test.js && node server/enquiries.test.js && node server/enquiry-pipeline.test.js && node server/persistence.test.js"
+    "test": "node server/sheets.test.js && node server/railway-db.test.js && node server/staff-access.test.js && node server/together-time.test.js && node server/office-nav.test.js && node server/enquiries.test.js && node server/enquiry-pipeline.test.js && node server/persistence.test.js && node server/railway-cutover.test.js"
   },
   "engines": {
     "node": ">=18"
