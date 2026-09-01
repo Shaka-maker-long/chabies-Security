@@ -877,12 +877,41 @@ function normalizeEnquiryTasks(row) {
   }));
 }
 
+function parseCorrespondenceName(filename) {
+  const raw = String(filename || "").trim();
+  const base = raw.replace(/\.(msg|eml)$/i, "");
+  const m = base.match(/Re_\s*Order\s*#?\s*([A-Za-z]?\d+)\s*[-–]\s*(.+)/i);
+  return {
+    title: base || raw,
+    order_no: m ? String(m[1]).trim().toUpperCase() : "",
+    customer: m ? String(m[2]).trim() : ""
+  };
+}
+
+function outlookMimeFor(filename, mime) {
+  const n = String(filename || "").toLowerCase();
+  const m = String(mime || "").toLowerCase();
+  if (/\.msg$/.test(n) || m.indexOf("ms-outlook") >= 0) return "application/vnd.ms-outlook";
+  if (/\.eml$/.test(n) || m.indexOf("rfc822") >= 0) return "message/rfc822";
+  return mime || "application/octet-stream";
+}
+
 function normalizeCorrespondence(from) {
   const c = from && from.correspondence;
   if (!c || typeof c !== "object") {
     return { path: "", saved_at: "", saved_by: "", files: [] };
   }
-  const files = Array.isArray(c.files) ? c.files.filter((f) => f && f.stored_as) : [];
+  const files = Array.isArray(c.files) ? c.files.filter((f) => f && f.stored_as).map((f) => {
+    const parsed = parseCorrespondenceName(f.filename || f.stored_as);
+    return {
+      ...f,
+      filename: f.filename || parsed.title,
+      mime: outlookMimeFor(f.filename, f.mime),
+      title: f.title || parsed.title,
+      order_no: f.order_no || parsed.order_no,
+      customer: f.customer || parsed.customer
+    };
+  }) : [];
   return {
     path: String(c.path || "").trim(),
     saved_at: c.saved_at || "",
@@ -913,7 +942,7 @@ function enquiryFilesDir(enquiryNo) {
 }
 
 function sanitizeUploadName(filename, fallback) {
-  const clean = String(filename || "").replace(/[^\w.\- ()]/g, "").slice(0, 120);
+  const clean = String(filename || "").replace(/[^\w.\- ()#]/g, "").slice(0, 120);
   return clean || fallback || "file";
 }
 
@@ -963,13 +992,18 @@ function saveEnquiryAttachment(enquiryNo, kind, dataUrl, filename) {
   }
   const storedAs = safeKind + ext;
   fs.writeFileSync(path.join(dir, storedAs), decoded.buffer);
+  const filenameSafe = sanitizeUploadName(filename, storedAs);
+  const parsed = parseCorrespondenceName(filename || filenameSafe);
   return {
     kind: safeKind,
-    filename: sanitizeUploadName(filename, storedAs),
-    mime: decoded.mime || "application/octet-stream",
+    filename: filenameSafe,
+    mime: outlookMimeFor(filenameSafe, decoded.mime),
     stored_as: storedAs,
     uploaded_at: nowIso(),
-    size: decoded.buffer.length
+    size: decoded.buffer.length,
+    title: parsed.title,
+    order_no: parsed.order_no,
+    customer: parsed.customer
   };
 }
 
@@ -1000,7 +1034,7 @@ function readEnquiryAttachment(enquiryNo, kind) {
   return {
     buffer: fs.readFileSync(file),
     filename: meta.filename || meta.stored_as,
-    mime: meta.mime || "application/octet-stream"
+    mime: outlookMimeFor(meta.filename || meta.stored_as, meta.mime)
   };
 }
 
@@ -1315,6 +1349,8 @@ module.exports = {
   addEnquiryDropdownItem,
   normalizeCustomSpecs,
   normalizeCorrespondence,
+  parseCorrespondenceName,
+  outlookMimeFor,
   readEnquiryQuotePdf,
   saveEnquiryQuotePdf,
   enquiryHasQuotePdf,

@@ -40,6 +40,8 @@ assert.ok(processJs.indexOf("quote_no") !== -1);
 assert.ok(processJs.indexOf("Last quotation numbers") !== -1);
 assert.ok(processJs.indexOf("CORRESPONDANCE") !== -1);
 assert.ok(processJs.indexOf("correspondence_path") !== -1);
+assert.ok(processJs.indexOf("Open in Outlook") !== -1);
+assert.ok(processJs.indexOf("correspondence_files") !== -1);
 
 const enquiriesHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries.html"), "utf8");
 assert.ok(enquiriesHtml.indexOf('id="captureMask"') !== -1, "New enquiry must open a capture modal");

@@ -146,7 +146,9 @@ assert.strictEqual(db.nextQuoteNo(), "SOQ2361");
 assert.deepStrictEqual(db.recentQuoteNos(5), ["SOQ2360"]);
 assert.throws(() => db.requireUniqueQuoteNo("SOQ2360"), /already used/i);
 assert.strictEqual(db.requireUniqueQuoteNo("SOQ2360", qseq.enquiry_no), "SOQ2360");
-assert.strictEqual(db.requireUniqueQuoteNo("2361"), "SOQ2361");
+assert.strictEqual(db.parseCorrespondenceName("Re_ Order #S260023 - GERNOT CANTO.msg").order_no, "S260023");
+assert.strictEqual(db.parseCorrespondenceName("Re_ Order #S260025 - LAUGE SORENSEN.msg").customer, "LAUGE SORENSEN");
+assert.strictEqual(db.outlookMimeFor("note.msg", "application/octet-stream"), "application/vnd.ms-outlook");
 
 const linked = db.getEnquiryRaw("#1996");
 linked.correspondence = {
