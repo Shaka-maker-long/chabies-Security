@@ -9,7 +9,7 @@
     :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
-    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
     header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
     .tools { margin-left:auto; display:flex; gap:8px; align-items:center; }
     input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:220px; }
@@ -17,7 +17,7 @@
     button.ghost { background:#fff; color:#1d2939; }
     button.danger { background:#fff; color:#b42318; border-color:#fda29b; }
     button:disabled { opacity:.55; cursor:not-allowed; }
-    .wrap { overflow:auto; height:calc(100vh - 58px); }
+    .wrap { overflow:auto; height:calc(100vh - 88px); }
     table { border-collapse:separate; border-spacing:0; min-width:3200px; background:#fff; font-size:12px; }
     th, td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
     th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
@@ -60,6 +60,7 @@
 <body>
   <header>
     <h1>Enquiries</h1>
+    <p class="msg" style="margin:0;max-width:420px">Status is not a free list. Assign office staff; they update from <a href="/tasks">My tasks</a>.</p>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search enquiries">
@@ -121,7 +122,8 @@
       </div>
     </div>
   </div>
-  <script src="/office-auth.js?v=enquiries-quote"></script>
+  <script src="/office-auth.js?v=my-tasks"></script>
+  <script src="/enquiry-process.js?v=my-tasks"></script>
   <script>
     const HEADERS = [
       ["enquiry_no", "ENQUIRY NO", 108, true],
@@ -143,7 +145,7 @@
       ["comment", "COMMENT", 260, false]
     ];
     const DROP_FIELDS = {
-      enquiry_source: 1, enquiry_type: 1, source: 1, province: 1, status: 1
+      enquiry_source: 1, enquiry_type: 1, source: 1, province: 1
     };
     const READONLY_FIELDS = { enquiry_no: 1, month_enquired: 1, date_quoted: 1 };
     const DATE_FIELDS = { date_enquired: 1 };
@@ -301,6 +303,8 @@
             html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-products=\"" + i + "\">" + esc(categoryLabel(row) || "Add product") + "</button></td>";
           } else if (k === "request" || k === "comment") {
             html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
+          } else if (k === "status") {
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-process=\"" + i + "\">" + esc(row[k] || "New") + " · update</button></td>";
           } else if (DROP_FIELDS[k]) {
             html += "<td class=\"" + cls + "\" style=\"" + style + "\">" + selectHtml(k, row[k]) + "</td>";
           } else if (DATE_FIELDS[k]) {
@@ -323,11 +327,22 @@
       }
       html += "</tbody>";
       table.innerHTML = html;
-      table.onclick = (e) => {
+      table.onclick = async (e) => {
+        const processBtn = e.target.closest("[data-open-process]");
+        if (processBtn) {
+          const i = Number(processBtn.getAttribute("data-open-process"));
+          const row = rows[i];
+          if (!row || !row.enquiry_no) return;
+          const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(row) });
+          const j = await r.json();
+          if (!j.ok) { document.getElementById("status").textContent = j.error || "Save the enquiry first"; return; }
+          sdOpenEnquiryProcess((j.row && j.row.enquiry_no) || row.enquiry_no);
+          return;
+        }
         const btn = e.target.closest("[data-open-products]");
         if (!btn) return;
         const i = Number(btn.getAttribute("data-open-products"));
-        openModal(i, rows[i].status === "Quoted" ? "quote" : "products");
+        openModal(i, "products");
       };
       table.oninput = table.onchange = (e) => {
         const tr = e.target.closest("tr");
@@ -343,17 +358,6 @@
             const monthInput = tr.querySelector('input[data-k="month_enquired"]');
             if (monthInput) monthInput.value = rows[i].month_enquired;
           }
-          return;
-        }
-        if (k === "status") {
-          const prev = rows[i].status;
-          const next = e.target.value;
-          if (next === "Quoted" && prev !== "Quoted") {
-            e.target.value = prev || "New";
-            openModal(i, "quote", prev || "New");
-            return;
-          }
-          rows[i].status = next;
           return;
         }
         rows[i][k] = e.target.value;
@@ -440,7 +444,7 @@
       document.getElementById("modalTitle").textContent = mode === "quote" ? "Quote " + row.enquiry_no : "Products " + row.enquiry_no;
       document.getElementById("modalHint").textContent = mode === "quote"
         ? "Now enter a value excluding VAT for each product, enter delivery excluding VAT, upload the quote PDF, check the preview, and confirm it is the correct file."
-        : "Add the product name (one or more). Values are only entered later, when the enquiry is Quoted.";
+        : "Add the product name (one or more). Costing, quote values, PDFs, and status updates happen on the assigned task — tap STATUS or open My tasks.";
       document.getElementById("modalSave").textContent = mode === "quote" ? "Save quote" : "Save products";
       document.getElementById("downloadPdf").style.display = row.has_quote_pdf ? "" : "none";
       setQuoteVisible(mode === "quote");
@@ -572,11 +576,6 @@
       document.getElementById("status").textContent = "Saving…";
       for (const row of rows) {
         if (!String(row.enquiry_no || "").trim()) continue;
-        if (row.status === "Quoted" && !row.has_quote_pdf) {
-          document.getElementById("status").textContent = row.enquiry_no + " needs a confirmed quote PDF";
-          openModal(rows.indexOf(row), "quote", "New");
-          return;
-        }
         const payload = Object.assign({}, row);
         delete payload.quote_pdf_base64;
         const r = await sdOfficeFetch("/api/office/enquiries", {
@@ -589,6 +588,7 @@
       await load();
       document.getElementById("status").textContent = "Saved";
     }
+    window.sdOnEnquiryProcessClose = function () { load(); };
     document.getElementById("q").oninput = render;
     document.getElementById("mask").addEventListener("click", (e) => {
       if (e.target.id === "mask") closeModal(false);

@@ -45,6 +45,7 @@ const second = db.upsertEnquiry({
 });
 assert.strictEqual(second.enquiry_no, "#1997");
 assert.strictEqual(second.month_enquired, "Jan");
+assert.strictEqual(second.status, "New");
 assert.strictEqual(db.nextEnquiryNo(), "#1998");
 
 const listed = db.listEnquiries();
@@ -57,77 +58,21 @@ assert.ok(drops.enquiry_type.indexOf("Catologue") >= 0);
 assert.ok(drops.product.indexOf("Violet Sideboard 3-Door") >= 0);
 assert.ok(drops.category.indexOf("Gate") >= 0);
 assert.ok(drops.status.indexOf("Waiting on clients specifictions") >= 0);
+assert.ok(drops.status.indexOf("Costing") >= 0);
 
-assert.throws(
-  () => db.upsertEnquiry({
-    enquiry_no: "#1996",
-    status: "Quoted",
-    products: [{ product: "Daphne Rectangular Mirror", value_excl_vat: "1000" }],
-    delivery_excl_vat: "50"
-  }),
-  /quote PDF/
-);
-
-const pdf = Buffer.from("%PDF-1.1\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n");
-const pdfB64 = "data:application/pdf;base64," + pdf.toString("base64");
-assert.throws(
-  () => db.upsertEnquiry({
-    enquiry_no: "#1996",
-    date_enquired: "30/11/2025",
-    status: "Quoted",
-    products: [{ product: "Daphne Rectangular Mirror", value_excl_vat: "2500" }],
-    delivery_excl_vat: "",
-    quote_pdf_base64: pdfB64,
-    quote_pdf_confirmed: true
-  }),
-  /Delivery/
-);
-const quoted = db.upsertEnquiry({
+const jumped = db.upsertEnquiry({
   enquiry_no: "#1996",
   date_enquired: "30/11/2025",
   client_name: "Michael Cost",
   status: "Quoted",
-  products: [
-    { product: "Daphne Rectangular Mirror", category: "Mirror", value_excl_vat: "2500" },
-    { product: "Eve Patio Table", category: "Table", value_excl_vat: "1800.5" }
-  ],
-  delivery_excl_vat: "350",
-  quote_pdf_base64: pdfB64,
-  quote_pdf_name: "Michael Cost quote.pdf",
+  products: [{ product: "Daphne Rectangular Mirror", value_excl_vat: "1000" }],
+  delivery_excl_vat: "50",
+  quote_pdf_base64: "data:application/pdf;base64,eA==",
   quote_pdf_confirmed: true
 });
-assert.strictEqual(quoted.status, "Quoted");
-assert.strictEqual(quoted.products.length, 2);
-assert.strictEqual(quoted.delivery_excl_vat, "350.00");
-assert.strictEqual(quoted.quote_total_excl_vat, "4650.50");
-assert.strictEqual(quoted.has_quote_pdf, true);
-assert.ok(quoted.date_quoted);
-assert.strictEqual(quoted.date_quoted, db.todayEnquiryDate());
-assert.ok(db.readEnquiryQuotePdf("#1996"));
-
-const removed = db.upsertEnquiry({
-  enquiry_no: "#1996",
-  date_enquired: "30/11/2025",
-  client_name: "Michael Cost",
-  status: "Quoted",
-  products: [
-    { product: "Eve Patio Table", category: "Table", value_excl_vat: "1800.5" }
-  ],
-  delivery_excl_vat: "350"
-});
-assert.strictEqual(removed.products.length, 1);
-assert.strictEqual(removed.product, "Eve Patio Table");
-
-assert.throws(
-  () => db.upsertEnquiry({
-    enquiry_no: "#1997",
-    status: "Quoted",
-    products: [{ product: "Air Chair", value_excl_vat: "100" }],
-    delivery_excl_vat: "10",
-    quote_pdf_base64: "data:application/pdf;base64," + pdf.toString("base64")
-  }),
-  /confirm/
-);
+assert.strictEqual(jumped.status, "New");
+assert.strictEqual(jumped.products[0].value_excl_vat, "");
+assert.strictEqual(jumped.has_quote_pdf, false);
 
 const saved = JSON.parse(fs.readFileSync(db.dbPath, "utf8"));
 assert.strictEqual(saved.enquiries.length, 2);

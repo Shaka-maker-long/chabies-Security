@@ -36,10 +36,10 @@ const DEFAULT_ENQUIRY_DROPDOWNS = {
     "Decor & Design", "Delta Employee"
   ]),
   status: unique([
-    "Costed", "Followed Up", "New", "Ordered", "Quoted", "Re-Cost",
+    "New", "Costing", "Costed", "Quoted", "Followed Up", "Ordered", "Re-Cost",
     "Waiting on clients personal details", "Waiting on clients specifictions",
     "Waiting on productions confirmation", "Waiting on Supplier",
-    "Not within scope", "Not Interested"
+    "Rejected", "Not within scope", "Not Interested"
   ]),
   province: unique([
     "Eastern Cape", "Free State", "Gauteng", "KwaZulu-Natal", "Limpopo",

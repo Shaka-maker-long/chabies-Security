@@ -657,22 +657,175 @@ function normalizeEnquiryLines(row, existing) {
   return cleaned;
 }
 
+const KEEP_VALUE_STATUSES = [
+  "Costing", "Costed", "Quoted", "Followed Up", "Ordered", "Re-Cost", "Waiting on Supplier"
+];
+const CAPTURE_STATUSES = [
+  "New",
+  "Waiting on clients personal details",
+  "Waiting on clients specifictions",
+  "Waiting on productions confirmation"
+];
+
+function cloneJson(v, fallback) {
+  if (v == null) return fallback;
+  try {
+    return JSON.parse(JSON.stringify(v));
+  } catch (e) {
+    return fallback;
+  }
+}
+
+function normalizeEnquiryTasks(row) {
+  const list = Array.isArray(row && row.tasks) ? row.tasks : [];
+  return list.map((t, i) => ({
+    id: String((t && t.id) || ("t" + (i + 1))),
+    kind: String((t && t.kind) || "").trim(),
+    title: String((t && t.title) || "").trim(),
+    assignee: String((t && t.assignee) || "").trim(),
+    status: String((t && t.status) || "open").trim() || "open",
+    created_at: (t && t.created_at) || "",
+    completed_at: (t && t.completed_at) || "",
+    completed_by: (t && t.completed_by) || "",
+    due_at: (t && t.due_at) || "",
+    note: String((t && t.note) || "").trim(),
+    label: String((t && t.label) || "").trim()
+  }));
+}
+
+function copyPipeline(from, to) {
+  to.tasks = normalizeEnquiryTasks(from);
+  to.cost_sheet = cloneJson(from && from.cost_sheet, null);
+  to.approval = cloneJson(from && from.approval, null);
+  to.follow_ups = Array.isArray(from && from.follow_ups) ? cloneJson(from.follow_ups, []) : [];
+  to.follow_up_assignee = String((from && from.follow_up_assignee) || "").trim();
+  to.client_outcome = cloneJson(from && from.client_outcome, null);
+  to.drawing = cloneJson(from && from.drawing, null);
+  to.ready_for_orders = !!(from && from.ready_for_orders);
+}
+
+function enquiryFilesDir(enquiryNo) {
+  const dir = path.join(path.dirname(dbPath), "enquiry-files", enquiryQuoteKey(enquiryNo));
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function sanitizeUploadName(filename, fallback) {
+  const clean = String(filename || "").replace(/[^\w.\- ()]/g, "").slice(0, 120);
+  return clean || fallback || "file";
+}
+
+function extFromUpload(filename, mime) {
+  const m = String(filename || "").toLowerCase().match(/(\.[a-z0-9]{1,8})$/);
+  if (m) return m[1];
+  const type = String(mime || "").toLowerCase();
+  if (type.indexOf("pdf") >= 0) return ".pdf";
+  if (type.indexOf("png") >= 0) return ".png";
+  if (type.indexOf("jpeg") >= 0 || type.indexOf("jpg") >= 0) return ".jpg";
+  if (type.indexOf("webp") >= 0) return ".webp";
+  if (type.indexOf("gif") >= 0) return ".gif";
+  if (type.indexOf("csv") >= 0) return ".csv";
+  if (type.indexOf("spreadsheet") >= 0 || type.indexOf("xlsx") >= 0) return ".xlsx";
+  if (type.indexOf("excel") >= 0 || type.indexOf("xls") >= 0) return ".xls";
+  return ".bin";
+}
+
+function decodeDataUrl(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  const m = s.match(/^data:([^;]+);base64,([\s\S]+)$/i);
+  if (m) {
+    return { mime: m[1], buffer: Buffer.from(m[2], "base64") };
+  }
+  if (s.indexOf("base64,") >= 0) {
+    const parts = s.split("base64,");
+    return { mime: "application/octet-stream", buffer: Buffer.from(parts[1], "base64") };
+  }
+  return { mime: "application/octet-stream", buffer: Buffer.from(s, "base64") };
+}
+
+function saveEnquiryAttachment(enquiryNo, kind, dataUrl, filename) {
+  const decoded = decodeDataUrl(dataUrl);
+  if (!decoded || !decoded.buffer || !decoded.buffer.length) throw new Error("Upload a file first");
+  const safeKind = String(kind || "file").replace(/[^\w.-]/g, "_");
+  if (!safeKind) throw new Error("Missing file kind");
+  const ext = extFromUpload(filename, decoded.mime);
+  const dir = enquiryFilesDir(enquiryNo);
+  const existing = fs.readdirSync(dir);
+  for (const name of existing) {
+    if (name === safeKind + path.extname(name) || name.indexOf(safeKind + ".") === 0) {
+      try { fs.unlinkSync(path.join(dir, name)); } catch (e) {}
+    }
+  }
+  const storedAs = safeKind + ext;
+  fs.writeFileSync(path.join(dir, storedAs), decoded.buffer);
+  return {
+    kind: safeKind,
+    filename: sanitizeUploadName(filename, storedAs),
+    mime: decoded.mime || "application/octet-stream",
+    stored_as: storedAs,
+    uploaded_at: nowIso(),
+    size: decoded.buffer.length
+  };
+}
+
+function readEnquiryAttachment(enquiryNo, kind) {
+  const want = String(kind || "").trim();
+  if (want === "quote" || want === "quote.pdf") return readEnquiryQuotePdf(enquiryNo);
+  const row = getEnquiryRaw(enquiryNo);
+  if (!row) return null;
+  let meta = null;
+  if (want === "cost_sheet") meta = row.cost_sheet;
+  else if (want === "pop") meta = row.client_outcome && row.client_outcome.file;
+  else if (want === "drawing") meta = row.drawing && row.drawing.file;
+  else if (want === "follow_up") {
+    const list = Array.isArray(row.follow_ups) ? row.follow_ups : [];
+    meta = list.length ? list[list.length - 1].file : null;
+  } else if (/^follow_up_(\d+)$/.test(want)) {
+    const n = Number(want.split("_").pop());
+    const list = Array.isArray(row.follow_ups) ? row.follow_ups : [];
+    const hit = list.find((f) => Number(f.n) === n);
+    meta = hit && hit.file;
+  }
+  if (!meta || !meta.stored_as) return null;
+  const file = path.join(enquiryFilesDir(enquiryNo), meta.stored_as);
+  if (!fs.existsSync(file)) return null;
+  return {
+    buffer: fs.readFileSync(file),
+    filename: meta.filename || meta.stored_as,
+    mime: meta.mime || "application/octet-stream"
+  };
+}
+
+function removeEnquiryFiles(enquiryNo) {
+  try {
+    const dir = path.join(path.dirname(dbPath), "enquiry-files", enquiryQuoteKey(enquiryNo));
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch (e) {}
+}
+
 function decorateEnquiry(row) {
   const products = normalizeEnquiryLines(row, null);
   const named = products.filter((p) => p.product);
   const productsTotal = named.reduce((sum, p) => sum + parseMoney(p.value_excl_vat), 0);
   const delivery = parseMoney(row.delivery_excl_vat);
   const hasPdf = enquiryHasQuotePdf(row.enquiry_no);
+  const tasks = normalizeEnquiryTasks(row);
+  const openTasks = tasks.filter((t) => t.status === "open");
   return {
     ...row,
     products,
+    tasks,
     product: named.map((p) => p.product).join(", "),
     category: named.map((p) => p.category).filter(Boolean)[0] || row.category || "",
     delivery_excl_vat: row.delivery_excl_vat === "" || row.delivery_excl_vat == null ? "" : money(delivery),
     products_total_excl_vat: money(productsTotal),
     quote_total_excl_vat: money(productsTotal + delivery),
     has_quote_pdf: hasPdf,
-    quote_pdf_name: hasPdf ? (row.quote_pdf_name || "quote.pdf") : ""
+    quote_pdf_name: hasPdf ? (row.quote_pdf_name || "quote.pdf") : "",
+    ready_for_orders: !!row.ready_for_orders,
+    open_task_count: openTasks.length,
+    assigned_to: openTasks.map((t) => t.assignee).filter(Boolean).join(", ")
   };
 }
 
@@ -683,7 +836,30 @@ function listEnquiries() {
     .map(decorateEnquiry);
 }
 
-function upsertEnquiry(row) {
+function getEnquiryRaw(enquiryNo) {
+  const n = enquiryNumberValue(enquiryNo);
+  if (!n) return null;
+  return (state.enquiries || []).find((r) => enquiryNumberValue(r.enquiry_no) === n) || null;
+}
+
+function getEnquiry(enquiryNo) {
+  const row = getEnquiryRaw(enquiryNo);
+  return row ? decorateEnquiry(row) : null;
+}
+
+function saveEnquiryRecord(row) {
+  if (!row || !row.enquiry_no) throw new Error("Missing enquiry number");
+  const existing = getEnquiryRaw(row.enquiry_no);
+  if (!existing) throw new Error("Enquiry not found");
+  existing.month_enquired = monthFromEnquiryDate(existing.date_enquired);
+  Object.assign(existing, row);
+  existing.updated_at = nowIso();
+  save();
+  return decorateEnquiry(existing);
+}
+
+function upsertEnquiry(row, opts) {
+  const fromPipeline = !!(opts && opts.fromPipeline);
   const payload = {};
   for (const f of ENQUIRY_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]).trim();
   if (!payload.enquiry_no) payload.enquiry_no = nextEnquiryNo();
@@ -692,7 +868,7 @@ function upsertEnquiry(row) {
     payload.enquiry_no = n ? formatEnquiryNo(n) : nextEnquiryNo();
   }
   payload.month_enquired = monthFromEnquiryDate(payload.date_enquired);
-  const existing = (state.enquiries || []).find((o) => o.enquiry_no === payload.enquiry_no);
+  const existing = getEnquiryRaw(payload.enquiry_no);
   payload.products = normalizeEnquiryLines(row, existing);
   payload.product = payload.products.filter((p) => p.product).map((p) => p.product).join(", ");
   payload.category = payload.products.map((p) => p.category).filter(Boolean)[0] || payload.category;
@@ -700,8 +876,24 @@ function upsertEnquiry(row) {
   payload.delivery_excl_vat = deliveryRaw === "" ? "" : money(parseMoney(deliveryRaw));
   payload.quote_pdf_name = String((row.quote_pdf_name != null ? row.quote_pdf_name : (existing && existing.quote_pdf_name)) || "").trim();
   payload.quote_pdf_uploaded_at = (row.quote_pdf_uploaded_at != null ? row.quote_pdf_uploaded_at : (existing && existing.quote_pdf_uploaded_at)) || "";
+  copyPipeline(existing || row, payload);
 
-  if (payload.status === "Quoted") {
+  if (!fromPipeline) {
+    if (existing) {
+      payload.status = existing.status || "New";
+      payload.date_quoted = existing.date_quoted || payload.date_quoted;
+    } else if (CAPTURE_STATUSES.indexOf(payload.status) === -1) {
+      payload.status = "New";
+    }
+  }
+
+  const keepValues = KEEP_VALUE_STATUSES.indexOf(payload.status) >= 0;
+  if (!keepValues) {
+    payload.products = payload.products.map((p) => ({ ...p, value_excl_vat: "" }));
+    payload.delivery_excl_vat = "";
+  }
+
+  if (fromPipeline && payload.status === "Quoted") {
     const named = payload.products.filter((p) => p.product);
     if (!named.length) throw new Error("Add at least one product before marking Quoted");
     if (named.some((p) => p.value_excl_vat === "")) {
@@ -713,12 +905,9 @@ function upsertEnquiry(row) {
     if (!enquiryHasQuotePdf(payload.enquiry_no) && !row.quote_pdf_base64) {
       throw new Error("Upload and confirm the quote PDF before marking Quoted");
     }
-  } else {
-    payload.products = payload.products.map((p) => ({ ...p, value_excl_vat: "" }));
-    payload.delivery_excl_vat = "";
   }
 
-  if (row.quote_pdf_base64) {
+  if (fromPipeline && row.quote_pdf_base64) {
     if (!row.quote_pdf_confirmed) throw new Error("Preview the quote PDF and confirm it is the correct file before saving");
     const savedPdf = saveEnquiryQuotePdf(payload.enquiry_no, row.quote_pdf_base64, row.quote_pdf_name || "quote.pdf");
     payload.quote_pdf_name = savedPdf.quote_pdf_name;
@@ -731,6 +920,7 @@ function upsertEnquiry(row) {
   payload.updated_at = nowIso();
   if (!state.enquiries) state.enquiries = [];
   if (existing) {
+    payload.id = existing.id;
     Object.assign(existing, payload);
     save();
     return decorateEnquiry(existing);
@@ -744,6 +934,7 @@ function upsertEnquiry(row) {
 function deleteEnquiry(enquiryNo) {
   const want = String(enquiryNo || "").trim();
   try { removeEnquiryQuotePdf(want); } catch (e) {}
+  try { removeEnquiryFiles(want); } catch (e) {}
   state.enquiries = (state.enquiries || []).filter((o) => o.enquiry_no !== want);
   save();
 }
@@ -802,7 +993,12 @@ module.exports = {
   migrateJsonOrdersToWorkbook,
   normalizeOrdersSheet,
   ENQUIRY_FIELDS,
+  KEEP_VALUE_STATUSES,
+  CAPTURE_STATUSES,
   listEnquiries,
+  getEnquiry,
+  getEnquiryRaw,
+  saveEnquiryRecord,
   upsertEnquiry,
   deleteEnquiry,
   nextEnquiryNo,
@@ -811,6 +1007,10 @@ module.exports = {
   readEnquiryQuotePdf,
   saveEnquiryQuotePdf,
   enquiryHasQuotePdf,
+  saveEnquiryAttachment,
+  readEnquiryAttachment,
   normalizeEnquiryLines,
-  todayEnquiryDate
+  todayEnquiryDate,
+  nowIso,
+  asDate
 };

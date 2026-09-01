@@ -22,10 +22,12 @@ const {
   nextEnquiryNo,
   listEnquiryDropdowns,
   ENQUIRY_FIELDS,
-  readEnquiryQuotePdf
+  readEnquiryQuotePdf,
+  readEnquiryAttachment
 } = require("./db");
 const { importGoogleWorkbook, tabCounts } = require("./workbook-store");
 const staff = require("./staff");
+const pipeline = require("./enquiry-pipeline");
 
 function requireOffice(req, res, next) {
   const profile = staff.readSession(req);
@@ -67,6 +69,22 @@ function mondayOf(dateIso) {
   const day = d.getDay() || 7;
   d.setDate(d.getDate() - day + 1);
   return d.toISOString().slice(0, 10);
+}
+
+function sendEnquiryFile(res, enquiryNo, kind, download) {
+  const file = kind === "quote" || kind === "quote.pdf"
+    ? readEnquiryQuotePdf(enquiryNo)
+    : readEnquiryAttachment(enquiryNo, kind);
+  if (!file) {
+    res.status(404).json({ ok: false, error: "No file saved for this enquiry" });
+    return;
+  }
+  res.setHeader("Content-Type", file.mime || (kind === "quote" || kind === "quote.pdf" ? "application/pdf" : "application/octet-stream"));
+  res.setHeader(
+    "Content-Disposition",
+    (download ? "attachment" : "inline") + "; filename=\"" + (file.filename || "file") + "\""
+  );
+  res.send(file.buffer);
 }
 
 function mountOffice(app) {
@@ -162,15 +180,36 @@ function mountOffice(app) {
   });
 
   app.get("/api/office/enquiries/:enquiryNo/quote.pdf", requireOffice, (req, res) => {
-    const file = readEnquiryQuotePdf(req.params.enquiryNo);
-    if (!file) {
-      res.status(404).json({ ok: false, error: "No quote PDF saved for this enquiry" });
-      return;
+    sendEnquiryFile(res, req.params.enquiryNo, "quote", String(req.query.download || "") === "1");
+  });
+
+  app.get("/api/office/enquiries/:enquiryNo/files/:kind", requireOffice, (req, res) => {
+    sendEnquiryFile(res, req.params.enquiryNo, req.params.kind, String(req.query.download || "") === "1");
+  });
+
+  app.get("/api/office/assignees", requireOffice, (_req, res) => {
+    res.json({ ok: true, rows: pipeline.officeAssignees() });
+  });
+
+  app.get("/api/office/my-tasks", requireOffice, (req, res) => {
+    res.json({ ok: true, rows: pipeline.listMyTasks(req.office.name) });
+  });
+
+  app.get("/api/office/enquiries/:enquiryNo/process", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...pipeline.processSnapshot(req.params.enquiryNo) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
     }
-    const download = String(req.query.download || "") === "1";
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", (download ? "attachment" : "inline") + "; filename=\"" + (file.filename || "quote.pdf") + "\"");
-    res.send(file.buffer);
+  });
+
+  app.post("/api/office/enquiries/:enquiryNo/process", requireOffice, (req, res) => {
+    try {
+      const snap = pipeline.applyAction(req.params.enquiryNo, req.office.name, req.body || {});
+      res.json({ ok: true, ...snap });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.get("/api/office/schedule", requireOffice, (req, res) => {

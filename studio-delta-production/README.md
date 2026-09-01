@@ -53,7 +53,8 @@ Do **not** commit the JSON key or a `.env` file.
 ## Office pages (same Railway database as the floor)
 
 - `/orders` — all ORDERS columns (quote, client, prices, etc.). Status and assigned operator are the same fields the floor writes.
-- `/enquiries` — Google-Sheet-style enquiry log. Numbers start at `#1996` and count up. **MONTH ENQUIRED** fills from **DATE ENQUIRED**. Columns through **CLIENT NAME** stay frozen while you scroll. An enquiry can have one product or several. On the enquiry you only add product names. Changing **STATUS** to **Quoted** is when values excluding VAT, mandatory delivery excluding VAT, and the quote PDF (preview then confirm) are entered. **DATE QUOTED** is set when the PDF is saved.
+- `/enquiries` — Google-Sheet-style enquiry log. Numbers start at `#1996` and count up. **MONTH ENQUIRED** fills from **DATE ENQUIRED**. Columns through **CLIENT NAME** stay frozen while you scroll. Capture product names here. **STATUS is not a free dropdown** — it moves when the assigned office person saves a deliverable (cost sheet, approval, quote PDF, follow-up screenshot, POP, drawing).
+- `/tasks` — **My tasks**. Office Admins see the enquiries assigned to them and update the system from that queue (preview the file, confirm it, save). Follow-ups due 7 days after the quote or last follow-up show as overdue.
 - `/schedule` — order list + week grid (Mon–Fri)
 - `/dropdowns` — lists for Type, Category, Product, and the other order dropdowns
 - `/debtors` — orders not fully paid
