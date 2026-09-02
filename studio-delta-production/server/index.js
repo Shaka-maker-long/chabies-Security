@@ -18,7 +18,7 @@ function health(_req, res) {
   try { persist = persistenceInfo(); } catch (e) {
     try { persist = storageInfo(); } catch (err) { persist = { error: String(err && err.message || err) }; }
   }
-  res.status(200).json({
+  const payload = {
     ok: true,
     tz: process.env.TZ,
     db: persist.usingEphemeralDisk ? "ephemeral" : "railway",
@@ -43,7 +43,9 @@ function health(_req, res) {
     googleMigrateAvailable: googleMigrateEnabled(),
     googleDriveOptional: hasGoogleAuth(),
     sheetsLive: false
-  });
+  };
+  try { Object.assign(payload, require("./backup").info()); } catch (e) {}
+  res.status(200).json(payload);
 }
 
 app.get("/health", health);
@@ -201,11 +203,25 @@ setInterval(() => {
   serialize(() =>
     callShopFunction("checkIdleWorkers", []).catch((e) => console.error("[checkIdleWorkers]", e.message || e))
   );
-  if (!hasGoogleAuth()) return;
-  serialize(() =>
-    callShopFunction("processPdfQueue", []).catch((e) => console.error("[processPdfQueue]", e.message || e))
-  );
+  if (hasGoogleAuth()) {
+    serialize(() =>
+      callShopFunction("processPdfQueue", []).catch((e) => console.error("[processPdfQueue]", e.message || e))
+    );
+  }
+  serialize(() => {
+    try { require("./backup").tick(); } catch (e) {
+      console.error("[backup]", e && e.message ? e.message : e);
+    }
+  });
 }, FIVE_MIN);
+
+setTimeout(() => {
+  serialize(() => {
+    try { require("./backup").tick(); } catch (e) {
+      console.error("[backup]", e && e.message ? e.message : e);
+    }
+  });
+}, 120000).unref();
 
 function shutdown() {
   try { persistWorkbook(); } catch (e) {}

@@ -327,6 +327,36 @@ function mountOffice(app) {
     fs.createReadStream(file).pipe(res);
   });
 
+  app.get("/api/office/backups", requireOffice, (_req, res) => {
+    const backup = require("./backup");
+    res.json({
+      ok: true,
+      ...backup.info(),
+      last: backup.loadStatus(),
+      snapshots: backup.listLocalSnapshots()
+    });
+  });
+
+  app.post("/api/office/backups/run", requireOffice, (_req, res) => {
+    try {
+      const status = require("./backup").runBackup("manual");
+      res.json({ ok: !!status.ok, ...status });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/backups/file/:name", requireOffice, (req, res) => {
+    const file = require("./backup").safeBackupName(req.params.name);
+    if (!file) {
+      res.status(404).json({ ok: false, error: "That backup file is not on this volume." });
+      return;
+    }
+    res.setHeader("Content-Type", file.endsWith(".json") ? "application/json" : "application/octet-stream");
+    res.setHeader("Content-Disposition", "attachment; filename=\"" + require("path").basename(file) + "\"");
+    fs.createReadStream(file).pipe(res);
+  });
+
   app.get("/api/office/dropdowns", requireOffice, (_req, res) => {
     res.json({ ok: true, dropdowns: listDropdowns(), keys: DROPDOWN_KEYS });
   });

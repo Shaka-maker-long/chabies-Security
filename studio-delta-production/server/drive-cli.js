@@ -56,6 +56,31 @@ async function main() {
     const pdf = await drive.files.export({ fileId: input.fileId, mimeType: "application/pdf" }, { responseType: "arraybuffer" });
     const buf = Buffer.from(pdf.data);
     out = { ok: true, pdfBase64: buf.toString("base64") };
+  } else if (op === "uploadFile") {
+    if (!input.path) throw new Error("uploadFile needs a path");
+    const mime = input.mimeType || "application/octet-stream";
+    const created = await drive.files.create({
+      requestBody: {
+        name: input.name,
+        parents: input.folderId ? [input.folderId] : undefined,
+        mimeType: mime
+      },
+      media: { mimeType: mime, body: fs.createReadStream(input.path) },
+      fields: "id, webViewLink, name, mimeType, createdTime",
+      ...driveOpts
+    });
+    out = { ok: true, id: created.data.id, url: created.data.webViewLink, name: created.data.name, mimeType: created.data.mimeType, createdTime: created.data.createdTime };
+  } else if (op === "shareWithEmail") {
+    await drive.permissions.create({
+      fileId: input.fileId,
+      requestBody: {
+        type: "user",
+        role: input.role || "writer",
+        emailAddress: input.email
+      },
+      sendNotificationEmail: false,
+      supportsAllDrives: true
+    });
   } else if (op === "createFile") {
     const mime = input.mimeType || "text/plain";
     const body = input.contentBase64

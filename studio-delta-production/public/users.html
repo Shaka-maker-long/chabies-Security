@@ -32,13 +32,15 @@
     <span class="msg" id="status"></span>
     <button class="ghost" onclick="downloadBackup()">Download JSON backup</button>
     <button class="ghost" onclick="downloadSqlite()">Download SQLite</button>
+    <button class="ghost" onclick="runBackup()">Backup now</button>
     <button onclick="addRow()">Add user</button>
     <button onclick="saveAll()">Save</button>
   </header>
   <div class="wrap">
     <p class="help"><b>Production</b> people only see the floor tasks you tick — not Orders, Debtors, or other office pages. <b>Admin</b> can open office pages. Untick <b>See debtors</b> if that admin must not see money still owing.</p>
-    <p class="help">The live database is <b>SQLite on Railway</b>. Google Sheets is not used. <b>Download SQLite</b> saves <code>studio-delta.db</code> (Users, ORDERS, enquiries). <b>Download JSON backup</b> is the readable copy. To copy the old spreadsheet once, set <code>GOOGLE_MIGRATE=1</code> on Railway, then use the button below, then remove that variable.</p>
+    <p class="help">The live database is <b>SQLite on Railway</b>. Google Sheets is not used. Every night at 02:00 Johannesburg the app copies SQLite, office JSON, and enquiry files into <code>/app/data/backups</code> (last 14 days stay on the volume). If Google Drive is set, that same copy is uploaded off the server and an email is sent. <b>Backup now</b> runs that copy immediately. <b>Download SQLite</b> is a copy for your PC.</p>
     <p class="help" id="dbLine"></p>
+    <p class="help" id="backupLine"></p>
     <p class="help" id="migrateWrap" style="display:none"><button class="ghost" type="button" onclick="migrateGoogle()">Copy old Google spreadsheet once</button></p>
     <table>
       <thead>
@@ -141,6 +143,39 @@
       const day = new Date().toISOString().slice(0, 10);
       await downloadBlob("/api/office/backup.db", "studio-delta-" + day + ".db", "Could not download SQLite");
     }
+    async function runBackup() {
+      document.getElementById("status").textContent = "Backing up…";
+      const r = await sdOfficeFetch("/api/office/backups/run", { method: "POST" });
+      const j = await r.json();
+      if (!j.ok) {
+        document.getElementById("status").textContent = j.error || "Backup failed";
+        loadBackup();
+        return;
+      }
+      document.getElementById("status").textContent = j.offsite
+        ? "Backup saved on the volume and on Google Drive"
+        : "Backup saved on the volume (Drive is not configured)";
+      loadBackup();
+    }
+    function backupWhen(iso) {
+      if (!iso) return "never";
+      try {
+        return new Date(iso).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" });
+      } catch (e) {
+        return iso;
+      }
+    }
+    async function loadBackup() {
+      const r = await sdOfficeFetch("/api/office/backups");
+      const j = await r.json();
+      if (!j.ok) return;
+      const line = document.getElementById("backupLine");
+      const where = j.backupOffsite ? "On the Railway volume and on Google Drive." : "On the Railway volume only — set GOOGLE_SERVICE_ACCOUNT_JSON so copies also go to Drive.";
+      const stale = j.backupStale ? " A fresh copy is due." : "";
+      line.textContent = "Last backup: " + backupWhen(j.backupAt) + ". " + (j.backupOk ? "OK. " : "Failed. ") +
+        (j.backupLocalCount || 0) + " dated copies kept (14 days). " + where + stale;
+      if (j.backupError) line.textContent += " " + j.backupError;
+    }
     async function migrateGoogle() {
       if (!confirm("This replaces Users, orders, and shop logs on Railway with the old Google spreadsheet. Enquiries already on Railway are kept, and any Enquiries tab in Google is copied in. Continue?")) return;
       document.getElementById("status").textContent = "Copying from Google…";
@@ -168,6 +203,7 @@
       render();
       document.getElementById("status").textContent = rows.length + " users";
       loadDb();
+      loadBackup();
     }
     sdRequireOffice("users").then((p) => { if (p) load(); });
   </script>
