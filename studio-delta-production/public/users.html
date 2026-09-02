@@ -30,13 +30,14 @@
   <header>
     <h1>Users</h1>
     <span class="msg" id="status"></span>
-    <button class="ghost" onclick="downloadBackup()">Download backup</button>
+    <button class="ghost" onclick="downloadBackup()">Download JSON backup</button>
+    <button class="ghost" onclick="downloadSqlite()">Download SQLite</button>
     <button onclick="addRow()">Add user</button>
     <button onclick="saveAll()">Save</button>
   </header>
   <div class="wrap">
     <p class="help"><b>Production</b> people only see the floor tasks you tick — not Orders, Debtors, or other office pages. <b>Admin</b> can open office pages. Untick <b>See debtors</b> if that admin must not see money still owing.</p>
-    <p class="help">The live database is <b>Railway</b> (files on the server volume). Google Sheets is not used. Download a backup any time. To copy the old spreadsheet once, set <code>GOOGLE_MIGRATE=1</code> on Railway, then use the button below, then remove that variable.</p>
+    <p class="help">The live database is <b>SQLite on Railway</b>. Google Sheets is not used. <b>Download SQLite</b> saves <code>studio-delta.db</code> (Users, ORDERS, enquiries). <b>Download JSON backup</b> is the readable copy. To copy the old spreadsheet once, set <code>GOOGLE_MIGRATE=1</code> on Railway, then use the button below, then remove that variable.</p>
     <p class="help" id="dbLine"></p>
     <p class="help" id="migrateWrap" style="display:none"><button class="ghost" type="button" onclick="migrateGoogle()">Copy old Google spreadsheet once</button></p>
     <table>
@@ -119,19 +120,26 @@
       await load();
       document.getElementById("status").textContent = "Saved";
     }
-    async function downloadBackup() {
-      const r = await sdOfficeFetch("/api/office/backup");
+    async function downloadBlob(url, filename, fail) {
+      const r = await sdOfficeFetch(url);
       if (!r.ok) {
-        document.getElementById("status").textContent = "Could not download backup";
+        document.getElementById("status").textContent = fail;
         return;
       }
       const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
+      const href = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = "studio-delta-railway-backup.json";
+      a.href = href;
+      a.download = filename;
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(href);
+    }
+    async function downloadBackup() {
+      await downloadBlob("/api/office/backup", "studio-delta-railway-backup.json", "Could not download JSON backup");
+    }
+    async function downloadSqlite() {
+      const day = new Date().toISOString().slice(0, 10);
+      await downloadBlob("/api/office/backup.db", "studio-delta-" + day + ".db", "Could not download SQLite");
     }
     async function migrateGoogle() {
       if (!confirm("This replaces Users, orders, and shop logs on Railway with the old Google spreadsheet. Enquiries already on Railway are kept, and any Enquiries tab in Google is copied in. Continue?")) return;

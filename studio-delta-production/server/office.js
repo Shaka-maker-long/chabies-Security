@@ -31,6 +31,8 @@ const {
 const { importGoogleWorkbook, tabCounts, googleMigrateEnabled } = require("./workbook-store");
 const staff = require("./staff");
 const pipeline = require("./enquiry-pipeline");
+const fs = require("fs");
+const sqlite = require("./sqlite-store");
 
 function requireOffice(req, res, next) {
   const profile = staff.readSession(req);
@@ -309,6 +311,20 @@ function mountOffice(app) {
     const stamp = new Date().toISOString().slice(0, 10);
     res.setHeader("Content-Disposition", "attachment; filename=\"studio-delta-railway-" + stamp + ".json\"");
     res.json(railwayBackup());
+  });
+
+  app.get("/api/office/backup.db", requireOffice, (_req, res) => {
+    try { require("./db").persist(); } catch (e) {}
+    sqlite.checkpoint();
+    const file = sqlite.sqlitePath();
+    if (!fs.existsSync(file)) {
+      res.status(404).json({ ok: false, error: "SQLite is not on this volume yet. Use the app once, then download again." });
+      return;
+    }
+    const stamp = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "application/vnd.sqlite3");
+    res.setHeader("Content-Disposition", "attachment; filename=\"studio-delta-" + stamp + ".db\"");
+    fs.createReadStream(file).pipe(res);
   });
 
   app.get("/api/office/dropdowns", requireOffice, (_req, res) => {

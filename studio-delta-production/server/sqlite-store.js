@@ -320,6 +320,13 @@ function importIfEmpty(book, officeState) {
   return out;
 }
 
+function checkpoint() {
+  const db = open();
+  if (!db) return false;
+  try { db.exec("PRAGMA wal_checkpoint(TRUNCATE);"); } catch (e) {}
+  return fs.existsSync(sqlitePath());
+}
+
 function info() {
   const n = counts();
   return {
@@ -345,5 +352,6 @@ module.exports = {
   loadOffice,
   loadWorkbookJson,
   importIfEmpty,
+  checkpoint,
   info
 };
