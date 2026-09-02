@@ -1,6 +1,6 @@
 # Studio Delta Production
 
-Shop-floor + office app for Studio Delta (South Africa).
+Shop-floor + office app for Studio Delta (South Africa). The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
 
 ## Database: SQLite on the Railway volume (not Google Sheets, not Postgres)
 
