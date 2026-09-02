@@ -850,6 +850,161 @@ function todayEnquiryDate() {
   return String(p.day).padStart(2, "0") + "/" + String(p.m + 1).padStart(2, "0") + "/" + p.y;
 }
 
+function formatSastDateTime(v) {
+  const d = v instanceof Date ? v : (asDate(v) || (v ? new Date(v) : null));
+  if (!d || isNaN(d.getTime())) return "";
+  const sast = new Date(d.getTime() + SAST_OFFSET_MS);
+  const p = (n) => String(n).padStart(2, "0");
+  return p(sast.getUTCDate()) + "/" + p(sast.getUTCMonth() + 1) + "/" + sast.getUTCFullYear() +
+    " " + p(sast.getUTCHours()) + ":" + p(sast.getUTCMinutes());
+}
+
+function durationLabel(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return Math.max(1, mins) + " min";
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hours < 48) return hours + "h" + (rem ? " " + rem + "m" : "");
+  const days = Math.floor(hours / 24);
+  const h = hours % 24;
+  return days + "d" + (h ? " " + h + "h" : "");
+}
+
+function nextEventId(events) {
+  const max = (events || []).reduce((m, ev) => {
+    const n = Number(String(ev && ev.id || "").replace(/\D/g, "")) || 0;
+    return Math.max(m, n);
+  }, 0);
+  return "ev" + (max + 1);
+}
+
+function normalizeEnquiryEvents(row) {
+  const list = Array.isArray(row && row.events) ? row.events : [];
+  return list.map((ev, i) => {
+    const at = String((ev && ev.at) || "").trim();
+    return {
+      id: String((ev && ev.id) || "ev" + (i + 1)),
+      at,
+      at_label: formatSastDateTime(at) || at,
+      kind: String((ev && ev.kind) || "event"),
+      actor: String((ev && ev.actor) || "").trim(),
+      status: String((ev && ev.status) || "").trim(),
+      from_status: String((ev && ev.from_status) || "").trim(),
+      label: String((ev && ev.label) || (ev && ev.kind) || "Event"),
+      note: String((ev && ev.note) || "").trim()
+    };
+  }).filter((ev) => ev.at || ev.label);
+}
+
+function synthesizeEnquiryEvents(row) {
+  const events = [];
+  const createdAt = row && row.created_at
+    ? row.created_at
+    : (row && asDate(row.date_enquired) ? asDate(row.date_enquired).toISOString() : "");
+  if (createdAt) {
+    events.push({
+      id: "ev1",
+      at: createdAt,
+      kind: "created",
+      actor: "",
+      status: "New",
+      from_status: "",
+      label: "Enquiry captured",
+      note: ""
+    });
+  }
+  if (row && row.date_quoted) {
+    const quotedAt = row.quote_pdf_uploaded_at || (asDate(row.date_quoted) ? asDate(row.date_quoted).toISOString() : "");
+    if (quotedAt) {
+      events.push({
+        id: "ev" + (events.length + 1),
+        at: quotedAt,
+        kind: "complete_quote",
+        actor: "",
+        status: "Quoted",
+        from_status: "",
+        label: "Quote PDF issued" + (row.quote_no ? " " + row.quote_no : ""),
+        note: ""
+      });
+    }
+  }
+  const status = String((row && row.status) || "");
+  if (status === "Ordered" || status === "Rejected" || status === "Not Interested" || status === "Not within scope") {
+    const at = (row && row.updated_at) || nowIso();
+    events.push({
+      id: "ev" + (events.length + 1),
+      at,
+      kind: status === "Ordered" ? "complete_order" : "close",
+      actor: "",
+      status,
+      from_status: "",
+      label: status === "Ordered" ? "Ordered" : ("Closed: " + status),
+      note: ""
+    });
+  }
+  return normalizeEnquiryEvents({ events });
+}
+
+function appendEnquiryEvent(row, partial) {
+  if (!row) return null;
+  const events = normalizeEnquiryEvents(row);
+  const at = nowIso();
+  const event = {
+    id: nextEventId(events),
+    at,
+    kind: String((partial && partial.kind) || "event"),
+    actor: String((partial && partial.actor) || "").trim(),
+    status: String((partial && partial.status) != null ? partial.status : (row.status || "")),
+    from_status: String((partial && partial.from_status) || "").trim(),
+    label: String((partial && partial.label) || (partial && partial.kind) || "Event"),
+    note: String((partial && partial.note) || "").trim()
+  };
+  events.push(event);
+  row.events = events;
+  return event;
+}
+
+function captureFieldsChanged(existing, payload) {
+  if (!existing) return true;
+  const keys = [
+    "client_name", "enquiry_type", "enquiry_source", "source", "province",
+    "client_email", "client_number", "comment", "date_enquired", "design_description"
+  ];
+  for (const k of keys) {
+    if (String(existing[k] || "").trim() !== String(payload[k] || "").trim()) return true;
+  }
+  const names = (list) => (list || []).map((p) => String((p && p.product) || "").trim() + "|" + String((p && p.category) || "").trim()).filter((s) => s !== "|").join(";");
+  if (names(existing.products) !== names(payload.products)) return true;
+  const specs = (list) => JSON.stringify(list || []);
+  if (specs(existing.custom_specs) !== specs(payload.custom_specs)) return true;
+  return false;
+}
+
+function enquiryLifespan(row, events) {
+  const list = events && events.length ? events : normalizeEnquiryEvents(row);
+  const first = list[0];
+  const start = first && first.at ? Date.parse(first.at) : Date.parse(row && row.created_at || "");
+  const ordered = list.filter((ev) => ev.kind === "complete_order" || ev.status === "Ordered").slice(-1)[0];
+  const closed = list.filter((ev) => ev.kind === "close" || ev.kind === "complete_reject" || /Rejected|Not Interested|Not within scope/.test(ev.status)).slice(-1)[0];
+  const endEvent = ordered || closed;
+  const end = endEvent && endEvent.at ? Date.parse(endEvent.at) : Date.now();
+  const ms = Number.isFinite(start) ? end - start : NaN;
+  const label = durationLabel(ms);
+  let lifespan_label = "";
+  if (label && ordered) lifespan_label = label + " to order";
+  else if (label && closed) lifespan_label = label + " to closed";
+  else if (label) lifespan_label = label + " open";
+  return {
+    opened_at: first && first.at ? first.at : (row && row.created_at) || "",
+    opened_at_label: first && first.at_label ? first.at_label : formatSastDateTime((row && row.created_at) || "") ,
+    ordered_at: ordered && ordered.at ? ordered.at : "",
+    ordered_at_label: ordered && ordered.at_label ? ordered.at_label : "",
+    lifespan_ms: Number.isFinite(ms) ? ms : 0,
+    lifespan_label
+  };
+}
+
 function emptyEnquiryLine() {
   return { product: "", category: "", value_excl_vat: "" };
 }
@@ -1154,6 +1309,8 @@ function copyPipeline(from, to) {
   to.ready_for_orders = !!(from && from.ready_for_orders);
   to.custom_specs = normalizeCustomSpecs(from, null);
   to.design_description = String((from && from.design_description) || "").trim();
+  to.created_at = String((from && from.created_at) || "").trim();
+  to.events = normalizeEnquiryEvents(from);
 }
 
 function enquiryFilesDir(enquiryNo) {
@@ -1372,6 +1529,9 @@ function decorateEnquiry(row) {
   const customSpecs = normalizeCustomSpecs(row, null);
   const enquiryType = String(row.enquiry_type || "").trim();
   const deliverables = listEnquiryDeliverables(row);
+  const storedEvents = normalizeEnquiryEvents(row);
+  const events = storedEvents.length ? storedEvents : synthesizeEnquiryEvents(row);
+  const life = enquiryLifespan(row, events);
   return {
     ...row,
     products,
@@ -1392,7 +1552,14 @@ function decorateEnquiry(row) {
     deliverable_count: deliverables.length,
     spec_summary: enquiryType === "New Design"
       ? String(row.design_description || row.request || "").trim()
-      : customSpecSummary(customSpecs)
+      : customSpecSummary(customSpecs),
+    events,
+    created_at: row.created_at || life.opened_at || "",
+    opened_at: life.opened_at,
+    opened_at_label: life.opened_at_label,
+    ordered_at: life.ordered_at,
+    ordered_at_label: life.ordered_at_label,
+    lifespan_label: life.lifespan_label
   };
 }
 
@@ -1498,13 +1665,35 @@ function upsertEnquiry(row, opts) {
 
   payload.updated_at = nowIso();
   if (!state.enquiries) state.enquiries = [];
+  const actor = opts && opts.actor ? String(opts.actor).trim() : "";
   if (existing) {
     payload.id = existing.id;
+    payload.created_at = existing.created_at || payload.created_at || nowIso();
+    payload.events = normalizeEnquiryEvents(existing).length
+      ? normalizeEnquiryEvents(existing)
+      : synthesizeEnquiryEvents({ ...existing, created_at: payload.created_at });
+    if (!fromPipeline && captureFieldsChanged(existing, payload)) {
+      appendEnquiryEvent(payload, {
+        kind: "edited",
+        actor,
+        from_status: existing.status || "",
+        status: payload.status || existing.status || "",
+        label: "Enquiry details edited"
+      });
+    }
     Object.assign(existing, payload);
     save();
     return decorateEnquiry(existing);
   }
   payload.id = (state.enquiries.reduce((m, o) => Math.max(m, Number(o.id) || 0), 0) || 0) + 1;
+  payload.created_at = nowIso();
+  payload.events = [];
+  appendEnquiryEvent(payload, {
+    kind: "created",
+    actor,
+    status: payload.status || "New",
+    label: "Enquiry captured"
+  });
   state.enquiries.push(payload);
   save();
   return decorateEnquiry(payload);
@@ -1689,5 +1878,7 @@ module.exports = {
   normalizeEnquiryLines,
   todayEnquiryDate,
   nowIso,
-  asDate
+  asDate,
+  appendEnquiryEvent,
+  formatSastDateTime
 };

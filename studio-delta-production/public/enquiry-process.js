@@ -107,7 +107,14 @@
         ".sd-task-pill{display:inline-block;background:#fff;border:1px solid #d0d5dd;border-radius:999px;padding:2px 8px;font-size:12px;margin:0 6px 6px 0}" +
         ".sd-task-pill.overdue{border-color:#fda29b;color:#b42318}" +
         ".sd-lines{width:100%;border-collapse:collapse;font-size:12px;background:#fff}" +
-        ".sd-lines th,.sd-lines td{border:1px solid #d0d5dd;padding:6px}";
+        ".sd-lines th,.sd-lines td{border:1px solid #d0d5dd;padding:6px}" +
+        ".sd-life{font-size:13px;color:#1d2939}" +
+        ".sd-timeline{list-style:none;margin:8px 0 0;padding:0;border-left:2px solid #d0d5dd}" +
+        ".sd-timeline li{position:relative;padding:0 0 12px 16px;font-size:13px}" +
+        ".sd-timeline li:last-child{padding-bottom:0}" +
+        ".sd-timeline li::before{content:\"\";position:absolute;left:-5px;top:6px;width:8px;height:8px;border-radius:50%;background:#1d2939}" +
+        ".sd-timeline time{display:block;font-size:11px;font-weight:600;color:#667085;letter-spacing:.02em}" +
+        ".sd-timeline .sd-tl-actor{color:#667085;font-size:12px}";
       document.head.appendChild(css);
     }
     wrap.addEventListener("click", (e) => { if (e.target.id === "sdProcessMask") closeProcess(); });
@@ -512,7 +519,20 @@
       "<span>Status <b>" + esc(row.status || "New") + "</b></span>" +
       (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_no ? " · " + esc(row.quote_no) : "") + "</span>" : "") +
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +
-      "</div>" + correspondenceCard(row);
+      (row.lifespan_label ? "<span class=\"sd-life\">Lifespan <b>" + esc(row.lifespan_label) + "</b></span>" : "") +
+      "</div>";
+    const events = row.events || [];
+    if (events.length) {
+      html += "<h2>Timeline</h2><ol class=\"sd-timeline\">" + events.map((ev) => {
+        return "<li><time>" + esc(ev.at_label || ev.at) + "</time>" +
+          esc(ev.label || ev.kind) +
+          (ev.status ? " · " + esc(ev.status) : "") +
+          (ev.actor ? "<div class=\"sd-tl-actor\">" + esc(ev.actor) + "</div>" : "") +
+          (ev.note ? "<div class=\"sd-tl-actor\">" + esc(ev.note) + "</div>" : "") +
+          "</li>";
+      }).join("") + "</ol>";
+    }
+    html += correspondenceCard(row);
     if (openTasks.length) {
       html += "<h2>Assigned now</h2>" + openTasks.map((t) => {
         return "<span class=\"sd-task-pill\">" + esc(t.title) + " → " + esc(t.assignee) + "</span>";

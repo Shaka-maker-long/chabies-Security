@@ -330,10 +330,62 @@ function applyAction(enquiryNo, actorName, body) {
   };
   const fn = handlers[action];
   if (!fn) throw new Error("Unknown process action");
+  if (!Array.isArray(raw.events) || !raw.events.length) {
+    raw.created_at = raw.created_at || db.nowIso();
+    db.appendEnquiryEvent(raw, {
+      kind: "created",
+      actor: "",
+      status: "New",
+      label: "Enquiry captured"
+    });
+  }
+  const fromStatus = raw.status || "New";
   fn(raw, actor, body || {});
+  db.appendEnquiryEvent(raw, {
+    kind: action,
+    actor,
+    from_status: fromStatus,
+    status: raw.status || fromStatus,
+    label: eventLabel(action, raw, fromStatus, body || {}),
+    note: String((body && (body.comments || body.reason || body.note)) || "").trim()
+  });
   raw.updated_at = db.nowIso();
   db.saveEnquiryRecord(raw);
   return processSnapshot(raw.enquiry_no);
+}
+
+function eventLabel(action, row, fromStatus, body) {
+  const status = row.status || "";
+  const coster = (openOfKind(row, "cost_sheet") || {}).assignee || "";
+  if (action === "assign_waiting") return "Waiting: " + status;
+  if (action === "assign_costing") {
+    return (fromStatus === "Costing" || fromStatus === "Re-Cost") && status === fromStatus
+      ? "Costing assigned to " + coster
+      : "Assigned costing → " + coster;
+  }
+  if (action === "add_correspondence") return "Outlook email saved";
+  if (action === "complete_chase") {
+    return String(body.next || "") === "costing"
+      ? "Chase complete — sent to costing"
+      : "Still waiting: " + status;
+  }
+  if (action === "supplier_wait") return "Waiting on supplier";
+  if (action === "complete_supplier") return "Supplier answered — back to costing";
+  if (action === "complete_cost_sheet") return "Cost sheet uploaded";
+  if (action === "complete_approval") {
+    const d = String(body.decision || "").toLowerCase();
+    return d.indexOf("reject") >= 0 ? "Costing rejected — Re-Cost" : "Costing approved";
+  }
+  if (action === "complete_quote") return "Quote PDF issued" + (row.quote_no ? " " + row.quote_no : "");
+  if (action === "complete_followup") return "Follow-up logged";
+  if (action === "complete_reject") return "Client rejected";
+  if (action === "complete_order") {
+    return row.drawing && row.drawing.required ? "POP saved — drawing required" : "POP saved — ready for Orders";
+  }
+  if (action === "complete_drawing") return "Drawing uploaded — ready for Orders";
+  if (action === "close") return "Closed: " + status;
+  if (action === "reassign") return "Task reassigned";
+  return action;
 }
 
 function assignWaiting(row, actor, body) {
