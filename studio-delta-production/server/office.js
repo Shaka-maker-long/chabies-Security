@@ -171,7 +171,12 @@ function mountOffice(app) {
   });
 
   app.get("/api/office/orders", requireOffice, (_req, res) => {
-    res.json({ ok: true, rows: listOrders().map(decorateMoney), fields: ORDER_FIELDS, vatRate: VAT_RATE });
+    const rows = listOrders().map((o) => {
+      const copy = decorateMoney(o);
+      delete copy.payments;
+      return copy;
+    });
+    res.json({ ok: true, rows, fields: ORDER_FIELDS, vatRate: VAT_RATE });
   });
 
   app.put("/api/office/orders", requireOffice, (req, res) => {
