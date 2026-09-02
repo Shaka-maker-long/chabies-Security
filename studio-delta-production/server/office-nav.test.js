@@ -57,6 +57,8 @@ assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not impo
 const usersHtml = fs.readFileSync(path.join(__dirname, "../public/users.html"), "utf8");
 assert.ok(usersHtml.indexOf("Download JSON backup") !== -1);
 assert.ok(usersHtml.indexOf("Download SQLite") !== -1);
+assert.ok(usersHtml.indexOf("Backup now") !== -1);
+assert.ok(usersHtml.indexOf("/api/office/backups/run") !== -1);
 assert.ok(usersHtml.indexOf("backup.db") !== -1);
 assert.ok(usersHtml.indexOf("migrate-from-google") !== -1);
 assert.ok(floor.indexOf('href="/enquiries"') !== -1);

@@ -28,6 +28,20 @@ The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume
 
 On Railway, `DATA_DIR` is `/app/data`. **A Volume must be mounted at `/app/data`**. Without it, every deploy wipes the database. Users → **Download backup** saves a JSON copy of shop + office data.
 
+### Automatic backups (volume + Google Drive)
+
+Every night at **02:00 Africa/Johannesburg** (and two minutes after boot if today’s copy is missing) the app writes a dated snapshot into `/app/data/backups/` and keeps **14 days**. That protects against a bad save or a deleted enquiry. Users → **Backup now** runs the same job immediately.
+
+Those local copies are still on the same Railway disk. **Off-site** is Google Drive (a different company than Railway):
+
+1. Keep `GOOGLE_SERVICE_ACCOUNT_JSON` on the Railway service (the same key used for QC PDFs).
+2. In Google Drive, create a folder e.g. **Studio Delta ERP backups**.
+3. Share that folder with the service account email (`client_email` in the JSON key) as **Editor**.
+4. Set `BACKUP_DRIVE_FOLDER_ID` to the folder ID from the Drive URL.
+5. Optional: `BACKUP_EMAIL` (or `GMAIL_SENDER`) so a “backup OK” mail goes out, with the `.db` attached when it is small.
+
+If Drive is not set, nightly copies still run on the volume only. `/health` shows `backupOk`, `backupOffsite`, and `backupAt`. Restore: download a dated `.db` from Users or from Drive, then replace `/app/data/studio-delta.db` on the volume (stop the service, replace the file, start it).
+
 `GET /health` must show `"sheetsLive": false` and `"usingEphemeralDisk": false`. Office pages show a red banner if the volume is missing.
 
 ### One-time copy from the old spreadsheet
@@ -53,8 +67,10 @@ The GitHub repo is a website plus this app. Railway should build from the **repo
    | --- | --- |
    | `TZ` | `Africa/Johannesburg` |
    | `DATA_DIR` | `/app/data` (already set in Docker) |
-   | `GOOGLE_SERVICE_ACCOUNT_JSON` | optional. Only for Drive QC PDFs / powder emails, not for the database |
-   | `GMAIL_SENDER` | optional. Workspace mailbox for QC / powder / glass emails |
+   | `GOOGLE_SERVICE_ACCOUNT_JSON` | optional for QC PDFs. **Required for off-site Drive backups** |
+   | `GMAIL_SENDER` | optional. Workspace mailbox for QC / powder / glass emails and backup notices |
+   | `BACKUP_DRIVE_FOLDER_ID` | optional. Google Drive folder ID for nightly off-site copies |
+   | `BACKUP_EMAIL` | optional. Address that receives “backup OK / failed” mail |
 
 3. **Volume (required):** service → **Volumes** → mount path **`/app/data`**. Confirm `GET /health` shows `"usingEphemeralDisk": false`.
 4. **Settings → Networking → Generate domain**. Login is name + access code from the Railway `Users` table. If Users is empty, the app seeds **Admin** / **admin** — change that code on Users.
