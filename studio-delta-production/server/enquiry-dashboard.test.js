@@ -105,6 +105,21 @@ const rows = [
     ],
     tasks: [{ status: "open", assignee: "Coster", kind: "cost_sheet" }],
     correspondence: { mails: [] }
+  },
+  {
+    enquiry_no: "#2001",
+    status: "New",
+    created_at: "2026-06-15T08:00:00.000Z",
+    date_enquired: "15/06/2026",
+    enquiry_source: "Website",
+    enquiry_type: "Catologue",
+    category: "Mirror",
+    product: "June Mirror",
+    province: "Gauteng",
+    client_name: "June Client",
+    events: [{ kind: "created", at: "2026-06-15T08:00:00.000Z" }],
+    tasks: [],
+    correspondence: { mails: [] }
   }
 ];
 
@@ -116,8 +131,8 @@ try {
   assert.strictEqual(month.grain, "month");
   assert.strictEqual(month.range, "6m");
   assert.strictEqual(month.tz, "Africa/Johannesburg");
-  assert.strictEqual(month.enquiryCount, 5);
-  assert.strictEqual(month.kpis.openNow, 3);
+  assert.strictEqual(month.enquiryCount, 6);
+  assert.strictEqual(month.kpis.openNow, 4);
   assert.strictEqual(month.kpis.orderedInPeriod, 1);
   assert.ok(month.kpis.quotedWaiting >= 1);
   assert.ok(month.kpis.overdueFollowUps >= 1, "quoted with no follow-up after 7 days is overdue");
@@ -126,12 +141,12 @@ try {
   assert.ok(month.series.every((s) => /^\d{4}-\d{2}$/.test(s.key)));
   const opened = month.series.reduce((n, s) => n + s.enquiries, 0);
   const quoted = month.series.reduce((n, s) => n + s.quotes, 0);
-  assert.strictEqual(opened, 5);
+  assert.strictEqual(opened, 6);
   assert.strictEqual(quoted, 2);
   assert.strictEqual(month.money.quotedExclVat, 16650.5);
   assert.strictEqual(month.money.orderedExclVat, 12000);
   const captured = month.funnel.find((x) => x.label === "Captured");
-  assert.strictEqual(captured.count, 5);
+  assert.strictEqual(captured.count, 6);
   const orderedFunnel = month.funnel.find((x) => x.label === "Ordered");
   assert.strictEqual(orderedFunnel.count, 1);
   assert.ok(month.pipeline.some((p) => p.status === "Costing" && p.count === 1));
@@ -154,7 +169,7 @@ try {
   assert.ok(week.series.length > month.series.length);
   assert.ok(week.series.every((s) => /^\d{4}-W\d{2}$/.test(s.key)));
   assert.ok(week.series.every((s) => / W\d{2}$/.test(s.label)));
-  assert.strictEqual(week.series.reduce((n, s) => n + s.enquiries, 0), 5);
+  assert.strictEqual(week.series.reduce((n, s) => n + s.enquiries, 0), 6);
   assert.strictEqual(week.series.reduce((n, s) => n + s.quotes, 0), 2);
 
   const empty = dash.buildDashboard({ grain: "month", range: "year" });
@@ -165,11 +180,29 @@ try {
   assert.strictEqual(none.kpis.medianDaysToOrder, null);
   assert.ok(none.series.length > 0);
   db.listEnquiries = () => rows;
-  assert.ok(empty.enquiryCount === 5);
+  assert.ok(empty.enquiryCount === 6);
 
-  const key = dash.weekKey(new Date("2026-09-02T10:00:00+02:00"));
-  assert.ok(/^\d{4}-W\d{2}$/.test(key));
-  assert.strictEqual(dash.monthKey(new Date("2026-09-02T10:00:00+02:00")), "2026-09");
+  const june = dash.buildDashboard({ grain: "month", month: "2026-06" });
+  assert.strictEqual(june.month, "2026-06");
+  assert.strictEqual(june.windowLabel, "Jun 2026");
+  assert.ok(june.series.length === 1 && june.series[0].key === "2026-06");
+  assert.strictEqual(june.series[0].enquiries, 1);
+  assert.ok(june.pipeline.every((p) => p.status === "New"));
+  assert.strictEqual(june.funnel.find((x) => x.label === "Captured").count, 1);
+  assert.ok(!june.pipeline.some((p) => p.status === "Costing"), "June filter must not include later costing work");
+
+  const drillJune = dash.buildDrill({ grain: "month", month: "2026-06", kind: "enquiries", key: "2026-06" });
+  assert.strictEqual(drillJune.rows.length, 1);
+  assert.strictEqual(drillJune.rows[0].enquiry_no, "#2001");
+  assert.ok(drillJune.rows[0].client_name);
+
+  const drillQuotes = dash.buildDrill({ grain: "month", range: "6m", kind: "quotes", key: "2026-08" });
+  assert.ok(drillQuotes.rows.some((r) => r.enquiry_no === "#1997"));
+  assert.ok(drillQuotes.rows.some((r) => r.enquiry_no === "#1998"));
+
+  const drillEnq = dash.buildDrill({ grain: "month", range: "6m", kind: "enquiries", key: "2026-08" });
+  assert.ok(drillEnq.rows.every((r) => r.enquiry_no !== "#2001"));
+  assert.ok(drillEnq.rows.length >= 3);
 } finally {
   db.listEnquiries = orig;
 }
