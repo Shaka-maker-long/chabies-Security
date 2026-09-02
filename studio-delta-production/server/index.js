@@ -64,9 +64,6 @@ app.get("/enquiries", (_req, res) => {
 app.get("/enquiries/dashboard", (_req, res) => {
   res.sendFile(path.join(publicDir, "enquiries-dashboard.html"));
 });
-app.get("/enquiries/process", (_req, res) => {
-  res.sendFile(path.join(publicDir, "enquiries-process.html"));
-});
 app.get("/tasks", (_req, res) => {
   res.sendFile(path.join(publicDir, "tasks.html"));
 });
