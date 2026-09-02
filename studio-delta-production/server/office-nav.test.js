@@ -129,6 +129,11 @@ assert.ok(floor.indexOf("sd-erp-table") !== -1);
 assert.ok(floor.indexOf("sd-page-head") !== -1);
 assert.ok(floor.indexOf("count-notstarted") !== -1);
 assert.ok(floor.indexOf("On floor") !== -1);
-assert.ok(brand.indexOf(".sd-erp-table") !== -1);
+assert.ok(floor.indexOf("bootstrap.min.css") !== -1);
+assert.ok(floor.indexOf('id="adminLinks"') !== -1);
+assert.ok(floor.indexOf("safeNextPath") !== -1);
+assert.ok(floor.indexOf("Shop floor") !== -1);
+assert.ok(js.indexOf("/?next=") !== -1);
+assert.ok(js.indexOf("canSeeOffice") !== -1);
 
 console.log("office-nav.test.js ok");
