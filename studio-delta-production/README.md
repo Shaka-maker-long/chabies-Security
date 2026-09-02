@@ -2,17 +2,18 @@
 
 Shop-floor + office app for Studio Delta (South Africa).
 
-## Database: Railway only (not Google Sheets)
+## Database: SQLite on the Railway volume (not Google Sheets, not Postgres)
 
-The live store is **JSON files on the Railway volume**. There is no Postgres. Google Sheets is **not** read or written while the app runs. Floor clocks, orders, users, enquiries, quotes, and uploads all save on Railway.
+The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume. Google Sheets is **not** read or written while the app runs. The old JSON files stay as a backup copy. First boot copies Users, ORDERS, and enquiries from those files into SQLite so the shop is not empty.
 
 | File | What it holds |
 | --- | --- |
-| `DATA_DIR/floor-workbook.json` | Users, ORDERS, production logs, steel, backboards, idle alerts, schedule, task durations |
-| `DATA_DIR/studio-delta.json` | Enquiries, office extras, enquiry dropdowns, payments |
+| `DATA_DIR/studio-delta.db` | SQL tables: `users`, `orders`, `enquiries`, plus workbook/office backups |
+| `DATA_DIR/floor-workbook.json` | Backup of Users, ORDERS, production logs, steel, backboards, schedule |
+| `DATA_DIR/studio-delta.json` | Backup of enquiries and office extras |
 | `DATA_DIR/office-sessions.json` | Office login sessions |
 | `DATA_DIR/enquiry-quotes/` | Quote PDFs |
-| `DATA_DIR/enquiry-files/` | Cost sheets, follow-up screenshots, POP, drawings |
+| `DATA_DIR/enquiry-files/` | Cost sheets, follow-up screenshots, POP, drawings, Outlook emails |
 
 On Railway, `DATA_DIR` is `/app/data`. **A Volume must be mounted at `/app/data`**. Without it, every deploy wipes the database. Users → **Download backup** saves a JSON copy of shop + office data.
 
