@@ -201,7 +201,7 @@ function mountOffice(app) {
 
   app.put("/api/office/enquiries", requireOffice, (req, res) => {
     try {
-      const row = upsertEnquiry(req.body || {});
+      const row = upsertEnquiry(req.body || {}, { actor: req.office && req.office.name });
       res.json({ ok: true, row, nextEnquiryNo: nextEnquiryNo(), dropdowns: listEnquiryDropdowns() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });

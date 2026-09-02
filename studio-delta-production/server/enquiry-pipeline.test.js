@@ -35,6 +35,9 @@ const enquiry = db.upsertEnquiry({
 assert.strictEqual(enquiry.enquiry_no, "#1996");
 assert.strictEqual(enquiry.status, "New");
 assert.strictEqual(enquiry.products[0].value_excl_vat, "");
+assert.ok(enquiry.events.some((ev) => ev.kind === "created"));
+assert.ok(enquiry.opened_at_label);
+assert.ok(enquiry.lifespan_label);
 
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", { action: "assign_costing", assignee: "Welder" }),
@@ -46,6 +49,8 @@ const costing = pipeline.applyAction("#1996", "Coster", {
   assignee: "Coster"
 });
 assert.strictEqual(costing.row.status, "Costing");
+assert.ok(costing.row.events.some((ev) => ev.kind === "assign_costing" && ev.at));
+assert.ok(costing.row.events.some((ev) => ev.kind === "assign_costing" && ev.actor === "Coster"));
 assert.ok(costing.actions.some((a) => a.id === "assign_costing" && a.label === "Change costing person"));
 assert.ok(costing.actions.some((a) => a.id === "add_correspondence"));
 const myCost = pipeline.listMyTasks("Coster");

@@ -29,6 +29,29 @@ assert.strictEqual(first.products[0].product, "Daphne Rectangular Mirror");
 assert.strictEqual(first.products[0].value_excl_vat, "");
 assert.strictEqual(first.custom_specs[0].kind, "Dimensions");
 assert.ok(first.request.indexOf("Dimensions") >= 0);
+assert.ok(first.events.some((ev) => ev.kind === "created" && ev.at));
+assert.ok(first.opened_at_label);
+assert.ok(/open|to /.test(first.lifespan_label));
+const same = db.upsertEnquiry({
+  enquiry_no: first.enquiry_no,
+  date_enquired: "30/11/2025",
+  enquiry_source: "Website",
+  enquiry_type: "Custom",
+  client_name: "Michael Cost",
+  product: "Daphne Rectangular Mirror",
+  custom_specs: [{ kind: "Dimensions", detail: "800 x 600" }]
+});
+assert.strictEqual(same.events.filter((ev) => ev.kind === "edited").length, 0);
+const renamed = db.upsertEnquiry({
+  enquiry_no: first.enquiry_no,
+  date_enquired: "30/11/2025",
+  enquiry_source: "Website",
+  enquiry_type: "Custom",
+  client_name: "Michael Cost edited",
+  product: "Daphne Rectangular Mirror",
+  custom_specs: [{ kind: "Dimensions", detail: "800 x 600" }]
+});
+assert.ok(renamed.events.some((ev) => ev.kind === "edited"));
 
 assert.throws(
   () => db.upsertEnquiry({

@@ -46,6 +46,8 @@ assert.ok(processJs.indexOf("Files") !== -1);
 assert.ok(processJs.indexOf("Every CORRESPONDANCE email") !== -1);
 
 assert.ok(processJs.indexOf("sd-file-row") !== -1);
+assert.ok(processJs.indexOf("sd-timeline") !== -1);
+assert.ok(processJs.indexOf("Lifespan") !== -1);
 const enquiriesHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries.html"), "utf8");
 assert.ok(enquiriesHtml.indexOf('id="captureMask"') !== -1, "New enquiry must open a capture modal");
 assert.ok(enquiriesHtml.indexOf("#grid {") !== -1 || enquiriesHtml.indexOf("#grid{") !== -1);
@@ -55,6 +57,8 @@ assert.ok(enquiriesHtml.indexOf("data-edit-enquiry") !== -1);
 assert.ok(enquiriesHtml.indexOf("Edit enquiry") !== -1);
 assert.ok(enquiriesHtml.indexOf("onclick=\"saveAll()\"") === -1, "enquiries sheet must not save by editing cells");
 assert.ok(enquiriesHtml.indexOf("table.oninput") === -1, "grid must not edit cells in place");
+assert.ok(enquiriesHtml.indexOf("OPENED") !== -1);
+assert.ok(enquiriesHtml.indexOf("LIFESPAN") !== -1);
 
 const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
 assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");
