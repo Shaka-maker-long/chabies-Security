@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta — Enquiries dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --card:#fff; --ok:#027a48; --bad:#b42318; --steel:#b54708; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:520px; }
+    .tabs { display:flex; gap:4px; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff; }
+    .seg button { border:0; background:transparent; padding:7px 10px; font:inherit; font-size:12px; font-weight:600; cursor:pointer; color:var(--muted); }
+    .seg button.on { background:#1d2939; color:#fff; }
+    .wrap { padding:16px; }
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+    .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    .kpi span { display:block; color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    .kpi b { display:block; margin-top:4px; font-family: Outfit, Inter, sans-serif; font-size:22px; }
+    .kpi.alert b { color:var(--bad); }
+    .grid { display:grid; grid-template-columns:1.35fr 1fr; gap:12px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px 16px; min-width:0; }
+    .card h2 { margin:0 0 2px; font-size:15px; }
+    .hint { margin:0 0 10px; color:var(--muted); font-size:12px; }
+    .span2 { grid-column:1 / -1; }
+    canvas { max-height:280px; width:100%; }
+    .empty, .err, .load { padding:36px 16px; text-align:center; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:12px; }
+    .err { color:var(--bad); }
+    table.mini { width:100%; border-collapse:collapse; font-size:13px; }
+    table.mini th, table.mini td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); }
+    table.mini th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+    table.mini td.r, table.mini th.r { text-align:right; }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns:1fr; }
+      .span2 { grid-column:auto; }
+      .tools { width:100%; margin-left:0; }
+      header { align-items:flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Enquiries views">
+        <a href="/enquiries">Sheet</a>
+        <a class="on" href="/enquiries/dashboard">Dashboard</a>
+      </nav>
+      <h1>Enquiries dashboard</h1>
+      <p class="lede">Johannesburg dates. The pipeline is live right now; the other charts follow the opened window you pick.</p>
+    </div>
+    <div class="tools">
+      <div class="seg" id="grain" role="group" aria-label="Time grain">
+        <button type="button" data-v="week">Weekly</button>
+        <button type="button" data-v="month" class="on">Monthly</button>
+      </div>
+      <div class="seg" id="range" role="group" aria-label="Date range">
+        <button type="button" data-v="6m" class="on">6 months</button>
+        <button type="button" data-v="year">This year</button>
+        <button type="button" data-v="all">All time</button>
+      </div>
+      <div class="seg" id="metric" role="group" aria-label="Line metric">
+        <button type="button" data-v="count" class="on">Count</button>
+        <button type="button" data-v="revenue">Revenue</button>
+      </div>
+    </div>
+  </header>
+  <div class="wrap">
+    <div id="load" class="load">Loading dashboard…</div>
+    <div id="err" class="err" hidden></div>
+    <div id="app" hidden>
+      <div class="kpis" id="kpis"></div>
+      <div class="grid">
+        <section class="card span2">
+          <h2 id="trendTitle">Enquiries and quotes</h2>
+          <p class="hint" id="trendHint">New enquiries vs quotes completed in each period. Switch to revenue for quoted vs ordered excl VAT.</p>
+          <canvas id="trend"></canvas>
+        </section>
+        <section class="card">
+          <h2>Funnel</h2>
+          <p class="hint">Opened in this window, and how far they got.</p>
+          <canvas id="funnel"></canvas>
+        </section>
+        <section class="card">
+          <h2>Pipeline now</h2>
+          <p class="hint">Live counts by status — not limited to the date window.</p>
+          <canvas id="pipeline"></canvas>
+        </section>
+        <section class="card">
+          <h2>Win / loss by period</h2>
+          <p class="hint">Ordered in the period vs losses among enquiries opened then.</p>
+          <canvas id="winloss"></canvas>
+        </section>
+        <section class="card">
+          <h2>Time to order</h2>
+          <p class="hint">Calendar days from opened to ordered (this window).</p>
+          <canvas id="tto"></canvas>
+        </section>
+        <section class="card">
+          <h2>Stuck / ageing</h2>
+          <p class="hint">Open costing, quoted, and follow-up work, plus overdue 7-day follow-ups.</p>
+          <div id="stuck"></div>
+        </section>
+        <section class="card">
+          <h2>Ageing (median days open)</h2>
+          <canvas id="ageing"></canvas>
+        </section>
+        <section class="card">
+          <h2>Source</h2>
+          <canvas id="source"></canvas>
+        </section>
+        <section class="card">
+          <h2>Enquiry type</h2>
+          <canvas id="types"></canvas>
+        </section>
+        <section class="card">
+          <h2>Stage time (median days)</h2>
+          <p class="hint">Between process events, for enquiries opened in this window.</p>
+          <canvas id="stage"></canvas>
+        </section>
+        <section class="card">
+          <h2>Workload</h2>
+          <p class="hint">Open tasks by assignee right now.</p>
+          <canvas id="work"></canvas>
+        </section>
+        <section class="card">
+          <h2>Money (excl VAT)</h2>
+          <p class="hint">Quoted vs ordered totals in this window.</p>
+          <canvas id="money"></canvas>
+        </section>
+        <section class="card">
+          <h2>Outlook</h2>
+          <p class="hint">Opened enquiries with a saved email vs without.</p>
+          <canvas id="outlook"></canvas>
+        </section>
+        <section class="card">
+          <h2>CATERGORY</h2>
+          <canvas id="cat"></canvas>
+        </section>
+        <section class="card">
+          <h2>Product</h2>
+          <canvas id="prod"></canvas>
+        </section>
+        <section class="card span2">
+          <h2>Province</h2>
+          <p class="hint">Volume opened in this window, and how many of those ordered.</p>
+          <canvas id="prov"></canvas>
+        </section>
+      </div>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=login-users"></script>
+  <script>
+    const charts = {};
+    let data = null;
+    let metric = "count";
+    let grain = "month";
+    let range = "6m";
+    const PAL = ["#1d2939", "#027a48", "#3538cd", "#b54708", "#b42318", "#667085", "#6941c6", "#026aa2"];
+
+    function bindSeg(id, get, set) {
+      const root = document.getElementById(id);
+      root.querySelectorAll("button").forEach((b) => {
+        b.classList.toggle("on", b.dataset.v === get());
+        b.addEventListener("click", () => {
+          set(b.dataset.v);
+          root.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+          if (id === "metric") drawTrend();
+          else load();
+        });
+      });
+    }
+    bindSeg("grain", () => grain, (v) => (grain = v));
+    bindSeg("range", () => range, (v) => (range = v));
+    bindSeg("metric", () => metric, (v) => (metric = v));
+
+    function kill(id) {
+      if (charts[id]) {
+        charts[id].destroy();
+        charts[id] = null;
+      }
+    }
+    function mk(id, cfg) {
+      kill(id);
+      charts[id] = new Chart(document.getElementById(id), cfg);
+    }
+    function bar(id, labels, values, color, horizontal) {
+      mk(id, {
+        type: "bar",
+        data: { labels, datasets: [{ data: values, backgroundColor: color || PAL[0] }] },
+        options: {
+          indexAxis: horizontal ? "y" : "x",
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { beginAtZero: true, ticks: { precision: 0 } },
+            y: { beginAtZero: true, ticks: { precision: 0 } }
+          }
+        }
+      });
+    }
+    function doughnut(id, labels, values) {
+      mk(id, {
+        type: "doughnut",
+        data: { labels, datasets: [{ data: values, backgroundColor: PAL }] },
+        options: { plugins: { legend: { position: "bottom" } } }
+      });
+    }
+    function randTick(v) {
+      if (Math.abs(v) >= 10000) return "R " + Math.round(v / 1000) + "k";
+      return "R " + Math.round(v).toLocaleString("en-ZA");
+    }
+
+    function drawTrend() {
+      if (!data) return;
+      const labels = data.series.map((s) => s.label);
+      const count = metric === "count";
+      const unit = grain === "week" ? "week" : "month";
+      document.getElementById("trendTitle").textContent = count
+        ? "Enquiries and quotes"
+        : "Quoted and ordered revenue";
+      document.getElementById("trendHint").textContent = count
+        ? "How many new enquiries opened vs quotes completed in each " + unit + "."
+        : "Quote totals vs ordered totals (excl VAT) in each " + unit + ".";
+      mk("trend", {
+        type: "line",
+        data: {
+          labels,
+          datasets: count
+            ? [
+                { label: "Enquiries", data: data.series.map((s) => s.enquiries), borderColor: PAL[0], backgroundColor: "rgba(29,41,57,.08)", tension: 0.25, fill: false, pointRadius: 3 },
+                { label: "Quotes", data: data.series.map((s) => s.quotes), borderColor: PAL[1], backgroundColor: "rgba(2,122,72,.08)", tension: 0.25, fill: false, pointRadius: 3 }
+              ]
+            : [
+                { label: "Quoted R", data: data.series.map((s) => s.quoteRevenue), borderColor: PAL[2], tension: 0.25, fill: false, pointRadius: 3 },
+                { label: "Ordered R", data: data.series.map((s) => s.orderedRevenue), borderColor: PAL[1], tension: 0.25, fill: false, pointRadius: 3 }
+              ]
+        },
+        options: {
+          interaction: { mode: "index", intersect: false },
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: count ? { precision: 0 } : { callback: randTick }
+            }
+          }
+        }
+      });
+    }
+
+    function render(d) {
+      data = d;
+      const k = d.kpis;
+      document.getElementById("kpis").innerHTML = [
+        ["Open now", k.openNow],
+        ["Quoted, waiting", k.quotedWaiting],
+        ["Overdue follow-ups", k.overdueFollowUps, k.overdueFollowUps > 0],
+        ["Ordered in window", k.orderedInPeriod],
+        ["Median days to order", k.medianDaysToOrder == null ? "—" : k.medianDaysToOrder],
+        ["80th % days to order", k.p80DaysToOrder == null ? "—" : k.p80DaysToOrder]
+      ].map(([label, val, alert]) =>
+        "<div class=\"kpi" + (alert ? " alert" : "") + "\"><span>" + label + "</span><b>" + val + "</b></div>"
+      ).join("");
+
+      drawTrend();
+      bar("funnel", d.funnel.map((x) => x.label), d.funnel.map((x) => x.count), PAL[0], true);
+      bar("pipeline", d.pipeline.map((x) => x.status), d.pipeline.map((x) => x.count), PAL[2], true);
+      mk("winloss", {
+        type: "bar",
+        data: {
+          labels: d.winLossByPeriod.map((x) => x.label),
+          datasets: [
+            { label: "Ordered", data: d.winLossByPeriod.map((x) => x.ordered), backgroundColor: PAL[1] },
+            { label: "Rejected", data: d.winLossByPeriod.map((x) => x.rejected), backgroundColor: PAL[4] },
+            { label: "Not Interested", data: d.winLossByPeriod.map((x) => x.notInterested), backgroundColor: PAL[5] },
+            { label: "Not within scope", data: d.winLossByPeriod.map((x) => x.notInScope), backgroundColor: PAL[3] }
+          ]
+        },
+        options: {
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            x: { stacked: true },
+            y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+          }
+        }
+      });
+      bar("tto", d.timeToOrder.buckets.map((x) => x.label), d.timeToOrder.buckets.map((x) => x.count), PAL[3]);
+
+      const st = d.stuck;
+      document.getElementById("stuck").innerHTML =
+        "<table class=\"mini\"><tr><th>Bucket</th><th class=\"r\">Count</th></tr>" +
+        "<tr><td>Costing open</td><td class=\"r\">" + st.costingOpen + "</td></tr>" +
+        "<tr><td>Quoted waiting</td><td class=\"r\">" + st.quotedWaiting + "</td></tr>" +
+        "<tr><td>Follow-up due</td><td class=\"r\">" + st.followUpDue + "</td></tr>" +
+        "<tr><td>Overdue follow-up (7 days)</td><td class=\"r\">" + st.overdueFollowUps + "</td></tr>" +
+        "<tr><td>Waiting on supplier</td><td class=\"r\">" + st.waitingOnSupplier + "</td></tr>" +
+        "<tr><td>Oldest open (days)</td><td class=\"r\">" + (st.oldestOpenDays == null ? "—" : st.oldestOpenDays) + "</td></tr></table>";
+      bar("ageing", (st.ageing || []).map((x) => x.label), (st.ageing || []).map((x) => x.medianDays || 0), PAL[5]);
+
+      doughnut("source", d.sources.map((x) => x.label), d.sources.map((x) => x.count));
+      doughnut("types", d.types.map((x) => x.label), d.types.map((x) => x.count));
+      bar("stage", d.stageTime.map((x) => x.label), d.stageTime.map((x) => x.medianDays), PAL[6]);
+      bar("work", d.workload.map((x) => x.name), d.workload.map((x) => x.count), PAL[0]);
+      mk("money", {
+        type: "bar",
+        data: {
+          labels: ["Quoted", "Ordered"],
+          datasets: [{ data: [d.money.quotedExclVat, d.money.orderedExclVat], backgroundColor: [PAL[2], PAL[1]] }]
+        },
+        options: {
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { callback: randTick } } }
+        }
+      });
+      doughnut("outlook", d.outlook.map((x) => x.label), d.outlook.map((x) => x.count));
+      bar("cat", d.categories.map((x) => x.label), d.categories.map((x) => x.count), PAL[3]);
+      bar("prod", d.products.map((x) => x.label), d.products.map((x) => x.count), PAL[4], true);
+      mk("prov", {
+        type: "bar",
+        data: {
+          labels: d.provinces.map((x) => x.label),
+          datasets: [
+            { label: "Opened", data: d.provinces.map((x) => x.opened), backgroundColor: PAL[0] },
+            { label: "Ordered", data: d.provinces.map((x) => x.ordered), backgroundColor: PAL[1] }
+          ]
+        },
+        options: {
+          plugins: { legend: { position: "bottom" } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+      });
+    }
+
+    async function load() {
+      document.getElementById("load").hidden = false;
+      document.getElementById("err").hidden = true;
+      document.getElementById("app").hidden = true;
+      try {
+        const r = await sdOfficeFetch("/api/office/enquiries/dashboard?grain=" + grain + "&range=" + range);
+        const j = await r.json();
+        if (!r.ok || !j.ok) throw new Error(j.error || r.statusText);
+        document.getElementById("load").hidden = true;
+        if (!j.enquiryCount) {
+          document.getElementById("err").hidden = false;
+          document.getElementById("err").className = "empty";
+          document.getElementById("err").textContent = "No enquiries yet. Capture one on the sheet and this page will fill in.";
+          return;
+        }
+        document.getElementById("app").hidden = false;
+        render(j);
+      } catch (e) {
+        document.getElementById("load").hidden = true;
+        document.getElementById("err").hidden = false;
+        document.getElementById("err").className = "err";
+        document.getElementById("err").textContent = "Could not load the dashboard. " + (e.message || e);
+      }
+    }
+
+    sdRequireOffice("enquiries").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

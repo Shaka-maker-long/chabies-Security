@@ -1559,6 +1559,7 @@ function decorateEnquiry(row) {
     opened_at_label: life.opened_at_label,
     ordered_at: life.ordered_at,
     ordered_at_label: life.ordered_at_label,
+    lifespan_ms: life.lifespan_ms,
     lifespan_label: life.lifespan_label
   };
 }
