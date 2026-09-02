@@ -225,6 +225,8 @@ function availableActions(row) {
     actions.push({ id: "complete_quote", label: "Upload quote PDF" });
   }
   if (statusAllows(row, ["Quoted", "Followed Up"])) {
+    actions.push({ id: "complete_quote", label: "Issue another quote" });
+    actions.push({ id: "assign_costing", label: "Client wants changes — recost" });
     actions.push({ id: "complete_followup", label: "Log a follow-up screenshot" });
     actions.push({ id: "complete_order", label: "Client approved — attach POP" });
     actions.push({ id: "complete_reject", label: "Client rejected" });
@@ -326,6 +328,7 @@ function applyAction(enquiryNo, actorName, body) {
   if (!raw) throw new Error("Enquiry not found. Save the enquiry first.");
   if (!Array.isArray(raw.tasks)) raw.tasks = [];
   if (!Array.isArray(raw.follow_ups)) raw.follow_ups = [];
+  if (!Array.isArray(raw.quotes)) raw.quotes = [];
   const action = String((body && body.action) || "").trim();
   const handlers = {
     assign_waiting: assignWaiting,
@@ -392,7 +395,10 @@ function eventLabel(action, row, fromStatus, body) {
     const d = String(body.decision || "").toLowerCase();
     return d.indexOf("reject") >= 0 ? "Costing rejected — Re-Cost" : "Costing approved";
   }
-  if (action === "complete_quote") return "Quote PDF issued" + (row.quote_no ? " " + row.quote_no : "");
+  if (action === "complete_quote") {
+    const n = Array.isArray(row.quotes) ? row.quotes.length : 0;
+    return (n > 1 ? "Quote " + n + " issued" : "Quote PDF issued") + (row.quote_no ? " " + row.quote_no : "");
+  }
   if (action === "complete_followup") return "Follow-up logged";
   if (action === "complete_reject") return "Client rejected";
   if (action === "complete_order") {
@@ -418,6 +424,15 @@ function assignWaiting(row, actor, body) {
 }
 
 function assignCosting(row, actor, body) {
+  if (statusAllows(row, ["Quoted", "Followed Up"])) {
+    const assignee = requireAssignee(body.assignee);
+    cancelOpenKind(row, "follow_up");
+    cancelOpenKind(row, "pop");
+    cancelOpenKind(row, "quote");
+    row.status = "Re-Cost";
+    addTask(row, "cost_sheet", assignee, { note: "Client wants changes — recost for another quote" });
+    return;
+  }
   if (!statusAllows(row, ["New"].concat(WAITING_STATUSES).concat(["Costing", "Re-Cost"]))) {
     throw new Error("Costing is assigned from capture, or changed while the enquiry is still in costing");
   }
@@ -627,17 +642,66 @@ function lastAssignee(row, kind) {
   return list.length ? list[list.length - 1].assignee : "";
 }
 
+function snapshotQuoteLines(row) {
+  return namedProducts(row).map((p) => ({
+    product: p.product || "",
+    category: p.category || "",
+    value_excl_vat: p.value_excl_vat || ""
+  }));
+}
+
+function archiveLegacyQuote(row) {
+  if (!Array.isArray(row.quotes)) row.quotes = [];
+  if (row.quotes.length) return;
+  if (!db.enquiryHasQuotePdf(row.enquiry_no)) return;
+  recordIssuedQuote(row, "");
+}
+
+function recordIssuedQuote(row, actor) {
+  if (!Array.isArray(row.quotes)) row.quotes = [];
+  const quoteNo = String(row.quote_no || "").trim();
+  const existing = quoteNo ? row.quotes.find((q) => String(q.quote_no || "") === quoteNo) : null;
+  const pdf = db.readEnquiryQuotePdf(row.enquiry_no);
+  let file = existing && existing.file && existing.file.stored_as ? existing.file : null;
+  if (!file && pdf && pdf.buffer) {
+    const n = existing ? existing.n : row.quotes.length + 1;
+    file = db.saveEnquiryAttachment(
+      row.enquiry_no,
+      "quote_" + n,
+      "data:application/pdf;base64," + pdf.buffer.toString("base64"),
+      row.quote_pdf_name || pdf.filename || "quote.pdf"
+    );
+  }
+  if (existing) {
+    if (file) existing.file = file;
+    if (actor && !existing.by) existing.by = actor;
+    return;
+  }
+  row.quotes.push({
+    n: row.quotes.length + 1,
+    quote_no: quoteNo,
+    date_quoted: row.date_quoted || db.todayEnquiryDate(),
+    uploaded_at: row.quote_pdf_uploaded_at || db.nowIso(),
+    by: actor || "",
+    products: snapshotQuoteLines(row),
+    delivery_excl_vat: row.delivery_excl_vat || "",
+    file
+  });
+}
+
 function completeQuote(row, actor, body) {
-  if (row.status !== "Costed" || !row.approval || row.approval.status !== "approved") {
+  const revision = statusAllows(row, ["Quoted", "Followed Up"]);
+  if (!revision && (row.status !== "Costed" || !row.approval || row.approval.status !== "approved")) {
     throw new Error("The cost sheet must be approved before a quote PDF is issued");
   }
   applyPricedBody(row, body);
   requirePricedProducts(row);
-  const quoteNo = db.requireUniqueQuoteNo(body.quote_no, row.enquiry_no);
-  row.quote_no = quoteNo;
+  archiveLegacyQuote(row);
+  const quoteNo = db.requireUniqueQuoteNo(body.quote_no, revision ? "" : row.enquiry_no);
   const followPerson = requireAssignee(body.follow_up_assignee || body.assignee);
   const payload = {
     ...row,
+    quote_no: quoteNo,
     status: "Quoted",
     quote_pdf_base64: body.file_base64 || body.quote_pdf_base64,
     quote_pdf_name: body.file_name || body.quote_pdf_name || "quote.pdf",
@@ -647,6 +711,7 @@ function completeQuote(row, actor, body) {
   db.upsertEnquiry(payload, { fromPipeline: true });
   const saved = db.getEnquiryRaw(row.enquiry_no);
   Object.assign(row, saved);
+  recordIssuedQuote(row, actor);
   closeOpenKind(row, "quote", actor);
   row.follow_up_assignee = followPerson;
   cancelOpenKind(row, "follow_up");
@@ -654,7 +719,9 @@ function completeQuote(row, actor, body) {
     title: "Follow up",
     due_at: addDaysIso(row.date_quoted || db.todayEnquiryDate(), FOLLOW_UP_DAYS)
   });
-  addTask(row, "pop", followPerson, { title: "Record client outcome" });
+  if (!openOfKind(row, "pop")) {
+    addTask(row, "pop", followPerson, { title: "Record client outcome" });
+  }
 }
 
 function completeFollowup(row, actor, body) {

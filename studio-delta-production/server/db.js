@@ -637,8 +637,15 @@ function collectQuoteNumbers(exceptEnquiryNo) {
     out.push({ quote_no: quoteNo, n: quoteNumberValue(quoteNo), source: source || "" });
   }
   for (const row of state.enquiries || []) {
-    if (except && enquiryNumberValue(row && row.enquiry_no) === except) continue;
-    push(row && row.quote_no, row && row.enquiry_no);
+    const isExcept = except && enquiryNumberValue(row && row.enquiry_no) === except;
+    const current = normalizeQuoteNo(row && row.quote_no, { allowEmpty: true });
+    if (!isExcept) push(row && row.quote_no, row && row.enquiry_no);
+    const quotes = Array.isArray(row && row.quotes) ? row.quotes : [];
+    for (const q of quotes) {
+      const qn = normalizeQuoteNo(q && q.quote_no, { allowEmpty: true });
+      if (isExcept && qn && current && qn === current) continue;
+      push(q && q.quote_no, row && row.enquiry_no);
+    }
   }
   try {
     const sheet = ordersSheet();
@@ -1301,6 +1308,7 @@ function copyPipeline(from, to) {
   to.cost_sheet = cloneJson(from && from.cost_sheet, null);
   to.approval = cloneJson(from && from.approval, null);
   to.follow_ups = Array.isArray(from && from.follow_ups) ? cloneJson(from.follow_ups, []) : [];
+  to.quotes = Array.isArray(from && from.quotes) ? cloneJson(from.quotes, []) : [];
   to.follow_up_assignee = String((from && from.follow_up_assignee) || "").trim();
   to.quote_assignee = String((from && from.quote_assignee) || "").trim();
   to.correspondence = normalizeCorrespondence(from);
@@ -1397,6 +1405,15 @@ function readEnquiryAttachment(enquiryNo, kind) {
   else if (want === "follow_up") {
     const list = Array.isArray(row.follow_ups) ? row.follow_ups : [];
     meta = list.length ? list[list.length - 1].file : null;
+  } else if (/^quote_(\d+)$/.test(want)) {
+    const n = Number(want.split("_").pop());
+    const list = Array.isArray(row.quotes) ? row.quotes : [];
+    const hit = list.find((q) => Number(q.n) === n);
+    meta = hit && hit.file;
+    if (!meta || !meta.stored_as) {
+      const latest = list.length ? list[list.length - 1] : null;
+      if (latest && Number(latest.n) === n) return readEnquiryQuotePdf(enquiryNo);
+    }
   } else if (/^follow_up_(\d+)$/.test(want)) {
     const n = Number(want.split("_").pop());
     const list = Array.isArray(row.follow_ups) ? row.follow_ups : [];
@@ -1458,10 +1475,31 @@ function listEnquiryDeliverables(row) {
       outlook: false
     });
   }
-  if (enquiryHasQuotePdf(src.enquiry_no)) {
+  const quotes = Array.isArray(src.quotes) ? src.quotes : [];
+  if (quotes.length) {
+    quotes.forEach((item, i) => {
+      const file = item && item.file;
+      const n = item && item.n ? item.n : i + 1;
+      const quoteNo = (item && item.quote_no) || "";
+      const kind = (file && file.kind) || (n === quotes.length && enquiryHasQuotePdf(src.enquiry_no) ? "quote" : ("quote_" + n));
+      items.push({
+        group: "quote",
+        label: quotes.length === 1
+          ? ("Quote PDF" + (quoteNo ? " · " + quoteNo : ""))
+          : ("Quote " + n + (quoteNo ? " · " + quoteNo : "")),
+        title: (file && (file.filename || file.title)) || item.quote_pdf_name || src.quote_pdf_name || "quote.pdf",
+        filename: (file && file.filename) || src.quote_pdf_name || "quote.pdf",
+        kind,
+        from: (item && item.by) || "",
+        order_no: quoteNo,
+        open: !!(file && file.stored_as) || (kind === "quote" && enquiryHasQuotePdf(src.enquiry_no)),
+        outlook: false
+      });
+    });
+  } else if (enquiryHasQuotePdf(src.enquiry_no)) {
     items.push({
       group: "quote",
-      label: "Quote PDF",
+      label: "Quote PDF" + (src.quote_no ? " · " + src.quote_no : ""),
       title: src.quote_pdf_name || "quote.pdf",
       filename: src.quote_pdf_name || "quote.pdf",
       kind: "quote",
@@ -1541,6 +1579,8 @@ function decorateEnquiry(row) {
     delivery_excl_vat: row.delivery_excl_vat === "" || row.delivery_excl_vat == null ? "" : money(delivery),
     products_total_excl_vat: money(productsTotal),
     quote_total_excl_vat: money(productsTotal + delivery),
+    quotes: Array.isArray(row.quotes) ? row.quotes : [],
+    quote_count: Array.isArray(row.quotes) ? row.quotes.length : (hasPdf ? 1 : 0),
     has_quote_pdf: hasPdf,
     quote_pdf_name: hasPdf ? (row.quote_pdf_name || "quote.pdf") : "",
     ready_for_orders: !!row.ready_for_orders,

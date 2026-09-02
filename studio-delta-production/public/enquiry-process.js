@@ -357,7 +357,7 @@
   function filesCard(row) {
     const items = (row && Array.isArray(row.deliverables)) ? row.deliverables : [];
     let html = "<div class=\"sd-files sd-correspondence\"><h2>Files</h2>" +
-      "<p class=\"sd-process-sub\">Every CORRESPONDANCE email, cost sheet, quote PDF, follow-up screenshot, proof of payment, and drawing saved on this enquiry stays here. Open them at any time — not only while that step is open.</p>";
+      "<p class=\"sd-process-sub\">Every CORRESPONDANCE email, cost sheet, quote PDF (including earlier quotes on this enquiry), follow-up screenshot, proof of payment, and drawing saved on this enquiry stays here. Open them at any time — not only while that step is open.</p>";
     if (!items.length) {
       return html + "<p class=\"sd-process-sub\">No files on this enquiry yet.</p></div>";
     }
@@ -386,8 +386,13 @@
         "<label>Assign to</label>" + assigneeSelect();
     }
     if (action.id === "assign_costing") {
-      return "<p class=\"sd-process-sub\">Any office Admin, including yourself.</p><label>Assign to</label>" + assigneeSelect(openAssignee(row, "cost_sheet")) +
-        correspondenceFields();
+      const recost = /Quoted|Followed Up/.test(row.status || "");
+      return "<p class=\"sd-process-sub\">" +
+        (recost
+          ? "The client stays on this enquiry. Costing runs again, then you issue another quote PDF. Previous quotes stay in Files."
+          : "Any office Admin, including yourself.") +
+        "</p><label>Assign to</label>" + assigneeSelect(openAssignee(row, "cost_sheet") || row.quote_assignee) +
+        (recost ? "" : correspondenceFields());
     }
     if (action.id === "add_correspondence") {
       return correspondenceFields();
@@ -419,15 +424,24 @@
     if (action.id === "complete_quote") {
       const hint = (state.snap && state.snap.quoteNo) || {};
       const recent = (hint.recent || []).slice();
-      const next = row.quote_no || hint.next || "";
+      const quotedAlready = /Quoted|Followed Up/.test(row.status || "") || (row.quotes || []).length > 0 || !!row.quote_no;
+      const next = quotedAlready ? (hint.next || "") : (row.quote_no || hint.next || "");
       const recentLine = recent.length
         ? "Last quotation numbers: " + recent.join(", ") + "."
         : "No quotation numbers yet.";
-      return valuesTable(row, true) +
+      const prev = (row.quotes || []).map((q) => q.quote_no).filter(Boolean);
+      return (quotedAlready
+        ? "<p class=\"sd-process-sub\">Previous quote" + (prev.length === 1 ? "" : "s") +
+          (prev.length ? " (" + prev.join(", ") + ")" : "") +
+          " stay on this enquiry. The sheet shows the latest quotation number.</p>"
+        : "") +
+        valuesTable(row, true) +
         "<label>Quotation number *<input class=\"sd-quote-no\" name=\"quote_no\" value=\"" + esc(next) + "\" autocomplete=\"off\"></label>" +
         "<p class=\"sd-process-sub\">" + esc(recentLine) + " Default is the next number (" + esc(hint.next || next) + "). You can change it, but it cannot match an existing quotation.</p>" +
-        fileBlock("application/pdf,.pdf", "Enter each product value and delivery excluding VAT here, then upload the quote PDF. DATE QUOTED is saved with the PDF.") +
-        "<label>Who follows up after 7 days?</label>" + assigneeSelect();
+        fileBlock("application/pdf,.pdf", quotedAlready
+          ? "Upload the revised quote PDF. DATE QUOTED updates to today. Enter the new values excluding VAT."
+          : "Enter each product value and delivery excluding VAT here, then upload the quote PDF. DATE QUOTED is saved with the PDF.") +
+        "<label>Who follows up after 7 days?</label>" + assigneeSelect(row.follow_up_assignee || openAssignee(row, "follow_up"));
     }
     if (action.id === "complete_followup") {
       return fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "Upload a screenshot of the follow-up.") +
@@ -503,7 +517,9 @@
     if (/Costing|Re-Cost/.test(row.status || "") && actions.some((a) => a.id === "add_correspondence")) {
       return action.id === "add_correspondence";
     }
-    if (actions.some((a) => a.id === "assign_costing")) return action.id === "assign_costing";
+    if (actions.some((a) => a.id === "assign_costing") && !/Quoted|Followed Up/.test(row.status || "")) {
+      return action.id === "assign_costing";
+    }
     return i === 0;
   }
 
@@ -517,7 +533,8 @@
     document.getElementById("sdProcessSheetLink").href = "/enquiries";
     let html = "<div class=\"sd-process-card\"><div class=\"sd-process-meta\">" +
       "<span>Status <b>" + esc(row.status || "New") + "</b></span>" +
-      (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_no ? " · " + esc(row.quote_no) : "") + "</span>" : "") +
+      (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_no ? " · " + esc(row.quote_no) : "") +
+        ((row.quotes || []).length > 1 ? " · " + (row.quotes.length) + " quotes" : "") + "</span>" : "") +
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +
       (row.lifespan_label ? "<span class=\"sd-life\">Lifespan <b>" + esc(row.lifespan_label) + "</b></span>" : "") +
       "</div>";
