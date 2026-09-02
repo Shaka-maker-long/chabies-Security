@@ -71,7 +71,10 @@ assert.ok(dashHtml.indexOf("chart.js") !== -1);
 assert.ok(dashHtml.indexOf("/api/office/enquiries/dashboard") !== -1);
 assert.ok(dashHtml.indexOf("sdOfficeFetch") !== -1);
 assert.ok(dashHtml.indexOf("CATERGORY") !== -1);
-assert.ok(dashHtml.indexOf("sdRequireOffice(\"enquiries\")") !== -1 || dashHtml.indexOf("sdRequireOffice('enquiries')") !== -1);
+assert.ok(dashHtml.indexOf("id=\"month\"") !== -1);
+assert.ok(dashHtml.indexOf("dashboard/drill") !== -1);
+assert.ok(dashHtml.indexOf("sdOpenEnquiryProcess") !== -1);
+assert.ok(dashHtml.indexOf("enquiry-process.js") !== -1);
 
 const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
 assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");

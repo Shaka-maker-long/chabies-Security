@@ -106,6 +106,17 @@ function bucketKeys(grain, fromMs, toMs) {
   return keys;
 }
 
+function monthBounds(ym) {
+  const m = String(ym || "").match(/^(\d{4})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]) - 1;
+  if (mo < 0 || mo > 11) return null;
+  const from = Date.UTC(y, mo, 1) - SAST_OFFSET_MS;
+  const to = Date.UTC(y, mo + 1, 1) - SAST_OFFSET_MS - 1;
+  return { from, to };
+}
+
 function periodWindow(range, grain) {
   const now = Date.now();
   const today = sastParts(new Date(now));
@@ -124,6 +135,66 @@ function periodWindow(range, grain) {
     from = Date.UTC(start.y, start.m, 1) - SAST_OFFSET_MS;
   }
   return { from, to: now, grain: grain === "week" ? "week" : "month" };
+}
+
+function resolveWindow(query) {
+  const grain = String((query && query.grain) || "month").toLowerCase() === "week" ? "week" : "month";
+  const month = String((query && query.month) || "").trim();
+  const rangeRaw = String((query && query.range) || "year").toLowerCase();
+  const range = rangeRaw === "all" || rangeRaw === "year" || rangeRaw === "6m" ? rangeRaw : "year";
+  const single = monthBounds(month);
+  if (single) {
+    return {
+      from: single.from,
+      to: single.to,
+      grain,
+      range,
+      month,
+      windowLabel: monthLabel(month)
+    };
+  }
+  const win = periodWindow(range, grain);
+  return {
+    from: win.from,
+    to: win.to,
+    grain,
+    range,
+    month: "",
+    windowLabel: range === "all" ? "All time" : range === "year" ? "This year" : "Last 6 months"
+  };
+}
+
+function pickerMonths(rows) {
+  const keys = new Set();
+  const today = sastParts(new Date());
+  for (let i = 0; i < 24; i++) {
+    const p = addUtcMonths(today.y, today.m, -i);
+    keys.add(p.y + "-" + pad(p.m + 1));
+  }
+  (rows || []).forEach((row) => {
+    ["opened", "quoted", "ordered"].forEach((field) => {
+      const t = parseWhen(row, field);
+      if (t) keys.add(monthKey(new Date(t)));
+    });
+  });
+  return Array.from(keys).sort().reverse().map((key) => ({ key, label: monthLabel(key) }));
+}
+
+function cardOf(row) {
+  return {
+    enquiry_no: row.enquiry_no,
+    client_name: row.client_name || "",
+    status: statusOf(row),
+    product: row.product || "",
+    category: row.category || "",
+    enquiry_type: row.enquiry_type || "",
+    enquiry_source: row.enquiry_source || row.source || "",
+    province: row.province || "",
+    opened_at_label: row.opened_at_label || "",
+    date_quoted: row.date_quoted || "",
+    quote_total_excl_vat: row.quote_total_excl_vat || "",
+    quote_no: row.quote_no || ""
+  };
 }
 
 function parseWhen(row, field) {
@@ -269,9 +340,9 @@ function emptySeries(keys, grain) {
 }
 
 function buildDashboard(query) {
-  const grain = String((query && query.grain) || "month").toLowerCase() === "week" ? "week" : "month";
-  const range = String((query && query.range) || "year").toLowerCase();
-  const win = periodWindow(range === "all" || range === "year" || range === "6m" ? range : "year", grain);
+  const win = resolveWindow(query);
+  const grain = win.grain;
+  const range = win.range;
   const keys = bucketKeys(grain, win.from, win.to);
   const keyOf = grain === "week" ? weekKey : monthKey;
   const seriesMap = {};
@@ -318,15 +389,6 @@ function buildDashboard(query) {
 
   rows.forEach((row) => {
     const status = statusOf(row);
-    pipeline[status] = (pipeline[status] || 0) + 1;
-    if (!isClosed(status) && status !== "Ordered") openNow += 1;
-    if (followUpOverdue(row)) overdueFollowUps += 1;
-
-    (row.tasks || []).forEach((t) => {
-      if (t.status !== "open" || !t.assignee) return;
-      bump(assignee, t.assignee);
-    });
-
     const opened = parseWhen(row, "opened");
     const quoted = parseWhen(row, "quoted");
     const ordered = parseWhen(row, "ordered");
@@ -334,6 +396,28 @@ function buildDashboard(query) {
     const quotedIn = quoted && inWindow(quoted, win.from, win.to);
     const orderedIn = ordered && inWindow(ordered, win.from, win.to);
     const rev = revenueOf(row);
+
+    if (openedIn) {
+      pipeline[status] = (pipeline[status] || 0) + 1;
+      if (!isClosed(status) && status !== "Ordered") openNow += 1;
+      if (followUpOverdue(row)) overdueFollowUps += 1;
+      (row.tasks || []).forEach((t) => {
+        if (t.status !== "open" || !t.assignee) return;
+        bump(assignee, t.assignee);
+      });
+      const ageDays = opened ? (Date.now() - opened) / 86400000 : 0;
+      if (!isClosed(status) && status !== "Ordered" && opened) {
+        if (oldestOpenDays == null || ageDays > oldestOpenDays) oldestOpenDays = ageDays;
+      }
+      if (status === "Costing" || status === "Re-Cost") costingOpen += 1;
+      if (status === "Quoted") quotedWaiting += 1;
+      if (status === "Followed Up") followUpDue += 1;
+      if (status === "Waiting on Supplier") waitingOnSupplier += 1;
+      if (status === "Costing" || status === "Re-Cost" || status === "Waiting on Supplier") stuck.Costing.push(ageDays);
+      if (status === "Quoted") stuck.Quoted.push(ageDays);
+      if (status === "Followed Up") stuck["Followed Up"].push(ageDays);
+      if (/Waiting on clients/.test(status)) stuck.Waiting.push(ageDays);
+    }
 
     if (openedIn) {
       funnelCaptured += 1;
@@ -395,19 +479,6 @@ function buildDashboard(query) {
       if (toQuote != null) stage.toQuote.push(toQuote);
       if (qToO != null) stage.quoteToOrder.push(qToO);
     }
-
-    const ageDays = opened ? (Date.now() - opened) / 86400000 : 0;
-    if (!isClosed(status) && status !== "Ordered" && opened) {
-      if (oldestOpenDays == null || ageDays > oldestOpenDays) oldestOpenDays = ageDays;
-    }
-    if (status === "Costing" || status === "Re-Cost") costingOpen += 1;
-    if (status === "Quoted") quotedWaiting += 1;
-    if (status === "Followed Up") followUpDue += 1;
-    if (status === "Waiting on Supplier") waitingOnSupplier += 1;
-    if (status === "Costing" || status === "Re-Cost" || status === "Waiting on Supplier") stuck.Costing.push(ageDays);
-    if (status === "Quoted") stuck.Quoted.push(ageDays);
-    if (status === "Followed Up") stuck["Followed Up"].push(ageDays);
-    if (/Waiting on clients/.test(status)) stuck.Waiting.push(ageDays);
   });
 
   const series = keys.map((key) => seriesMap[key] || emptySeries([key], grain)[0]);
@@ -435,7 +506,10 @@ function buildDashboard(query) {
   return {
     tz: "Africa/Johannesburg",
     grain,
-    range: range === "all" || range === "year" || range === "6m" ? range : "year",
+    range,
+    month: win.month || "",
+    windowLabel: win.windowLabel,
+    months: pickerMonths(rows),
     enquiryCount: rows.length,
     kpis: {
       openNow,
@@ -500,8 +574,125 @@ function buildDashboard(query) {
   };
 }
 
+function fieldOrBlank(v) {
+  const s = String(v || "").trim();
+  return s || "(blank)";
+}
+
+function inBucket(ms, grain, key) {
+  if (!key) return true;
+  if (!ms) return false;
+  const keyOf = grain === "week" ? weekKey : monthKey;
+  return keyOf(new Date(ms)) === key;
+}
+
+function matchesDrill(row, query, win) {
+  const kind = String((query && query.kind) || "enquiries");
+  const key = String((query && query.key) || "");
+  const value = String((query && query.value) || "");
+  const status = statusOf(row);
+  const opened = parseWhen(row, "opened");
+  const quoted = parseWhen(row, "quoted");
+  const ordered = parseWhen(row, "ordered");
+  const openedIn = !!(opened && inWindow(opened, win.from, win.to));
+  const quotedIn = !!(quoted && inWindow(quoted, win.from, win.to));
+  const orderedIn = !!(ordered && inWindow(ordered, win.from, win.to));
+
+  if (kind === "enquiries") return openedIn && inBucket(opened, win.grain, key);
+  if (kind === "quotes") return quotedIn && inBucket(quoted, win.grain, key);
+  if (kind === "ordered") return orderedIn && inBucket(ordered, win.grain, key);
+  if (kind === "funnel") {
+    if (!openedIn) return false;
+    const stage = String((query && query.stage) || "captured");
+    if (stage === "costing") return reachedCosting(status) || reachedQuoted(status);
+    if (stage === "quoted") return reachedQuoted(status);
+    if (stage === "followed") return status === "Followed Up" || status === "Ordered";
+    if (stage === "ordered") return status === "Ordered";
+    return true;
+  }
+  if (kind === "pipeline") return openedIn && status === value;
+  if (kind === "source") return openedIn && fieldOrBlank(row.enquiry_source || row.source) === value;
+  if (kind === "type") return openedIn && fieldOrBlank(row.enquiry_type) === value;
+  if (kind === "category") return openedIn && fieldOrBlank(row.category) === value;
+  if (kind === "product") {
+    if (!openedIn) return false;
+    return String(row.product || "").split(",").map((p) => p.trim()).filter(Boolean).indexOf(value) >= 0
+      || (value === "(blank)" && !String(row.product || "").trim());
+  }
+  if (kind === "province") {
+    if (String((query && query.slice) || "") === "ordered") {
+      return openedIn && status === "Ordered" && fieldOrBlank(row.province) === value;
+    }
+    return openedIn && fieldOrBlank(row.province) === value;
+  }
+  if (kind === "outlook") {
+    if (!openedIn) return false;
+    const mails = ((((row.correspondence || {}).mails) || []).length);
+    return value === "with" ? mails > 0 : mails === 0;
+  }
+  if (kind === "workload") {
+    if (!openedIn) return false;
+    return (row.tasks || []).some((t) => t.status === "open" && t.assignee === value);
+  }
+  if (kind === "stuck") {
+    if (!openedIn) return false;
+    if (value === "Costing") return status === "Costing" || status === "Re-Cost" || status === "Waiting on Supplier";
+    if (value === "Quoted") return status === "Quoted";
+    if (value === "Followed Up") return status === "Followed Up";
+    if (value === "Waiting on Supplier" || value === "supplier") return status === "Waiting on Supplier";
+    if (value === "overdue") return followUpOverdue(row);
+    return false;
+  }
+  if (kind === "winloss") {
+    if (value === "Ordered") return orderedIn && inBucket(ordered, win.grain, key);
+    if (!openedIn || !inBucket(opened, win.grain, key)) return false;
+    if (value === "Rejected") return status === "Rejected";
+    if (value === "Not Interested") return status === "Not Interested";
+    if (value === "Not within scope") return status === "Not within scope";
+    return false;
+  }
+  return openedIn;
+}
+
+function drillTitle(query, win) {
+  const kind = String((query && query.kind) || "enquiries");
+  const key = String((query && query.key) || "");
+  const value = String((query && query.value) || "");
+  const bucket = key ? (win.grain === "week" ? weekLabel(key) : monthLabel(key)) : win.windowLabel;
+  const funnelNames = { captured: "Captured", costing: "Reached costing", quoted: "Quoted", followed: "Followed up", ordered: "Ordered" };
+  if (kind === "enquiries") return "Enquiries · " + bucket;
+  if (kind === "quotes") return "Quotes · " + bucket;
+  if (kind === "ordered") return "Ordered · " + bucket;
+  if (kind === "funnel") return (funnelNames[query.stage] || "Funnel") + " · " + win.windowLabel;
+  if (kind === "pipeline") return (value || "Pipeline") + " · " + win.windowLabel;
+  if (kind === "stuck") return (value === "overdue" ? "Overdue follow-ups" : value) + " · " + win.windowLabel;
+  if (value) return value + " · " + win.windowLabel;
+  return "Enquiries · " + win.windowLabel;
+}
+
+function buildDrill(query) {
+  const win = resolveWindow(query);
+  const rows = db.listEnquiries()
+    .filter((row) => matchesDrill(row, query, win))
+    .map(cardOf)
+    .sort((a, b) => String(b.enquiry_no).localeCompare(String(a.enquiry_no), undefined, { numeric: true }));
+  return {
+    tz: "Africa/Johannesburg",
+    grain: win.grain,
+    range: win.range,
+    month: win.month || "",
+    windowLabel: win.windowLabel,
+    kind: String((query && query.kind) || "enquiries"),
+    key: String((query && query.key) || ""),
+    title: drillTitle(query, win),
+    rows
+  };
+}
+
 module.exports = {
   buildDashboard,
+  buildDrill,
+  resolveWindow,
   weekKey,
   monthKey,
   FUNNEL
