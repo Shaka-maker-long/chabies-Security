@@ -857,6 +857,31 @@ function todayEnquiryDate() {
   return String(p.day).padStart(2, "0") + "/" + String(p.m + 1).padStart(2, "0") + "/" + p.y;
 }
 
+function enquiryDateFromValue(v) {
+  const existing = String(v || "").trim();
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(existing)) {
+    const m = existing.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    return m[1].padStart(2, "0") + "/" + m[2].padStart(2, "0") + "/" + m[3];
+  }
+  const d = asDate(v) || (existing ? new Date(existing) : null);
+  if (!d || isNaN(d.getTime())) return "";
+  const sast = new Date(d.getTime() + SAST_OFFSET_MS);
+  const p = (n) => String(n).padStart(2, "0");
+  return p(sast.getUTCDate()) + "/" + p(sast.getUTCMonth() + 1) + "/" + sast.getUTCFullYear();
+}
+
+function sheetQuoteFields(row) {
+  const quotes = Array.isArray(row && row.quotes) ? row.quotes : [];
+  const last = quotes.length ? quotes[quotes.length - 1] : null;
+  const quoteNo = String((row && row.quote_no) || (last && last.quote_no) || "").trim();
+  const dateQuoted = enquiryDateFromValue(row && row.date_quoted)
+    || enquiryDateFromValue(last && last.date_quoted)
+    || enquiryDateFromValue(last && last.uploaded_at)
+    || enquiryDateFromValue(row && row.quote_pdf_uploaded_at)
+    || "";
+  return { quote_no: quoteNo, date_quoted: dateQuoted };
+}
+
 function formatSastDateTime(v) {
   const d = v instanceof Date ? v : (asDate(v) || (v ? new Date(v) : null));
   if (!d || isNaN(d.getTime())) return "";
@@ -1570,6 +1595,7 @@ function decorateEnquiry(row) {
   const storedEvents = normalizeEnquiryEvents(row);
   const events = storedEvents.length ? storedEvents : synthesizeEnquiryEvents(row);
   const life = enquiryLifespan(row, events);
+  const quoteSheet = sheetQuoteFields(row);
   return {
     ...row,
     products,
@@ -1581,6 +1607,8 @@ function decorateEnquiry(row) {
     quote_total_excl_vat: money(productsTotal + delivery),
     quotes: Array.isArray(row.quotes) ? row.quotes : [],
     quote_count: Array.isArray(row.quotes) ? row.quotes.length : (hasPdf ? 1 : 0),
+    quote_no: quoteSheet.quote_no,
+    date_quoted: quoteSheet.date_quoted,
     has_quote_pdf: hasPdf,
     quote_pdf_name: hasPdf ? (row.quote_pdf_name || "quote.pdf") : "",
     ready_for_orders: !!row.ready_for_orders,

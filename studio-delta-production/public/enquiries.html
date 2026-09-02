@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Studio Delta — Enquiries</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <style>
     :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; }
     * { box-sizing: border-box; }
@@ -25,7 +26,13 @@
     .empty { padding:28px 16px; color:var(--muted); font-size:13px; }
     .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; }
     #grid td.wrap-text .cell-text { white-space:pre-wrap; overflow:visible; text-overflow:unset; }
-    .edit-btn { padding:4px 10px; font-size:12px; }
+    .row-actions-cell { display:flex; gap:4px; align-items:center; }
+    .icon-btn {
+      width:28px; height:28px; min-height:28px; padding:0;
+      display:inline-flex; align-items:center; justify-content:center;
+      border-radius:2px; font-size:14px; line-height:1;
+    }
+    .icon-btn.ghost { background:#fff; color:var(--ink); }
     .freeze { position:sticky; z-index:3; box-shadow:1px 0 0 var(--line); }
     th.freeze { z-index:6; background:var(--head); }
     td.freeze { background:#fff; }
@@ -36,8 +43,6 @@
     .tabs { display:flex; gap:4px; }
     .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
     .tabs a.on { background:#1d2939; color:#fff; }
-    .cell-btn { width:100%; text-align:left; background:#fff; color:var(--ink); border:0; padding:2px 0; font:inherit; font-weight:500; }
-    .cell-btn span { color:var(--muted); font-weight:400; }
     .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
     .mask.open { display:flex; }
     .sheet { width:min(920px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:24px auto; }
@@ -79,7 +84,7 @@
       <a class="on" href="/enquiries">Sheet</a>
       <a href="/enquiries/dashboard">Dashboard</a>
     </nav>
-    <p class="msg" style="margin:0;max-width:560px">The sheet is view-only. Use <b>New enquiry</b> or a row’s <b>Edit</b> button. Status still opens files and costing — not a cell you type in.</p>
+    <p class="msg" style="margin:0;max-width:560px">The sheet is view-only. Pencil edits the enquiry. The list icon opens status, costing, and files.</p>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search enquiries">
@@ -241,7 +246,7 @@
   <script src="/enquiry-process.js?v=quotes"></script>
   <script>
     const HEADERS = [
-      ["_edit", "", 76, true],
+      ["_edit", "", 80, true],
       ["enquiry_no", "ENQUIRY NO", 108, true],
       ["date_enquired", "DATE ENQUIRED", 128, true],
       ["month_enquired", "MONTH ENQUIRED", 128, true],
@@ -255,11 +260,10 @@
       ["category", "CATERGORY", 180, false],
       ["product", "PRODUCT", 240, false],
       ["request", "REQUEST", 240, false],
-      ["status", "STATUS", 220, false],
+      ["status", "STATUS", 180, false],
       ["date_quoted", "DATE QUOTED", 128, false],
       ["quote_no", "QUOTE NO.", 120, false],
       ["opened_at_label", "OPENED", 148, false],
-      ["lifespan_label", "LIFESPAN", 130, false],
       ["comment", "COMMENT", 260, false]
     ];
     const DROP_FIELDS = {
@@ -403,6 +407,11 @@
         return label === "Add product" ? "" : label;
       }
       if (k === "category") return categoryLabel(row);
+      if (k === "quote_no") return row.quote_no || ((row.quotes || []).slice(-1)[0] || {}).quote_no || "";
+      if (k === "date_quoted") {
+        const last = (row.quotes || []).slice(-1)[0] || {};
+        return isoToDmy(row.date_quoted || last.date_quoted || last.uploaded_at || row.quote_pdf_uploaded_at || "");
+      }
       if (k === "request") {
         if (row.enquiry_type === "Custom" || row.enquiry_type === "New Design") {
           return row.spec_summary || (row.enquiry_type === "Custom" ? "Dimensions, Colour, or Other" : "Full description");
@@ -431,16 +440,19 @@
           const cls = colClass(k, freeze);
           const style = colStyle(k, width, freeze);
           if (k === "_edit") {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"ghost edit-btn\" data-edit-enquiry=\"" + i + "\">Edit</button></td>";
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><div class=\"row-actions-cell\">" +
+              "<button type=\"button\" class=\"ghost icon-btn\" title=\"Edit enquiry\" aria-label=\"Edit enquiry\" data-edit-enquiry=\"" + i + "\"><i class=\"bi bi-pencil\"></i></button>" +
+              "<button type=\"button\" class=\"ghost icon-btn\" title=\"Status update\" aria-label=\"Status update\" data-open-process=\"" + i + "\"><i class=\"bi bi-list-task\"></i></button>" +
+              "</div></td>";
             return;
           }
           if (k === "status") {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-process=\"" + i + "\">" + esc(row[k] || "New") + (row.deliverable_count ? " · " + row.deliverable_count + " file" + (row.deliverable_count === 1 ? "" : "s") : "") + " · update</button></td>";
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><span class=\"cell-text\">" + esc(row[k] || "New") + "</span></td>";
             return;
           }
           const extra = k === "product" && namedLines(ensureLines(row)).length > 1
             ? " <span>" + namedLines(row.products).length + " products</span>"
-            : (k === "date_quoted" && row.has_quote_pdf ? " PDF" : "");
+            : "";
           const wrap = (k === "request" || k === "comment") ? " wrap-text" : "";
           html += "<td class=\"" + cls + wrap + "\" style=\"" + style + "\"><span class=\"cell-text\">" + esc(displayValue(row, k)) + extra + "</span></td>";
         });
@@ -557,7 +569,7 @@
       document.getElementById("modalTitle").textContent = mode === "quote" ? "Quote " + row.enquiry_no : "Products " + row.enquiry_no;
       document.getElementById("modalHint").textContent = mode === "quote"
         ? "Now enter a value excluding VAT for each product, enter delivery excluding VAT, upload the quote PDF, check the preview, and confirm it is the correct file."
-        : "Add the product name (one or more). Costing, quote values, PDFs, and status updates happen on the assigned task — tap STATUS or open My tasks.";
+        : "Add the product name (one or more). Costing, quote values, PDFs, and status updates happen on the assigned task — use the list icon on the sheet or open My tasks.";
       document.getElementById("modalSave").textContent = mode === "quote" ? "Save quote" : "Save products";
       document.getElementById("downloadPdf").style.display = row.has_quote_pdf ? "" : "none";
       setQuoteVisible(mode === "quote");
@@ -881,7 +893,7 @@
           ? existing.custom_specs.map((s) => Object.assign(emptySpec(), s))
           : [emptySpec()];
         document.getElementById("captureTitle").textContent = "Edit enquiry " + (existing.enquiry_no || "");
-        document.getElementById("captureHint").textContent = "Change only what you need, then save. Quote files and costing stay on STATUS · update.";
+        document.getElementById("captureHint").textContent = "Change only what you need, then save. Quote files and costing stay on the status-update icon.";
         document.getElementById("cap_enquiry_no").value = existing.enquiry_no || "";
         document.getElementById("cap_date_enquired").value = dmyToIso(existing.date_enquired) || dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = existing.client_name || "";

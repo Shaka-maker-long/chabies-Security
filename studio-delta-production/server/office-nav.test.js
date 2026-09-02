@@ -69,10 +69,16 @@ assert.ok(enquiriesHtml.indexOf("table { border-collapse:separate; border-spacin
 assert.ok(enquiriesHtml.indexOf("openCapture") !== -1);
 assert.ok(enquiriesHtml.indexOf("data-edit-enquiry") !== -1);
 assert.ok(enquiriesHtml.indexOf("Edit enquiry") !== -1);
+assert.ok(enquiriesHtml.indexOf("bi-pencil") !== -1);
+assert.ok(enquiriesHtml.indexOf("bi-list-task") !== -1);
+assert.ok(enquiriesHtml.indexOf("data-open-process") !== -1);
 assert.ok(enquiriesHtml.indexOf("onclick=\"saveAll()\"") === -1, "enquiries sheet must not save by editing cells");
 assert.ok(enquiriesHtml.indexOf("table.oninput") === -1, "grid must not edit cells in place");
 assert.ok(enquiriesHtml.indexOf("OPENED") !== -1);
-assert.ok(enquiriesHtml.indexOf("LIFESPAN") !== -1);
+assert.ok(enquiriesHtml.indexOf('["lifespan_label"') === -1, "enquiries sheet must not show Lifespan");
+assert.ok(enquiriesHtml.indexOf(">LIFESPAN<") === -1, "enquiries sheet must not show Lifespan");
+assert.ok(enquiriesHtml.indexOf("· update") === -1, "status update must not live in the STATUS column");
+assert.ok(enquiriesHtml.indexOf("cell-btn") === -1, "status column must be text, not a button");
 assert.ok(enquiriesHtml.indexOf("/enquiries/dashboard") !== -1, "sheet must link to the dashboard");
 assert.ok(enquiriesHtml.indexOf(">Dashboard<") !== -1);
 
