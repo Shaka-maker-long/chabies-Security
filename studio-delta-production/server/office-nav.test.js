@@ -48,6 +48,8 @@ assert.ok(processJs.indexOf("quote_assignee") !== -1);
 assert.ok(processJs.indexOf("Request approval from (optional)") !== -1);
 assert.ok(processJs.indexOf("Quoting person") !== -1);
 assert.ok(processJs.indexOf("quote_no") !== -1);
+assert.ok(processJs.indexOf("Issue another quote") !== -1 || processJs.indexOf("Previous quote") !== -1);
+assert.ok(processJs.indexOf("Client wants changes") !== -1 || processJs.indexOf("recost") !== -1);
 assert.ok(processJs.indexOf("Last quotation numbers") !== -1);
 assert.ok(processJs.indexOf("CORRESPONDANCE") !== -1);
 assert.ok(processJs.indexOf("outlook_drop") !== -1);
@@ -55,6 +57,7 @@ assert.ok(processJs.indexOf("Drop the Outlook email") !== -1);
 assert.ok(processJs.indexOf("data-open-file") !== -1);
 assert.ok(processJs.indexOf("Files") !== -1);
 assert.ok(processJs.indexOf("Every CORRESPONDANCE email") !== -1);
+assert.ok(processJs.indexOf("earlier quotes") !== -1);
 
 assert.ok(processJs.indexOf("sd-file-row") !== -1);
 assert.ok(processJs.indexOf("sd-timeline") !== -1);

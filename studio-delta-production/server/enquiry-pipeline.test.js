@@ -271,6 +271,53 @@ assert.strictEqual(quoted.quoteNo.next, "SOQ2362");
 assert.ok(quoted.quoteNo.recent.indexOf("SOQ2361") >= 0);
 assert.strictEqual(quoted.row.quote_total_excl_vat, "4650.50");
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up"));
+assert.strictEqual(quoted.row.quotes.length, 1);
+assert.strictEqual(quoted.row.quotes[0].quote_no, "SOQ2361");
+assert.ok(quoted.row.quotes[0].file && quoted.row.quotes[0].file.stored_as);
+assert.ok(quoted.row.deliverables.some((d) => d.group === "quote"));
+assert.ok(db.readEnquiryAttachment("#1996", "quote_1"));
+assert.ok(quoted.actions.some((a) => a.id === "complete_quote" && a.label === "Issue another quote"));
+assert.ok(quoted.actions.some((a) => a.id === "assign_costing" && /recost/i.test(a.label)));
+assert.ok(db.readEnquiryAttachment("#1996", "quote_1"));
+assert.throws(
+  () => pipeline.applyAction("#1996", "Quoter", {
+    action: "complete_quote",
+    products: [
+      { product: "Daphne Rectangular Mirror", category: "Mirror", value_excl_vat: "2500" },
+      { product: "Eve Patio Table", category: "Table", value_excl_vat: "1800.5" }
+    ],
+    delivery_excl_vat: "350",
+    file_base64: pdfB64,
+    file_name: "quote-2.pdf",
+    file_confirmed: true,
+    follow_up_assignee: "Quoter",
+    quote_no: "SOQ2361"
+  }),
+  /already used/i
+);
+const requoted = pipeline.applyAction("#1996", "Quoter", {
+  action: "complete_quote",
+  products: [
+    { product: "Daphne Rectangular Mirror", category: "Mirror", value_excl_vat: "2800" },
+    { product: "Eve Patio Table", category: "Table", value_excl_vat: "1800.5" }
+  ],
+  delivery_excl_vat: "350",
+  file_base64: pdfB64,
+  file_name: "quote-revised.pdf",
+  file_confirmed: true,
+  follow_up_assignee: "Quoter",
+  quote_no: "SOQ2362"
+});
+assert.strictEqual(requoted.row.status, "Quoted");
+assert.strictEqual(requoted.row.quote_no, "SOQ2362");
+assert.strictEqual(requoted.row.quotes.length, 2);
+assert.strictEqual(requoted.row.quotes[0].quote_no, "SOQ2361");
+assert.strictEqual(requoted.row.quotes[1].quote_no, "SOQ2362");
+assert.strictEqual(requoted.row.quote_total_excl_vat, "4950.50");
+assert.ok(db.readEnquiryAttachment("#1996", "quote_1"));
+assert.ok(db.readEnquiryAttachment("#1996", "quote_2"));
+assert.ok(requoted.row.deliverables.filter((d) => d.group === "quote").length >= 2);
+assert.strictEqual(requoted.quoteNo.next, "SOQ2363");
 
 const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const followed = pipeline.applyAction("#1996", "Quoter", {
@@ -415,6 +462,39 @@ const skipQuoted = pipeline.applyAction(skip.enquiry_no, "Quoter", {
 });
 assert.strictEqual(skipQuoted.row.quote_no, "SOQ2400");
 assert.strictEqual(skipQuoted.quoteNo.next, "SOQ2401");
-assert.deepStrictEqual(skipQuoted.quoteNo.recent.slice(-2), ["SOQ2361", "SOQ2400"]);
+assert.ok(skipQuoted.quoteNo.recent.indexOf("SOQ2361") >= 0);
+assert.ok(skipQuoted.quoteNo.recent.indexOf("SOQ2362") >= 0);
+assert.ok(skipQuoted.quoteNo.recent.indexOf("SOQ2400") >= 0);
+assert.strictEqual(skipQuoted.row.quotes.length, 1);
+
+const recostSkip = pipeline.applyAction(skip.enquiry_no, "Quoter", {
+  action: "assign_costing",
+  assignee: "Coster"
+});
+assert.strictEqual(recostSkip.row.status, "Re-Cost");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === skip.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === skip.enquiry_no));
+pipeline.applyAction(skip.enquiry_no, "Coster", {
+  action: "complete_cost_sheet",
+  file_base64: csv,
+  file_name: "cost.csv",
+  file_confirmed: true,
+  quote_assignee: "Quoter"
+});
+const skipRequote = pipeline.applyAction(skip.enquiry_no, "Quoter", {
+  action: "complete_quote",
+  products: [{ product: "Eve Patio Table", category: "Table", value_excl_vat: "1200" }],
+  delivery_excl_vat: "100",
+  file_base64: pdfB64,
+  file_name: "quote-2.pdf",
+  file_confirmed: true,
+  follow_up_assignee: "Quoter",
+  quote_no: "SOQ2401"
+});
+assert.strictEqual(skipRequote.row.quote_no, "SOQ2401");
+assert.strictEqual(skipRequote.row.quotes.length, 2);
+assert.strictEqual(skipRequote.row.quotes[0].quote_no, "SOQ2400");
+assert.ok(db.readEnquiryAttachment(skip.enquiry_no, "quote_1"));
+assert.ok(db.readEnquiryAttachment(skip.enquiry_no, "quote_2"));
 
 console.log("enquiry-pipeline.test.js ok");
