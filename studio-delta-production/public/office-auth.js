@@ -76,7 +76,7 @@ function sdEnsureScript(src) {
   });
 }
 function sdLoadBrand() {
-  sdEnsureSheet("/sd-brand.css?v=erp-list");
+  sdEnsureSheet("/sd-brand.css?v=erp-one");
   sdEnsureSheet("/office-shell.css?v=erp-shell");
   return sdEnsureScript("/sd-splash.js?v=erp-shell");
 }
@@ -121,7 +121,8 @@ function sdMountOfficeShell(active) {
     items.map(([href, id, icon, label]) => {
       const on = id === active ? " active" : "";
       const debt = id === "debtors" ? " data-nav=\"debtors\"" : "";
-      return '<a class="sd-link' + on + '" href="' + href + '"' + debt + '><i class="bi ' + icon + '"></i><span class="sd-link-text">' + label + "</span></a>";
+      const section = id === "orders" ? '<div class="sd-nav-label">Office</div>' : (id === "production" ? '<div class="sd-nav-label">Shop</div>' : "");
+      return section + '<a class="sd-link' + on + '" href="' + href + '"' + debt + '><i class="bi ' + icon + '"></i><span class="sd-link-text">' + label + "</span></a>";
     }).join("") +
     "</div>" +
     '<div class="sd-sidebar-footer">' +
@@ -198,13 +199,13 @@ async function sdRequireOffice(page) {
       sdSaveOffice(profile);
     } else profile = null;
   }
-  if (!profile) profile = await sdShowLogin();
-  if (!profile.canSeeOffice) {
-    document.body.innerHTML = "<p style='font-family:sans-serif;padding:40px'>Production users can only use the <a href='/'>floor</a>.</p>";
+  if (!profile || !profile.canSeeOffice) {
+    const here = location.pathname + (location.search || "");
+    location.replace("/?next=" + encodeURIComponent(here));
     return null;
   }
   if (page === "debtors" && !profile.canSeeDebtors) {
-    document.body.innerHTML = "<p style='font-family:sans-serif;padding:40px'>You do not have access to Debtors. <a href='/orders'>Orders</a></p>";
+    location.replace("/orders");
     return null;
   }
   sdMountOfficeShell(page);

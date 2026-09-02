@@ -361,9 +361,36 @@ body.office-app .sheet header {
 .sd-login-card a { color: var(--sd-brass); }
 .sd-login-mark { display: flex; justify-content: center; margin-bottom: 4px; }
 
-@media (max-width: 720px) {
-  .sd-welcome h1 { font-size: 22px; padding: 0 16px; text-align: center; }
-  .sd-welcome .sd-s { width: min(200px, 62vw); }
+.sd-nav-label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sd-brass-2);
+  padding: 14px 12px 6px;
+  font-weight: 650;
+}
+html.nav-collapsed .sd-nav-label,
+body.nav-collapsed .sd-nav-label { display: none; }
+.sidebar-who {
+  padding: 8px 10px;
+  border: 1px solid #3f3a36;
+  background: #292524;
+  border-radius: 2px;
+  margin-bottom: 6px;
+}
+.sidebar-who-name {
+  font-size: 12px;
+  font-weight: 650;
+  color: #f3efe6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-who-role {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--sd-brass-2);
 }
 
 /* —— Compact SAP list-report pages —— */
