@@ -17,6 +17,17 @@ labels.forEach((label) => {
 
 assert.ok(js.indexOf("/enquiries") !== -1);
 assert.ok(js.indexOf("/tasks") !== -1);
+
+const officeJs = fs.readFileSync(path.join(__dirname, "office.js"), "utf8");
+assert.ok(officeJs.indexOf("listMyCompletedTasks") !== -1);
+assert.ok(officeJs.indexOf("req.query.done") !== -1);
+const indexJs = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
+assert.ok(indexJs.indexOf("/tasks/completed") !== -1);
+const tasksHtml = fs.readFileSync(path.join(__dirname, "../public/tasks.html"), "utf8");
+assert.ok(tasksHtml.indexOf("/tasks/completed") !== -1);
+assert.ok(tasksHtml.indexOf(">To do<") !== -1);
+assert.ok(tasksHtml.indexOf(">Completed<") !== -1);
+assert.ok(tasksHtml.indexOf("done=1") !== -1);
 assert.ok(js.indexOf("/?view=production") !== -1);
 assert.ok(js.indexOf("/?view=workers") !== -1);
 assert.ok(js.indexOf("/?view=metrics") !== -1);

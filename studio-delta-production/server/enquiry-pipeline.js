@@ -284,8 +284,24 @@ function decorateTask(row, task, dueAt) {
     enquiry_status: row.status || "",
     date_quoted: row.date_quoted || "",
     correspondence_mails: correspondence.mails.length,
-    deliverable_count: (row.deliverable_count != null ? row.deliverable_count : correspondence.mails.length)
+    deliverable_count: (row.deliverable_count != null ? row.deliverable_count : correspondence.mails.length),
+    completed_at_label: task.completed_at ? db.formatSastDateTime(task.completed_at) : ""
   };
+}
+
+function listMyCompletedTasks(userName) {
+  const me = String(userName || "").trim();
+  const out = [];
+  for (const row of db.listEnquiries()) {
+    const tasks = Array.isArray(row.tasks) ? row.tasks : [];
+    for (const task of tasks) {
+      if (task.status !== "done") continue;
+      if (!namesMatch(task.assignee, me) && !namesMatch(task.completed_by, me)) continue;
+      out.push(decorateTask(row, task, task.due_at));
+    }
+  }
+  out.sort((a, b) => String(b.completed_at || "").localeCompare(String(a.completed_at || "")));
+  return out;
 }
 
 function processSnapshot(enquiryNo) {
@@ -754,6 +770,7 @@ module.exports = {
   CLOSED_STATUSES,
   officeAssignees,
   listMyTasks,
+  listMyCompletedTasks,
   processSnapshot,
   applyAction,
   availableActions

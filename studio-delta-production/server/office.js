@@ -242,7 +242,12 @@ function mountOffice(app) {
   });
 
   app.get("/api/office/my-tasks", requireOffice, (req, res) => {
-    res.json({ ok: true, rows: pipeline.listMyTasks(req.office.name) });
+    const done = String(req.query.done || "") === "1" || String(req.query.done || "").toLowerCase() === "true";
+    res.json({
+      ok: true,
+      done,
+      rows: done ? pipeline.listMyCompletedTasks(req.office.name) : pipeline.listMyTasks(req.office.name)
+    });
   });
 
   app.get("/api/office/enquiries/:enquiryNo/process", requireOffice, (req, res) => {

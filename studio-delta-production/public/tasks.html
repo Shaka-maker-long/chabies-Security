@@ -17,6 +17,9 @@
     button.ghost { background:#fff; color:#1d2939; }
     .wrap { padding:16px; max-width:980px; }
     .msg { font-size:12px; color:var(--muted); }
+    .tabs { display:flex; gap:4px; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
     .empty { background:#fff; border:1px solid var(--line); border-radius:12px; padding:28px 18px; color:var(--muted); }
     .group { margin:0 0 22px; }
     .group h2 { font-size:13px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin:0 0 10px; }
@@ -37,6 +40,10 @@
 <body>
   <header>
     <h1>My tasks</h1>
+    <nav class="tabs" aria-label="My tasks">
+      <a id="tabTodo" href="/tasks">To do</a>
+      <a id="tabDone" href="/tasks/completed">Completed</a>
+    </nav>
     <span class="msg" id="who"></span>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -50,6 +57,7 @@
   <script>
     let rows = [];
     let me = "";
+    const completedView = location.pathname.replace(/\/+$/, "") === "/tasks/completed";
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
     function kindLabel(row) {
       if (row.label) return row.title + " (" + row.label + ")";
@@ -58,37 +66,47 @@
     function render() {
       const q = document.getElementById("q").value.toLowerCase();
       const filtered = rows.filter((r) => {
-        const blob = [r.enquiry_no, r.client_name, r.product, r.title, r.enquiry_status, r.assignee].join(" ").toLowerCase();
+        const blob = [r.enquiry_no, r.client_name, r.product, r.title, r.enquiry_status, r.assignee, r.completed_by, r.completed_at_label].join(" ").toLowerCase();
         return !q || blob.indexOf(q) >= 0;
       });
-      const overdue = filtered.filter((r) => r.overdue);
-      const rest = filtered.filter((r) => !r.overdue);
       const list = document.getElementById("list");
       if (!filtered.length) {
-        list.innerHTML = "<div class=\"empty\">" +
-          (q ? "No assigned tasks match that search." :
-            "Nothing is assigned to you right now. Capture new enquiries on the Enquiries sheet, then assign costing, quoting, follow-up, or drawing to an office Admin. That person will see the work here and update the system from the task.") +
-          "</div>";
+        let empty;
+        if (q) empty = "No " + (completedView ? "completed " : "") + "tasks match that search.";
+        else if (completedView) empty = "Nothing completed yet. When you finish costing, quoting, a follow-up, or a drawing, that work moves here.";
+        else empty = "Nothing is assigned to you right now. Capture new enquiries on the Enquiries sheet, then assign costing, quoting, follow-up, or drawing to an office Admin. That person will see the work here and update the system from the task.";
+        list.innerHTML = "<div class=\"empty\">" + empty + "</div>";
         return;
       }
       function cards(items) {
         return items.map((row) => {
-          return "<article class=\"card" + (row.overdue ? " overdue" : "") + "\">" +
+          const overdue = !completedView && row.overdue;
+          const when = completedView
+            ? (row.completed_at_label ? "<span class=\"pill\">Completed " + esc(row.completed_at_label) + "</span>" : "<span class=\"pill\">Completed</span>")
+            : (row.due_at ? "<span class=\"pill\">Due " + esc(String(row.due_at).slice(0, 10)) + "</span>" : "");
+          return "<article class=\"card" + (overdue ? " overdue" : "") + "\">" +
             "<div class=\"grow\">" +
             "<h3>" + esc(row.enquiry_no) + " · " + esc(row.client_name || "No client name yet") + "</h3>" +
             "<p>" + esc(kindLabel(row)) + (row.product ? " · " + esc(row.product) : "") + "</p>" +
             (row.deliverable_count ? "<p>" + row.deliverable_count + " file" + (row.deliverable_count === 1 ? "" : "s") + " on this enquiry</p>" : (row.correspondence_mails ? "<p>" + row.correspondence_mails + " Outlook email" + (row.correspondence_mails === 1 ? "" : "s") + "</p>" : "")) +
-            "<p><span class=\"pill" + (row.overdue ? " overdue" : "") + "\">" + esc(row.enquiry_status || "") + "</span>" +
-            (row.overdue ? "<span class=\"pill overdue\">Overdue</span>" : "") +
-            (row.due_at ? "<span class=\"pill\">Due " + esc(String(row.due_at).slice(0, 10)) + "</span>" : "") +
+            "<p><span class=\"pill" + (overdue ? " overdue" : "") + "\">" + esc(row.enquiry_status || "") + "</span>" +
+            (overdue ? "<span class=\"pill overdue\">Overdue</span>" : "") +
+            when +
             "</p></div>" +
-            "<button type=\"button\" data-open=\"" + esc(row.enquiry_no) + "\" data-task=\"" + esc(row.id || "") + "\">Update</button>" +
+            "<button type=\"button\" data-open=\"" + esc(row.enquiry_no) + "\" data-task=\"" + esc(row.id || "") + "\">" +
+            (completedView ? "Open" : "Update") + "</button>" +
             "</article>";
         }).join("");
       }
       let html = "";
-      if (overdue.length) html += "<section class=\"group\"><h2>Overdue</h2>" + cards(overdue) + "</section>";
-      if (rest.length) html += "<section class=\"group\"><h2>Assigned to me</h2>" + cards(rest) + "</section>";
+      if (completedView) {
+        html = "<section class=\"group\"><h2>Completed</h2>" + cards(filtered) + "</section>";
+      } else {
+        const overdue = filtered.filter((r) => r.overdue);
+        const rest = filtered.filter((r) => !r.overdue);
+        if (overdue.length) html += "<section class=\"group\"><h2>Overdue</h2>" + cards(overdue) + "</section>";
+        if (rest.length) html += "<section class=\"group\"><h2>Assigned to me</h2>" + cards(rest) + "</section>";
+      }
       list.innerHTML = html;
       list.onclick = (e) => {
         const btn = e.target.closest("[data-open]");
@@ -99,14 +117,22 @@
     window.sdOnEnquiryProcessClose = function () { load(); };
     async function load() {
       document.getElementById("status").textContent = "Loading…";
-      const r = await sdOfficeFetch("/api/office/my-tasks");
+      const r = await sdOfficeFetch("/api/office/my-tasks" + (completedView ? "?done=1" : ""));
       const j = await r.json();
       if (!j.ok) { document.getElementById("status").textContent = j.error || "Could not load"; return; }
       rows = j.rows || [];
-      document.getElementById("status").textContent = rows.length ? (rows.length + " assigned") : "No open tasks";
+      if (completedView) document.getElementById("status").textContent = rows.length ? (rows.length + " completed") : "No completed tasks";
+      else document.getElementById("status").textContent = rows.length ? (rows.length + " assigned") : "No open tasks";
       render();
     }
     document.getElementById("q").oninput = render;
+    if (completedView) {
+      document.title = "Studio Delta — Tasks completed";
+      document.getElementById("tabDone").className = "on";
+      document.getElementById("q").placeholder = "Search completed tasks";
+    } else {
+      document.getElementById("tabTodo").className = "on";
+    }
     sdRequireOffice("tasks").then((p) => {
       if (!p) return;
       me = p.name || "";
