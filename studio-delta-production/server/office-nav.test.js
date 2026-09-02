@@ -75,6 +75,10 @@ assert.ok(dashHtml.indexOf("id=\"month\"") !== -1);
 assert.ok(dashHtml.indexOf("dashboard/drill") !== -1);
 assert.ok(dashHtml.indexOf("sdOpenEnquiryProcess") !== -1);
 assert.ok(dashHtml.indexOf("enquiry-process.js") !== -1);
+assert.ok(dashHtml.indexOf("Quote value by type") !== -1);
+assert.ok(dashHtml.indexOf("Week of month") !== -1);
+assert.ok(dashHtml.indexOf("prodSearch") !== -1);
+assert.ok(dashHtml.indexOf(">Outlook<") === -1, "Outlook pie must be replaced by quote value by type");
 
 const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
 assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");

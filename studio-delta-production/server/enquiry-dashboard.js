@@ -255,6 +255,59 @@ function bump(map, key, amount) {
   map[k] = (map[k] || 0) + (amount == null ? 1 : amount);
 }
 
+function customKindLabels(row) {
+  const specs = Array.isArray(row.custom_specs) ? row.custom_specs : [];
+  const kinds = [];
+  specs.forEach((spec) => {
+    let kind = String((spec && spec.kind) || "").trim();
+    const other = String((spec && spec.other) || "").trim();
+    if (/^other$/i.test(kind) && other) kind = other;
+    if (/^color$/i.test(kind)) kind = "Colour";
+    if (!kind) kind = "Other";
+    if (kinds.indexOf(kind) < 0) kinds.push(kind);
+  });
+  return kinds.length ? kinds : ["Other"];
+}
+
+function designKey(row) {
+  return String(row.design_description || row.request || "").trim() || "(blank)";
+}
+
+function shorten(s, n) {
+  const t = String(s || "").replace(/\s+/g, " ").trim();
+  const max = n || 42;
+  return t.length <= max ? t : t.slice(0, max - 1) + "…";
+}
+
+function weekOfMonth(d) {
+  const p = sastParts(d);
+  return Math.min(5, Math.floor((p.day - 1) / 7) + 1);
+}
+
+function emptyWom() {
+  return {
+    enquiries: [0, 0, 0, 0, 0],
+    quotes: [0, 0, 0, 0, 0],
+    ordered: [0, 0, 0, 0, 0],
+    quoteRevenue: [0, 0, 0, 0, 0],
+    orderedRevenue: [0, 0, 0, 0, 0]
+  };
+}
+
+function ensureWom(map, key) {
+  if (!map[key]) map[key] = emptyWom();
+  return map[key];
+}
+
+function splitPairs(countMap, moneyMap) {
+  return Object.keys(countMap).map((label) => ({
+    label: shorten(label),
+    value: label,
+    count: countMap[label] || 0,
+    quoteValue: Math.round((moneyMap[label] || 0) * 100) / 100
+  })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
 function sortedPairs(map, limit) {
   return Object.keys(map).map((label) => ({ label, value: map[label] }))
     .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label))
@@ -353,10 +406,20 @@ function buildDashboard(query) {
   PIPELINE_ORDER.forEach((s) => { pipeline[s] = 0; });
   const source = {};
   const type = {};
+  const typeQuote = {};
+  const customCount = {};
+  const customQuote = {};
+  const designCount = {};
+  const designQuote = {};
   const province = {};
   const provinceOrdered = {};
+  const provinceQuote = {};
+  const provinceOrderedQuote = {};
   const category = {};
   const product = {};
+  const productQuote = {};
+  const womMap = {};
+  bucketKeys("month", win.from, win.to).forEach((key) => ensureWom(womMap, key));
   const assignee = {};
   const stuck = { Costing: [], Quoted: [], "Followed Up": [], Waiting: [] };
   const timeToOrderDays = [];
@@ -427,10 +490,35 @@ function buildDashboard(query) {
       if (status === "Ordered") funnelOrdered += 1;
       bump(source, row.enquiry_source || row.source);
       bump(type, row.enquiry_type);
+      bump(typeQuote, row.enquiry_type, rev);
       bump(province, row.province);
-      if (status === "Ordered") bump(provinceOrdered, row.province);
+      bump(provinceQuote, row.province, rev);
+      if (status === "Ordered") {
+        bump(provinceOrdered, row.province);
+        bump(provinceOrderedQuote, row.province, rev);
+      }
       bump(category, row.category);
-      String(row.product || "").split(",").map((p) => p.trim()).filter(Boolean).forEach((p) => bump(product, p));
+      String(row.product || "").split(",").map((p) => p.trim()).filter(Boolean).forEach((p) => {
+        bump(product, p);
+        bump(productQuote, p, rev);
+      });
+      const etype = String(row.enquiry_type || "").trim();
+      if (etype === "Custom") {
+        customKindLabels(row).forEach((kind) => {
+          bump(customCount, kind);
+          bump(customQuote, kind, rev);
+        });
+      }
+      if (etype === "New Design") {
+        const desc = designKey(row);
+        bump(designCount, desc);
+        bump(designQuote, desc, rev);
+      }
+      if (opened) {
+        const bucket = ensureWom(womMap, monthKey(new Date(opened)));
+        const w = weekOfMonth(new Date(opened)) - 1;
+        bucket.enquiries[w] += 1;
+      }
       const mails = (((row.correspondence || {}).mails) || []).length;
       if (mails) outlookWith += 1;
       else outlookWithout += 1;
@@ -447,6 +535,10 @@ function buildDashboard(query) {
         bucket.quotes += 1;
         bucket.quoteRevenue += rev;
       }
+      const wom = ensureWom(womMap, monthKey(new Date(quoted)));
+      const w = weekOfMonth(new Date(quoted)) - 1;
+      wom.quotes[w] += 1;
+      wom.quoteRevenue[w] += rev;
     }
     if (orderedIn) {
       orderedInRange += 1;
@@ -456,6 +548,10 @@ function buildDashboard(query) {
         bucket.ordered += 1;
         bucket.orderedRevenue += rev;
       }
+      const wom = ensureWom(womMap, monthKey(new Date(ordered)));
+      const w = weekOfMonth(new Date(ordered)) - 1;
+      wom.ordered[w] += 1;
+      wom.orderedRevenue[w] += rev;
       const days = (row.lifespan_ms ? row.lifespan_ms / 86400000 : 0)
         || (opened && ordered ? (ordered - opened) / 86400000 : 0);
       if (days > 0) timeToOrderDays.push(days);
@@ -500,8 +596,30 @@ function buildDashboard(query) {
     label: row.label,
     opened: row.value,
     ordered: provinceOrdered[row.label] || 0,
-    conversion: row.value ? Math.round(1000 * (provinceOrdered[row.label] || 0) / row.value) / 10 : 0
+    conversion: row.value ? Math.round(1000 * (provinceOrdered[row.label] || 0) / row.value) / 10 : 0,
+    quoteValue: Math.round((provinceQuote[row.label] || 0) * 100) / 100,
+    orderedValue: Math.round((provinceOrderedQuote[row.label] || 0) * 100) / 100
   }));
+
+  const productRows = Object.keys(product).map((label) => ({
+    label,
+    count: product[label],
+    quoteValue: Math.round((productQuote[label] || 0) * 100) / 100
+  })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+  const typeRows = Object.keys(type).map((label) => ({
+    label,
+    count: type[label],
+    quoteValue: Math.round((typeQuote[label] || 0) * 100) / 100
+  })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+  const weekCompare = {
+    weeks: [1, 2, 3, 4, 5],
+    months: Object.keys(womMap).sort().map((key) => Object.assign({
+      key,
+      label: monthLabel(key)
+    }, womMap[key]))
+  };
 
   return {
     tz: "Africa/Johannesburg",
@@ -552,7 +670,11 @@ function buildDashboard(query) {
       notInScope: s.notInScope
     })),
     sources: countPairs(source, 12),
-    types: countPairs(type, 12),
+    types: typeRows,
+    typeSplits: {
+      Custom: splitPairs(customCount, customQuote),
+      "New Design": splitPairs(designCount, designQuote)
+    },
     stageTime: [
       { label: "Capture → costing", medianDays: round1(median(stage.toCosting)) || 0, n: stage.toCosting.length },
       { label: "In costing", medianDays: round1(median(stage.costing)) || 0, n: stage.costing.length },
@@ -565,12 +687,9 @@ function buildDashboard(query) {
       orderedExclVat: Math.round(orderedExclVat * 100) / 100
     },
     categories: countPairs(category, 12),
-    products: countPairs(product, 12),
+    products: productRows,
     provinces: provinceRows,
-    outlook: [
-      { label: "With Outlook email", count: outlookWith },
-      { label: "No Outlook email", count: outlookWithout }
-    ]
+    weekCompare
   };
 }
 
@@ -613,6 +732,26 @@ function matchesDrill(row, query, win) {
   if (kind === "pipeline") return openedIn && status === value;
   if (kind === "source") return openedIn && fieldOrBlank(row.enquiry_source || row.source) === value;
   if (kind === "type") return openedIn && fieldOrBlank(row.enquiry_type) === value;
+  if (kind === "typeSubtype") {
+    if (!openedIn) return false;
+    const typeName = String((query && query.type) || "");
+    if (fieldOrBlank(row.enquiry_type) !== typeName) return false;
+    if (typeName === "Custom") return customKindLabels(row).indexOf(value) >= 0;
+    if (typeName === "New Design") return designKey(row) === value;
+    return true;
+  }
+  if (kind === "wom") {
+    const ym = String((query && query.month) || "");
+    const week = Number((query && query.week) || 0);
+    const series = String((query && query.series) || "enquiries");
+    if (series === "quotes" || series === "quoteRevenue") {
+      return !!(quoted && monthKey(new Date(quoted)) === ym && weekOfMonth(new Date(quoted)) === week);
+    }
+    if (series === "ordered" || series === "orderedRevenue") {
+      return !!(ordered && monthKey(new Date(ordered)) === ym && weekOfMonth(new Date(ordered)) === week);
+    }
+    return !!(opened && monthKey(new Date(opened)) === ym && weekOfMonth(new Date(opened)) === week);
+  }
   if (kind === "category") return openedIn && fieldOrBlank(row.category) === value;
   if (kind === "product") {
     if (!openedIn) return false;
@@ -664,6 +803,11 @@ function drillTitle(query, win) {
   if (kind === "quotes") return "Quotes · " + bucket;
   if (kind === "ordered") return "Ordered · " + bucket;
   if (kind === "funnel") return (funnelNames[query.stage] || "Funnel") + " · " + win.windowLabel;
+  if (kind === "typeSubtype") return (String((query && query.type) || "") + " · " + value + " · " + win.windowLabel).trim();
+  if (kind === "wom") {
+    return (query.series === "quotes" || query.series === "quoteRevenue" ? "Quotes" : query.series === "ordered" || query.series === "orderedRevenue" ? "Ordered" : "Enquiries")
+      + " · " + monthLabel(String((query && query.month) || "")) + " week " + String((query && query.week) || "");
+  }
   if (kind === "pipeline") return (value || "Pipeline") + " · " + win.windowLabel;
   if (kind === "stuck") return (value === "overdue" ? "Overdue follow-ups" : value) + " · " + win.windowLabel;
   if (value) return value + " · " + win.windowLabel;
