@@ -7,7 +7,8 @@
   <title>Studio Delta</title>
   
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/sd-brand.css?v=erp-shell">
+  <script src="/sd-splash.js?v=erp-shell"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
   
@@ -25,30 +26,30 @@
        DESIGN TOKENS — LIGHT THEME (default)
        ===================================================== */
     :root {
-      --bg-page:       #f0f2f5;
-      --bg-surface:    #ffffff;
-      --bg-surface-2:  #f8f9fc;
-      --bg-sidebar:    #ffffff;
-      --border:        rgba(0,0,0,0.08);
-      --border-strong: rgba(0,0,0,0.18);
-      --text-primary:  #0f172a;
-      --text-secondary:#64748b;
-      --text-muted:    #94a3b8;
-      --accent:        #0f172a;
-      --accent-fg:     #ffffff;
-      --accent-hover:  #1e293b;
-      --success:       #10b981;
+      --bg-page:       #f3efe6;
+      --bg-surface:    #fcfbf8;
+      --bg-surface-2:  #ece7dc;
+      --bg-sidebar:    #1c1917;
+      --border:        #d7d1c6;
+      --border-strong: #b08948;
+      --text-primary:  #1c1917;
+      --text-secondary:#6b645b;
+      --text-muted:    #8a8278;
+      --accent:        #1c1917;
+      --accent-fg:     #f3efe6;
+      --accent-hover:  #292524;
+      --success:       #3f6b4a;
       --success-fg:    #ffffff;
-      --warning:       #f59e0b;
-      --warning-fg:    #ffffff;
-      --danger:        #ef4444;
-      --shadow-sm:     0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.05);
-      --shadow-md:     0 4px 16px rgba(0,0,0,0.08), 0 2px 6px rgba(0,0,0,0.05);
-      --shadow-lg:     0 10px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.07);
-      --radius-sm:     8px;
-      --radius-md:     14px;
-      --radius-lg:     20px;
-      --sidebar-width: 120px;
+      --warning:       #b08948;
+      --warning-fg:    #1c1917;
+      --danger:        #9f2d2d;
+      --shadow-sm:     0 1px 2px rgba(28,25,23,.08);
+      --shadow-md:     0 4px 12px rgba(28,25,23,.08);
+      --shadow-lg:     0 10px 28px rgba(28,25,23,.12);
+      --radius-sm:     2px;
+      --radius-md:     2px;
+      --radius-lg:     4px;
+      --sidebar-width: 220px;
       --transition:    0.2s cubic-bezier(0.4,0,0.2,1);
     }
 
@@ -91,9 +92,9 @@
     }
 
     h1, h2, h3, h4, h5, .brand-font {
-      font-family: 'Playfair Display', serif;
+      font-family: Inter, system-ui, sans-serif;
       color: var(--text-primary);
-      letter-spacing: -0.01em;
+      letter-spacing: 0.02em;
     }
 
     a { color: inherit; }
@@ -123,7 +124,7 @@
       min-height: 0;
     }
 
-    .sidebar-header { margin-bottom: 18px; text-align: center; display: flex; align-items: center; justify-content: center; gap: 6px; }
+    .sidebar-header { margin-bottom: 18px; text-align: left; display: flex; align-items: center; justify-content: flex-start; gap: 8px; }
     .sidebar-collapse-btn {
       border: 1px solid var(--border);
       background: var(--bg-surface-2);
@@ -157,21 +158,22 @@
 
     .sidebar-link {
       display: flex;
-      flex-direction: column;
+      flex-direction: row;
       align-items: center;
-      justify-content: center;
-      padding: 12px 8px;
-      margin-bottom: 4px;
+      justify-content: flex-start;
+      padding: 10px 12px;
+      margin-bottom: 2px;
       color: var(--text-secondary);
       text-decoration: none;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
       border-radius: var(--radius-sm);
       transition: all var(--transition);
       border: 1px solid transparent;
+      gap: 10px;
     }
-    .sidebar-link i { font-size: 1.6rem; margin-bottom: 5px; }
-    .sidebar-link .link-text { font-size: 0.7rem; text-align: center; line-height: 1.2; font-weight: 600; letter-spacing: 0.02em; }
+    .sidebar-link i { font-size: 1.15rem; margin-bottom: 0; }
+    .sidebar-link .link-text { font-size: 0.8rem; text-align: left; line-height: 1.2; font-weight: 600; letter-spacing: 0.02em; }
     .sidebar-link:hover {
       background-color: var(--bg-surface-2);
       color: var(--text-primary);
@@ -826,20 +828,7 @@
 </head>
 <body class="">
 
-  <div id="loader" class="position-fixed top-0 start-0 w-100 h-100 bg-white d-flex flex-column justify-content-center align-items-center" style="z-index:9999;">
-    <h2 class="brand-font mb-3">STUDIO DELTA</h2>
-    <div class="spinner-border text-dark"></div>
-  </div>
-  <script>
-    (function () {
-      function hideLoader() {
-        var l = document.getElementById('loader');
-        if (l) l.classList.add('d-none');
-      }
-      document.addEventListener('DOMContentLoaded', hideLoader);
-      setTimeout(hideLoader, 1200);
-    })();
-  </script>
+  <div id="loader" class="d-none" hidden></div>
 
   <!-- Mobile Menu Button -->
   <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="Toggle menu">
@@ -851,6 +840,7 @@
 
   <nav class="sidebar" id="sidebar" aria-label="Main navigation">
     <div class="sidebar-header">
+      <span id="sidebarMark"></span>
       <h5 class="brand-font mb-0">STUDIO DELTA</h5>
       <button type="button" class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Hide menu" aria-label="Hide menu">
         <i class="bi bi-chevron-left" id="sidebarCollapseIcon"></i>
@@ -939,8 +929,9 @@
     <div id="view-global-login" class="view-section container">
       <div class="login-shell">
         <div class="text-center mb-4">
-          <h1 class="display-4 fw-bold">Studio Delta</h1>
-          <p class="text-muted small text-uppercase mb-0">Production Management System</p>
+          <div id="loginMark" class="d-flex justify-content-center mb-3"></div>
+          <h1 class="h3 fw-bold text-uppercase mb-1">Studio Delta</h1>
+          <p class="text-muted small text-uppercase mb-0">Production</p>
         </div>
         <div class="row justify-content-center">
           <div class="col-12 col-sm-8 col-md-6 col-lg-4">
@@ -1846,6 +1837,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       try { document.getElementById('loader').classList.add('d-none'); } catch (e) {}
+      try { paintBrandMarks(); } catch (e) {}
       try {
         initMobileMenu();
         initSidebarCollapse();
@@ -2122,7 +2114,14 @@
         }
       }).catch(() => {});
     }
-    function applyLoginProfile(res) {
+    function paintBrandMarks() {
+      if (typeof sdSMark !== 'function') return;
+      const login = document.getElementById('loginMark');
+      if (login) login.innerHTML = sdSMark('sd-s-mark sd-s-login');
+      const side = document.getElementById('sidebarMark');
+      if (side) side.innerHTML = sdSMark();
+    }
+    function applyLoginProfile(res, opts) {
       session.name = res.name;
       session.jobTitle = res.jobTitle || res.role || '';
       session.isAdmin = !!res.isAdmin;
@@ -2133,12 +2132,20 @@
       session.tasks = res.tasks || [];
       session.role = null;
       session.overtimeWarned = {};
-      setLoggedIn(true);
-      applyAdminLinks();
       persistSession();
-      updateFloorLink();
-      startIdleAlertPolling();
-      routeAfterLogin();
+      const openApp = function () {
+        setLoggedIn(true);
+        applyAdminLinks();
+        updateFloorLink();
+        startIdleAlertPolling();
+        paintBrandMarks();
+        routeAfterLogin();
+      };
+      if (opts && opts.welcome && typeof sdShowWelcome === 'function') {
+        sdShowWelcome(5000).then(openApp);
+      } else {
+        openApp();
+      }
     }
     function updateFloorLink() {
       const el = document.getElementById('link-floor');
@@ -2328,7 +2335,7 @@
         btn.innerHTML = origText;
         btn.disabled = false;
         if(res.success) {
-          applyLoginProfile(res);
+          applyLoginProfile(res, { welcome: true });
           syncOfficeLogin(name, pass, res);
         } else {
           showAlert(res.error);

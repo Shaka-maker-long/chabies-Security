@@ -48,8 +48,8 @@ body.office-app.nav-collapsed { --sd-nav: var(--sd-nav-collapsed); }
 .sd-sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 10px;
   padding: 4px 6px 12px;
   flex-shrink: 0;
 }
@@ -90,6 +90,7 @@ body.office-app.nav-collapsed { --sd-nav: var(--sd-nav-collapsed); }
 }
 body.nav-collapsed .sd-link-text,
 body.nav-collapsed .sd-brand-text { display: none; }
+body.nav-collapsed .sd-s-mark { display: block; margin: 0 auto; }
 body.nav-collapsed .sd-sidebar a,
 body.nav-collapsed .sd-collapse-btn,
 body.nav-collapsed .sd-logout-btn {

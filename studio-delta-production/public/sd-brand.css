@@ -1,0 +1,367 @@
+:root {
+  --sd-steel: #1c1917;
+  --sd-steel-2: #292524;
+  --sd-steel-3: #3f3a36;
+  --sd-brass: #b08948;
+  --sd-brass-2: #c4a574;
+  --sd-linen: #f3efe6;
+  --sd-paper: #fcfbf8;
+  --sd-line: #d7d1c6;
+  --sd-ink: #1c1917;
+  --sd-muted: #6b645b;
+  --sd-ok: #3f6b4a;
+  --sd-bad: #9f2d2d;
+  --line: #d7d1c6;
+  --head: #ece7dc;
+  --ink: #1c1917;
+  --muted: #6b645b;
+}
+
+/* —— Welcome splash —— */
+.sd-welcome {
+  position: fixed;
+  inset: 0;
+  z-index: 12000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--sd-steel);
+  color: var(--sd-linen);
+  font-family: Inter, system-ui, sans-serif;
+  transition: opacity 0.45s ease;
+}
+.sd-welcome.hide { opacity: 0; pointer-events: none; }
+.sd-welcome .sd-s {
+  width: min(280px, 58vw);
+  height: auto;
+  margin-bottom: 32px;
+  filter: drop-shadow(0 0 24px rgba(176, 137, 72, 0.28));
+}
+.sd-welcome .sd-s path {
+  fill: none;
+  stroke: var(--sd-brass);
+  stroke-width: 10;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sd-welcome h1 {
+  margin: 0;
+  font-size: clamp(22px, 4.2vw, 34px);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--sd-linen);
+  opacity: 0;
+  animation: sdFadeIn 0.7s 1.35s ease forwards;
+}
+.sd-welcome p {
+  margin: 12px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--sd-brass-2);
+  opacity: 0;
+  animation: sdFadeIn 0.7s 1.7s ease forwards;
+}
+.sd-welcome .sd-welcome-rule {
+  width: 72px;
+  height: 2px;
+  margin: 18px 0 0;
+  background: var(--sd-brass);
+  opacity: 0;
+  animation: sdFadeIn 0.7s 1.9s ease forwards;
+}
+@keyframes sdFadeIn {
+  to { opacity: 1; }
+}
+
+.sd-s-mark {
+  display: block;
+  width: 28px;
+  height: 34px;
+  flex-shrink: 0;
+}
+.sd-s-mark path {
+  fill: none;
+  stroke: var(--sd-brass);
+  stroke-width: 10;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sd-s-login {
+  width: 72px;
+  height: 88px;
+}
+
+/* —— Floor: SAP-style steel shell —— */
+.sidebar {
+  background: var(--sd-steel) !important;
+  border-right: 1px solid var(--sd-steel-3) !important;
+  box-shadow: none !important;
+  color: var(--sd-linen);
+}
+.sidebar-header { margin-bottom: 12px !important; }
+.sidebar-header h5,
+.sidebar .brand-font {
+  color: var(--sd-linen) !important;
+  font-family: Inter, system-ui, sans-serif !important;
+  font-weight: 650 !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase;
+}
+.sidebar-link { color: #d6d0c6 !important; border-radius: 2px !important; }
+.sidebar-link:hover {
+  background: var(--sd-steel-2) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  transform: none !important;
+}
+.sidebar-link.active {
+  background: var(--sd-steel-2) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: inset 3px 0 0 var(--sd-brass) !important;
+}
+.sidebar-collapse-btn {
+  background: var(--sd-steel-2) !important;
+  color: var(--sd-brass-2) !important;
+  border-color: var(--sd-steel-3) !important;
+  border-radius: 2px !important;
+}
+.theme-toggle-btn {
+  flex-direction: row !important;
+  background: var(--sd-steel-2) !important;
+  color: #d6d0c6 !important;
+  border-color: var(--sd-steel-3) !important;
+  border-radius: 2px !important;
+}
+.sidebar-footer .btn,
+.sidebar-footer .btn-outline-danger {
+  border-radius: 2px !important;
+  border-color: #7f1d1d !important;
+  color: #fecaca !important;
+}
+
+body {
+  background-color: var(--sd-linen);
+}
+.main-content { background: var(--sd-linen); }
+.card, .login-card, .modal-content {
+  border-radius: 2px !important;
+  border-color: var(--sd-line) !important;
+}
+.card:hover { transform: none !important; }
+.btn, .form-control, .form-select {
+  border-radius: 2px !important;
+}
+.btn-primary {
+  background: var(--sd-steel) !important;
+  border-color: var(--sd-steel) !important;
+  color: var(--sd-linen) !important;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+.btn-primary:hover {
+  background: #292524 !important;
+  border-color: var(--sd-brass) !important;
+}
+
+body:not(.is-logged-in) {
+  background: var(--sd-steel) !important;
+}
+body:not(.is-logged-in) .main-content { background: var(--sd-steel); }
+body:not(.is-logged-in) .login-shell h1,
+body:not(.is-logged-in) .login-shell .h3 {
+  color: var(--sd-linen) !important;
+  letter-spacing: 0.16em;
+  font-family: Inter, system-ui, sans-serif !important;
+}
+body:not(.is-logged-in) .login-shell .text-muted {
+  color: var(--sd-brass-2) !important;
+}
+body:not(.is-logged-in) .login-card {
+  background: var(--sd-paper) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35) !important;
+}
+body:not(.is-logged-in) .login-card h4 {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 14px;
+}
+
+/* —— Office pages (Fiori + Studio Delta) —— */
+body.office-app {
+  background: var(--sd-linen) !important;
+  color: var(--sd-ink);
+}
+body.office-app header {
+  background: var(--sd-steel) !important;
+  color: var(--sd-linen) !important;
+  border-bottom: 3px solid var(--sd-brass) !important;
+}
+body.office-app header h1 {
+  color: var(--sd-linen) !important;
+  font-family: Inter, system-ui, sans-serif !important;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 15px !important;
+}
+body.office-app header .msg,
+body.office-app header .lede,
+body.office-app header a {
+  color: #c4bdb3 !important;
+}
+body.office-app header a.active {
+  color: var(--sd-brass-2) !important;
+}
+body.office-app button {
+  border-radius: 2px !important;
+  border-color: var(--sd-steel);
+  background: var(--sd-steel);
+  color: #fff;
+  letter-spacing: 0.04em;
+}
+body.office-app button.ghost {
+  background: var(--sd-paper) !important;
+  color: var(--sd-steel) !important;
+  border-color: var(--sd-line) !important;
+}
+body.office-app .tabs a {
+  color: #d6d0c6 !important;
+  border-radius: 2px !important;
+}
+body.office-app .tabs a.on {
+  background: var(--sd-brass) !important;
+  color: var(--sd-steel) !important;
+}
+body.office-app input[type=search],
+body.office-app input,
+body.office-app select,
+body.office-app textarea {
+  border-radius: 2px !important;
+  border-color: var(--sd-line) !important;
+  background: var(--sd-paper);
+}
+body.office-app table th,
+body.office-app #grid th {
+  background: var(--head) !important;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+body.office-app .sheet,
+body.office-app .card,
+body.office-app .empty {
+  border-radius: 2px !important;
+  background: var(--sd-paper);
+  border-color: var(--sd-line);
+}
+body.office-app .sheet header {
+  background: var(--sd-steel) !important;
+  color: var(--sd-linen) !important;
+  border-radius: 0 !important;
+}
+
+.sd-sidebar {
+  background: var(--sd-steel) !important;
+  border-right: 1px solid var(--sd-steel-3) !important;
+  padding: 12px 8px !important;
+}
+.sd-sidebar-header {
+  justify-content: flex-start !important;
+  gap: 10px !important;
+}
+.sd-sidebar-header h5,
+.sd-brand-text {
+  color: var(--sd-linen) !important;
+  font-family: Inter, system-ui, sans-serif !important;
+  letter-spacing: 0.14em !important;
+  text-transform: uppercase;
+  font-size: 12px !important;
+}
+.sd-sidebar a,
+.sd-collapse-btn,
+.sd-logout-btn {
+  color: #d6d0c6 !important;
+  border-radius: 2px !important;
+  font-weight: 550 !important;
+}
+.sd-sidebar a:hover,
+.sd-collapse-btn:hover {
+  background: var(--sd-steel-2) !important;
+  color: #fff !important;
+}
+.sd-sidebar a.active {
+  background: var(--sd-steel-2) !important;
+  color: #fff !important;
+  border-color: transparent !important;
+  box-shadow: inset 3px 0 0 var(--sd-brass);
+}
+.sd-logout-btn { color: #fecaca !important; }
+.sd-nav-burger {
+  background: var(--sd-steel) !important;
+  border-radius: 2px !important;
+}
+.sd-sidebar-footer { border-top-color: var(--sd-steel-3) !important; }
+
+.sd-login-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--sd-steel);
+  font-family: Inter, system-ui, sans-serif;
+}
+.sd-login-card {
+  background: var(--sd-paper);
+  border: 1px solid var(--sd-line);
+  border-radius: 2px;
+  padding: 28px 24px 22px;
+  width: min(380px, 92vw);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.sd-login-card h2 {
+  margin: 12px 0 6px;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sd-ink);
+}
+.sd-login-card p,
+.sd-login-card label {
+  color: var(--sd-muted);
+  font-size: 13px;
+}
+.sd-login-card label { display: block; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 650; }
+.sd-login-card input {
+  width: 100%;
+  margin: 4px 0 14px;
+  padding: 10px 10px;
+  border: 1px solid var(--sd-line);
+  border-radius: 2px;
+  font: inherit;
+  background: #fff;
+}
+.sd-login-card button[type=submit] {
+  width: 100%;
+  padding: 11px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--sd-steel);
+  color: var(--sd-linen);
+  font-weight: 650;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.sd-login-card a { color: var(--sd-brass); }
+.sd-login-mark { display: flex; justify-content: center; margin-bottom: 4px; }
+
+@media (max-width: 720px) {
+  .sd-welcome h1 { font-size: 22px; padding: 0 16px; text-align: center; }
+  .sd-welcome .sd-s { width: min(200px, 62vw); }
+}

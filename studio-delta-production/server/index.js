@@ -103,6 +103,14 @@ app.get("/office-shell.css", (_req, res) => {
   noStore(res);
   res.type("text/css").sendFile(path.join(publicDir, "office-shell.css"));
 });
+app.get("/sd-brand.css", (_req, res) => {
+  noStore(res);
+  res.type("text/css").sendFile(path.join(publicDir, "sd-brand.css"));
+});
+app.get("/sd-splash.js", (_req, res) => {
+  noStore(res);
+  res.type("application/javascript").sendFile(path.join(publicDir, "sd-splash.js"));
+});
 try {
   require("./outlook-addin").mountOutlookAddin(app, publicDir);
 } catch (e) {
