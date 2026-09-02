@@ -217,6 +217,15 @@ try {
         }
         state = { ...emptyState(), ...fromSql, dropdowns };
         console.log("[db] opened SQLite", sqlite.sqlitePath(), "enquiries", state.enquiries.length);
+      } else if (fromSql && (Object.keys(fromSql.dropdowns || {}).length || (fromSql.schedule_rows || []).length)) {
+        const dropdowns = JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS));
+        if (fromSql.dropdowns && typeof fromSql.dropdowns === "object") {
+          for (const key of DROPDOWN_KEYS) {
+            if (Array.isArray(fromSql.dropdowns[key])) dropdowns[key] = fromSql.dropdowns[key];
+          }
+        }
+        state = { ...emptyState(), ...fromSql, dropdowns };
+        console.log("[db] opened SQLite", sqlite.sqlitePath(), "dropdowns");
       } else {
         console.log("[db] new file", dbPath);
       }

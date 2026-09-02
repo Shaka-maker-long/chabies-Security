@@ -4,14 +4,25 @@ Shop-floor + office app for Studio Delta (South Africa).
 
 ## Database: SQLite on the Railway volume (not Google Sheets, not Postgres)
 
-The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume. Google Sheets is **not** read or written while the app runs. The old JSON files stay as a backup copy. First boot copies Users, ORDERS, and enquiries from those files into SQLite so the shop is not empty.
+The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume. Every page’s data is in SQL tables. Google Sheets is **not** read or written while the app runs. The old JSON files stay as a backup copy. First boot copies the existing files into SQLite so the shop is not empty.
+
+| Page | SQLite tables |
+| --- | --- |
+| Users / login | `users`, `sessions` |
+| Orders / debtors | `orders`, `payments`, `sheet_rows` (ORDERS tab) |
+| Enquiries / Tasks | `enquiries` |
+| Dropdowns | `dropdowns` (order lists and `enquiry:` lists) |
+| Office schedule | `office_schedule_rows`, `office_schedule_cells` |
+| Floor / Production / Workers / Metrics / QC / Activity | `sheet_rows` for `Production_Log`, `Overview`, `Idle_Alerts`, `Rates` |
+| Steel / backboards | `sheet_rows` for `Steel_Profiles`, `Steel_Usage`, `Backboards`, `Backboard_Usage` |
+| Worker schedule / task times | `sheet_rows` for `Schedule`, `Task_Durations` |
 
 | File | What it holds |
 | --- | --- |
-| `DATA_DIR/studio-delta.db` | SQL tables: `users`, `orders`, `enquiries`, plus workbook/office backups |
-| `DATA_DIR/floor-workbook.json` | Backup of Users, ORDERS, production logs, steel, backboards, schedule |
-| `DATA_DIR/studio-delta.json` | Backup of enquiries and office extras |
-| `DATA_DIR/office-sessions.json` | Office login sessions |
+| `DATA_DIR/studio-delta.db` | All page tables above, plus JSON blobs as a second copy |
+| `DATA_DIR/floor-workbook.json` | Backup of every workbook tab |
+| `DATA_DIR/studio-delta.json` | Backup of enquiries, dropdowns, payments, office schedule |
+| `DATA_DIR/office-sessions.json` | Backup of office login sessions |
 | `DATA_DIR/enquiry-quotes/` | Quote PDFs |
 | `DATA_DIR/enquiry-files/` | Cost sheets, follow-up screenshots, POP, drawings, Outlook emails |
 

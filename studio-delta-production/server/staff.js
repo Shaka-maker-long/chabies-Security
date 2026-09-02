@@ -15,23 +15,33 @@ function sessionsPath() {
   return path.join(dataDir(), "office-sessions.json");
 }
 
+function applySessionMap(raw) {
+  const now = Date.now();
+  Object.keys(raw || {}).forEach((token) => {
+    const row = raw[token];
+    if (!row || !row.name) return;
+    if (row.savedAt && now - Number(row.savedAt) > SESSION_MAX_AGE_MS) return;
+    sessions.set(token, {
+      name: row.name,
+      access: row.access,
+      isAdmin: !!row.isAdmin,
+      canSeeOffice: !!row.canSeeOffice,
+      canSeeDebtors: !!row.canSeeDebtors,
+      tasks: Array.isArray(row.tasks) ? row.tasks : []
+    });
+  });
+}
+
 function loadSessions() {
   try {
     const raw = JSON.parse(fs.readFileSync(sessionsPath(), "utf8"));
-    const now = Date.now();
-    Object.keys(raw || {}).forEach((token) => {
-      const row = raw[token];
-      if (!row || !row.name) return;
-      if (row.savedAt && now - Number(row.savedAt) > SESSION_MAX_AGE_MS) return;
-      sessions.set(token, {
-        name: row.name,
-        access: row.access,
-        isAdmin: !!row.isAdmin,
-        canSeeOffice: !!row.canSeeOffice,
-        canSeeDebtors: !!row.canSeeDebtors,
-        tasks: Array.isArray(row.tasks) ? row.tasks : []
-      });
-    });
+    applySessionMap(raw);
+    try { require("./sqlite-store").saveSessions(sessions); } catch (e) {}
+    return;
+  } catch (e) {}
+  try {
+    const fromSql = require("./sqlite-store").loadSessions();
+    if (fromSql) applySessionMap(fromSql);
   } catch (e) {}
 }
 
@@ -43,6 +53,7 @@ function persistSessions() {
       out[token] = { ...safe, savedAt: now };
     });
     fs.writeFileSync(sessionsPath(), JSON.stringify(out));
+    try { require("./sqlite-store").saveSessions(out); } catch (e) {}
   } catch (e) {
     console.warn("[staff] could not persist office sessions:", e.message);
   }
