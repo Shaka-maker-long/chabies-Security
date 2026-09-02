@@ -17,7 +17,7 @@ const store = require("./workbook-store");
 
 assert.strictEqual(store.dataDir(), dir);
 assert.strictEqual(store.storageInfo().usingEphemeralDisk, false);
-assert.strictEqual(store.storageInfo().database.indexOf("JSON files") !== -1, true);
+assert.ok(/SQLite|JSON files/.test(store.storageInfo().database));
 
 process.env.RAILWAY_ENVIRONMENT = "production";
 assert.strictEqual(store.storageInfo().onRailway, true);

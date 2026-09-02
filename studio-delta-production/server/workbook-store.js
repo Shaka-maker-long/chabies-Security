@@ -53,7 +53,7 @@ function storageInfo() {
   }
   const bookFile = workbookPath();
   return {
-    database: "JSON files on disk (not Google Sheets, not Postgres)",
+    database: "SQLite on the Railway volume (not Google Sheets, not Postgres)",
     dataDir: dir,
     volumeMount: volume || null,
     dataDirEnv: dataDirEnv || null,
@@ -83,6 +83,9 @@ function writeBookFile(target) {
   const tmp = file + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(target.toJSON()));
   fs.renameSync(tmp, file);
+  try { require("./sqlite-store").saveWorkbook(target); } catch (e) {
+    console.error("[workbook] sqlite save failed", e && e.message ? e.message : e);
+  }
 }
 
 function attachPersist(target) {
@@ -118,11 +121,23 @@ function initWorkbook() {
       book.loadFromJSON(data);
       seedMissingTabs(book);
       console.log("[workbook] loaded", file);
+      try { require("./sqlite-store").saveWorkbook(book); } catch (e) {}
       return book;
     } catch (e) {
       console.error("[workbook] could not read", file, e && e.message ? e.message : e);
     }
   }
+  try {
+    const data = require("./sqlite-store").loadWorkbookJson();
+    if (data) {
+      book = attachPersist(new Spreadsheet(null, "railway-local"));
+      book.loadFromJSON(data);
+      seedMissingTabs(book);
+      console.log("[workbook] loaded SQLite");
+      writeBookFile(book);
+      return book;
+    }
+  } catch (e) {}
   book = createEmptyBook();
   console.log("[workbook] new", file);
   return book;

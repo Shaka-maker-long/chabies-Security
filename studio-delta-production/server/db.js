@@ -205,14 +205,37 @@ try {
   if (e && e.code !== "ENOENT") {
     console.error("[db] could not read", dbPath, e && e.message ? e.message : e);
   } else {
-    console.log("[db] new file", dbPath);
+    try {
+      const sqlite = require("./sqlite-store");
+      const fromSql = sqlite.loadOffice();
+      if (fromSql && (fromSql.enquiries || []).length) {
+        const dropdowns = JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS));
+        if (fromSql.dropdowns && typeof fromSql.dropdowns === "object") {
+          for (const key of DROPDOWN_KEYS) {
+            if (Array.isArray(fromSql.dropdowns[key])) dropdowns[key] = fromSql.dropdowns[key];
+          }
+        }
+        state = { ...emptyState(), ...fromSql, dropdowns };
+        console.log("[db] opened SQLite", sqlite.sqlitePath(), "enquiries", state.enquiries.length);
+      } else {
+        console.log("[db] new file", dbPath);
+      }
+    } catch (err) {
+      console.log("[db] new file", dbPath);
+    }
   }
 }
+try {
+  require("./sqlite-store").saveOffice(state);
+} catch (e) {}
 
 function save() {
   const tmp = dbPath + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify(state));
   fs.renameSync(tmp, dbPath);
+  try { require("./sqlite-store").saveOffice(state); } catch (e) {
+    console.error("[db] sqlite office save failed", e && e.message ? e.message : e);
+  }
 }
 
 function persistenceInfo() {
@@ -220,8 +243,11 @@ function persistenceInfo() {
   const info = storageInfo();
   const preferred = process.env.OFFICE_DB_PATH || path.join(dataDir(), "studio-delta.json");
   const fellBack = dbPath !== preferred;
+  let sqlite = {};
+  try { sqlite = require("./sqlite-store").info(); } catch (e) { sqlite = {}; }
   return {
     ...info,
+    ...sqlite,
     officeDb: dbPath,
     officeDbExists: fs.existsSync(dbPath),
     enquiryCount: (state.enquiries || []).length,

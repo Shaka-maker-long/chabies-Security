@@ -22,7 +22,7 @@ function health(_req, res) {
     ok: true,
     tz: process.env.TZ,
     db: persist.usingEphemeralDisk ? "ephemeral" : "railway",
-    database: persist.database || "JSON files on disk (not Google Sheets, not Postgres)",
+    database: persist.database || "SQLite on the Railway volume (not Google Sheets, not Postgres)",
     dataDir: persist.dataDir || null,
     volumeMount: persist.volumeMount || null,
     usingEphemeralDisk: !!persist.usingEphemeralDisk,
