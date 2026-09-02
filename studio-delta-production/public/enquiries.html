@@ -23,10 +23,9 @@
     #grid th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
     #grid th.has-filter::after { content:"▾"; float:right; color:#98a2b3; font-size:10px; padding-left:6px; }
     .empty { padding:28px 16px; color:var(--muted); font-size:13px; }
-    #grid td input, #grid td textarea, #grid td select { width:100%; min-width:100%; border:0; font:inherit; background:transparent; padding:0; }
-    #grid td input[readonly] { color:#475467; background:#f8fafc; }
-    #grid td textarea { min-height:42px; white-space:pre-wrap; }
-    #grid tr:focus-within { outline:2px solid #98a2b3; outline-offset:-2px; }
+    .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; }
+    #grid td.wrap-text .cell-text { white-space:pre-wrap; overflow:visible; text-overflow:unset; }
+    .edit-btn { padding:4px 10px; font-size:12px; }
     .freeze { position:sticky; z-index:3; box-shadow:1px 0 0 var(--line); }
     th.freeze { z-index:6; background:var(--head); }
     td.freeze { background:#fff; }
@@ -73,12 +72,11 @@
 <body>
   <header>
     <h1>Enquiries</h1>
-    <p class="msg" style="margin:0;max-width:520px">New enquiry opens a form. Custom needs Dimensions, Colour, or Other. New Design needs a full description. Status updates from <a href="/tasks">My tasks</a>.</p>
+    <p class="msg" style="margin:0;max-width:560px">The sheet is view-only. Use <b>New enquiry</b> or a row’s <b>Edit</b> button. Status still opens files and costing — not a cell you type in.</p>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search enquiries">
       <button class="ghost" onclick="openCapture()">New enquiry</button>
-      <button onclick="saveAll()">Save</button>
     </div>
   </header>
   <div class="wrap">
@@ -165,7 +163,7 @@
         </div>
       </header>
       <div class="body stack-form">
-        <p class="hint">Fill this form instead of scrolling the wide sheet. Products can be added here; Custom and New Design details stay in this window.</p>
+        <p class="hint" id="captureHint">Fill this form instead of typing on the sheet. Products can be added here; Custom and New Design details stay in this window.</p>
         <div class="stack-grid">
           <label>Enquiry no
             <input id="cap_enquiry_no" readonly>
@@ -236,6 +234,7 @@
   <script src="/enquiry-process.js?v=files-fit"></script>
   <script>
     const HEADERS = [
+      ["_edit", "", 76, true],
       ["enquiry_no", "ENQUIRY NO", 108, true],
       ["date_enquired", "DATE ENQUIRED", 128, true],
       ["month_enquired", "MONTH ENQUIRED", 128, true],
@@ -387,7 +386,21 @@
       return h + "</select>";
     }
     function searchBlob(row) {
-      return HEADERS.map(([k]) => row[k] || "").join(" ") + " " + namedLines(row.products).map((l) => l.product + " " + l.category).join(" ");
+      return HEADERS.map(([k]) => k === "_edit" ? "" : (row[k] || "")).join(" ") + " " + namedLines(row.products).map((l) => l.product + " " + l.category).join(" ");
+    }
+    function displayValue(row, k) {
+      if (k === "product") {
+        const label = productLabel(row);
+        return label === "Add product" ? "" : label;
+      }
+      if (k === "category") return categoryLabel(row);
+      if (k === "request") {
+        if (row.enquiry_type === "Custom" || row.enquiry_type === "New Design") {
+          return row.spec_summary || (row.enquiry_type === "Custom" ? "Dimensions, Colour, or Other" : "Full description");
+        }
+        return row[k] || "";
+      }
+      return row[k] == null ? "" : row[k];
     }
     function render() {
       layoutFreeze();
@@ -395,7 +408,7 @@
       const table = document.getElementById("grid");
       let html = "<thead><tr>";
       HEADERS.forEach(([k, label, , freeze], i) => {
-        const filter = DROP_FIELDS[k] || k === "product" || k === "category" ? " has-filter" : "";
+        const filter = (DROP_FIELDS[k] || k === "product" || k === "category") ? " has-filter" : "";
         html += "<th class=\"" + colClass(k, freeze) + filter + "\" style=\"" + colStyle(k, colWidths[i], freeze) + "\">" + label + "</th>";
       });
       html += "</tr></thead><tbody>";
@@ -408,34 +421,19 @@
           const width = colWidths[c];
           const cls = colClass(k, freeze);
           const style = colStyle(k, width, freeze);
-          if (k === "product") {
-            const extra = namedLines(ensureLines(row)).length > 1 ? " <span>" + namedLines(row.products).length + " products</span>" : "";
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-products=\"" + i + "\">" + esc(productLabel(row)) + extra + "</button></td>";
-          } else if (k === "category") {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-products=\"" + i + "\">" + esc(categoryLabel(row) || "Add product") + "</button></td>";
-          } else if (k === "request") {
-            const type = row.enquiry_type;
-            if (type === "Custom" || type === "New Design") {
-              const label = row.spec_summary || (type === "Custom" ? "Add Dimensions, Colour, or Other" : "Add full description");
-              html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-spec=\"" + i + "\">" + esc(label) + "</button></td>";
-            } else {
-              html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
-            }
-          } else if (k === "comment") {
-            html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
-          } else if (k === "status") {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-process=\"" + i + "\">" + esc(row[k] || "New") + (row.deliverable_count ? " · " + row.deliverable_count + " file" + (row.deliverable_count === 1 ? "" : "s") : "") + " · update</button></td>";
-          } else if (DROP_FIELDS[k]) {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\">" + selectHtml(k, row[k]) + "</td>";
-          } else if (DATE_FIELDS[k]) {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input type=\"date\" data-k=\"" + k + "\" value=\"" + escAttr(dmyToIso(row[k])) + "\"></td>";
-          } else if (k === "date_quoted") {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k] || "") + "\" readonly>" + (row.has_quote_pdf ? " PDF" : "") + "</td>";
-          } else if (READONLY_FIELDS[k]) {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\" readonly></td>";
-          } else {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\"></td>";
+          if (k === "_edit") {
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"ghost edit-btn\" data-edit-enquiry=\"" + i + "\">Edit</button></td>";
+            return;
           }
+          if (k === "status") {
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><button type=\"button\" class=\"cell-btn\" data-open-process=\"" + i + "\">" + esc(row[k] || "New") + (row.deliverable_count ? " · " + row.deliverable_count + " file" + (row.deliverable_count === 1 ? "" : "s") : "") + " · update</button></td>";
+            return;
+          }
+          const extra = k === "product" && namedLines(ensureLines(row)).length > 1
+            ? " <span>" + namedLines(row.products).length + " products</span>"
+            : (k === "date_quoted" && row.has_quote_pdf ? " PDF" : "");
+          const wrap = (k === "request" || k === "comment") ? " wrap-text" : "";
+          html += "<td class=\"" + cls + wrap + "\" style=\"" + style + "\"><span class=\"cell-text\">" + esc(displayValue(row, k)) + extra + "</span></td>";
         });
         html += "</tr>";
       });
@@ -448,6 +446,11 @@
       html += "</tbody>";
       table.innerHTML = html;
       table.onclick = async (e) => {
+        const editBtn = e.target.closest("[data-edit-enquiry]");
+        if (editBtn) {
+          openCapture(Number(editBtn.getAttribute("data-edit-enquiry")));
+          return;
+        }
         const processBtn = e.target.closest("[data-open-process]");
         if (processBtn) {
           const i = Number(processBtn.getAttribute("data-open-process"));
@@ -457,52 +460,11 @@
           const j = await r.json();
           if (!j.ok) {
             document.getElementById("status").textContent = j.error || "Save the enquiry first";
-            if (/Custom|New Design|Dimensions|Colour/i.test(j.error || "")) openSpecModal(i);
+            if (/Custom|New Design|Dimensions|Colour/i.test(j.error || "")) openCapture(i);
             return;
           }
           sdOpenEnquiryProcess((j.row && j.row.enquiry_no) || row.enquiry_no);
-          return;
         }
-        const specBtn = e.target.closest("[data-open-spec]");
-        if (specBtn) {
-          openSpecModal(Number(specBtn.getAttribute("data-open-spec")));
-          return;
-        }
-        const btn = e.target.closest("[data-open-products]");
-        if (!btn) return;
-        const i = Number(btn.getAttribute("data-open-products"));
-        openModal(i, "products");
-      };
-      table.oninput = table.onchange = (e) => {
-        const tr = e.target.closest("tr");
-        if (!tr) return;
-        const i = Number(tr.getAttribute("data-i"));
-        const k = e.target.getAttribute("data-k");
-        if (!k) return;
-        if (DATE_FIELDS[k]) {
-          const iso = e.target.value;
-          rows[i][k] = iso ? isoToDmy(iso) : "";
-          if (k === "date_enquired") {
-            rows[i].month_enquired = monthFromDmy(rows[i].date_enquired);
-            const monthInput = tr.querySelector('input[data-k="month_enquired"]');
-            if (monthInput) monthInput.value = rows[i].month_enquired;
-          }
-          return;
-        }
-        if (k === "enquiry_type") {
-          const prev = rows[i].enquiry_type;
-          rows[i].enquiry_type = e.target.value;
-          if (e.target.value === "Custom" || e.target.value === "New Design") {
-            openSpecModal(i, prev);
-          } else {
-            rows[i].custom_specs = [];
-            rows[i].design_description = "";
-            rows[i].spec_summary = "";
-            render();
-          }
-          return;
-        }
-        rows[i][k] = e.target.value;
       };
     }
     function setQuoteVisible(on) {
@@ -795,7 +757,7 @@
       await load();
       document.getElementById("status").textContent = "Saved";
     }
-    let capture = { open: false, products: [], specs: [] };
+    let capture = { open: false, i: -1, products: [], specs: [] };
     function fillCaptureSelect(id, key, selected) {
       const el = document.getElementById(id);
       const current = String(selected || "");
@@ -899,24 +861,48 @@
       document.getElementById("captureDesignBlock").style.display = type === "New Design" ? "" : "none";
       if (type === "Custom") renderCaptureSpecs();
     }
-    function openCapture() {
-      bumpNext();
+    function openCapture(index) {
+      const i = typeof index === "number" && index >= 0 ? index : -1;
+      const existing = i >= 0 ? rows[i] : null;
       capture.open = true;
-      capture.products = [emptyLine()];
-      capture.specs = [emptySpec()];
-      document.getElementById("captureTitle").textContent = "New enquiry " + nextNo;
-      document.getElementById("cap_enquiry_no").value = nextNo;
-      document.getElementById("cap_date_enquired").value = dmyToIso(todayDmy());
-      document.getElementById("cap_client_name").value = "";
-      document.getElementById("cap_client_email").value = "";
-      document.getElementById("cap_client_number").value = "";
-      document.getElementById("cap_comment").value = "";
-      document.getElementById("captureDesignDesc").value = "";
+      capture.i = i;
+      if (existing) {
+        capture.products = ensureLines(existing).map((l) => Object.assign(emptyLine(), l, { value_excl_vat: "" }));
+        capture.specs = Array.isArray(existing.custom_specs) && existing.custom_specs.length
+          ? existing.custom_specs.map((s) => Object.assign(emptySpec(), s))
+          : [emptySpec()];
+        document.getElementById("captureTitle").textContent = "Edit enquiry " + (existing.enquiry_no || "");
+        document.getElementById("captureHint").textContent = "Change only what you need, then save. Quote files and costing stay on STATUS · update.";
+        document.getElementById("cap_enquiry_no").value = existing.enquiry_no || "";
+        document.getElementById("cap_date_enquired").value = dmyToIso(existing.date_enquired) || dmyToIso(todayDmy());
+        document.getElementById("cap_client_name").value = existing.client_name || "";
+        document.getElementById("cap_client_email").value = existing.client_email || "";
+        document.getElementById("cap_client_number").value = existing.client_number || "";
+        document.getElementById("cap_comment").value = existing.comment || "";
+        document.getElementById("captureDesignDesc").value = existing.design_description || existing.request || "";
+        fillCaptureSelect("cap_enquiry_source", "enquiry_source", existing.enquiry_source || "");
+        fillCaptureSelect("cap_enquiry_type", "enquiry_type", existing.enquiry_type || "");
+        fillCaptureSelect("cap_source", "source", existing.source || "");
+        fillCaptureSelect("cap_province", "province", existing.province || "");
+      } else {
+        bumpNext();
+        capture.products = [emptyLine()];
+        capture.specs = [emptySpec()];
+        document.getElementById("captureTitle").textContent = "New enquiry " + nextNo;
+        document.getElementById("captureHint").textContent = "Fill this form instead of typing on the sheet. Products can be added here; Custom and New Design details stay in this window.";
+        document.getElementById("cap_enquiry_no").value = nextNo;
+        document.getElementById("cap_date_enquired").value = dmyToIso(todayDmy());
+        document.getElementById("cap_client_name").value = "";
+        document.getElementById("cap_client_email").value = "";
+        document.getElementById("cap_client_number").value = "";
+        document.getElementById("cap_comment").value = "";
+        document.getElementById("captureDesignDesc").value = "";
+        fillCaptureSelect("cap_enquiry_source", "enquiry_source", "");
+        fillCaptureSelect("cap_enquiry_type", "enquiry_type", "");
+        fillCaptureSelect("cap_source", "source", "");
+        fillCaptureSelect("cap_province", "province", "");
+      }
       document.getElementById("captureErr").textContent = "";
-      fillCaptureSelect("cap_enquiry_source", "enquiry_source", "");
-      fillCaptureSelect("cap_enquiry_type", "enquiry_type", "");
-      fillCaptureSelect("cap_source", "source", "");
-      fillCaptureSelect("cap_province", "province", "");
       renderCaptureLines();
       toggleCaptureType();
       document.getElementById("captureMask").classList.add("open");
@@ -925,6 +911,7 @@
     function closeCapture() {
       document.getElementById("captureMask").classList.remove("open");
       capture.open = false;
+      capture.i = -1;
     }
     window.addCaptureLine = addCaptureLine;
     window.openCapture = openCapture;
@@ -938,26 +925,34 @@
       const dateIso = document.getElementById("cap_date_enquired").value;
       if (!dateIso) { err.textContent = "Choose the date enquired."; return; }
       const type = document.getElementById("cap_enquiry_type").value;
-      const payload = {
-        enquiry_no: document.getElementById("cap_enquiry_no").value,
-        date_enquired: isoToDmy(dateIso),
-        enquiry_source: document.getElementById("cap_enquiry_source").value,
-        enquiry_type: type,
-        client_name: client,
-        source: document.getElementById("cap_source").value,
-        client_email: document.getElementById("cap_client_email").value,
-        client_number: document.getElementById("cap_client_number").value,
-        province: document.getElementById("cap_province").value,
-        comment: document.getElementById("cap_comment").value,
-        status: "New",
-        products: capture.products.map((l) => ({
-          product: String(l.product || "").trim(),
-          category: String(l.category || "").trim(),
-          value_excl_vat: ""
-        })).filter((l) => l.product || l.category),
-        custom_specs: [],
-        design_description: ""
-      };
+      const existing = capture.i >= 0 ? rows[capture.i] : null;
+      const payload = existing ? Object.assign({}, existing) : {};
+      payload.enquiry_no = existing ? existing.enquiry_no : document.getElementById("cap_enquiry_no").value;
+      payload.date_enquired = isoToDmy(dateIso);
+      payload.enquiry_source = document.getElementById("cap_enquiry_source").value;
+      payload.enquiry_type = type;
+      payload.client_name = client;
+      payload.source = document.getElementById("cap_source").value;
+      payload.client_email = document.getElementById("cap_client_email").value;
+      payload.client_number = document.getElementById("cap_client_number").value;
+      payload.province = document.getElementById("cap_province").value;
+      payload.comment = document.getElementById("cap_comment").value;
+      if (!existing) payload.status = "New";
+      payload.products = capture.products.map((l) => {
+        const product = String(l.product || "").trim();
+        const category = String(l.category || "").trim();
+        const prev = existing && (existing.products || []).find((p) => String(p.product || "").trim() === product && String(p.category || "").trim() === category)
+          || existing && (existing.products || []).find((p) => String(p.product || "").trim() === product);
+        return {
+          product,
+          category,
+          value_excl_vat: prev && prev.value_excl_vat ? prev.value_excl_vat : ""
+        };
+      }).filter((l) => l.product || l.category);
+      payload.custom_specs = [];
+      payload.design_description = existing ? (existing.design_description || "") : "";
+      if (!existing) payload.design_description = "";
+      delete payload.quote_pdf_base64;
       if (type === "Custom") {
         const specs = capture.specs.map((s) => ({
           kind: String(s.kind || "").trim(),
@@ -970,23 +965,25 @@
           if (!spec.detail) { err.textContent = "Write the details for each custom change."; return; }
         }
         payload.custom_specs = specs;
+        payload.design_description = "";
       } else if (type === "New Design") {
         const desc = String(document.getElementById("captureDesignDesc").value || "").trim();
         if (desc.length < 20) { err.textContent = "Write a full description of the new design."; return; }
         payload.design_description = desc;
         payload.request = desc;
+        payload.custom_specs = [];
+      } else {
+        payload.custom_specs = [];
+        payload.design_description = "";
       }
       const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(payload) });
       const j = await r.json();
       if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
       closeCapture();
       await load();
-      document.getElementById("status").textContent = "Saved " + ((j.row && j.row.enquiry_no) || payload.enquiry_no);
+      document.getElementById("status").textContent = (existing ? "Updated " : "Saved ") + ((j.row && j.row.enquiry_no) || payload.enquiry_no);
     }
     window.saveCapture = saveCapture;
-    function addRow() {
-      openCapture();
-    }
     async function load() {
       const r = await sdOfficeFetch("/api/office/enquiries");
       const j = await r.json();
@@ -1004,26 +1001,6 @@
       nextNo = j.nextEnquiryNo || "#1996";
       document.getElementById("status").textContent = rows.length + " enquiries · next " + nextNo;
       render();
-    }
-    async function saveAll() {
-      document.getElementById("status").textContent = "Saving…";
-      for (const row of rows) {
-        if (!String(row.enquiry_no || "").trim()) continue;
-        const payload = Object.assign({}, row);
-        delete payload.quote_pdf_base64;
-        const r = await sdOfficeFetch("/api/office/enquiries", {
-          method: "PUT",
-          body: JSON.stringify(payload)
-        });
-        const j = await r.json();
-        if (!j.ok) {
-          document.getElementById("status").textContent = j.error;
-          if (/Custom|New Design|Dimensions|Colour/i.test(j.error || "")) openSpecModal(rows.indexOf(row));
-          return;
-        }
-      }
-      await load();
-      document.getElementById("status").textContent = "Saved";
     }
     window.sdOnEnquiryProcessClose = function () { load(); };
     document.getElementById("q").oninput = render;

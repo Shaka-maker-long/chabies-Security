@@ -51,6 +51,10 @@ assert.ok(enquiriesHtml.indexOf('id="captureMask"') !== -1, "New enquiry must op
 assert.ok(enquiriesHtml.indexOf("#grid {") !== -1 || enquiriesHtml.indexOf("#grid{") !== -1);
 assert.ok(enquiriesHtml.indexOf("table { border-collapse:separate; border-spacing:0; min-width:3200px") === -1, "enquiry grid min-width must not apply to all tables");
 assert.ok(enquiriesHtml.indexOf("openCapture") !== -1);
+assert.ok(enquiriesHtml.indexOf("data-edit-enquiry") !== -1);
+assert.ok(enquiriesHtml.indexOf("Edit enquiry") !== -1);
+assert.ok(enquiriesHtml.indexOf("onclick=\"saveAll()\"") === -1, "enquiries sheet must not save by editing cells");
+assert.ok(enquiriesHtml.indexOf("table.oninput") === -1, "grid must not edit cells in place");
 
 const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
 assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");
