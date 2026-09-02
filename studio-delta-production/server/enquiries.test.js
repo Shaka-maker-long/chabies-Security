@@ -204,6 +204,14 @@ assert.strictEqual(kept.correspondence.mails.length, 1);
 assert.ok(kept.correspondence.mails[0].outlook_url.indexOf("ms-outlook://") === 0);
 assert.strictEqual(kept.correspondence.mails[0].order_no, "S260025");
 
+const rawQuote = db.getEnquiryRaw("#1996");
+rawQuote.quote_no = "";
+rawQuote.date_quoted = "";
+rawQuote.quotes = [{ n: 1, quote_no: "SOQ9", date_quoted: "", uploaded_at: "2026-09-02T10:00:00.000Z" }];
+const shownQuote = db.getEnquiry("#1996");
+assert.strictEqual(shownQuote.quote_no, "SOQ9");
+assert.strictEqual(shownQuote.date_quoted, "02/09/2026");
+
 const saved = JSON.parse(fs.readFileSync(db.dbPath, "utf8"));
 assert.strictEqual(saved.enquiries.length, 5);
 
