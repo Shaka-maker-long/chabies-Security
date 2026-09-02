@@ -150,6 +150,12 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   assert.strictEqual(pack.database, "railway");
   assert.ok(pack.workbook && pack.workbook.sheets);
 
+  const sqliteDl = await fetch(base + "/api/office/backup.db", { headers: { "x-sd-token": boss.token } });
+  assert.strictEqual(sqliteDl.status, 200);
+  const sqliteBuf = Buffer.from(await sqliteDl.arrayBuffer());
+  assert.ok(sqliteBuf.length > 100);
+  assert.strictEqual(sqliteBuf.slice(0, 6).toString("utf8"), "SQLite");
+
   const dbInfo = await fetch(base + "/api/office/database", { headers: { "x-sd-token": boss.token } });
   const info = await dbInfo.json();
   assert.strictEqual(info.live, "railway");
