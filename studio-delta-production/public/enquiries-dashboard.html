@@ -56,6 +56,16 @@
     .drill-item:hover { border-color:#1d2939; }
     .drill-item b { display:block; font-size:14px; }
     .drill-item span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+    .prod-search { width:100%; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; font-size:12px; margin:8px 0; }
+    .prod-list { max-height:180px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+    .prod-list button { display:flex; justify-content:space-between; gap:8px; width:100%; border:0; border-bottom:1px solid var(--line); background:#fff; padding:8px 10px; cursor:pointer; font:inherit; font-size:12px; text-align:left; }
+    .prod-list button:last-child { border-bottom:0; }
+    .prod-list button:hover { background:#f2f4f7; }
+    .wom-months { display:flex; flex-wrap:wrap; gap:8px 12px; margin:0 0 10px; font-size:12px; }
+    .wom-months label { display:flex; align-items:center; gap:6px; font-weight:600; color:#344054; }
+    .split-pie { max-width:360px; margin:0 auto 12px; }
+    .card-head { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; }
+    .card-head h2 { margin:0; }
     @media (max-width: 900px) {
       .grid { grid-template-columns:1fr; }
       .span2 { grid-column:auto; }
@@ -107,6 +117,18 @@
           <p class="hint" id="trendHint">Click a dot to see the enquiries or quotes in that week or month. Switch to revenue for quoted vs ordered excl VAT.</p>
           <canvas id="trend"></canvas>
         </section>
+        <section class="card span2">
+          <h2>Week of month</h2>
+          <p class="hint">Tick two or more months to overlay week 1–5. Use this to see whether enquiries, quotes, or money land in the first week or later in the month. Click a dot for that week’s list.</p>
+          <div id="womMonths" class="wom-months"></div>
+          <div class="seg" id="womMetric" role="group" aria-label="Week-of-month metric">
+            <button type="button" data-v="enquiries" class="on">Enquiries</button>
+            <button type="button" data-v="quotes">Quotes</button>
+            <button type="button" data-v="quoteRevenue">Quoted R</button>
+            <button type="button" data-v="orderedRevenue">Ordered R</button>
+          </div>
+          <canvas id="wom"></canvas>
+        </section>
         <section class="card">
           <h2>Funnel</h2>
           <p class="hint">Opened in this window, and how far they got. Click a bar to list them.</p>
@@ -142,6 +164,7 @@
         </section>
         <section class="card">
           <h2>Enquiry type</h2>
+          <p class="hint">Click Custom or New Design for a split pie (Dimensions / Colour / Other, or each description). Other types open the list.</p>
           <canvas id="types"></canvas>
         </section>
         <section class="card">
@@ -160,9 +183,9 @@
           <canvas id="money"></canvas>
         </section>
         <section class="card">
-          <h2>Outlook</h2>
-          <p class="hint">Opened enquiries with a saved email vs without.</p>
-          <canvas id="outlook"></canvas>
+          <h2>Quote value by type</h2>
+          <p class="hint">Quoted excl VAT by enquiry type. Custom and New Design also split the same way as the count pie.</p>
+          <canvas id="typeValue"></canvas>
         </section>
         <section class="card">
           <h2>CATERGORY</h2>
@@ -170,11 +193,20 @@
         </section>
         <section class="card">
           <h2>Product</h2>
+          <p class="hint">Only the top products are charted so the page stays readable. Search the full list for the rest.</p>
           <canvas id="prod"></canvas>
+          <input class="prod-search" id="prodSearch" placeholder="Search products" autocomplete="off">
+          <div class="prod-list" id="prodList"></div>
         </section>
         <section class="card span2">
-          <h2>Province</h2>
-          <p class="hint">Volume opened in this window, and how many of those ordered.</p>
+          <div class="card-head">
+            <h2>Province</h2>
+            <div class="seg" id="provMetric" role="group" aria-label="Province metric">
+              <button type="button" data-v="count" class="on">Count</button>
+              <button type="button" data-v="value">Quote value</button>
+            </div>
+          </div>
+          <p class="hint" id="provHint">Volume opened in this window, and how many of those ordered.</p>
           <canvas id="prov"></canvas>
         </section>
       </div>
@@ -203,6 +235,9 @@
     let grain = "month";
     let range = "6m";
     let month = "";
+    let womMetric = "enquiries";
+    let provMetric = "count";
+    let womPicked = null;
     const PAL = ["#1d2939", "#027a48", "#3538cd", "#b54708", "#b42318", "#667085", "#6941c6", "#026aa2"];
     const FUNNEL_STAGES = ["captured", "costing", "quoted", "followed", "ordered"];
 
@@ -219,9 +254,12 @@
           set(b.dataset.v);
           root.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
           if (id === "metric") drawTrend();
+          else if (id === "womMetric") drawWom();
+          else if (id === "provMetric") drawProv();
           else {
             if (id === "range") {
               month = "";
+              womPicked = null;
               const sel = document.getElementById("month");
               if (sel) sel.value = "";
             }
@@ -233,8 +271,11 @@
     bindSeg("grain", () => grain, (v) => (grain = v));
     bindSeg("range", () => range, (v) => (range = v));
     bindSeg("metric", () => metric, (v) => (metric = v));
+    bindSeg("womMetric", () => womMetric, (v) => (womMetric = v));
+    bindSeg("provMetric", () => provMetric, (v) => (provMetric = v));
     document.getElementById("month").addEventListener("change", (e) => {
       month = e.target.value || "";
+      womPicked = null;
       load();
     });
 
@@ -305,6 +346,9 @@
         + (params.key ? "&key=" + encodeURIComponent(params.key) : "")
         + (params.stage ? "&stage=" + encodeURIComponent(params.stage) : "")
         + (params.value ? "&value=" + encodeURIComponent(params.value) : "")
+        + (params.type ? "&type=" + encodeURIComponent(params.type) : "")
+        + (params.week ? "&week=" + encodeURIComponent(params.week) : "")
+        + (params.series ? "&series=" + encodeURIComponent(params.series) : "")
         + (params.slice ? "&slice=" + encodeURIComponent(params.slice) : "");
       const mask = document.getElementById("drillMask");
       const list = document.getElementById("drillList");
@@ -347,6 +391,47 @@
       if (e.target.id === "drillMask") closeDrill();
     });
     window.sdOnEnquiryProcessClose = function () { /* keep the drill list open */ };
+
+    function clickType(label, useValue) {
+      if (label === "Custom" || label === "New Design") openTypeSplit(label, useValue);
+      else openDrill({ kind: "type", value: label });
+    }
+
+    function openTypeSplit(typeName, useValue) {
+      const splits = ((data && data.typeSplits) || {})[typeName] || [];
+      const mask = document.getElementById("drillMask");
+      const list = document.getElementById("drillList");
+      document.getElementById("drillTitle").textContent = typeName + (useValue ? " · quote value" : "");
+      document.getElementById("drillHint").textContent = splits.length
+        ? "Click a slice to list those enquiries, then a row for full details."
+        : "No split for this type in the window.";
+      mask.classList.add("open");
+      if (!splits.length) {
+        openDrill({ kind: "type", value: typeName });
+        return;
+      }
+      list.innerHTML = "<div class=\"split-pie\"><canvas id=\"splitPie\"></canvas></div><div id=\"splitList\"></div>";
+      kill("splitPie");
+      charts.splitPie = new Chart(document.getElementById("splitPie"), {
+        type: "doughnut",
+        data: {
+          labels: splits.map((s) => s.label),
+          datasets: [{
+            data: splits.map((s) => useValue ? s.quoteValue : s.count),
+            backgroundColor: PAL
+          }]
+        },
+        options: {
+          plugins: { legend: { position: "bottom" } },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const slice = splits[els[0].index];
+            if (!slice) return;
+            openDrill({ kind: "typeSubtype", type: typeName, value: slice.value || slice.label });
+          }
+        }
+      });
+    }
 
     function drawTrend() {
       if (!data) return;
@@ -392,6 +477,119 @@
           }
         }
       });
+    }
+
+    function drawWom() {
+      if (!data || !data.weekCompare) return;
+      const months = data.weekCompare.months || [];
+      const labels = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"];
+      const picked = months.filter((m) => (womPicked || []).indexOf(m.key) >= 0);
+      const moneyish = womMetric === "quoteRevenue" || womMetric === "orderedRevenue";
+      mk("wom", {
+        type: "line",
+        data: {
+          labels,
+          datasets: picked.map((m, i) => ({
+            label: m.label,
+            data: m[womMetric] || [0, 0, 0, 0, 0],
+            borderColor: PAL[i % PAL.length],
+            tension: 0.25,
+            fill: false,
+            pointRadius: 4,
+            pointHoverRadius: 8,
+            pointHitRadius: 16
+          }))
+        },
+        options: {
+          interaction: { mode: "nearest", intersect: true },
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: moneyish ? { callback: randTick } : { precision: 0 }
+            }
+          },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const el = els[0];
+            const m = picked[el.datasetIndex];
+            if (!m) return;
+            const series = womMetric === "quoteRevenue" ? "quotes" : womMetric === "orderedRevenue" ? "ordered" : womMetric;
+            openDrill({ kind: "wom", month: m.key, week: el.index + 1, series });
+          }
+        }
+      });
+    }
+
+    function fillWomMonths(months) {
+      const box = document.getElementById("womMonths");
+      const list = months || [];
+      if (!womPicked) {
+        const active = list.filter((m) => (m.enquiries || []).some((n) => n) || (m.quotes || []).some((n) => n));
+        womPicked = (active.length ? active : list).slice(-3).map((m) => m.key);
+      }
+      box.innerHTML = list.map((m) => {
+        const on = womPicked.indexOf(m.key) >= 0 ? " checked" : "";
+        return "<label><input type=\"checkbox\" value=\"" + m.key + "\"" + on + "> " + m.label + "</label>";
+      }).join("");
+      box.onchange = () => {
+        womPicked = Array.from(box.querySelectorAll("input:checked")).map((el) => el.value);
+        drawWom();
+      };
+    }
+
+    function drawProv() {
+      if (!data) return;
+      const value = provMetric === "value";
+      document.getElementById("provHint").textContent = value
+        ? "Quote value (excl VAT) of enquiries opened in this window, vs ordered value."
+        : "Volume opened in this window, and how many of those ordered.";
+      mk("prov", {
+        type: "bar",
+        data: {
+          labels: data.provinces.map((x) => x.label),
+          datasets: value
+            ? [
+                { label: "Quoted R", data: data.provinces.map((x) => x.quoteValue), backgroundColor: PAL[0] },
+                { label: "Ordered R", data: data.provinces.map((x) => x.orderedValue), backgroundColor: PAL[1] }
+              ]
+            : [
+                { label: "Opened", data: data.provinces.map((x) => x.opened), backgroundColor: PAL[0] },
+                { label: "Ordered", data: data.provinces.map((x) => x.ordered), backgroundColor: PAL[1] }
+              ]
+        },
+        options: {
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: value ? { callback: randTick } : { precision: 0 }
+            }
+          },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const el = els[0];
+            const label = data.provinces[el.index] && data.provinces[el.index].label;
+            openDrill({ kind: "province", value: label, slice: el.datasetIndex === 1 ? "ordered" : "" });
+          }
+        }
+      });
+    }
+
+    function renderProducts(q) {
+      const all = (data && data.products) || [];
+      const needle = String(q || "").toLowerCase();
+      const top = all.slice(0, 8);
+      bar("prod", top.map((x) => x.label), top.map((x) => x.count), PAL[4], true, (_i, label) => openDrill({ kind: "product", value: label }));
+      const filtered = needle ? all.filter((p) => p.label.toLowerCase().indexOf(needle) >= 0) : all;
+      const shown = filtered.slice(0, 40);
+      document.getElementById("prodList").innerHTML = shown.length
+        ? shown.map((p) => "<button type=\"button\" data-product=\"" + esc(p.label) + "\"><span>" + esc(p.label) + "</span><b>" + p.count + (p.quoteValue ? " · R " + Math.round(p.quoteValue).toLocaleString("en-ZA") : "") + "</b></button>").join("")
+        : "<p class=\"hint\" style=\"padding:8px\">No products match that search.</p>";
+      document.getElementById("prodList").onclick = (e) => {
+        const btn = e.target.closest("[data-product]");
+        if (btn) openDrill({ kind: "product", value: btn.getAttribute("data-product") });
+      };
     }
 
     function render(d) {
@@ -464,7 +662,8 @@
       });
 
       doughnut("source", d.sources.map((x) => x.label), d.sources.map((x) => x.count), (_i, label) => openDrill({ kind: "source", value: label }));
-      doughnut("types", d.types.map((x) => x.label), d.types.map((x) => x.count), (_i, label) => openDrill({ kind: "type", value: label }));
+      doughnut("types", d.types.map((x) => x.label), d.types.map((x) => x.count), (_i, label) => clickType(label, false));
+      doughnut("typeValue", d.types.map((x) => x.label), d.types.map((x) => x.quoteValue), (_i, label) => clickType(label, true));
       bar("stage", d.stageTime.map((x) => x.label), d.stageTime.map((x) => x.medianDays), PAL[6]);
       bar("work", d.workload.map((x) => x.name), d.workload.map((x) => x.count), PAL[0], false, (_i, label) => openDrill({ kind: "workload", value: label }));
       mk("money", {
@@ -478,29 +677,11 @@
           scales: { y: { beginAtZero: true, ticks: { callback: randTick } } }
         }, clickOpt((el) => openDrill({ kind: el.index === 0 ? "quotes" : "ordered" })))
       });
-      doughnut("outlook", d.outlook.map((x) => x.label), d.outlook.map((x) => x.count), (i) => openDrill({ kind: "outlook", value: i === 0 ? "with" : "without" }));
       bar("cat", d.categories.map((x) => x.label), d.categories.map((x) => x.count), PAL[3], false, (_i, label) => openDrill({ kind: "category", value: label }));
-      bar("prod", d.products.map((x) => x.label), d.products.map((x) => x.count), PAL[4], true, (_i, label) => openDrill({ kind: "product", value: label }));
-      mk("prov", {
-        type: "bar",
-        data: {
-          labels: d.provinces.map((x) => x.label),
-          datasets: [
-            { label: "Opened", data: d.provinces.map((x) => x.opened), backgroundColor: PAL[0] },
-            { label: "Ordered", data: d.provinces.map((x) => x.ordered), backgroundColor: PAL[1] }
-          ]
-        },
-        options: {
-          plugins: { legend: { position: "bottom" } },
-          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
-          onClick: (_evt, els) => {
-            if (!els || !els.length) return;
-            const el = els[0];
-            const label = d.provinces[el.index] && d.provinces[el.index].label;
-            openDrill({ kind: "province", value: label, slice: el.datasetIndex === 1 ? "ordered" : "" });
-          }
-        }
-      });
+      renderProducts(document.getElementById("prodSearch").value);
+      fillWomMonths(d.weekCompare && d.weekCompare.months);
+      drawWom();
+      drawProv();
     }
 
     async function load() {
@@ -527,6 +708,8 @@
         document.getElementById("err").textContent = "Could not load the dashboard. " + (e.message || e);
       }
     }
+
+    document.getElementById("prodSearch").addEventListener("input", (e) => renderProducts(e.target.value));
 
     sdRequireOffice("enquiries").then((p) => { if (p) load(); });
 

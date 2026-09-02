@@ -42,6 +42,10 @@ const rows = [
     product: "Air Chair",
     province: "Western Cape",
     quote_total_excl_vat: "4650.50",
+    custom_specs: [
+      { kind: "Dimensions", detail: "800 x 600" },
+      { kind: "Colour", detail: "black" }
+    ],
     events: [
       { kind: "created", at: daysAgo(20) },
       { kind: "complete_quote", at: daysAgo(12) }
@@ -120,6 +124,22 @@ const rows = [
     events: [{ kind: "created", at: "2026-06-15T08:00:00.000Z" }],
     tasks: [],
     correspondence: { mails: [] }
+  },
+  {
+    enquiry_no: "#2002",
+    status: "New",
+    created_at: daysAgo(6),
+    date_enquired: "27/08/2026",
+    enquiry_source: "Website",
+    enquiry_type: "New Design",
+    design_description: "Steel dining table with a live-edge oak top and arched black base.",
+    category: "Table",
+    product: "Custom table",
+    province: "Gauteng",
+    client_name: "Design Client",
+    events: [{ kind: "created", at: daysAgo(6) }],
+    tasks: [],
+    correspondence: { mails: [] }
   }
 ];
 
@@ -131,8 +151,8 @@ try {
   assert.strictEqual(month.grain, "month");
   assert.strictEqual(month.range, "6m");
   assert.strictEqual(month.tz, "Africa/Johannesburg");
-  assert.strictEqual(month.enquiryCount, 6);
-  assert.strictEqual(month.kpis.openNow, 4);
+  assert.strictEqual(month.enquiryCount, 7);
+  assert.strictEqual(month.kpis.openNow, 5);
   assert.strictEqual(month.kpis.orderedInPeriod, 1);
   assert.ok(month.kpis.quotedWaiting >= 1);
   assert.ok(month.kpis.overdueFollowUps >= 1, "quoted with no follow-up after 7 days is overdue");
@@ -141,12 +161,12 @@ try {
   assert.ok(month.series.every((s) => /^\d{4}-\d{2}$/.test(s.key)));
   const opened = month.series.reduce((n, s) => n + s.enquiries, 0);
   const quoted = month.series.reduce((n, s) => n + s.quotes, 0);
-  assert.strictEqual(opened, 6);
+  assert.strictEqual(opened, 7);
   assert.strictEqual(quoted, 2);
   assert.strictEqual(month.money.quotedExclVat, 16650.5);
   assert.strictEqual(month.money.orderedExclVat, 12000);
   const captured = month.funnel.find((x) => x.label === "Captured");
-  assert.strictEqual(captured.count, 6);
+  assert.strictEqual(captured.count, 7);
   const orderedFunnel = month.funnel.find((x) => x.label === "Ordered");
   assert.strictEqual(orderedFunnel.count, 1);
   assert.ok(month.pipeline.some((p) => p.status === "Costing" && p.count === 1));
@@ -159,7 +179,15 @@ try {
   assert.ok(month.types.some((s) => s.label === "Inexss"));
   assert.ok(month.categories.some((s) => s.label === "Mirror"));
   assert.ok(month.provinces.some((p) => p.label === "Gauteng" && p.opened >= 2 && p.ordered >= 1));
-  assert.ok(month.outlook.some((o) => o.label === "With Outlook email" && o.count === 1));
+  assert.ok(month.types.some((s) => s.label === "New Design"));
+  assert.ok(month.types.some((s) => s.label === "Custom" && s.quoteValue === 4650.5));
+  assert.ok(month.typeSplits.Custom.some((s) => s.label === "Dimensions"));
+  assert.ok(month.typeSplits.Custom.some((s) => s.label === "Colour"));
+  assert.ok(month.typeSplits["New Design"].some((s) => /Steel dining table/.test(s.value)));
+  assert.ok(month.weekCompare.weeks.length === 5);
+  assert.ok(month.weekCompare.months.some((m) => m.key === "2026-06" && m.enquiries[2] === 1));
+  assert.ok(month.provinces.some((p) => p.label === "Gauteng" && p.quoteValue >= 0));
+  assert.ok(month.products.some((p) => p.label === "Daphne Rectangular Mirror"));
   assert.ok(month.workload.some((w) => w.name === "Coster" && w.count >= 2));
   assert.ok(month.timeToOrder.buckets.some((b) => b.count === 1));
   assert.ok(month.stageTime.some((s) => s.n >= 1));
@@ -169,7 +197,7 @@ try {
   assert.ok(week.series.length > month.series.length);
   assert.ok(week.series.every((s) => /^\d{4}-W\d{2}$/.test(s.key)));
   assert.ok(week.series.every((s) => / W\d{2}$/.test(s.label)));
-  assert.strictEqual(week.series.reduce((n, s) => n + s.enquiries, 0), 6);
+  assert.strictEqual(week.series.reduce((n, s) => n + s.enquiries, 0), 7);
   assert.strictEqual(week.series.reduce((n, s) => n + s.quotes, 0), 2);
 
   const empty = dash.buildDashboard({ grain: "month", range: "year" });
@@ -180,7 +208,7 @@ try {
   assert.strictEqual(none.kpis.medianDaysToOrder, null);
   assert.ok(none.series.length > 0);
   db.listEnquiries = () => rows;
-  assert.ok(empty.enquiryCount === 6);
+  assert.ok(empty.enquiryCount === 7);
 
   const june = dash.buildDashboard({ grain: "month", month: "2026-06" });
   assert.strictEqual(june.month, "2026-06");
@@ -202,7 +230,12 @@ try {
 
   const drillEnq = dash.buildDrill({ grain: "month", range: "6m", kind: "enquiries", key: "2026-08" });
   assert.ok(drillEnq.rows.every((r) => r.enquiry_no !== "#2001"));
-  assert.ok(drillEnq.rows.length >= 3);
+  const drillCustom = dash.buildDrill({ grain: "month", range: "6m", kind: "typeSubtype", type: "Custom", value: "Dimensions" });
+  assert.ok(drillCustom.rows.some((r) => r.enquiry_no === "#1997"));
+  const drillDesign = dash.buildDrill({ grain: "month", range: "6m", kind: "typeSubtype", type: "New Design", value: "Steel dining table with a live-edge oak top and arched black base." });
+  assert.ok(drillDesign.rows.some((r) => r.enquiry_no === "#2002"));
+  const drillWom = dash.buildDrill({ kind: "wom", month: "2026-06", week: 3, series: "enquiries" });
+  assert.ok(drillWom.rows.some((r) => r.enquiry_no === "#2001"));
 } finally {
   db.listEnquiries = orig;
 }
