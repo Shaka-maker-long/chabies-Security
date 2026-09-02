@@ -8,6 +8,9 @@ const FLOOR_TASKS = [
   "Quality Control", "Paint Preparation", "Painting", "Assembly"
 ];
 
+const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval"];
+const USER_HEADERS = ["Name", "Role", "Password", "Tasks", "Access", "See Debtors", "Enquiry Roles"];
+
 const sessions = new Map();
 const SESSION_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -70,13 +73,14 @@ function usersSheet() {
     ? []
     : (sheet.getRange(1, 1, 1, lastCol).getValues()[0] || []);
   if (sheet.getLastRow() < 1 || String(headers[0] || "").trim() === "") {
-    sheet.getRange(1, 1, 1, 6).setValues([["Name", "Role", "Password", "Tasks", "Access", "See Debtors"]]);
+    sheet.getRange(1, 1, 1, USER_HEADERS.length).setValues([USER_HEADERS.slice()]);
     persistWorkbook();
     return sheet;
   }
   const norm = headers.map((h) => String(h || "").trim().toLowerCase());
   if (norm.indexOf("access") === -1) sheet.getRange(1, 5).setValue("Access");
   if (norm.indexOf("see debtors") === -1) sheet.getRange(1, 6).setValue("See Debtors");
+  if (norm.indexOf("enquiry roles") === -1) sheet.getRange(1, 7).setValue("Enquiry Roles");
   return sheet;
 }
 
@@ -138,6 +142,58 @@ function parseTasks(tasksCell) {
     .filter((s) => FLOOR_TASKS.indexOf(s) !== -1);
 }
 
+function canonicalizeEnquiryRole(raw) {
+  const t = String(raw || "").trim().toLowerCase();
+  if (t === "costing" || t === "coster") return "Costing";
+  if (t === "quoting" || t === "quote" || t === "quoter") return "Quoting";
+  if (t === "approval" || t === "approver") return "Approval";
+  return "";
+}
+
+function parseEnquiryRoles(cell, access) {
+  if (access !== "Admin") return [];
+  const parts = Array.isArray(cell)
+    ? cell
+    : String(cell || "").split(/[,/&+|]+/);
+  const set = new Set();
+  parts.forEach((p) => {
+    const role = canonicalizeEnquiryRole(p);
+    if (role) set.add(role);
+  });
+  return ENQUIRY_ROLES.filter((r) => set.has(r));
+}
+
+function namesEqual(a, b) {
+  return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+}
+
+function enquiryRoleHolders(role) {
+  const want = canonicalizeEnquiryRole(role) || String(role || "").trim();
+  if (ENQUIRY_ROLES.indexOf(want) === -1) return [];
+  return listUsers()
+    .filter((u) => u.canSeeOffice && (u.enquiryRoles || []).indexOf(want) >= 0)
+    .map((u) => u.name);
+}
+
+function defaultEnquiryAssignee(role, preferred) {
+  const holders = enquiryRoleHolders(role);
+  if (!holders.length) return String(preferred || "").trim();
+  const pref = String(preferred || "").trim();
+  if (pref) {
+    const hit = holders.find((n) => namesEqual(n, pref));
+    if (hit) return hit;
+  }
+  return holders[0];
+}
+
+function enquiryRoleDefaults() {
+  return {
+    costing: defaultEnquiryAssignee("Costing"),
+    quoting: defaultEnquiryAssignee("Quoting"),
+    approval: defaultEnquiryAssignee("Approval")
+  };
+}
+
 function rowToUser(row, id) {
   const access = parseAccess(row[4], row[1]);
   const isAdmin = access === "Admin";
@@ -151,7 +207,8 @@ function rowToUser(row, id) {
     isAdmin,
     canSeeOffice: isAdmin,
     canSeeDebtors: isAdmin && debtors !== "no",
-    seeDebtors: isAdmin && debtors !== "no" ? "Yes" : "No"
+    seeDebtors: isAdmin && debtors !== "no" ? "Yes" : "No",
+    enquiryRoles: parseEnquiryRoles(row[6], access)
   };
 }
 
@@ -172,7 +229,7 @@ function listUsers() {
   const sheet = usersSheet();
   const last = sheet.getLastRow();
   if (last < 2) return [];
-  const grid = sheet.getRange(2, 1, last - 1, 6).getValues();
+  const grid = sheet.getRange(2, 1, last - 1, USER_HEADERS.length).getValues();
   const out = [];
   for (let i = 0; i < grid.length; i++) {
     const u = rowToUser(grid[i], i + 2);
@@ -200,6 +257,7 @@ function upsertUser(body) {
   const role = String(body.role || "").trim() || (access === "Admin" ? "Admin" : "Production");
   const tasks = Array.isArray(body.tasks) ? body.tasks.filter((t) => FLOOR_TASKS.indexOf(t) !== -1) : parseTasks(body.tasks);
   const seeDebtors = parseSeeDebtors(body, access);
+  const enquiryRoles = parseEnquiryRoles(body.enquiryRoles != null ? body.enquiryRoles : body.enquiry_roles, access);
   const sheet = usersSheet();
   let rowNum = findUserRow(name);
   let password = String(body.password || "").trim();
@@ -209,12 +267,12 @@ function upsertUser(body) {
   } else if (!password) {
     password = String(sheet.getRange(rowNum, 3).getValue() || "");
   }
-  sheet.getRange(rowNum, 1, 1, 6).setValues([[
-    name, role, password, tasks.join(", "), access, seeDebtors
+  sheet.getRange(rowNum, 1, 1, USER_HEADERS.length).setValues([[
+    name, role, password, tasks.join(", "), access, seeDebtors, enquiryRoles.join(", ")
   ]]);
   persistWorkbook();
   bumpShopCache();
-  return rowToUser([name, role, password, tasks.join(", "), access, seeDebtors], rowNum);
+  return rowToUser([name, role, password, tasks.join(", "), access, seeDebtors, enquiryRoles.join(", ")], rowNum);
 }
 
 function deleteUser(name) {
@@ -241,7 +299,7 @@ function verifyUser(name, password) {
   const sheet = usersSheet();
   const last = sheet.getLastRow();
   if (last < 2) return null;
-  const grid = sheet.getRange(2, 1, last - 1, 6).getValues();
+  const grid = sheet.getRange(2, 1, last - 1, USER_HEADERS.length).getValues();
   let adminPassword = "";
   grid.forEach((row) => {
     if (parseAccess(row[4], row[1]) === "Admin" && !adminPassword) adminPassword = String(row[2] || "");
@@ -321,6 +379,7 @@ function durationMinutes(product, process) {
 
 module.exports = {
   FLOOR_TASKS,
+  ENQUIRY_ROLES,
   listUsers,
   seedLocalAdminIfEmpty,
   upsertUser,
@@ -335,5 +394,8 @@ module.exports = {
   setDurations,
   durationMinutes,
   countdownRemainingMs,
-  usersSheet
+  usersSheet,
+  enquiryRoleHolders,
+  defaultEnquiryAssignee,
+  enquiryRoleDefaults
 };

@@ -10,7 +10,7 @@ const ORDER_HEADERS = [
 ];
 
 const SEED_TABS = {
-  Users: [["Name", "Role", "Password", "Tasks", "Access", "See Debtors"]],
+  Users: [["Name", "Role", "Password", "Tasks", "Access", "See Debtors", "Enquiry Roles"]],
   ORDERS: [ORDER_HEADERS.slice()],
   Production_Log: [[
     "ID", "Order #", "Worker", "Process", "Status", "Start", "End", "Result", "Signature",

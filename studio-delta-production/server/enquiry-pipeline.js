@@ -35,6 +35,28 @@ function optionalAssignee(name) {
   return requireAssignee(n);
 }
 
+function assigneeFromRole(role, requested, preferred) {
+  const chosen = optionalAssignee(requested);
+  if (chosen) return chosen;
+  return optionalAssignee(staff.defaultEnquiryAssignee(role, preferred));
+}
+
+function requireRoleAssignee(role, requested, preferred) {
+  const n = assigneeFromRole(role, requested, preferred);
+  if (!n && canonicalizeRoleLabel(role) === "Quoting") {
+    throw new Error("Choose the quoting person");
+  }
+  return requireAssignee(n);
+}
+
+function canonicalizeRoleLabel(role) {
+  const t = String(role || "").trim().toLowerCase();
+  if (t === "quoting" || t === "quote" || t === "quoter") return "Quoting";
+  if (t === "costing" || t === "coster") return "Costing";
+  if (t === "approval" || t === "approver") return "Approval";
+  return String(role || "").trim();
+}
+
 function requireAssignee(name) {
   const n = String(name || "").trim();
   if (!n) throw new Error("Choose the office person this task is assigned to");
@@ -312,6 +334,7 @@ function processSnapshot(enquiryNo) {
   return {
     row,
     assignees: officeAssignees(),
+    enquiryRoles: staff.enquiryRoleDefaults(),
     actions: availableActions(row),
     waitingStatuses: WAITING_STATUSES,
     closedStatuses: CLOSED_STATUSES.filter((s) => s !== "Rejected"),
@@ -425,7 +448,7 @@ function assignWaiting(row, actor, body) {
 
 function assignCosting(row, actor, body) {
   if (statusAllows(row, ["Quoted", "Followed Up"])) {
-    const assignee = requireAssignee(body.assignee);
+    const assignee = requireRoleAssignee("Costing", body.assignee, lastAssignee(row, "cost_sheet"));
     cancelOpenKind(row, "follow_up");
     cancelOpenKind(row, "pop");
     cancelOpenKind(row, "quote");
@@ -437,7 +460,7 @@ function assignCosting(row, actor, body) {
     throw new Error("Costing is assigned from capture, or changed while the enquiry is still in costing");
   }
   if (!namedProducts(row).length) throw new Error("Add at least one product name before assigning costing");
-  const assignee = requireAssignee(body.assignee);
+  const assignee = requireRoleAssignee("Costing", body.assignee, (openOfKind(row, "cost_sheet") || {}).assignee);
   archiveCorrespondence(row, actor, body);
   const open = openOfKind(row, "cost_sheet");
   if (open && statusAllows(row, ["Costing", "Re-Cost"])) {
@@ -536,7 +559,7 @@ function completeChase(row, actor, body) {
     if (!namedProducts(row).length) throw new Error("Add the product name(s) on the enquiry before sending to costing");
     archiveCorrespondence(row, actor, body);
     row.status = "Costing";
-    addTask(row, "cost_sheet", requireAssignee(body.assignee));
+    addTask(row, "cost_sheet", requireRoleAssignee("Costing", body.assignee));
     return;
   }
   if (next === "waiting") {
@@ -572,9 +595,8 @@ function completeCostSheet(row, actor, body) {
   if (!isSpreadsheet(filename, "") && !isPdf(filename, "", null) && !/\.csv$/i.test(filename)) {
     throw new Error("Cost sheet must be Excel (xlsx / xls), CSV, or PDF");
   }
-  const approver = optionalAssignee(body.assignee);
-  const quoter = optionalAssignee(body.quote_assignee);
-  if (!quoter) throw new Error("Choose the quoting person");
+  const approver = assigneeFromRole("Approval", body.assignee);
+  const quoter = requireRoleAssignee("Quoting", body.quote_assignee, row.quote_assignee);
   row.cost_sheet = db.saveEnquiryAttachment(row.enquiry_no, "cost_sheet", raw, filename);
   row.quote_assignee = quoter;
   closeOpenKind(row, "cost_sheet", actor);
@@ -620,7 +642,7 @@ function completeApproval(row, actor, body) {
     row.approval.decided_by = actor;
     row.approval.decided_at = db.nowIso();
     row.status = "Re-Cost";
-    const coster = requireAssignee(body.assignee || lastAssignee(row, "cost_sheet"));
+    const coster = requireRoleAssignee("Costing", body.assignee, lastAssignee(row, "cost_sheet"));
     addTask(row, "cost_sheet", coster, { note: comments });
     return;
   }
@@ -631,7 +653,7 @@ function completeApproval(row, actor, body) {
   row.approval.comments = comments;
   row.approval.decided_by = actor;
   row.approval.decided_at = db.nowIso();
-  const quotePerson = requireAssignee(body.assignee || row.quote_assignee);
+  const quotePerson = requireRoleAssignee("Quoting", body.quote_assignee || body.assignee, row.quote_assignee);
   row.quote_assignee = quotePerson;
   cancelOpenKind(row, "quote");
   addTask(row, "quote", quotePerson);

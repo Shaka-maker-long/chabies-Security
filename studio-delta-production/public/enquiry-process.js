@@ -23,9 +23,17 @@
     });
     return html + "</select>";
   }
+  function rolePerson(kind) {
+    const roles = (state.snap && state.snap.enquiryRoles) || {};
+    return String(roles[kind] || "").trim();
+  }
   function openAssignee(row, kind) {
     const t = ((row && row.tasks) || []).find((task) => task.kind === kind && task.status === "open");
     return (t && t.assignee) || "";
+  }
+  function lastCosting(row) {
+    const list = ((row && row.tasks) || []).filter((t) => t.kind === "cost_sheet" && t.assignee);
+    return list.length ? list[list.length - 1].assignee : "";
   }
   function namedLines(row) {
     return ((row && row.products) || []).filter((p) => String(p.product || "").trim());
@@ -387,11 +395,12 @@
     }
     if (action.id === "assign_costing") {
       const recost = /Quoted|Followed Up/.test(row.status || "");
+      const coster = openAssignee(row, "cost_sheet") || rolePerson("costing");
       return "<p class=\"sd-process-sub\">" +
         (recost
           ? "The client stays on this enquiry. Costing runs again, then you issue another quote PDF. Previous quotes stay in Files."
-          : "Any office Admin, including yourself.") +
-        "</p><label>Assign to</label>" + assigneeSelect(openAssignee(row, "cost_sheet") || row.quote_assignee) +
+          : "Any office Admin, including yourself. Defaults to the Costing person on Users.") +
+        "</p><label>Assign to</label>" + assigneeSelect(coster) +
         (recost ? "" : correspondenceFields());
     }
     if (action.id === "add_correspondence") {
@@ -403,23 +412,25 @@
     if (action.id === "complete_chase") {
       return "<label>What next?<select name=\"next\"><option value=\"costing\">Enough to cost — assign costing</option><option value=\"waiting\">Still waiting</option></select></label>" +
         "<label>Waiting on<select name=\"waiting_status\">" + waiting + "</select></label>" +
-        "<label>Assign to</label>" + assigneeSelect() +
+        "<label>Assign to</label>" + assigneeSelect(rolePerson("costing")) +
         "<label>Comment<textarea name=\"comments\"></textarea></label>" +
         correspondenceFields();
     }
     if (action.id === "complete_cost_sheet") {
       return productNamesLine(row) + fileBlock(".xlsx,.xls,.csv,application/pdf,.pdf", "Upload the Excel cost sheet. Check the preview, then confirm it.") +
-        "<label>Request approval from (optional)</label>" + assigneeSelect("", "assignee") +
-        "<p class=\"sd-process-sub\">Leave this empty to skip approval and send the enquiry to the quoting person.</p>" +
-        "<label>Quoting person *</label>" + assigneeSelect(row.quote_assignee || "", "quote_assignee");
+        "<label>Request approval from (optional)</label>" + assigneeSelect(rolePerson("approval"), "assignee") +
+        "<p class=\"sd-process-sub\">Defaults to the Approval person on Users. Untick Approval on Users if cost sheets should skip approval.</p>" +
+        "<label>Quoting person *</label>" + assigneeSelect(row.quote_assignee || rolePerson("quoting"), "quote_assignee");
     }
     if (action.id === "complete_approval") {
       return (row.cost_sheet ? "<p class=\"sd-process-sub\">Cost sheet: " + esc(row.cost_sheet.filename || "cost sheet") + " — <a href=\"" + fileUrl("cost_sheet", true) + "\">download</a></p><div class=\"sd-process-preview\" data-preview></div>" : "") +
         productNamesLine(row) +
         "<label>Decision<select name=\"decision\"><option value=\"approve\">Approve — send to quote</option><option value=\"reject\">Reject — back to costing</option></select></label>" +
         "<label>Comments (required if rejected)<textarea name=\"comments\"></textarea></label>" +
-        "<label>Next person (quote person if approved, costing if rejected)</label>" +
-        assigneeSelect(row.quote_assignee || openAssignee(row, "quote"));
+        "<label>Quoting person if approved</label>" +
+        assigneeSelect(row.quote_assignee || rolePerson("quoting"), "quote_assignee") +
+        "<label>Costing person if rejected</label>" +
+        assigneeSelect(rolePerson("costing") || lastCosting(row));
     }
     if (action.id === "complete_quote") {
       const hint = (state.snap && state.snap.quoteNo) || {};
