@@ -59,6 +59,19 @@ assert.ok(enquiriesHtml.indexOf("onclick=\"saveAll()\"") === -1, "enquiries shee
 assert.ok(enquiriesHtml.indexOf("table.oninput") === -1, "grid must not edit cells in place");
 assert.ok(enquiriesHtml.indexOf("OPENED") !== -1);
 assert.ok(enquiriesHtml.indexOf("LIFESPAN") !== -1);
+assert.ok(enquiriesHtml.indexOf("/enquiries/dashboard") !== -1, "sheet must link to the dashboard");
+assert.ok(enquiriesHtml.indexOf(">Dashboard<") !== -1);
+
+const dashHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries-dashboard.html"), "utf8");
+assert.ok(dashHtml.indexOf("/enquiries") !== -1);
+assert.ok(dashHtml.indexOf("Weekly") !== -1);
+assert.ok(dashHtml.indexOf("Monthly") !== -1);
+assert.ok(dashHtml.indexOf("Revenue") !== -1);
+assert.ok(dashHtml.indexOf("chart.js") !== -1);
+assert.ok(dashHtml.indexOf("/api/office/enquiries/dashboard") !== -1);
+assert.ok(dashHtml.indexOf("sdOfficeFetch") !== -1);
+assert.ok(dashHtml.indexOf("CATERGORY") !== -1);
+assert.ok(dashHtml.indexOf("sdRequireOffice(\"enquiries\")") !== -1 || dashHtml.indexOf("sdRequireOffice('enquiries')") !== -1);
 
 const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
 assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");

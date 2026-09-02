@@ -33,6 +33,9 @@
     .freeze-end { box-shadow:4px 0 8px rgba(16,24,40,.12); }
     .wrap-text { white-space:normal; }
     .msg { font-size:12px; color:var(--muted); }
+    .tabs { display:flex; gap:4px; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
     .cell-btn { width:100%; text-align:left; background:#fff; color:var(--ink); border:0; padding:2px 0; font:inherit; font-weight:500; }
     .cell-btn span { color:var(--muted); font-weight:400; }
     .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
@@ -72,6 +75,10 @@
 <body>
   <header>
     <h1>Enquiries</h1>
+    <nav class="tabs" aria-label="Enquiries">
+      <a class="on" href="/enquiries">Sheet</a>
+      <a href="/enquiries/dashboard">Dashboard</a>
+    </nav>
     <p class="msg" style="margin:0;max-width:560px">The sheet is view-only. Use <b>New enquiry</b> or a row’s <b>Edit</b> button. Status still opens files and costing — not a cell you type in.</p>
     <div class="tools">
       <span class="msg" id="status"></span>
