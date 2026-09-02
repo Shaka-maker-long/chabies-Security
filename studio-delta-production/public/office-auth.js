@@ -76,7 +76,7 @@ function sdEnsureScript(src) {
   });
 }
 function sdLoadBrand() {
-  sdEnsureSheet("/sd-brand.css?v=erp-shell");
+  sdEnsureSheet("/sd-brand.css?v=erp-list");
   sdEnsureSheet("/office-shell.css?v=erp-shell");
   return sdEnsureScript("/sd-splash.js?v=erp-shell");
 }

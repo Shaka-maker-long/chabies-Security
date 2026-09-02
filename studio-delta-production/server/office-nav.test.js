@@ -125,5 +125,10 @@ assert.ok(splash.indexOf("sd-s") !== -1);
 const brand = fs.readFileSync(path.join(__dirname, "../public/sd-brand.css"), "utf8");
 assert.ok(brand.indexOf(".sd-welcome") !== -1);
 assert.ok(brand.indexOf("#b08948") !== -1);
+assert.ok(floor.indexOf("sd-erp-table") !== -1);
+assert.ok(floor.indexOf("sd-page-head") !== -1);
+assert.ok(floor.indexOf("count-notstarted") !== -1);
+assert.ok(floor.indexOf("On floor") !== -1);
+assert.ok(brand.indexOf(".sd-erp-table") !== -1);
 
 console.log("office-nav.test.js ok");
