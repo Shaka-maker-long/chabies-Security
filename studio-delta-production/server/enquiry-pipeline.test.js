@@ -167,6 +167,12 @@ assert.strictEqual(costed.row.products[0].value_excl_vat, "");
 assert.strictEqual(costed.row.quote_assignee, "Quoter");
 assert.ok(costed.row.cost_sheet && costed.row.cost_sheet.stored_as);
 assert.strictEqual(pipeline.listMyTasks("Approver")[0].kind, "approval");
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet"));
+const doneCost = pipeline.listMyCompletedTasks("Coster");
+assert.ok(doneCost.some((t) => t.kind === "cost_sheet" && t.status === "done"));
+assert.ok(doneCost[0].completed_at);
+assert.ok(doneCost[0].completed_at_label);
+assert.ok(!doneCost.some((t) => t.status === "open"));
 
 assert.throws(
   () => pipeline.applyAction("#1996", "Approver", { action: "complete_approval", decision: "reject", assignee: "Coster" }),

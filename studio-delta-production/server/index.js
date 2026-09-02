@@ -67,6 +67,9 @@ app.get("/enquiries/dashboard", (_req, res) => {
 app.get("/tasks", (_req, res) => {
   res.sendFile(path.join(publicDir, "tasks.html"));
 });
+app.get("/tasks/completed", (_req, res) => {
+  res.sendFile(path.join(publicDir, "tasks.html"));
+});
 app.get("/schedule", (_req, res) => {
   res.sendFile(path.join(publicDir, "schedule.html"));
 });
