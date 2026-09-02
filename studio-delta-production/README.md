@@ -2,6 +2,8 @@
 
 Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. Production Overview is a list-report: steel page header, status counts, and a dense order grid. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
 
+Orders (~400+) load as a text grid first; click a row to edit. Floor reads no longer rewrite the whole workbook to disk.
+
 ## Database: SQLite on the Railway volume (not Google Sheets, not Postgres)
 
 The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume. Every page’s data is in SQL tables. Google Sheets is **not** read or written while the app runs. The old JSON files stay as a backup copy. First boot copies the existing files into SQLite so the shop is not empty.

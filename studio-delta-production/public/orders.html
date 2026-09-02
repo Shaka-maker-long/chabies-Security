@@ -24,6 +24,7 @@
     td input, td textarea, td select { width:100%; min-width:100%; border:0; font:inherit; background:transparent; padding:0; }
     td input[readonly] { color:#475467; background:#f8fafc; }
     td textarea { min-height:42px; white-space:pre-wrap; }
+    .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; min-height:1.2em; cursor:text; }
     tr:focus-within td { outline:0; }
     tr:focus-within { outline:2px solid #98a2b3; outline-offset:-2px; }
     .st-couriers { background:var(--blue); }
@@ -152,6 +153,35 @@
       return parts.join(" ");
     }
 
+    function displayValue(k, row) {
+      if (k === "owing") return owingOf(row);
+      return row[k] || "";
+    }
+    function editorHtml(k, row) {
+      if (k === "detailed_description") {
+        return "<textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea>";
+      }
+      if (DROP_FIELDS[k]) return selectHtml(k, row[k]);
+      if (READONLY_FIELDS[k]) {
+        return "<input data-k=\"" + k + "\" value=\"" + escAttr(displayValue(k, row)) + "\" readonly>";
+      }
+      return "<input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\">";
+    }
+    function armRow(tr) {
+      if (!tr || tr.getAttribute("data-edit") === "1") return;
+      const i = Number(tr.getAttribute("data-i"));
+      const row = rows[i];
+      if (!row) return;
+      tr.setAttribute("data-edit", "1");
+      tr.querySelectorAll("td").forEach((td) => {
+        const k = td.getAttribute("data-k");
+        if (!k) return;
+        td.innerHTML = editorHtml(k, row);
+      });
+      const first = tr.querySelector("input,select,textarea");
+      if (first) first.focus();
+    }
+
     function render() {
       layoutFreeze();
       const q = document.getElementById("q").value.toLowerCase();
@@ -162,30 +192,33 @@
         html += "<th class=\"" + colClass(k, width, freeze, "") + "\" style=\"" + colStyle(k, width, freeze) + "\">" + label + "</th>";
       });
       html += "</tr></thead><tbody>";
+      let shown = 0;
       rows.forEach((row, i) => {
         const blob = HEADERS.map(([k]) => row[k] || "").join(" ").toLowerCase();
         if (q && blob.indexOf(q) === -1) return;
+        shown += 1;
         html += "<tr data-i=\"" + i + "\">";
         HEADERS.forEach(([k, , , freeze], c) => {
           const width = colWidths[c];
           const extra = k === "status" ? statusClass(row[k]) : "";
           const cls = colClass(k, width, freeze, extra);
           const style = colStyle(k, width, freeze);
-          if (k === "detailed_description") {
-            html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea></td>";
-          } else if (DROP_FIELDS[k]) {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\">" + selectHtml(k, row[k]) + "</td>";
-          } else if (READONLY_FIELDS[k]) {
-            const val = k === "owing" ? owingOf(row) : (row[k] || "");
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(val) + "\" readonly></td>";
-          } else {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\"></td>";
-          }
+          const wrap = k === "detailed_description" ? " wrap-text" : "";
+          html += "<td class=\"" + cls + wrap + "\" style=\"" + style + "\" data-k=\"" + k + "\"><span class=\"cell-text\">" + esc(displayValue(k, row)) + "</span></td>";
         });
         html += "</tr>";
       });
       html += "</tbody>";
       table.innerHTML = html;
+      const status = document.getElementById("status");
+      if (status && !/Saving|Saved/.test(status.textContent || "")) {
+        status.textContent = (q ? shown + " of " : "") + rows.length + " orders (Railway is the database)";
+      }
+      table.onclick = (e) => {
+        const tr = e.target.closest("tr");
+        if (!tr || !tr.getAttribute("data-i")) return;
+        armRow(tr);
+      };
       table.oninput = (e) => {
         const tr = e.target.closest("tr");
         if (!tr) return;
@@ -229,6 +262,7 @@
       ]);
       const j = await ordersRes.json();
       const d = await dropRes.json();
+      document.getElementById("status").textContent = "Loading " + (j.rows || []).length + " orders…";
       rows = j.rows || [];
       dropdowns = d.dropdowns || {};
       document.getElementById("status").textContent = rows.length + " orders (Railway is the database)";
@@ -256,8 +290,16 @@
       await load();
       document.getElementById("status").textContent = "Saved";
     }
-    document.getElementById("q").oninput = render;
-    window.addEventListener("resize", () => { render(); });
+    let qTimer = 0;
+    document.getElementById("q").oninput = () => {
+      clearTimeout(qTimer);
+      qTimer = setTimeout(render, 180);
+    };
+    let resizeTimer = 0;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(render, 120);
+    });
     sdRequireOffice("orders").then((p) => { if (p) load(); });
   </script>
 </body>

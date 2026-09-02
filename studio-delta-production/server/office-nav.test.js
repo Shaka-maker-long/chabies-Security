@@ -96,6 +96,16 @@ assert.ok(dashHtml.indexOf(">Outlook<") === -1, "Outlook pie must be replaced by
 
 const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
 assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");
+assert.ok(ordersHtml.indexOf("cell-text") !== -1);
+assert.ok(ordersHtml.indexOf("armRow") !== -1);
+assert.ok(officeJs.indexOf("delete copy.payments") !== -1);
+assert.ok(indexJs.indexOf("gzipSync") !== -1);
+const gasJs = fs.readFileSync(path.join(__dirname, "gas.js"), "utf8");
+assert.ok(gasJs.indexOf("workbookIsDirty") !== -1);
+const codeGs = fs.readFileSync(path.join(__dirname, "../Code.gs"), "utf8");
+assert.ok(codeGs.indexOf("8000000") !== -1);
+const adminFn = codeGs.slice(codeGs.indexOf("function getAdminDashboardData"), codeGs.indexOf("function getNextStatus"));
+assert.ok(adminFn.indexOf("daySlices") === -1, "admin dashboard must not ship daySlices on every load");
 const usersHtml = fs.readFileSync(path.join(__dirname, "../public/users.html"), "utf8");
 assert.ok(usersHtml.indexOf("Download JSON backup") !== -1);
 assert.ok(usersHtml.indexOf("Download SQLite") !== -1);

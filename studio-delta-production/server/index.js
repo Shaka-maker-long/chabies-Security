@@ -12,6 +12,23 @@ normalizeOrdersSheet();
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "80mb" }));
+const zlib = require("zlib");
+app.use((req, res, next) => {
+  const origJson = res.json.bind(res);
+  res.json = function (body) {
+    const accept = String(req.headers["accept-encoding"] || "");
+    if (accept.indexOf("gzip") === -1) return origJson(body);
+    let raw;
+    try { raw = Buffer.from(JSON.stringify(body)); } catch (e) { return origJson(body); }
+    if (raw.length < 16384) return origJson(body);
+    const gz = zlib.gzipSync(raw);
+    res.set("Content-Type", "application/json; charset=utf-8");
+    res.set("Content-Encoding", "gzip");
+    res.set("Vary", "Accept-Encoding");
+    return res.send(gz);
+  };
+  next();
+});
 
 function health(_req, res) {
   let persist = {};

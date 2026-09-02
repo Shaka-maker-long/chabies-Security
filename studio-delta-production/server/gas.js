@@ -292,6 +292,17 @@ function jsonSafe(value) {
   return value;
 }
 
+function workbookIsDirty(workbook) {
+  if (!workbook || !workbook.sheetsByName) return false;
+  if (workbook.pendingAdds && workbook.pendingAdds.length) return true;
+  if (workbook.pendingHides && workbook.pendingHides.length) return true;
+  const names = Object.keys(workbook.sheetsByName);
+  for (let i = 0; i < names.length; i++) {
+    if (workbook.sheetsByName[names[i]] && workbook.sheetsByName[names[i]].dirty) return true;
+  }
+  return false;
+}
+
 async function callShopFunction(fnName, args) {
   if (!/^[A-Za-z0-9_]+$/.test(fnName) || !ALLOWED.has(fnName)) {
     throw new Error("Unknown function: " + fnName);
@@ -367,7 +378,7 @@ async function callShopFunction(fnName, args) {
     await workbook.flush().catch(() => {});
     throw e;
   }
-  await workbook.flush();
+  if (workbookIsDirty(workbook)) await workbook.flush();
   if (workbookCache && workbookCache.book === workbook) {
     workbookCache.loadedAt = Date.now();
   }

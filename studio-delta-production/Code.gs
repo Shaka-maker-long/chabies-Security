@@ -424,7 +424,7 @@ function floorCacheGet(key) {
 function floorCachePut(key, value, ttl) {
   try {
     var s = JSON.stringify(value);
-    if (s.length > 90000) return;
+    if (s.length > 8000000) return;
     CacheService.getScriptCache().put(floorCacheGen() + ":" + key, s, ttl || CACHE_TTL_FLOOR);
   } catch (e) {}
 }
@@ -1613,9 +1613,7 @@ function getAdminDashboardData() {
     var endObj = row[6] ? new Date(row[6]) : null;
     if (endObj && isNaN(endObj.getTime())) endObj = null;
     var openStart = getOpenPauseStart(meta);
-    var daySlices = getDashboardDaySlices(row);
-    var sliceTotal = 0;
-    for (var si = 0; si < daySlices.length; si++) sliceTotal += daySlices[si].durationMins;
+    var durationMins = calculateWorkMinutesFromLog(row);
     
     return {
       order: row[1],
@@ -1627,14 +1625,10 @@ function getAdminDashboardData() {
       qc: row[7],
       pauseStart: openStart ? new Date(openStart).getTime() : (row[9] ? new Date(row[9]).getTime() : null),
       pausedMins: cumulativePauseMinsFromMeta(meta, row[4]) || parseFloat(row[10]) || 0,
-      pauseIntervals: (meta.pauses && meta.pauses.length) ? meta.pauses : getPauseIntervalsForRow(row),
       batchId: meta.batchId || "",
       batchShare: meta.batchShare || 1,
-      batchSplitAt: meta.batchSplitAt || null,
-      entryType: meta.entryType || "production",
-      durationMins: daySlices.length ? sliceTotal : calculateWorkMinutesFromLog(row),
-      week: weekStr,
-      daySlices: daySlices
+      durationMins: durationMins,
+      week: weekStr
     };
   });
 
