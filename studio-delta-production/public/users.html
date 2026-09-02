@@ -38,13 +38,14 @@
   </header>
   <div class="wrap">
     <p class="help"><b>Production</b> people only see the floor tasks you tick — not Orders, Debtors, or other office pages. <b>Admin</b> can open office pages. Untick <b>See debtors</b> if that admin must not see money still owing.</p>
+    <p class="help">Tick <b>Costing</b>, <b>Quoting</b>, and <b>Approval</b> on the office people who usually do that work. New enquiries use those people automatically, so you do not pick them on every enquiry. You can still choose someone else on a single enquiry. Leave Approval unticked if cost sheets should skip approval.</p>
     <p class="help">The live database is <b>SQLite on Railway</b>. Google Sheets is not used. Every night at 02:00 Johannesburg the app copies SQLite, office JSON, and enquiry files into <code>/app/data/backups</code> (last 14 days stay on the volume). If Google Drive is set, that same copy is uploaded off the server and an email is sent. <b>Backup now</b> runs that copy immediately. <b>Download SQLite</b> is a copy for your PC.</p>
     <p class="help" id="dbLine"></p>
     <p class="help" id="backupLine"></p>
     <p class="help" id="migrateWrap" style="display:none"><button class="ghost" type="button" onclick="migrateGoogle()">Copy old Google spreadsheet once</button></p>
     <table>
       <thead>
-        <tr><th>Name</th><th>Access</th><th>Job title</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th></th></tr>
+        <tr><th>Name</th><th>Access</th><th>Job title</th><th>Enquiry roles</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th></th></tr>
       </thead>
       <tbody id="body"></tbody>
     </table>
@@ -52,17 +53,22 @@
   <script src="/office-auth.js?v=erp-shell"></script>
   <script>
     const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
+    const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval"];
     let rows = [];
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
     function render() {
       const body = document.getElementById("body");
       body.innerHTML = rows.map((u, i) => {
         const tasks = TASKS.map((t) => "<label class='t'><input type='checkbox' data-i='"+i+"' data-task='"+t+"'"+(u.tasks.indexOf(t)>=0?" checked":"")+"> "+t+"</label>").join("");
+        const roles = (u.enquiryRoles || []);
+        const roleDisabled = u.access !== "Admin" ? " disabled" : "";
+        const enquiryRoles = ENQUIRY_ROLES.map((t) => "<label class='t'><input type='checkbox' data-i='"+i+"' data-role='"+t+"'"+(roles.indexOf(t)>=0?" checked":"")+roleDisabled+"> "+t+"</label>").join("");
         const debtDisabled = u.access !== "Admin" ? " disabled" : "";
         return "<tr>" +
           "<td><input data-i='"+i+"' data-k='name' value='"+esc(u.name)+"'></td>" +
           "<td><select data-i='"+i+"' data-k='access'><option"+(u.access==="Production"?" selected":"")+">Production</option><option"+(u.access==="Admin"?" selected":"")+">Admin</option></select></td>" +
           "<td><input data-i='"+i+"' data-k='role' value='"+esc(u.role)+"'></td>" +
+          "<td><div class='tasks'>"+enquiryRoles+"</div></td>" +
           "<td><input data-i='"+i+"' data-k='password' placeholder='Leave blank to keep' value=''></td>" +
           "<td><div class='tasks'>"+tasks+"</div></td>" +
           "<td><input type='checkbox' data-i='"+i+"' data-k='seeDebtors'"+(u.canSeeDebtors?" checked":"")+debtDisabled+"></td>" +
@@ -77,6 +83,11 @@
           const set = new Set(rows[i].tasks);
           if (e.target.checked) set.add(task); else set.delete(task);
           rows[i].tasks = TASKS.filter((t) => set.has(t));
+        } else if (e.target.getAttribute("data-role")) {
+          const role = e.target.getAttribute("data-role");
+          const set = new Set(rows[i].enquiryRoles || []);
+          if (e.target.checked) set.add(role); else set.delete(role);
+          rows[i].enquiryRoles = ENQUIRY_ROLES.filter((t) => set.has(t));
         } else if (k === "seeDebtors") {
           rows[i].canSeeDebtors = e.target.checked;
           rows[i].seeDebtors = e.target.checked ? "Yes" : "No";
@@ -89,6 +100,7 @@
             } else {
               rows[i].canSeeDebtors = false;
               rows[i].seeDebtors = "No";
+              rows[i].enquiryRoles = [];
             }
             render();
           }
@@ -108,7 +120,7 @@
       };
     }
     function addRow() {
-      rows.unshift({ name: "", access: "Production", role: "", password: "", tasks: [], canSeeDebtors: false, seeDebtors: "No" });
+      rows.unshift({ name: "", access: "Production", role: "", password: "", tasks: [], enquiryRoles: [], canSeeDebtors: false, seeDebtors: "No" });
       render();
     }
     async function saveAll() {

@@ -497,4 +497,40 @@ assert.strictEqual(skipRequote.row.quotes[0].quote_no, "SOQ2400");
 assert.ok(db.readEnquiryAttachment(skip.enquiry_no, "quote_1"));
 assert.ok(db.readEnquiryAttachment(skip.enquiry_no, "quote_2"));
 
+staff.upsertUser({ name: "Coster", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes", enquiryRoles: ["Costing"] });
+staff.upsertUser({ name: "Approver", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes", enquiryRoles: ["Approval"] });
+staff.upsertUser({ name: "Quoter", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes", enquiryRoles: ["Quoting"] });
+assert.strictEqual(staff.defaultEnquiryAssignee("Costing"), "Coster");
+assert.strictEqual(staff.defaultEnquiryAssignee("Quoting"), "Quoter");
+assert.strictEqual(staff.defaultEnquiryAssignee("Approval"), "Approver");
+const roleSnap = pipeline.processSnapshot(skip.enquiry_no);
+assert.strictEqual(roleSnap.enquiryRoles.costing, "Coster");
+assert.strictEqual(roleSnap.enquiryRoles.quoting, "Quoter");
+assert.strictEqual(roleSnap.enquiryRoles.approval, "Approver");
+
+const roleEnq = db.upsertEnquiry({
+  date_enquired: "02/09/2026",
+  client_name: "Role Defaults",
+  product: "Gate",
+  category: "Gate"
+});
+const autoCost = pipeline.applyAction(roleEnq.enquiry_no, "Coster", { action: "assign_costing" });
+assert.strictEqual(autoCost.row.status, "Costing");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === roleEnq.enquiry_no));
+const autoSheet = pipeline.applyAction(roleEnq.enquiry_no, "Coster", {
+  action: "complete_cost_sheet",
+  file_base64: csv,
+  file_name: "cost.csv",
+  file_confirmed: true
+});
+assert.strictEqual(autoSheet.row.quote_assignee, "Quoter");
+assert.strictEqual(autoSheet.row.approval.requested_from, "Approver");
+assert.ok(pipeline.listMyTasks("Approver").some((t) => t.kind === "approval" && t.enquiry_no === roleEnq.enquiry_no));
+const autoApprove = pipeline.applyAction(roleEnq.enquiry_no, "Approver", {
+  action: "complete_approval",
+  decision: "approve"
+});
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "quote" && t.enquiry_no === roleEnq.enquiry_no));
+assert.strictEqual(autoApprove.row.quote_assignee, "Quoter");
+
 console.log("enquiry-pipeline.test.js ok");

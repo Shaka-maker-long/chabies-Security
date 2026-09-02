@@ -61,6 +61,29 @@ const quiet = staff.verifyUser("Office Quiet", "quiet");
 assert.ok(quiet);
 assert.strictEqual(quiet.canSeeOffice, true);
 assert.strictEqual(quiet.canSeeDebtors, false);
+assert.deepStrictEqual(quiet.enquiryRoles || [], []);
+
+const coster = staff.upsertUser({
+  name: "Office Coster",
+  access: "Admin",
+  role: "Admin",
+  password: "cost",
+  seeDebtors: "Yes",
+  enquiryRoles: ["Costing", "Quoting"]
+});
+assert.deepStrictEqual(coster.enquiryRoles, ["Costing", "Quoting"]);
+assert.strictEqual(staff.defaultEnquiryAssignee("Costing"), "Office Coster");
+assert.strictEqual(staff.defaultEnquiryAssignee("Quoting"), "Office Coster");
+assert.strictEqual(staff.defaultEnquiryAssignee("Approval"), "");
+const floorRoles = staff.upsertUser({
+  name: "Floor Only",
+  access: "Production",
+  role: "Welding",
+  password: "floor",
+  tasks: ["Welding"],
+  enquiryRoles: ["Costing"]
+});
+assert.deepStrictEqual(floorRoles.enquiryRoles, []);
 
 assert.strictEqual(staff.durationMinutes("Slider", "Welding"), 45);
 assert.strictEqual(staff.durationMinutes("Slider", "Painting"), 0);

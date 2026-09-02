@@ -49,7 +49,8 @@ function open() {
       password TEXT,
       tasks TEXT,
       access TEXT,
-      see_debtors TEXT
+      see_debtors TEXT,
+      enquiry_roles TEXT
     );
     CREATE TABLE IF NOT EXISTS orders (
       order_number TEXT PRIMARY KEY,
@@ -144,6 +145,7 @@ function open() {
   `);
   opened = db;
   openedPath = file;
+  try { db.exec("ALTER TABLE users ADD COLUMN enquiry_roles TEXT"); } catch (e) {}
   return db;
 }
 
@@ -218,7 +220,7 @@ function saveUsersFromBook(book) {
   runReplace(
     db,
     "DELETE FROM users",
-    "INSERT INTO users (name, role, password, tasks, access, see_debtors) VALUES (?, ?, ?, ?, ?, ?)",
+    "INSERT INTO users (name, role, password, tasks, access, see_debtors, enquiry_roles) VALUES (?, ?, ?, ?, ?, ?, ?)",
     rows,
     (r) => [
       String(r.name || "").trim(),
@@ -226,7 +228,8 @@ function saveUsersFromBook(book) {
       String(r.password || ""),
       String(r.tasks || ""),
       String(r.access || ""),
-      String(r.see_debtors || r.see_debtor || "")
+      String(r.see_debtors || r.see_debtor || ""),
+      String(r.enquiry_roles || "")
     ]
   );
   return rows.length;
