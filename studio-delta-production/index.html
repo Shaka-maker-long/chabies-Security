@@ -7,7 +7,7 @@
   <title>Studio Delta</title>
   
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/sd-brand.css?v=erp-shell">
+  <link rel="stylesheet" href="/sd-brand.css?v=erp-list">
   <script src="/sd-splash.js?v=erp-shell"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
@@ -1033,14 +1033,20 @@
     </div>
 
     <div id="view-admin-prod" class="view-section container d-none-view">
-      <h2 class="brand-font mb-4">Production Overview</h2>
-      
-      <input type="text" id="prodSearch" class="form-control mb-3" placeholder="Search Order #" onkeyup="filterProduction()">
-
-      <ul class="nav nav-pills mb-3" id="adminProdTabs">
-        <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-notstarted">Not Started</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-production">In Production</button></li>
-        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-delivery">Out for Delivery</button></li>
+      <div class="sd-page-head">
+        <div>
+          <p class="sd-page-kicker">Studio Delta · Shop floor</p>
+          <h2>Production Overview</h2>
+        </div>
+        <div class="sd-page-tools">
+          <input type="text" id="prodSearch" class="form-control" placeholder="Search order number" onkeyup="filterProduction()" autocomplete="off">
+          <button type="button" class="btn btn-outline-light btn-sm" onclick="loadProductionOverview()"><i class="bi bi-arrow-clockwise"></i> Refresh</button>
+        </div>
+      </div>
+      <ul class="nav nav-pills sd-icon-tab" id="adminProdTabs">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tab-notstarted">Not Started <span class="sd-count" id="count-notstarted">0</span></button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-production">In Production <span class="sd-count" id="count-production">0</span></button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-delivery">Out for Delivery <span class="sd-count" id="count-delivery">0</span></button></li>
       </ul>
       <div class="tab-content">
         <div class="tab-pane fade show active" id="tab-notstarted"><div id="list-notstarted"></div></div>
@@ -2543,9 +2549,10 @@
     }
 
     function filterProduction() {
-      const q = document.getElementById('prodSearch').value.toLowerCase();
-      document.querySelectorAll('#view-admin-prod .card').forEach(c => {
-        const txt = c.querySelector('button div strong').innerText.toLowerCase();
+      const el = document.getElementById('prodSearch');
+      const q = (el && el.value ? el.value : '').toLowerCase();
+      document.querySelectorAll('#view-admin-prod .sd-order-block').forEach(c => {
+        const txt = (c.getAttribute('data-order') || '').toLowerCase();
         c.style.display = txt.includes(q) ? '' : 'none';
       });
     }
@@ -3962,9 +3969,10 @@ function openSteelModal() {
       const tabEl = document.querySelector('#adminProdTabs button[data-bs-target="#tab-notstarted"]');
       if(tabEl) new bootstrap.Tab(tabEl).show();
 
-      document.getElementById('list-notstarted').innerHTML = '<div class="spinner-border"></div>';
-      document.getElementById('list-production').innerHTML = '<div class="spinner-border"></div>';
-      document.getElementById('list-delivery').innerHTML = '<div class="spinner-border"></div>';
+      const loading = '<div class="sd-load"><div class="spinner-border spinner-border-sm"></div></div>';
+      document.getElementById('list-notstarted').innerHTML = loading;
+      document.getElementById('list-production').innerHTML = loading;
+      document.getElementById('list-delivery').innerHTML = loading;
 
       google.script.run.withSuccessHandler(data => {
         const rawLogs = data.logs;
@@ -3973,14 +3981,21 @@ function openSteelModal() {
         
         rawLogs.forEach(r => {
           if (!orderLogs[r.order]) orderLogs[r.order] =[];
-          // Deduct paused time when calculating initial duration
           r.durationMins = (typeof r.durationMins === 'number') ? r.durationMins : calculateWorkMinutes(r.start, r.end, r.task, r.pausedMins, r.pauseStart);
           orderLogs[r.order].push(r);
         });
 
-        let htmlNotStarted = '<div class="accordion">';
-        let htmlProd = '<div class="accordion">';
-        let htmlDeliv = '<div class="accordion">';
+        let htmlNotStarted = '';
+        let htmlProd = '';
+        let htmlDeliv = '';
+        let nNot = 0, nProd = 0, nDel = 0;
+
+        function wrapTable(bodyHtml, emptyMsg) {
+          if (!bodyHtml) return '<div class="sd-empty">' + emptyMsg + '</div>';
+          return '<div class="sd-table-wrap"><table class="sd-erp-table">' +
+            '<thead><tr><th class="sd-col-toggle"></th><th>Order</th><th>Status</th><th>On floor</th><th>Task</th><th>Clock</th><th>Total</th><th class="sd-col-act"></th></tr></thead>' +
+            bodyHtml + '</table></div>';
+        }
 
         allOrders.forEach((o, i) => {
           const status = String(o.status).toLowerCase();
@@ -3988,81 +4003,90 @@ function openSteelModal() {
           const totalDuration = tasks.reduce((sum, t) => sum + t.durationMins, 0);
           const totalTimeStr = formatDuration(totalDuration);
           
-          // 1. Find exactly ONE active task (no end time)
           const activeTask = tasks.find(t => !t.end);
           const isRunning = !!activeTask;
           const isPaused = activeTask ? !!activeTask.pauseStart : false;
           
-          // 2. Button Logic: Only show buttons if there is an active task in the Prod tab
           let actionBtn = '';
           const isProdTab = !status.startsWith('not yet started') && !status.startsWith('out for') && !status.startsWith('delivered');
           
           if (isProdTab && isRunning) {
               if (!isPaused) {
-                  actionBtn = `<button class="btn btn-sm btn-warning fw-bold border-dark shadow-sm ms-2" style="min-width: 85px;" onclick="event.stopPropagation(); adminTogglePause('${o.order}', 'pause', this)"><i class="bi bi-pause-fill"></i> PAUSE</button>`;
+                  actionBtn = `<button class="btn btn-sm btn-warning fw-bold" onclick="event.stopPropagation(); adminTogglePause('${o.order}', 'pause', this)"><i class="bi bi-pause-fill"></i> Pause</button>`;
               } else {
-                  actionBtn = `<button class="btn btn-sm btn-success fw-bold border-dark shadow-sm ms-2" style="min-width: 85px;" onclick="event.stopPropagation(); adminTogglePause('${o.order}', 'resume', this)"><i class="bi bi-play-fill"></i> RESUME</button>`;
+                  actionBtn = `<button class="btn btn-sm btn-success fw-bold" onclick="event.stopPropagation(); adminTogglePause('${o.order}', 'resume', this)"><i class="bi bi-play-fill"></i> Resume</button>`;
               }
           }
 
-          // Header badge turns yellow if paused, green if actively running
-          let headerBadge = isRunning 
-                ? (isPaused ? '<span class="badge bg-warning text-dark me-2">Paused</span>' : '<span class="badge bg-success me-2">Active</span>') 
-                : '';
+          const statusClass = isRunning ? (isPaused ? 'sd-status is-pause' : 'sd-status is-run') : 'sd-status is-idle';
+          const statusLabel = isRunning ? (isPaused ? 'Paused' : 'Active') : (o.status || '');
+          const onFloor = activeTask ? (activeTask.worker || '—') : '—';
+          const onTask = activeTask ? (activeTask.task || '—') : '—';
+          let clock = '—';
+          if (activeTask) {
+            if (isPaused) clock = '<span class="sd-clock">' + formatDuration(activeTask.durationMins) + '</span>';
+            else clock = `<span class="sd-clock live-timer" data-start="${activeTask.start}" data-task="${activeTask.task}" data-pmins="${activeTask.pausedMins || 0}" data-pstart="${activeTask.pauseStart || ''}">${formatDuration(activeTask.durationMins)}</span>`;
+          }
+          const open = isRunning ? ' show' : '';
+          const rowOpen = isRunning ? ' is-open' : '';
 
-          let item = `
-            <div class="card mb-2 shadow-sm">
-              <div class="card-header bg-white d-flex p-2 align-items-center">
-                <button class="btn btn-link text-decoration-none text-dark text-start flex-grow-1 d-flex justify-content-between align-items-center p-1 m-0" type="button" data-bs-toggle="collapse" data-bs-target="#ord-${i}">
-                  <div><strong>${o.order}</strong> <span class="badge bg-light text-dark border ms-2">${o.status}</span></div>
-                  <div>${headerBadge}<span class="badge bg-dark">${totalTimeStr}</span></div>
-                </button>
-                ${actionBtn}
-              </div>
-              <div id="ord-${i}" class="collapse">
-                <div class="card-body p-0">
-                  <div class="table-responsive">
-                    <table class="table table-sm mb-0">
-                      <thead>
-                        <tr><th>Worker</th><th>Task</th><th>Start</th><th>End</th><th>Duration</th><th>QC</th></tr>
-                      </thead>
-                      <tbody>`;
-          
+          let detailRows = '';
           if(tasks.length === 0) {
-            item += `<tr><td colspan="6" class="text-center text-muted py-3">No activity recorded yet.</td></tr>`;
+            detailRows = `<tr><td colspan="6" class="text-muted">No activity recorded yet.</td></tr>`;
           } else {
             tasks.forEach(t => {
               const startDisplay = t.start ? new Date(t.start).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '-';
               const endDisplay = t.end ? new Date(t.end).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '-';
               let durDisplay = formatDuration(t.durationMins);
-              
-              // If task is not ended, handle Live Timer vs Paused State
               if(!t.end) {
                   if (t.pauseStart) {
-                      // It is currently paused, so show a static yellow badge
-                      durDisplay = `<span class="badge bg-warning text-dark">Paused (${durDisplay})</span>`;
+                      durDisplay = `<span class="sd-status is-pause">Paused (${durDisplay})</span>`;
                   } else {
-                      // It is running, show the live ticking green badge
-                      durDisplay = `<span class="badge bg-success live-timer" data-start="${t.start}" data-task="${t.task}" data-pmins="${t.pausedMins || 0}" data-pstart="${t.pauseStart || ''}">${durDisplay}</span>`;
+                      durDisplay = `<span class="sd-status is-run live-timer" data-start="${t.start}" data-task="${t.task}" data-pmins="${t.pausedMins || 0}" data-pstart="${t.pauseStart || ''}">${durDisplay}</span>`;
                   }
               }
-              
-              const qcIcon = t.qc && t.qc !== 'Skipped' ? '<i class="bi bi-check-circle-fill text-success"></i>' : '-';
-              item += `<tr><td>${t.worker}</td><td>${t.task}</td><td>${startDisplay}</td><td>${endDisplay}</td><td>${durDisplay}</td><td>${qcIcon}</td></tr>`;
+              const qcIcon = t.qc && t.qc !== 'Skipped' ? '<i class="bi bi-check-circle-fill text-success"></i>' : '—';
+              detailRows += `<tr><td>${t.worker}</td><td>${t.task}</td><td>${startDisplay}</td><td>${endDisplay}</td><td>${durDisplay}</td><td>${qcIcon}</td></tr>`;
             });
           }
-          item += `</tbody></table></div></div></div></div>`;
 
-          if (status.startsWith('not yet started')) htmlNotStarted += item;
-          else if (status.startsWith('out for') || status.startsWith('delivered')) htmlDeliv += item;
-          else htmlProd += item;
+          const item = `
+            <tbody class="sd-order-block" data-order="${String(o.order).replace(/"/g, '')}">
+              <tr class="sd-order-row${rowOpen}" data-bs-toggle="collapse" data-bs-target="#ord-${i}">
+                <td><i class="bi bi-chevron-right"></i></td>
+                <td class="sd-order-id">${o.order}</td>
+                <td><span class="${statusClass}">${statusLabel}</span></td>
+                <td>${onFloor}</td>
+                <td>${onTask}</td>
+                <td>${clock}</td>
+                <td class="sd-clock">${totalTimeStr}</td>
+                <td class="sd-col-act" onclick="event.stopPropagation()">${actionBtn}</td>
+              </tr>
+              <tr class="sd-detail-row">
+                <td colspan="8">
+                  <div id="ord-${i}" class="collapse${open}">
+                    <table class="sd-nested">
+                      <thead><tr><th>Worker</th><th>Task</th><th>Start</th><th>End</th><th>Duration</th><th>QC</th></tr></thead>
+                      <tbody>${detailRows}</tbody>
+                    </table>
+                  </div>
+                </td>
+              </tr>
+            </tbody>`;
+
+          if (status.startsWith('not yet started')) { htmlNotStarted += item; nNot += 1; }
+          else if (status.startsWith('out for') || status.startsWith('delivered')) { htmlDeliv += item; nDel += 1; }
+          else { htmlProd += item; nProd += 1; }
         });
 
-        htmlNotStarted += '</div>'; htmlProd += '</div>'; htmlDeliv += '</div>';
-        document.getElementById('list-notstarted').innerHTML = htmlNotStarted || '<p class="text-muted">Empty</p>';
-        document.getElementById('list-production').innerHTML = htmlProd || '<p class="text-muted">Empty</p>';
-        document.getElementById('list-delivery').innerHTML = htmlDeliv || '<p class="text-muted">Empty</p>';
+        document.getElementById('count-notstarted').textContent = String(nNot);
+        document.getElementById('count-production').textContent = String(nProd);
+        document.getElementById('count-delivery').textContent = String(nDel);
+        document.getElementById('list-notstarted').innerHTML = wrapTable(htmlNotStarted, 'No orders waiting to start.');
+        document.getElementById('list-production').innerHTML = wrapTable(htmlProd, 'No orders in production.');
+        document.getElementById('list-delivery').innerHTML = wrapTable(htmlDeliv, 'No orders out for delivery.');
         filterProduction();
+        startLiveTimers();
       }).getAdminDashboardData();
     }
 
