@@ -1,6 +1,6 @@
 # Studio Delta Production
 
-Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. After login, **office users always open Home**. Home is a **live digital twin** of the shop floor plan. Count buttons open the order list. People **animate** the job they are on (welding and tagging share the weld motion; idle people stand still). **Pre-powder QC** is outside the right door; **Final QC** is outside the left door; **Ready for final QC** sits in finished goods. **Production** in the menu is the list-report. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
+Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. After login, **office users always open Home**. Home is a **live 3D digital twin** of the shop. People **animate** the job they are on (welding and tagging share a weld arc; idle people stand still). Count badges open the order list. **Pre-powder QC** is outside the right door; **Final QC** is outside the left door; **Ready for final QC** sits in finished goods. **Production** in the menu is the list-report. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
 
 Orders (~400+) load as a text grid first; click a row to edit. Floor reads no longer rewrite the whole workbook to disk.
 
@@ -105,7 +105,7 @@ Do **not** commit the JSON key or a `.env` file.
 
 ## Floor rules
 
-- Home is a **live digital twin** of the shop floor. Count buttons open the order list. Welding and tagging use the same weld animation; idle stations stand still. **Pre-powder QC** is outside the right door, **Final QC** outside the left door, and **Ready for final QC** is in finished goods. The plan refreshes while you stay on Home.
+- Home is a **live 3D digital twin** of the shop. People animate the job they are on. Count badges open the order list. Welding and tagging use the same weld animation; idle stations stand still. **Pre-powder QC** is outside the right door, **Final QC** outside the left door, and **Ready for final QC** is in finished goods. The plan refreshes while you stay on Home.
 - One person has **one running clock**. Starting or resuming another order asks **Switch from A to B** (pause A, start B — still needs a reason) or **Work on A and B** (one clock, time split; Together badge). **Work this order only** leaves a batch. Pausing or switching requires **No materials**, **Touch up** (plus the order number), or **Other**. Activity and the Workers hour log split those hours by calendar day and show each bout with the pause reason — not a single start-minus-end total.
 - Same product, same process (e.g. assembly slats for two matching gates) can still be started together from Available. Use **Work this order only** to leave a batch.
 - When plate cutting finishes on an order, welders waiting on that plate are **auto-switched** back. They can tap **Still on other job** if they are not ready.
