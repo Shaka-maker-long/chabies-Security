@@ -182,6 +182,9 @@ assert.deepStrictEqual(
   db.parseOutlookLinks("see https://outlook.office.com/owa/?ItemID=ABC123&exvsurl=1"),
   ["https://outlook.office.com/owa/?ItemID=ABC123&exvsurl=1"]
 );
+assert.ok(db.sanitizeSavedLink("https://chabies-security-production.up.railway.app/api/office/enquiries/%231996/files/quote").indexOf("railway.app") !== -1);
+assert.strictEqual(db.sanitizeSavedLink("javascript:alert(1)"), "");
+assert.ok(db.parseOutlookLinks("https://chabies-security-production.up.railway.app/api/office/enquiries/%231996/files/quote").length === 1);
 
 const linked = db.getEnquiryRaw("#1996");
 linked.correspondence = {

@@ -34,6 +34,12 @@ const pipeline = require("./enquiry-pipeline");
 const fs = require("fs");
 const sqlite = require("./sqlite-store");
 
+function officeCookie(token, clear) {
+  if (clear) return "sd_office=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+  const max = 90 * 24 * 60 * 60;
+  return "sd_office=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + max;
+}
+
 function requireOffice(req, res, next) {
   const profile = staff.readSession(req);
   if (!profile) {
@@ -116,7 +122,7 @@ function sendEnquiryFile(res, enquiryNo, kind, download) {
   res.setHeader("Content-Type", outlook ? (/\.eml$/i.test(name) ? "message/rfc822" : "application/vnd.ms-outlook") : mime);
   res.setHeader(
     "Content-Disposition",
-    (outlook || download ? "attachment" : "inline") + "; filename=\"" + String(name).replace(/"/g, "") + "\""
+    (download ? "attachment" : "inline") + "; filename=\"" + String(name).replace(/"/g, "") + "\""
   );
   res.send(file.buffer);
 }
@@ -132,7 +138,14 @@ function mountOffice(app) {
       res.status(403).json({ ok: false, error: "Production users can only use the floor." });
       return;
     }
-    res.json({ ok: true, ...staff.createSession(profile) });
+    const session = staff.createSession(profile);
+    res.setHeader("Set-Cookie", officeCookie(session.token));
+    res.json({ ok: true, ...session });
+  });
+
+  app.post("/api/office/logout", (req, res) => {
+    res.setHeader("Set-Cookie", officeCookie("", true));
+    res.json({ ok: true });
   });
 
   app.get("/api/office/me", (req, res) => {

@@ -1162,12 +1162,30 @@ function parseOutlookLinks(text) {
   const re = /(ms-outlook:[^\s"'<>]+|outlook:\/?\/?[A-Za-z0-9+/=_-]+|https:\/\/[^\s"'<>]+)/gi;
   let m;
   while ((m = re.exec(raw))) {
-    const url = sanitizeOutlookOpenUrl(m[1].replace(/[),.;]+$/, ""));
+    const url = sanitizeSavedLink(m[1].replace(/[),.;]+$/, ""));
     if (!url || seen.has(url)) continue;
     seen.add(url);
     found.push(url);
   }
   return found;
+}
+
+function sanitizeSavedLink(url) {
+  const outlook = sanitizeOutlookOpenUrl(url);
+  if (outlook) return outlook;
+  const raw = String(url || "").trim();
+  if (!raw || /[\u0000-\u001f<>]/.test(raw)) return "";
+  if (!/^https:\/\//i.test(raw)) return "";
+  try {
+    const u = new URL(raw);
+    if (!u.hostname) return "";
+    u.hash = "";
+    u.username = "";
+    u.password = "";
+    return u.toString();
+  } catch (e) {
+    return "";
+  }
 }
 
 function outlookDesktopUrl(mail) {
@@ -1178,6 +1196,8 @@ function outlookDesktopUrl(mail) {
   if (rest) return "ms-outlook://emails/message/open?restID=" + encodeURIComponent(rest);
   const open = sanitizeOutlookOpenUrl(item.outlook_url);
   if (open && /^(outlook:|ms-outlook:)/i.test(open)) return open;
+  const saved = sanitizeSavedLink(item.outlook_url);
+  if (saved && /^https:\/\//i.test(saved) && !sanitizeOutlookOpenUrl(saved)) return saved;
   const mid = String(item.internet_message_id || "").trim();
   if (mid) return "ms-outlook://search?querytext=" + encodeURIComponent(mid);
   const title = String(item.title || item.subject || "").trim();
@@ -1198,7 +1218,7 @@ function mailDedupeKeys(mail) {
     .replace(/\.(msg|eml)$/i, "")
     .trim()
     .toLowerCase();
-  if (name) keys.push("name:" + name);
+  if (name && name !== "outlook email" && name !== "email link") keys.push("name:" + name);
   const url = String(item.outlook_url || "").trim().toLowerCase();
   if (url) keys.push("url:" + url);
   return keys;
@@ -1227,14 +1247,14 @@ function normalizeOutlookMail(from, index) {
     item_id: String(src.item_id || src.itemId || "").trim(),
     rest_id: rest,
     entry_id: entry,
-    web_url: web,
+    web_url: web || sanitizeSavedLink(src.web_url) || (/^https:\/\//i.test(String(src.outlook_url || "")) ? sanitizeSavedLink(src.outlook_url) : ""),
     outlook_url: "",
     kind: String(src.kind || "").trim(),
     stored_as: String(src.stored_as || "").trim(),
     filename: String(src.filename || "").trim(),
     mime: src.mime || ""
   };
-  mail.outlook_url = outlookDesktopUrl({ ...mail, outlook_url: src.outlook_url }) || sanitizeOutlookOpenUrl(src.outlook_url);
+  mail.outlook_url = outlookDesktopUrl({ ...mail, outlook_url: src.outlook_url }) || sanitizeSavedLink(src.outlook_url) || mail.web_url;
   if (!mail.outlook_url && !mail.stored_as && !mail.kind) return null;
   return mail;
 }
@@ -1288,12 +1308,27 @@ function extractOutlookFromDataUrl(dataUrl, filename) {
   }
 }
 
+function titleForPastedLink(url) {
+  const raw = String(url || "").trim();
+  if (/^(ms-outlook:|outlook:)/i.test(raw)) return "Outlook email";
+  try {
+    const u = new URL(raw);
+    if (/\.outlook\.|outlook\.(office|office365|live|cloud)/i.test(u.hostname)) return "Outlook email";
+    const path = decodeURIComponent(u.pathname || "").replace(/\/+$/, "");
+    const last = path.split("/").filter(Boolean).pop() || "";
+    if (last) return last;
+    return u.hostname || "Email link";
+  } catch (e) {
+    return "Email link";
+  }
+}
+
 function mailsFromPastedLinks(text) {
   const raw = String(text || "");
   const urls = parseOutlookLinks(raw);
   if (urls.length) {
     return urls.map((url, i) => normalizeOutlookMail({
-      title: "Outlook email",
+      title: titleForPastedLink(url),
       outlook_url: url,
       web_url: /^https:/i.test(url) ? url : "",
       rest_id: restIdFromWebUrl(url)
@@ -1483,8 +1518,9 @@ function listEnquiryDeliverables(row) {
       kind: mail.kind || "",
       from: mail.from || mail.from_email || "",
       order_no: mail.order_no || "",
-      open: !!(mail.kind && mail.stored_as),
-      outlook: !!(mail.kind && mail.stored_as)
+      open: !!(mail.kind && mail.stored_as) || !!(mail.outlook_url || mail.web_url),
+      href: mail.outlook_url || mail.web_url || "",
+      outlook: false
     });
   });
   if (src.cost_sheet && src.cost_sheet.stored_as) {
@@ -1929,6 +1965,7 @@ module.exports = {
   parseCorrespondenceName,
   parseOutlookLinks,
   sanitizeOutlookOpenUrl,
+  sanitizeSavedLink,
   outlookDesktopUrl,
   normalizeOutlookMail,
   mailsFromPastedLinks,

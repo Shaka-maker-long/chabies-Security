@@ -332,9 +332,12 @@ function createSession(profile) {
 }
 
 function readSession(req) {
-  const token = String((req.headers && (req.headers["x-sd-token"] || req.headers["authorization"])) || "")
+  const header = String((req.headers && (req.headers["x-sd-token"] || req.headers["authorization"])) || "")
     .replace(/^Bearer\s+/i, "")
     .trim();
+  const cookie = String((req.headers && req.headers.cookie) || "");
+  const m = cookie.match(/(?:^|; )sd_office=([^;]*)/);
+  const token = header || (m ? decodeURIComponent(m[1].trim()) : "");
   if (!token) return null;
   return sessions.get(token) || null;
 }

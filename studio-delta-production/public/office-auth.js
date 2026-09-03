@@ -82,6 +82,7 @@ function sdLoadBrand() {
 }
 function sdOfficeLogout() {
   try { localStorage.removeItem("sd-office"); } catch (e) {}
+  fetch("/api/office/logout", { method: "POST", credentials: "same-origin" }).catch(function () {});
   location.href = "/";
 }
 function sdMountOfficeShell(active) {

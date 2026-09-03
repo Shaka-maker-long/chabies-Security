@@ -1,6 +1,6 @@
 (function () {
   const KEEP_VALUES = { Quoted: 1, "Followed Up": 1, Ordered: 1 };
-  let state = { open: false, enquiryNo: "", focusTaskId: "", snap: null, file: { base64: "", name: "", url: "", confirmed: false, mime: "" }, correspondenceMails: [], correspondenceUploads: [] };
+  let state = { open: false, enquiryNo: "", focusTaskId: "", snap: null, file: { base64: "", name: "", url: "", confirmed: false, mime: "" } };
 
   function esc(s) {
     return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -133,8 +133,6 @@
     document.getElementById("sdProcessMask").classList.remove("open");
     revokeFile();
     state.open = false;
-    state.correspondenceMails = [];
-    state.correspondenceUploads = [];
     if (typeof window.sdOnEnquiryProcessClose === "function") window.sdOnEnquiryProcessClose();
   }
 
@@ -277,31 +275,6 @@
   function outlookHref(mail) {
     return String((mail && mail.outlook_url) || "").trim();
   }
-  function readFileAsDataUrl(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  }
-  function showAttached(form) {
-    const el = form && form.querySelector("[data-corr-ready]");
-    if (!el) return;
-    const names = (state.correspondenceUploads || []).map((f) => f.file_name).concat((state.correspondenceMails || []).map((m) => m.title)).filter(Boolean);
-    const uniq = [];
-    names.forEach((n) => { if (uniq.indexOf(n) === -1) uniq.push(n); });
-    el.textContent = uniq.length ? "Ready to save: " + uniq.join(", ") : "";
-  }
-  async function takeOutlookFile(file, form) {
-    if (!file || !file.size) return false;
-    let name = String(file.name || "outlook-email").trim() || "outlook-email";
-    if (!/\.(msg|eml)$/i.test(name)) name += ".msg";
-    const file_base64 = await readFileAsDataUrl(file);
-    state.correspondenceUploads.push({ file_base64, file_name: name });
-    showAttached(form);
-    return true;
-  }
   async function openSavedFile(kind, filename, outlook) {
     const r = await sdOfficeFetch(fileUrl(kind, !!outlook));
     if (!r.ok) throw new Error("Could not open that file");
@@ -329,57 +302,42 @@
   async function openSavedOutlookMail(kind, filename) {
     return openSavedFile(kind, filename, true);
   }
-  function bindOutlookAttach(form) {
-    const box = form && form.querySelector("[data-outlook-drop]");
-    const picker = form && form.querySelector('[name="outlook_drop"]');
-    if (!form || !box || !picker) return;
-    ["dragenter", "dragover"].forEach((ev) => {
-      box.addEventListener(ev, (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        e.dataTransfer.dropEffect = "copy";
-        box.classList.add("over");
-      });
-    });
-    box.addEventListener("dragleave", () => box.classList.remove("over"));
-    box.addEventListener("drop", async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      box.classList.remove("over");
-      const files = e.dataTransfer && e.dataTransfer.files ? Array.prototype.slice.call(e.dataTransfer.files, 0) : [];
-      for (let i = 0; i < files.length; i++) await takeOutlookFile(files[i], form);
-    });
-    picker.onchange = async (e) => {
-      const files = Array.prototype.slice.call((e.target.files || []), 0);
-      for (let i = 0; i < files.length; i++) await takeOutlookFile(files[i], form);
-      picker.value = "";
-    };
-  }
   function correspondenceFields() {
-    return "<p class=\"sd-process-sub\">Drag the email from the Outlook list (left-hand names) onto the box. Wait until the subject shows below, then Save update. Use Edge if Chrome blocks the drop.</p>" +
-      "<div class=\"sd-drop\" data-outlook-drop>" +
-      "<input name=\"outlook_drop\" type=\"file\" accept=\".msg,.eml,application/vnd.ms-outlook,message/rfc822\" multiple>" +
-      "<span>Drop the Outlook email here</span></div>" +
-      "<p class=\"sd-process-sub\" data-corr-ready></p>";
+    return "<p class=\"sd-process-sub\">Paste the email’s Outlook or Studio Delta server link. Do not attach the .msg file.</p>" +
+      "<label>Email link<input class=\"sd-path\" name=\"correspondence_links\" placeholder=\"https://… or ms-outlook://…\" autocomplete=\"off\"></label>";
+  }
+  function fileHref(kind) {
+    return "/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/files/" + encodeURIComponent(kind);
+  }
+  function absoluteHref(pathOrUrl) {
+    const raw = String(pathOrUrl || "").trim();
+    if (!raw) return "";
+    if (/^(https?:|ms-outlook:|outlook:)/i.test(raw)) return raw;
+    try { return new URL(raw, window.location.origin).toString(); } catch (e) { return raw; }
   }
   function filesCard(row) {
     const items = (row && Array.isArray(row.deliverables)) ? row.deliverables : [];
     let html = "<div class=\"sd-files sd-correspondence\"><h2>Files</h2>" +
-      "<p class=\"sd-process-sub\">Every CORRESPONDANCE email, cost sheet, quote PDF (including earlier quotes on this enquiry), follow-up screenshot, proof of payment, and drawing saved on this enquiry stays here. Open them at any time — not only while that step is open.</p>";
+      "<p class=\"sd-process-sub\">Every CORRESPONDANCE email, cost sheet, quote PDF (including earlier quotes on this enquiry), follow-up screenshot, proof of payment, and drawing saved on this enquiry stays here. Open or copy the server link — you do not attach the email file.</p>";
     if (!items.length) {
       return html + "<p class=\"sd-process-sub\">No files on this enquiry yet.</p></div>";
     }
     html += "<div class=\"sd-file-list\">";
     html += items.map((f) => {
-      const open = f.open && f.kind
-        ? "<button type=\"button\" class=\"ghost\" data-open-file=\"" + esc(f.kind) + "\" data-mail-name=\"" + esc(f.filename || f.title || "file") + "\" data-file-outlook=\"" + (f.outlook ? "1" : "0") + "\">" +
-          (f.outlook ? "Open in Outlook" : "Open") + "</button>"
-        : "<span class=\"sd-process-sub\">Not saved as a file</span>";
+      const server = f.kind ? absoluteHref(fileHref(f.kind)) : "";
+      const href = (f.kind && (f.open || f.stored_as) && server) ? server : (f.href || "");
+      const open = href
+        ? "<a class=\"sd-open-mail\" href=\"" + esc(href) + "\" target=\"_blank\" rel=\"noopener\">Open</a>"
+        : "<span class=\"sd-process-sub\">No link yet</span>";
+      const copy = href
+        ? "<button type=\"button\" class=\"ghost\" data-copy-link=\"" + esc(href) + "\">Copy link</button>"
+        : "";
       return "<div class=\"sd-file-row\">" +
         "<div class=\"sd-file-meta\"><div class=\"sd-file-type\">" + esc(f.label || "File") + "</div>" +
         "<div class=\"sd-file-name\">" + esc(f.title || f.filename || "File") + "</div>" +
         (f.from ? "<div class=\"sd-process-sub\">" + esc(f.from) + "</div>" : "") +
-        "</div>" + open + "</div>";
+        (href ? "<div class=\"sd-process-sub\" style=\"word-break:break-all\">" + esc(href) + "</div>" : "") +
+        "</div><div class=\"row-actions\">" + copy + open + "</div></div>";
     }).join("");
     return html + "</div></div>";
   }
@@ -493,7 +451,7 @@
     if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
     if (action.id === "complete_quote") body.quote_no = field(form, "quote_no");
     if (action.id === "assign_costing" || action.id === "complete_chase" || action.id === "add_correspondence") {
-      body.correspondence_files = state.correspondenceUploads || [];
+      body.correspondence_links = field(form, "correspondence_links");
     }
     if (action.id === "complete_order") body.drawing_required = field(form, "drawing_required");
     if (action.id === "close") body.status = field(form, "status");
@@ -587,7 +545,6 @@
     body.innerHTML = html;
     body.querySelectorAll("form").forEach((form) => {
       bindFile(form);
-      bindOutlookAttach(form);
       const card = form.closest("[data-action-i]");
       const i = Number((card || form).getAttribute("data-action-i"));
       const preview = form.querySelector("[data-preview]");
@@ -604,10 +561,29 @@
         const j = await r.json();
         if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
         state.snap = j;
-        state.correspondenceMails = [];
-        state.correspondenceUploads = [];
         revokeFile();
         renderBody();
+      };
+    });
+    body.querySelectorAll("[data-copy-link]").forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        const href = btn.getAttribute("data-copy-link") || "";
+        try {
+          if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(href);
+          else {
+            const ta = document.createElement("textarea");
+            ta.value = href;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            ta.remove();
+          }
+          btn.textContent = "Copied";
+          setTimeout(() => { btn.textContent = "Copy link"; }, 1600);
+        } catch (err) {
+          btn.textContent = "Copy failed";
+        }
       };
     });
     body.querySelectorAll("[data-open-file],[data-open-mail]").forEach((btn) => {

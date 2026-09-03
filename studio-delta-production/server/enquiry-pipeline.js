@@ -546,7 +546,7 @@ function archiveCorrespondence(row, actor, body) {
 function addCorrespondence(row, actor, body) {
   const added = archiveCorrespondence(row, actor, body);
   if (!added) {
-    throw new Error("Drag the email from Outlook onto the box until the subject appears, then Save update.");
+    throw new Error("Paste the email link, then Save update.");
   }
 }
 
