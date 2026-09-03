@@ -745,17 +745,37 @@
     }
     .task-card {
       cursor: pointer;
-      min-height: 120px;
+      min-height: 176px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       gap: 8px;
       text-align: center;
-      padding: 24px 16px;
+      padding: 20px 14px 16px;
     }
     .task-card i { font-size: 1.8rem; color: var(--text-secondary); }
     .task-card h4 { margin: 0; font-size: 1.15rem; }
+    .task-counts {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
+      margin-top: 4px;
+    }
+    .task-count {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .02em;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: #f2f4f7;
+      color: #344054;
+    }
+    .task-count b { font-variant-numeric: tabular-nums; }
+    .task-count.is-ready { background: #ecfdf3; color: #067647; }
+    .task-count.is-active { background: #eff8ff; color: #175cd3; }
+    .task-count.is-paused { background: #fffaeb; color: #b54708; }
     .dash-head {
       display: flex;
       justify-content: space-between;
@@ -854,10 +874,6 @@
     <a id="link-roles" class="sidebar-link active" onclick="goHome()">
       <i class="bi bi-house-door"></i>
       <span class="link-text">Home</span>
-    </a>
-    <a id="link-floor" class="sidebar-link d-none-view" onclick="showTaskPicker()">
-      <i class="bi bi-tools"></i>
-      <span class="link-text">Floor</span>
     </a>
     <div id="adminLinks" class="d-none-view">
       <div class="sd-nav-label">Office</div>
@@ -965,7 +981,7 @@
 
     <div id="view-roles" class="view-section container d-none-view">
       <div class="text-center mb-4 mt-2">
-        <h1 class="h2 fw-bold mb-1">Choose your work</h1>
+        <h1 class="h2 fw-bold mb-1">Home</h1>
         <p class="text-muted mb-0" id="taskPickSubtitle">Select the task you will do now.</p>
       </div>
       <div class="row g-3" id="roleGrid"></div>
@@ -1981,7 +1997,7 @@
       document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
       let linkId = '';
       if(viewId === 'view-global-login' || viewId === 'view-users' || viewId === 'view-dashboard') linkId = 'link-roles';
-      if(viewId === 'view-roles') linkId = document.getElementById('link-floor') && !document.getElementById('link-floor').classList.contains('d-none-view') ? 'link-floor' : 'link-roles';
+      if(viewId === 'view-roles') linkId = 'link-roles';
       if(viewId === 'view-admin-prod') linkId = 'link-prod';
       if(viewId === 'view-admin-workers') linkId = 'link-work';
       if(viewId === 'view-admin-metrics') linkId = 'link-metrics';
@@ -2226,8 +2242,7 @@
         if (view === 'floor') { showTaskPicker(); return; }
       }
       if (session.canSeeOffice) {
-        loadProductionOverview();
-        loadIdleWorkers();
+        showTaskPicker();
         return;
       }
       if (!(session.tasks && session.tasks.length)) {
@@ -2245,15 +2260,30 @@
         navTo('view-global-login');
         return;
       }
-      if (session.canSeeOffice) {
-        loadProductionOverview();
-        return;
-      }
-      if (session.tasks && session.tasks.length > 1) {
+      if (session.canSeeOffice || ((session.tasks || []).length > 1) || !(session.tasks && session.tasks.length)) {
         showTaskPicker();
         return;
       }
       enterDashboard();
+    }
+    function taskCountPills(task, counts) {
+      const waiting = !counts;
+      const c = (counts && counts[task]) || { ready: 0, active: 0, paused: 0 };
+      const ready = waiting ? '—' : (c.ready || 0);
+      const active = waiting ? '—' : (c.active || 0);
+      const paused = waiting ? '—' : (c.paused || 0);
+      return '<div class="task-counts" data-task-counts>' +
+        '<span class="task-count is-ready" title="Orders waiting to be started"><b>' + ready + '</b> Ready</span>' +
+        '<span class="task-count is-active" title="Orders being worked now"><b>' + active + '</b> Active</span>' +
+        '<span class="task-count is-paused" title="Orders started then paused"><b>' + paused + '</b> Paused</span>' +
+        '</div>';
+    }
+    function paintTaskCounts(counts) {
+      document.querySelectorAll('#roleGrid [data-task]').forEach((card) => {
+        const task = card.getAttribute('data-task');
+        const slot = card.querySelector('[data-task-counts]');
+        if (slot) slot.outerHTML = taskCountPills(task, counts || {});
+      });
     }
     function showTaskPicker() {
       const grid = document.getElementById('roleGrid');
@@ -2261,7 +2291,7 @@
       const tasks = (session.canSeeOffice ? Object.keys(TASK_ICONS) : (session.tasks || [])).slice();
       if (sub) {
         sub.innerText = session.canSeeOffice
-          ? 'Admin — pick a floor task, or use Production in the menu.'
+          ? 'Each card shows Ready, Active, and Paused orders. Production in the menu is the full list.'
           : ('Hi ' + session.name + '. What are you doing now?');
       }
       grid.innerHTML = '';
@@ -2270,8 +2300,9 @@
       } else {
         tasks.forEach(r => {
           const icon = TASK_ICONS[r] || 'bi-gear';
-          grid.innerHTML += '<div class="col-12 col-sm-6 col-lg-4"><div class="card h-100 role-card task-card" onclick="selectFloorTask(\'' + r.replace(/'/g, "\\'") + '\')"><i class="bi ' + icon + '"></i><h4>' + r + '</h4></div></div>';
+          grid.innerHTML += '<div class="col-12 col-sm-6 col-lg-4"><div class="card h-100 role-card task-card" data-task="' + r.replace(/"/g, '') + '" onclick="selectFloorTask(\'' + r.replace(/'/g, "\\'") + '\')"><i class="bi ' + icon + '"></i><h4>' + r + '</h4>' + taskCountPills(r, null) + '</div></div>';
         });
+        google.script.run.withSuccessHandler(paintTaskCounts).withFailureHandler(function () {}).getFloorTaskCounts();
       }
       navTo('view-roles');
     }
@@ -2420,8 +2451,7 @@
           startIdleAlertPolling();
           applyAdminLinks();
           if(session.role === 'Admin' || session.isAdmin) {
-            loadProductionOverview();
-            loadIdleWorkers();
+            showTaskPicker();
           } else {
             enterDashboard();
           }

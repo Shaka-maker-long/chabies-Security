@@ -7,7 +7,7 @@ const css = fs.readFileSync(path.join(__dirname, "../public/office-shell.css"), 
 const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 
 const labels = [
-  "Home", "Floor", "Orders", "Enquiries", "My tasks", "Office schedule", "Dropdowns", "Users",
+  "Home", "Orders", "Enquiries", "My tasks", "Office schedule", "Dropdowns", "Users",
   "Task times", "Debtors", "Production", "Workers", "Metrics",
   "QC Reports", "Activity", "Schedule", "Log Out"
 ];
@@ -29,6 +29,16 @@ assert.ok(tasksHtml.indexOf(">To do<") !== -1);
 assert.ok(tasksHtml.indexOf(">Completed<") !== -1);
 assert.ok(tasksHtml.indexOf("done=1") !== -1);
 assert.ok(js.indexOf("/?view=production") !== -1);
+assert.ok(js.indexOf("/?view=floor") === -1, "Floor is Home, not a second menu item");
+assert.ok(js.indexOf('id="link-floor"') === -1);
+assert.ok(floor.indexOf('id="link-floor"') === -1, "floor sidebar link must be gone");
+assert.ok(floor.indexOf("getFloorTaskCounts") !== -1);
+assert.ok(floor.indexOf("task-counts") !== -1);
+assert.ok(floor.indexOf("is-ready") !== -1);
+assert.ok(floor.indexOf("is-active") !== -1);
+assert.ok(floor.indexOf("is-paused") !== -1);
+assert.ok(floor.indexOf("showTaskPicker()") !== -1);
+assert.ok(/canSeeOffice[\s\S]{0,80}showTaskPicker/.test(floor), "Admin Home must open floor task cards");
 assert.ok(js.indexOf("/?view=workers") !== -1);
 assert.ok(js.indexOf("/?view=metrics") !== -1);
 assert.ok(js.indexOf("/?view=qc") !== -1);
