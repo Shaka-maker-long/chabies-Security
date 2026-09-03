@@ -86,7 +86,9 @@ const extraMail = pipeline.applyAction("#1996", "Coster", {
   correspondence_links: "https://outlook.office.com/owa/?ItemID=AAMkADrestid023&exvsurl=1&viewmodel=ReadMessageItem"
 });
 assert.strictEqual(extraMail.row.correspondence.mails.length, 2);
-assert.ok(extraMail.row.correspondence.mails[1].outlook_url.indexOf("ms-outlook://") === 0);
+assert.ok(extraMail.row.correspondence.mails[1].outlook_url.indexOf("https://outlook.office.com/") === 0);
+assert.ok(extraMail.row.correspondence.mails[1].outlook_url.indexOf("ms-outlook://") === -1);
+assert.ok(extraMail.row.correspondence.mails[1].outlook_url.indexOf("AAMkADrestid023") >= 0);
 const serverLink = pipeline.applyAction("#1996", "Coster", {
   action: "add_correspondence",
   correspondence_links: "https://chabies-security-production.up.railway.app/api/office/enquiries/%231996/files/quote"
@@ -548,5 +550,73 @@ const autoApprove = pipeline.applyAction(roleEnq.enquiry_no, "Approver", {
 });
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "quote" && t.enquiry_no === roleEnq.enquiry_no));
 assert.strictEqual(autoApprove.row.quote_assignee, "Quoter");
+
+const slashPaste = pipeline.applyAction(roleEnq.enquiry_no, "Coster", {
+  action: "add_correspondence",
+  correspondence_links: "https://files.example/jobs//Q1//mirror.xlsx\n\\\\nas\\studio-delta\\cost//sheet.xlsx"
+});
+assert.ok(slashPaste.row.correspondence.mails.some((m) => m.outlook_url === "https://files.example/jobs//Q1//mirror.xlsx"));
+assert.ok(slashPaste.row.correspondence.mails.some((m) => m.outlook_url === "\\\\nas\\studio-delta\\cost//sheet.xlsx"));
+
+const multi = db.upsertEnquiry({
+  date_enquired: "08/01/2026",
+  client_name: "Two Products",
+  products: [
+    { product: "Daphne Rectangular Mirror", category: "Mirror" },
+    { product: "Eve Patio Table", category: "Table" }
+  ],
+  status: "New"
+});
+pipeline.applyAction(multi.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+assert.throws(
+  () => pipeline.applyAction(multi.enquiry_no, "Coster", {
+    action: "complete_cost_sheet",
+    file_base64: csv,
+    file_name: "cost.csv",
+    file_confirmed: true,
+    quote_assignee: "Quoter"
+  }),
+  /Eve Patio Table/
+);
+assert.throws(
+  () => pipeline.applyAction(multi.enquiry_no, "Coster", {
+    action: "complete_cost_sheet",
+    cost_sheets: [{
+      product: "Daphne Rectangular Mirror",
+      files: [{ file_base64: csv, file_name: "mirror.csv", file_confirmed: true }]
+    }],
+    quote_assignee: "Quoter"
+  }),
+  /Eve Patio Table/
+);
+const multiCost = pipeline.applyAction(multi.enquiry_no, "Coster", {
+  action: "complete_cost_sheet",
+  cost_sheets: [
+    {
+      product: "Daphne Rectangular Mirror",
+      files: [
+        { file_base64: csv, file_name: "mirror.csv", file_confirmed: true },
+        { file_base64: csv, file_name: "mirror-extra.csv", file_confirmed: true }
+      ]
+    },
+    {
+      product: "Eve Patio Table",
+      files: [{ file_base64: csv, file_name: "table.csv", file_confirmed: true }]
+    }
+  ],
+  quote_assignee: "Quoter"
+});
+assert.strictEqual(multiCost.row.status, "Costed");
+assert.strictEqual(multiCost.row.cost_sheets.length, 3);
+assert.strictEqual(multiCost.row.cost_sheets.filter((s) => s.product === "Daphne Rectangular Mirror").length, 2);
+assert.strictEqual(multiCost.row.cost_sheets.filter((s) => s.product === "Eve Patio Table").length, 1);
+assert.ok(db.readEnquiryAttachment(multi.enquiry_no, "cost_sheet"));
+assert.ok(db.readEnquiryAttachment(multi.enquiry_no, "cost_sheet_1"));
+assert.ok(db.readEnquiryAttachment(multi.enquiry_no, "cost_sheet_2"));
+assert.ok(db.readEnquiryAttachment(multi.enquiry_no, "cost_sheet_3"));
+const multiFiles = db.listEnquiryDeliverables(multiCost.row);
+assert.strictEqual(multiFiles.filter((f) => f.group === "cost_sheet").length, 3);
+assert.ok(multiFiles.some((f) => f.label === "Cost sheet · Daphne Rectangular Mirror"));
+assert.ok(multiFiles.some((f) => f.label === "Cost sheet · Eve Patio Table"));
 
 console.log("enquiry-pipeline.test.js ok");

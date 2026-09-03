@@ -1183,7 +1183,7 @@ function parseOutlookLinks(text) {
   const raw = String(text || "");
   const found = [];
   const seen = new Set();
-  const re = /(ms-outlook:[^\s"'<>]+|outlook:\/?\/?[A-Za-z0-9+/=_-]+|https:\/\/[^\s"'<>]+)/gi;
+  const re = /(ms-outlook:[^\s"'<>]+|outlook:\/?\/?[A-Za-z0-9+/=_-]+|https?:\/\/[^\s"'<>]+|file:\/\/[^\s"'<>]+|\\\\[^\s"'<>]+)/gi;
   let m;
   while ((m = re.exec(raw))) {
     const url = sanitizeSavedLink(m[1].replace(/[),.;]+$/, ""));
@@ -1195,21 +1195,11 @@ function parseOutlookLinks(text) {
 }
 
 function sanitizeSavedLink(url) {
-  const outlook = sanitizeOutlookOpenUrl(url);
-  if (outlook) return outlook;
-  const raw = String(url || "").trim();
-  if (!raw || /[\u0000-\u001f<>]/.test(raw)) return "";
-  if (!/^https:\/\//i.test(raw)) return "";
-  try {
-    const u = new URL(raw);
-    if (!u.hostname) return "";
-    u.hash = "";
-    u.username = "";
-    u.password = "";
-    return u.toString();
-  } catch (e) {
-    return "";
-  }
+  const raw = String(url || "").replace(/[\u0000-\u001F\u007F]/g, "").trim();
+  if (!raw || /[<>]/.test(raw)) return "";
+  const lower = raw.toLowerCase();
+  if (lower.startsWith("javascript:") || lower.startsWith("vbscript:") || lower.startsWith("data:")) return "";
+  return raw.slice(0, 4000);
 }
 
 function outlookDesktopUrl(mail) {
@@ -1256,8 +1246,8 @@ function normalizeOutlookMail(from, index) {
   const src = from && typeof from === "object" ? from : {};
   const title = String(src.title || src.subject || src.filename || "").trim();
   const parsed = parseCorrespondenceName(title);
-  const web = sanitizeOutlookOpenUrl(src.web_url);
-  const rest = String(src.rest_id || src.restId || "").trim() || restIdFromWebUrl(web) || restIdFromWebUrl(src.outlook_url);
+  const pasted = sanitizeSavedLink(src.web_url || src.url || src.Link || src.outlook_url);
+  const rest = String(src.rest_id || src.restId || "").trim();
   const entry = String(src.entry_id || src.entryId || "").replace(/^outlook:\/*/i, "").replace(/[^A-Za-z0-9+/=_-]/g, "");
   const mail = {
     id: String(src.id || "").trim() || ("mail_" + (Number(index) + 1 || 1)),
@@ -1271,14 +1261,23 @@ function normalizeOutlookMail(from, index) {
     item_id: String(src.item_id || src.itemId || "").trim(),
     rest_id: rest,
     entry_id: entry,
-    web_url: web || sanitizeSavedLink(src.web_url) || (/^https:\/\//i.test(String(src.outlook_url || "")) ? sanitizeSavedLink(src.outlook_url) : ""),
+    web_url: pasted,
     outlook_url: "",
     kind: String(src.kind || "").trim(),
     stored_as: String(src.stored_as || "").trim(),
     filename: String(src.filename || "").trim(),
     mime: src.mime || ""
   };
-  mail.outlook_url = outlookDesktopUrl({ ...mail, outlook_url: src.outlook_url }) || sanitizeSavedLink(src.outlook_url) || mail.web_url;
+  if (rest || entry) {
+    mail.outlook_url = outlookDesktopUrl({ ...mail, outlook_url: src.outlook_url }) || pasted;
+    if (!mail.web_url) mail.web_url = sanitizeOutlookOpenUrl(src.web_url) || "";
+  } else if (pasted) {
+    mail.outlook_url = pasted;
+    mail.web_url = pasted;
+  } else {
+    mail.outlook_url = outlookDesktopUrl({ ...mail, outlook_url: src.outlook_url }) || "";
+    mail.web_url = sanitizeOutlookOpenUrl(src.web_url) || "";
+  }
   if (!mail.outlook_url && !mail.stored_as && !mail.kind) return null;
   return mail;
 }
@@ -1333,20 +1332,21 @@ function extractOutlookFromDataUrl(dataUrl, filename) {
 }
 
 function mailsFromPastedLinks(text) {
-  const raw = String(text || "");
-  const urls = parseOutlookLinks(raw);
-  if (urls.length) {
-    return urls.map((url, i) => normalizeOutlookMail({
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const mails = [];
+  lines.forEach((line) => {
+    const url = sanitizeSavedLink(line);
+    if (!url) return;
+    const mail = normalizeOutlookMail({
       title: "Correspondance link",
-      outlook_url: url,
-      web_url: /^https:/i.test(url) ? url : "",
-      rest_id: restIdFromWebUrl(url)
-    }, i)).filter(Boolean);
-  }
-  const title = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
-  if (title.length < 3) return [];
-  const mail = normalizeOutlookMail({ title, subject: title }, 0);
-  return mail ? [mail] : [];
+      web_url: url,
+      outlook_url: url
+    }, mails.length);
+    if (mail) mails.push(mail);
+  });
+  return mails;
 }
 
 function normalizeCorrespondence(from) {
@@ -1375,6 +1375,7 @@ function normalizeCorrespondence(from) {
 function copyPipeline(from, to) {
   to.tasks = normalizeEnquiryTasks(from);
   to.cost_sheet = cloneJson(from && from.cost_sheet, null);
+  to.cost_sheets = Array.isArray(from && from.cost_sheets) ? cloneJson(from.cost_sheets, []) : [];
   to.approval = cloneJson(from && from.approval, null);
   to.follow_ups = Array.isArray(from && from.follow_ups) ? cloneJson(from.follow_ups, []) : [];
   to.quotes = Array.isArray(from && from.quotes) ? cloneJson(from.quotes, []) : [];
@@ -1469,6 +1470,11 @@ function readEnquiryAttachment(enquiryNo, kind) {
   if (!row) return null;
   let meta = null;
   if (want === "cost_sheet") meta = row.cost_sheet;
+  else if (/^cost_sheet_(\d+)$/.test(want)) {
+    const list = Array.isArray(row.cost_sheets) ? row.cost_sheets : [];
+    meta = list.find((s) => s && (s.kind === want || Number(s.n) === Number(want.split("_").pop())))
+      || (row.cost_sheet && (row.cost_sheet.kind === want || row.cost_sheet.stored_as === want) ? row.cost_sheet : null);
+  }
   else if (want === "pop") meta = row.client_outcome && row.client_outcome.file;
   else if (want === "drawing") meta = row.drawing && row.drawing.file;
   else if (want === "follow_up") {
@@ -1532,19 +1538,23 @@ function listEnquiryDeliverables(row) {
       outlook: false
     });
   });
-  if (src.cost_sheet && src.cost_sheet.stored_as) {
+  const costSheets = Array.isArray(src.cost_sheets) && src.cost_sheets.length
+    ? src.cost_sheets
+    : (src.cost_sheet && src.cost_sheet.stored_as ? [src.cost_sheet] : []);
+  costSheets.forEach((sheet) => {
+    if (!sheet || !sheet.stored_as) return;
     items.push({
       group: "cost_sheet",
-      label: "Cost sheet",
-      title: src.cost_sheet.filename || "Cost sheet",
-      filename: src.cost_sheet.filename || "cost-sheet",
-      kind: "cost_sheet",
-      from: "",
+      label: sheet.product ? ("Cost sheet · " + sheet.product) : "Cost sheet",
+      title: sheet.filename || "Cost sheet",
+      filename: sheet.filename || "cost-sheet",
+      kind: sheet.kind || "cost_sheet",
+      from: sheet.product || "",
       order_no: "",
       open: true,
       outlook: false
     });
-  }
+  });
   const quotes = Array.isArray(src.quotes) ? src.quotes : [];
   if (quotes.length) {
     quotes.forEach((item, i) => {

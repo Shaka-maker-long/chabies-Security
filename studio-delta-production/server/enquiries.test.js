@@ -184,7 +184,16 @@ assert.deepStrictEqual(
 );
 assert.ok(db.sanitizeSavedLink("https://chabies-security-production.up.railway.app/api/office/enquiries/%231996/files/quote").indexOf("railway.app") !== -1);
 assert.strictEqual(db.sanitizeSavedLink("javascript:alert(1)"), "");
+assert.strictEqual(db.sanitizeSavedLink("https://share.example/a//b//c#frag"), "https://share.example/a//b//c#frag");
+assert.strictEqual(db.sanitizeSavedLink("\\\\server\\share\\job//folder"), "\\\\server\\share\\job//folder");
+assert.strictEqual(db.sanitizeSavedLink("file://server/share/a//b"), "file://server/share/a//b");
+assert.strictEqual(db.sanitizeSavedLink("http://intranet/a//b"), "http://intranet/a//b");
 assert.ok(db.parseOutlookLinks("https://chabies-security-production.up.railway.app/api/office/enquiries/%231996/files/quote").length === 1);
+const slashMail = db.mailsFromPastedLinks("https://files.example/a//b//c\n\\\\nas\\jobs\\Q1//folder");
+assert.strictEqual(slashMail.length, 2);
+assert.strictEqual(slashMail[0].outlook_url, "https://files.example/a//b//c");
+assert.strictEqual(slashMail[1].outlook_url, "\\\\nas\\jobs\\Q1//folder");
+assert.ok(!/^ms-outlook:/i.test(slashMail[0].outlook_url));
 
 const linked = db.getEnquiryRaw("#1996");
 linked.correspondence = {
