@@ -80,10 +80,12 @@ function sdLoadBrand() {
   sdEnsureSheet("/office-shell.css?v=erp-shell");
   return sdEnsureScript("/sd-splash.js?v=erp-shell");
 }
-function sdOfficeLogout() {
+function sdForgetOffice() {
   try { localStorage.removeItem("sd-office"); } catch (e) {}
-  fetch("/api/office/logout", { method: "POST", credentials: "same-origin" }).catch(function () {});
-  location.href = "/";
+  return fetch("/api/office/logout", { method: "POST", credentials: "same-origin" }).catch(function () {});
+}
+function sdOfficeLogout() {
+  sdForgetOffice().finally(function () { location.href = "/"; });
 }
 function sdMountOfficeShell(active) {
   if (document.getElementById("sdSidebar")) {
@@ -177,6 +179,7 @@ function sdShowLogin(message) {
       const fd = new FormData(e.target);
       const r = await fetch("/api/office/login", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: fd.get("name"), password: fd.get("password") })
       });
@@ -191,18 +194,10 @@ function sdShowLogin(message) {
 }
 async function sdRequireOffice(page) {
   await sdLoadBrand();
-  let profile = sdOfficeProfile();
-  if (profile && profile.token) {
-    const r = await fetch("/api/office/me", { headers: { "x-sd-token": profile.token } });
-    const j = await r.json();
-    if (j.ok) {
-      profile = Object.assign({}, profile, j.profile);
-      sdSaveOffice(profile);
-    } else profile = null;
-  }
+  await sdForgetOffice();
+  const profile = await sdShowLogin("Log in with your name and access code.");
   if (!profile || !profile.canSeeOffice) {
-    const here = location.pathname + (location.search || "");
-    location.replace("/?next=" + encodeURIComponent(here));
+    location.replace("/");
     return null;
   }
   if (page === "debtors" && !profile.canSeeDebtors) {

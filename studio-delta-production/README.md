@@ -124,7 +124,7 @@ Legacy pause columns J/K/L are still written for older reports.
 
 ## Users sheet (login)
 
-Workers log in **once per visit** with name + access code. Every page load shows the login screen first (the last login is not remembered).
+Workers log in **once per visit** with name + access code. Every page load — floor, office, and refresh — shows the login screen first. A saved session must never skip login.
 
 Add a **Tasks** column (column D). The first time the app opens it will create the header if it is missing.
 

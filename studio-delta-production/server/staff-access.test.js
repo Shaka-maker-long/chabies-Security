@@ -196,6 +196,18 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const sess = JSON.parse(fs.readFileSync(sessFile, "utf8"));
   assert.ok(sess[boss.token] && sess[boss.token].name === "Office Boss");
 
+  const loggedOut = await fetch(base + "/api/office/logout", {
+    method: "POST",
+    headers: { "x-sd-token": boss.token }
+  });
+  assert.strictEqual(loggedOut.status, 200);
+  const afterLogout = JSON.parse(fs.readFileSync(sessFile, "utf8"));
+  assert.ok(!afterLogout[boss.token], "logout must drop the server session");
+  const meGone = await fetch(base + "/api/office/me", { headers: { "x-sd-token": boss.token } });
+  assert.strictEqual(meGone.status, 401);
+  const ordersGone = await fetch(base + "/api/office/orders", { headers: { "x-sd-token": boss.token } });
+  assert.strictEqual(ordersGone.status, 401);
+
   server.close();
   console.log("staff-access.test.js ok");
 })().catch((e) => {
