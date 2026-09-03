@@ -1649,6 +1649,8 @@
       </div>
     </div>
   </div>
+  <div class="modal fade" id="alertModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body text-center p-4"><h5 class="mb-3" id="alertMsg"></h5><button class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button></div></div></div></div>
+  <div class="modal fade" id="confirmModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body text-center p-4"><h5 class="mb-3" id="confirmMsg"></h5><div class="d-flex justify-content-center gap-2"><button class="btn btn-primary px-4" id="confirmBtnYes">YES</button><button class="btn btn-outline-dark px-4" data-bs-dismiss="modal">NO</button></div></div></div></div></div>
 
 
   <!-- Pause / switch-reason modal -->
@@ -2099,24 +2101,29 @@
       }
 
       try {
-        passModal = new bootstrap.Modal('#passModal');
-        startModal = new bootstrap.Modal('#startModal');
-        pauseModal = new bootstrap.Modal('#pauseModal');
-        glassCheckModal = new bootstrap.Modal('#glassCheckModal');
-        qcModal = new bootstrap.Modal('#qcModal');
-        alertModal = new bootstrap.Modal('#alertModal');
-        confirmModal = new bootstrap.Modal('#confirmModal');
-        floorListModal = new bootstrap.Modal('#floorListModal');
-        weeklyDetailsModal = new bootstrap.Modal('#weeklyDetailsModal');
-        steelSelectionModal = new bootstrap.Modal('#steelModal');
-        backboardSelectionModal = new bootstrap.Modal('#backboardModal');
-        idleAlertModal = new bootstrap.Modal('#idleAlertModal');
-        welderSteelModal = new bootstrap.Modal('#welderSteelModal');
-        batchWorkModal = new bootstrap.Modal('#batchWorkModal');
-        runningChoiceModal = new bootstrap.Modal('#runningChoiceModal');
-        insertScheduleModal = new bootstrap.Modal('#insertScheduleModal');
+        function bindModal(sel) {
+          const el = document.querySelector(sel);
+          return el ? new bootstrap.Modal(el) : null;
+        }
+        passModal = bindModal('#passModal');
+        startModal = bindModal('#startModal');
+        pauseModal = bindModal('#pauseModal');
+        glassCheckModal = bindModal('#glassCheckModal');
+        qcModal = bindModal('#qcModal');
+        alertModal = bindModal('#alertModal');
+        confirmModal = bindModal('#confirmModal');
+        floorListModal = bindModal('#floorListModal');
+        weeklyDetailsModal = bindModal('#weeklyDetailsModal');
+        steelSelectionModal = bindModal('#steelModal');
+        backboardSelectionModal = bindModal('#backboardModal');
+        idleAlertModal = bindModal('#idleAlertModal');
+        welderSteelModal = bindModal('#welderSteelModal');
+        batchWorkModal = bindModal('#batchWorkModal');
+        runningChoiceModal = bindModal('#runningChoiceModal');
+        insertScheduleModal = bindModal('#insertScheduleModal');
         
-        document.getElementById('confirmBtnYes').onclick = () => { if (confirmModal) confirmModal.hide(); if(confirmCallback) confirmCallback(); };
+        const yes = document.getElementById('confirmBtnYes');
+        if (yes) yes.onclick = () => { if (confirmModal) confirmModal.hide(); if(confirmCallback) confirmCallback(); };
         
         document.getElementById('qcModal').addEventListener('shown.bs.modal', function () {
           initCanvas();
