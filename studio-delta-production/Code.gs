@@ -835,6 +835,79 @@ function getFloorTaskCounts() {
   return out;
 }
 
+function floorReadyPileId(status) {
+  var s = String(status || "").trim().toLowerCase();
+  if (!s || s === "not yet started") return "office";
+  if (s === "ready for steelwork" || s === "profile cutting") return "steelwork";
+  if (s === "ready for tagging" || s === "tagging") return "tagging";
+  if (s === "ready for welding" || s === "welding") return "welding";
+  if (s === "ready for grinding" || s === "grinding") return "grinding";
+  if (s === "ready for pre-powder coating" || s === "pre-powder coating") return "prepowder";
+  if (s === "ready for powder coating" || s === "powder coating") return "powder";
+  if (s === "paint preparation" || s === "ready for painting") return "prep";
+  if (s === "painting") return "painting";
+  if (s === "ready for assembly" || s === "assembly") return "assembly";
+  if (s === "ready for final qc" || s === "final qc") return "finalqc";
+  if (s === "ready for delivery" || s === "out for delivery") return "delivery";
+  return "other";
+}
+
+function getFloorLayout() {
+  var ss = getSpreadsheet();
+  var grid = getSheetGrid(ss, TAB_ORDERS, 3);
+  var pack = getLogPack(ss);
+  var assignments = getActiveAssignmentsFromData(pack.values);
+  var plateMap = buildPlateStatusMap(pack.values);
+  var office = [];
+  var piles = {};
+  var workers = {};
+  function addWorker(name, row) {
+    var key = String(name || "").trim();
+    if (!key) return;
+    if (!workers[key]) workers[key] = [];
+    workers[key].push(row);
+  }
+  function addPile(id, row) {
+    if (!id) id = "other";
+    if (!piles[id]) piles[id] = [];
+    piles[id].push(row);
+  }
+  for (var r = 1; r < grid.length; r++) {
+    var order = String(grid[r][1] || "").trim();
+    if (!order) continue;
+    var status = String(grid[r][2] || "").trim();
+    var st = status.toLowerCase();
+    var asg = assignments[order];
+    if (asg && String(asg.worker || "").trim()) {
+      addWorker(asg.worker, {
+        order: order,
+        status: status,
+        process: asg.process || "",
+        paused: !!asg.isPaused
+      });
+      continue;
+    }
+    if (!st || st === "not yet started") {
+      office.push({ order: order, status: status || "Not Yet Started" });
+      continue;
+    }
+    if (!isAllowedStatus(status)) continue;
+    addPile(floorReadyPileId(status), { order: order, status: status, paused: false });
+  }
+  var plateOrders = Object.keys(plateMap);
+  for (var p = 0; p < plateOrders.length; p++) {
+    var info = plateMap[plateOrders[p]];
+    if (!info || info.status !== "Plate Cutting" || !info.assigned) continue;
+    addWorker(info.assigned, {
+      order: plateOrders[p],
+      status: "Plate Cutting",
+      process: "Plate Cutting",
+      paused: !!info.isPaused
+    });
+  }
+  return { office: office, piles: piles, workers: workers };
+}
+
 function uniqueOrderNums(arr) {
   var out = [];
   var seen = {};
@@ -1796,6 +1869,7 @@ function getActiveAssignmentsFromData(logData) {
     var acc = pauseAccounting(meta, pauseStart);
     assignments[orderNum] = {
       worker: logData[i][2],
+      process: roleStr,
       isPaused: !!pauseStart,
       pauseReason: pauseReason || "",
       logId: logData[i][0],

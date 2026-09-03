@@ -128,6 +128,10 @@ app.get("/sd-splash.js", (_req, res) => {
   noStore(res);
   res.type("application/javascript").sendFile(path.join(publicDir, "sd-splash.js"));
 });
+app.get("/facility-floor.png", (_req, res) => {
+  noStore(res);
+  res.type("image/png").sendFile(path.join(publicDir, "facility-floor.png"));
+});
 try {
   require("./outlook-addin").mountOutlookAddin(app, publicDir);
 } catch (e) {
