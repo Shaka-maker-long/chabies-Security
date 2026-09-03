@@ -91,14 +91,14 @@ const serverLink = pipeline.applyAction("#1996", "Coster", {
   action: "add_correspondence",
   correspondence_links: "https://chabies-security-production.up.railway.app/api/office/enquiries/%231996/files/quote"
 });
-assert.ok(serverLink.row.correspondence.mails.some((m) => /railway\.app/.test(m.outlook_url || "")));
+assert.ok(serverLink.row.correspondence.mails.some((m) => /railway\.app/.test(m.outlook_url || "") && m.title === "Correspondance link"));
 assert.ok(!serverLink.row.correspondence.mails.some((m) => /railway\.app/.test(m.outlook_url || "") && /^ms-outlook:/i.test(m.outlook_url || "")));
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", {
     action: "add_correspondence",
     correspondence_files: [{ file_base64: "data:application/octet-stream;base64,QQ==", file_name: "note.msg" }]
   }),
-  /Paste the email|subject appears/
+  /Paste the Correspondance link|Paste the email|subject appears/
 );
 const fromDrop = pipeline.applyAction("#1996", "Coster", {
   action: "add_correspondence",
@@ -370,7 +370,7 @@ const groups = files.map((f) => f.group);
 });
 assert.ok(files.filter((f) => f.open).every((f) => f.kind || f.href), "open files need a server path or a link");
 assert.ok(files.every((f) => f.outlook === false), "do not treat files as Outlook attachments");
-assert.ok(files.some((f) => f.group === "correspondence" && f.href));
+assert.ok(files.some((f) => f.group === "correspondence" && f.href && f.title === "Correspondance link"));
 assert.ok(drawn.row.deliverable_count >= 6);
 assert.ok(db.getEnquiry("#1996").deliverable_count >= 6);
 const emptyNew = db.upsertEnquiry({

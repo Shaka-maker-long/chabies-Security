@@ -1218,7 +1218,7 @@ function mailDedupeKeys(mail) {
     .replace(/\.(msg|eml)$/i, "")
     .trim()
     .toLowerCase();
-  if (name && name !== "outlook email" && name !== "email link") keys.push("name:" + name);
+  if (name && name !== "outlook email" && name !== "email link" && name !== "correspondance link") keys.push("name:" + name);
   const url = String(item.outlook_url || "").trim().toLowerCase();
   if (url) keys.push("url:" + url);
   return keys;
@@ -1308,27 +1308,12 @@ function extractOutlookFromDataUrl(dataUrl, filename) {
   }
 }
 
-function titleForPastedLink(url) {
-  const raw = String(url || "").trim();
-  if (/^(ms-outlook:|outlook:)/i.test(raw)) return "Outlook email";
-  try {
-    const u = new URL(raw);
-    if (/\.outlook\.|outlook\.(office|office365|live|cloud)/i.test(u.hostname)) return "Outlook email";
-    const path = decodeURIComponent(u.pathname || "").replace(/\/+$/, "");
-    const last = path.split("/").filter(Boolean).pop() || "";
-    if (last) return last;
-    return u.hostname || "Email link";
-  } catch (e) {
-    return "Email link";
-  }
-}
-
 function mailsFromPastedLinks(text) {
   const raw = String(text || "");
   const urls = parseOutlookLinks(raw);
   if (urls.length) {
     return urls.map((url, i) => normalizeOutlookMail({
-      title: titleForPastedLink(url),
+      title: "Correspondance link",
       outlook_url: url,
       web_url: /^https:/i.test(url) ? url : "",
       rest_id: restIdFromWebUrl(url)
@@ -1513,8 +1498,8 @@ function listEnquiryDeliverables(row) {
     items.push({
       group: "correspondence",
       label: "CORRESPONDANCE",
-      title: mail.title || mail.filename || "Outlook email",
-      filename: mail.filename || ((mail.title || "email") + ".msg"),
+      title: "Correspondance link",
+      filename: "Correspondance link",
       kind: mail.kind || "",
       from: mail.from || mail.from_email || "",
       order_no: mail.order_no || "",
