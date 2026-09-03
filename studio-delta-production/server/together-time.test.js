@@ -57,6 +57,30 @@ function openLogs(orderNum) {
     product: "Slider",
     price_excl_vat: "50.00"
   });
+  db.upsertOrder({
+    order_number: "S-FINAL-1",
+    status: "Ready for Final QC",
+    type: "Gate",
+    category: "Driveway",
+    product: "Slider",
+    price_excl_vat: "50.00"
+  });
+  db.upsertOrder({
+    order_number: "S-QC-LIVE",
+    status: "Final QC",
+    type: "Gate",
+    category: "Driveway",
+    product: "Slider",
+    price_excl_vat: "50.00"
+  });
+  db.upsertOrder({
+    order_number: "S-PRE-1",
+    status: "Ready for Pre-Powder Coating",
+    type: "Gate",
+    category: "Driveway",
+    product: "Slider",
+    price_excl_vat: "50.00"
+  });
 
   const a = order("S-2001");
   const b = order("S-2002");
@@ -82,6 +106,10 @@ function openLogs(orderNum) {
   assert.ok(layout.office.some((o) => o.order === "S-HOPPER-2"), "blank status sits in the office");
   assert.ok(layout.workers.Thabo && layout.workers.Thabo.some((o) => o.order === "S-2001" && !o.paused), "live job is on the worker");
   assert.ok(layout.piles.welding && layout.piles.welding.length >= 3, "Ready for Welding waits in the welding pile");
+  assert.ok(layout.piles.delivery && layout.piles.delivery.some((o) => o.order === "S-FINAL-1"), "Ready for Final QC sits in finished goods");
+  assert.ok(layout.piles.finalqc && layout.piles.finalqc.some((o) => o.order === "S-QC-LIVE"), "in-process Final QC waits at the left door");
+  assert.ok(!layout.piles.delivery.some((o) => o.order === "S-QC-LIVE"), "in-process Final QC is not in finished goods");
+  assert.ok(layout.piles.prepowder && layout.piles.prepowder.some((o) => o.order === "S-PRE-1"), "pre-powder QC waits at the right door");
 
   const blocked = await callShopFunction("startOrder", [b.id, "Thabo", "Welding", [], "", false]);
   assert.ok(blocked.needsSwitchReason, "must ask work-together or switch: " + JSON.stringify(blocked));

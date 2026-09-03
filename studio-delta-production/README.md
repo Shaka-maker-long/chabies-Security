@@ -1,6 +1,6 @@
 # Studio Delta Production
 
-Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. After login, **office users always open Home**. Home shows an **enquiries and quotes** scorecard, then the **shop floor plan**. A **job cart** in the office totals blank status and Not Yet Started (click for the order list). Orders a worker is running or has paused sit on that person’s station. **Ready for …** statuses sit on the marked piles. **Production** in the menu is the list-report: steel page header, status counts, and a dense order grid. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
+Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. After login, **office users always open Home**. Home is a **live digital twin** of the shop floor plan. Count buttons open the order list. People **animate** the job they are on (welding and tagging share the weld motion; idle people stand still). **Pre-powder QC** is outside the right door; **Final QC** is outside the left door; **Ready for final QC** sits in finished goods. **Production** in the menu is the list-report. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
 
 Orders (~400+) load as a text grid first; click a row to edit. Floor reads no longer rewrite the whole workbook to disk.
 
@@ -105,7 +105,7 @@ Do **not** commit the JSON key or a `.env` file.
 
 ## Floor rules
 
-- Home is the **shop floor plan**. The office **job cart** is blank status and Not Yet Started. Click it for the order numbers. Live and paused jobs list on the worker’s station. **Ready for …** jobs list on the matching pile. Click a pile or station to open that floor board.
+- Home is a **live digital twin** of the shop floor. Count buttons open the order list. Welding and tagging use the same weld animation; idle stations stand still. **Pre-powder QC** is outside the right door, **Final QC** outside the left door, and **Ready for final QC** is in finished goods. The plan refreshes while you stay on Home.
 - One person has **one running clock**. Starting or resuming another order asks **Switch from A to B** (pause A, start B — still needs a reason) or **Work on A and B** (one clock, time split; Together badge). **Work this order only** leaves a batch. Pausing or switching requires **No materials**, **Touch up** (plus the order number), or **Other**. Activity and the Workers hour log split those hours by calendar day and show each bout with the pause reason — not a single start-minus-end total.
 - Same product, same process (e.g. assembly slats for two matching gates) can still be started together from Available. Use **Work this order only** to leave a batch.
 - When plate cutting finishes on an order, welders waiting on that plate are **auto-switched** back. They can tap **Still on other job** if they are not ready.
@@ -135,7 +135,7 @@ Add a **Tasks** column (column D). The first time the app opens it will create t
 | Thabo | Quality Control | 1234 | Quality Control |
 | Admin | Admin | **** | |
 
-- **Admin** Home is the first page after login: enquiry/quote scorecard plus the shop floor plan. The office job cart is new orders. Ready piles and named stations list the order numbers. Logging in from an office page (Enquiries, Orders, …) also returns to Home. Production, Workers, Metrics, QC Reports, and Activity stay in the menu.
+- **Admin** Home is the first page after login: enquiry/quote scorecard plus the live shop twin. The office job cart is new orders. Each station and pile shows a count button; click it for the order list. Logging in from an office page (Enquiries, Orders, …) also returns to Home. Production, Workers, Metrics, QC Reports, and Activity stay in the menu.
 - **Quality Control / QC** only sees QC work.
 - Anyone else only sees the tasks listed. `Welding, Tagging` (or a role like `Welder Tagger`) means they pick Welding or Tagging after login, and only those boards appear.
 - Painters need `Painting` on the Tasks column. That also lets them prep items for painting (no extra `Paint Preparation` task required). Assemblers with `Assembly` also get **Paint prep** on Ready for Assembly cards.

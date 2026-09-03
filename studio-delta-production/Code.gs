@@ -847,7 +847,8 @@ function floorReadyPileId(status) {
   if (s === "paint preparation" || s === "ready for painting") return "prep";
   if (s === "painting") return "painting";
   if (s === "ready for assembly" || s === "assembly") return "assembly";
-  if (s === "ready for final qc" || s === "final qc") return "finalqc";
+  if (s === "ready for final qc") return "delivery";
+  if (s === "final qc") return "finalqc";
   if (s === "ready for delivery" || s === "out for delivery") return "delivery";
   return "other";
 }
