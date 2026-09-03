@@ -209,10 +209,15 @@ async function sdRequireOffice(page) {
   } else {
     profile = null;
   }
+  const hadOffice = !!(profile && profile.canSeeOffice);
   if (!profile || !profile.canSeeOffice) {
     profile = await sdShowLogin("Log in with your name and access code.");
   }
   if (!profile || !profile.canSeeOffice) {
+    location.replace("/");
+    return null;
+  }
+  if (!hadOffice) {
     location.replace("/");
     return null;
   }
