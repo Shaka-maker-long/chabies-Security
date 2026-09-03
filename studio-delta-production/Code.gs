@@ -779,6 +779,33 @@ function pollFloor(role, workerName) {
   };
 }
 
+function tallyFloorCounts(orders, allowStatus) {
+  var ready = 0;
+  var active = 0;
+  var paused = 0;
+  var allow = null;
+  if (allowStatus && allowStatus.length) {
+    allow = {};
+    for (var a = 0; a < allowStatus.length; a++) {
+      allow[String(allowStatus[a] || "").trim().toLowerCase()] = true;
+    }
+  }
+  for (var j = 0; j < (orders || []).length; j++) {
+    var o = orders[j];
+    if (allow) {
+      var st = String(o && o.status || "").trim().toLowerCase();
+      if (!allow[st]) continue;
+    }
+    if (o && o.assigned) {
+      if (o.isPaused) paused += 1;
+      else active += 1;
+    } else {
+      ready += 1;
+    }
+  }
+  return { ready: ready, active: active, paused: paused };
+}
+
 function getFloorTaskCounts() {
   var tasks = [
     "Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding",
@@ -786,22 +813,18 @@ function getFloorTaskCounts() {
   ];
   var out = {};
   for (var i = 0; i < tasks.length; i++) {
-    var role = tasks[i];
-    var orders = getOrdersForRole(role, "", true);
-    var ready = 0;
-    var active = 0;
-    var paused = 0;
-    for (var j = 0; j < orders.length; j++) {
-      var o = orders[j];
-      if (o && o.assigned) {
-        if (o.isPaused) paused += 1;
-        else active += 1;
-      } else {
-        ready += 1;
-      }
-    }
-    out[role] = { ready: ready, active: active, paused: paused };
+    out[tasks[i]] = tallyFloorCounts(getOrdersForRole(tasks[i], "", true), null);
   }
+  var qc = getOrdersForRole("Quality Control", "", true);
+  out["Pre-Powder Coating QC"] = tallyFloorCounts(qc, [
+    "Ready for Pre-Powder Coating", "Pre-Powder Coating"
+  ]);
+  out["Powder Coating"] = tallyFloorCounts(qc, [
+    "Ready for Powder Coating", "Powder Coating"
+  ]);
+  out["Final QC"] = tallyFloorCounts(qc, [
+    "Ready for Final QC", "Final QC"
+  ]);
   return out;
 }
 
