@@ -596,16 +596,98 @@ function completeSupplier(row, actor, body) {
   addTask(row, "cost_sheet", requireAssignee(body.assignee || lastAssignee(row, "cost_sheet")));
 }
 
+function existingCostSheets(row) {
+  if (Array.isArray(row.cost_sheets) && row.cost_sheets.length) {
+    return row.cost_sheets.map((s, i) => ({
+      n: Number(s && s.n) || i + 1,
+      product: String((s && s.product) || "").trim(),
+      kind: (s && s.kind) || ("cost_sheet_" + (Number(s && s.n) || i + 1)),
+      stored_as: s && s.stored_as,
+      filename: s && s.filename,
+      mime: (s && s.mime) || "",
+      uploaded_at: (s && s.uploaded_at) || "",
+      uploaded_by: (s && s.uploaded_by) || "",
+      size: (s && s.size) || 0
+    })).filter((s) => s.stored_as);
+  }
+  if (row.cost_sheet && row.cost_sheet.stored_as) {
+    const first = namedProducts(row)[0];
+    return [{
+      n: 1,
+      product: (first && first.product) || "",
+      kind: row.cost_sheet.kind || "cost_sheet",
+      stored_as: row.cost_sheet.stored_as,
+      filename: row.cost_sheet.filename,
+      mime: row.cost_sheet.mime || "",
+      uploaded_at: row.cost_sheet.uploaded_at || "",
+      uploaded_by: row.cost_sheet.uploaded_by || "",
+      size: row.cost_sheet.size || 0
+    }];
+  }
+  return [];
+}
+
+function asCostGroups(row, body) {
+  const named = namedProducts(row).map((p) => p.product);
+  if (Array.isArray(body && body.cost_sheets) && body.cost_sheets.length) {
+    return body.cost_sheets.map((group) => ({
+      product: String((group && group.product) || "").trim(),
+      files: Array.isArray(group && group.files)
+        ? group.files
+        : (group && (group.file_base64 || group.fileBase64) ? [group] : [])
+    }));
+  }
+  return [{
+    product: named[0] || "",
+    files: (body && (body.file_base64 || body.fileBase64)) ? [body] : []
+  }];
+}
+
 function completeCostSheet(row, actor, body) {
   if (!statusAllows(row, ["Costing", "Re-Cost"])) throw new Error("Upload the cost sheet from Costing");
-  const filename = body.file_name || body.filename || "cost-sheet.xlsx";
-  const raw = requireFile(body, "Upload the Excel cost sheet, check the preview, then confirm it");
-  if (!isSpreadsheet(filename, "") && !isPdf(filename, "", null) && !/\.csv$/i.test(filename)) {
-    throw new Error("Cost sheet must be Excel (xlsx / xls), CSV, or PDF");
+  const named = namedProducts(row).map((p) => p.product);
+  if (!named.length) throw new Error("Add at least one product name before uploading cost sheets");
+  const groups = asCostGroups(row, body);
+  const byProduct = new Map(groups.map((g) => [g.product, g]));
+  const uploads = [];
+  for (const product of named) {
+    const group = byProduct.get(product)
+      || (named.length === 1 && groups[0] && !groups[0].product ? groups[0] : null);
+    const files = ((group && group.files) || []).filter((f) => f && (f.file_base64 || f.fileBase64));
+    if (!files.length) throw new Error("Upload a cost sheet for " + product);
+    for (const file of files) {
+      if (!file.file_confirmed && !file.fileConfirmed) {
+        throw new Error("Tick that this is the correct file before saving");
+      }
+      const filename = file.file_name || file.filename || "cost-sheet.xlsx";
+      if (!isSpreadsheet(filename, file.file_type || "") && !isPdf(filename, file.file_type || "", null) && !/\.csv$/i.test(filename)) {
+        throw new Error("Cost sheet must be Excel (xlsx / xls), CSV, or PDF");
+      }
+      uploads.push({ product, raw: file.file_base64 || file.fileBase64, filename });
+    }
   }
   const approver = assigneeFromRole("Approval", body.assignee);
   const quoter = requireRoleAssignee("Quoting", body.quote_assignee, row.quote_assignee);
-  row.cost_sheet = db.saveEnquiryAttachment(row.enquiry_no, "cost_sheet", raw, filename);
+  const existing = existingCostSheets(row);
+  let n = existing.reduce((m, s) => Math.max(m, Number(s.n) || 0), 0);
+  for (const item of uploads) {
+    n += 1;
+    const kind = "cost_sheet_" + n;
+    const saved = db.saveEnquiryAttachment(row.enquiry_no, kind, item.raw, item.filename);
+    existing.push({
+      n,
+      product: item.product,
+      kind,
+      stored_as: saved.stored_as,
+      filename: saved.filename,
+      mime: saved.mime,
+      uploaded_at: saved.uploaded_at || db.nowIso(),
+      uploaded_by: actor,
+      size: saved.size
+    });
+  }
+  row.cost_sheets = existing;
+  row.cost_sheet = existing[existing.length - 1] || row.cost_sheet;
   row.quote_assignee = quoter;
   closeOpenKind(row, "cost_sheet", actor);
   cancelOpenKind(row, "approval");

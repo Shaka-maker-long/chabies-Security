@@ -1,6 +1,6 @@
 (function () {
   const KEEP_VALUES = { Quoted: 1, "Followed Up": 1, Ordered: 1 };
-  let state = { open: false, enquiryNo: "", focusTaskId: "", snap: null, file: { base64: "", name: "", url: "", confirmed: false, mime: "" } };
+  let state = { open: false, enquiryNo: "", focusTaskId: "", snap: null, file: { base64: "", name: "", url: "", confirmed: false, mime: "" }, costFiles: {} };
 
   function esc(s) {
     return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -38,9 +38,26 @@
   function namedLines(row) {
     return ((row && row.products) || []).filter((p) => String(p.product || "").trim());
   }
+  function emptyFileSlot() {
+    return { base64: "", name: "", url: "", confirmed: false, mime: "" };
+  }
+  function revokeSlot(slot) {
+    if (slot && slot.url && String(slot.url).indexOf("blob:") === 0) {
+      URL.revokeObjectURL(slot.url);
+      slot.url = "";
+    }
+  }
+  function revokeAllCostFiles() {
+    const map = state.costFiles || {};
+    Object.keys(map).forEach((product) => {
+      (map[product] || []).forEach(revokeSlot);
+    });
+    state.costFiles = {};
+  }
   function revokeFile() {
-    if (state.file.url && String(state.file.url).indexOf("blob:") === 0) URL.revokeObjectURL(state.file.url);
-    state.file = { base64: "", name: "", url: "", confirmed: false, mime: "" };
+    revokeSlot(state.file);
+    state.file = emptyFileSlot();
+    revokeAllCostFiles();
   }
   function fileUrl(kind, download) {
     const no = encodeURIComponent(state.enquiryNo);
@@ -127,7 +144,11 @@
         ".sd-timeline li:last-child{padding-bottom:0}" +
         ".sd-timeline li::before{content:\"\";position:absolute;left:-5px;top:6px;width:8px;height:8px;border-radius:50%;background:#1d2939}" +
         ".sd-timeline time{display:block;font-size:11px;font-weight:600;color:#667085;letter-spacing:.02em}" +
-        ".sd-timeline .sd-tl-actor{color:#667085;font-size:12px}";
+        ".sd-timeline .sd-tl-actor{color:#667085;font-size:12px}" +
+        ".sd-product-cost{background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:10px 12px;margin:10px 0}" +
+        ".sd-cost-product{margin:0 0 8px;font-size:14px}" +
+        ".sd-cost-slot{margin:0 0 12px;padding:0 0 12px;border-bottom:1px solid #eaecf0}" +
+        ".sd-cost-slot:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}";
       document.head.appendChild(css);
     }
     wrap.addEventListener("click", (e) => { if (e.target.id === "sdProcessMask") closeProcess(); });
@@ -153,13 +174,21 @@
     return window.XLSX;
   }
 
-  async function previewFromFile(file, box) {
-    revokeFile();
-    if (!file) return;
-    state.file.name = file.name;
-    state.file.mime = file.type || "";
-    state.file.url = URL.createObjectURL(file);
-    state.file.base64 = await new Promise((resolve, reject) => {
+  async function fillSlotFromFile(slot, file, box) {
+    revokeSlot(slot);
+    slot.base64 = "";
+    slot.name = "";
+    slot.confirmed = false;
+    slot.mime = "";
+    slot.url = "";
+    if (!file) {
+      if (box) box.innerHTML = "";
+      return;
+    }
+    slot.name = file.name;
+    slot.mime = file.type || "";
+    slot.url = URL.createObjectURL(file);
+    slot.base64 = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
       reader.onerror = reject;
@@ -169,12 +198,12 @@
     const name = file.name.toLowerCase();
     if (file.type.indexOf("pdf") >= 0 || /\.pdf$/.test(name)) {
       box.innerHTML = "<iframe title=\"Preview\"></iframe>";
-      box.querySelector("iframe").src = state.file.url;
+      box.querySelector("iframe").src = slot.url;
       return;
     }
     if (file.type.indexOf("image/") === 0 || /\.(png|jpe?g|webp|gif)$/.test(name)) {
       box.innerHTML = "<img alt=\"Preview\">";
-      box.querySelector("img").src = state.file.url;
+      box.querySelector("img").src = slot.url;
       return;
     }
     if (/\.(xlsx|xls|csv)$/.test(name) || /spreadsheet|csv|excel/.test(file.type)) {
@@ -198,6 +227,10 @@
       return;
     }
     box.innerHTML = "<p class=\"sd-process-sub\">Preview is not available for this file type. Check it, then confirm it is the correct file.</p>";
+  }
+
+  async function previewFromFile(file, box) {
+    await fillSlotFromFile(state.file, file, box);
   }
 
   async function showSaved(kind, box) {
@@ -253,6 +286,130 @@
     const names = namedLines(row).map((l) => l.product);
     if (!names.length) return "<p class=\"sd-process-sub\">Add product names on the Enquiries sheet first.</p>";
     return "<p class=\"sd-process-sub\">Products: " + esc(names.join(", ")) + "</p>";
+  }
+
+  function ensureCostSlots(row) {
+    state.costFiles = state.costFiles || {};
+    namedLines(row).forEach((l) => {
+      const product = l.product;
+      if (!state.costFiles[product] || !state.costFiles[product].length) {
+        state.costFiles[product] = [emptyFileSlot()];
+      }
+    });
+  }
+
+  function costFileSlotHtml(product, fi) {
+    const slot = ((state.costFiles[product] || [])[fi]) || emptyFileSlot();
+    return "<div class=\"sd-cost-slot\" data-product=\"" + esc(product) + "\" data-slot=\"" + fi + "\">" +
+      "<label>Cost sheet<input class=\"cost-file-input\" type=\"file\" accept=\".xlsx,.xls,.csv,application/pdf,.pdf\" data-product=\"" + esc(product) + "\" data-slot=\"" + fi + "\"></label>" +
+      (slot.name ? "<p class=\"sd-process-sub\">Selected: " + esc(slot.name) + "</p>" : "") +
+      "<p class=\"sd-process-sub\">Excel, CSV, or PDF. Check the preview, then confirm it.</p>" +
+      "<div class=\"sd-process-preview\" data-cost-preview></div>" +
+      "<label><input class=\"cost-file-ok\" type=\"checkbox\" data-product=\"" + esc(product) + "\" data-slot=\"" + fi + "\"" + (slot.confirmed ? " checked" : "") + "> This is the correct file</label>" +
+      (fi > 0 ? "<button type=\"button\" class=\"ghost remove-cost-file\" data-product=\"" + esc(product) + "\" data-slot=\"" + fi + "\">Remove this sheet</button>" : "") +
+      "</div>";
+  }
+
+  function existingCostSheetNote(row) {
+    const sheets = Array.isArray(row.cost_sheets) && row.cost_sheets.length
+      ? row.cost_sheets
+      : (row.cost_sheet && row.cost_sheet.stored_as ? [row.cost_sheet] : []);
+    if (!sheets.length) {
+      return "<p class=\"sd-process-sub\">Upload at least one cost sheet for each product. You can add more than one sheet per item.</p>";
+    }
+    const list = sheets.map((s) => {
+      return esc((s.product ? s.product + " · " : "") + (s.filename || "cost sheet"));
+    }).join("; ");
+    return "<p class=\"sd-process-sub\">Already on file: " + list + ". Those stay in Files. Upload at least one sheet for each product this time — add extra sheets per item if you need them.</p>";
+  }
+
+  function productCostBlocks(row) {
+    const named = namedLines(row);
+    if (!named.length) return "<p class=\"sd-process-sub\">Add product names on the Enquiries sheet first.</p>";
+    ensureCostSlots(row);
+    return existingCostSheetNote(row) + named.map((l) => {
+      const product = l.product;
+      const slots = state.costFiles[product] || [emptyFileSlot()];
+      return "<section class=\"sd-product-cost\" data-product=\"" + esc(product) + "\">" +
+        "<h3 class=\"sd-cost-product\">" + esc(product) + "</h3>" +
+        "<div class=\"cost-slots\">" + slots.map((_, fi) => costFileSlotHtml(product, fi)).join("") + "</div>" +
+        "<button type=\"button\" class=\"ghost add-cost-file\" data-product=\"" + esc(product) + "\">Add another cost sheet</button>" +
+        "</section>";
+    }).join("");
+  }
+
+  function costSheetLinks(row) {
+    const sheets = Array.isArray(row.cost_sheets) && row.cost_sheets.length
+      ? row.cost_sheets
+      : (row.cost_sheet && row.cost_sheet.stored_as ? [row.cost_sheet] : []);
+    if (!sheets.length) return "";
+    return sheets.map((s) => {
+      const kind = s.kind || "cost_sheet";
+      const label = s.product ? (s.filename || "cost sheet") + " · " + s.product : (s.filename || "cost sheet");
+      return "<p class=\"sd-process-sub\">Cost sheet: " + esc(label) + " — <a href=\"" + fileUrl(kind, true) + "\">download</a></p>";
+    }).join("") + "<div class=\"sd-process-preview\" data-preview></div>";
+  }
+
+  function bindCostSheets(form) {
+    if (!form || !form.querySelector(".sd-product-cost")) return;
+    form.querySelectorAll(".cost-file-input").forEach((input) => {
+      if (input.dataset.bound) return;
+      input.dataset.bound = "1";
+      input.onchange = async () => {
+        const product = input.getAttribute("data-product") || "";
+        const fi = Number(input.getAttribute("data-slot") || 0);
+        const slots = state.costFiles[product] || (state.costFiles[product] = []);
+        while (slots.length <= fi) slots.push(emptyFileSlot());
+        const slot = slots[fi];
+        slot.confirmed = false;
+        const wrap = input.closest(".sd-cost-slot");
+        const ok = wrap && wrap.querySelector(".cost-file-ok");
+        if (ok) ok.checked = false;
+        const box = wrap && wrap.querySelector("[data-cost-preview]");
+        await fillSlotFromFile(slot, input.files && input.files[0], box);
+      };
+    });
+    form.querySelectorAll(".cost-file-ok").forEach((ok) => {
+      if (ok.dataset.bound) return;
+      ok.dataset.bound = "1";
+      ok.onchange = () => {
+        const product = ok.getAttribute("data-product") || "";
+        const fi = Number(ok.getAttribute("data-slot") || 0);
+        const slot = ((state.costFiles[product] || [])[fi]);
+        if (slot) slot.confirmed = !!ok.checked;
+      };
+    });
+    form.querySelectorAll(".add-cost-file").forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = "1";
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const product = btn.getAttribute("data-product") || "";
+        if (!state.costFiles[product]) state.costFiles[product] = [emptyFileSlot()];
+        state.costFiles[product].push(emptyFileSlot());
+        const fi = state.costFiles[product].length - 1;
+        const wrap = btn.closest(".sd-product-cost").querySelector(".cost-slots");
+        wrap.insertAdjacentHTML("beforeend", costFileSlotHtml(product, fi));
+        bindCostSheets(form);
+      };
+    });
+    form.querySelectorAll(".remove-cost-file").forEach((btn) => {
+      if (btn.dataset.bound) return;
+      btn.dataset.bound = "1";
+      btn.onclick = (e) => {
+        e.preventDefault();
+        const product = btn.getAttribute("data-product") || "";
+        const fi = Number(btn.getAttribute("data-slot") || 0);
+        const slots = state.costFiles[product] || [];
+        if (slots[fi]) revokeSlot(slots[fi]);
+        slots.splice(fi, 1);
+        if (!slots.length) slots.push(emptyFileSlot());
+        const section = btn.closest(".sd-product-cost");
+        const wrap = section.querySelector(".cost-slots");
+        wrap.innerHTML = slots.map((_, i) => costFileSlotHtml(product, i)).join("");
+        bindCostSheets(form);
+      };
+    });
   }
 
   function valuesTable(row, editable) {
@@ -393,8 +550,8 @@
     return openSavedFile(kind, filename, true);
   }
   function correspondenceFields() {
-    return "<p class=\"sd-process-sub\">Paste the file link. It is saved on the server as Correspondance link — do not attach a file.</p>" +
-      "<label>Correspondance link<input class=\"sd-path\" name=\"correspondence_links\" placeholder=\"https://…\" autocomplete=\"off\"></label>";
+    return "<p class=\"sd-process-sub\">Paste the file link. It is saved on the server as Correspondance link — do not attach a file. Any link or path is fine, including those with //.</p>" +
+      "<label>Correspondance link<textarea class=\"sd-path\" name=\"correspondence_links\" rows=\"3\" placeholder=\"Paste any link or path\" autocomplete=\"off\"></textarea></label>";
   }
   function fileHref(kind) {
     return "/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/files/" + encodeURIComponent(kind);
@@ -402,13 +559,15 @@
   function absoluteHref(pathOrUrl) {
     const raw = String(pathOrUrl || "").trim();
     if (!raw) return "";
-    if (/^(https?:|ms-outlook:|outlook:)/i.test(raw)) return raw;
-    try { return new URL(raw, window.location.origin).toString(); } catch (e) { return raw; }
+    if (/^\/[^/]/.test(raw)) {
+      try { return new URL(raw, window.location.origin).toString(); } catch (e) { return raw; }
+    }
+    return raw;
   }
   function filesCard(row) {
     const items = (row && Array.isArray(row.deliverables)) ? row.deliverables : [];
     let html = "<div class=\"sd-files sd-correspondence\"><h2>Files</h2>" +
-      "<p class=\"sd-process-sub\">CORRESPONDANCE is a pasted file link saved on the server as Correspondance link. Cost sheet, quote PDF (including earlier quotes), follow-up screenshot, proof of payment, and drawing stay here too. Copy link or Open — you do not attach a file.</p>";
+      "<p class=\"sd-process-sub\">CORRESPONDANCE is a pasted file link saved on the server as Correspondance link — any link or path, including those with //. Cost sheets are per product (more than one sheet per item is fine). Quote PDF (including earlier quotes), follow-up screenshot, proof of payment, and drawing stay here too. Copy link or Open — you do not attach a file for Correspondance.</p>";
     if (!items.length) {
       return html + "<p class=\"sd-process-sub\">No files on this enquiry yet.</p></div>";
     }
@@ -465,13 +624,13 @@
         correspondenceFields();
     }
     if (action.id === "complete_cost_sheet") {
-      return productNamesLine(row) + fileBlock(".xlsx,.xls,.csv,application/pdf,.pdf", "Upload the Excel cost sheet. Check the preview, then confirm it.") +
+      return productCostBlocks(row) +
         "<label>Request approval from (optional)</label>" + assigneeSelect(rolePerson("approval"), "assignee") +
         "<p class=\"sd-process-sub\">Defaults to the Approval person on Users. Untick Approval on Users if cost sheets should skip approval.</p>" +
         "<label>Quoting person *</label>" + assigneeSelect(row.quote_assignee || rolePerson("quoting"), "quote_assignee");
     }
     if (action.id === "complete_approval") {
-      return (row.cost_sheet ? "<p class=\"sd-process-sub\">Cost sheet: " + esc(row.cost_sheet.filename || "cost sheet") + " — <a href=\"" + fileUrl("cost_sheet", true) + "\">download</a></p><div class=\"sd-process-preview\" data-preview></div>" : "") +
+      return costSheetLinks(row) +
         productNamesLine(row) +
         "<label>Decision<select name=\"decision\"><option value=\"approve\">Approve — send to quote</option><option value=\"reject\">Reject — back to costing</option></select></label>" +
         "<label>Comments (required if rejected)<textarea name=\"comments\"></textarea></label>" +
@@ -546,7 +705,25 @@
     if (action.id === "complete_order") body.drawing_required = field(form, "drawing_required");
     if (action.id === "close") body.status = field(form, "status");
     if (action.id === "complete_quote") Object.assign(body, readValues(form, row));
-    if (/complete_cost_sheet|complete_quote|complete_followup|complete_order|complete_drawing/.test(action.id)) {
+    if (action.id === "complete_cost_sheet") {
+      body.cost_sheets = namedLines(row).map((l) => {
+        const product = l.product;
+        const section = Array.from(form.querySelectorAll(".sd-product-cost")).find((el) => el.getAttribute("data-product") === product);
+        const slots = (state.costFiles && state.costFiles[product]) || [];
+        return {
+          product,
+          files: slots.map((slot, fi) => {
+            const ok = section && section.querySelector('.cost-file-ok[data-slot="' + fi + '"]');
+            return {
+              file_name: slot.name,
+              file_type: slot.mime,
+              file_base64: slot.base64,
+              file_confirmed: !!(ok && ok.checked) || !!slot.confirmed
+            };
+          }).filter((f) => f.file_base64)
+        };
+      });
+    } else if (/complete_quote|complete_followup|complete_order|complete_drawing/.test(action.id)) {
       Object.assign(body, filePayload(form));
     }
     return body;
@@ -635,11 +812,14 @@
     body.innerHTML = html;
     body.querySelectorAll("form").forEach((form) => {
       bindFile(form);
+      bindCostSheets(form);
       bindQuoteTotals(form);
       const card = form.closest("[data-action-i]");
       const i = Number((card || form).getAttribute("data-action-i"));
       const preview = form.querySelector("[data-preview]");
-      if (preview && row.cost_sheet && !form.querySelector('[name="file"]')) showSaved("cost_sheet", preview);
+      if (preview && row.cost_sheet && !form.querySelector('[name="file"]') && !form.querySelector(".cost-file-input")) {
+        showSaved(row.cost_sheet.kind || "cost_sheet", preview);
+      }
       form.onsubmit = async (e) => {
         e.preventDefault();
         const action = actions[i];
