@@ -83,6 +83,9 @@ assert.ok(enquiriesHtml.indexOf('["lifespan_label"') === -1, "enquiries sheet mu
 assert.ok(enquiriesHtml.indexOf(">LIFESPAN<") === -1, "enquiries sheet must not show Lifespan");
 assert.ok(enquiriesHtml.indexOf("· update") === -1, "status update must not live in the STATUS column");
 assert.ok(enquiriesHtml.indexOf("cell-btn") === -1, "status column must be text, not a button");
+assert.ok(enquiriesHtml.indexOf("openView") !== -1, "clicking an enquiry row must open a view popup");
+assert.ok(enquiriesHtml.indexOf("viewMask") !== -1);
+assert.ok(enquiriesHtml.indexOf("read-only view") !== -1);
 assert.ok(enquiriesHtml.indexOf("/enquiries/dashboard") !== -1, "sheet must link to the dashboard");
 assert.ok(enquiriesHtml.indexOf(">Dashboard<") !== -1);
 
