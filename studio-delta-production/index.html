@@ -776,6 +776,69 @@
     .task-count.is-ready { background: #ecfdf3; color: #067647; }
     .task-count.is-active { background: #eff8ff; color: #175cd3; }
     .task-count.is-paused { background: #fffaeb; color: #b54708; }
+    .home-head { text-align: left; }
+    .home-score {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-sm);
+      padding: 16px 16px 14px;
+    }
+    .home-score-top {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 16px;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .home-score-top h2 { font-size: 1rem; font-weight: 700; margin: 0; }
+    .home-score-top p { margin: 2px 0 0; font-size: 12px; color: var(--text-secondary); }
+    .home-score-links { display: flex; gap: 8px; flex-wrap: wrap; }
+    .home-score-links a {
+      font-size: 12px;
+      font-weight: 600;
+      color: #175cd3;
+      text-decoration: none;
+      border: 1px solid #d0d5dd;
+      border-radius: 8px;
+      padding: 6px 10px;
+      background: #fff;
+    }
+    .home-score-links a:hover { border-color: #175cd3; }
+    .home-kpis {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    @media (min-width: 700px) {
+      .home-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    .home-kpi {
+      background: #f8f9fc;
+      border: 1px solid #eaecf0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      min-width: 0;
+    }
+    .home-kpi span {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: #667085;
+    }
+    .home-kpi b {
+      display: block;
+      margin-top: 4px;
+      font-size: 1.25rem;
+      font-variant-numeric: tabular-nums;
+      line-height: 1.2;
+    }
+    .home-kpi.is-alert b { color: #b42318; }
+    .home-score-note { margin: 10px 0 0; font-size: 12px; color: #667085; }
+    .home-score.is-empty, .home-score.is-error { color: #667085; }
     .dash-head {
       display: flex;
       justify-content: space-between;
@@ -980,10 +1043,11 @@
     </div>
 
     <div id="view-roles" class="view-section container d-none-view">
-      <div class="text-center mb-4 mt-2">
+      <div class="home-head mb-3 mt-2">
         <h1 class="h2 fw-bold mb-1">Home</h1>
         <p class="text-muted mb-0" id="taskPickSubtitle">Select the task you will do now.</p>
       </div>
+      <div id="homeScore" class="home-score d-none-view mb-4"></div>
       <div class="row g-3" id="roleGrid"></div>
     </div>
 
@@ -2226,11 +2290,6 @@
       try { return new URLSearchParams(location.search).get('view') || ''; } catch (e) { return ''; }
     }
     function routeAfterLogin() {
-      const next = safeNextPath();
-      if (next && session.canSeeOffice) {
-        location.replace(next);
-        return;
-      }
       const view = requestedView();
       if (session.canSeeOffice && view) {
         if (view === 'production') { loadProductionOverview(); loadIdleWorkers(); return; }
@@ -2239,7 +2298,6 @@
         if (view === 'qc') { loadQCReports(); return; }
         if (view === 'activity') { loadActivityReport(); return; }
         if (view === 'schedule') { loadScheduleBoard(); return; }
-        if (view === 'floor') { showTaskPicker(); return; }
       }
       if (session.canSeeOffice) {
         showTaskPicker();
@@ -2285,15 +2343,87 @@
         if (slot) slot.outerHTML = taskCountPills(task, counts || {});
       });
     }
+    function sastMonthKey() {
+      const sast = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      return sast.getUTCFullYear() + '-' + String(sast.getUTCMonth() + 1).padStart(2, '0');
+    }
+    function sastMonthLabel(key) {
+      const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const parts = String(key || '').split('-');
+      const m = Number(parts[1]) - 1;
+      return (names[m] || key) + (parts[0] ? ' ' + parts[0] : '');
+    }
+    function formatHomeRand(n) {
+      const v = Number(n) || 0;
+      const neg = v < 0 ? '-' : '';
+      const abs = Math.abs(v);
+      const whole = Math.floor(abs + 1e-9);
+      const frac = Math.round((abs - whole) * 100);
+      const grouped = String(whole).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      return neg + 'R ' + grouped + '.' + String(frac).padStart(2, '0');
+    }
+    function officeToken() {
+      try {
+        const p = JSON.parse(sessionStorage.getItem('sd-office') || 'null');
+        return (p && p.token) || '';
+      } catch (e) { return ''; }
+    }
+    function homeKpi(label, value, extra) {
+      return '<div class="home-kpi' + (extra ? ' ' + extra : '') + '"><span>' + label + '</span><b>' + value + '</b></div>';
+    }
+    function paintHomeScore(j) {
+      const box = document.getElementById('homeScore');
+      if (!box) return;
+      if (!j || !j.ok) {
+        box.className = 'home-score is-error mb-4';
+        box.innerHTML = '<div class="home-score-top"><div><h2>Enquiries and quotes</h2><p>Could not load the summary.</p></div><div class="home-score-links"><a href="/enquiries">Enquiry sheet</a><a href="/enquiries/dashboard">Dashboard</a></div></div>';
+        return;
+      }
+      const month = sastMonthKey();
+      const row = (j.series || []).find((s) => s.key === month) || {};
+      const k = j.kpis || {};
+      const overdue = Number(k.overdueFollowUps) || 0;
+      box.className = 'home-score mb-4';
+      box.innerHTML =
+        '<div class="home-score-top"><div><h2>Enquiries and quotes</h2><p>Open work now, plus ' + sastMonthLabel(month) + '.</p></div>' +
+        '<div class="home-score-links"><a href="/enquiries">Enquiry sheet</a><a href="/enquiries/dashboard">Full dashboard</a></div></div>' +
+        '<div class="home-kpis">' +
+        homeKpi('Open now', k.openNow || 0) +
+        homeKpi('Quoted waiting', k.quotedWaiting || 0) +
+        homeKpi('Overdue follow-ups', overdue, overdue ? 'is-alert' : '') +
+        homeKpi('Ordered this month', row.ordered || 0) +
+        homeKpi('Enquiries this month', row.enquiries || 0) +
+        homeKpi('Quotes this month', row.quotes || 0) +
+        homeKpi('Quote value excl VAT', formatHomeRand(row.quoteRevenue || 0)) +
+        homeKpi('Ordered value excl VAT', formatHomeRand(row.orderedRevenue || 0)) +
+        '</div>' +
+        '<p class="home-score-note">Quoted waiting is Quoted plus Followed Up. Follow-ups are overdue 7 days after the quote or last follow-up.</p>';
+    }
+    function loadHomeScore() {
+      const box = document.getElementById('homeScore');
+      if (!box) return;
+      if (!session.canSeeOffice) {
+        box.className = 'home-score d-none-view mb-4';
+        box.innerHTML = '';
+        return;
+      }
+      box.className = 'home-score mb-4';
+      box.innerHTML = '<div class="home-score-top"><div><h2>Enquiries and quotes</h2><p>Loading summary…</p></div></div>';
+      fetch('/api/office/enquiries/dashboard?grain=month&range=all', {
+        credentials: 'same-origin',
+        headers: { 'Accept': 'application/json', 'x-sd-token': officeToken() }
+      }).then((r) => r.json()).then(paintHomeScore).catch(() => paintHomeScore(null));
+    }
     function showTaskPicker() {
       const grid = document.getElementById('roleGrid');
       const sub = document.getElementById('taskPickSubtitle');
       const tasks = (session.canSeeOffice ? Object.keys(TASK_ICONS) : (session.tasks || [])).slice();
       if (sub) {
         sub.innerText = session.canSeeOffice
-          ? 'Each card shows Ready, Active, and Paused orders. Production in the menu is the full list.'
+          ? 'Office summary first. Floor cards show Ready, Active, and Paused. Production in the menu is the full list.'
           : ('Hi ' + session.name + '. What are you doing now?');
       }
+      loadHomeScore();
       grid.innerHTML = '';
       if (!tasks.length) {
         grid.innerHTML = '<div class="col-12"><div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div></div>';
