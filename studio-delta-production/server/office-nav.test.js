@@ -85,6 +85,9 @@ assert.ok(css.indexOf(".sd-persist-banner") !== -1);
 const processJs = fs.readFileSync(path.join(__dirname, "../public/enquiry-process.js"), "utf8");
 assert.ok(processJs.indexOf("productNamesLine") !== -1);
 assert.ok(processJs.indexOf("Enter each product value") !== -1);
+assert.ok(processJs.indexOf("Value incl VAT") !== -1);
+assert.ok(processJs.indexOf("sd-quote-totals") !== -1);
+assert.ok(processJs.indexOf("delivery_incl_vat") !== -1);
 assert.ok(processJs.indexOf('complete_cost_sheet') !== -1);
 assert.ok(!/complete_cost_sheet[\s\S]{0,200}valuesTable/.test(processJs), "cost sheet must not ask for product values");
 assert.ok(processJs.indexOf("quote_assignee") !== -1);
@@ -132,6 +135,8 @@ assert.ok(enquiriesHtml.indexOf(">LIFESPAN<") === -1, "enquiries sheet must not 
 assert.ok(enquiriesHtml.indexOf("· update") === -1, "status update must not live in the STATUS column");
 assert.ok(enquiriesHtml.indexOf("cell-btn") === -1, "status column must be text, not a button");
 assert.ok(enquiriesHtml.indexOf("openView") !== -1, "clicking an enquiry row must open a view popup");
+assert.ok(enquiriesHtml.indexOf("VALUE (Incl VAT)") !== -1);
+assert.ok(enquiriesHtml.indexOf('id="totVat"') !== -1);
 assert.ok(enquiriesHtml.indexOf("viewMask") !== -1);
 assert.ok(enquiriesHtml.indexOf("read-only view") !== -1);
 assert.ok(enquiriesHtml.indexOf("/enquiries/dashboard") !== -1, "sheet must link to the dashboard");

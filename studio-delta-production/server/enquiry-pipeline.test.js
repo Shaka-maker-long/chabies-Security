@@ -276,6 +276,14 @@ assert.strictEqual(quoted.row.quote_no, "SOQ2361");
 assert.strictEqual(quoted.quoteNo.next, "SOQ2362");
 assert.ok(quoted.quoteNo.recent.indexOf("SOQ2361") >= 0);
 assert.strictEqual(quoted.row.quote_total_excl_vat, "4650.50");
+assert.strictEqual(quoted.row.products[0].value_incl_vat, "2875.00");
+assert.strictEqual(quoted.row.delivery_incl_vat, "402.50");
+assert.strictEqual(quoted.row.quote_total_incl_vat, "5348.07");
+const fromIncl = db.normalizeEnquiryLines({
+  products: [{ product: "Eve Patio Table", category: "Table", value_incl_vat: "1150" }]
+}, null);
+assert.strictEqual(fromIncl[0].value_excl_vat, "1000.00");
+assert.strictEqual(fromIncl[0].value_incl_vat, "1150.00");
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up"));
 assert.strictEqual(quoted.row.quotes.length, 1);
 assert.strictEqual(quoted.row.quotes[0].quote_no, "SOQ2361");
