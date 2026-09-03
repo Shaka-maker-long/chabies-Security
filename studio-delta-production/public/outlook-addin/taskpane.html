@@ -37,7 +37,7 @@
     <p class="err" id="err"></p>
     <p class="ok" id="ok"></p>
   </main>
-  <script src="/office-auth.js?v=login-always"></script>
+  <script src="/office-auth.js?v=login-tab"></script>
   <script>
     let itemMeta = null;
     let rows = [];
@@ -134,8 +134,15 @@
       itemMeta = readItem();
       renderMail();
       try {
-        await sdForgetOffice();
-        await sdShowLogin("Log in with your Studio Delta office name and access code.");
+        let profile = sdOfficeProfile();
+        if (profile && profile.token) {
+          const r = await fetch("/api/office/me", { headers: { "x-sd-token": profile.token } });
+          const j = await r.json();
+          if (!j.ok) profile = null;
+        }
+        if (!profile) {
+          await sdShowLogin("Log in with your Studio Delta office name and access code.");
+        }
         await loadEnquiries();
         document.getElementById("save").disabled = false;
       } catch (e) {

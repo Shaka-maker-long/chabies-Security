@@ -13,8 +13,9 @@ const pane = fs.readFileSync(path.join(__dirname, "../public/outlook-addin/taskp
 assert.ok(pane.indexOf("appsforoffice.microsoft.com") !== -1);
 assert.ok(pane.indexOf("/api/office/enquiries/") !== -1);
 assert.ok(pane.indexOf("outlook-mail") !== -1);
-assert.ok(pane.indexOf("sdForgetOffice") !== -1);
+assert.ok(pane.indexOf("sdOfficeProfile") !== -1);
 assert.ok(pane.indexOf("sdShowLogin") !== -1);
+assert.ok(pane.indexOf("sdForgetOffice") === -1);
 
 const processJs = fs.readFileSync(path.join(__dirname, "../public/enquiry-process.js"), "utf8");
 assert.ok(processJs.indexOf("Paste the email") !== -1);
