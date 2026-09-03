@@ -2874,6 +2874,7 @@
       if (!el) return;
       el.addEventListener('pointerdown', function (ev) {
         if (ev.button != null && ev.button !== 0) return;
+        ev.preventDefault();
         const atlas = document.querySelector('.floor-atlas');
         if (!atlas) return;
         const startX = ev.clientX;
