@@ -1,6 +1,6 @@
 # Studio Delta Production
 
-Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. After login, **office users always open Home**. Home shows an **enquiries and quotes** scorecard, then a **production road**: destinations (icon, name, Ready / Active / Paused) sit on the asphalt. Plate cutting is a **parallel road**. After grinding the road **splits** (powder vs paint) and **merges** at assembly, then Final QC. **Production** in the menu is the list-report: steel page header, status counts, and a dense order grid. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
+Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. After login, **office users always open Home**. Home shows an **enquiries and quotes** scorecard, then a thin **conveyor belt** of **workstations**. **New orders** (no status or Not Yet Started) sit at the start. Plate cutting is a **parallel belt**. After powder coating the belt **splits**: paint prep → painting, or **straight to assembly**, then both merge at assembly and Final QC. Each workstation shows Ready / Active / Paused (New orders shows a new-order total). **Production** in the menu is the list-report: steel page header, status counts, and a dense order grid. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
 
 Orders (~400+) load as a text grid first; click a row to edit. Floor reads no longer rewrite the whole workbook to disk.
 
@@ -105,7 +105,7 @@ Do **not** commit the JSON key or a `.env` file.
 
 ## Floor rules
 
-- Home is a **production road**. Destinations are icon + name + Ready / Active / Paused. Plate cutting sits on a **parallel road**. After grinding the road **splits** (Pre-powder QC → Powder coating, or Paint prep → Painting) and **merges** at Assembly, then Final QC. QC destinations still open the Quality Control board, filtered to that phase.
+- Home is a thin **conveyor belt** of **workstations**. **New orders** counts blank status and Not Yet Started. Plate cutting sits on a **parallel belt**. After powder coating the belt **splits** (paint prep → painting, or straight to assembly) and **merges** at Assembly, then Final QC. QC workstations still open the Quality Control board, filtered to that phase.
 - One person has **one running clock**. Starting or resuming another order asks **Switch from A to B** (pause A, start B — still needs a reason) or **Work on A and B** (one clock, time split; Together badge). **Work this order only** leaves a batch. Pausing or switching requires **No materials**, **Touch up** (plus the order number), or **Other**. Activity and the Workers hour log split those hours by calendar day and show each bout with the pause reason — not a single start-minus-end total.
 - Same product, same process (e.g. assembly slats for two matching gates) can still be started together from Available. Use **Work this order only** to leave a batch.
 - When plate cutting finishes on an order, welders waiting on that plate are **auto-switched** back. They can tap **Still on other job** if they are not ready.
@@ -135,7 +135,7 @@ Add a **Tasks** column (column D). The first time the app opens it will create t
 | Thabo | Quality Control | 1234 | Quality Control |
 | Admin | Admin | **** | |
 
-- **Admin** Home is the first page after login: enquiry/quote scorecard plus the production road map (Ready / Active / Paused on each stop, including Pre-powder coating QC and Final QC). Logging in from an office page (Enquiries, Orders, …) also returns to Home. Production, Workers, Metrics, QC Reports, and Activity stay in the menu. Admin can open any floor stop from the map.
+- **Admin** Home is the first page after login: enquiry/quote scorecard plus a thin conveyor of workstations. **New orders** (blank status or Not Yet Started) sits at the start. After powder coating the belt splits to paint or straight to assembly, then Final QC. Each stop shows Ready / Active / Paused. Logging in from an office page (Enquiries, Orders, …) also returns to Home. Production, Workers, Metrics, QC Reports, and Activity stay in the menu. Admin can open any floor stop from the map.
 - **Quality Control / QC** only sees QC work.
 - Anyone else only sees the tasks listed. `Welding, Tagging` (or a role like `Welder Tagger`) means they pick Welding or Tagging after login, and only those boards appear.
 - Painters need `Painting` on the Tasks column. That also lets them prep items for painting (no extra `Paint Preparation` task required). Assemblers with `Assembly` also get **Paint prep** on Ready for Assembly cards.
