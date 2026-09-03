@@ -405,7 +405,7 @@ function eventLabel(action, row, fromStatus, body) {
       ? "Costing assigned to " + coster
       : "Assigned costing → " + coster;
   }
-  if (action === "add_correspondence") return "Outlook email saved";
+  if (action === "add_correspondence") return "Correspondance link saved";
   if (action === "complete_chase") {
     return String(body.next || "") === "costing"
       ? "Chase complete — sent to costing"
@@ -546,7 +546,7 @@ function archiveCorrespondence(row, actor, body) {
 function addCorrespondence(row, actor, body) {
   const added = archiveCorrespondence(row, actor, body);
   if (!added) {
-    throw new Error("Paste the email link, then Save update.");
+    throw new Error("Paste the Correspondance link, then Save update.");
   }
 }
 

@@ -303,8 +303,8 @@
     return openSavedFile(kind, filename, true);
   }
   function correspondenceFields() {
-    return "<p class=\"sd-process-sub\">Paste the email’s Outlook or Studio Delta server link. Do not attach the .msg file.</p>" +
-      "<label>Email link<input class=\"sd-path\" name=\"correspondence_links\" placeholder=\"https://… or ms-outlook://…\" autocomplete=\"off\"></label>";
+    return "<p class=\"sd-process-sub\">Paste the file link. It is saved on the server as Correspondance link — do not attach a file.</p>" +
+      "<label>Correspondance link<input class=\"sd-path\" name=\"correspondence_links\" placeholder=\"https://…\" autocomplete=\"off\"></label>";
   }
   function fileHref(kind) {
     return "/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/files/" + encodeURIComponent(kind);
@@ -318,7 +318,7 @@
   function filesCard(row) {
     const items = (row && Array.isArray(row.deliverables)) ? row.deliverables : [];
     let html = "<div class=\"sd-files sd-correspondence\"><h2>Files</h2>" +
-      "<p class=\"sd-process-sub\">Every CORRESPONDANCE email, cost sheet, quote PDF (including earlier quotes on this enquiry), follow-up screenshot, proof of payment, and drawing saved on this enquiry stays here. Open or copy the server link — you do not attach the email file.</p>";
+      "<p class=\"sd-process-sub\">CORRESPONDANCE is a pasted file link saved on the server as Correspondance link. Cost sheet, quote PDF (including earlier quotes), follow-up screenshot, proof of payment, and drawing stay here too. Copy link or Open — you do not attach a file.</p>";
     if (!items.length) {
       return html + "<p class=\"sd-process-sub\">No files on this enquiry yet.</p></div>";
     }
@@ -334,7 +334,7 @@
         : "";
       return "<div class=\"sd-file-row\">" +
         "<div class=\"sd-file-meta\"><div class=\"sd-file-type\">" + esc(f.label || "File") + "</div>" +
-        "<div class=\"sd-file-name\">" + esc(f.title || f.filename || "File") + "</div>" +
+        "<div class=\"sd-file-name\">" + esc(f.group === "correspondence" ? "Correspondance link" : (f.title || f.filename || "File")) + "</div>" +
         (f.from ? "<div class=\"sd-process-sub\">" + esc(f.from) + "</div>" : "") +
         (href ? "<div class=\"sd-process-sub\" style=\"word-break:break-all\">" + esc(href) + "</div>" : "") +
         "</div><div class=\"row-actions\">" + copy + open + "</div></div>";
