@@ -841,9 +841,8 @@
     .home-score.is-empty, .home-score.is-error { color: #667085; }
     .road-map {
       position: relative;
-      overflow-x: auto;
-      overflow-y: hidden;
-      padding: 8px 0 12px;
+      overflow: auto;
+      padding: 8px 0 36px;
       -webkit-overflow-scrolling: touch;
     }
     .floor-atlas {
@@ -863,123 +862,164 @@
     .floor-spot {
       position: absolute;
       z-index: 3;
-      width: 148px;
+      width: auto;
+      min-width: 64px;
       margin: 0;
-      padding: 7px 8px 8px;
-      border: 1px solid #1c1917;
-      border-radius: 8px;
-      background: rgba(252,251,248,.94);
-      box-shadow: 0 2px 8px rgba(28,25,23,.18);
+      padding: 4px;
+      border: 0;
+      background: transparent;
       transform: translate(-50%, -50%);
-      text-align: left;
+      text-align: center;
       cursor: pointer;
       color: #1c1917;
     }
-    .floor-spot:focus-visible { outline: 2px solid #b08948; outline-offset: 3px; }
-    .floor-spot.is-office { width: 132px; text-align: center; background: rgba(255,250,235,.96); }
-    .floor-spot.is-station { width: 138px; }
-    .floor-spot.is-ready { width: 152px; }
+    .floor-spot:focus-visible { outline: 2px solid #b08948; outline-offset: 3px; border-radius: 8px; }
     .floor-spot-kicker {
       display: block;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 700;
-      letter-spacing: .06em;
+      letter-spacing: .07em;
       text-transform: uppercase;
       color: #667085;
+      text-shadow: 0 1px 0 rgba(252,251,248,.9);
     }
     .floor-spot-title {
       display: block;
-      font-size: 13px;
+      font-size: 11px;
       font-weight: 800;
-      line-height: 1.2;
-      margin: 1px 0 4px;
+      line-height: 1.15;
+      margin: 0 0 4px;
+      text-shadow: 0 1px 0 rgba(252,251,248,.9);
     }
-    .floor-spot.is-office .floor-spot-title { font-size: 15px; }
+    .floor-count-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 30px;
+      height: 28px;
+      padding: 0 8px;
+      border: 1px solid #1c1917;
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 1px 4px rgba(28,25,23,.18);
+      font-size: 14px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      color: #1c1917;
+    }
+    .floor-count-btn.is-live { background: #eff8ff; color: #175cd3; }
+    .floor-count-btn.is-paused { background: #fffaeb; color: #b54708; }
+    .floor-spot.is-office .job-cart { margin-bottom: 4px; }
     .job-cart {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 44px;
-      height: 36px;
-      margin: 2px auto 4px;
+      width: 40px;
+      height: 32px;
       background: #1c1917;
       color: #f3efe6;
       border: 2px solid #b08948;
       border-radius: 6px;
-      font-size: 20px;
+      font-size: 18px;
     }
-    .floor-spot-count {
-      display: inline-block;
-      margin-top: 2px;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: #ecfdf3;
-      color: #067647;
-      font-size: 13px;
+    .twin-actor {
+      display: block;
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 2px;
+    }
+    .twin-actor svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    .twin-actor.is-idle .twin-body { animation: twin-idle 2.4s ease-in-out infinite; }
+    .twin-actor.is-paused { opacity: .7; }
+    .twin-actor.is-paused .twin-body { animation: twin-bob 2.4s ease-in-out infinite; }
+    .twin-actor.is-weld .twin-torch { transform-origin: 28px 22px; animation: twin-torch 0.35s linear infinite; }
+    .twin-actor.is-weld .twin-spark { animation: twin-spark 0.45s ease-out infinite; }
+    .twin-actor.is-assemble .twin-box-a { animation: twin-box 1.1s ease-in-out infinite; }
+    .twin-actor.is-assemble .twin-box-b { animation: twin-box 1.1s ease-in-out infinite reverse; }
+    .twin-actor.is-grind .twin-disc { transform-origin: 36px 22px; animation: twin-spin 0.5s linear infinite; }
+    .twin-actor.is-cut .twin-blade { transform-origin: 34px 20px; animation: twin-snip 0.4s ease-in-out infinite; }
+    .twin-actor.is-paint .twin-spray { animation: twin-spray 0.7s ease-in-out infinite; }
+    .twin-actor.is-qc .twin-check { animation: twin-check 1.2s ease-in-out infinite; }
+    @keyframes twin-bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-2px); }
+    }
+    @keyframes twin-idle {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-1px) rotate(-2deg); }
+    }
+    @keyframes twin-torch {
+      0%, 100% { transform: rotate(-8deg); }
+      50% { transform: rotate(10deg); }
+    }
+    @keyframes twin-spark {
+      0% { opacity: 1; transform: translate(0,0) scale(1); }
+      100% { opacity: 0; transform: translate(6px,-8px) scale(.3); }
+    }
+    @keyframes twin-box {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(3px); }
+    }
+    @keyframes twin-spin { to { transform: rotate(360deg); } }
+    @keyframes twin-snip {
+      0%, 100% { transform: rotate(-18deg); }
+      50% { transform: rotate(12deg); }
+    }
+    @keyframes twin-spray {
+      0%, 100% { opacity: .2; }
+      50% { opacity: 1; }
+    }
+    @keyframes twin-check {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.15); }
+    }
+    .floor-pop {
+      position: absolute;
+      z-index: 8;
+      width: 168px;
+      padding: 10px 12px 12px;
+      border: 1px solid #1c1917;
+      border-radius: 10px;
+      background: #fff;
+      box-shadow: 0 8px 24px rgba(28,25,23,.2);
+      text-align: left;
+      color: #1c1917;
+    }
+    .floor-pop.is-off { display: none; }
+    .floor-pop-kicker {
+      display: block;
+      font-size: 10px;
       font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: #7ba3c4;
     }
-    .floor-orders {
+    .floor-pop-title {
+      display: block;
+      margin: 2px 0 8px;
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .floor-pop-list {
       list-style: none;
       margin: 0;
       padding: 0;
-      max-height: 84px;
-      overflow: auto;
     }
-    .floor-orders li {
-      font-size: 12px;
+    .floor-pop-list button {
+      display: block;
+      width: 100%;
+      padding: 2px 0;
+      border: 0;
+      background: transparent;
+      text-align: left;
+      font-size: 14px;
       font-weight: 700;
-      line-height: 1.25;
       font-variant-numeric: tabular-nums;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      color: #1c1917;
     }
-    .floor-orders li.is-paused { color: #b54708; }
-    .floor-orders li.is-active { color: #175cd3; }
-    .floor-more { display: block; margin-top: 3px; font-size: 11px; color: #667085; }
-    .floor-station-mark {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-bottom: 4px;
-    }
-    .floor-station-mark .road-station { margin: 0; }
-    .road-station {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      filter: drop-shadow(0 1px 1px rgba(28,25,23,.25));
-    }
-    .road-station-head {
-      width: 28px;
-      height: 20px;
-      background: #1c1917;
-      border: 2px solid #b08948;
-      border-radius: 4px 4px 1px 1px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #f3efe6;
-      font-size: 11px;
-    }
-    .road-station-desk {
-      width: 36px;
-      height: 5px;
-      background: linear-gradient(#c4a36a, #8a6a3a);
-    }
-    .road-station-legs {
-      display: flex;
-      justify-content: space-between;
-      width: 26px;
-      height: 5px;
-    }
-    .road-station-legs::before,
-    .road-station-legs::after {
-      content: "";
-      width: 3px;
-      height: 5px;
-      background: #44403c;
-    }
+    .floor-pop-list button:hover { color: #175cd3; }
+    .floor-pop-more { display: block; margin-top: 6px; font-size: 12px; color: #98a2b3; }
     #view-roles.container { max-width: 1240px; }
     .dash-head {
       display: flex;
@@ -1968,6 +2008,10 @@
     let runningChoiceModal = null;
     let insertScheduleModal = null;
     let refreshInterval = null;
+    let floorTwinInterval = null;
+    let floorTwinSig = '';
+    let floorTwinBusy = false;
+    let floorTwinLayout = null;
     let countdownInterval = null;
     let liveTimerInterval = null;
     let hasSigned = false;
@@ -2231,6 +2275,7 @@
       if(viewId === 'view-admin-schedule') linkId = 'link-schedule';
       const linkEl = document.getElementById(linkId); if(linkEl) linkEl.classList.add('active');
       if(viewId !== 'view-dashboard') stopAutoRefresh();
+      if(viewId !== 'view-roles') stopFloorTwin();
     }
 
     const QC_PHASE_GROUPS = {
@@ -2249,19 +2294,21 @@
       { name: 'Admire', aliases: ['admire'], x: 42, y: 78 },
       { name: 'Uriah', aliases: ['uriah'], x: 62, y: 80 }
     ];
+    const FLOOR_QC_DOORS = [
+      { id: 'leftqc', name: 'Final QC', x: 12, y: 93, pileId: 'finalqc', role: 'Quality Control', qcFilter: 'final-qc', anim: 'qc' },
+      { id: 'rightqc', name: 'Pre-powder QC', x: 89, y: 93, pileId: 'prepowder', role: 'Quality Control', qcFilter: 'pre-powder', anim: 'qc' }
+    ];
     const FLOOR_PILES = [
-      { id: 'steelwork', label: 'Ready for steelwork', x: 13, y: 18, role: 'Profile Cutting' },
-      { id: 'tagging', label: 'Ready for tagging', x: 50, y: 56, role: 'Tagging' },
-      { id: 'welding', label: 'Ready for welding', x: 56, y: 38, role: 'Welding' },
-      { id: 'grinding', label: 'Ready for grinding', x: 70, y: 40, role: 'Grinding' },
-      { id: 'prepowder', label: 'Ready for pre-powder', x: 74, y: 52, role: 'Quality Control', qcFilter: 'pre-powder' },
-      { id: 'powder', label: 'Ready for powder', x: 78, y: 60, role: 'Quality Control', qcFilter: 'powder' },
-      { id: 'prep', label: 'Ready for prep', x: 86, y: 78, role: 'Paint Preparation' },
-      { id: 'painting', label: 'Ready for painting', x: 80, y: 68, role: 'Painting' },
-      { id: 'assembly', label: 'Ready for assembly', x: 22, y: 54, role: 'Assembly' },
-      { id: 'finalqc', label: 'Ready for final QC', x: 24, y: 72, role: 'Quality Control', qcFilter: 'final-qc' },
-      { id: 'delivery', label: 'Finished goods', x: 14, y: 84, role: 'Quality Control', qcFilter: 'delivery' },
-      { id: 'other', label: 'Other on floor', x: 55, y: 62, role: 'Profile Cutting' }
+      { id: 'steelwork', label: 'Ready for steelwork', x: 13, y: 18, role: 'Profile Cutting', always: true },
+      { id: 'tagging', label: 'Ready for tagging', x: 50, y: 56, role: 'Tagging', always: true },
+      { id: 'welding', label: 'Ready for welding', x: 56, y: 38, role: 'Welding', always: true },
+      { id: 'grinding', label: 'Ready for grinding', x: 70, y: 40, role: 'Grinding', always: true },
+      { id: 'powder', label: 'Ready for powder', x: 78, y: 60, role: 'Quality Control', qcFilter: 'powder', always: false },
+      { id: 'prep', label: 'Ready for prep', x: 86, y: 72, role: 'Paint Preparation', always: true },
+      { id: 'painting', label: 'Ready for painting', x: 80, y: 64, role: 'Painting', always: false },
+      { id: 'assembly', label: 'Ready for assembly', x: 22, y: 54, role: 'Assembly', always: true },
+      { id: 'delivery', label: 'Ready for final QC', x: 18, y: 86, role: 'Quality Control', qcFilter: 'final-qc', always: true },
+      { id: 'other', label: 'Other on floor', x: 55, y: 62, role: 'Profile Cutting', always: false }
     ];
     const ROAD_STOPS = [
       { id: 'New orders', role: 'Profile Cutting', label: 'New orders' },
@@ -2554,16 +2601,6 @@
     function floorEsc(s) {
       return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
     }
-    function floorOrderList(orders, limit) {
-      const rows = orders || [];
-      const cap = limit || 5;
-      const shown = rows.slice(0, cap);
-      const extra = rows.length - shown.length;
-      return '<ul class="floor-orders">' + shown.map((row) => {
-        const cls = row.paused ? ' is-paused' : (row.process ? ' is-active' : '');
-        return '<li class="' + cls + '">' + floorEsc(row.order) + (row.paused ? ' · paused' : '') + '</li>';
-      }).join('') + '</ul>' + (extra > 0 ? '<span class="floor-more">+' + extra + ' more</span>' : '');
-    }
     function matchFloorStation(workerName) {
       const key = String(workerName || '').trim().toLowerCase();
       for (let i = 0; i < FLOOR_STATIONS.length; i++) {
@@ -2577,6 +2614,61 @@
       if (!p) return ROAD_STOPS.filter((s) => s.id === 'New orders')[0];
       if (p === 'Quality Control') return ROAD_STOPS.filter((s) => s.id === 'Pre-Powder Coating QC')[0];
       return ROAD_STOPS.filter((s) => s.role === p || s.id === p)[0] || ROAD_STOPS.filter((s) => s.id === 'New orders')[0];
+    }
+    function qcDoorFor(row) {
+      const st = String((row && row.status) || '').toLowerCase();
+      const p = String((row && row.process) || '').toLowerCase();
+      if (st === 'ready for final qc' || st === 'ready for delivery' || st === 'out for delivery') return '';
+      if (st === 'final qc') return 'leftqc';
+      if (st.indexOf('pre-powder') !== -1) return 'rightqc';
+      if (p !== 'quality control') return '';
+      if (st.indexOf('final') !== -1) return 'leftqc';
+      return '';
+    }
+    function animForProcess(process) {
+      const p = String(process || '').toLowerCase();
+      if (p === 'welding' || p === 'tagging') return 'weld';
+      if (p === 'assembly') return 'assemble';
+      if (p === 'grinding') return 'grind';
+      if (p === 'profile cutting' || p === 'plate cutting') return 'cut';
+      if (p === 'painting' || p === 'paint preparation') return 'paint';
+      if (p === 'quality control') return 'qc';
+      return 'idle';
+    }
+    function rowsAnim(rows) {
+      const live = (rows || []).filter((r) => !r.paused);
+      if (live.length) return animForProcess(live[0].process);
+      if ((rows || []).length) return 'paused';
+      return 'idle';
+    }
+    function twinActorHtml(kind) {
+      const k = kind || 'idle';
+      const sparks = k === 'weld'
+        ? '<circle class="twin-spark" cx="38" cy="16" r="2.2" fill="#f59e0b"></circle><circle class="twin-spark" cx="43" cy="21" r="1.6" fill="#fbbf24" style="animation-delay:.12s"></circle><circle class="twin-spark" cx="36" cy="24" r="1.4" fill="#fde68a" style="animation-delay:.24s"></circle><circle cx="40" cy="18" r="3" fill="#fde68a" opacity=".45"></circle>'
+        : '';
+      const tool = k === 'weld'
+        ? '<path class="twin-torch" d="M28 22 L40 16" stroke="#b08948" stroke-width="2" fill="none"></path>'
+        : (k === 'assemble'
+          ? '<rect class="twin-box-a" x="30" y="18" width="8" height="8" fill="#b08948"></rect><rect class="twin-box-b" x="36" y="24" width="8" height="8" fill="#1c1917"></rect>'
+          : (k === 'grind'
+            ? '<circle class="twin-disc" cx="36" cy="22" r="6" fill="none" stroke="#57534e" stroke-width="2"></circle><circle cx="36" cy="22" r="1.5" fill="#b08948"></circle>'
+            : (k === 'cut'
+              ? '<path class="twin-blade" d="M30 16 L42 28 M42 16 L30 28" stroke="#57534e" stroke-width="2" fill="none"></path>'
+              : (k === 'paint'
+                ? '<path d="M30 16 L40 22" stroke="#1c1917" stroke-width="2"></path><circle class="twin-spray" cx="42" cy="18" r="3" fill="#93c5fd"></circle>'
+                : (k === 'qc'
+                  ? '<rect x="30" y="14" width="12" height="14" rx="1" fill="#fff" stroke="#1c1917"></rect><path class="twin-check" d="M32 21 L35 24 L40 16" stroke="#067647" stroke-width="2" fill="none"></path>'
+                  : '')))));
+      return '<span class="twin-actor is-' + k + '" aria-hidden="true"><svg viewBox="0 0 48 48">' +
+        '<g class="twin-body" fill="none" stroke="#1c1917" stroke-width="2" stroke-linecap="round">' +
+        '<circle cx="22" cy="10" r="5" fill="#f3efe6"></circle>' +
+        '<path d="M22 15 V28 M16 20 H28 M18 28 L14 40 M26 28 L30 40"></path>' +
+        '</g>' + tool + sparks + '</svg></span>';
+    }
+    function floorCountClass(rows) {
+      if ((rows || []).some((r) => !r.paused && r.process)) return ' is-live';
+      if ((rows || []).some((r) => r.paused)) return ' is-paused';
+      return '';
     }
     function openFloorBoard(role, label, qcFilter) {
       const step = {
@@ -2596,69 +2688,120 @@
       persistSession();
       document.getElementById('adminLinks').classList.toggle('d-none-view', !session.canSeeOffice);
       applyAdminLinks();
+      hideFloorPopover();
       if (floorListModal) floorListModal.hide();
       enterDashboard();
       return true;
     }
-    function showFloorOrderList(title, orders, opener) {
-      const body = document.getElementById('floorListBody');
-      const head = document.getElementById('floorListTitle');
-      if (head) head.innerText = title;
+    function hideFloorPopover() {
+      const pop = document.getElementById('floorPopover');
+      if (pop) pop.classList.add('is-off');
+    }
+    function showFloorPopover(anchor, kicker, title, orders, opener) {
+      const atlas = document.querySelector('.floor-atlas');
+      const pop = document.getElementById('floorPopover');
+      if (!atlas || !pop) return;
       const rows = orders || [];
+      const cap = 5;
+      const shown = rows.slice(0, cap);
+      const extra = rows.length - shown.length;
+      pop.querySelector('.floor-pop-kicker').textContent = kicker || '';
+      pop.querySelector('.floor-pop-title').textContent = title || '';
+      const list = pop.querySelector('.floor-pop-list');
       if (!rows.length) {
-        body.innerHTML = '<p class="text-muted mb-0">No orders here right now.</p>';
+        list.innerHTML = '<li class="text-muted">No orders here right now.</li>';
       } else {
-        body.innerHTML = '<div class="list-group list-group-flush">' + rows.map((row, i) => {
-          const note = row.paused ? 'Paused' : (row.process || row.status || '');
-          return '<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" data-floor-i="' + i + '">' +
-            '<span class="fw-bold">' + floorEsc(row.order) + '</span>' +
-            '<span class="small text-muted">' + floorEsc(note) + '</span></button>';
-        }).join('') + '</div>';
-        body.querySelectorAll('[data-floor-i]').forEach((btn) => {
-          btn.addEventListener('click', function () {
-            const row = rows[Number(btn.getAttribute('data-floor-i'))];
+        list.innerHTML = shown.map((row, i) =>
+          '<li><button type="button" data-floor-i="' + i + '">' + floorEsc(row.order) + '</button></li>'
+        ).join('');
+        list.querySelectorAll('[data-floor-i]').forEach((btn) => {
+          btn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            const row = shown[Number(btn.getAttribute('data-floor-i'))];
             if (opener) opener(row);
           });
         });
       }
-      if (floorListModal) floorListModal.show();
+      const more = pop.querySelector('.floor-pop-more');
+      more.textContent = extra > 0 ? '+' + extra + ' more' : '';
+      pop.classList.remove('is-off');
+      const ar = atlas.getBoundingClientRect();
+      const br = anchor.getBoundingClientRect();
+      let left = br.left - ar.left + br.width / 2 - 84;
+      let top = br.top - ar.top - 8;
+      left = Math.max(8, Math.min(left, ar.width - 176));
+      if (top < 8) top = br.bottom - ar.top + 8;
+      else top = top - pop.offsetHeight;
+      if (top < 8) top = br.bottom - ar.top + 8;
+      pop.style.left = left + 'px';
+      pop.style.top = top + 'px';
+    }
+    function bindSpot(el, kicker, title, rows, opener) {
+      el.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        showFloorPopover(el, kicker, title, rows, opener);
+      });
     }
     function renderFloorPlan(layout) {
       const grid = document.getElementById('roleGrid');
+      if (!grid) return;
       grid.className = 'road-map';
       const data = layout || { office: [], piles: {}, workers: {} };
+      floorTwinLayout = data;
       const office = data.office || [];
+      const doorWorkers = { leftqc: [], rightqc: [] };
+      const placed = {};
+      Object.keys(data.workers || {}).forEach((name) => {
+        const rows = data.workers[name] || [];
+        const live = rows.filter((r) => !r.paused)[0] || rows[0];
+        const door = qcDoorFor(live);
+        if (door) {
+          doorWorkers[door] = doorWorkers[door].concat(rows);
+          placed[name] = true;
+        }
+      });
       let html = '<div class="floor-atlas">';
       html += '<button type="button" class="floor-spot is-office" style="left:' + FLOOR_OFFICE.x + '%;top:' + FLOOR_OFFICE.y + '%" data-floor="office">' +
-        '<span class="floor-spot-kicker">Office</span>' +
         '<span class="job-cart" aria-hidden="true"><i class="bi bi-cart3"></i></span>' +
+        '<span class="floor-spot-kicker">Office</span>' +
         '<span class="floor-spot-title">New orders</span>' +
-        '<span class="floor-spot-count">' + office.length + ' new</span>' +
+        '<span class="floor-count-btn">' + office.length + '</span>' +
         '</button>';
       FLOOR_PILES.forEach((pile) => {
         const rows = (data.piles && data.piles[pile.id]) || [];
-        if (!rows.length && pile.id === 'other') return;
-        if (!rows.length) return;
+        if (!rows.length && !pile.always) return;
+        const pileKicker = pile.id === 'delivery' ? 'Finished goods' : 'Ready pile';
         html += '<button type="button" class="floor-spot is-ready" style="left:' + pile.x + '%;top:' + pile.y + '%" data-floor-pile="' + pile.id + '">' +
-          '<span class="floor-spot-kicker">Ready pile</span>' +
+          '<span class="floor-spot-kicker">' + pileKicker + '</span>' +
           '<span class="floor-spot-title">' + floorEsc(pile.label) + '</span>' +
-          floorOrderList(rows) +
+          '<span class="floor-count-btn' + floorCountClass(rows) + '">' + rows.length + '</span>' +
           '</button>';
       });
-      const placed = {};
+      FLOOR_QC_DOORS.forEach((door) => {
+        const waiting = (data.piles && data.piles[door.pileId]) || [];
+        const working = doorWorkers[door.id] || [];
+        const rows = waiting.concat(working);
+        const anim = working.some((r) => !r.paused) ? 'qc' : (working.length ? 'paused' : 'idle');
+        html += '<button type="button" class="floor-spot is-qc" style="left:' + door.x + '%;top:' + door.y + '%" data-floor-door="' + door.id + '">' +
+          twinActorHtml(anim) +
+          '<span class="floor-spot-kicker">Outside</span>' +
+          '<span class="floor-spot-title">' + floorEsc(door.name) + '</span>' +
+          '<span class="floor-count-btn' + floorCountClass(rows) + '">' + rows.length + '</span>' +
+          '</button>';
+      });
       FLOOR_STATIONS.forEach((st) => {
         let rows = [];
         Object.keys(data.workers || {}).forEach((name) => {
+          if (placed[name]) return;
           if (st.aliases.indexOf(String(name).toLowerCase()) !== -1) {
             placed[name] = true;
             rows = rows.concat(data.workers[name]);
           }
         });
-        if (!rows.length) return;
         html += '<button type="button" class="floor-spot is-station" style="left:' + st.x + '%;top:' + st.y + '%" data-floor-worker="' + floorEsc(st.name) + '">' +
-          '<span class="floor-station-mark"><span class="road-station" aria-hidden="true"><span class="road-station-head"><i class="bi bi-person"></i></span><span class="road-station-desk"></span><span class="road-station-legs"></span></span>' +
-          '<span class="floor-spot-title">' + floorEsc(st.name) + '</span></span>' +
-          floorOrderList(rows) +
+          twinActorHtml(rowsAnim(rows)) +
+          '<span class="floor-spot-title">' + floorEsc(st.name) + '</span>' +
+          '<span class="floor-count-btn' + floorCountClass(rows) + '">' + rows.length + '</span>' +
           '</button>';
       });
       let extraI = 0;
@@ -2670,58 +2813,88 @@
         const y = 62 + Math.floor(extraI / 3) * 8;
         extraI += 1;
         html += '<button type="button" class="floor-spot is-station" style="left:' + x + '%;top:' + y + '%" data-floor-worker="' + floorEsc(name) + '">' +
-          '<span class="floor-station-mark"><span class="road-station" aria-hidden="true"><span class="road-station-head"><i class="bi bi-person"></i></span><span class="road-station-desk"></span><span class="road-station-legs"></span></span>' +
-          '<span class="floor-spot-title">' + floorEsc(name) + '</span></span>' +
-          floorOrderList(rows) +
+          twinActorHtml(rowsAnim(rows)) +
+          '<span class="floor-spot-title">' + floorEsc(name) + '</span>' +
+          '<span class="floor-count-btn' + floorCountClass(rows) + '">' + rows.length + '</span>' +
           '</button>';
       });
+      html += '<div id="floorPopover" class="floor-pop is-off"><span class="floor-pop-kicker"></span><strong class="floor-pop-title"></strong><ul class="floor-pop-list"></ul><span class="floor-pop-more"></span></div>';
       html += '</div>';
       grid.innerHTML = html;
-      const officeBtn = grid.querySelector('[data-floor="office"]');
-      if (officeBtn) officeBtn.addEventListener('click', function () {
-        showFloorOrderList('New orders', office, function () {
-          openFloorBoard('Profile Cutting', 'New orders', '');
-        });
+      grid.querySelector('.floor-atlas').addEventListener('click', hideFloorPopover);
+      bindSpot(grid.querySelector('[data-floor="office"]'), 'Office', 'New orders', office, function () {
+        openFloorBoard('Profile Cutting', 'New orders', '');
       });
       grid.querySelectorAll('[data-floor-pile]').forEach((btn) => {
-        btn.addEventListener('click', function () {
-          const pile = FLOOR_PILES.filter((p) => p.id === btn.getAttribute('data-floor-pile'))[0];
-          const rows = (data.piles && pile && data.piles[pile.id]) || [];
-          showFloorOrderList(pile.label, rows, function () {
-            openFloorBoard(pile.role, pile.label, pile.qcFilter || '');
-          });
+        const pile = FLOOR_PILES.filter((p) => p.id === btn.getAttribute('data-floor-pile'))[0];
+        const rows = (data.piles && pile && data.piles[pile.id]) || [];
+        bindSpot(btn, pile.id === 'delivery' ? 'Finished goods' : 'Ready pile', pile.label, rows, function () {
+          openFloorBoard(pile.role, pile.label, pile.qcFilter || '');
+        });
+      });
+      grid.querySelectorAll('[data-floor-door]').forEach((btn) => {
+        const door = FLOOR_QC_DOORS.filter((d) => d.id === btn.getAttribute('data-floor-door'))[0];
+        const waiting = (data.piles && data.piles[door.pileId]) || [];
+        const working = doorWorkers[door.id] || [];
+        bindSpot(btn, 'Outside', door.name, waiting.concat(working), function (row) {
+          const step = processToRoadStep((row && row.process) || door.role);
+          openFloorBoard(door.role, door.name, door.qcFilter);
         });
       });
       grid.querySelectorAll('[data-floor-worker]').forEach((btn) => {
-        btn.addEventListener('click', function () {
-          const worker = btn.getAttribute('data-floor-worker');
-          let rows = [];
-          Object.keys(data.workers || {}).forEach((name) => {
-            if (String(name).toLowerCase() === String(worker).toLowerCase()) rows = rows.concat(data.workers[name]);
-          });
-          const pin = matchFloorStation(worker);
-          showFloorOrderList((pin ? pin.name : worker) + ' — on the go', rows, function (row) {
-            const step = processToRoadStep(row && row.process);
-            openFloorBoard(step.role, step.id, step.qcFilter || '');
-          });
+        const worker = btn.getAttribute('data-floor-worker');
+        let rows = [];
+        Object.keys(data.workers || {}).forEach((name) => {
+          if (String(name).toLowerCase() === String(worker).toLowerCase()) rows = rows.concat(data.workers[name]);
+        });
+        const pin = matchFloorStation(worker);
+        bindSpot(btn, 'Station', pin ? pin.name : worker, rows, function (row) {
+          const step = processToRoadStep(row && row.process);
+          openFloorBoard(step.role, step.id, step.qcFilter || '');
         });
       });
+    }
+    function stopFloorTwin() {
+      if (floorTwinInterval) clearInterval(floorTwinInterval);
+      floorTwinInterval = null;
+      floorTwinBusy = false;
+    }
+    function refreshFloorTwin(force) {
+      if (document.hidden) return;
+      const pop = document.getElementById('floorPopover');
+      if (!force && pop && !pop.classList.contains('is-off')) return;
+      if (floorTwinBusy && !force) return;
+      floorTwinBusy = true;
+      google.script.run.withSuccessHandler(function (layout) {
+        floorTwinBusy = false;
+        const raw = JSON.stringify(layout || {});
+        if (!force && raw === floorTwinSig) return;
+        floorTwinSig = raw;
+        renderFloorPlan(layout);
+      }).withFailureHandler(function () { floorTwinBusy = false; }).getFloorLayout();
+    }
+    function startFloorTwin() {
+      stopFloorTwin();
+      floorTwinSig = '';
+      refreshFloorTwin(true);
+      floorTwinInterval = setInterval(function () { refreshFloorTwin(false); }, 8000);
     }
     function showTaskPicker() {
       const grid = document.getElementById('roleGrid');
       const sub = document.getElementById('taskPickSubtitle');
       if (sub) {
         sub.innerText = session.canSeeOffice
-          ? 'Shop floor. New orders sit in the office. Ready piles hold waiting work. Live and paused jobs sit on the worker.'
+          ? 'Live shop twin. Count buttons open the order list. Welding and tagging share the weld animation. Pre-powder QC is outside the right door; Final QC is outside the left. Ready for final QC sits in finished goods.'
           : ('Hi ' + session.name + '. Tap your station or a ready pile.');
       }
       loadHomeScore();
       if (!(session.canSeeOffice || (session.tasks && session.tasks.length))) {
+        stopFloorTwin();
         grid.className = 'road-map';
         grid.innerHTML = '<div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div>';
       } else {
         renderFloorPlan({ office: [], piles: {}, workers: {} });
-        google.script.run.withSuccessHandler(renderFloorPlan).withFailureHandler(function () {}).getFloorLayout();
+        startFloorTwin();
       }
       navTo('view-roles');
     }
