@@ -2350,31 +2350,31 @@
       'final-qc': ['ready for final qc', 'final qc'],
       'delivery': ['ready for delivery', 'out for delivery']
     };
-    const FLOOR_OFFICE = { x: 20, y: 46 };
+    const FLOOR_OFFICE = { x: 21, y: 47 };
     const FLOOR_STATIONS = [
-      { name: 'Muruba', aliases: ['muruba'], x: 40, y: 30 },
-      { name: 'Willard', aliases: ['willard'], x: 56, y: 28 },
-      { name: 'John', aliases: ['john'], x: 36, y: 52 },
-      { name: 'Sam', aliases: ['sam'], x: 46, y: 62 },
-      { name: 'Thabile', aliases: ['thabile', 'thabiso'], x: 80, y: 42 },
-      { name: 'Admire', aliases: ['admire'], x: 58, y: 74 },
-      { name: 'Uriah', aliases: ['uriah'], x: 73, y: 76 }
+      { name: 'Muruba', aliases: ['muruba'], x: 38, y: 27 },
+      { name: 'Willard', aliases: ['willard'], x: 58, y: 26 },
+      { name: 'John', aliases: ['john'], x: 33, y: 50 },
+      { name: 'Sam', aliases: ['sam'], x: 39, y: 56 },
+      { name: 'Thabile', aliases: ['thabile', 'thabiso'], x: 81, y: 40 },
+      { name: 'Admire', aliases: ['admire'], x: 52, y: 76 },
+      { name: 'Uriah', aliases: ['uriah'], x: 70, y: 77 }
     ];
     const FLOOR_QC_DOORS = [
-      { id: 'leftqc', name: 'Final QC', x: 11, y: 90, pileId: 'finalqc', role: 'Quality Control', qcFilter: 'final-qc', anim: 'qc' },
-      { id: 'rightqc', name: 'Pre-powder QC', x: 89, y: 90, pileId: 'prepowder', role: 'Quality Control', qcFilter: 'pre-powder', anim: 'qc' }
+      { id: 'leftqc', name: 'Final QC', x: 12, y: 87, pileId: 'finalqc', role: 'Quality Control', qcFilter: 'final-qc', anim: 'qc' },
+      { id: 'rightqc', name: 'Pre-powder QC', x: 88, y: 87, pileId: 'prepowder', role: 'Quality Control', qcFilter: 'pre-powder', anim: 'qc' }
     ];
     const FLOOR_PILES = [
-      { id: 'steelwork', label: 'Ready for steelwork', x: 22, y: 24, role: 'Profile Cutting' },
-      { id: 'tagging', label: 'Ready for tagging', x: 50, y: 48, role: 'Tagging' },
-      { id: 'welding', label: 'Ready for welding', x: 49, y: 38, role: 'Welding' },
-      { id: 'grinding', label: 'Ready for grinding', x: 74, y: 50, role: 'Grinding' },
-      { id: 'powder', label: 'Ready for powder', x: 68, y: 58, role: 'Quality Control', qcFilter: 'powder' },
-      { id: 'prep', label: 'Ready for prep', x: 78, y: 68, role: 'Paint Preparation' },
-      { id: 'painting', label: 'Ready for painting', x: 76, y: 64, role: 'Painting' },
-      { id: 'assembly', label: 'Ready for assembly', x: 32, y: 58, role: 'Assembly' },
-      { id: 'delivery', label: 'Ready for final QC', x: 22, y: 80, role: 'Quality Control', qcFilter: 'final-qc', landmark: true },
-      { id: 'other', label: 'Other on floor', x: 55, y: 62, role: 'Profile Cutting' }
+      { id: 'steelwork', label: 'Ready for steelwork', x: 22, y: 22, role: 'Profile Cutting' },
+      { id: 'tagging', label: 'Ready for tagging', x: 48, y: 46, role: 'Tagging' },
+      { id: 'welding', label: 'Ready for welding', x: 50, y: 36, role: 'Welding' },
+      { id: 'grinding', label: 'Ready for grinding', x: 74, y: 48, role: 'Grinding' },
+      { id: 'powder', label: 'Ready for powder', x: 66, y: 56, role: 'Quality Control', qcFilter: 'powder' },
+      { id: 'prep', label: 'Ready for prep', x: 78, y: 66, role: 'Paint Preparation' },
+      { id: 'painting', label: 'Ready for painting', x: 76, y: 62, role: 'Painting' },
+      { id: 'assembly', label: 'Ready for assembly', x: 28, y: 58, role: 'Assembly' },
+      { id: 'delivery', label: 'Ready for final QC', x: 17, y: 72, role: 'Quality Control', qcFilter: 'final-qc', landmark: true },
+      { id: 'other', label: 'Other on floor', x: 55, y: 60, role: 'Profile Cutting' }
     ];
     const ROAD_STOPS = [
       { id: 'New orders', role: 'Profile Cutting', label: 'New orders' },
