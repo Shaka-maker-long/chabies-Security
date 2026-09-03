@@ -635,13 +635,15 @@ function verifyGlobalLogin(name, password) {
   return { success: false, error: "Incorrect Name or Access Code" };
 }
 
-function getOrdersForRole(role, workerName) {
+function getOrdersForRole(role, workerName, skipCache) {
   if (workerName && role && role !== "Admin" && !workerCanPerformTask(workerName, role)) {
     return [];
   }
   var cacheKey = "orders:" + String(role || "");
-  var cached = floorCacheGet(cacheKey);
-  if (cached) return cached;
+  if (!skipCache) {
+    var cached = floorCacheGet(cacheKey);
+    if (cached) return cached;
+  }
   var ss = getSpreadsheet();
   var data = getSheetGrid(ss, TAB_ORDERS, 7);
   var logData = getLogPack(ss).values;
@@ -775,6 +777,32 @@ function pollFloor(role, workerName) {
     orders: getOrdersForRole(role, workerName),
     notice: workerName ? popWorkerNotice(workerName) : null
   };
+}
+
+function getFloorTaskCounts() {
+  var tasks = [
+    "Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding",
+    "Quality Control", "Paint Preparation", "Painting", "Assembly"
+  ];
+  var out = {};
+  for (var i = 0; i < tasks.length; i++) {
+    var role = tasks[i];
+    var orders = getOrdersForRole(role, "", true);
+    var ready = 0;
+    var active = 0;
+    var paused = 0;
+    for (var j = 0; j < orders.length; j++) {
+      var o = orders[j];
+      if (o && o.assigned) {
+        if (o.isPaused) paused += 1;
+        else active += 1;
+      } else {
+        ready += 1;
+      }
+    }
+    out[role] = { ready: ready, active: active, paused: paused };
+  }
+  return out;
 }
 
 function uniqueOrderNums(arr) {

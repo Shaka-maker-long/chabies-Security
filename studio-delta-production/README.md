@@ -1,6 +1,6 @@
 # Studio Delta Production
 
-Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. Production Overview is a list-report: steel page header, status counts, and a dense order grid. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
+Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. **Home** is the shop-floor task cards (Profile Cutting, Welding, Painting, and the rest). Each card shows how many orders are **Ready**, **Active**, and **Paused** for that task before you open it. **Production** in the menu is the list-report: steel page header, status counts, and a dense order grid. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
 
 Orders (~400+) load as a text grid first; click a row to edit. Floor reads no longer rewrite the whole workbook to disk.
 
@@ -124,7 +124,7 @@ Legacy pause columns J/K/L are still written for older reports.
 
 ## Users sheet (login)
 
-Workers log in when they **open this tab**. Moving between Floor, Enquiries, Orders, and the other pages stays logged in. A **new tab or window** must log in even if another copy of the app is already open — the login is not shared across tabs. Log Out (or closing the tab) ends that login.
+Workers log in when they **open this tab**. Moving between Home, Enquiries, Orders, and the other pages stays logged in. A **new tab or window** must log in even if another copy of the app is already open — the login is not shared across tabs. Log Out (or closing the tab) ends that login.
 
 Add a **Tasks** column (column D). The first time the app opens it will create the header if it is missing.
 
@@ -134,7 +134,7 @@ Add a **Tasks** column (column D). The first time the app opens it will create t
 | Thabo | Quality Control | 1234 | Quality Control |
 | Admin | Admin | **** | |
 
-- **Admin** sees Production, Workers, Metrics, QC Reports, Activity, and can open any floor task.
+- **Admin** Home is the floor task cards with Ready / Active / Paused counts. Production, Workers, Metrics, QC Reports, and Activity stay in the menu. Admin can open any floor task from Home.
 - **Quality Control / QC** only sees QC work.
 - Anyone else only sees the tasks listed. `Welding, Tagging` (or a role like `Welder Tagger`) means they pick Welding or Tagging after login, and only those boards appear.
 - Painters need `Painting` on the Tasks column. That also lets them prep items for painting (no extra `Paint Preparation` task required). Assemblers with `Assembly` also get **Paint prep** on Ready for Assembly cards.

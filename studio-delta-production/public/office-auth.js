@@ -102,7 +102,6 @@ function sdMountOfficeShell(active) {
   document.body.classList.add("office-app");
   const items = [
     ["/", "home", "bi-house-door", "Home"],
-    ["/?view=floor", "floor", "bi-tools", "Floor"],
     ["/orders", "orders", "bi-table", "Orders"],
     ["/enquiries", "enquiries", "bi-journal-text", "Enquiries"],
     ["/tasks", "tasks", "bi-check2-square", "My tasks"],

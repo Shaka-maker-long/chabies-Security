@@ -256,7 +256,7 @@ function buildMailApp() {
 
 const ALLOWED = new Set([
   "getSteelProfiles", "getBackboards", "getUsersAndRoles", "verifyGlobalLogin", "verifyLogin",
-  "pollFloor", "startOrder", "finishOrder", "workerPauseOrder", "workerResumeOrder",
+  "pollFloor", "getFloorTaskCounts", "startOrder", "finishOrder", "workerPauseOrder", "workerResumeOrder",
   "batchStartOrders", "batchFinishOrders", "reportScratchedGlass", "getWeldingOrders", "logWelderSteel",
   "getAdminDashboardData", "adminPauseOrder", "adminResumeOrder",
   "getOrderMetrics", "getProductionTrendsData", "getWeeklyAnalyticsData",

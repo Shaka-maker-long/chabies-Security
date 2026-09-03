@@ -47,7 +47,12 @@ function openLogs(orderNum) {
   const d = order("S-2004");
 
   const first = await callShopFunction("startOrder", [a.id, "Thabo", "Welding", [], "", false]);
-  assert.strictEqual(first.success, true, JSON.stringify(first));
+    assert.strictEqual(first.success, true, JSON.stringify(first));
+
+  const countsAfterStart = await callShopFunction("getFloorTaskCounts", []);
+  assert.ok(countsAfterStart && countsAfterStart.Welding, "Home cards need Welding counts");
+  assert.ok(countsAfterStart.Welding.active >= 1, "started order is Active: " + JSON.stringify(countsAfterStart.Welding));
+  assert.ok(countsAfterStart.Welding.ready >= 3, "unstarted welding orders are Ready: " + JSON.stringify(countsAfterStart.Welding));
 
   const blocked = await callShopFunction("startOrder", [b.id, "Thabo", "Welding", [], "", false]);
   assert.ok(blocked.needsSwitchReason, "must ask work-together or switch: " + JSON.stringify(blocked));
@@ -103,6 +108,10 @@ function openLogs(orderNum) {
   assert.ok(cardC.isPaused, "switch auto-pauses the first order");
   assert.ok(!cardD.isPaused, "new order is running");
   assert.ok(cardC.pausedAt, "paused countdown freezes");
+
+  const countsAfterSwitch = await callShopFunction("getFloorTaskCounts", []);
+  assert.ok(countsAfterSwitch.Welding.active >= 1, "running order stays Active: " + JSON.stringify(countsAfterSwitch.Welding));
+  assert.ok(countsAfterSwitch.Welding.paused >= 1, "switched-away order is Paused: " + JSON.stringify(countsAfterSwitch.Welding));
 
   console.log("together-time.test.js ok");
 })().catch((e) => {
