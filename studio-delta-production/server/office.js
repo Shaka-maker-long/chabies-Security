@@ -28,7 +28,7 @@ const {
   copyEnquiriesFromWorkbook,
   persistenceInfo
 } = require("./db");
-const { importGoogleWorkbook, tabCounts, googleMigrateEnabled } = require("./workbook-store");
+const { importGoogleWorkbook, tabCounts, googleMigrateEnabled, dataDir } = require("./workbook-store");
 const staff = require("./staff");
 const pipeline = require("./enquiry-pipeline");
 const fs = require("fs");
@@ -124,6 +124,24 @@ function sendEnquiryFile(res, enquiryNo, kind, download) {
     (download ? "attachment" : "inline") + "; filename=\"" + String(name).replace(/"/g, "") + "\""
   );
   res.send(file.buffer);
+}
+
+function floorLayoutPath() {
+  return require("path").join(dataDir(), "floor-layout.json");
+}
+function readFloorLayout() {
+  try {
+    const raw = fs.readFileSync(floorLayoutPath(), "utf8");
+    const j = JSON.parse(raw);
+    return j && typeof j === "object" ? j : {};
+  } catch (e) {
+    return {};
+  }
+}
+function writeFloorLayout(layout) {
+  const body = layout && typeof layout === "object" ? layout : {};
+  fs.writeFileSync(floorLayoutPath(), JSON.stringify(body));
+  return body;
 }
 
 function mountOffice(app) {
@@ -335,6 +353,17 @@ function mountOffice(app) {
   });
 
   app.post("/api/office/migrate-from-google", requireOffice, migrateFromGoogle);
+
+  app.get("/api/office/floor-layout", (_req, res) => {
+    res.json({ ok: true, layout: readFloorLayout() });
+  });
+  app.put("/api/office/floor-layout", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, layout: writeFloorLayout((req.body && req.body.layout) || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
 
   app.get("/api/office/database", requireOffice, (_req, res) => {
     res.json({

@@ -776,7 +776,15 @@
     .task-count.is-ready { background: #ecfdf3; color: #067647; }
     .task-count.is-active { background: #eff8ff; color: #175cd3; }
     .task-count.is-paused { background: #fffaeb; color: #b54708; }
-    .home-head { text-align: left; }
+    .home-head {
+      text-align: left;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .home-head .h2 { margin-bottom: 4px; }
     .home-score {
       background: var(--bg-surface);
       border: 1px solid var(--border);
@@ -871,8 +879,15 @@
       background: transparent;
       transform: translate(-50%, -88%);
       text-align: center;
-      cursor: pointer;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
       color: #1c1917;
+    }
+    .floor-spot.is-dragging {
+      cursor: grabbing;
+      z-index: 10;
+      filter: drop-shadow(0 8px 12px rgba(28,25,23,.28));
     }
     .floor-spot.is-ready, .floor-spot.is-office { transform: translate(-50%, -70%); z-index: 2; }
     .floor-spot.is-qc { z-index: 5; }
@@ -1292,8 +1307,11 @@
 
     <div id="view-roles" class="view-section container d-none-view">
       <div class="home-head mb-3 mt-2">
-        <h1 class="h2 fw-bold mb-1">Home</h1>
-        <p class="text-muted mb-0" id="taskPickSubtitle">Select the task you will do now.</p>
+        <div>
+          <h1 class="h2 fw-bold mb-1">Home</h1>
+          <p class="text-muted mb-0" id="taskPickSubtitle">Select the task you will do now.</p>
+        </div>
+        <button type="button" id="floorResetBtn" class="btn btn-outline-dark btn-sm d-none-view" onclick="resetFloorLayout()">Reset layout</button>
       </div>
       <div id="homeScore" class="home-score d-none-view mb-4"></div>
       <div class="road-map" id="roleGrid"></div>
@@ -2078,6 +2096,10 @@
     let floorTwinSig = '';
     let floorTwinBusy = false;
     let floorTwinLayout = null;
+    let floorTwinDragging = false;
+    const FLOOR_POS_KEY = 'sd-floor-pos';
+    let floorPos = {};
+    let floorPosSaveTimer = null;
     let countdownInterval = null;
     let liveTimerInterval = null;
     let hasSigned = false;
@@ -2367,19 +2389,17 @@
       { x: 48, y: 63 },
       { x: 62, y: 68 }
     ];
-    const FLOOR_QC_DOORS = [
-      { id: 'leftqc', name: 'Final QC', x: 12, y: 87, pileId: 'finalqc', role: 'Quality Control', qcFilter: 'final-qc', anim: 'qc' },
-      { id: 'rightqc', name: 'Pre-powder QC', x: 88, y: 87, pileId: 'prepowder', role: 'Quality Control', qcFilter: 'pre-powder', anim: 'qc' }
-    ];
     const FLOOR_PILES = [
       { id: 'steelwork', label: 'Ready for steelwork', x: 22, y: 22, role: 'Profile Cutting' },
       { id: 'tagging', label: 'Ready for tagging', x: 48, y: 46, role: 'Tagging' },
       { id: 'welding', label: 'Ready for welding', x: 50, y: 36, role: 'Welding' },
       { id: 'grinding', label: 'Ready for grinding', x: 74, y: 48, role: 'Grinding' },
+      { id: 'prepowder', label: 'Ready for pre-powder', x: 84, y: 72, role: 'Quality Control', qcFilter: 'pre-powder' },
       { id: 'powder', label: 'Ready for powder', x: 66, y: 56, role: 'Quality Control', qcFilter: 'powder' },
       { id: 'prep', label: 'Ready for prep', x: 78, y: 66, role: 'Paint Preparation' },
       { id: 'painting', label: 'Ready for painting', x: 76, y: 62, role: 'Painting' },
       { id: 'assembly', label: 'Ready for assembly', x: 28, y: 58, role: 'Assembly' },
+      { id: 'finalqc', label: 'Final QC', x: 20, y: 78, role: 'Quality Control', qcFilter: 'final-qc' },
       { id: 'delivery', label: 'Ready for final QC', x: 17, y: 72, role: 'Quality Control', qcFilter: 'final-qc', landmark: true },
       { id: 'other', label: 'Other on floor', x: 55, y: 60, role: 'Profile Cutting' }
     ];
@@ -2688,16 +2708,6 @@
       if (p === 'Quality Control') return ROAD_STOPS.filter((s) => s.id === 'Pre-Powder Coating QC')[0];
       return ROAD_STOPS.filter((s) => s.role === p || s.id === p)[0] || ROAD_STOPS.filter((s) => s.id === 'New orders')[0];
     }
-    function qcDoorFor(row) {
-      const st = String((row && row.status) || '').toLowerCase();
-      const p = String((row && row.process) || '').toLowerCase();
-      if (st === 'ready for final qc' || st === 'ready for delivery' || st === 'out for delivery') return '';
-      if (st === 'final qc') return 'leftqc';
-      if (st.indexOf('pre-powder') !== -1) return 'rightqc';
-      if (p !== 'quality control') return '';
-      if (st.indexOf('final') !== -1) return 'leftqc';
-      return '';
-    }
     function animForProcess(process) {
       const p = String(process || '').toLowerCase();
       if (p === 'welding' || p === 'tagging') return 'weld';
@@ -2802,9 +2812,107 @@
       enterDashboard();
       return true;
     }
-    function hideFloorPopover() {
-      const pop = document.getElementById('floorPopover');
-      if (pop) pop.classList.add('is-off');
+    function loadFloorPos() {
+      try {
+        floorPos = JSON.parse(localStorage.getItem(FLOOR_POS_KEY) || '{}') || {};
+      } catch (e) { floorPos = {}; }
+      if (!floorPos || typeof floorPos !== 'object') floorPos = {};
+    }
+    function posFor(kind, id, fallback) {
+      const p = floorPos[kind] && floorPos[kind][id];
+      if (p && isFinite(Number(p.x)) && isFinite(Number(p.y))) {
+        return { x: Number(p.x), y: Number(p.y) };
+      }
+      return { x: fallback.x, y: fallback.y };
+    }
+    function scheduleFloorPosSync() {
+      if (floorPosSaveTimer) clearTimeout(floorPosSaveTimer);
+      floorPosSaveTimer = setTimeout(function () {
+        fetch('/api/office/floor-layout', {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ layout: floorPos })
+        }).catch(function () {});
+      }, 400);
+    }
+    function setFloorPos(kind, id, x, y) {
+      floorPos[kind] = floorPos[kind] || {};
+      floorPos[kind][id] = {
+        x: Math.round(Math.max(3, Math.min(97, x)) * 10) / 10,
+        y: Math.round(Math.max(4, Math.min(96, y)) * 10) / 10
+      };
+      try { localStorage.setItem(FLOOR_POS_KEY, JSON.stringify(floorPos)); } catch (e) {}
+      scheduleFloorPosSync();
+    }
+    function pullFloorPos(done) {
+      loadFloorPos();
+      fetch('/api/office/floor-layout', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.ok && j.layout && typeof j.layout === 'object' && Object.keys(j.layout).length) {
+            floorPos = j.layout;
+            try { localStorage.setItem(FLOOR_POS_KEY, JSON.stringify(floorPos)); } catch (e) {}
+          }
+        })
+        .catch(function () {})
+        .then(function () { if (done) done(); });
+    }
+    function resetFloorLayout() {
+      floorPos = {};
+      try { localStorage.removeItem(FLOOR_POS_KEY); } catch (e) {}
+      fetch('/api/office/floor-layout', {
+        method: 'PUT',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ layout: {} })
+      }).catch(function () {});
+      hideFloorPopover();
+      renderFloorPlan(floorTwinLayout || { office: [], piles: {}, workers: {} });
+    }
+    function bindFloorDrag(el, kind, id) {
+      if (!el) return;
+      el.addEventListener('pointerdown', function (ev) {
+        if (ev.button != null && ev.button !== 0) return;
+        const atlas = document.querySelector('.floor-atlas');
+        if (!atlas) return;
+        const startX = ev.clientX;
+        const startY = ev.clientY;
+        const origX = parseFloat(el.style.left) || 0;
+        const origY = parseFloat(el.style.top) || 0;
+        let moved = false;
+        floorTwinDragging = true;
+        el.dataset.dragged = '';
+        function move(e) {
+          const ar = atlas.getBoundingClientRect();
+          if (!ar.width || !ar.height) return;
+          const dx = (e.clientX - startX) / ar.width * 100;
+          const dy = (e.clientY - startY) / ar.height * 100;
+          if (Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY) > 6) moved = true;
+          if (!moved) return;
+          hideFloorPopover();
+          el.classList.add('is-dragging');
+          try { el.setPointerCapture(e.pointerId); } catch (err) {}
+          const nextX = Math.max(3, Math.min(97, origX + dx));
+          const nextY = Math.max(4, Math.min(96, origY + dy));
+          el.style.left = nextX + '%';
+          el.style.top = nextY + '%';
+        }
+        function up(e) {
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', up);
+          window.removeEventListener('pointercancel', up);
+          el.classList.remove('is-dragging');
+          floorTwinDragging = false;
+          if (!moved) return;
+          el.dataset.dragged = '1';
+          setFloorPos(kind, id, parseFloat(el.style.left) || origX, parseFloat(el.style.top) || origY);
+          e.preventDefault();
+        }
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', up);
+        window.addEventListener('pointercancel', up);
+      });
     }
     function showFloorPopover(anchor, kicker, title, orders, opener) {
       const atlas = document.querySelector('.floor-atlas');
@@ -2848,6 +2956,10 @@
     function bindSpot(el, kicker, title, rows, opener) {
       el.addEventListener('click', function (ev) {
         ev.stopPropagation();
+        if (el.dataset.dragged === '1') {
+          el.dataset.dragged = '';
+          return;
+        }
         showFloorPopover(el, kicker, title, rows, opener);
       });
     }
@@ -2858,19 +2970,10 @@
       const data = layout || { office: [], piles: {}, workers: {} };
       floorTwinLayout = data;
       const office = data.office || [];
-      const doorWorkers = { leftqc: [], rightqc: [] };
       const placed = {};
-      Object.keys(data.workers || {}).forEach((name) => {
-        const rows = data.workers[name] || [];
-        const live = rows.filter((r) => !r.paused)[0] || rows[0];
-        const door = qcDoorFor(live);
-        if (door) {
-          doorWorkers[door] = doorWorkers[door].concat(rows);
-          placed[name] = true;
-        }
-      });
+      const officePos = posFor('office', 'office', FLOOR_OFFICE);
       let html = '<div class="floor-atlas">';
-      html += '<button type="button" class="floor-spot is-office" style="left:' + FLOOR_OFFICE.x + '%;top:' + FLOOR_OFFICE.y + '%" data-floor="office">' +
+      html += '<button type="button" class="floor-spot is-office" style="left:' + officePos.x + '%;top:' + officePos.y + '%" data-floor="office">' +
         '<span class="job-cart" aria-hidden="true"><i class="bi bi-cart3"></i></span>' +
         '<span class="floor-spot-title">Office</span>' +
         countBadge(office) +
@@ -2878,19 +2981,9 @@
       FLOOR_PILES.forEach((pile) => {
         const rows = (data.piles && data.piles[pile.id]) || [];
         if (!rows.length && !pile.landmark) return;
-        html += '<button type="button" class="floor-spot is-ready" style="left:' + pile.x + '%;top:' + pile.y + '%" data-floor-pile="' + pile.id + '">' +
+        const at = posFor('pile', pile.id, pile);
+        html += '<button type="button" class="floor-spot is-ready" style="left:' + at.x + '%;top:' + at.y + '%" data-floor-pile="' + pile.id + '">' +
           twinPileHtml() +
-          countBadge(rows) +
-          '</button>';
-      });
-      FLOOR_QC_DOORS.forEach((door) => {
-        const waiting = (data.piles && data.piles[door.pileId]) || [];
-        const working = doorWorkers[door.id] || [];
-        const rows = waiting.concat(working);
-        const anim = working.some((r) => !r.paused) ? 'qc' : (working.length ? 'paused' : 'idle');
-        html += '<button type="button" class="floor-spot is-qc" style="left:' + door.x + '%;top:' + door.y + '%" data-floor-door="' + door.id + '">' +
-          twinActorHtml(anim) +
-          '<span class="floor-spot-title">' + floorEsc(door.name) + '</span>' +
           countBadge(rows) +
           '</button>';
       });
@@ -2903,7 +2996,8 @@
             rows = rows.concat(data.workers[name]);
           }
         });
-        html += '<button type="button" class="floor-spot is-station" style="left:' + st.x + '%;top:' + st.y + '%" data-floor-worker="' + floorEsc(st.name) + '">' +
+        const at = posFor('station', st.name, st);
+        html += '<button type="button" class="floor-spot is-station" style="left:' + at.x + '%;top:' + at.y + '%" data-floor-worker="' + floorEsc(st.name) + '">' +
           twinActorHtml(rowsAnim(rows)) +
           '<span class="floor-spot-title">' + floorEsc(st.name) + '</span>' +
           countBadge(rows) +
@@ -2914,10 +3008,10 @@
         if (placed[name]) return;
         const rows = data.workers[name] || [];
         if (!rows.length) return;
-        const bay = FLOOR_EXTRA_BAYS[extraI] || {
+        const bay = posFor('station', name, FLOOR_EXTRA_BAYS[extraI] || {
           x: 30 + (extraI % 4) * 14,
           y: 22 + Math.floor(extraI / 4) * 10
-        };
+        });
         extraI += 1;
         html += '<button type="button" class="floor-spot is-station" style="left:' + bay.x + '%;top:' + bay.y + '%" data-floor-worker="' + floorEsc(name) + '">' +
           twinActorHtml(rowsAnim(rows)) +
@@ -2932,21 +3026,14 @@
       bindSpot(grid.querySelector('[data-floor="office"]'), 'Office', 'New orders', office, function () {
         openFloorBoard('Profile Cutting', 'New orders', '');
       });
+      bindFloorDrag(grid.querySelector('[data-floor="office"]'), 'office', 'office');
       grid.querySelectorAll('[data-floor-pile]').forEach((btn) => {
         const pile = FLOOR_PILES.filter((p) => p.id === btn.getAttribute('data-floor-pile'))[0];
         const rows = (data.piles && pile && data.piles[pile.id]) || [];
         bindSpot(btn, pile.id === 'delivery' ? 'Finished goods' : 'Ready pile', pile.label, rows, function () {
           openFloorBoard(pile.role, pile.label, pile.qcFilter || '');
         });
-      });
-      grid.querySelectorAll('[data-floor-door]').forEach((btn) => {
-        const door = FLOOR_QC_DOORS.filter((d) => d.id === btn.getAttribute('data-floor-door'))[0];
-        const waiting = (data.piles && data.piles[door.pileId]) || [];
-        const working = doorWorkers[door.id] || [];
-        bindSpot(btn, 'Outside', door.name, waiting.concat(working), function (row) {
-          const step = processToRoadStep((row && row.process) || door.role);
-          openFloorBoard(door.role, door.name, door.qcFilter);
-        });
+        bindFloorDrag(btn, 'pile', pile.id);
       });
       grid.querySelectorAll('[data-floor-worker]').forEach((btn) => {
         const worker = btn.getAttribute('data-floor-worker');
@@ -2959,6 +3046,7 @@
           const step = processToRoadStep(row && row.process);
           openFloorBoard(step.role, step.id, step.qcFilter || '');
         });
+        bindFloorDrag(btn, 'station', worker);
       });
     }
     function stopFloorTwin() {
@@ -2968,6 +3056,7 @@
     }
     function refreshFloorTwin(force) {
       if (document.hidden) return;
+      if (floorTwinDragging) return;
       const pop = document.getElementById('floorPopover');
       if (!force && pop && !pop.classList.contains('is-off')) return;
       if (floorTwinBusy && !force) return;
@@ -2983,17 +3072,21 @@
     function startFloorTwin() {
       stopFloorTwin();
       floorTwinSig = '';
-      refreshFloorTwin(true);
-      floorTwinInterval = setInterval(function () { refreshFloorTwin(false); }, 8000);
+      pullFloorPos(function () {
+        refreshFloorTwin(true);
+        floorTwinInterval = setInterval(function () { refreshFloorTwin(false); }, 8000);
+      });
     }
     function showTaskPicker() {
       const grid = document.getElementById('roleGrid');
       const sub = document.getElementById('taskPickSubtitle');
       if (sub) {
         sub.innerText = session.canSeeOffice
-          ? 'Live 3D shop twin. People animate the job they are on. Tap a person or a pile for the order list.'
-          : ('Hi ' + session.name + '. Tap your station or a ready pile.');
+          ? 'Drag people and piles to place them. Tap for the order list. Welding and tagging share the weld animation.'
+          : ('Hi ' + session.name + '. Drag your station if it is in the wrong place, then tap it to open the work.');
       }
+      const reset = document.getElementById('floorResetBtn');
+      if (reset) reset.classList.toggle('d-none-view', !(session.canSeeOffice || (session.tasks && session.tasks.length)));
       loadHomeScore();
       if (!(session.canSeeOffice || (session.tasks && session.tasks.length))) {
         stopFloorTwin();
