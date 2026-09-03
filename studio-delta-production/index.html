@@ -2350,15 +2350,22 @@
       'final-qc': ['ready for final qc', 'final qc'],
       'delivery': ['ready for delivery', 'out for delivery']
     };
-    const FLOOR_OFFICE = { x: 21, y: 47 };
+    const FLOOR_OFFICE = { x: 22, y: 46 };
     const FLOOR_STATIONS = [
-      { name: 'Muruba', aliases: ['muruba'], x: 38, y: 27 },
-      { name: 'Willard', aliases: ['willard'], x: 58, y: 26 },
-      { name: 'John', aliases: ['john'], x: 33, y: 50 },
-      { name: 'Sam', aliases: ['sam'], x: 39, y: 56 },
+      { name: 'Muruba', aliases: ['muruba'], x: 46, y: 26 },
+      { name: 'Willard', aliases: ['willard'], x: 58, y: 25 },
+      { name: 'John', aliases: ['john'], x: 32, y: 52 },
+      { name: 'Sam', aliases: ['sam'], x: 51, y: 33 },
       { name: 'Thabile', aliases: ['thabile', 'thabiso'], x: 81, y: 40 },
-      { name: 'Admire', aliases: ['admire'], x: 52, y: 76 },
-      { name: 'Uriah', aliases: ['uriah'], x: 70, y: 77 }
+      { name: 'Admire', aliases: ['admire'], x: 79, y: 71 },
+      { name: 'Uriah', aliases: ['uriah'], x: 83, y: 73 }
+    ];
+    const FLOOR_EXTRA_BAYS = [
+      { x: 32, y: 23 },
+      { x: 52, y: 24 },
+      { x: 73, y: 33 },
+      { x: 48, y: 63 },
+      { x: 62, y: 68 }
     ];
     const FLOOR_QC_DOORS = [
       { id: 'leftqc', name: 'Final QC', x: 12, y: 87, pileId: 'finalqc', role: 'Quality Control', qcFilter: 'final-qc', anim: 'qc' },
@@ -2907,10 +2914,12 @@
         if (placed[name]) return;
         const rows = data.workers[name] || [];
         if (!rows.length) return;
-        const x = 54 + (extraI % 3) * 7;
-        const y = 58 + Math.floor(extraI / 3) * 8;
+        const bay = FLOOR_EXTRA_BAYS[extraI] || {
+          x: 30 + (extraI % 4) * 14,
+          y: 22 + Math.floor(extraI / 4) * 10
+        };
         extraI += 1;
-        html += '<button type="button" class="floor-spot is-station" style="left:' + x + '%;top:' + y + '%" data-floor-worker="' + floorEsc(name) + '">' +
+        html += '<button type="button" class="floor-spot is-station" style="left:' + bay.x + '%;top:' + bay.y + '%" data-floor-worker="' + floorEsc(name) + '">' +
           twinActorHtml(rowsAnim(rows)) +
           '<span class="floor-spot-title">' + floorEsc(name) + '</span>' +
           countBadge(rows) +

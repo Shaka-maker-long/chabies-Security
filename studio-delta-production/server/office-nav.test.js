@@ -52,7 +52,7 @@ assert.ok(floor.indexOf("Ready for welding") !== -1);
 assert.ok(floor.indexOf("Ready for assembly") !== -1);
 assert.ok(floor.indexOf("Pre-powder QC") !== -1);
 assert.ok(floor.indexOf("Final QC") !== -1);
-assert.ok(floor.indexOf("FLOOR_QC_DOORS") !== -1);
+assert.ok(floor.indexOf("FLOOR_EXTRA_BAYS") !== -1, "unnamed live workers stand at leftover benches, not in the aisle");
 assert.ok(floor.indexOf("p === 'welding' || p === 'tagging'") !== -1, "tagging uses the weld animation");
 assert.ok(floor.indexOf("Finished goods") !== -1);
 assert.ok(floor.indexOf("st === 'ready for final qc'") !== -1, "Ready for Final QC stays in finished goods, not the left door");
