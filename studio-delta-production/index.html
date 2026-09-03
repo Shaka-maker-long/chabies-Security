@@ -849,129 +849,195 @@
       position: relative;
       min-width: 980px;
       width: 100%;
-      aspect-ratio: 1169 / 831;
-      background: #d8d2c6 url("/facility-floor.png") center / contain no-repeat;
+      aspect-ratio: 1536 / 1024;
+      background: #8a9096 url("/facility-floor.png") center / contain no-repeat;
       border: 1px solid var(--border);
       border-radius: 12px;
       box-shadow: var(--shadow-sm);
+      overflow: visible;
     }
     [data-theme="dark"] .floor-atlas {
       background-color: #27272a;
-      filter: brightness(.92);
+      filter: brightness(.94);
     }
     .floor-spot {
       position: absolute;
       z-index: 3;
       width: auto;
-      min-width: 64px;
+      min-width: 0;
       margin: 0;
-      padding: 4px;
+      padding: 0;
       border: 0;
       background: transparent;
-      transform: translate(-50%, -50%);
+      transform: translate(-50%, -88%);
       text-align: center;
       cursor: pointer;
       color: #1c1917;
     }
+    .floor-spot.is-ready, .floor-spot.is-office { transform: translate(-50%, -70%); z-index: 2; }
+    .floor-spot.is-qc { z-index: 5; }
+    .floor-spot.is-station { z-index: 4; }
     .floor-spot:focus-visible { outline: 2px solid #b08948; outline-offset: 3px; border-radius: 8px; }
-    .floor-spot-kicker {
-      display: block;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: .07em;
-      text-transform: uppercase;
-      color: #667085;
-      text-shadow: 0 1px 0 rgba(252,251,248,.9);
-    }
     .floor-spot-title {
       display: block;
-      font-size: 11px;
+      font-size: 10px;
       font-weight: 800;
-      line-height: 1.15;
-      margin: 0 0 4px;
-      text-shadow: 0 1px 0 rgba(252,251,248,.9);
+      line-height: 1.1;
+      margin: 2px auto 0;
+      padding: 1px 6px;
+      width: max-content;
+      max-width: 88px;
+      border-radius: 999px;
+      background: rgba(252,251,248,.92);
+      box-shadow: 0 1px 3px rgba(28,25,23,.18);
     }
     .floor-count-btn {
+      position: absolute;
+      top: 2px;
+      right: -4px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      min-width: 30px;
-      height: 28px;
-      padding: 0 8px;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
       border: 1px solid #1c1917;
-      border-radius: 8px;
+      border-radius: 999px;
       background: #fff;
-      box-shadow: 0 1px 4px rgba(28,25,23,.18);
-      font-size: 14px;
+      box-shadow: 0 1px 4px rgba(28,25,23,.25);
+      font-size: 11px;
       font-weight: 800;
       font-variant-numeric: tabular-nums;
       color: #1c1917;
+      z-index: 2;
     }
-    .floor-count-btn.is-live { background: #eff8ff; color: #175cd3; }
-    .floor-count-btn.is-paused { background: #fffaeb; color: #b54708; }
-    .floor-spot.is-office .job-cart { margin-bottom: 4px; }
+    .floor-count-btn.is-live { background: #175cd3; color: #fff; border-color: #0c3d91; }
+    .floor-count-btn.is-paused { background: #f79009; color: #fff; border-color: #b54708; }
     .job-cart {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 40px;
-      height: 32px;
-      background: #1c1917;
+      width: 42px;
+      height: 34px;
+      background: linear-gradient(#3f3f46, #1c1917);
       color: #f3efe6;
       border: 2px solid #b08948;
-      border-radius: 6px;
+      border-radius: 8px;
       font-size: 18px;
+      box-shadow: 4px 6px 0 rgba(28,25,23,.25);
     }
+    .twin-pile {
+      display: block;
+      width: 44px;
+      height: 34px;
+      margin: 0 auto;
+      position: relative;
+    }
+    .twin-pile-deck {
+      position: absolute;
+      left: 4px;
+      bottom: 2px;
+      width: 36px;
+      height: 7px;
+      background: #7c5a32;
+      border: 1px solid #1c1917;
+      transform: skewX(-18deg);
+    }
+    .twin-pile-box {
+      position: absolute;
+      width: 26px;
+      height: 16px;
+      border: 1px solid #1c1917;
+      background: linear-gradient(135deg, #e4d3b3, #b08948);
+      box-shadow: 2px 3px 0 rgba(28,25,23,.2);
+    }
+    .twin-pile-box-a { left: 6px; bottom: 8px; }
+    .twin-pile-box-b { left: 14px; bottom: 14px; width: 22px; height: 12px; background: linear-gradient(135deg, #d6c4a3, #8a6a3a); }
     .twin-actor {
       display: block;
-      width: 52px;
-      height: 52px;
-      margin: 0 auto 2px;
+      width: 70px;
+      height: 88px;
+      margin: 0 auto;
+      position: relative;
+      transform-origin: 50% 100%;
     }
     .twin-actor svg { width: 100%; height: 100%; display: block; overflow: visible; }
-    .twin-actor.is-idle .twin-body { animation: twin-idle 2.4s ease-in-out infinite; }
-    .twin-actor.is-paused { opacity: .7; }
-    .twin-actor.is-paused .twin-body { animation: twin-bob 2.4s ease-in-out infinite; }
-    .twin-actor.is-weld .twin-torch { transform-origin: 28px 22px; animation: twin-torch 0.35s linear infinite; }
-    .twin-actor.is-weld .twin-spark { animation: twin-spark 0.45s ease-out infinite; }
-    .twin-actor.is-assemble .twin-box-a { animation: twin-box 1.1s ease-in-out infinite; }
-    .twin-actor.is-assemble .twin-box-b { animation: twin-box 1.1s ease-in-out infinite reverse; }
-    .twin-actor.is-grind .twin-disc { transform-origin: 36px 22px; animation: twin-spin 0.5s linear infinite; }
-    .twin-actor.is-cut .twin-blade { transform-origin: 34px 20px; animation: twin-snip 0.4s ease-in-out infinite; }
-    .twin-actor.is-paint .twin-spray { animation: twin-spray 0.7s ease-in-out infinite; }
+    .twin-actor .twin-body, .twin-actor .twin-arm-r, .twin-actor .twin-torch, .twin-actor .twin-spark, .twin-actor .twin-arc, .twin-actor .twin-disc, .twin-actor .twin-blade, .twin-actor .twin-spray, .twin-actor .twin-check, .twin-actor .twin-box-a, .twin-actor .twin-box-b {
+      transform-box: fill-box;
+    }
+    .twin-actor.is-idle .twin-body { animation: twin-idle 2.6s ease-in-out infinite; }
+    .twin-actor.is-paused { opacity: .72; filter: grayscale(.25); }
+    .twin-actor.is-paused .twin-body { animation: twin-idle 3.2s ease-in-out infinite; }
+    .twin-actor.is-weld { filter: drop-shadow(0 0 8px rgba(255,176,70,.7)); }
+    .twin-actor.is-weld .twin-body { animation: twin-weld-lean .9s ease-in-out infinite; }
+    .twin-actor.is-weld .twin-arm-r { transform-origin: 8% 20%; animation: twin-weld-arm .38s ease-in-out infinite; }
+    .twin-actor.is-weld .twin-torch { transform-origin: 0% 50%; animation: twin-torch .38s ease-in-out infinite; }
+    .twin-actor.is-weld .twin-arc { animation: twin-arc .12s linear infinite; }
+    .twin-actor.is-weld .twin-spark { animation: twin-spark-fly .42s linear infinite; }
+    .twin-actor.is-weld .s1 { animation-delay: .07s; }
+    .twin-actor.is-weld .s2 { animation-delay: .14s; }
+    .twin-actor.is-weld .s3 { animation-delay: .21s; }
+    .twin-actor.is-weld .s4 { animation-delay: .28s; }
+    .twin-actor.is-weld .s5 { animation-delay: .35s; }
+    .twin-actor.is-assemble .twin-body { animation: twin-assemble-bend 1.15s ease-in-out infinite; }
+    .twin-actor.is-assemble .twin-box-a { animation: twin-fit 1.15s ease-in-out infinite; }
+    .twin-actor.is-assemble .twin-box-b { animation: twin-fit 1.15s ease-in-out infinite reverse; }
+    .twin-actor.is-grind .twin-disc { transform-origin: 50% 50%; animation: twin-spin .28s linear infinite; }
+    .twin-actor.is-grind .twin-spark { animation: twin-spark-fly .32s linear infinite; }
+    .twin-actor.is-grind { filter: drop-shadow(0 0 6px rgba(255,200,80,.45)); }
+    .twin-actor.is-cut .twin-blade { transform-origin: 20% 50%; animation: twin-snip .28s ease-in-out infinite; }
+    .twin-actor.is-paint .twin-spray { animation: twin-spray .55s ease-in-out infinite; }
+    .twin-actor.is-qc .twin-body { animation: twin-qc-walk 1.6s ease-in-out infinite; }
     .twin-actor.is-qc .twin-check { animation: twin-check 1.2s ease-in-out infinite; }
-    @keyframes twin-bob {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-2px); }
-    }
     @keyframes twin-idle {
-      0%, 100% { transform: translateY(0) rotate(0deg); }
-      50% { transform: translateY(-1px) rotate(-2deg); }
+      0%, 100% { transform: translateY(0) rotate(-1deg); }
+      50% { transform: translateY(-3px) rotate(2deg); }
     }
-    @keyframes twin-torch {
-      0%, 100% { transform: rotate(-8deg); }
+    @keyframes twin-weld-lean {
+      0%, 100% { transform: translate(0,0) rotate(4deg); }
+      50% { transform: translate(1px, 1px) rotate(7deg); }
+    }
+    @keyframes twin-weld-arm {
+      0%, 100% { transform: rotate(-12deg); }
       50% { transform: rotate(10deg); }
     }
-    @keyframes twin-spark {
-      0% { opacity: 1; transform: translate(0,0) scale(1); }
-      100% { opacity: 0; transform: translate(6px,-8px) scale(.3); }
+    @keyframes twin-torch {
+      0%, 100% { transform: rotate(-6deg); }
+      50% { transform: rotate(8deg); }
     }
-    @keyframes twin-box {
+    @keyframes twin-arc {
+      0%, 100% { opacity: .25; transform: scale(.55); }
+      35% { opacity: 1; transform: scale(1.35); }
+      55% { opacity: .15; transform: scale(.4); }
+    }
+    @keyframes twin-spark-fly {
+      0% { opacity: 1; transform: translate(0,0) scale(1); }
+      100% { opacity: 0; transform: translate(16px, -24px) scale(.15); }
+    }
+    @keyframes twin-assemble-bend {
+      0%, 100% { transform: translateY(0) rotate(0); }
+      50% { transform: translateY(2px) rotate(-3deg); }
+    }
+    @keyframes twin-fit {
       0%, 100% { transform: translateX(0); }
-      50% { transform: translateX(3px); }
+      50% { transform: translateX(5px); }
     }
     @keyframes twin-spin { to { transform: rotate(360deg); } }
     @keyframes twin-snip {
-      0%, 100% { transform: rotate(-18deg); }
-      50% { transform: rotate(12deg); }
+      0%, 100% { transform: rotate(-22deg); }
+      50% { transform: rotate(16deg); }
     }
     @keyframes twin-spray {
-      0%, 100% { opacity: .2; }
-      50% { opacity: 1; }
+      0%, 100% { opacity: .15; transform: scale(.7); }
+      50% { opacity: .85; transform: scale(1.15); }
+    }
+    @keyframes twin-qc-walk {
+      0%, 100% { transform: translateX(-4px); }
+      50% { transform: translateX(5px); }
     }
     @keyframes twin-check {
       0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.15); }
+      50% { transform: scale(1.2); }
     }
     .floor-pop {
       position: absolute;
@@ -2284,31 +2350,31 @@
       'final-qc': ['ready for final qc', 'final qc'],
       'delivery': ['ready for delivery', 'out for delivery']
     };
-    const FLOOR_OFFICE = { x: 28, y: 41 };
+    const FLOOR_OFFICE = { x: 20, y: 46 };
     const FLOOR_STATIONS = [
-      { name: 'Muruba', aliases: ['muruba'], x: 42, y: 16 },
-      { name: 'Willard', aliases: ['willard'], x: 62, y: 16 },
-      { name: 'John', aliases: ['john'], x: 40, y: 38 },
-      { name: 'Sam', aliases: ['sam'], x: 40, y: 48 },
-      { name: 'Thabile', aliases: ['thabile', 'thabiso'], x: 82, y: 42 },
-      { name: 'Admire', aliases: ['admire'], x: 42, y: 78 },
-      { name: 'Uriah', aliases: ['uriah'], x: 62, y: 80 }
+      { name: 'Muruba', aliases: ['muruba'], x: 40, y: 30 },
+      { name: 'Willard', aliases: ['willard'], x: 56, y: 28 },
+      { name: 'John', aliases: ['john'], x: 36, y: 52 },
+      { name: 'Sam', aliases: ['sam'], x: 46, y: 62 },
+      { name: 'Thabile', aliases: ['thabile', 'thabiso'], x: 80, y: 42 },
+      { name: 'Admire', aliases: ['admire'], x: 58, y: 74 },
+      { name: 'Uriah', aliases: ['uriah'], x: 73, y: 76 }
     ];
     const FLOOR_QC_DOORS = [
-      { id: 'leftqc', name: 'Final QC', x: 12, y: 93, pileId: 'finalqc', role: 'Quality Control', qcFilter: 'final-qc', anim: 'qc' },
-      { id: 'rightqc', name: 'Pre-powder QC', x: 89, y: 93, pileId: 'prepowder', role: 'Quality Control', qcFilter: 'pre-powder', anim: 'qc' }
+      { id: 'leftqc', name: 'Final QC', x: 11, y: 90, pileId: 'finalqc', role: 'Quality Control', qcFilter: 'final-qc', anim: 'qc' },
+      { id: 'rightqc', name: 'Pre-powder QC', x: 89, y: 90, pileId: 'prepowder', role: 'Quality Control', qcFilter: 'pre-powder', anim: 'qc' }
     ];
     const FLOOR_PILES = [
-      { id: 'steelwork', label: 'Ready for steelwork', x: 13, y: 18, role: 'Profile Cutting', always: true },
-      { id: 'tagging', label: 'Ready for tagging', x: 50, y: 56, role: 'Tagging', always: true },
-      { id: 'welding', label: 'Ready for welding', x: 56, y: 38, role: 'Welding', always: true },
-      { id: 'grinding', label: 'Ready for grinding', x: 70, y: 40, role: 'Grinding', always: true },
-      { id: 'powder', label: 'Ready for powder', x: 78, y: 60, role: 'Quality Control', qcFilter: 'powder', always: false },
-      { id: 'prep', label: 'Ready for prep', x: 86, y: 72, role: 'Paint Preparation', always: true },
-      { id: 'painting', label: 'Ready for painting', x: 80, y: 64, role: 'Painting', always: false },
-      { id: 'assembly', label: 'Ready for assembly', x: 22, y: 54, role: 'Assembly', always: true },
-      { id: 'delivery', label: 'Ready for final QC', x: 18, y: 86, role: 'Quality Control', qcFilter: 'final-qc', always: true },
-      { id: 'other', label: 'Other on floor', x: 55, y: 62, role: 'Profile Cutting', always: false }
+      { id: 'steelwork', label: 'Ready for steelwork', x: 22, y: 24, role: 'Profile Cutting' },
+      { id: 'tagging', label: 'Ready for tagging', x: 50, y: 48, role: 'Tagging' },
+      { id: 'welding', label: 'Ready for welding', x: 49, y: 38, role: 'Welding' },
+      { id: 'grinding', label: 'Ready for grinding', x: 74, y: 50, role: 'Grinding' },
+      { id: 'powder', label: 'Ready for powder', x: 68, y: 58, role: 'Quality Control', qcFilter: 'powder' },
+      { id: 'prep', label: 'Ready for prep', x: 78, y: 68, role: 'Paint Preparation' },
+      { id: 'painting', label: 'Ready for painting', x: 76, y: 64, role: 'Painting' },
+      { id: 'assembly', label: 'Ready for assembly', x: 32, y: 58, role: 'Assembly' },
+      { id: 'delivery', label: 'Ready for final QC', x: 22, y: 80, role: 'Quality Control', qcFilter: 'final-qc', landmark: true },
+      { id: 'other', label: 'Other on floor', x: 55, y: 62, role: 'Profile Cutting' }
     ];
     const ROAD_STOPS = [
       { id: 'New orders', role: 'Profile Cutting', label: 'New orders' },
@@ -2641,29 +2707,65 @@
       if ((rows || []).length) return 'paused';
       return 'idle';
     }
+    function twinPileHtml() {
+      return '<span class="twin-pile" aria-hidden="true"><span class="twin-pile-deck"></span><span class="twin-pile-box twin-pile-box-a"></span><span class="twin-pile-box twin-pile-box-b"></span></span>';
+    }
+    function countBadge(rows) {
+      const n = (rows || []).length;
+      if (!n) return '';
+      return '<span class="floor-count-btn' + floorCountClass(rows) + '">' + n + '</span>';
+    }
     function twinActorHtml(kind) {
       const k = kind || 'idle';
-      const sparks = k === 'weld'
-        ? '<circle class="twin-spark" cx="38" cy="16" r="2.2" fill="#f59e0b"></circle><circle class="twin-spark" cx="43" cy="21" r="1.6" fill="#fbbf24" style="animation-delay:.12s"></circle><circle class="twin-spark" cx="36" cy="24" r="1.4" fill="#fde68a" style="animation-delay:.24s"></circle><circle cx="40" cy="18" r="3" fill="#fde68a" opacity=".45"></circle>'
-        : '';
-      const tool = k === 'weld'
-        ? '<path class="twin-torch" d="M28 22 L40 16" stroke="#b08948" stroke-width="2" fill="none"></path>'
-        : (k === 'assemble'
-          ? '<rect class="twin-box-a" x="30" y="18" width="8" height="8" fill="#b08948"></rect><rect class="twin-box-b" x="36" y="24" width="8" height="8" fill="#1c1917"></rect>'
-          : (k === 'grind'
-            ? '<circle class="twin-disc" cx="36" cy="22" r="6" fill="none" stroke="#57534e" stroke-width="2"></circle><circle cx="36" cy="22" r="1.5" fill="#b08948"></circle>'
-            : (k === 'cut'
-              ? '<path class="twin-blade" d="M30 16 L42 28 M42 16 L30 28" stroke="#57534e" stroke-width="2" fill="none"></path>'
-              : (k === 'paint'
-                ? '<path d="M30 16 L40 22" stroke="#1c1917" stroke-width="2"></path><circle class="twin-spray" cx="42" cy="18" r="3" fill="#93c5fd"></circle>'
-                : (k === 'qc'
-                  ? '<rect x="30" y="14" width="12" height="14" rx="1" fill="#fff" stroke="#1c1917"></rect><path class="twin-check" d="M32 21 L35 24 L40 16" stroke="#067647" stroke-width="2" fill="none"></path>'
-                  : '')))));
-      return '<span class="twin-actor is-' + k + '" aria-hidden="true"><svg viewBox="0 0 48 48">' +
-        '<g class="twin-body" fill="none" stroke="#1c1917" stroke-width="2" stroke-linecap="round">' +
-        '<circle cx="22" cy="10" r="5" fill="#f3efe6"></circle>' +
-        '<path d="M22 15 V28 M16 20 H28 M18 28 L14 40 M26 28 L30 40"></path>' +
-        '</g>' + tool + sparks + '</svg></span>';
+      let prop = '';
+      if (k === 'weld') {
+        prop = '<g class="twin-job">' +
+          '<rect x="50" y="54" width="18" height="7" rx="1" fill="#6b7280"></rect>' +
+          '<path class="twin-arm-r" d="M46 38 q14 6 16 18" stroke="#4a5560" stroke-width="5" fill="none" stroke-linecap="round"></path>' +
+          '<path class="twin-torch" d="M50 48 L62 54" stroke="#b08948" stroke-width="2.6" stroke-linecap="round"></path>' +
+          '<ellipse class="twin-arc" cx="62" cy="54" rx="5" ry="4" fill="#eaf6ff"></ellipse>' +
+          '<circle class="twin-spark s0" cx="62" cy="52" r="1.8" fill="#fff4c2"></circle>' +
+          '<circle class="twin-spark s1" cx="64" cy="50" r="1.4" fill="#f59e0b"></circle>' +
+          '<circle class="twin-spark s2" cx="60" cy="49" r="1.2" fill="#fde68a"></circle>' +
+          '<circle class="twin-spark s3" cx="66" cy="53" r="1.3" fill="#fb923c"></circle>' +
+          '<circle class="twin-spark s4" cx="61" cy="47" r="1.1" fill="#fff"></circle>' +
+          '<circle class="twin-spark s5" cx="67" cy="48" r="1.5" fill="#fbbf24"></circle>' +
+          '</g>';
+      } else if (k === 'assemble') {
+        prop = '<g class="twin-job">' +
+          '<rect class="twin-box-a" x="48" y="46" width="9" height="16" fill="#b08948"></rect>' +
+          '<rect class="twin-box-b" x="56" y="52" width="14" height="8" fill="#44403c"></rect>' +
+          '</g>';
+      } else if (k === 'grind') {
+        prop = '<g class="twin-job">' +
+          '<circle class="twin-disc" cx="58" cy="50" r="8" fill="#57534e" stroke="#e7e5e4" stroke-width="2"></circle>' +
+          '<circle cx="58" cy="50" r="1.6" fill="#b08948"></circle>' +
+          '<circle class="twin-spark s0" cx="64" cy="44" r="1.5" fill="#fbbf24"></circle>' +
+          '<circle class="twin-spark s2" cx="66" cy="48" r="1.2" fill="#fff4c2"></circle>' +
+          '</g>';
+      } else if (k === 'cut') {
+        prop = '<g class="twin-job"><rect x="50" y="56" width="18" height="4" fill="#a8a29e"></rect><path class="twin-blade" d="M48 40 h18 v5 H48 z" fill="#78716c"></path></g>';
+      } else if (k === 'paint') {
+        prop = '<g class="twin-job"><path d="M48 42 h10 l8 10" stroke="#1c1917" stroke-width="2.2" fill="none"></path><ellipse class="twin-spray" cx="64" cy="54" rx="9" ry="11" fill="#93c5fd"></ellipse></g>';
+      } else if (k === 'qc') {
+        prop = '<g class="twin-job"><rect x="50" y="38" width="12" height="16" rx="1" fill="#fff" stroke="#1c1917"></rect><path class="twin-check" d="M52 46 l3 3 6 -7" stroke="#067647" stroke-width="2" fill="none"></path></g>';
+      }
+      const face = (k === 'weld')
+        ? '<path d="M26 20 q10 -12 20 0 v3 q-10 8 -20 0 z" fill="#1c1917"></path><path class="twin-visor" d="M28 20 h16 a5 5 0 0 1 0 11 H28 z" fill="#0b0b0c" opacity=".95"></path>'
+        : '<path d="M26 18 q10 -11 20 0 v3 q-10 6 -20 0 z" fill="#c4a35a"></path><circle cx="36" cy="22" r="3.1" fill="#e8b894"></circle><circle cx="34.6" cy="21.4" r=".7" fill="#1c1917"></circle><circle cx="37.5" cy="21.4" r=".7" fill="#1c1917"></circle>';
+      return '<span class="twin-actor is-' + k + '" aria-hidden="true"><svg viewBox="0 0 72 90">' +
+        '<ellipse cx="36" cy="84" rx="16" ry="5" fill="rgba(28,25,23,.28)"></ellipse>' +
+        '<g class="twin-body">' +
+        '<path d="M30 76 q-1 7 -7 9" stroke="#1c1917" stroke-width="3.2" fill="none" stroke-linecap="round"></path>' +
+        '<path d="M42 76 q1 7 7 9" stroke="#1c1917" stroke-width="3.2" fill="none" stroke-linecap="round"></path>' +
+        '<path d="M30 52 v24" stroke="#3f3f46" stroke-width="8" stroke-linecap="round"></path>' +
+        '<path d="M42 52 v24" stroke="#3f3f46" stroke-width="8" stroke-linecap="round"></path>' +
+        '<rect x="25" y="32" width="22" height="24" rx="6" fill="#4a5560"></rect>' +
+        '<path d="M26 36 q-10 9 -8 18" stroke="#4a5560" stroke-width="5" fill="none" stroke-linecap="round"></path>' +
+        (k === 'weld' ? '' : '<path class="twin-arm-r" d="M46 36 q11 8 12 18" stroke="#4a5560" stroke-width="5" fill="none" stroke-linecap="round"></path>') +
+        '<circle cx="36" cy="22" r="8" fill="#e8b894"></circle>' +
+        face +
+        '</g>' + prop + '</svg></span>';
     }
     function floorCountClass(rows) {
       if ((rows || []).some((r) => !r.paused && r.process)) return ' is-live';
@@ -2763,18 +2865,15 @@
       let html = '<div class="floor-atlas">';
       html += '<button type="button" class="floor-spot is-office" style="left:' + FLOOR_OFFICE.x + '%;top:' + FLOOR_OFFICE.y + '%" data-floor="office">' +
         '<span class="job-cart" aria-hidden="true"><i class="bi bi-cart3"></i></span>' +
-        '<span class="floor-spot-kicker">Office</span>' +
-        '<span class="floor-spot-title">New orders</span>' +
-        '<span class="floor-count-btn">' + office.length + '</span>' +
+        '<span class="floor-spot-title">Office</span>' +
+        countBadge(office) +
         '</button>';
       FLOOR_PILES.forEach((pile) => {
         const rows = (data.piles && data.piles[pile.id]) || [];
-        if (!rows.length && !pile.always) return;
-        const pileKicker = pile.id === 'delivery' ? 'Finished goods' : 'Ready pile';
+        if (!rows.length && !pile.landmark) return;
         html += '<button type="button" class="floor-spot is-ready" style="left:' + pile.x + '%;top:' + pile.y + '%" data-floor-pile="' + pile.id + '">' +
-          '<span class="floor-spot-kicker">' + pileKicker + '</span>' +
-          '<span class="floor-spot-title">' + floorEsc(pile.label) + '</span>' +
-          '<span class="floor-count-btn' + floorCountClass(rows) + '">' + rows.length + '</span>' +
+          twinPileHtml() +
+          countBadge(rows) +
           '</button>';
       });
       FLOOR_QC_DOORS.forEach((door) => {
@@ -2784,9 +2883,8 @@
         const anim = working.some((r) => !r.paused) ? 'qc' : (working.length ? 'paused' : 'idle');
         html += '<button type="button" class="floor-spot is-qc" style="left:' + door.x + '%;top:' + door.y + '%" data-floor-door="' + door.id + '">' +
           twinActorHtml(anim) +
-          '<span class="floor-spot-kicker">Outside</span>' +
           '<span class="floor-spot-title">' + floorEsc(door.name) + '</span>' +
-          '<span class="floor-count-btn' + floorCountClass(rows) + '">' + rows.length + '</span>' +
+          countBadge(rows) +
           '</button>';
       });
       FLOOR_STATIONS.forEach((st) => {
@@ -2801,7 +2899,7 @@
         html += '<button type="button" class="floor-spot is-station" style="left:' + st.x + '%;top:' + st.y + '%" data-floor-worker="' + floorEsc(st.name) + '">' +
           twinActorHtml(rowsAnim(rows)) +
           '<span class="floor-spot-title">' + floorEsc(st.name) + '</span>' +
-          '<span class="floor-count-btn' + floorCountClass(rows) + '">' + rows.length + '</span>' +
+          countBadge(rows) +
           '</button>';
       });
       let extraI = 0;
@@ -2809,13 +2907,13 @@
         if (placed[name]) return;
         const rows = data.workers[name] || [];
         if (!rows.length) return;
-        const x = 55 + (extraI % 3) * 8;
-        const y = 62 + Math.floor(extraI / 3) * 8;
+        const x = 54 + (extraI % 3) * 7;
+        const y = 58 + Math.floor(extraI / 3) * 8;
         extraI += 1;
         html += '<button type="button" class="floor-spot is-station" style="left:' + x + '%;top:' + y + '%" data-floor-worker="' + floorEsc(name) + '">' +
           twinActorHtml(rowsAnim(rows)) +
           '<span class="floor-spot-title">' + floorEsc(name) + '</span>' +
-          '<span class="floor-count-btn' + floorCountClass(rows) + '">' + rows.length + '</span>' +
+          countBadge(rows) +
           '</button>';
       });
       html += '<div id="floorPopover" class="floor-pop is-off"><span class="floor-pop-kicker"></span><strong class="floor-pop-title"></strong><ul class="floor-pop-list"></ul><span class="floor-pop-more"></span></div>';
@@ -2884,7 +2982,7 @@
       const sub = document.getElementById('taskPickSubtitle');
       if (sub) {
         sub.innerText = session.canSeeOffice
-          ? 'Live shop twin. Count buttons open the order list. Welding and tagging share the weld animation. Pre-powder QC is outside the right door; Final QC is outside the left. Ready for final QC sits in finished goods.'
+          ? 'Live 3D shop twin. People animate the job they are on. Tap a person or a pile for the order list.'
           : ('Hi ' + session.name + '. Tap your station or a ready pile.');
       }
       loadHomeScore();

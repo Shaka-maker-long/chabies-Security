@@ -35,7 +35,8 @@ assert.ok(floor.indexOf('id="link-floor"') === -1, "floor sidebar link must be g
 assert.ok(floor.indexOf("getFloorLayout") !== -1);
 assert.ok(floor.indexOf("startFloorTwin") !== -1);
 assert.ok(floor.indexOf("twin-actor") !== -1);
-assert.ok(floor.indexOf("is-weld") !== -1);
+assert.ok(floor.indexOf("twin-arc") !== -1, "welding uses a live arc");
+assert.ok(floor.indexOf("twin-pile") !== -1, "ready goods are pallets, not text labels on the map");
 assert.ok(floor.indexOf("floor-pop") !== -1);
 assert.ok(floor.indexOf("floor-count-btn") !== -1);
 assert.ok(floor.indexOf("task-counts") !== -1);
