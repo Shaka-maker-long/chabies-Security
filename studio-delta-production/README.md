@@ -124,7 +124,7 @@ Legacy pause columns J/K/L are still written for older reports.
 
 ## Users sheet (login)
 
-Workers log in **once per visit** with name + access code. Every page load — floor, office, and refresh — shows the login screen first. A saved session must never skip login.
+Workers log in when they **open this tab**. Moving between Floor, Enquiries, Orders, and the other pages stays logged in. A **new tab or window** must log in even if another copy of the app is already open — the login is not shared across tabs. Log Out (or closing the tab) ends that login.
 
 Add a **Tasks** column (column D). The first time the app opens it will create the header if it is missing.
 
@@ -144,7 +144,7 @@ Add a **Tasks** column (column D). The first time the app opens it will create t
 Admin sidebar → **Schedule**. Click Not Yet Started (and Ready for Steelwork) orders in the sequence they should be done, pick a process and a worker, then **Build calendar**. Block lengths come from past jobs of the same product and process (or a typical process time if that product is new). **Insert other task** (cleaning, meeting, etc.) pins a block on that worker’s calendar and pushes later work through 07:45–15:45, skipping lunch and weekends. This is a plan, not a live clock — the floor still starts/pauses/finishes as usual.
 - If Tasks is blank, the app reads the Role cell (`Welder Tagger` → Welding + Tagging).
 
-The tablet does **not** remember the last login. After Log Out (or a refresh) everyone sees the login screen again.
+The tablet does **not** share a login across tabs. Opening the link in a new tab always asks for name and access code. Log Out ends that tab’s login.
 
 Floor boards read only the latest production-log rows (not the whole history) and cache the order list for about 90 seconds. Start/pause/finish reuse that same log slice instead of rereading the sheet several times. Auto-refresh is once a minute while the tab is visible.
 

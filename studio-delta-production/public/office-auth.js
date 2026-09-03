@@ -13,10 +13,15 @@ const SD_ORDER_STATUSES = [
 ];
 
 function sdOfficeProfile() {
-  try { return JSON.parse(localStorage.getItem("sd-office") || "null"); } catch (e) { return null; }
+  try { return JSON.parse(sessionStorage.getItem("sd-office") || "null"); } catch (e) { return null; }
 }
 function sdSaveOffice(profile) {
-  localStorage.setItem("sd-office", JSON.stringify(profile));
+  try { sessionStorage.setItem("sd-office", JSON.stringify(profile)); } catch (e) {}
+  try { localStorage.removeItem("sd-office"); } catch (e) {}
+}
+function sdClearOfficeProfile() {
+  try { sessionStorage.removeItem("sd-office"); } catch (e) {}
+  try { localStorage.removeItem("sd-office"); } catch (e) {}
 }
 function sdOfficeFetch(url, opts) {
   const p = sdOfficeProfile() || {};
@@ -81,7 +86,7 @@ function sdLoadBrand() {
   return sdEnsureScript("/sd-splash.js?v=erp-shell");
 }
 function sdForgetOffice() {
-  try { localStorage.removeItem("sd-office"); } catch (e) {}
+  sdClearOfficeProfile();
   return fetch("/api/office/logout", { method: "POST", credentials: "same-origin" }).catch(function () {});
 }
 function sdOfficeLogout() {
@@ -194,8 +199,20 @@ function sdShowLogin(message) {
 }
 async function sdRequireOffice(page) {
   await sdLoadBrand();
-  await sdForgetOffice();
-  const profile = await sdShowLogin("Log in with your name and access code.");
+  let profile = sdOfficeProfile();
+  if (profile && profile.token) {
+    const r = await fetch("/api/office/me", { headers: { "x-sd-token": profile.token } });
+    const j = await r.json();
+    if (j.ok) {
+      profile = Object.assign({}, profile, j.profile);
+      sdSaveOffice(profile);
+    } else profile = null;
+  } else {
+    profile = null;
+  }
+  if (!profile || !profile.canSeeOffice) {
+    profile = await sdShowLogin("Log in with your name and access code.");
+  }
   if (!profile || !profile.canSeeOffice) {
     location.replace("/");
     return null;

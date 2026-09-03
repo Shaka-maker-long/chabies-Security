@@ -2005,13 +2005,32 @@
     };
 
     function persistSession() {
-      // Session is in-memory only. Every page load must show login first.
+      try {
+        if (!session.name) sessionStorage.removeItem('sd-session');
+        else sessionStorage.setItem('sd-session', JSON.stringify({
+          success: true,
+          name: session.name,
+          jobTitle: session.jobTitle,
+          isAdmin: session.isAdmin,
+          canSeeOffice: session.canSeeOffice,
+          canSeeDebtors: session.canSeeDebtors,
+          access: session.access,
+          isQcOnly: session.isQcOnly,
+          tasks: session.tasks,
+          role: session.role
+        }));
+      } catch (e) {}
+      try { localStorage.removeItem('sd-session'); } catch (e) {}
     }
     function clearPersistedSession() {
+      try { sessionStorage.removeItem('sd-session'); } catch (e) {}
       try { localStorage.removeItem('sd-session'); } catch (e) {}
     }
     function restoreSession() {
-      return false;
+      try {
+        const raw = JSON.parse(sessionStorage.getItem('sd-session') || 'null');
+        return !!(raw && raw.name);
+      } catch (e) { return false; }
     }
     function setLoggedIn(on) {
       document.body.classList.toggle('is-logged-in', !!on);
@@ -2132,16 +2151,19 @@
     }
     function syncOfficeLogin(name, pass, profile) {
       if (!profile || !profile.canSeeOffice) {
+        try { sessionStorage.removeItem('sd-office'); } catch (e) {}
         try { localStorage.removeItem('sd-office'); } catch (e) {}
-        return;
+        return Promise.resolve();
       }
-      fetch('/api/office/login', {
+      return fetch('/api/office/login', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name, password: pass })
       }).then((r) => r.json()).then((j) => {
         if (j && j.ok) {
-          try { localStorage.setItem('sd-office', JSON.stringify(j)); } catch (e) {}
+          try { sessionStorage.setItem('sd-office', JSON.stringify(j)); } catch (e) {}
+          try { localStorage.removeItem('sd-office'); } catch (e) {}
         }
       }).catch(() => {});
     }
@@ -2303,19 +2325,39 @@
       navTo('view-global-login');
     }
     function forgetOfficeSession() {
+      try { sessionStorage.removeItem('sd-office'); } catch (e) {}
       try { localStorage.removeItem('sd-office'); } catch (e) {}
       return fetch('/api/office/logout', { method: 'POST', credentials: 'same-origin' }).catch(function () {});
     }
+    function resumeOfficeSession(done) {
+      let office = null;
+      try { office = JSON.parse(sessionStorage.getItem('sd-office') || 'null'); } catch (e) {}
+      if (!office || !office.token || !office.canSeeOffice) {
+        done(false);
+        return;
+      }
+      fetch('/api/office/me', { headers: { 'x-sd-token': office.token } })
+        .then((r) => r.json())
+        .then((j) => {
+          if (j && j.ok && j.profile && j.profile.canSeeOffice) {
+            applyLoginProfile(Object.assign({}, office, j.profile, { success: true }));
+            done(true);
+          } else done(false);
+        })
+        .catch(() => done(false));
+    }
     function initApp() {
-      clearPersistedSession();
+      try { localStorage.removeItem('sd-office'); } catch (e) {}
+      try { localStorage.removeItem('sd-session'); } catch (e) {}
       prefetchSupportData();
       try { document.getElementById('loader').classList.add('d-none'); } catch (e) {}
-      showFloorLogin();
-      const btn = document.getElementById('btnGlobalLogin');
-      if (btn) btn.disabled = true;
-      forgetOfficeSession().finally(function () {
-        if (btn) btn.disabled = false;
-      });
+      let floor = null;
+      try { floor = JSON.parse(sessionStorage.getItem('sd-session') || 'null'); } catch (e) {}
+      if (floor && floor.name) {
+        applyLoginProfile(floor);
+        return;
+      }
+      resumeOfficeSession((ok) => { if (!ok) showFloorLogin(); });
     }
 
     function renderRoles() { showTaskPicker(); }
@@ -2351,8 +2393,10 @@
         btn.innerHTML = origText;
         btn.disabled = false;
         if(res.success) {
-          applyLoginProfile(res, { welcome: true });
-          syncOfficeLogin(name, pass, res);
+          const go = function () { applyLoginProfile(res, { welcome: true }); };
+          const synced = syncOfficeLogin(name, pass, res);
+          if (synced && typeof synced.then === 'function') synced.then(go, go);
+          else go();
         } else {
           showAlert(res.error);
         }
