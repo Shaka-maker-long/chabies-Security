@@ -848,19 +848,19 @@
     }
     .road-atlas {
       position: relative;
-      min-width: 980px;
+      min-width: 1180px;
       width: 100%;
-      aspect-ratio: 1100 / 400;
+      aspect-ratio: 1480 / 420;
       background:
-        radial-gradient(ellipse at 20% 30%, rgba(176,137,72,.12), transparent 50%),
-        linear-gradient(#e7e0d2, #d9d1c0);
+        radial-gradient(ellipse at 18% 28%, rgba(176,137,72,.1), transparent 52%),
+        linear-gradient(#efe8d8, #e2d8c4);
       border: 1px solid var(--border);
       border-radius: 16px;
       box-shadow: var(--shadow-sm);
     }
     [data-theme="dark"] .road-atlas {
       background:
-        radial-gradient(ellipse at 20% 30%, rgba(176,137,72,.16), transparent 46%),
+        radial-gradient(ellipse at 18% 28%, rgba(176,137,72,.14), transparent 48%),
         linear-gradient(#18181b, #27272a);
     }
     .road-atlas svg {
@@ -870,28 +870,31 @@
       height: 100%;
       display: block;
     }
-    .road-asphalt { fill: none; stroke: #3a342e; stroke-width: 38; stroke-linecap: round; stroke-linejoin: round; }
-    .road-edge { fill: none; stroke: #b08948; stroke-width: 44; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
-    .road-dash { fill: none; stroke: #f4efe4; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 10 9; }
+    .road-rail { fill: none; stroke: #1c1917; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
+    .road-asphalt { fill: none; stroke: #6b6560; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
+    .road-dash { fill: none; stroke: #e7e0d4; stroke-width: 2.2; stroke-linecap: butt; stroke-dasharray: 7 11; }
+    .road-roller { fill: #44403c; stroke: #1c1917; stroke-width: 1; }
     .road-fork-label {
       font-family: Outfit, Inter, sans-serif;
-      font-size: 11px;
+      font-size: 14px;
       font-weight: 700;
-      letter-spacing: .12em;
-      fill: #6b645b;
+      letter-spacing: .08em;
+      fill: #4a453e;
       text-transform: uppercase;
     }
     [data-theme="dark"] .road-asphalt { stroke: #52525b; }
-    [data-theme="dark"] .road-dash { stroke: #e4e4e7; }
-    [data-theme="dark"] .road-fork-label { fill: #a1a1aa; }
+    [data-theme="dark"] .road-rail { stroke: #09090b; }
+    [data-theme="dark"] .road-dash { stroke: #a1a1aa; }
+    [data-theme="dark"] .road-roller { fill: #71717a; stroke: #09090b; }
+    [data-theme="dark"] .road-fork-label { fill: #d4d4d8; }
     .road-dest {
       position: absolute;
-      width: 118px;
+      width: 136px;
       margin: 0;
       padding: 0;
       border: 0;
       background: transparent;
-      transform: translate(-50%, calc(-100% - 6px));
+      transform: translate(-50%, -50px);
       text-align: center;
       cursor: pointer;
       z-index: 2;
@@ -899,34 +902,60 @@
     .road-dest:focus-visible { outline: 2px solid #b08948; outline-offset: 4px; border-radius: 8px; }
     .road-dest.is-off { cursor: default; opacity: .45; }
     .road-dest-name {
+      display: block;
+      margin-top: 6px;
+      font-size: 16px;
+      font-weight: 700;
+      line-height: 1.15;
+      color: var(--text-primary);
+      text-shadow: 0 1px 0 rgba(252,251,248,.85);
+    }
+    .road-dest .task-counts { justify-content: center; margin: 4px 0 0; gap: 4px; }
+    .road-dest .task-count { padding: 3px 7px; font-size: 13px; }
+    .road-station {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0 auto;
+      filter: drop-shadow(0 1px 1px rgba(28,25,23,.25));
+    }
+    .road-station-head {
+      width: 46px;
+      height: 34px;
+      background: #1c1917;
+      border: 2px solid #b08948;
+      border-radius: 6px 6px 2px 2px;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 5px;
-      font-size: 12px;
-      font-weight: 700;
-      line-height: 1.2;
-      color: var(--text-primary);
-      text-shadow: 0 1px 0 rgba(252,251,248,.8);
+      color: #f3efe6;
+      font-size: 17px;
     }
-    .road-dest-name i { font-size: 14px; color: #b08948; }
-    .road-dest .task-counts { justify-content: center; margin: 4px 0 6px; gap: 4px; }
-    .road-dest .task-count { padding: 2px 6px; font-size: 10px; }
-    .road-dest-pin {
-      display: block;
-      width: 16px;
-      height: 16px;
-      margin: 0 auto;
-      background: #fcfbf8;
-      border: 3px solid #1c1917;
-      border-radius: 50% 50% 50% 0;
-      transform: rotate(-45deg);
-      box-shadow: 0 1px 2px rgba(28,25,23,.25);
+    .road-station-desk {
+      width: 62px;
+      height: 8px;
+      background: linear-gradient(#c4a36a, #8a6a3a);
+      border-radius: 1px;
     }
-    [data-theme="dark"] .road-dest-pin { background: #e4e4e7; border-color: #fafafa; }
-    .road-dest:hover .road-dest-pin { background: #b08948; border-color: #1c1917; }
-    .road-dest.is-off:hover .road-dest-pin { background: #fcfbf8; }
-    #view-roles.container { max-width: 1280px; }
+    .road-station-legs {
+      display: flex;
+      justify-content: space-between;
+      width: 44px;
+      height: 8px;
+    }
+    .road-station-legs::before,
+    .road-station-legs::after {
+      content: "";
+      width: 4px;
+      height: 8px;
+      background: #44403c;
+    }
+    .road-dest:hover .road-station-head { background: #292524; }
+    .road-dest.is-off:hover .road-station-head { background: #1c1917; }
+    [data-theme="dark"] .road-station-head { background: #09090b; color: #f4f4f5; }
+    [data-theme="dark"] .road-station-legs::before,
+    [data-theme="dark"] .road-station-legs::after { background: #a1a1aa; }
+    #view-roles.container { max-width: 1520px; }
     .dash-head {
       display: flex;
       justify-content: space-between;
@@ -2167,25 +2196,27 @@
       'delivery': ['ready for delivery', 'out for delivery']
     };
     const ROAD_STOPS = [
-      { id: 'Profile Cutting', role: 'Profile Cutting', icon: 'bi-scissors', x: 80, y: 128, label: 'Profile cutting' },
-      { id: 'Tagging', role: 'Tagging', icon: 'bi-tag', x: 190, y: 128, label: 'Tagging' },
-      { id: 'Welding', role: 'Welding', icon: 'bi-lightning', x: 300, y: 128, label: 'Welding' },
-      { id: 'Grinding', role: 'Grinding', icon: 'bi-disc', x: 410, y: 128, label: 'Grinding' },
-      { id: 'Plate Cutting', role: 'Plate Cutting', icon: 'bi-square', x: 190, y: 272, label: 'Plate cutting' },
-      { id: 'Pre-Powder Coating QC', role: 'Quality Control', icon: 'bi-clipboard-check', x: 555, y: 68, qcFilter: 'pre-powder', label: 'Pre-powder QC' },
-      { id: 'Powder Coating', role: 'Quality Control', icon: 'bi-droplet', x: 670, y: 68, qcFilter: 'powder', label: 'Powder coating' },
-      { id: 'Paint Preparation', role: 'Paint Preparation', icon: 'bi-brush', x: 555, y: 198, label: 'Paint prep' },
-      { id: 'Painting', role: 'Painting', icon: 'bi-palette', x: 670, y: 198, label: 'Painting' },
-      { id: 'Assembly', role: 'Assembly', icon: 'bi-box-seam', x: 860, y: 128, label: 'Assembly' },
-      { id: 'Final QC', role: 'Quality Control', icon: 'bi-shield-check', x: 990, y: 128, qcFilter: 'final-qc', label: 'Final QC' }
+      { id: 'New orders', role: 'Profile Cutting', icon: 'bi-inbox', x: 70, y: 168, label: 'New orders', kind: 'new' },
+      { id: 'Profile Cutting', role: 'Profile Cutting', icon: 'bi-scissors', x: 210, y: 168, label: 'Profile cutting' },
+      { id: 'Tagging', role: 'Tagging', icon: 'bi-tag', x: 350, y: 168, label: 'Tagging' },
+      { id: 'Welding', role: 'Welding', icon: 'bi-lightning', x: 490, y: 168, label: 'Welding' },
+      { id: 'Grinding', role: 'Grinding', icon: 'bi-disc', x: 630, y: 168, label: 'Grinding' },
+      { id: 'Plate Cutting', role: 'Plate Cutting', icon: 'bi-square', x: 350, y: 318, label: 'Plate cutting' },
+      { id: 'Pre-Powder Coating QC', role: 'Quality Control', icon: 'bi-clipboard-check', x: 770, y: 168, qcFilter: 'pre-powder', label: 'Pre-powder QC' },
+      { id: 'Powder Coating', role: 'Quality Control', icon: 'bi-droplet', x: 910, y: 168, qcFilter: 'powder', label: 'Powder coating' },
+      { id: 'Paint Preparation', role: 'Paint Preparation', icon: 'bi-brush', x: 1080, y: 78, label: 'Paint prep' },
+      { id: 'Painting', role: 'Painting', icon: 'bi-palette', x: 1220, y: 78, label: 'Painting' },
+      { id: 'Assembly', role: 'Assembly', icon: 'bi-box-seam', x: 1340, y: 168, label: 'Assembly' },
+      { id: 'Final QC', role: 'Quality Control', icon: 'bi-shield-check', x: 1460, y: 168, qcFilter: 'final-qc', label: 'Final QC' }
     ];
-    const ROAD_VIEW = { w: 1100, h: 400 };
+    const ROAD_VIEW = { w: 1480, h: 420 };
     const ROAD_PATHS = {
-      main: 'M 30 128 H 430',
-      powder: 'M 430 128 C 470 128 485 68 520 68 H 705 C 745 68 760 128 800 128',
-      paint: 'M 430 128 C 470 128 485 198 520 198 H 705 C 745 198 760 128 800 128',
-      finish: 'M 800 128 H 1070',
-      plate: 'M 30 272 H 360'
+      main: 'M 30 168 H 950',
+      paint: 'M 950 168 C 990 168 1010 78 1050 78 H 1250 C 1290 78 1310 168 1340 168',
+      straight: 'M 950 168 H 1340',
+      finish: 'M 1340 168 H 1470',
+      plate: 'M 230 318 H 480',
+      plateJoin: 'M 350 168 V 318'
     };
     const TASK_ICONS = {
       'Profile Cutting': 'bi-scissors',
@@ -2439,6 +2470,12 @@
     function taskCountPills(task, counts) {
       const waiting = !counts;
       const c = (counts && counts[task]) || { ready: 0, active: 0, paused: 0 };
+      if (task === 'New orders') {
+        const n = waiting ? '—' : (c.total || c.ready || 0);
+        return '<div class="task-counts" data-task-counts>' +
+          '<span class="task-count is-ready" title="No status or Not Yet Started"><b>' + n + '</b> New</span>' +
+          '</div>';
+      }
       const ready = waiting ? '—' : (c.ready || 0);
       const active = waiting ? '—' : (c.active || 0);
       const paused = waiting ? '—' : (c.paused || 0);
@@ -2458,15 +2495,19 @@
     function canOpenRoadStep(step) {
       if (session.canSeeOffice) return true;
       const tasks = session.tasks || [];
+      if (step.id === 'New orders') return tasks.indexOf('Profile Cutting') !== -1;
       if (step.role === 'Quality Control') return tasks.indexOf('Quality Control') !== -1;
-      if (step.role === 'Paint Preparation') {
-        return tasks.indexOf('Paint Preparation') !== -1 || tasks.indexOf('Painting') !== -1 || tasks.indexOf('Assembly') !== -1;
-      }
-      if (step.role === 'Painting') return tasks.indexOf('Painting') !== -1;
       return tasks.indexOf(step.role) !== -1;
     }
     function roadStroke(d) {
-      return '<path class="road-edge" d="' + d + '"></path><path class="road-asphalt" d="' + d + '"></path><path class="road-dash" d="' + d + '"></path>';
+      return '<path class="road-rail" d="' + d + '"></path><path class="road-asphalt" d="' + d + '"></path><path class="road-dash" d="' + d + '"></path>';
+    }
+    function roadRollers(y, x0, x1) {
+      let html = '';
+      for (let x = x0 + 10; x <= x1 - 8; x += 18) {
+        html += '<circle class="road-roller" cx="' + x + '" cy="' + y + '" r="2.3"></circle>';
+      }
+      return html;
     }
     function roadDestHtml(step, counts) {
       const open = canOpenRoadStep(step);
@@ -2478,9 +2519,9 @@
       const top = (step.y / ROAD_VIEW.h * 100).toFixed(2);
       return '<button type="button" class="road-dest' + off + '" data-task="' + step.id.replace(/"/g, '') +
         '" style="left:' + left + '%;top:' + top + '%" ' + click + '>' +
-        '<span class="road-dest-name"><i class="bi ' + (step.icon || 'bi-geo-alt') + '"></i>' + (step.label || step.id) + '</span>' +
+        '<span class="road-station" aria-hidden="true"><span class="road-station-head"><i class="bi ' + (step.icon || 'bi-gear') + '"></i></span><span class="road-station-desk"></span><span class="road-station-legs"></span></span>' +
+        '<span class="road-dest-name">' + (step.label || step.id) + '</span>' +
         taskCountPills(step.id, counts) +
-        '<span class="road-dest-pin" aria-hidden="true"></span>' +
         '</button>';
     }
     function renderRoadMap(counts) {
@@ -2489,15 +2530,20 @@
       grid.innerHTML =
         '<div class="road-atlas">' +
         '<svg viewBox="0 0 ' + ROAD_VIEW.w + ' ' + ROAD_VIEW.h + '" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+        roadStroke(ROAD_PATHS.plateJoin) +
         roadStroke(ROAD_PATHS.plate) +
         roadStroke(ROAD_PATHS.main) +
-        roadStroke(ROAD_PATHS.powder) +
+        roadStroke(ROAD_PATHS.straight) +
         roadStroke(ROAD_PATHS.paint) +
         roadStroke(ROAD_PATHS.finish) +
-        '<text class="road-fork-label" x="30" y="108">Main road</text>' +
-        '<text class="road-fork-label" x="30" y="252">Parallel</text>' +
-        '<text class="road-fork-label" x="575" y="42">Powder</text>' +
-        '<text class="road-fork-label" x="575" y="238">Paint</text>' +
+        roadRollers(318, 230, 480) +
+        roadRollers(168, 30, 950) +
+        roadRollers(168, 950, 1340) +
+        roadRollers(78, 1050, 1250) +
+        roadRollers(168, 1340, 1470) +
+        '<text class="road-fork-label" x="230" y="298">Parallel</text>' +
+        '<text class="road-fork-label" x="980" y="54">Paint</text>' +
+        '<text class="road-fork-label" x="1110" y="198">Straight to assembly</text>' +
         '</svg>' +
         ROAD_STOPS.map((step) => roadDestHtml(step, counts)).join('') +
         '</div>';
@@ -2507,8 +2553,8 @@
       const sub = document.getElementById('taskPickSubtitle');
       if (sub) {
         sub.innerText = session.canSeeOffice
-          ? 'Follow the road. Plate cutting is the parallel road. Powder or paint split, then merge at assembly. Each destination shows Ready, Active, and Paused.'
-          : ('Hi ' + session.name + '. Tap the destination you are working on.');
+          ? 'Conveyor of workstations. New orders are Not Yet Started. After powder coating, paint or go straight to assembly. Plate cutting is the parallel belt.'
+          : ('Hi ' + session.name + '. Tap the workstation you are on.');
       }
       loadHomeScore();
       if (!(session.canSeeOffice || (session.tasks && session.tasks.length))) {

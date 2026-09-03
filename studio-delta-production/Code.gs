@@ -825,6 +825,13 @@ function getFloorTaskCounts() {
   out["Final QC"] = tallyFloorCounts(qc, [
     "Ready for Final QC", "Final QC"
   ]);
+  var fresh = 0;
+  var grid = getSheetGrid(getSpreadsheet(), TAB_ORDERS, 3);
+  for (var r = 1; r < grid.length; r++) {
+    var st = String(grid[r][2] || "").trim().toLowerCase();
+    if (!st || st === "not yet started") fresh += 1;
+  }
+  out["New orders"] = { ready: fresh, active: 0, paused: 0, total: fresh };
   return out;
 }
 

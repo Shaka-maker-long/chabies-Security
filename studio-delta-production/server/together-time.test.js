@@ -41,6 +41,23 @@ function openLogs(orderNum) {
 }
 
 (async function main() {
+  db.upsertOrder({
+    order_number: "S-HOPPER-1",
+    status: "Not Yet Started",
+    type: "Gate",
+    category: "Driveway",
+    product: "Slider",
+    price_excl_vat: "50.00"
+  });
+  db.upsertOrder({
+    order_number: "S-HOPPER-2",
+    status: "",
+    type: "Gate",
+    category: "Driveway",
+    product: "Slider",
+    price_excl_vat: "50.00"
+  });
+
   const a = order("S-2001");
   const b = order("S-2002");
   const c = order("S-2003");
@@ -52,8 +69,10 @@ function openLogs(orderNum) {
   const countsAfterStart = await callShopFunction("getFloorTaskCounts", []);
   assert.ok(countsAfterStart && countsAfterStart.Welding, "Home cards need Welding counts");
   assert.ok(countsAfterStart["Pre-Powder Coating QC"], "road map splits pre-powder QC");
+  assert.ok(countsAfterStart["Powder Coating"], "road map keeps powder coating after grinding");
   assert.ok(countsAfterStart["Final QC"], "road map splits final QC");
-  assert.ok(countsAfterStart["Powder Coating"], "road map has powder coating");
+  assert.ok(countsAfterStart["New orders"], "hopper for Not Yet Started orders");
+  assert.ok(countsAfterStart["New orders"].total >= 2, "blank and Not Yet Started count as new: " + JSON.stringify(countsAfterStart["New orders"]));
   assert.ok(countsAfterStart.Welding.active >= 1, "started order is Active: " + JSON.stringify(countsAfterStart.Welding));
   assert.ok(countsAfterStart.Welding.ready >= 3, "unstarted welding orders are Ready: " + JSON.stringify(countsAfterStart.Welding));
 
