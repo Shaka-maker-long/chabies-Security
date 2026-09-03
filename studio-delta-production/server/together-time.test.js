@@ -76,6 +76,13 @@ function openLogs(orderNum) {
   assert.ok(countsAfterStart.Welding.active >= 1, "started order is Active: " + JSON.stringify(countsAfterStart.Welding));
   assert.ok(countsAfterStart.Welding.ready >= 3, "unstarted welding orders are Ready: " + JSON.stringify(countsAfterStart.Welding));
 
+  const layout = await callShopFunction("getFloorLayout", []);
+  assert.ok(layout && layout.office, "shop floor layout");
+  assert.ok(layout.office.some((o) => o.order === "S-HOPPER-1"), "Not Yet Started sits in the office");
+  assert.ok(layout.office.some((o) => o.order === "S-HOPPER-2"), "blank status sits in the office");
+  assert.ok(layout.workers.Thabo && layout.workers.Thabo.some((o) => o.order === "S-2001" && !o.paused), "live job is on the worker");
+  assert.ok(layout.piles.welding && layout.piles.welding.length >= 3, "Ready for Welding waits in the welding pile");
+
   const blocked = await callShopFunction("startOrder", [b.id, "Thabo", "Welding", [], "", false]);
   assert.ok(blocked.needsSwitchReason, "must ask work-together or switch: " + JSON.stringify(blocked));
   assert.ok(blocked.runningOrders && blocked.runningOrders.length, "running orders listed");

@@ -846,116 +846,141 @@
       padding: 8px 0 12px;
       -webkit-overflow-scrolling: touch;
     }
-    .road-atlas {
+    .floor-atlas {
       position: relative;
-      min-width: 1180px;
+      min-width: 980px;
       width: 100%;
-      aspect-ratio: 1480 / 420;
-      background:
-        radial-gradient(ellipse at 18% 28%, rgba(176,137,72,.1), transparent 52%),
-        linear-gradient(#efe8d8, #e2d8c4);
+      aspect-ratio: 1169 / 831;
+      background: #d8d2c6 url("/facility-floor.png") center / contain no-repeat;
       border: 1px solid var(--border);
-      border-radius: 16px;
+      border-radius: 12px;
       box-shadow: var(--shadow-sm);
     }
-    [data-theme="dark"] .road-atlas {
-      background:
-        radial-gradient(ellipse at 18% 28%, rgba(176,137,72,.14), transparent 48%),
-        linear-gradient(#18181b, #27272a);
+    [data-theme="dark"] .floor-atlas {
+      background-color: #27272a;
+      filter: brightness(.92);
     }
-    .road-atlas svg {
+    .floor-spot {
       position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
+      z-index: 3;
+      width: 148px;
+      margin: 0;
+      padding: 7px 8px 8px;
+      border: 1px solid #1c1917;
+      border-radius: 8px;
+      background: rgba(252,251,248,.94);
+      box-shadow: 0 2px 8px rgba(28,25,23,.18);
+      transform: translate(-50%, -50%);
+      text-align: left;
+      cursor: pointer;
+      color: #1c1917;
+    }
+    .floor-spot:focus-visible { outline: 2px solid #b08948; outline-offset: 3px; }
+    .floor-spot.is-office { width: 132px; text-align: center; background: rgba(255,250,235,.96); }
+    .floor-spot.is-station { width: 138px; }
+    .floor-spot.is-ready { width: 152px; }
+    .floor-spot-kicker {
       display: block;
-    }
-    .road-rail { fill: none; stroke: #1c1917; stroke-width: 12; stroke-linecap: round; stroke-linejoin: round; }
-    .road-asphalt { fill: none; stroke: #6b6560; stroke-width: 8; stroke-linecap: round; stroke-linejoin: round; }
-    .road-dash { fill: none; stroke: #e7e0d4; stroke-width: 2.2; stroke-linecap: butt; stroke-dasharray: 7 11; }
-    .road-roller { fill: #44403c; stroke: #1c1917; stroke-width: 1; }
-    .road-fork-label {
-      font-family: Outfit, Inter, sans-serif;
-      font-size: 14px;
+      font-size: 10px;
       font-weight: 700;
-      letter-spacing: .08em;
-      fill: #4a453e;
+      letter-spacing: .06em;
       text-transform: uppercase;
+      color: #667085;
     }
-    [data-theme="dark"] .road-asphalt { stroke: #52525b; }
-    [data-theme="dark"] .road-rail { stroke: #09090b; }
-    [data-theme="dark"] .road-dash { stroke: #a1a1aa; }
-    [data-theme="dark"] .road-roller { fill: #71717a; stroke: #09090b; }
-    [data-theme="dark"] .road-fork-label { fill: #d4d4d8; }
-    .road-dest {
-      position: absolute;
-      width: 136px;
+    .floor-spot-title {
+      display: block;
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.2;
+      margin: 1px 0 4px;
+    }
+    .floor-spot.is-office .floor-spot-title { font-size: 15px; }
+    .job-cart {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 36px;
+      margin: 2px auto 4px;
+      background: #1c1917;
+      color: #f3efe6;
+      border: 2px solid #b08948;
+      border-radius: 6px;
+      font-size: 20px;
+    }
+    .floor-spot-count {
+      display: inline-block;
+      margin-top: 2px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #ecfdf3;
+      color: #067647;
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .floor-orders {
+      list-style: none;
       margin: 0;
       padding: 0;
-      border: 0;
-      background: transparent;
-      transform: translate(-50%, -50px);
-      text-align: center;
-      cursor: pointer;
-      z-index: 2;
+      max-height: 84px;
+      overflow: auto;
     }
-    .road-dest:focus-visible { outline: 2px solid #b08948; outline-offset: 4px; border-radius: 8px; }
-    .road-dest.is-off { cursor: default; opacity: .45; }
-    .road-dest-name {
-      display: block;
-      margin-top: 6px;
-      font-size: 16px;
+    .floor-orders li {
+      font-size: 12px;
       font-weight: 700;
-      line-height: 1.15;
-      color: var(--text-primary);
-      text-shadow: 0 1px 0 rgba(252,251,248,.85);
+      line-height: 1.25;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .road-dest .task-counts { justify-content: center; margin: 4px 0 0; gap: 4px; }
-    .road-dest .task-count { padding: 3px 7px; font-size: 13px; }
+    .floor-orders li.is-paused { color: #b54708; }
+    .floor-orders li.is-active { color: #175cd3; }
+    .floor-more { display: block; margin-top: 3px; font-size: 11px; color: #667085; }
+    .floor-station-mark {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 4px;
+    }
+    .floor-station-mark .road-station { margin: 0; }
     .road-station {
       display: flex;
       flex-direction: column;
       align-items: center;
-      margin: 0 auto;
       filter: drop-shadow(0 1px 1px rgba(28,25,23,.25));
     }
     .road-station-head {
-      width: 46px;
-      height: 34px;
+      width: 28px;
+      height: 20px;
       background: #1c1917;
       border: 2px solid #b08948;
-      border-radius: 6px 6px 2px 2px;
+      border-radius: 4px 4px 1px 1px;
       display: flex;
       align-items: center;
       justify-content: center;
       color: #f3efe6;
-      font-size: 17px;
+      font-size: 11px;
     }
     .road-station-desk {
-      width: 62px;
-      height: 8px;
+      width: 36px;
+      height: 5px;
       background: linear-gradient(#c4a36a, #8a6a3a);
-      border-radius: 1px;
     }
     .road-station-legs {
       display: flex;
       justify-content: space-between;
-      width: 44px;
-      height: 8px;
+      width: 26px;
+      height: 5px;
     }
     .road-station-legs::before,
     .road-station-legs::after {
       content: "";
-      width: 4px;
-      height: 8px;
+      width: 3px;
+      height: 5px;
       background: #44403c;
     }
-    .road-dest:hover .road-station-head { background: #292524; }
-    .road-dest.is-off:hover .road-station-head { background: #1c1917; }
-    [data-theme="dark"] .road-station-head { background: #09090b; color: #f4f4f5; }
-    [data-theme="dark"] .road-station-legs::before,
-    [data-theme="dark"] .road-station-legs::after { background: #a1a1aa; }
-    #view-roles.container { max-width: 1520px; }
+    #view-roles.container { max-width: 1240px; }
     .dash-head {
       display: flex;
       justify-content: space-between;
@@ -1613,7 +1638,18 @@
       </div>
     </div>
   </div>
-  <div class="modal fade" id="confirmModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body text-center p-4"><h5 class="mb-3" id="confirmMsg"></h5><div class="d-flex justify-content-center gap-2"><button class="btn btn-primary px-4" id="confirmBtnYes">YES</button><button class="btn btn-outline-dark px-4" data-bs-dismiss="modal">NO</button></div></div></div></div></div>
+  <div class="modal fade" id="floorListModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title brand-font" id="floorListTitle">Orders</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-3" id="floorListBody"></div>
+      </div>
+    </div>
+  </div>
+
 
   <!-- Pause / switch-reason modal -->
   <div class="modal fade" id="pauseModal" tabindex="-1">
@@ -2015,7 +2051,7 @@
       'Final QC': ['Front', 'Level 1', 'Back', 'Left Side', 'Right Side', 'Job Card', 'Open', 'Top (Optional)', 'Level 2 (Optional)']
     };
 
-    let passModal, startModal, pauseModal, qcModal, alertModal, confirmModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, welderSteelModal, canvas, ctx, isDrawing = false;
+    let passModal, startModal, pauseModal, qcModal, alertModal, confirmModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, welderSteelModal, canvas, ctx, isDrawing = false;
 
     // =====================================================
     // THEME MANAGEMENT
@@ -2070,6 +2106,7 @@
         qcModal = new bootstrap.Modal('#qcModal');
         alertModal = new bootstrap.Modal('#alertModal');
         confirmModal = new bootstrap.Modal('#confirmModal');
+        floorListModal = new bootstrap.Modal('#floorListModal');
         weeklyDetailsModal = new bootstrap.Modal('#weeklyDetailsModal');
         steelSelectionModal = new bootstrap.Modal('#steelModal');
         backboardSelectionModal = new bootstrap.Modal('#backboardModal');
@@ -2195,29 +2232,44 @@
       'final-qc': ['ready for final qc', 'final qc'],
       'delivery': ['ready for delivery', 'out for delivery']
     };
-    const ROAD_STOPS = [
-      { id: 'New orders', role: 'Profile Cutting', icon: 'bi-inbox', x: 70, y: 168, label: 'New orders', kind: 'new' },
-      { id: 'Profile Cutting', role: 'Profile Cutting', icon: 'bi-scissors', x: 210, y: 168, label: 'Profile cutting' },
-      { id: 'Tagging', role: 'Tagging', icon: 'bi-tag', x: 350, y: 168, label: 'Tagging' },
-      { id: 'Welding', role: 'Welding', icon: 'bi-lightning', x: 490, y: 168, label: 'Welding' },
-      { id: 'Grinding', role: 'Grinding', icon: 'bi-disc', x: 630, y: 168, label: 'Grinding' },
-      { id: 'Plate Cutting', role: 'Plate Cutting', icon: 'bi-square', x: 350, y: 318, label: 'Plate cutting' },
-      { id: 'Pre-Powder Coating QC', role: 'Quality Control', icon: 'bi-clipboard-check', x: 770, y: 168, qcFilter: 'pre-powder', label: 'Pre-powder QC' },
-      { id: 'Powder Coating', role: 'Quality Control', icon: 'bi-droplet', x: 910, y: 168, qcFilter: 'powder', label: 'Powder coating' },
-      { id: 'Paint Preparation', role: 'Paint Preparation', icon: 'bi-brush', x: 1080, y: 78, label: 'Paint prep' },
-      { id: 'Painting', role: 'Painting', icon: 'bi-palette', x: 1220, y: 78, label: 'Painting' },
-      { id: 'Assembly', role: 'Assembly', icon: 'bi-box-seam', x: 1340, y: 168, label: 'Assembly' },
-      { id: 'Final QC', role: 'Quality Control', icon: 'bi-shield-check', x: 1460, y: 168, qcFilter: 'final-qc', label: 'Final QC' }
+    const FLOOR_OFFICE = { x: 28, y: 41 };
+    const FLOOR_STATIONS = [
+      { name: 'Muruba', aliases: ['muruba'], x: 42, y: 16 },
+      { name: 'Willard', aliases: ['willard'], x: 62, y: 16 },
+      { name: 'John', aliases: ['john'], x: 40, y: 38 },
+      { name: 'Sam', aliases: ['sam'], x: 40, y: 48 },
+      { name: 'Thabile', aliases: ['thabile', 'thabiso'], x: 82, y: 42 },
+      { name: 'Admire', aliases: ['admire'], x: 42, y: 78 },
+      { name: 'Uriah', aliases: ['uriah'], x: 62, y: 80 }
     ];
-    const ROAD_VIEW = { w: 1480, h: 420 };
-    const ROAD_PATHS = {
-      main: 'M 30 168 H 950',
-      paint: 'M 950 168 C 990 168 1010 78 1050 78 H 1250 C 1290 78 1310 168 1340 168',
-      straight: 'M 950 168 H 1340',
-      finish: 'M 1340 168 H 1470',
-      plate: 'M 230 318 H 480',
-      plateJoin: 'M 350 168 V 318'
-    };
+    const FLOOR_PILES = [
+      { id: 'steelwork', label: 'Ready for steelwork', x: 13, y: 18, role: 'Profile Cutting' },
+      { id: 'tagging', label: 'Ready for tagging', x: 50, y: 56, role: 'Tagging' },
+      { id: 'welding', label: 'Ready for welding', x: 56, y: 38, role: 'Welding' },
+      { id: 'grinding', label: 'Ready for grinding', x: 70, y: 40, role: 'Grinding' },
+      { id: 'prepowder', label: 'Ready for pre-powder', x: 74, y: 52, role: 'Quality Control', qcFilter: 'pre-powder' },
+      { id: 'powder', label: 'Ready for powder', x: 78, y: 60, role: 'Quality Control', qcFilter: 'powder' },
+      { id: 'prep', label: 'Ready for prep', x: 86, y: 78, role: 'Paint Preparation' },
+      { id: 'painting', label: 'Ready for painting', x: 80, y: 68, role: 'Painting' },
+      { id: 'assembly', label: 'Ready for assembly', x: 22, y: 54, role: 'Assembly' },
+      { id: 'finalqc', label: 'Ready for final QC', x: 24, y: 72, role: 'Quality Control', qcFilter: 'final-qc' },
+      { id: 'delivery', label: 'Finished goods', x: 14, y: 84, role: 'Quality Control', qcFilter: 'delivery' },
+      { id: 'other', label: 'Other on floor', x: 55, y: 62, role: 'Profile Cutting' }
+    ];
+    const ROAD_STOPS = [
+      { id: 'New orders', role: 'Profile Cutting', label: 'New orders' },
+      { id: 'Profile Cutting', role: 'Profile Cutting', label: 'Profile cutting' },
+      { id: 'Tagging', role: 'Tagging', label: 'Tagging' },
+      { id: 'Welding', role: 'Welding', label: 'Welding' },
+      { id: 'Grinding', role: 'Grinding', label: 'Grinding' },
+      { id: 'Plate Cutting', role: 'Plate Cutting', label: 'Plate cutting' },
+      { id: 'Pre-Powder Coating QC', role: 'Quality Control', qcFilter: 'pre-powder', label: 'Pre-powder QC' },
+      { id: 'Powder Coating', role: 'Quality Control', qcFilter: 'powder', label: 'Powder coating' },
+      { id: 'Paint Preparation', role: 'Paint Preparation', label: 'Paint prep' },
+      { id: 'Painting', role: 'Painting', label: 'Painting' },
+      { id: 'Assembly', role: 'Assembly', label: 'Assembly' },
+      { id: 'Final QC', role: 'Quality Control', qcFilter: 'final-qc', label: 'Final QC' }
+    ];
     const TASK_ICONS = {
       'Profile Cutting': 'bi-scissors',
       'Plate Cutting': 'bi-square',
@@ -2485,13 +2537,6 @@
         '<span class="task-count is-paused" title="Orders started then paused"><b>' + paused + '</b> Paused</span>' +
         '</div>';
     }
-    function paintTaskCounts(counts) {
-      document.querySelectorAll('#roleGrid [data-task]').forEach((card) => {
-        const task = card.getAttribute('data-task');
-        const slot = card.querySelector('[data-task-counts]');
-        if (slot) slot.outerHTML = taskCountPills(task, counts || {});
-      });
-    }
     function canOpenRoadStep(step) {
       if (session.canSeeOffice) return true;
       const tasks = session.tasks || [];
@@ -2499,83 +2544,184 @@
       if (step.role === 'Quality Control') return tasks.indexOf('Quality Control') !== -1;
       return tasks.indexOf(step.role) !== -1;
     }
-    function roadStroke(d) {
-      return '<path class="road-rail" d="' + d + '"></path><path class="road-asphalt" d="' + d + '"></path><path class="road-dash" d="' + d + '"></path>';
+    function floorEsc(s) {
+      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
     }
-    function roadRollers(y, x0, x1) {
-      let html = '';
-      for (let x = x0 + 10; x <= x1 - 8; x += 18) {
-        html += '<circle class="road-roller" cx="' + x + '" cy="' + y + '" r="2.3"></circle>';
+    function floorOrderList(orders, limit) {
+      const rows = orders || [];
+      const cap = limit || 5;
+      const shown = rows.slice(0, cap);
+      const extra = rows.length - shown.length;
+      return '<ul class="floor-orders">' + shown.map((row) => {
+        const cls = row.paused ? ' is-paused' : (row.process ? ' is-active' : '');
+        return '<li class="' + cls + '">' + floorEsc(row.order) + (row.paused ? ' · paused' : '') + '</li>';
+      }).join('') + '</ul>' + (extra > 0 ? '<span class="floor-more">+' + extra + ' more</span>' : '');
+    }
+    function matchFloorStation(workerName) {
+      const key = String(workerName || '').trim().toLowerCase();
+      for (let i = 0; i < FLOOR_STATIONS.length; i++) {
+        const st = FLOOR_STATIONS[i];
+        if (st.aliases.indexOf(key) !== -1) return st;
       }
-      return html;
+      return null;
     }
-    function roadDestHtml(step, counts) {
-      const open = canOpenRoadStep(step);
-      const off = open ? '' : ' is-off';
-      const click = open
-        ? 'onclick="selectRoadStep(\'' + step.id.replace(/'/g, "\\'") + '\')"'
-        : 'aria-disabled="true"';
-      const left = (step.x / ROAD_VIEW.w * 100).toFixed(2);
-      const top = (step.y / ROAD_VIEW.h * 100).toFixed(2);
-      return '<button type="button" class="road-dest' + off + '" data-task="' + step.id.replace(/"/g, '') +
-        '" style="left:' + left + '%;top:' + top + '%" ' + click + '>' +
-        '<span class="road-station" aria-hidden="true"><span class="road-station-head"><i class="bi ' + (step.icon || 'bi-gear') + '"></i></span><span class="road-station-desk"></span><span class="road-station-legs"></span></span>' +
-        '<span class="road-dest-name">' + (step.label || step.id) + '</span>' +
-        taskCountPills(step.id, counts) +
-        '</button>';
+    function processToRoadStep(process) {
+      const p = String(process || '').trim();
+      if (!p) return ROAD_STOPS.filter((s) => s.id === 'New orders')[0];
+      if (p === 'Quality Control') return ROAD_STOPS.filter((s) => s.id === 'Pre-Powder Coating QC')[0];
+      return ROAD_STOPS.filter((s) => s.role === p || s.id === p)[0] || ROAD_STOPS.filter((s) => s.id === 'New orders')[0];
     }
-    function renderRoadMap(counts) {
+    function openFloorBoard(role, label, qcFilter) {
+      const step = {
+        id: label || role,
+        role: role,
+        qcFilter: qcFilter || ''
+      };
+      if (!canOpenRoadStep(step) && !session.canSeeOffice) return false;
+      if (!session.canSeeOffice) {
+        const tasks = session.tasks || [];
+        if (step.role === 'Quality Control' && tasks.indexOf('Quality Control') === -1) return false;
+        if (step.role !== 'Quality Control' && tasks.indexOf(step.role) === -1 && step.id !== 'New orders') return false;
+      }
+      session.role = role;
+      session.roadLabel = label || role;
+      session.qcMapFilter = qcFilter || '';
+      persistSession();
+      document.getElementById('adminLinks').classList.toggle('d-none-view', !session.canSeeOffice);
+      applyAdminLinks();
+      if (floorListModal) floorListModal.hide();
+      enterDashboard();
+      return true;
+    }
+    function showFloorOrderList(title, orders, opener) {
+      const body = document.getElementById('floorListBody');
+      const head = document.getElementById('floorListTitle');
+      if (head) head.innerText = title;
+      const rows = orders || [];
+      if (!rows.length) {
+        body.innerHTML = '<p class="text-muted mb-0">No orders here right now.</p>';
+      } else {
+        body.innerHTML = '<div class="list-group list-group-flush">' + rows.map((row, i) => {
+          const note = row.paused ? 'Paused' : (row.process || row.status || '');
+          return '<button type="button" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" data-floor-i="' + i + '">' +
+            '<span class="fw-bold">' + floorEsc(row.order) + '</span>' +
+            '<span class="small text-muted">' + floorEsc(note) + '</span></button>';
+        }).join('') + '</div>';
+        body.querySelectorAll('[data-floor-i]').forEach((btn) => {
+          btn.addEventListener('click', function () {
+            const row = rows[Number(btn.getAttribute('data-floor-i'))];
+            if (opener) opener(row);
+          });
+        });
+      }
+      if (floorListModal) floorListModal.show();
+    }
+    function renderFloorPlan(layout) {
       const grid = document.getElementById('roleGrid');
       grid.className = 'road-map';
-      grid.innerHTML =
-        '<div class="road-atlas">' +
-        '<svg viewBox="0 0 ' + ROAD_VIEW.w + ' ' + ROAD_VIEW.h + '" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
-        roadStroke(ROAD_PATHS.plateJoin) +
-        roadStroke(ROAD_PATHS.plate) +
-        roadStroke(ROAD_PATHS.main) +
-        roadStroke(ROAD_PATHS.straight) +
-        roadStroke(ROAD_PATHS.paint) +
-        roadStroke(ROAD_PATHS.finish) +
-        roadRollers(318, 230, 480) +
-        roadRollers(168, 30, 950) +
-        roadRollers(168, 950, 1340) +
-        roadRollers(78, 1050, 1250) +
-        roadRollers(168, 1340, 1470) +
-        '<text class="road-fork-label" x="200" y="304">Parallel</text>' +
-        '<text class="road-fork-label" x="980" y="54">Paint</text>' +
-        '<text class="road-fork-label" text-anchor="middle" x="1145" y="228">Straight to assembly</text>' +
-        '</svg>' +
-        ROAD_STOPS.map((step) => roadDestHtml(step, counts)).join('') +
-        '</div>';
+      const data = layout || { office: [], piles: {}, workers: {} };
+      const office = data.office || [];
+      let html = '<div class="floor-atlas">';
+      html += '<button type="button" class="floor-spot is-office" style="left:' + FLOOR_OFFICE.x + '%;top:' + FLOOR_OFFICE.y + '%" data-floor="office">' +
+        '<span class="floor-spot-kicker">Office</span>' +
+        '<span class="job-cart" aria-hidden="true"><i class="bi bi-cart3"></i></span>' +
+        '<span class="floor-spot-title">New orders</span>' +
+        '<span class="floor-spot-count">' + office.length + ' new</span>' +
+        '</button>';
+      FLOOR_PILES.forEach((pile) => {
+        const rows = (data.piles && data.piles[pile.id]) || [];
+        if (!rows.length && pile.id === 'other') return;
+        if (!rows.length) return;
+        html += '<button type="button" class="floor-spot is-ready" style="left:' + pile.x + '%;top:' + pile.y + '%" data-floor-pile="' + pile.id + '">' +
+          '<span class="floor-spot-kicker">Ready pile</span>' +
+          '<span class="floor-spot-title">' + floorEsc(pile.label) + '</span>' +
+          floorOrderList(rows) +
+          '</button>';
+      });
+      const placed = {};
+      FLOOR_STATIONS.forEach((st) => {
+        let rows = [];
+        Object.keys(data.workers || {}).forEach((name) => {
+          if (st.aliases.indexOf(String(name).toLowerCase()) !== -1) {
+            placed[name] = true;
+            rows = rows.concat(data.workers[name]);
+          }
+        });
+        if (!rows.length) return;
+        html += '<button type="button" class="floor-spot is-station" style="left:' + st.x + '%;top:' + st.y + '%" data-floor-worker="' + floorEsc(st.name) + '">' +
+          '<span class="floor-station-mark"><span class="road-station" aria-hidden="true"><span class="road-station-head"><i class="bi bi-person"></i></span><span class="road-station-desk"></span><span class="road-station-legs"></span></span>' +
+          '<span class="floor-spot-title">' + floorEsc(st.name) + '</span></span>' +
+          floorOrderList(rows) +
+          '</button>';
+      });
+      let extraI = 0;
+      Object.keys(data.workers || {}).forEach((name) => {
+        if (placed[name]) return;
+        const rows = data.workers[name] || [];
+        if (!rows.length) return;
+        const x = 55 + (extraI % 3) * 8;
+        const y = 62 + Math.floor(extraI / 3) * 8;
+        extraI += 1;
+        html += '<button type="button" class="floor-spot is-station" style="left:' + x + '%;top:' + y + '%" data-floor-worker="' + floorEsc(name) + '">' +
+          '<span class="floor-station-mark"><span class="road-station" aria-hidden="true"><span class="road-station-head"><i class="bi bi-person"></i></span><span class="road-station-desk"></span><span class="road-station-legs"></span></span>' +
+          '<span class="floor-spot-title">' + floorEsc(name) + '</span></span>' +
+          floorOrderList(rows) +
+          '</button>';
+      });
+      html += '</div>';
+      grid.innerHTML = html;
+      const officeBtn = grid.querySelector('[data-floor="office"]');
+      if (officeBtn) officeBtn.addEventListener('click', function () {
+        showFloorOrderList('New orders', office, function () {
+          openFloorBoard('Profile Cutting', 'New orders', '');
+        });
+      });
+      grid.querySelectorAll('[data-floor-pile]').forEach((btn) => {
+        btn.addEventListener('click', function () {
+          const pile = FLOOR_PILES.filter((p) => p.id === btn.getAttribute('data-floor-pile'))[0];
+          const rows = (data.piles && pile && data.piles[pile.id]) || [];
+          showFloorOrderList(pile.label, rows, function () {
+            openFloorBoard(pile.role, pile.label, pile.qcFilter || '');
+          });
+        });
+      });
+      grid.querySelectorAll('[data-floor-worker]').forEach((btn) => {
+        btn.addEventListener('click', function () {
+          const worker = btn.getAttribute('data-floor-worker');
+          let rows = [];
+          Object.keys(data.workers || {}).forEach((name) => {
+            if (String(name).toLowerCase() === String(worker).toLowerCase()) rows = rows.concat(data.workers[name]);
+          });
+          const pin = matchFloorStation(worker);
+          showFloorOrderList((pin ? pin.name : worker) + ' — on the go', rows, function (row) {
+            const step = processToRoadStep(row && row.process);
+            openFloorBoard(step.role, step.id, step.qcFilter || '');
+          });
+        });
+      });
     }
     function showTaskPicker() {
       const grid = document.getElementById('roleGrid');
       const sub = document.getElementById('taskPickSubtitle');
       if (sub) {
         sub.innerText = session.canSeeOffice
-          ? 'Conveyor of workstations. New orders are Not Yet Started. After powder coating, paint or go straight to assembly. Plate cutting is the parallel belt.'
-          : ('Hi ' + session.name + '. Tap the workstation you are on.');
+          ? 'Shop floor. New orders sit in the office. Ready piles hold waiting work. Live and paused jobs sit on the worker.'
+          : ('Hi ' + session.name + '. Tap your station or a ready pile.');
       }
       loadHomeScore();
       if (!(session.canSeeOffice || (session.tasks && session.tasks.length))) {
         grid.className = 'road-map';
         grid.innerHTML = '<div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div>';
       } else {
-        renderRoadMap(null);
-        google.script.run.withSuccessHandler(paintTaskCounts).withFailureHandler(function () {}).getFloorTaskCounts();
+        renderFloorPlan({ office: [], piles: {}, workers: {} });
+        google.script.run.withSuccessHandler(renderFloorPlan).withFailureHandler(function () {}).getFloorLayout();
       }
       navTo('view-roles');
     }
     function selectRoadStep(id) {
       const step = ROAD_STOPS.filter((s) => s.id === id)[0];
       if (!step || !canOpenRoadStep(step)) return;
-      session.role = step.role;
-      session.roadLabel = step.id;
-      session.qcMapFilter = step.qcFilter || '';
-      persistSession();
-      document.getElementById('adminLinks').classList.toggle('d-none-view', !session.canSeeOffice);
-      applyAdminLinks();
-      enterDashboard();
+      openFloorBoard(step.role, step.id, step.qcFilter || '');
     }
     function selectFloorTask(r) {
       if (r === 'Quality Control') {
