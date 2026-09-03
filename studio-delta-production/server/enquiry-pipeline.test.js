@@ -87,12 +87,18 @@ const extraMail = pipeline.applyAction("#1996", "Coster", {
 });
 assert.strictEqual(extraMail.row.correspondence.mails.length, 2);
 assert.ok(extraMail.row.correspondence.mails[1].outlook_url.indexOf("ms-outlook://") === 0);
+const serverLink = pipeline.applyAction("#1996", "Coster", {
+  action: "add_correspondence",
+  correspondence_links: "https://chabies-security-production.up.railway.app/api/office/enquiries/%231996/files/quote"
+});
+assert.ok(serverLink.row.correspondence.mails.some((m) => /railway\.app/.test(m.outlook_url || "")));
+assert.ok(!serverLink.row.correspondence.mails.some((m) => /railway\.app/.test(m.outlook_url || "") && /^ms-outlook:/i.test(m.outlook_url || "")));
 assert.throws(
   () => pipeline.applyAction("#1996", "Coster", {
     action: "add_correspondence",
     correspondence_files: [{ file_base64: "data:application/octet-stream;base64,QQ==", file_name: "note.msg" }]
   }),
-  /Drag the email|subject appears/
+  /Paste the email|subject appears/
 );
 const fromDrop = pipeline.applyAction("#1996", "Coster", {
   action: "add_correspondence",
@@ -101,10 +107,10 @@ const fromDrop = pipeline.applyAction("#1996", "Coster", {
     file_name: "Re_ Order #S260023 - GERNOT CANTO.msg"
   }]
 });
-assert.strictEqual(fromDrop.row.correspondence.mails.length, 3);
-assert.strictEqual(fromDrop.row.correspondence.mails[2].order_no, "S260023");
-assert.ok(fromDrop.row.correspondence.mails[2].stored_as);
-assert.ok(db.readEnquiryAttachment("#1996", fromDrop.row.correspondence.mails[2].kind));
+assert.strictEqual(fromDrop.row.correspondence.mails.length, 4);
+assert.strictEqual(fromDrop.row.correspondence.mails[3].order_no, "S260023");
+assert.ok(fromDrop.row.correspondence.mails[3].stored_as);
+assert.ok(db.readEnquiryAttachment("#1996", fromDrop.row.correspondence.mails[3].kind));
 const both = pipeline.applyAction("#1996", "Coster", {
   action: "add_correspondence",
   correspondence_mails: [{ title: "P21136 - District 6 Phase 5.msg" }],
@@ -362,7 +368,9 @@ const groups = files.map((f) => f.group);
 ["correspondence", "cost_sheet", "quote", "follow_up", "pop", "drawing"].forEach((g) => {
   assert.ok(groups.indexOf(g) >= 0, "missing deliverable " + g);
 });
-assert.ok(files.filter((f) => f.open).every((f) => f.kind));
+assert.ok(files.filter((f) => f.open).every((f) => f.kind || f.href), "open files need a server path or a link");
+assert.ok(files.every((f) => f.outlook === false), "do not treat files as Outlook attachments");
+assert.ok(files.some((f) => f.group === "correspondence" && f.href));
 assert.ok(drawn.row.deliverable_count >= 6);
 assert.ok(db.getEnquiry("#1996").deliverable_count >= 6);
 const emptyNew = db.upsertEnquiry({

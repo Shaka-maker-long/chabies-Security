@@ -13,10 +13,12 @@ const pane = fs.readFileSync(path.join(__dirname, "../public/outlook-addin/taskp
 assert.ok(pane.indexOf("appsforoffice.microsoft.com") !== -1);
 assert.ok(pane.indexOf("/api/office/enquiries/") !== -1);
 assert.ok(pane.indexOf("outlook-mail") !== -1);
-assert.ok(pane.indexOf("Nothing is downloaded") !== -1 || pane.indexOf("nothing is downloaded") !== -1);
+assert.ok(pane.indexOf("Copy the server link") !== -1 || pane.indexOf("nothing is downloaded") !== -1);
 
 const processJs = fs.readFileSync(path.join(__dirname, "../public/enquiry-process.js"), "utf8");
-assert.ok(processJs.indexOf("outlook_drop") !== -1);
-assert.ok(processJs.indexOf("Drop the Outlook email") !== -1);
+assert.ok(processJs.indexOf("Paste the email") !== -1);
+assert.ok(processJs.indexOf("Copy link") !== -1);
+assert.ok(processJs.indexOf("Drop the Outlook email") === -1);
+assert.ok(processJs.indexOf("correspondence_files") === -1);
 
 console.log("outlook-addin.test.js ok");

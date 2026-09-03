@@ -55,9 +55,13 @@ assert.ok(processJs.indexOf("Issue another quote") !== -1 || processJs.indexOf("
 assert.ok(processJs.indexOf("Client wants changes") !== -1 || processJs.indexOf("recost") !== -1);
 assert.ok(processJs.indexOf("Last quotation numbers") !== -1);
 assert.ok(processJs.indexOf("CORRESPONDANCE") !== -1);
-assert.ok(processJs.indexOf("outlook_drop") !== -1);
-assert.ok(processJs.indexOf("Drop the Outlook email") !== -1);
-assert.ok(processJs.indexOf("data-open-file") !== -1);
+assert.ok(processJs.indexOf("Paste the email") !== -1);
+assert.ok(processJs.indexOf("correspondence_links") !== -1);
+assert.ok(processJs.indexOf("Copy link") !== -1);
+assert.ok(processJs.indexOf("Drop the Outlook email") === -1, "do not attach the Outlook .msg");
+assert.ok(processJs.indexOf("correspondence_files") === -1, "UI must not upload the email file");
+assert.ok(processJs.indexOf("data-outlook-drop") === -1);
+assert.ok(processJs.indexOf("data-open-file") !== -1 || processJs.indexOf("data-copy-link") !== -1);
 assert.ok(processJs.indexOf("Files") !== -1);
 assert.ok(processJs.indexOf("Every CORRESPONDANCE email") !== -1);
 assert.ok(processJs.indexOf("earlier quotes") !== -1);

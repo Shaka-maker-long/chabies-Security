@@ -123,7 +123,7 @@
         });
         const j = await r.json();
         if (!j.ok) throw new Error(j.error || "Could not save");
-        setOk("Saved on " + enquiryNo + ". In the office app, Open in Outlook launches this email — nothing is downloaded.");
+        setOk("Saved on " + enquiryNo + ". The enquiry stores a link. Copy the server link from Files — do not attach the email.");
       } catch (e) {
         setErr(e.message || String(e));
       }
