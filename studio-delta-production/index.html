@@ -839,81 +839,94 @@
     .home-kpi.is-alert b { color: #b42318; }
     .home-score-note { margin: 10px 0 0; font-size: 12px; color: #667085; }
     .home-score.is-empty, .home-score.is-error { color: #667085; }
-    .road-map { display: flex; flex-direction: column; gap: 18px; padding-bottom: 12px; }
-    .road-lane {
-      background: var(--bg-surface);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 14px 14px 16px;
-      box-shadow: var(--shadow-sm);
+    .road-map {
+      position: relative;
+      overflow-x: auto;
+      overflow-y: hidden;
+      padding: 8px 0 12px;
+      -webkit-overflow-scrolling: touch;
     }
-    .road-lane.is-parallel { border-style: dashed; background: var(--bg-surface-2); }
-    .road-lane.is-branch { border-color: var(--border-strong); }
-    .road-lane-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; margin-bottom: 10px; }
-    .road-lane-head h3 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); }
-    .road-lane-head p { margin: 0; font-size: 12px; color: var(--text-muted); }
-    .road-path { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; }
-    .road-node {
-      flex: 1 1 160px;
-      max-width: 220px;
-      min-width: 148px;
-      display: flex;
-      align-items: stretch;
-    }
-    .road-card {
+    .road-atlas {
+      position: relative;
+      min-width: 980px;
       width: 100%;
-      text-align: left;
-      cursor: pointer;
+      aspect-ratio: 1100 / 400;
+      background:
+        radial-gradient(ellipse at 20% 30%, rgba(176,137,72,.12), transparent 50%),
+        linear-gradient(#e7e0d2, #d9d1c0);
       border: 1px solid var(--border);
-      background: var(--bg-page);
-      border-radius: 10px;
-      padding: 12px 12px 10px;
+      border-radius: 16px;
       box-shadow: var(--shadow-sm);
-      transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
     }
-    .road-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--border-strong); }
-    .road-card.is-off {
-      cursor: default;
-      opacity: .55;
-      box-shadow: none;
+    [data-theme="dark"] .road-atlas {
+      background:
+        radial-gradient(ellipse at 20% 30%, rgba(176,137,72,.16), transparent 46%),
+        linear-gradient(#18181b, #27272a);
     }
-    .road-card.is-off:hover { transform: none; border-color: var(--border); }
-    .road-card.is-qc { border-color: var(--border-strong); }
-    .road-num {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-width: 22px;
-      height: 22px;
-      padding: 0 6px;
-      border-radius: 999px;
-      background: var(--bg-sidebar);
-      color: #f3efe6;
+    .road-atlas svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .road-asphalt { fill: none; stroke: #3a342e; stroke-width: 38; stroke-linecap: round; stroke-linejoin: round; }
+    .road-edge { fill: none; stroke: #b08948; stroke-width: 44; stroke-linecap: round; stroke-linejoin: round; opacity: .9; }
+    .road-dash { fill: none; stroke: #f4efe4; stroke-width: 2; stroke-linecap: round; stroke-dasharray: 10 9; }
+    .road-fork-label {
+      font-family: Outfit, Inter, sans-serif;
       font-size: 11px;
       font-weight: 700;
+      letter-spacing: .12em;
+      fill: #6b645b;
+      text-transform: uppercase;
     }
-    .road-card h4 {
-      margin: 8px 0 6px;
-      font-size: 15px;
+    [data-theme="dark"] .road-asphalt { stroke: #52525b; }
+    [data-theme="dark"] .road-dash { stroke: #e4e4e7; }
+    [data-theme="dark"] .road-fork-label { fill: #a1a1aa; }
+    .road-dest {
+      position: absolute;
+      width: 118px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      transform: translate(-50%, calc(-100% - 6px));
+      text-align: center;
+      cursor: pointer;
+      z-index: 2;
+    }
+    .road-dest:focus-visible { outline: 2px solid #b08948; outline-offset: 4px; border-radius: 8px; }
+    .road-dest.is-off { cursor: default; opacity: .45; }
+    .road-dest-name {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      font-size: 12px;
       font-weight: 700;
-      display: flex;
-      gap: 8px;
-      align-items: center;
+      line-height: 1.2;
+      color: var(--text-primary);
+      text-shadow: 0 1px 0 rgba(252,251,248,.8);
     }
-    .road-card h4 i { color: var(--text-secondary); }
-    .road-arrow {
-      display: flex;
-      align-items: center;
-      color: var(--border-strong);
-      font-size: 1.1rem;
-      padding: 0 4px;
-      flex: 0 0 auto;
+    .road-dest-name i { font-size: 14px; color: #b08948; }
+    .road-dest .task-counts { justify-content: center; margin: 4px 0 6px; gap: 4px; }
+    .road-dest .task-count { padding: 2px 6px; font-size: 10px; }
+    .road-dest-pin {
+      display: block;
+      width: 16px;
+      height: 16px;
+      margin: 0 auto;
+      background: #fcfbf8;
+      border: 3px solid #1c1917;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      box-shadow: 0 1px 2px rgba(28,25,23,.25);
     }
-    @media (max-width: 699px) {
-      .road-path { flex-direction: column; }
-      .road-node { max-width: none; min-width: 0; }
-      .road-arrow { transform: rotate(90deg); justify-content: center; padding: 2px 0; }
-    }
+    [data-theme="dark"] .road-dest-pin { background: #e4e4e7; border-color: #fafafa; }
+    .road-dest:hover .road-dest-pin { background: #b08948; border-color: #1c1917; }
+    .road-dest.is-off:hover .road-dest-pin { background: #fcfbf8; }
+    #view-roles.container { max-width: 1280px; }
     .dash-head {
       display: flex;
       justify-content: space-between;
@@ -2153,56 +2166,27 @@
       'final-qc': ['ready for final qc', 'final qc'],
       'delivery': ['ready for delivery', 'out for delivery']
     };
-    const ROAD_LANES = [
-      {
-        id: 'steel',
-        title: 'Steelwork',
-        hint: 'The order moves left to right.',
-        steps: [
-          { id: 'Profile Cutting', role: 'Profile Cutting', icon: 'bi-scissors', n: '1' },
-          { id: 'Tagging', role: 'Tagging', icon: 'bi-tag', n: '2' },
-          { id: 'Welding', role: 'Welding', icon: 'bi-lightning', n: '3' },
-          { id: 'Grinding', role: 'Grinding', icon: 'bi-disc', n: '4' }
-        ]
-      },
-      {
-        id: 'plate',
-        title: 'Plate cutting',
-        hint: 'Runs at the same time as steelwork, through welding.',
-        parallel: true,
-        steps: [
-          { id: 'Plate Cutting', role: 'Plate Cutting', icon: 'bi-square', n: '∥' }
-        ]
-      },
-      {
-        id: 'coat',
-        title: 'Coating and QC',
-        hint: 'Pre-powder coating QC, then powder coating.',
-        steps: [
-          { id: 'Pre-Powder Coating QC', role: 'Quality Control', icon: 'bi-clipboard-check', n: '5', qcFilter: 'pre-powder' },
-          { id: 'Powder Coating', role: 'Quality Control', icon: 'bi-droplet', n: '6', qcFilter: 'powder' }
-        ]
-      },
-      {
-        id: 'paint',
-        title: 'Paint',
-        hint: 'If the order is painted: from Ready for Assembly, paint prep then paint, then back to assembly.',
-        branch: true,
-        steps: [
-          { id: 'Paint Preparation', role: 'Paint Preparation', icon: 'bi-brush', n: 'A' },
-          { id: 'Painting', role: 'Painting', icon: 'bi-palette', n: 'B' }
-        ]
-      },
-      {
-        id: 'finish',
-        title: 'Build and finish',
-        hint: 'Assembly, then final QC.',
-        steps: [
-          { id: 'Assembly', role: 'Assembly', icon: 'bi-box-seam', n: '7' },
-          { id: 'Final QC', role: 'Quality Control', icon: 'bi-shield-check', n: '8', qcFilter: 'final-qc' }
-        ]
-      }
+    const ROAD_STOPS = [
+      { id: 'Profile Cutting', role: 'Profile Cutting', icon: 'bi-scissors', x: 80, y: 128, label: 'Profile cutting' },
+      { id: 'Tagging', role: 'Tagging', icon: 'bi-tag', x: 190, y: 128, label: 'Tagging' },
+      { id: 'Welding', role: 'Welding', icon: 'bi-lightning', x: 300, y: 128, label: 'Welding' },
+      { id: 'Grinding', role: 'Grinding', icon: 'bi-disc', x: 410, y: 128, label: 'Grinding' },
+      { id: 'Plate Cutting', role: 'Plate Cutting', icon: 'bi-square', x: 190, y: 272, label: 'Plate cutting' },
+      { id: 'Pre-Powder Coating QC', role: 'Quality Control', icon: 'bi-clipboard-check', x: 555, y: 68, qcFilter: 'pre-powder', label: 'Pre-powder QC' },
+      { id: 'Powder Coating', role: 'Quality Control', icon: 'bi-droplet', x: 670, y: 68, qcFilter: 'powder', label: 'Powder coating' },
+      { id: 'Paint Preparation', role: 'Paint Preparation', icon: 'bi-brush', x: 555, y: 198, label: 'Paint prep' },
+      { id: 'Painting', role: 'Painting', icon: 'bi-palette', x: 670, y: 198, label: 'Painting' },
+      { id: 'Assembly', role: 'Assembly', icon: 'bi-box-seam', x: 860, y: 128, label: 'Assembly' },
+      { id: 'Final QC', role: 'Quality Control', icon: 'bi-shield-check', x: 990, y: 128, qcFilter: 'final-qc', label: 'Final QC' }
     ];
+    const ROAD_VIEW = { w: 1100, h: 400 };
+    const ROAD_PATHS = {
+      main: 'M 30 128 H 430',
+      powder: 'M 430 128 C 470 128 485 68 520 68 H 705 C 745 68 760 128 800 128',
+      paint: 'M 430 128 C 470 128 485 198 520 198 H 705 C 745 198 760 128 800 128',
+      finish: 'M 800 128 H 1070',
+      plate: 'M 30 272 H 360'
+    };
     const TASK_ICONS = {
       'Profile Cutting': 'bi-scissors',
       'Plate Cutting': 'bi-square',
@@ -2481,44 +2465,55 @@
       if (step.role === 'Painting') return tasks.indexOf('Painting') !== -1;
       return tasks.indexOf(step.role) !== -1;
     }
-    function roadStepCard(step, counts) {
+    function roadStroke(d) {
+      return '<path class="road-edge" d="' + d + '"></path><path class="road-asphalt" d="' + d + '"></path><path class="road-dash" d="' + d + '"></path>';
+    }
+    function roadDestHtml(step, counts) {
       const open = canOpenRoadStep(step);
-      const qc = step.qcFilter ? ' is-qc' : '';
       const off = open ? '' : ' is-off';
       const click = open
         ? 'onclick="selectRoadStep(\'' + step.id.replace(/'/g, "\\'") + '\')"'
         : 'aria-disabled="true"';
-      return '<div class="road-node"><div class="road-card' + qc + off + '" data-task="' + step.id.replace(/"/g, '') + '" ' + click + '>' +
-        '<span class="road-num">' + step.n + '</span>' +
-        '<h4><i class="bi ' + (step.icon || 'bi-gear') + '"></i> ' + step.id + '</h4>' +
+      const left = (step.x / ROAD_VIEW.w * 100).toFixed(2);
+      const top = (step.y / ROAD_VIEW.h * 100).toFixed(2);
+      return '<button type="button" class="road-dest' + off + '" data-task="' + step.id.replace(/"/g, '') +
+        '" style="left:' + left + '%;top:' + top + '%" ' + click + '>' +
+        '<span class="road-dest-name"><i class="bi ' + (step.icon || 'bi-geo-alt') + '"></i>' + (step.label || step.id) + '</span>' +
         taskCountPills(step.id, counts) +
-        '</div></div>';
+        '<span class="road-dest-pin" aria-hidden="true"></span>' +
+        '</button>';
     }
     function renderRoadMap(counts) {
       const grid = document.getElementById('roleGrid');
       grid.className = 'road-map';
-      grid.innerHTML = ROAD_LANES.map((lane) => {
-        const cls = 'road-lane' + (lane.parallel ? ' is-parallel' : '') + (lane.branch ? ' is-branch' : '');
-        let path = '';
-        lane.steps.forEach((step, i) => {
-          if (i) path += '<div class="road-arrow" aria-hidden="true"><i class="bi bi-chevron-right"></i></div>';
-          path += roadStepCard(step, counts);
-        });
-        return '<section class="' + cls + '"><div class="road-lane-head"><h3>' + lane.title + '</h3><p>' + lane.hint + '</p></div><div class="road-path">' + path + '</div></section>';
-      }).join('');
+      grid.innerHTML =
+        '<div class="road-atlas">' +
+        '<svg viewBox="0 0 ' + ROAD_VIEW.w + ' ' + ROAD_VIEW.h + '" preserveAspectRatio="xMidYMid meet" aria-hidden="true">' +
+        roadStroke(ROAD_PATHS.plate) +
+        roadStroke(ROAD_PATHS.main) +
+        roadStroke(ROAD_PATHS.powder) +
+        roadStroke(ROAD_PATHS.paint) +
+        roadStroke(ROAD_PATHS.finish) +
+        '<text class="road-fork-label" x="30" y="108">Main road</text>' +
+        '<text class="road-fork-label" x="30" y="252">Parallel</text>' +
+        '<text class="road-fork-label" x="575" y="42">Powder</text>' +
+        '<text class="road-fork-label" x="575" y="238">Paint</text>' +
+        '</svg>' +
+        ROAD_STOPS.map((step) => roadDestHtml(step, counts)).join('') +
+        '</div>';
     }
     function showTaskPicker() {
       const grid = document.getElementById('roleGrid');
       const sub = document.getElementById('taskPickSubtitle');
       if (sub) {
         sub.innerText = session.canSeeOffice
-          ? 'Production road map. Each stop shows Ready, Active, and Paused. Production in the menu is the full list.'
-          : ('Hi ' + session.name + '. Pick the stop you are working on.');
+          ? 'Follow the road. Plate cutting is the parallel road. Powder or paint split, then merge at assembly. Each destination shows Ready, Active, and Paused.'
+          : ('Hi ' + session.name + '. Tap the destination you are working on.');
       }
       loadHomeScore();
       if (!(session.canSeeOffice || (session.tasks && session.tasks.length))) {
         grid.className = 'road-map';
-        grid.innerHTML = '<section class="road-lane"><div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div></section>';
+        grid.innerHTML = '<div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div>';
       } else {
         renderRoadMap(null);
         google.script.run.withSuccessHandler(paintTaskCounts).withFailureHandler(function () {}).getFloorTaskCounts();
@@ -2526,10 +2521,7 @@
       navTo('view-roles');
     }
     function selectRoadStep(id) {
-      let step = null;
-      ROAD_LANES.forEach((lane) => {
-        lane.steps.forEach((s) => { if (s.id === id) step = s; });
-      });
+      const step = ROAD_STOPS.filter((s) => s.id === id)[0];
       if (!step || !canOpenRoadStep(step)) return;
       session.role = step.role;
       session.roadLabel = step.id;
