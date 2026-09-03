@@ -105,9 +105,27 @@ function formatMonthOfSale(v) {
 }
 
 function inclFromExcl(excl) {
-  const n = parseMoney(excl);
-  if (!n) return "";
-  return money(n * (1 + VAT_RATE));
+  if (String(excl == null ? "" : excl).trim() === "") return "";
+  return money(parseMoney(excl) * (1 + VAT_RATE));
+}
+
+function exclFromIncl(incl) {
+  if (String(incl == null ? "" : incl).trim() === "") return "";
+  return money(parseMoney(incl) / (1 + VAT_RATE));
+}
+
+function vatPair(inclRaw, exclRaw) {
+  const inclStr = inclRaw != null ? String(inclRaw).trim() : "";
+  const exclStr = exclRaw != null ? String(exclRaw).trim() : "";
+  if (inclStr !== "") {
+    const incl = money(parseMoney(inclStr));
+    return { excl: exclFromIncl(incl), incl };
+  }
+  if (exclStr !== "") {
+    const excl = money(parseMoney(exclStr));
+    return { excl, incl: inclFromExcl(excl) };
+  }
+  return { excl: "", incl: "" };
 }
 
 function orderTotal(order) {
@@ -1038,7 +1056,7 @@ function enquiryLifespan(row, events) {
 }
 
 function emptyEnquiryLine() {
-  return { product: "", category: "", value_excl_vat: "" };
+  return { product: "", category: "", value_excl_vat: "", value_incl_vat: "" };
 }
 
 function normalizeEnquiryLines(row, existing) {
@@ -1047,17 +1065,23 @@ function normalizeEnquiryLines(row, existing) {
   if (!lines) {
     const product = String((row && row.product) || (existing && existing.product) || "").trim();
     const category = String((row && row.category) || (existing && existing.category) || "").trim();
-    const value = (row && row.value_excl_vat) || "";
-    lines = product || category ? [{ product, category, value_excl_vat: value }] : [emptyEnquiryLine()];
+    const pair = vatPair((row && row.value_incl_vat) || "", (row && row.value_excl_vat) || "");
+    lines = product || category
+      ? [{ product, category, value_excl_vat: pair.excl, value_incl_vat: pair.incl }]
+      : [emptyEnquiryLine()];
   }
   const cleaned = [];
   for (const line of lines) {
     const product = String((line && line.product) || "").trim();
     const category = String((line && line.category) || "").trim();
-    const rawVal = line && line.value_excl_vat != null ? String(line.value_excl_vat).trim() : "";
-    const value = rawVal === "" ? "" : money(parseMoney(rawVal));
-    if (!product && !category && !value) continue;
-    cleaned.push({ product, category, value_excl_vat: value });
+    const pair = vatPair(line && line.value_incl_vat, line && line.value_excl_vat);
+    if (!product && !category && !pair.excl && !pair.incl) continue;
+    cleaned.push({
+      product,
+      category,
+      value_excl_vat: pair.excl,
+      value_incl_vat: pair.incl
+    });
   }
   if (!cleaned.length) cleaned.push(emptyEnquiryLine());
   return cleaned;
@@ -1606,7 +1630,10 @@ function decorateEnquiry(row) {
   const products = normalizeEnquiryLines(row, null);
   const named = products.filter((p) => p.product);
   const productsTotal = named.reduce((sum, p) => sum + parseMoney(p.value_excl_vat), 0);
-  const delivery = parseMoney(row.delivery_excl_vat);
+  const productsTotalIncl = named.reduce((sum, p) => sum + parseMoney(p.value_incl_vat), 0);
+  const deliveryPair = vatPair(row.delivery_incl_vat, row.delivery_excl_vat);
+  const delivery = parseMoney(deliveryPair.excl);
+  const deliveryIncl = parseMoney(deliveryPair.incl);
   const hasPdf = enquiryHasQuotePdf(row.enquiry_no);
   const tasks = normalizeEnquiryTasks(row);
   const openTasks = tasks.filter((t) => t.status === "open");
@@ -1623,9 +1650,12 @@ function decorateEnquiry(row) {
     tasks,
     product: named.map((p) => p.product).join(", "),
     category: named.map((p) => p.category).filter(Boolean)[0] || row.category || "",
-    delivery_excl_vat: row.delivery_excl_vat === "" || row.delivery_excl_vat == null ? "" : money(delivery),
+    delivery_excl_vat: deliveryPair.excl,
+    delivery_incl_vat: deliveryPair.incl,
     products_total_excl_vat: money(productsTotal),
+    products_total_incl_vat: money(productsTotalIncl),
     quote_total_excl_vat: money(productsTotal + delivery),
+    quote_total_incl_vat: money(productsTotalIncl + deliveryIncl),
     quotes: Array.isArray(row.quotes) ? row.quotes : [],
     quote_count: Array.isArray(row.quotes) ? row.quotes.length : (hasPdf ? 1 : 0),
     quote_no: quoteSheet.quote_no,
@@ -1698,8 +1728,12 @@ function upsertEnquiry(row, opts) {
   payload.products = normalizeEnquiryLines(row, existing);
   payload.product = payload.products.filter((p) => p.product).map((p) => p.product).join(", ");
   payload.category = payload.products.map((p) => p.category).filter(Boolean)[0] || payload.category;
-  const deliveryRaw = row.delivery_excl_vat != null ? String(row.delivery_excl_vat).trim() : (existing && existing.delivery_excl_vat) || "";
-  payload.delivery_excl_vat = deliveryRaw === "" ? "" : money(parseMoney(deliveryRaw));
+  const deliveryPair = vatPair(
+    row.delivery_incl_vat != null ? row.delivery_incl_vat : (existing && existing.delivery_incl_vat),
+    row.delivery_excl_vat != null ? row.delivery_excl_vat : (existing && existing.delivery_excl_vat)
+  );
+  payload.delivery_excl_vat = deliveryPair.excl;
+  payload.delivery_incl_vat = deliveryPair.incl;
   payload.quote_pdf_name = String((row.quote_pdf_name != null ? row.quote_pdf_name : (existing && existing.quote_pdf_name)) || "").trim();
   payload.quote_pdf_uploaded_at = (row.quote_pdf_uploaded_at != null ? row.quote_pdf_uploaded_at : (existing && existing.quote_pdf_uploaded_at)) || "";
   copyPipeline(existing || row, payload);
@@ -1724,18 +1758,19 @@ function upsertEnquiry(row, opts) {
 
   const keepValues = KEEP_VALUE_STATUSES.indexOf(payload.status) >= 0;
   if (!keepValues) {
-    payload.products = payload.products.map((p) => ({ ...p, value_excl_vat: "" }));
+    payload.products = payload.products.map((p) => ({ ...p, value_excl_vat: "", value_incl_vat: "" }));
     payload.delivery_excl_vat = "";
+    payload.delivery_incl_vat = "";
   }
 
   if (fromPipeline && !fromMigrate && payload.status === "Quoted") {
     const named = payload.products.filter((p) => p.product);
     if (!named.length) throw new Error("Add at least one product before marking Quoted");
-    if (named.some((p) => p.value_excl_vat === "")) {
-      throw new Error("Enter a value excluding VAT for each product when quoting");
+    if (named.some((p) => p.value_incl_vat === "" && p.value_excl_vat === "")) {
+      throw new Error("Enter a value including VAT for each product when quoting");
     }
-    if (payload.delivery_excl_vat === "") {
-      throw new Error("Delivery excluding VAT is required when quoting");
+    if (payload.delivery_incl_vat === "" && payload.delivery_excl_vat === "") {
+      throw new Error("Delivery including VAT is required when quoting");
     }
     if (!enquiryHasQuotePdf(payload.enquiry_no) && !row.quote_pdf_base64) {
       throw new Error("Upload and confirm the quote PDF before marking Quoted");
@@ -1912,6 +1947,8 @@ module.exports = {
   formatPaymentDate,
   formatMonthOfSale,
   inclFromExcl,
+  exclFromIncl,
+  vatPair,
   listOrders,
   upsertOrder,
   deleteOrder,

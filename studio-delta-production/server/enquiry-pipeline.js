@@ -76,11 +76,14 @@ function namedProducts(row) {
 function requirePricedProducts(row) {
   const named = namedProducts(row);
   if (!named.length) throw new Error("Add at least one product first");
-  if (named.some((p) => String(p.value_excl_vat || "").trim() === "")) {
-    throw new Error("Enter a value excluding VAT for each product");
+  if (named.some((p) => String(p.value_incl_vat || p.value_excl_vat || "").trim() === "")) {
+    throw new Error("Enter a value including VAT for each product");
   }
-  if (row.delivery_excl_vat === "" || row.delivery_excl_vat == null) {
-    throw new Error("Delivery excluding VAT is required");
+  if (
+    (row.delivery_incl_vat === "" || row.delivery_incl_vat == null) &&
+    (row.delivery_excl_vat === "" || row.delivery_excl_vat == null)
+  ) {
+    throw new Error("Delivery including VAT is required");
   }
 }
 
@@ -88,8 +91,13 @@ function applyPricedBody(row, body) {
   if (Array.isArray(body.products) && body.products.length) {
     row.products = db.normalizeEnquiryLines({ products: body.products }, row);
   }
-  if (body.delivery_excl_vat != null && String(body.delivery_excl_vat).trim() !== "") {
-    row.delivery_excl_vat = db.money(db.parseMoney(body.delivery_excl_vat));
+  if (
+    (body.delivery_incl_vat != null && String(body.delivery_incl_vat).trim() !== "") ||
+    (body.delivery_excl_vat != null && String(body.delivery_excl_vat).trim() !== "")
+  ) {
+    const pair = db.vatPair(body.delivery_incl_vat, body.delivery_excl_vat);
+    row.delivery_excl_vat = pair.excl;
+    row.delivery_incl_vat = pair.incl;
   }
   row.product = namedProducts(row).map((p) => p.product).join(", ");
   row.category = namedProducts(row).map((p) => p.category).filter(Boolean)[0] || row.category || "";
@@ -668,7 +676,8 @@ function snapshotQuoteLines(row) {
   return namedProducts(row).map((p) => ({
     product: p.product || "",
     category: p.category || "",
-    value_excl_vat: p.value_excl_vat || ""
+    value_excl_vat: p.value_excl_vat || "",
+    value_incl_vat: p.value_incl_vat || ""
   }));
 }
 
@@ -707,6 +716,7 @@ function recordIssuedQuote(row, actor) {
     by: actor || "",
     products: snapshotQuoteLines(row),
     delivery_excl_vat: row.delivery_excl_vat || "",
+    delivery_incl_vat: row.delivery_incl_vat || "",
     file
   });
 }

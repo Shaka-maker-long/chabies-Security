@@ -116,6 +116,11 @@
         ".sd-task-pill.overdue{border-color:#fda29b;color:#b42318}" +
         ".sd-lines{width:100%;border-collapse:collapse;font-size:12px;background:#fff}" +
         ".sd-lines th,.sd-lines td{border:1px solid #d0d5dd;padding:6px}" +
+        ".sd-quote-totals{display:flex;flex-wrap:wrap;gap:10px 18px;margin-top:10px;padding:10px 12px;background:#fff;border:1px solid #d0d5dd;border-radius:8px;font-size:13px}" +
+        ".sd-quote-totals b{font-family:Outfit,Inter,sans-serif}" +
+        ".sd-quote-totals .sd-quote-total{font-weight:700}" +
+        ".sd-quote-totals .sd-quote-total b{font-size:15px}" +
+        ".sd-quote-totals .sd-process-sub{flex:1 1 100%;margin:0}" +
         ".sd-life{font-size:13px;color:#1d2939}" +
         ".sd-timeline{list-style:none;margin:8px 0 0;padding:0;border-left:2px solid #d0d5dd}" +
         ".sd-timeline li{position:relative;padding:0 0 12px 16px;font-size:13px}" +
@@ -212,6 +217,38 @@
     }
   }
 
+  function parseMoney(s) {
+    const n = Number(String(s || "").replace(/,/g, "").replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+  }
+  function money(n) {
+    return (Math.round(Number(n || 0) * 100) / 100).toFixed(2);
+  }
+  function formatRand(n) {
+    const v = parseMoney(n);
+    const neg = v < 0 ? "-" : "";
+    const [whole, frac] = money(Math.abs(v)).split(".");
+    return neg + "R " + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + frac;
+  }
+  function exclFromIncl(raw) {
+    if (String(raw || "").trim() === "") return "";
+    return money(parseMoney(raw) / 1.15);
+  }
+  function inclFromExcl(raw) {
+    if (String(raw || "").trim() === "") return "";
+    return money(parseMoney(raw) * 1.15);
+  }
+  function displayIncl(line) {
+    const incl = String((line && line.value_incl_vat) || "").trim();
+    if (incl) return incl;
+    return inclFromExcl(line && line.value_excl_vat);
+  }
+  function displayDeliveryIncl(row) {
+    const incl = String((row && row.delivery_incl_vat) || "").trim();
+    if (incl) return incl;
+    return inclFromExcl(row && row.delivery_excl_vat);
+  }
+
   function productNamesLine(row) {
     const names = namedLines(row).map((l) => l.product);
     if (!names.length) return "<p class=\"sd-process-sub\">Add product names on the Enquiries sheet first.</p>";
@@ -221,26 +258,79 @@
   function valuesTable(row, editable) {
     const lines = namedLines(row);
     if (!lines.length) return "<p class=\"sd-process-sub\">Add product names on the Enquiries sheet first.</p>";
-    return "<table class=\"sd-lines\"><thead><tr><th>Product</th><th>Value excl VAT</th></tr></thead><tbody>" +
+    return "<table class=\"sd-lines\"><thead><tr><th>Product</th><th>Value incl VAT</th></tr></thead><tbody>" +
       lines.map((l, i) => "<tr><td>" + esc(l.product) + "</td><td>" +
         (editable
-          ? "<input data-val=\"" + i + "\" value=\"" + esc(l.value_excl_vat || "") + "\" inputmode=\"decimal\">"
-          : esc(l.value_excl_vat || "—")) +
+          ? "<input data-val=\"" + i + "\" value=\"" + esc(displayIncl(l) || "") + "\" inputmode=\"decimal\" placeholder=\"0.00\">"
+          : esc(displayIncl(l) ? formatRand(displayIncl(l)) : "—")) +
         "</td></tr>").join("") +
       "</tbody></table>" +
-      "<label>Delivery excl VAT *" + (editable
-        ? "<input name=\"delivery_excl_vat\" value=\"" + esc(row.delivery_excl_vat || "") + "\" inputmode=\"decimal\">"
-        : "</label><div>" + esc(row.delivery_excl_vat || "—") + "</div>") +
-      (editable ? "</label>" : "");
+      "<label>Delivery incl VAT *" + (editable
+        ? "<input name=\"delivery_incl_vat\" value=\"" + esc(displayDeliveryIncl(row) || "") + "\" inputmode=\"decimal\" placeholder=\"0.00\">"
+        : "</label><div>" + esc(displayDeliveryIncl(row) ? formatRand(displayDeliveryIncl(row)) : "—") + "</div>") +
+      (editable ? "</label>" : "") +
+      (editable
+        ? "<div class=\"sd-quote-totals\" data-quote-totals>" +
+          "<div>Products incl VAT <b data-tot=\"products\">R 0.00</b></div>" +
+          "<div>Delivery incl VAT <b data-tot=\"delivery\">R 0.00</b></div>" +
+          "<div class=\"sd-quote-total\">Total incl VAT <b data-tot=\"incl\">R 0.00</b></div>" +
+          "<div>VAT 15% <b data-tot=\"vat\">R 0.00</b></div>" +
+          "<div>Total excl VAT <b data-tot=\"excl\">R 0.00</b></div>" +
+          "<p class=\"sd-process-sub\">Check Total incl VAT against the quote PDF as you type. Exclusive VAT is saved too.</p>" +
+          "</div>"
+        : "");
+  }
+
+  function paintQuoteTotals(form) {
+    const box = form && form.querySelector("[data-quote-totals]");
+    if (!box) return;
+    let productsIncl = 0;
+    let productsExcl = 0;
+    form.querySelectorAll("input[data-val]").forEach((input) => {
+      productsIncl += parseMoney(input.value);
+      productsExcl += parseMoney(exclFromIncl(input.value) || 0);
+    });
+    const deliveryEl = form.querySelector('[name="delivery_incl_vat"]');
+    const deliveryIncl = parseMoney(deliveryEl ? deliveryEl.value : "");
+    const deliveryExcl = parseMoney(exclFromIncl(deliveryEl ? deliveryEl.value : "") || 0);
+    const incl = Math.round((productsIncl + deliveryIncl) * 100) / 100;
+    const excl = Math.round((productsExcl + deliveryExcl) * 100) / 100;
+    const vat = Math.round((incl - excl) * 100) / 100;
+    const set = (key, n) => {
+      const el = box.querySelector('[data-tot="' + key + '"]');
+      if (el) el.textContent = formatRand(n);
+    };
+    set("products", productsIncl);
+    set("delivery", deliveryIncl);
+    set("incl", incl);
+    set("vat", vat);
+    set("excl", excl);
+  }
+
+  function bindQuoteTotals(form) {
+    if (!form || !form.querySelector("[data-quote-totals]")) return;
+    form.addEventListener("input", () => paintQuoteTotals(form));
+    paintQuoteTotals(form);
   }
 
   function readValues(form, row) {
     const lines = namedLines(row).map((l, i) => {
       const input = form.querySelector('input[data-val="' + i + '"]');
-      return { product: l.product, category: l.category || "", value_excl_vat: input ? input.value : l.value_excl_vat };
+      const incl = input ? input.value : displayIncl(l);
+      return {
+        product: l.product,
+        category: l.category || "",
+        value_incl_vat: incl,
+        value_excl_vat: exclFromIncl(incl)
+      };
     });
-    const delivery = form.querySelector('[name="delivery_excl_vat"]');
-    return { products: lines, delivery_excl_vat: delivery ? delivery.value : row.delivery_excl_vat };
+    const delivery = form.querySelector('[name="delivery_incl_vat"]');
+    const deliveryIncl = delivery ? delivery.value : displayDeliveryIncl(row);
+    return {
+      products: lines,
+      delivery_incl_vat: deliveryIncl,
+      delivery_excl_vat: exclFromIncl(deliveryIncl)
+    };
   }
 
   function fileBlock(accept, hint) {
@@ -408,8 +498,8 @@
         "<label>Quotation number *<input class=\"sd-quote-no\" name=\"quote_no\" value=\"" + esc(next) + "\" autocomplete=\"off\"></label>" +
         "<p class=\"sd-process-sub\">" + esc(recentLine) + " Default is the next number (" + esc(hint.next || next) + "). You can change it, but it cannot match an existing quotation.</p>" +
         fileBlock("application/pdf,.pdf", quotedAlready
-          ? "Upload the revised quote PDF. DATE QUOTED updates to today. Enter the new values excluding VAT."
-          : "Enter each product value and delivery excluding VAT here, then upload the quote PDF. DATE QUOTED is saved with the PDF.") +
+          ? "Upload the revised quote PDF. DATE QUOTED updates to today. Enter the new values including VAT."
+          : "Enter each product value and delivery including VAT here, then upload the quote PDF. DATE QUOTED is saved with the PDF.") +
         "<label>Who follows up after 7 days?</label>" + assigneeSelect(row.follow_up_assignee || openAssignee(row, "follow_up"));
     }
     if (action.id === "complete_followup") {
@@ -545,6 +635,7 @@
     body.innerHTML = html;
     body.querySelectorAll("form").forEach((form) => {
       bindFile(form);
+      bindQuoteTotals(form);
       const card = form.closest("[data-action-i]");
       const i = Number((card || form).getAttribute("data-action-i"));
       const preview = form.querySelector("[data-preview]");
