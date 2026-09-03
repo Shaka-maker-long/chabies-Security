@@ -200,10 +200,18 @@ async function sdRequireOffice(page) {
   await sdLoadBrand();
   let profile = sdOfficeProfile();
   if (profile && profile.token) {
-    const r = await fetch("/api/office/me", { headers: { "x-sd-token": profile.token } });
-    const j = await r.json();
-    if (j.ok) {
+    let r = await fetch("/api/office/me", {
+      credentials: "same-origin",
+      headers: { "x-sd-token": profile.token }
+    });
+    let j = await r.json().catch(function () { return {}; });
+    if (!(j && j.ok)) {
+      r = await fetch("/api/office/me", { credentials: "same-origin" });
+      j = await r.json().catch(function () { return {}; });
+    }
+    if (j && j.ok) {
       profile = Object.assign({}, profile, j.profile);
+      if (profile.isAdmin) profile.canSeeOffice = true;
       sdSaveOffice(profile);
     } else profile = null;
   } else {

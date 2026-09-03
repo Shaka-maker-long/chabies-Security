@@ -180,6 +180,9 @@ assert.ok(usersHtml.indexOf("migrate-from-google") !== -1);
 assert.ok(floor.indexOf('href="/enquiries"') !== -1);
 assert.ok(floor.indexOf('href="/tasks"') !== -1);
 assert.ok(floor.indexOf("resumeOfficeSession") !== -1);
+assert.ok(floor.indexOf("function hideFloorPopover") !== -1, "twin render must be able to close the order popover");
+assert.ok(floor.indexOf("officeLooksLoggedIn") !== -1, "Home must reuse the same-tab office session");
+assert.ok(floor.indexOf("navTo('view-roles')") !== -1);
 assert.ok(floor.indexOf("sessionStorage.getItem('sd-session')") !== -1 || floor.indexOf('sessionStorage.getItem("sd-session")') !== -1);
 assert.ok(floor.indexOf("sessionStorage.getItem('sd-office')") !== -1 || floor.indexOf('sessionStorage.getItem("sd-office")') !== -1);
 assert.ok(floor.indexOf("showFloorLogin()") !== -1);
@@ -215,6 +218,7 @@ assert.ok(js.indexOf("sdShowLogin") !== -1);
 assert.ok(js.indexOf("sessionStorage.getItem(\"sd-office\")") !== -1);
 assert.ok(js.indexOf("localStorage.getItem(\"sd-office\")") === -1, "do not share login across tabs via localStorage");
 assert.ok(js.indexOf("/api/office/me") !== -1);
+assert.ok(js.indexOf('credentials: "same-origin"') !== -1 || js.indexOf("credentials: 'same-origin'") !== -1);
 assert.ok(js.indexOf("await sdForgetOffice()") === -1, "do not log out when switching office pages");
 assert.ok(js.indexOf("canSeeOffice") !== -1);
 

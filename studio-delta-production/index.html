@@ -2915,6 +2915,10 @@
         window.addEventListener('pointercancel', up);
       });
     }
+    function hideFloorPopover() {
+      const pop = document.getElementById('floorPopover');
+      if (pop) pop.classList.add('is-off');
+    }
     function showFloorPopover(anchor, kicker, title, orders, opener) {
       const atlas = document.querySelector('.floor-atlas');
       const pop = document.getElementById('floorPopover');
@@ -2955,6 +2959,7 @@
       pop.style.top = top + 'px';
     }
     function bindSpot(el, kicker, title, rows, opener) {
+      if (!el) return;
       el.addEventListener('click', function (ev) {
         ev.stopPropagation();
         if (el.dataset.dragged === '1') {
@@ -3079,6 +3084,7 @@
       });
     }
     function showTaskPicker() {
+      navTo('view-roles');
       const grid = document.getElementById('roleGrid');
       const sub = document.getElementById('taskPickSubtitle');
       if (sub) {
@@ -3089,15 +3095,20 @@
       const reset = document.getElementById('floorResetBtn');
       if (reset) reset.classList.toggle('d-none-view', !(session.canSeeOffice || (session.tasks && session.tasks.length)));
       loadHomeScore();
-      if (!(session.canSeeOffice || (session.tasks && session.tasks.length))) {
-        stopFloorTwin();
-        grid.className = 'road-map';
-        grid.innerHTML = '<div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div>';
-      } else {
-        renderFloorPlan({ office: [], piles: {}, workers: {} });
-        startFloorTwin();
+      try {
+        if (!(session.canSeeOffice || (session.tasks && session.tasks.length))) {
+          stopFloorTwin();
+          if (grid) {
+            grid.className = 'road-map';
+            grid.innerHTML = '<div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div>';
+          }
+        } else {
+          renderFloorPlan({ office: [], piles: {}, workers: {} });
+          startFloorTwin();
+        }
+      } catch (e) {
+        console.warn('Floor twin error:', e);
       }
-      navTo('view-roles');
     }
     function selectRoadStep(id) {
       const step = ROAD_STOPS.filter((s) => s.id === id)[0];
@@ -3218,11 +3229,19 @@
       }).withFailureHandler(() => { if (cb) cb(); }).getUsersAndRoles();
     }
     function showFloorLogin() {
+      session.name = null;
+      session.canSeeOffice = false;
+      session.canSeeDebtors = false;
+      session.isAdmin = false;
+      session.access = '';
+      session.tasks = [];
       setLoggedIn(false);
-      document.getElementById('adminLinks').classList.add('d-none-view');
       applyAdminLinks();
       updateFloorLink();
       navTo('view-global-login');
+    }
+    function officeLooksLoggedIn(office) {
+      return !!(office && office.name && office.token && (office.canSeeOffice || office.isAdmin));
     }
     function forgetOfficeSession() {
       try { sessionStorage.removeItem('sd-office'); } catch (e) {}
@@ -3232,15 +3251,18 @@
     function resumeOfficeSession(done) {
       let office = null;
       try { office = JSON.parse(sessionStorage.getItem('sd-office') || 'null'); } catch (e) {}
-      if (!office || !office.token || !office.canSeeOffice) {
+      if (!office || !office.token) {
         done(false);
         return;
       }
-      fetch('/api/office/me', { headers: { 'x-sd-token': office.token } })
+      fetch('/api/office/me', {
+        credentials: 'same-origin',
+        headers: { 'x-sd-token': office.token }
+      })
         .then((r) => r.json())
         .then((j) => {
-          if (j && j.ok && j.profile && j.profile.canSeeOffice) {
-            applyLoginProfile(Object.assign({}, office, j.profile, { success: true }));
+          if (j && j.ok && j.profile && (j.profile.canSeeOffice || j.profile.isAdmin)) {
+            applyLoginProfile(Object.assign({}, office, j.profile, { success: true, canSeeOffice: true }));
             done(true);
           } else done(false);
         })
@@ -3255,6 +3277,12 @@
       try { floor = JSON.parse(sessionStorage.getItem('sd-session') || 'null'); } catch (e) {}
       if (floor && floor.name) {
         applyLoginProfile(floor);
+        return;
+      }
+      let office = null;
+      try { office = JSON.parse(sessionStorage.getItem('sd-office') || 'null'); } catch (e) {}
+      if (officeLooksLoggedIn(office)) {
+        applyLoginProfile(Object.assign({ success: true, canSeeOffice: true }, office));
         return;
       }
       resumeOfficeSession((ok) => { if (!ok) showFloorLogin(); });

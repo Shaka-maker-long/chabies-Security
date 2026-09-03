@@ -331,19 +331,42 @@ function createSession(profile) {
   return { token, ...safe };
 }
 
-function tokenFromReq(req) {
-  const header = String((req.headers && (req.headers["x-sd-token"] || req.headers["authorization"])) || "")
-    .replace(/^Bearer\s+/i, "")
-    .trim();
+function tokensFromReq(req) {
+  const out = [];
+  const seen = {};
+  function add(raw) {
+    const token = String(raw || "").replace(/^Bearer\s+/i, "").trim();
+    if (!token || seen[token]) return;
+    seen[token] = true;
+    out.push(token);
+  }
+  add((req.headers && (req.headers["x-sd-token"] || req.headers["authorization"])) || "");
   const cookie = String((req.headers && req.headers.cookie) || "");
-  const m = cookie.match(/(?:^|; )sd_office=([^;]*)/);
-  return header || (m ? decodeURIComponent(m[1].trim()) : "") || "";
+  const office = cookie.match(/(?:^|; )sd_office=([^;]*)/);
+  const shop = cookie.match(/(?:^|; )sd_session=([^;]*)/);
+  if (office) {
+    try { add(decodeURIComponent(office[1].trim())); } catch (e) { add(office[1].trim()); }
+  }
+  if (shop) {
+    try { add(decodeURIComponent(shop[1].trim())); } catch (e) { add(shop[1].trim()); }
+  }
+  return out;
+}
+
+function tokenFromReq(req) {
+  const tokens = tokensFromReq(req);
+  for (let i = 0; i < tokens.length; i++) {
+    if (sessions.has(tokens[i])) return tokens[i];
+  }
+  return tokens[0] || "";
 }
 
 function readSession(req) {
   const token = tokenFromReq(req);
   if (!token) return null;
-  return sessions.get(token) || null;
+  const row = sessions.get(token) || null;
+  if (row && row.isAdmin) row.canSeeOffice = true;
+  return row;
 }
 
 function dropSession(req) {

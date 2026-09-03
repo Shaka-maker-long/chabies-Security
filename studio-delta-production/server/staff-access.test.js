@@ -167,6 +167,12 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const ordersBoss = await fetch(base + "/api/office/orders", { headers: { "x-sd-token": boss.token } });
   assert.strictEqual(ordersBoss.status, 200);
 
+  const viaCookie = staff.readSession({
+    headers: { "x-sd-token": "dead-token", cookie: "sd_office=" + boss.token }
+  });
+  assert.ok(viaCookie, "a stale header must not hide a valid office cookie");
+  assert.strictEqual(viaCookie.name, "Office Boss");
+
   const backup = await fetch(base + "/api/office/backup", { headers: { "x-sd-token": boss.token } });
   assert.strictEqual(backup.status, 200);
   const pack = await backup.json();
