@@ -839,6 +839,81 @@
     .home-kpi.is-alert b { color: #b42318; }
     .home-score-note { margin: 10px 0 0; font-size: 12px; color: #667085; }
     .home-score.is-empty, .home-score.is-error { color: #667085; }
+    .road-map { display: flex; flex-direction: column; gap: 18px; padding-bottom: 12px; }
+    .road-lane {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 14px 16px;
+      box-shadow: var(--shadow-sm);
+    }
+    .road-lane.is-parallel { border-style: dashed; background: var(--bg-surface-2); }
+    .road-lane.is-branch { border-color: var(--border-strong); }
+    .road-lane-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; margin-bottom: 10px; }
+    .road-lane-head h3 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-secondary); }
+    .road-lane-head p { margin: 0; font-size: 12px; color: var(--text-muted); }
+    .road-path { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0; }
+    .road-node {
+      flex: 1 1 160px;
+      max-width: 220px;
+      min-width: 148px;
+      display: flex;
+      align-items: stretch;
+    }
+    .road-card {
+      width: 100%;
+      text-align: left;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg-page);
+      border-radius: 10px;
+      padding: 12px 12px 10px;
+      box-shadow: var(--shadow-sm);
+      transition: transform var(--transition), box-shadow var(--transition), border-color var(--transition);
+    }
+    .road-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: var(--border-strong); }
+    .road-card.is-off {
+      cursor: default;
+      opacity: .55;
+      box-shadow: none;
+    }
+    .road-card.is-off:hover { transform: none; border-color: var(--border); }
+    .road-card.is-qc { border-color: var(--border-strong); }
+    .road-num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 999px;
+      background: var(--bg-sidebar);
+      color: #f3efe6;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .road-card h4 {
+      margin: 8px 0 6px;
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .road-card h4 i { color: var(--text-secondary); }
+    .road-arrow {
+      display: flex;
+      align-items: center;
+      color: var(--border-strong);
+      font-size: 1.1rem;
+      padding: 0 4px;
+      flex: 0 0 auto;
+    }
+    @media (max-width: 699px) {
+      .road-path { flex-direction: column; }
+      .road-node { max-width: none; min-width: 0; }
+      .road-arrow { transform: rotate(90deg); justify-content: center; padding: 2px 0; }
+    }
     .dash-head {
       display: flex;
       justify-content: space-between;
@@ -1048,7 +1123,7 @@
         <p class="text-muted mb-0" id="taskPickSubtitle">Select the task you will do now.</p>
       </div>
       <div id="homeScore" class="home-score d-none-view mb-4"></div>
-      <div class="row g-3" id="roleGrid"></div>
+      <div class="road-map" id="roleGrid"></div>
     </div>
 
     <div id="view-users" class="view-section container d-none-view">
@@ -2072,6 +2147,62 @@
       if(viewId !== 'view-dashboard') stopAutoRefresh();
     }
 
+    const QC_PHASE_GROUPS = {
+      'pre-powder': ['ready for pre-powder coating', 'pre-powder coating'],
+      'powder': ['ready for powder coating', 'powder coating'],
+      'final-qc': ['ready for final qc', 'final qc'],
+      'delivery': ['ready for delivery', 'out for delivery']
+    };
+    const ROAD_LANES = [
+      {
+        id: 'steel',
+        title: 'Steelwork',
+        hint: 'The order moves left to right.',
+        steps: [
+          { id: 'Profile Cutting', role: 'Profile Cutting', icon: 'bi-scissors', n: '1' },
+          { id: 'Tagging', role: 'Tagging', icon: 'bi-tag', n: '2' },
+          { id: 'Welding', role: 'Welding', icon: 'bi-lightning', n: '3' },
+          { id: 'Grinding', role: 'Grinding', icon: 'bi-disc', n: '4' }
+        ]
+      },
+      {
+        id: 'plate',
+        title: 'Plate cutting',
+        hint: 'Runs at the same time as steelwork, through welding.',
+        parallel: true,
+        steps: [
+          { id: 'Plate Cutting', role: 'Plate Cutting', icon: 'bi-square', n: '∥' }
+        ]
+      },
+      {
+        id: 'coat',
+        title: 'Coating and QC',
+        hint: 'Pre-powder coating QC, then powder coating.',
+        steps: [
+          { id: 'Pre-Powder Coating QC', role: 'Quality Control', icon: 'bi-clipboard-check', n: '5', qcFilter: 'pre-powder' },
+          { id: 'Powder Coating', role: 'Quality Control', icon: 'bi-droplet', n: '6', qcFilter: 'powder' }
+        ]
+      },
+      {
+        id: 'paint',
+        title: 'Paint',
+        hint: 'If the order is painted: from Ready for Assembly, paint prep then paint, then back to assembly.',
+        branch: true,
+        steps: [
+          { id: 'Paint Preparation', role: 'Paint Preparation', icon: 'bi-brush', n: 'A' },
+          { id: 'Painting', role: 'Painting', icon: 'bi-palette', n: 'B' }
+        ]
+      },
+      {
+        id: 'finish',
+        title: 'Build and finish',
+        hint: 'Assembly, then final QC.',
+        steps: [
+          { id: 'Assembly', role: 'Assembly', icon: 'bi-box-seam', n: '7' },
+          { id: 'Final QC', role: 'Quality Control', icon: 'bi-shield-check', n: '8', qcFilter: 'final-qc' }
+        ]
+      }
+    ];
     const TASK_ICONS = {
       'Profile Cutting': 'bi-scissors',
       'Plate Cutting': 'bi-square',
@@ -2081,7 +2212,10 @@
       'Quality Control': 'bi-clipboard-check',
       'Paint Preparation': 'bi-brush',
       'Painting': 'bi-palette',
-      'Assembly': 'bi-box-seam'
+      'Assembly': 'bi-box-seam',
+      'Pre-Powder Coating QC': 'bi-clipboard-check',
+      'Powder Coating': 'bi-droplet',
+      'Final QC': 'bi-shield-check'
     };
 
     function persistSession() {
@@ -2097,7 +2231,9 @@
           access: session.access,
           isQcOnly: session.isQcOnly,
           tasks: session.tasks,
-          role: session.role
+          role: session.role,
+          roadLabel: session.roadLabel || '',
+          qcMapFilter: session.qcMapFilter || ''
         }));
       } catch (e) {}
       try { localStorage.removeItem('sd-session'); } catch (e) {}
@@ -2307,10 +2443,6 @@
         showTaskPicker();
         return;
       }
-      if (session.isQcOnly || (session.tasks && session.tasks.length === 1)) {
-        selectFloorTask(session.tasks[0] || 'Quality Control');
-        return;
-      }
       showTaskPicker();
     }
     function goHome() {
@@ -2318,11 +2450,7 @@
         navTo('view-global-login');
         return;
       }
-      if (session.canSeeOffice || ((session.tasks || []).length > 1) || !(session.tasks && session.tasks.length)) {
-        showTaskPicker();
-        return;
-      }
-      enterDashboard();
+      showTaskPicker();
     }
     function taskCountPills(task, counts) {
       const waiting = !counts;
@@ -2342,6 +2470,81 @@
         const slot = card.querySelector('[data-task-counts]');
         if (slot) slot.outerHTML = taskCountPills(task, counts || {});
       });
+    }
+    function canOpenRoadStep(step) {
+      if (session.canSeeOffice) return true;
+      const tasks = session.tasks || [];
+      if (step.role === 'Quality Control') return tasks.indexOf('Quality Control') !== -1;
+      if (step.role === 'Paint Preparation') {
+        return tasks.indexOf('Paint Preparation') !== -1 || tasks.indexOf('Painting') !== -1 || tasks.indexOf('Assembly') !== -1;
+      }
+      if (step.role === 'Painting') return tasks.indexOf('Painting') !== -1;
+      return tasks.indexOf(step.role) !== -1;
+    }
+    function roadStepCard(step, counts) {
+      const open = canOpenRoadStep(step);
+      const qc = step.qcFilter ? ' is-qc' : '';
+      const off = open ? '' : ' is-off';
+      const click = open
+        ? 'onclick="selectRoadStep(\'' + step.id.replace(/'/g, "\\'") + '\')"'
+        : 'aria-disabled="true"';
+      return '<div class="road-node"><div class="road-card' + qc + off + '" data-task="' + step.id.replace(/"/g, '') + '" ' + click + '>' +
+        '<span class="road-num">' + step.n + '</span>' +
+        '<h4><i class="bi ' + (step.icon || 'bi-gear') + '"></i> ' + step.id + '</h4>' +
+        taskCountPills(step.id, counts) +
+        '</div></div>';
+    }
+    function renderRoadMap(counts) {
+      const grid = document.getElementById('roleGrid');
+      grid.className = 'road-map';
+      grid.innerHTML = ROAD_LANES.map((lane) => {
+        const cls = 'road-lane' + (lane.parallel ? ' is-parallel' : '') + (lane.branch ? ' is-branch' : '');
+        let path = '';
+        lane.steps.forEach((step, i) => {
+          if (i) path += '<div class="road-arrow" aria-hidden="true"><i class="bi bi-chevron-right"></i></div>';
+          path += roadStepCard(step, counts);
+        });
+        return '<section class="' + cls + '"><div class="road-lane-head"><h3>' + lane.title + '</h3><p>' + lane.hint + '</p></div><div class="road-path">' + path + '</div></section>';
+      }).join('');
+    }
+    function showTaskPicker() {
+      const grid = document.getElementById('roleGrid');
+      const sub = document.getElementById('taskPickSubtitle');
+      if (sub) {
+        sub.innerText = session.canSeeOffice
+          ? 'Production road map. Each stop shows Ready, Active, and Paused. Production in the menu is the full list.'
+          : ('Hi ' + session.name + '. Pick the stop you are working on.');
+      }
+      loadHomeScore();
+      if (!(session.canSeeOffice || (session.tasks && session.tasks.length))) {
+        grid.className = 'road-map';
+        grid.innerHTML = '<section class="road-lane"><div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div></section>';
+      } else {
+        renderRoadMap(null);
+        google.script.run.withSuccessHandler(paintTaskCounts).withFailureHandler(function () {}).getFloorTaskCounts();
+      }
+      navTo('view-roles');
+    }
+    function selectRoadStep(id) {
+      let step = null;
+      ROAD_LANES.forEach((lane) => {
+        lane.steps.forEach((s) => { if (s.id === id) step = s; });
+      });
+      if (!step || !canOpenRoadStep(step)) return;
+      session.role = step.role;
+      session.roadLabel = step.id;
+      session.qcMapFilter = step.qcFilter || '';
+      persistSession();
+      document.getElementById('adminLinks').classList.toggle('d-none-view', !session.canSeeOffice);
+      applyAdminLinks();
+      enterDashboard();
+    }
+    function selectFloorTask(r) {
+      if (r === 'Quality Control') {
+        selectRoadStep('Pre-Powder Coating QC');
+        return;
+      }
+      selectRoadStep(r);
     }
     function sastMonthKey() {
       const sast = new Date(Date.now() + 2 * 60 * 60 * 1000);
@@ -2413,35 +2616,6 @@
         credentials: 'same-origin',
         headers: { 'Accept': 'application/json', 'x-sd-token': officeToken() }
       }).then((r) => r.json()).then(paintHomeScore).catch(() => paintHomeScore(null));
-    }
-    function showTaskPicker() {
-      const grid = document.getElementById('roleGrid');
-      const sub = document.getElementById('taskPickSubtitle');
-      const tasks = (session.canSeeOffice ? Object.keys(TASK_ICONS) : (session.tasks || [])).slice();
-      if (sub) {
-        sub.innerText = session.canSeeOffice
-          ? 'Office summary first. Floor cards show Ready, Active, and Paused. Production in the menu is the full list.'
-          : ('Hi ' + session.name + '. What are you doing now?');
-      }
-      loadHomeScore();
-      grid.innerHTML = '';
-      if (!tasks.length) {
-        grid.innerHTML = '<div class="col-12"><div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div></div>';
-      } else {
-        tasks.forEach(r => {
-          const icon = TASK_ICONS[r] || 'bi-gear';
-          grid.innerHTML += '<div class="col-12 col-sm-6 col-lg-4"><div class="card h-100 role-card task-card" data-task="' + r.replace(/"/g, '') + '" onclick="selectFloorTask(\'' + r.replace(/'/g, "\\'") + '\')"><i class="bi ' + icon + '"></i><h4>' + r + '</h4>' + taskCountPills(r, null) + '</div></div>';
-        });
-        google.script.run.withSuccessHandler(paintTaskCounts).withFailureHandler(function () {}).getFloorTaskCounts();
-      }
-      navTo('view-roles');
-    }
-    function selectFloorTask(r) {
-      session.role = r;
-      persistSession();
-      document.getElementById('adminLinks').classList.toggle('d-none-view', !session.canSeeOffice);
-      applyAdminLinks();
-      enterDashboard();
     }
 
     function prefetchSupportData() {
@@ -2609,6 +2783,7 @@
       const q = document.getElementById('dashSearch').value.toLowerCase();
       const phaseEl = document.getElementById('qcPhaseFilter');
       const phase = (phaseEl && !phaseEl.parentElement.classList.contains('d-none')) ? phaseEl.value.toLowerCase() : "";
+      const group = QC_PHASE_GROUPS[phase];
       
       document.querySelectorAll('#view-dashboard .card').forEach(c => {
         // Target the wrapper label if it exists
@@ -2618,7 +2793,7 @@
         const cardStatus = statusBadge ? statusBadge.innerText.toLowerCase() : "";
         
         const matchesText = txt.includes(q);
-        const matchesPhase = phase === "" || cardStatus === phase;
+        const matchesPhase = phase === "" || (group ? group.indexOf(cardStatus) !== -1 : cardStatus === phase);
         
         if (matchesText && matchesPhase) {
             wrapper.style.display = '';
@@ -2694,7 +2869,7 @@
 
         // NEW: Reset the Phase Filter to "All" so the user can see their newly started orders
         const phaseFilter = document.getElementById('qcPhaseFilter');
-        if (phaseFilter) phaseFilter.value = "";
+        if (phaseFilter && !session.qcMapFilter) phaseFilter.value = "";
         
         google.script.run
             .withSuccessHandler(res => {
@@ -2782,12 +2957,9 @@
     function enterDashboard() {
       navTo('view-dashboard');
       document.getElementById('dashUser').innerText = session.name;
-      document.getElementById('dashRole').innerText = session.role || session.jobTitle || '';
+      document.getElementById('dashRole').innerText = session.roadLabel || session.role || session.jobTitle || '';
       const sw = document.getElementById('btnSwitchTask');
-      if (sw) {
-        const canSwitch = session.canSeeOffice || ((session.tasks || []).length > 1);
-        sw.classList.toggle('d-none', !canSwitch);
-      }
+      if (sw) sw.classList.remove('d-none');
       const tabEl = document.querySelector('#dashTabs button[data-bs-target="#pane-available"]');
       if(tabEl) new bootstrap.Tab(tabEl).show();
       loadDashboard(false);
@@ -2851,14 +3023,22 @@
         if (session.role === 'Quality Control' || session.role === 'Admin') {
             filterContainer.classList.remove('d-none');
             const filterEl = document.getElementById('qcPhaseFilter');
-            const currentVal = filterEl.value; // Save selection to prevent reset on auto-refresh
+            const currentVal = session.qcMapFilter || filterEl.value;
             const uniqueStatuses =[...new Set(orders.map(o => o.status))].sort();
             
-            filterEl.innerHTML = '<option value="">All Production Phases</option>';
+            filterEl.innerHTML = '<option value="">All Production Phases</option>' +
+              '<option value="pre-powder">Pre-powder coating QC</option>' +
+              '<option value="powder">Powder coating</option>' +
+              '<option value="final-qc">Final QC</option>' +
+              '<option value="delivery">Delivery</option>';
             uniqueStatuses.forEach(s => {
-                const selected = (s === currentVal) ? 'selected' : '';
-                filterEl.innerHTML += `<option value="${s}" ${selected}>${s}</option>`;
+                filterEl.innerHTML += `<option value="${String(s).replace(/"/g, '')}">${s}</option>`;
             });
+            if (currentVal) filterEl.value = currentVal;
+            filterEl.onchange = function () {
+              session.qcMapFilter = filterEl.value || '';
+              filterDashboard();
+            };
         } else {
             filterContainer.classList.add('d-none');
         }
@@ -3196,7 +3376,7 @@
       
       // NEW: Reset the Phase Filter to "All" so the user can see their newly started order
       const phaseFilter = document.getElementById('qcPhaseFilter');
-      if (phaseFilter) phaseFilter.value = "";
+      if (phaseFilter && !session.qcMapFilter) phaseFilter.value = "";
 
       const card = document.getElementById(`card-${session.pendingRow}`);
       if(card) {

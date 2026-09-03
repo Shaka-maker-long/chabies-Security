@@ -51,6 +51,9 @@ function openLogs(orderNum) {
 
   const countsAfterStart = await callShopFunction("getFloorTaskCounts", []);
   assert.ok(countsAfterStart && countsAfterStart.Welding, "Home cards need Welding counts");
+  assert.ok(countsAfterStart["Pre-Powder Coating QC"], "road map splits pre-powder QC");
+  assert.ok(countsAfterStart["Final QC"], "road map splits final QC");
+  assert.ok(countsAfterStart["Powder Coating"], "road map has powder coating");
   assert.ok(countsAfterStart.Welding.active >= 1, "started order is Active: " + JSON.stringify(countsAfterStart.Welding));
   assert.ok(countsAfterStart.Welding.ready >= 3, "unstarted welding orders are Ready: " + JSON.stringify(countsAfterStart.Welding));
 

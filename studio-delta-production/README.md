@@ -1,6 +1,6 @@
 # Studio Delta Production
 
-Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. After login, **office users always open Home**. Home shows an **enquiries and quotes** scorecard (open work, quoted waiting, overdue follow-ups, this month’s enquiries, quotes, and values) plus the shop-floor task cards (Profile Cutting, Welding, Painting, and the rest). Each floor card shows how many orders are **Ready**, **Active**, and **Paused** for that task before you open it. **Production** in the menu is the list-report: steel page header, status counts, and a dense order grid. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
+Shop-floor + office app for Studio Delta (South Africa). One login: **Admin** sees office and shop pages; **Production** only sees the floor. The shell is a compact SAP-style ERP in Studio Delta steel, linen, and brass. After login, **office users always open Home**. Home shows an **enquiries and quotes** scorecard, then a **production road map**: steelwork (Profile Cutting → Tagging → Welding → Grinding), plate cutting in parallel, Pre-powder coating QC → Powder coating, an optional paint branch (Paint prep → Painting), then Assembly → Final QC. Each stop shows **Ready**, **Active**, and **Paused** before you open it. **Production** in the menu is the list-report: steel page header, status counts, and a dense order grid. After you enter name and access code, a 5-second **Welcome to Studio Delta** screen draws the S mark, then the app opens.
 
 Orders (~400+) load as a text grid first; click a row to edit. Floor reads no longer rewrite the whole workbook to disk.
 
@@ -105,6 +105,7 @@ Do **not** commit the JSON key or a `.env` file.
 
 ## Floor rules
 
+- Home is a **production road map**. Each stop shows Ready / Active / Paused. Pre-powder coating QC and Final QC are separate stops (they still open the Quality Control board, filtered to that phase). Plate cutting sits beside steelwork because it can run at the same time. Paint prep and painting are the optional paint branch from Ready for Assembly.
 - One person has **one running clock**. Starting or resuming another order asks **Switch from A to B** (pause A, start B — still needs a reason) or **Work on A and B** (one clock, time split; Together badge). **Work this order only** leaves a batch. Pausing or switching requires **No materials**, **Touch up** (plus the order number), or **Other**. Activity and the Workers hour log split those hours by calendar day and show each bout with the pause reason — not a single start-minus-end total.
 - Same product, same process (e.g. assembly slats for two matching gates) can still be started together from Available. Use **Work this order only** to leave a batch.
 - When plate cutting finishes on an order, welders waiting on that plate are **auto-switched** back. They can tap **Still on other job** if they are not ready.
@@ -134,7 +135,7 @@ Add a **Tasks** column (column D). The first time the app opens it will create t
 | Thabo | Quality Control | 1234 | Quality Control |
 | Admin | Admin | **** | |
 
-- **Admin** Home is the first page after login: enquiry/quote scorecard plus floor task cards with Ready / Active / Paused counts. Logging in from an office page (Enquiries, Orders, …) also returns to Home. Production, Workers, Metrics, QC Reports, and Activity stay in the menu. Admin can open any floor task from Home.
+- **Admin** Home is the first page after login: enquiry/quote scorecard plus the production road map (Ready / Active / Paused on each stop, including Pre-powder coating QC and Final QC). Logging in from an office page (Enquiries, Orders, …) also returns to Home. Production, Workers, Metrics, QC Reports, and Activity stay in the menu. Admin can open any floor stop from the map.
 - **Quality Control / QC** only sees QC work.
 - Anyone else only sees the tasks listed. `Welding, Tagging` (or a role like `Welder Tagger`) means they pick Welding or Tagging after login, and only those boards appear.
 - Painters need `Painting` on the Tasks column. That also lets them prep items for painting (no extra `Paint Preparation` task required). Assemblers with `Assembly` also get **Paint prep** on Ready for Assembly cards.
