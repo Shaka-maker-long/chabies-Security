@@ -70,10 +70,21 @@
     .stack-form textarea { min-height:72px; }
     .stack-grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
     .capture-sheet { width:min(720px, 96vw); }
+    .view-sheet { width:min(780px, 96vw); }
+    #grid tbody tr[data-i] { cursor:pointer; }
+    #grid tbody tr[data-i]:hover td { background:#f2f4f7; }
+    .view-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; }
+    .view-item { min-width:0; }
+    .view-item.wide { grid-column:1 / -1; }
+    .view-label { font-size:11px; font-weight:600; letter-spacing:.03em; color:var(--muted); margin:0 0 4px; }
+    .view-value { font-size:13px; margin:0; white-space:pre-wrap; word-break:break-word; }
+    .view-value.empty { color:var(--muted); }
+    .view-sheet .lines { margin-top:4px; }
     @media (max-width: 720px) {
       .pdf-box iframe { height:240px; }
       .spec-row { grid-template-columns: 1fr; }
       .stack-grid { grid-template-columns: 1fr; }
+      .view-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -84,7 +95,7 @@
       <a class="on" href="/enquiries">Sheet</a>
       <a href="/enquiries/dashboard">Dashboard</a>
     </nav>
-    <p class="msg" style="margin:0;max-width:560px">The sheet is view-only. Pencil edits the enquiry. The list icon opens status, costing, and files.</p>
+    <p class="msg" style="margin:0;max-width:560px">Click a row to view the enquiry. Pencil edits. The list icon opens status, costing, and files.</p>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search enquiries">
@@ -240,6 +251,17 @@
         </label>
         <div class="err" id="captureErr"></div>
       </div>
+    </div>
+  </div>
+  <div class="mask" id="viewMask">
+    <div class="sheet view-sheet" role="dialog" aria-modal="true" aria-labelledby="viewTitle">
+      <header>
+        <h1 id="viewTitle">Enquiry</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeView()">Close</button>
+        </div>
+      </header>
+      <div class="body" id="viewBody"></div>
     </div>
   </div>
   <script src="/office-auth.js?v=erp-shell"></script>
@@ -484,9 +506,91 @@
             return;
           }
           sdOpenEnquiryProcess((j.row && j.row.enquiry_no) || row.enquiry_no);
+          return;
         }
+        const tr = e.target.closest("tr[data-i]");
+        if (tr) openView(Number(tr.getAttribute("data-i")));
       };
     }
+    function viewItem(label, value, wide) {
+      const v = String(value == null ? "" : value).trim();
+      return "<div class=\"view-item" + (wide ? " wide" : "") + "\"><div class=\"view-label\">" + esc(label) + "</div>" +
+        "<div class=\"view-value" + (v ? "" : " empty") + "\">" + esc(v || "—") + "</div></div>";
+    }
+    function openView(i) {
+      const row = rows[i];
+      if (!row) return;
+      const lines = namedLines(ensureLines(row));
+      const hasValues = lines.some((l) => String(l.value_excl_vat || "").trim() !== "") || String(row.delivery_excl_vat || "").trim() !== "";
+      const quotes = Array.isArray(row.quotes) ? row.quotes : [];
+      const specs = Array.isArray(row.custom_specs) ? row.custom_specs.filter((s) => s && (s.kind || s.detail)) : [];
+      document.getElementById("viewTitle").textContent = (row.enquiry_no || "Enquiry") + (row.client_name ? " · " + row.client_name : "");
+      let html = "<p class=\"hint\">This is a read-only view. Use the pencil to edit, or the list icon for status and files.</p>";
+      html += "<div class=\"view-grid\">";
+      html += viewItem("Enquiry no", row.enquiry_no);
+      html += viewItem("Date enquired", displayValue(row, "date_enquired") || row.date_enquired);
+      html += viewItem("Month enquired", row.month_enquired);
+      html += viewItem("Status", row.status || "New");
+      html += viewItem("Enquiry source", row.enquiry_source);
+      html += viewItem("Enquiry type", row.enquiry_type);
+      html += viewItem("Client name", row.client_name, true);
+      html += viewItem("How they found us", row.source);
+      html += viewItem("Province", row.province);
+      html += viewItem("Client email", row.client_email);
+      html += viewItem("Client number", row.client_number);
+      html += viewItem("Date quoted", displayValue(row, "date_quoted"));
+      html += viewItem("Quote no.", displayValue(row, "quote_no"));
+      html += viewItem("Assigned to", row.assigned_to);
+      html += "</div>";
+      html += "<div class=\"view-item wide\" style=\"margin-top:8px\"><div class=\"view-label\">Products</div>";
+      if (!lines.length) {
+        html += "<p class=\"view-value empty\">No products yet</p>";
+      } else {
+        html += "<table class=\"lines\"><thead><tr><th>CATERGORY</th><th>PRODUCT</th>" +
+          (hasValues ? "<th>VALUE (Excl VAT)</th>" : "") + "</tr></thead><tbody>";
+        lines.forEach((l) => {
+          html += "<tr><td>" + esc(l.category || "") + "</td><td>" + esc(l.product || "") + "</td>" +
+            (hasValues ? "<td>" + esc(l.value_excl_vat ? formatRand(l.value_excl_vat) : "—") + "</td>" : "") + "</tr>";
+        });
+        html += "</tbody></table>";
+        if (hasValues) {
+          html += "<div class=\"totals\" style=\"margin-top:10px\">" +
+            "<div>Products <b>" + esc(formatRand(row.products_total_excl_vat)) + "</b></div>" +
+            "<div>Delivery <b>" + esc(row.delivery_excl_vat ? formatRand(row.delivery_excl_vat) : "—") + "</b></div>" +
+            "<div>Total excl VAT <b>" + esc(formatRand(row.quote_total_excl_vat)) + "</b></div></div>";
+        }
+      }
+      html += "</div>";
+      if (row.enquiry_type === "Custom" || specs.length) {
+        const specText = specs.length
+          ? specs.map((s) => {
+            const kind = s.kind === "Other" && s.other ? "Other — " + s.other : (s.kind || "Custom");
+            return kind + (s.detail ? ": " + s.detail : "");
+          }).join("\n")
+          : (row.spec_summary || "");
+        html += "<div class=\"view-grid\" style=\"margin-top:8px\">" + viewItem("Custom specification", specText, true) + "</div>";
+      }
+      if (row.enquiry_type === "New Design" || row.design_description) {
+        html += "<div class=\"view-grid\" style=\"margin-top:8px\">" +
+          viewItem("New design description", row.design_description || row.request || row.spec_summary, true) + "</div>";
+      } else if (row.request && row.enquiry_type !== "Custom") {
+        html += "<div class=\"view-grid\" style=\"margin-top:8px\">" + viewItem("Request", row.request, true) + "</div>";
+      }
+      html += "<div class=\"view-grid\" style=\"margin-top:8px\">" + viewItem("Comment", row.comment, true) + "</div>";
+      if (quotes.length) {
+        html += "<div class=\"view-item wide\" style=\"margin-top:8px\"><div class=\"view-label\">Quotes</div><table class=\"lines\"><thead><tr><th>QUOTE NO.</th><th>DATE QUOTED</th></tr></thead><tbody>";
+        quotes.forEach((q) => {
+          html += "<tr><td>" + esc(q.quote_no || "") + "</td><td>" + esc(isoToDmy(q.date_quoted || q.uploaded_at || "")) + "</td></tr>";
+        });
+        html += "</tbody></table></div>";
+      }
+      document.getElementById("viewBody").innerHTML = html;
+      document.getElementById("viewMask").classList.add("open");
+    }
+    function closeView() {
+      document.getElementById("viewMask").classList.remove("open");
+    }
+    window.closeView = closeView;
     function setQuoteVisible(on) {
       document.querySelectorAll(".quote-only").forEach((el) => {
         if (!on) { el.style.display = "none"; return; }
@@ -1032,6 +1136,9 @@
     });
     document.getElementById("captureMask").addEventListener("click", (e) => {
       if (e.target.id === "captureMask") closeCapture();
+    });
+    document.getElementById("viewMask").addEventListener("click", (e) => {
+      if (e.target.id === "viewMask") closeView();
     });
     window.addEventListener("resize", () => { render(); });
     sdRequireOffice("enquiries").then((p) => { if (p) load(); });
