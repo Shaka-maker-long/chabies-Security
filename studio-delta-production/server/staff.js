@@ -331,15 +331,27 @@ function createSession(profile) {
   return { token, ...safe };
 }
 
-function readSession(req) {
+function tokenFromReq(req) {
   const header = String((req.headers && (req.headers["x-sd-token"] || req.headers["authorization"])) || "")
     .replace(/^Bearer\s+/i, "")
     .trim();
   const cookie = String((req.headers && req.headers.cookie) || "");
   const m = cookie.match(/(?:^|; )sd_office=([^;]*)/);
-  const token = header || (m ? decodeURIComponent(m[1].trim()) : "");
+  return header || (m ? decodeURIComponent(m[1].trim()) : "") || "";
+}
+
+function readSession(req) {
+  const token = tokenFromReq(req);
   if (!token) return null;
   return sessions.get(token) || null;
+}
+
+function dropSession(req) {
+  const token = tokenFromReq(req);
+  if (!token) return false;
+  const had = sessions.delete(token);
+  if (had) persistSessions();
+  return had;
 }
 
 function listDurations() {
@@ -391,6 +403,7 @@ module.exports = {
   loginFailureMessage,
   createSession,
   readSession,
+  dropSession,
   persistSessions,
   sessionCount: () => sessions.size,
   listDurations,

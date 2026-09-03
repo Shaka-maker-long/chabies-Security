@@ -2302,40 +2302,19 @@
       updateFloorLink();
       navTo('view-global-login');
     }
-    function resumeOfficeSession(done) {
-      let office = null;
-      try { office = JSON.parse(localStorage.getItem('sd-office') || 'null'); } catch (e) {}
-      if (!office || !office.token || !office.canSeeOffice) {
-        done(false);
-        return;
-      }
-      let settled = false;
-      const finish = (ok, profile) => {
-        if (settled) return;
-        settled = true;
-        if (ok && profile) applyLoginProfile(Object.assign({}, office, profile, { success: true }));
-        done(ok);
-      };
-      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timer = setTimeout(() => { try { if (ctrl) ctrl.abort(); } catch (e) {} finish(false); }, 4000);
-      fetch('/api/office/me', { headers: { 'x-sd-token': office.token }, signal: ctrl ? ctrl.signal : undefined })
-        .then((r) => r.json())
-        .then((j) => {
-          clearTimeout(timer);
-          if (j && j.ok && j.profile && j.profile.canSeeOffice) finish(true, j.profile);
-          else finish(false);
-        })
-        .catch(() => {
-          clearTimeout(timer);
-          finish(false);
-        });
+    function forgetOfficeSession() {
+      try { localStorage.removeItem('sd-office'); } catch (e) {}
+      return fetch('/api/office/logout', { method: 'POST', credentials: 'same-origin' }).catch(function () {});
     }
     function initApp() {
       clearPersistedSession();
       prefetchSupportData();
-      resumeOfficeSession((ok) => {
-        try { document.getElementById('loader').classList.add('d-none'); } catch (e) {}
-        if (!ok) showFloorLogin();
+      try { document.getElementById('loader').classList.add('d-none'); } catch (e) {}
+      showFloorLogin();
+      const btn = document.getElementById('btnGlobalLogin');
+      if (btn) btn.disabled = true;
+      forgetOfficeSession().finally(function () {
+        if (btn) btn.disabled = false;
       });
     }
 
@@ -2364,6 +2343,7 @@
       
       const btn = document.getElementById('btnGlobalLogin');
       const origText = btn.innerHTML;
+      if (btn.disabled) return;
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> LOGGING IN...';
       btn.disabled = true;
 
@@ -2408,7 +2388,7 @@
     function logout() { 
       session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, canSeeOffice: false, canSeeDebtors: false, access: '', tasks: [], jobTitle: '', overtimeWarned: {}, pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pauseModalMode: 'pause' }; 
       clearPersistedSession();
-      try { localStorage.removeItem('sd-office'); } catch (e) {}
+      forgetOfficeSession();
       stopIdleAlertPolling();
       idleAlertDismissedKey = '';
       if (idleAlertModal) idleAlertModal.hide();

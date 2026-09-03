@@ -36,8 +36,7 @@ const sqlite = require("./sqlite-store");
 
 function officeCookie(token, clear) {
   if (clear) return "sd_office=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
-  const max = 90 * 24 * 60 * 60;
-  return "sd_office=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + max;
+  return "sd_office=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax";
 }
 
 function requireOffice(req, res, next) {
@@ -144,6 +143,7 @@ function mountOffice(app) {
   });
 
   app.post("/api/office/logout", (req, res) => {
+    staff.dropSession(req);
     res.setHeader("Set-Cookie", officeCookie("", true));
     res.json({ ok: true });
   });
