@@ -142,6 +142,7 @@ const enquiriesHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries.
 assert.ok(enquiriesHtml.indexOf('id="period"') !== -1);
 assert.ok(enquiriesHtml.indexOf('id="quotedOnly"') !== -1);
 assert.ok(enquiriesHtml.indexOf('id="totIncl"') !== -1);
+assert.ok(enquiriesHtml.indexOf('id="lineTotIncl"') !== -1, "product modal totals must not reuse the sheet totIncl id");
 assert.ok(enquiriesHtml.indexOf("Quoted only") !== -1);
 assert.ok(enquiriesHtml.indexOf('id="captureMask"') !== -1, "New enquiry must open a capture modal");
 assert.ok(enquiriesHtml.indexOf("#grid {") !== -1 || enquiriesHtml.indexOf("#grid{") !== -1);
