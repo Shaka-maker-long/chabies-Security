@@ -43,7 +43,7 @@
   <div class="wrap">
     <p class="help"><b>Production</b> people only see the floor tasks you tick — not Orders, Debtors, or other office pages. <b>Admin</b> can open office pages. Untick <b>See debtors</b> if that admin must not see money still owing.</p>
     <p class="help">Tick <b>Costing</b>, <b>Quoting</b>, and <b>Approval</b> on the office people who usually do that work. New enquiries use those people automatically, so you do not pick them on every enquiry. You can still choose someone else on a single enquiry. Leave Approval unticked if cost sheets should skip approval.</p>
-    <p class="help">One person with job title <b>Manager</b> can add, delete, and set Access. That person is also office Admin. Until someone is Manager, the first office Admin can still open Users. Everyone else changes only their own access code — use <b>Change access code</b> in the menu, or the form below if you opened Users.</p>
+    <p class="help">One person with job title <b>Manager</b> can add, delete, and set Access. That person is also office Admin. Until someone is Manager, the first office Admin can still open Users. To change someone else’s access code, type the new code in <b>Access code</b> and Save — the old code must stop working. Everyone else changes only their own access code — use <b>Change access code</b> in the menu, or the form below if you opened Users.</p>
     <p class="help">The live database is <b>SQLite on Railway</b>. Google Sheets is not used. Every night at 02:00 Johannesburg the app copies SQLite, office JSON, and enquiry files into <code>/app/data/backups</code> (last 14 days stay on the volume). If Google Drive is set, that same copy is uploaded off the server and an email is sent. <b>Backup now</b> runs that copy immediately. <b>Download SQLite</b> is a copy for your PC.</p>
     <p class="help" id="dbLine"></p>
     <p class="help" id="backupLine"></p>
@@ -70,7 +70,7 @@
       <tbody id="body"></tbody>
     </table>
   </div>
-  <script src="/office-auth.js?v=logged-in"></script>
+  <script src="/office-auth.js?v=pass-reset"></script>
   <script>
     const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
     const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval"];
@@ -158,6 +158,10 @@
     }
     async function saveAll() {
       document.getElementById("status").textContent = "Saving…";
+      document.querySelectorAll("#body input[data-k='password']").forEach((el) => {
+        const i = Number(el.getAttribute("data-i"));
+        if (!Number.isNaN(i) && rows[i]) rows[i].password = el.value;
+      });
       const managers = rows.filter((u) => String(u.name || "").trim() && String(u.role || "").trim().toLowerCase() === "manager");
       if (managers.length > 1) {
         document.getElementById("status").textContent = "Only one person can have the Manager job title.";

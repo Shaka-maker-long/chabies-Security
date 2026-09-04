@@ -358,6 +358,19 @@ function changeOwnPassword(name, currentPassword, nextPassword) {
   return { name: String(usersSheet().getRange(rowNum, 1).getValue() || want) };
 }
 
+function setUserPassword(name, nextPassword) {
+  const want = String(name || "").trim();
+  const next = accessCode(nextPassword);
+  if (!want) throw new Error("Name is required");
+  if (!next) throw new Error("New access code is required");
+  const rowNum = findUserRow(want);
+  if (!rowNum) throw new Error("No user named " + want);
+  usersSheet().getRange(rowNum, 3).setValue(next);
+  persistWorkbook();
+  bumpShopCache();
+  return { name: String(usersSheet().getRange(rowNum, 1).getValue() || want) };
+}
+
 function deleteUser(name) {
   const rowNum = findUserRow(name);
   if (!rowNum) return;
@@ -526,6 +539,7 @@ module.exports = {
   upsertUser,
   deleteUser,
   changeOwnPassword,
+  setUserPassword,
   canManageUsers,
   verifyUser,
   loginFailureMessage,

@@ -1692,7 +1692,7 @@
   </div>
 
   <div class="modal fade" id="passModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="mb-3">Access Code</h3><p class="text-muted" id="passPromptName">Enter code</p><input type="password" id="inputPass" class="form-control text-center mb-3"><button class="btn btn-primary w-100" onclick="submitPass()">ENTER</button></div></div></div>
-  <div class="modal fade" id="changePassModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4"><h3 class="mb-2">Change access code</h3><p class="text-muted small">Anyone can update their own code.</p><label class="form-label">Current access code</label><input type="password" id="changePassCurrent" class="form-control mb-2" autocomplete="current-password"><label class="form-label">New access code</label><input type="password" id="changePassNext" class="form-control mb-3" autocomplete="new-password"><p class="text-danger small mb-2" id="changePassErr"></p><button class="btn btn-dark w-100" onclick="submitChangePassword()">SAVE ACCESS CODE</button></div></div></div>
+  <div class="modal fade" id="changePassModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4"><h3 class="mb-2">Change access code</h3><p class="text-muted small">Your own code needs the current one. The Manager can type another person’s name and a new code.</p><label class="form-label">Name</label><input id="changePassName" class="form-control mb-2" autocomplete="username"><label class="form-label">Current access code</label><input type="password" id="changePassCurrent" class="form-control mb-2" autocomplete="current-password"><label class="form-label">New access code</label><input type="password" id="changePassNext" class="form-control mb-3" autocomplete="new-password"><p class="text-danger small mb-2" id="changePassErr"></p><button class="btn btn-dark w-100" onclick="submitChangePassword()">SAVE ACCESS CODE</button></div></div></div>
   <div class="modal fade" id="startModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="brand-font mb-2">Start Order</h3><h1 class="fw-bold text-primary mb-3" id="startModalOrder">...</h1><button class="btn btn-primary btn-lg w-100 mt-3" onclick="confirmStart()">START TIMER</button></div></div></div>
   <div class="modal fade" id="batchWorkModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -2506,8 +2506,10 @@
     function openChangePassword() {
       const err = document.getElementById('changePassErr');
       if (err) err.textContent = '';
+      const nameEl = document.getElementById('changePassName');
       const cur = document.getElementById('changePassCurrent');
       const next = document.getElementById('changePassNext');
+      if (nameEl && !nameEl.value) nameEl.value = session.name || '';
       if (cur) cur.value = '';
       if (next) next.value = '';
       if (changePassModal) changePassModal.show();
@@ -2518,12 +2520,13 @@
         if (err) err.textContent = 'Log in first';
         return;
       }
+      const nameEl = document.getElementById('changePassName');
       fetch('/api/office/password', {
         method: 'POST',
         credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json' },
+        headers: Object.assign({ 'Content-Type': 'application/json' }, officeToken() ? { 'x-sd-token': officeToken() } : {}),
         body: JSON.stringify({
-          name: session.name,
+          name: (nameEl && nameEl.value) || session.name,
           current_password: document.getElementById('changePassCurrent').value,
           new_password: document.getElementById('changePassNext').value
         })
