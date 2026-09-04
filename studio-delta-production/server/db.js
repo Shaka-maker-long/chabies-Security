@@ -1849,6 +1849,9 @@ function upsertEnquiry(row, opts) {
   }
   payload.month_enquired = monthFromEnquiryDate(payload.date_enquired);
   const existing = getEnquiryRaw(payload.enquiry_no);
+  if ((opts && opts.createOnly) && existing) {
+    throw new Error("Enquiry " + payload.enquiry_no + " is already on this system");
+  }
   if (!payload.enquiry_type && existing && existing.enquiry_type) payload.enquiry_type = existing.enquiry_type;
   payload.products = normalizeEnquiryLines(row, existing);
   payload.product = payload.products.filter((p) => p.product).map((p) => p.product).join(", ");
