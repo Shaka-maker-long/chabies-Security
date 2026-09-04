@@ -940,7 +940,7 @@
           || (document.getElementById("typeFilter") || {}).value
           || (document.getElementById("sourceFilter") || {}).value
           || (document.getElementById("categoryFilter") || {}).value;
-        const msg = filtered
+        const msg = rows.length && filtered
           ? "No enquiries match those filters."
           : "No enquiries yet. Use New enquiry, or Add existing enquiry for jobs already in progress on the previous system.";
         html += "<tr><td class=\"empty\" colspan=\"" + HEADERS.length + "\">" + msg + "</td></tr>";
