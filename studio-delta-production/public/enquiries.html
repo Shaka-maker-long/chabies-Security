@@ -79,6 +79,8 @@
     .stack-form textarea { min-height:72px; }
     .stack-grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
     .capture-sheet { width:min(720px, 96vw); }
+    .capture-correspondence { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#f8fafc; }
+    .capture-correspondence .hint { margin:6px 0 0; }
     .view-sheet { width:min(780px, 96vw); }
     #grid tbody tr[data-i] { cursor:pointer; }
     #grid tbody tr[data-i]:hover td { background:#f2f4f7; }
@@ -296,10 +298,11 @@
         <label>Comment
           <textarea id="cap_comment" placeholder="Anything costing should know"></textarea>
         </label>
-        <div id="captureCorrespondence" hidden>
+        <div id="captureCorrespondence" class="capture-correspondence">
           <label>Correspondance link *
-            <textarea id="cap_correspondence" class="sd-path" rows="3" placeholder="Link or path" autocomplete="off"></textarea>
+            <textarea id="cap_correspondence" rows="3" placeholder="Paste the file link or path" autocomplete="off"></textarea>
           </label>
+          <p class="hint">Required before Costing.</p>
         </div>
         <div class="err" id="captureErr"></div>
         <div class="enq-dup" id="captureDup" hidden></div>
@@ -758,6 +761,10 @@
           const j = await r.json();
           if (!j.ok) {
             document.getElementById("status").textContent = j.error || "Save the enquiry first";
+            if (/Correspondance/i.test(j.error || "")) {
+              openCaptureForCorrespondence(i, j.error);
+              return;
+            }
             if (/Custom|New Design|Dimensions|Colour/i.test(j.error || "")) openCapture(i);
             return;
           }
@@ -1050,7 +1057,15 @@
       }
       const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(body) });
       const j = await r.json();
-      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      if (!j.ok) {
+        if (/Correspondance/i.test(j.error || "")) {
+          closeModal(false);
+          openCaptureForCorrespondence(modal.i, j.error);
+          return;
+        }
+        err.textContent = j.error || "Could not save";
+        return;
+      }
       closeModal(true);
       await load();
       document.getElementById("status").textContent = "Saved";
@@ -1159,7 +1174,15 @@
       }
       const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(row) });
       const j = await r.json();
-      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      if (!j.ok) {
+        if (/Correspondance/i.test(j.error || "")) {
+          closeSpec(true);
+          openCaptureForCorrespondence(specModal.i, j.error);
+          return;
+        }
+        err.textContent = j.error || "Could not save";
+        return;
+      }
       if (j.dropdowns) dropdowns = j.dropdowns;
       closeSpec(true);
       await load();
@@ -1336,14 +1359,20 @@
       }
       return true;
     }
-    function showCaptureCorrespondence(show) {
+    function promptCaptureCorrespondence(message) {
       const wrap = document.getElementById("captureCorrespondence");
-      if (wrap) wrap.hidden = !show;
-    }
-    function promptCaptureCorrespondence() {
-      showCaptureCorrespondence(true);
       const el = document.getElementById("cap_correspondence");
-      if (el) el.focus();
+      const err = document.getElementById("captureErr");
+      if (err && message) err.textContent = message;
+      if (wrap && wrap.scrollIntoView) wrap.scrollIntoView({ block: "center" });
+      if (el) {
+        el.focus();
+        if (el.scrollIntoView) el.scrollIntoView({ block: "center" });
+      }
+    }
+    function openCaptureForCorrespondence(index, message) {
+      openCapture(index);
+      promptCaptureCorrespondence(message || "Enter a Correspondance link.");
     }
     function openCapture(index) {
       const i = typeof index === "number" && index >= 0 ? index : -1;
@@ -1391,7 +1420,6 @@
       }
       document.getElementById("captureErr").textContent = "";
       document.getElementById("cap_correspondence").value = "";
-      showCaptureCorrespondence(!!(existing && captureWouldCost(existing, existing) && !existingCorrespondenceCount(existing)));
       renderCaptureLines();
       toggleCaptureType();
       document.getElementById("captureMask").classList.add("open");
@@ -1484,8 +1512,7 @@
       if (captureWouldCost(payload, existing) && !existingCorrespondenceCount(existing)) {
         const link = String(document.getElementById("cap_correspondence").value || "").trim();
         if (!link) {
-          err.textContent = "Enter a Correspondance link.";
-          promptCaptureCorrespondence();
+          promptCaptureCorrespondence("Enter a Correspondance link.");
           return;
         }
         payload.correspondence_links = link;
@@ -1494,7 +1521,7 @@
       const j = await r.json();
       if (!j.ok) {
         err.textContent = j.error || "Could not save";
-        if (/Correspondance/i.test(j.error || "")) promptCaptureCorrespondence();
+        if (/Correspondance/i.test(j.error || "")) promptCaptureCorrespondence(j.error);
         return;
       }
       closeCapture();
