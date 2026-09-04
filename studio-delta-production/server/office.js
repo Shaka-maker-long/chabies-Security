@@ -188,7 +188,7 @@ function mountOffice(app) {
   app.put("/api/office/users", requireOffice, (req, res) => {
     try {
       if (!staff.canManageUsers(req.office)) {
-        res.status(403).json({ ok: false, error: "Only the Users manager can add people or assign roles." });
+        res.status(403).json({ ok: false, error: "Only the Manager can add people or assign roles." });
         return;
       }
       res.json({ ok: true, row: staff.upsertUser(req.body || {}) });
@@ -198,7 +198,7 @@ function mountOffice(app) {
   });
   app.delete("/api/office/users/:name", requireOffice, (req, res) => {
     if (!staff.canManageUsers(req.office)) {
-      res.status(403).json({ ok: false, error: "Only the Users manager can delete people." });
+      res.status(403).json({ ok: false, error: "Only the Manager can delete people." });
       return;
     }
     try {

@@ -43,7 +43,7 @@
   <div class="wrap">
     <p class="help"><b>Production</b> people only see the floor tasks you tick — not Orders, Debtors, or other office pages. <b>Admin</b> can open office pages. Untick <b>See debtors</b> if that admin must not see money still owing.</p>
     <p class="help">Tick <b>Costing</b>, <b>Quoting</b>, and <b>Approval</b> on the office people who usually do that work. New enquiries use those people automatically, so you do not pick them on every enquiry. You can still choose someone else on a single enquiry. Leave Approval unticked if cost sheets should skip approval.</p>
-    <p class="help">One person ticked <b>Manage users</b> can add, delete, and assign roles. Everyone else changes only their own access code — use <b>Change access code</b> in the menu, or the form below if you opened Users.</p>
+    <p class="help">One person with job title <b>Manager</b> can add, delete, and set Access. That person is also office Admin. Until someone is Manager, the first office Admin can still open Users. Everyone else changes only their own access code — use <b>Change access code</b> in the menu, or the form below if you opened Users.</p>
     <p class="help">The live database is <b>SQLite on Railway</b>. Google Sheets is not used. Every night at 02:00 Johannesburg the app copies SQLite, office JSON, and enquiry files into <code>/app/data/backups</code> (last 14 days stay on the volume). If Google Drive is set, that same copy is uploaded off the server and an email is sent. <b>Backup now</b> runs that copy immediately. <b>Download SQLite</b> is a copy for your PC.</p>
     <p class="help" id="dbLine"></p>
     <p class="help" id="backupLine"></p>
@@ -57,14 +57,20 @@
       <p class="pass-err" id="ownErr"></p>
       <button type="button" onclick="saveOwnPassword()">Save access code</button>
     </div>
+    <datalist id="jobTitles">
+      <option value="Manager"></option>
+      <option value="Admin"></option>
+      <option value="Welding"></option>
+      <option value="Quality Control"></option>
+    </datalist>
     <table id="usersTable">
       <thead>
-        <tr><th>Name</th><th>Access</th><th>Job title</th><th>Enquiry roles</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th>Manage users</th><th></th></tr>
+        <tr><th>Name</th><th>Access</th><th>Job title</th><th>Enquiry roles</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th></th></tr>
       </thead>
       <tbody id="body"></tbody>
     </table>
   </div>
-  <script src="/office-auth.js?v=users-pass"></script>
+  <script src="/office-auth.js?v=logged-in"></script>
   <script>
     const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
     const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval"];
@@ -80,16 +86,14 @@
         const roleDisabled = u.access !== "Admin" ? " disabled" : "";
         const enquiryRoles = ENQUIRY_ROLES.map((t) => "<label class='t'><input type='checkbox' data-i='"+i+"' data-role='"+t+"'"+(roles.indexOf(t)>=0?" checked":"")+roleDisabled+"> "+t+"</label>").join("");
         const debtDisabled = u.access !== "Admin" ? " disabled" : "";
-        const manageDisabled = u.access !== "Admin" ? " disabled" : "";
         return "<tr>" +
           "<td><input data-i='"+i+"' data-k='name' value='"+esc(u.name)+"'></td>" +
           "<td><select data-i='"+i+"' data-k='access'><option"+(u.access==="Production"?" selected":"")+">Production</option><option"+(u.access==="Admin"?" selected":"")+">Admin</option></select></td>" +
-          "<td><input data-i='"+i+"' data-k='role' value='"+esc(u.role)+"'></td>" +
+          "<td><input data-i='"+i+"' data-k='role' list='jobTitles' placeholder='Manager, Welding…' value='"+esc(u.role)+"'></td>" +
           "<td><div class='tasks'>"+enquiryRoles+"</div></td>" +
           "<td><input data-i='"+i+"' data-k='password' placeholder='Leave blank to keep' value=''></td>" +
           "<td><div class='tasks'>"+tasks+"</div></td>" +
           "<td><input type='checkbox' data-i='"+i+"' data-k='seeDebtors'"+(u.canSeeDebtors?" checked":"")+debtDisabled+"></td>" +
-          "<td><input type='checkbox' data-i='"+i+"' data-k='manageUsers'"+(u.canManageUsers?" checked":"")+manageDisabled+"></td>" +
           "<td><button class='ghost' data-del='"+i+"'>Delete</button></td></tr>";
       }).join("");
       body.oninput = body.onchange = (e) => {
@@ -109,15 +113,19 @@
         } else if (k === "seeDebtors") {
           rows[i].canSeeDebtors = e.target.checked;
           rows[i].seeDebtors = e.target.checked ? "Yes" : "No";
-        } else if (k === "manageUsers") {
-          rows.forEach((u, n) => {
-            u.canManageUsers = n === i && e.target.checked && u.access === "Admin";
-            u.manageUsers = u.canManageUsers ? "Yes" : "No";
-          });
-          render();
         } else if (k) {
           rows[i][k] = e.target.value;
-          if (k === "access") {
+          if (k === "role" && String(rows[i].role || "").trim().toLowerCase() === "manager") {
+            rows[i].access = "Admin";
+            if (rows[i].seeDebtors !== "No") {
+              rows[i].canSeeDebtors = true;
+              rows[i].seeDebtors = "Yes";
+            }
+            rows.forEach((u, n) => {
+              if (n !== i && String(u.role || "").trim().toLowerCase() === "manager") u.role = "Admin";
+            });
+            render();
+          } else if (k === "access") {
             if (rows[i].access === "Admin") {
               rows[i].canSeeDebtors = true;
               rows[i].seeDebtors = "Yes";
@@ -125,8 +133,7 @@
               rows[i].canSeeDebtors = false;
               rows[i].seeDebtors = "No";
               rows[i].enquiryRoles = [];
-              rows[i].canManageUsers = false;
-              rows[i].manageUsers = "No";
+              if (String(rows[i].role || "").trim().toLowerCase() === "manager") rows[i].role = "Admin";
             }
             render();
           }
@@ -151,9 +158,26 @@
     }
     async function saveAll() {
       document.getElementById("status").textContent = "Saving…";
+      const managers = rows.filter((u) => String(u.name || "").trim() && String(u.role || "").trim().toLowerCase() === "manager");
+      if (managers.length > 1) {
+        document.getElementById("status").textContent = "Only one person can have the Manager job title.";
+        return;
+      }
       for (const u of rows) {
         if (!String(u.name || "").trim()) continue;
-        const r = await sdOfficeFetch("/api/office/users", { method: "PUT", body: JSON.stringify(u) });
+        const payload = {
+          name: u.name,
+          access: u.access,
+          role: u.role,
+          password: u.password,
+          tasks: u.tasks,
+          enquiryRoles: u.enquiryRoles,
+          seeDebtors: u.seeDebtors,
+          canSeeDebtors: u.canSeeDebtors,
+          manageUsers: false,
+          canManageUsers: false
+        };
+        const r = await sdOfficeFetch("/api/office/users", { method: "PUT", body: JSON.stringify(payload) });
         const j = await r.json();
         if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
       }

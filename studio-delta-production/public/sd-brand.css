@@ -378,6 +378,13 @@ body.nav-collapsed .sd-nav-label { display: none; }
   border-radius: 2px;
   margin-bottom: 6px;
 }
+.sidebar-who-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sd-muted, #a8a29e);
+  margin-bottom: 2px;
+}
 .sidebar-who-name {
   font-size: 12px;
   font-weight: 650;

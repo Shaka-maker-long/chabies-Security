@@ -100,7 +100,7 @@ Do **not** commit the JSON key or a `.env` file.
 - `/tasks` — **My tasks**. Office Admins see open work assigned to them and update the system from that queue (preview the file, confirm it, save). Finished work moves to **Completed** (`/tasks/completed`). Follow-ups due 7 days after the quote or last follow-up show as overdue on the to-do list.
 - `/schedule` — order list + week grid (Mon–Fri)
 - `/dropdowns` — lists for Type, Category, Product, and the other order dropdowns
-- `/users` — office and floor people, Railway backup download. Google Sheets is not used. One person ticked **Manage users** can add, delete, and assign roles. Everyone else only changes their own access code (**Change access code** in the menu, or on Home after login). On Admin people, tick **Costing**, **Quoting**, and **Approval** so those names fill in automatically on new enquiries. You can still pick someone else on a single enquiry. Leave Approval unticked to skip cost-sheet approval.
+- `/users` — office and floor people, Railway backup download. Google Sheets is not used. One person with job title **Manager** can add, delete, and set Access (Admin vs Production). Until someone is Manager, the first office Admin can still open Users. Everyone else only changes their own access code (**Change access code** in the menu, or on Home after login). After login, the sidebar shows **Logged in as** with the person’s name and job title. On Admin people, tick **Costing**, **Quoting**, and **Approval** so those names fill in automatically on new enquiries. You can still pick someone else on a single enquiry. Leave Approval unticked to skip cost-sheet approval.
 - `/outlook-addin` — optional install page for Outlook with Get Add-ins. Classic Outlook without add-ins should paste the email link on the enquiry instead of attaching the `.msg`.
 
 ## Floor rules
@@ -133,9 +133,9 @@ Add a **Tasks** column (column D). The first time the app opens it will create t
 | --- | --- | --- | --- |
 | Sipho | Welder Tagger | 1234 | Welding, Tagging |
 | Thabo | Quality Control | 1234 | Quality Control |
-| Admin | Admin | **** | |
+| Admin | Manager | **** | |
 
-- **Admin** Home is the first page after login: enquiry/quote scorecard plus the live shop twin. The office job cart is new orders. Each station and pile shows a count button; click it for the order list. Logging in from an office page (Enquiries, Orders, …) also returns to Home. Production, Workers, Metrics, QC Reports, and Activity stay in the menu.
+- **Admin** Home is the first page after login: enquiry/quote scorecard plus the live shop twin. The office job cart is new orders. Each station and pile shows a count button; click it for the order list. Logging in from an office page (Enquiries, Orders, …) also returns to Home. Production, Workers, Metrics, QC Reports, and Activity stay in the menu. Job title **Manager** is the person who adds and deletes people on Users.
 - **Quality Control / QC** only sees QC work.
 - Anyone else only sees the tasks listed. `Welding, Tagging` (or a role like `Welder Tagger`) means they pick Welding or Tagging after login, and only those boards appear.
 - Painters need `Painting` on the Tasks column. That also lets them prep items for painting (no extra `Paint Preparation` task required). Assemblers with `Assembly` also get **Paint prep** on Ready for Assembly cards.

@@ -84,11 +84,12 @@ function ensureUsersSheetTasksColumn() {
 }
 
 function parseAccessLabel(accessCell, roleCell) {
+  var role = String(roleCell || "").trim().toLowerCase();
+  if (role === "manager") return "Admin";
   var a = String(accessCell || "").trim().toLowerCase();
-  if (a === "admin") return "Admin";
+  if (a === "admin" || a === "manager") return "Admin";
   if (a === "production") return "Production";
-  var r = String(roleCell || "").trim().toLowerCase();
-  if (r === "admin") return "Admin";
+  if (role === "admin") return "Admin";
   return "Production";
 }
 
@@ -106,7 +107,7 @@ function parseUserTasks(roleCell, tasksCell, forceAdmin) {
   var role = String(roleCell || "").trim();
   var extra = String(tasksCell || "").trim();
   var roleLower = role.toLowerCase();
-  var isAdmin = !!forceAdmin || roleLower === "admin";
+  var isAdmin = !!forceAdmin || roleLower === "admin" || roleLower === "manager";
   if (isAdmin) {
     return { isAdmin: true, isQcOnly: false, tasks: KNOWN_FLOOR_TASKS.slice(), jobTitle: role || "Admin" };
   }
@@ -151,6 +152,8 @@ function readUserRowProfile(row) {
   var isAdmin = access === "Admin";
   var parsed = parseUserTasks(row[1], row.length > 3 ? row[3] : "", isAdmin);
   var debtorsCell = String(row.length > 5 ? row[5] : "").trim().toLowerCase();
+  var manageCell = String(row.length > 7 ? row[7] : "").trim().toLowerCase();
+  var isManager = String(row[1] || "").trim().toLowerCase() === "manager";
   return {
     name: name,
     role: String(row[1] || "").trim(),
@@ -159,6 +162,7 @@ function readUserRowProfile(row) {
     isAdmin: isAdmin,
     canSeeOffice: isAdmin,
     canSeeDebtors: isAdmin && debtorsCell !== "no",
+    canManageUsers: isAdmin && (isManager || manageCell === "yes" || manageCell === "true" || manageCell === "1"),
     isQcOnly: parsed.isQcOnly,
     tasks: parsed.tasks
   };
@@ -515,7 +519,7 @@ function getUsersAndRoles() {
   var cached = floorCacheGet("users");
   if (cached) return cached;
   var ss = getSpreadsheet();
-  var data = getSheetGrid(ss, TAB_USERS, 6);
+  var data = getSheetGrid(ss, TAB_USERS, 8);
   if (data.length <= 1) return []; 
   var users = [];
   for (var i = 1; i < data.length; i++) {
@@ -528,6 +532,7 @@ function getUsersAndRoles() {
       isAdmin: profile.isAdmin,
       canSeeOffice: profile.canSeeOffice,
       canSeeDebtors: profile.canSeeDebtors,
+      canManageUsers: profile.canManageUsers,
       isQcOnly: profile.isQcOnly,
       tasks: profile.tasks
     });
@@ -556,7 +561,7 @@ function verifyLogin(role, name, password) {
   // 1. Find the Admin Password first (Master Key)
   var adminPassword = null;
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).toLowerCase() === "admin" || String(data[i][4] || "").toLowerCase() === "admin") {
+    if (String(data[i][1]).toLowerCase() === "admin" || String(data[i][1]).toLowerCase() === "manager" || String(data[i][4] || "").toLowerCase() === "admin") {
       adminPassword = data[i][2];
       break;
     }
@@ -590,7 +595,7 @@ function verifyLogin(role, name, password) {
 function verifyGlobalLogin(name, password) {
   var ss = getSpreadsheet();
   var sheet = getSheetOrDie(ss, TAB_USERS);
-  var data = getSheetGrid(ss, TAB_USERS, 6);
+  var data = getSheetGrid(ss, TAB_USERS, 8);
   if (!data.length) data = sheet.getDataRange().getValues();
   if (!data || data.length <= 1) {
     return { success: false, error: "No Users loaded yet. Wait a few seconds and try again, or use Admin / admin." };
@@ -599,7 +604,7 @@ function verifyGlobalLogin(name, password) {
   // 1. Find the Admin Password first (Master Key)
   var adminPassword = null;
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).toLowerCase() === "admin" || String(data[i][4] || "").toLowerCase() === "admin") {
+    if (String(data[i][1]).toLowerCase() === "admin" || String(data[i][1]).toLowerCase() === "manager" || String(data[i][4] || "").toLowerCase() === "admin") {
       adminPassword = data[i][2];
       break;
     }
@@ -625,6 +630,7 @@ function verifyGlobalLogin(name, password) {
           isAdmin: profile.isAdmin,
           canSeeOffice: profile.canSeeOffice,
           canSeeDebtors: profile.canSeeDebtors,
+          canManageUsers: profile.canManageUsers,
           isQcOnly: profile.isQcOnly,
           tasks: profile.tasks
         };
