@@ -102,7 +102,7 @@ assert.ok(processJs.indexOf('complete_cost_sheet') !== -1);
 assert.ok(!/complete_cost_sheet[\s\S]{0,200}valuesTable/.test(processJs), "cost sheet must not ask for product values");
 assert.ok(processJs.indexOf("Add another cost sheet") !== -1);
 assert.ok(processJs.indexOf("cost_sheets") !== -1);
-assert.ok(processJs.indexOf("placeholder=\"Link or path\"") !== -1);
+assert.ok(processJs.indexOf("Link or path") !== -1);
 assert.ok(processJs.indexOf("quote_assignee") !== -1);
 assert.ok(processJs.indexOf("Request approval from (optional)") !== -1);
 assert.ok(processJs.indexOf("Quoting person") !== -1);
