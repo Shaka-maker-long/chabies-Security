@@ -84,6 +84,7 @@ assert.ok(js.indexOf("sdPaintOfficeWho") !== -1);
 assert.ok(js.indexOf("officeWhoTitle") !== -1);
 assert.ok(floor.indexOf("Logged in as") !== -1);
 assert.ok(floor.indexOf("sidebarWhoRole") !== -1);
+assert.ok(floor.indexOf("loggedInJobTitle") !== -1);
 assert.ok(floor.indexOf("session.jobTitle") !== -1);
 assert.ok(js.indexOf("sdHideUsersLink") !== -1);
 assert.ok(floor.indexOf("openChangePassword") !== -1);
