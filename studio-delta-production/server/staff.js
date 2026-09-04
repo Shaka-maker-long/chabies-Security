@@ -8,7 +8,7 @@ const FLOOR_TASKS = [
   "Quality Control", "Paint Preparation", "Painting", "Assembly"
 ];
 
-const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval"];
+const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval", "Follow-up"];
 const USER_HEADERS = ["Name", "Role", "Password", "Tasks", "Access", "See Debtors", "Enquiry Roles", "Manage Users"];
 
 const sessions = new Map();
@@ -168,6 +168,7 @@ function canonicalizeEnquiryRole(raw) {
   if (t === "costing" || t === "coster") return "Costing";
   if (t === "quoting" || t === "quote" || t === "quoter") return "Quoting";
   if (t === "approval" || t === "approver") return "Approval";
+  if (t === "follow-up" || t === "followup" || t === "follow up" || t === "followups") return "Follow-up";
   return "";
 }
 
@@ -211,7 +212,9 @@ function enquiryRoleDefaults() {
   return {
     costing: defaultEnquiryAssignee("Costing"),
     quoting: defaultEnquiryAssignee("Quoting"),
-    approval: defaultEnquiryAssignee("Approval")
+    approval: defaultEnquiryAssignee("Approval"),
+    followup: defaultEnquiryAssignee("Follow-up"),
+    followups: enquiryRoleHolders("Follow-up")
   };
 }
 

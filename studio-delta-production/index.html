@@ -3240,7 +3240,7 @@
         homeKpi('Quote value excl VAT', formatHomeRand(row.quoteRevenue || 0)) +
         homeKpi('Ordered value excl VAT', formatHomeRand(row.orderedRevenue || 0)) +
         '</div>' +
-        '<p class="home-score-note">Quoted waiting is Quoted plus Followed Up. Follow-ups are overdue 7 days after the quote or last follow-up.</p>';
+        '<p class="home-score-note">Quoted waiting is Quoted plus Followed Up. Follow-up is due 7 days after the latest quote, up to 3 times on that quote.</p>';
     }
     function loadHomeScore() {
       const box = document.getElementById('homeScore');

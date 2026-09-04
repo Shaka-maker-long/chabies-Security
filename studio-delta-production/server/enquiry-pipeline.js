@@ -4,6 +4,7 @@ const access = require("./enquiry-access");
 const { NEW_DESIGN_MIN_CHARS } = require("./enquiries-default");
 
 const FOLLOW_UP_DAYS = 7;
+const MAX_FOLLOW_UPS = 3;
 
 const WAITING_STATUSES = [
   "Waiting on clients personal details",
@@ -176,7 +177,7 @@ function isOverdue(dueAt) {
 }
 
 function followUpDueAt(row) {
-  const list = Array.isArray(row.follow_ups) ? row.follow_ups : [];
+  const list = currentQuoteFollowUps(row);
   if (list.length) {
     const last = list[list.length - 1];
     return addDaysIso(last.uploaded_at || last.at || db.nowIso(), FOLLOW_UP_DAYS);
@@ -185,10 +186,71 @@ function followUpDueAt(row) {
   return "";
 }
 
+function currentQuoteKey(row) {
+  return String((row && row.quote_no) || "").trim();
+}
+
+function currentQuoteFollowUps(row) {
+  const all = Array.isArray(row && row.follow_ups) ? row.follow_ups : [];
+  if (!all.length) return [];
+  const key = currentQuoteKey(row);
+  const tagged = all.filter((f) => String((f && f.quote_no) || "").trim());
+  if (key && tagged.length) {
+    return all.filter((f) => String((f && f.quote_no) || "").trim() === key);
+  }
+  const quotes = Array.isArray(row && row.quotes) ? row.quotes : [];
+  if (quotes.length <= 1) return all;
+  const latest = quotes[quotes.length - 1] || {};
+  const from = Date.parse(latest.uploaded_at || "") || 0;
+  if (!from) return all;
+  return all.filter((f) => (Date.parse((f && f.uploaded_at) || "") || 0) >= from);
+}
+
+function followUpsExhausted(row) {
+  return currentQuoteFollowUps(row).length >= MAX_FOLLOW_UPS;
+}
+
 function nextFollowUpLabel(count) {
   const n = Number(count) || 0;
   if (n <= 0) return "Follow up";
   return "Follow up x" + (n + 1);
+}
+
+function followUpPeople(row, body) {
+  const holders = staff.enquiryRoleHolders("Follow-up");
+  if (holders.length) return holders;
+  const named = optionalAssignee((body && (body.follow_up_assignee || body.assignee)) || (row && row.follow_up_assignee) || "");
+  return named ? [named] : [];
+}
+
+function openFollowUpAssignees(row) {
+  return (row.tasks || [])
+    .filter((t) => t.kind === "follow_up" && t.status === "open" && t.assignee)
+    .map((t) => t.assignee);
+}
+
+function assignFollowUpPool(row, dueAt, title, body) {
+  const people = followUpPeople(row, body);
+  if (!people.length) throw new Error("Tick Follow-up on Users");
+  cancelOpenKind(row, "follow_up");
+  people.forEach((name) => {
+    addTask(row, "follow_up", name, { title: title || "Follow up", due_at: dueAt });
+  });
+  row.follow_up_assignees = people.slice();
+  row.follow_up_assignee = people.join(", ");
+}
+
+function finishFollowUpPool(row, actor) {
+  for (const t of row.tasks || []) {
+    if (t.kind !== "follow_up" || t.status !== "open") continue;
+    if (namesMatch(t.assignee, actor)) {
+      t.status = "done";
+      t.completed_at = db.nowIso();
+      t.completed_by = actor;
+    } else {
+      t.status = "cancelled";
+    }
+  }
 }
 
 function requireFile(body, message) {
@@ -247,6 +309,10 @@ function actionKind(actionId) {
 function actionOwner(row, actionId) {
   const kind = actionKind(actionId);
   if (!kind) return "";
+  if (kind === "follow_up") {
+    const open = openFollowUpAssignees(row);
+    if (open.length) return open.join(", ");
+  }
   const open = openOfKind(row, kind);
   if (open && open.assignee) return open.assignee;
   if (kind === "quote") return row.quote_assignee || "";
@@ -260,10 +326,17 @@ function actionOwner(row, actionId) {
 
 function canAct(row, actor, actionId) {
   if (!DELIVERABLE_ACTIONS[actionId]) return true;
-  const owner = actionOwner(row, actionId);
-  if (!owner) return true;
   const who = String(actor || "").trim();
   if (!who) return false;
+  if (actionId === "complete_followup") {
+    if (isManagerName(who)) return true;
+    if (followUpsExhausted(row)) return true;
+    if (openFollowUpAssignees(row).some((n) => namesMatch(n, who))) return true;
+    if (!openFollowUpAssignees(row).length && followUpPeople(row).some((n) => namesMatch(n, who))) return true;
+    return access.grantedFor(row, who, "follow_up");
+  }
+  const owner = actionOwner(row, actionId);
+  if (!owner) return true;
   if (namesMatch(owner, who)) return true;
   if (isManagerName(who)) return true;
   return access.grantedFor(row, who, actionKind(actionId));
@@ -330,7 +403,13 @@ function availableActions(row) {
   if (statusAllows(row, ["Quoted", "Followed Up"])) {
     actions.push({ id: "complete_quote", label: "Issue another quote" });
     actions.push({ id: "assign_costing", label: "Client wants changes — recost" });
-    actions.push({ id: "complete_followup", label: "Log a follow-up screenshot" });
+    if (!followUpsExhausted(row)) {
+      const n = currentQuoteFollowUps(row).length;
+      actions.push({
+        id: "complete_followup",
+        label: n ? ("Log follow-up " + (n + 1) + " of " + MAX_FOLLOW_UPS) : "Log a follow-up screenshot"
+      });
+    }
     actions.push({ id: "complete_order", label: "Client approved — attach POP" });
     actions.push({ id: "complete_reject", label: "Client rejected" });
   }
@@ -354,19 +433,23 @@ function listMyTasks(userName) {
       const dueAt = task.due_at || (task.kind === "follow_up" ? followUpDueAt(row) : "");
       out.push(decorateTask(row, task, dueAt));
     }
-    if (statusAllows(row, ["Quoted", "Followed Up"]) && namesMatch(row.follow_up_assignee, me) && !openOfKind(row, "follow_up")) {
-      const dueAt = followUpDueAt(row);
-      if (dueAt && isOverdue(dueAt)) {
-        out.push(decorateTask(row, {
-          id: "follow-due",
-          kind: "follow_up",
-          title: nextFollowUpLabel((row.follow_ups || []).length),
-          assignee: row.follow_up_assignee,
-          status: "open",
-          created_at: row.date_quoted || "",
-          due_at: dueAt,
-          note: "Quote or last follow-up is 7 or more days old"
-        }, dueAt));
+    if (statusAllows(row, ["Quoted", "Followed Up"]) && !followUpsExhausted(row)) {
+      const mineOpen = (row.tasks || []).some((t) => t.kind === "follow_up" && t.status === "open" && namesMatch(t.assignee, me));
+      const inPool = followUpPeople(row).some((n) => namesMatch(n, me)) || namesMatch(row.follow_up_assignee, me);
+      if (inPool && !mineOpen) {
+        const dueAt = followUpDueAt(row);
+        if (dueAt && isOverdue(dueAt)) {
+          out.push(decorateTask(row, {
+            id: "follow-due",
+            kind: "follow_up",
+            title: nextFollowUpLabel(currentQuoteFollowUps(row).length),
+            assignee: me,
+            status: "open",
+            created_at: row.date_quoted || "",
+            due_at: dueAt,
+            note: "Quote or last follow-up is 7 or more days old"
+          }, dueAt));
+        }
       }
     }
   }
@@ -425,6 +508,8 @@ function processSnapshot(enquiryNo, actorName) {
     waitingStatuses: WAITING_STATUSES,
     closedStatuses: CLOSED_STATUSES.filter((s) => s !== "Rejected"),
     followUpDays: FOLLOW_UP_DAYS,
+    followUpMax: MAX_FOLLOW_UPS,
+    followUpPeople: staff.enquiryRoleHolders("Follow-up"),
     quoteNo: db.quoteNoHint()
   };
 }
@@ -1035,7 +1120,6 @@ function completeQuote(row, actor, body) {
   requirePricedProducts(row);
   archiveLegacyQuote(row);
   const quoteNo = db.requireUniqueQuoteNo(body.quote_no, revision ? "" : row.enquiry_no);
-  const followPerson = requireAssignee(body.follow_up_assignee || body.assignee);
   const payload = {
     ...row,
     quote_no: quoteNo,
@@ -1050,42 +1134,44 @@ function completeQuote(row, actor, body) {
   Object.assign(row, saved);
   recordIssuedQuote(row, actor);
   closeOpenKind(row, "quote", actor);
-  row.follow_up_assignee = followPerson;
-  cancelOpenKind(row, "follow_up");
-  addTask(row, "follow_up", followPerson, {
-    title: "Follow up",
-    due_at: addDaysIso(row.date_quoted || db.todayEnquiryDate(), FOLLOW_UP_DAYS)
-  });
+  const dueAt = addDaysIso(row.date_quoted || db.todayEnquiryDate(), FOLLOW_UP_DAYS);
+  assignFollowUpPool(row, dueAt, "Follow up", body);
+  const popOwner = row.quote_assignee || actor;
   if (!openOfKind(row, "pop")) {
-    addTask(row, "pop", followPerson, { title: "Record client outcome" });
+    addTask(row, "pop", popOwner, { title: "Record client outcome" });
   }
 }
 
 function completeFollowup(row, actor, body) {
   if (!statusAllows(row, ["Quoted", "Followed Up"])) throw new Error("Follow-ups start after the quote PDF is issued");
+  if (followUpsExhausted(row)) {
+    throw new Error("This quote already has " + MAX_FOLLOW_UPS + " follow-ups. Issue another quote to start a new follow-up.");
+  }
   const filename = body.file_name || "follow-up.png";
   const raw = requireFile(body, "Upload a screenshot of the follow-up");
   if (!isImage(filename, "") && !isPdf(filename, "", null)) {
     throw new Error("Follow-up proof must be a screenshot (image) or PDF");
   }
-  const n = (row.follow_ups || []).length + 1;
-  const file = db.saveEnquiryAttachment(row.enquiry_no, "follow_up_" + n, raw, filename);
+  const done = currentQuoteFollowUps(row);
+  const n = done.length + 1;
+  const fileKind = "follow_up_" + ((Array.isArray(row.follow_ups) ? row.follow_ups.length : 0) + 1);
+  const file = db.saveEnquiryAttachment(row.enquiry_no, fileKind, raw, filename);
+  if (!Array.isArray(row.follow_ups)) row.follow_ups = [];
   row.follow_ups.push({
     n,
+    quote_no: currentQuoteKey(row),
     label: n === 1 ? "Follow up" : "Follow up x" + n,
     uploaded_at: db.nowIso(),
     by: actor,
     file
   });
-  closeOpenKind(row, "follow_up", actor);
+  finishFollowUpPool(row, actor);
   row.status = "Followed Up";
-  const assignee = requireAssignee(body.assignee || row.follow_up_assignee || actor);
-  row.follow_up_assignee = assignee;
-  addTask(row, "follow_up", assignee, {
-    title: nextFollowUpLabel(n),
-    label: n === 1 ? "x2" : "x" + (n + 1),
-    due_at: addDaysIso(db.nowIso(), FOLLOW_UP_DAYS)
-  });
+  if (n < MAX_FOLLOW_UPS) {
+    assignFollowUpPool(row, addDaysIso(db.nowIso(), FOLLOW_UP_DAYS), nextFollowUpLabel(n), body);
+  } else {
+    cancelOpenKind(row, "follow_up");
+  }
 }
 
 function completeReject(row, actor, body) {
@@ -1174,6 +1260,9 @@ function reassignTask(row, _actor, body) {
 
 module.exports = {
   FOLLOW_UP_DAYS,
+  MAX_FOLLOW_UPS,
+  currentQuoteFollowUps,
+  followUpsExhausted,
   WAITING_STATUSES,
   CLOSED_STATUSES,
   officeAssignees,

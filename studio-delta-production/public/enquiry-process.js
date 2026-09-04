@@ -27,6 +27,23 @@
     const roles = (state.snap && state.snap.enquiryRoles) || {};
     return String(roles[kind] || "").trim();
   }
+  function followUpsThisQuote(row) {
+    const key = String((row && row.quote_no) || "").trim();
+    const all = (row && row.follow_ups) || [];
+    if (key) {
+      const tagged = all.filter((f) => String((f && f.quote_no) || "").trim() === key);
+      if (tagged.length || all.some((f) => f && f.quote_no)) return tagged.length;
+    }
+    return all.length;
+  }
+  function followUpPeopleNote() {
+    const names = (state.snap && state.snap.followUpPeople) || [];
+    const max = (state.snap && state.snap.followUpMax) || 3;
+    if (!names.length) {
+      return "<p class=\"sd-process-sub\">Tick Follow-up on Users. Follow-up starts 7 days after this quote, up to " + max + " times.</p>";
+    }
+    return "<p class=\"sd-process-sub\">Follow-up: " + names.map(esc).join(", ") + ". Starts 7 days after this quote, up to " + max + " times on this quote.</p>";
+  }
   function openAssignee(row, kind) {
     const t = ((row && row.tasks) || []).find((task) => task.kind === kind && task.status === "open");
     return (t && t.assignee) || "";
@@ -665,11 +682,13 @@
         "<label>Quotation number *<input class=\"sd-quote-no\" name=\"quote_no\" value=\"" + esc(next) + "\" autocomplete=\"off\"></label>" +
         "<p class=\"sd-process-sub\">" + esc(recentLine) + "</p>" +
         fileBlock("application/pdf,.pdf", "") +
-        "<label>Who follows up after 7 days?</label>" + assigneeSelect(row.follow_up_assignee || openAssignee(row, "follow_up"));
+        followUpPeopleNote();
     }
     if (action.id === "complete_followup") {
+      const n = followUpsThisQuote(row);
+      const max = (state.snap && state.snap.followUpMax) || 3;
       return fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "") +
-        "<label>Who owns the next follow-up?</label>" + assigneeSelect(row.follow_up_assignee);
+        "<p class=\"sd-process-sub\">Follow-up " + esc(String(n + 1)) + " of " + esc(String(max)) + " on this quote. Anyone ticked Follow-up on Users can log it; that clears it for the others.</p>";
     }
     if (action.id === "complete_reject") {
       return "<label>Rejection reason *<textarea name=\"comments\"></textarea></label>";
