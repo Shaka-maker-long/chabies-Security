@@ -24,37 +24,53 @@
     button.ghost { background:#fff; color:#1d2939; }
     .msg { font-size:12px; color:#667085; margin-left:auto; }
     p.help { color:#667085; font-size:13px; max-width:860px; }
+    .pass-card { max-width:420px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; }
+    .pass-card label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; margin:0 0 10px; }
+    .pass-card input { font-weight:400; }
+    .pass-err { color:#b42318; font-size:12px; min-height:16px; }
   </style>
 </head>
 <body>
   <header>
     <h1>Users</h1>
     <span class="msg" id="status"></span>
-    <button class="ghost" onclick="downloadBackup()">Download JSON backup</button>
-    <button class="ghost" onclick="downloadSqlite()">Download SQLite</button>
-    <button class="ghost" onclick="runBackup()">Backup now</button>
-    <button onclick="addRow()">Add user</button>
-    <button onclick="saveAll()">Save</button>
+    <button class="ghost" data-manage-only onclick="downloadBackup()">Download JSON backup</button>
+    <button class="ghost" data-manage-only onclick="downloadSqlite()">Download SQLite</button>
+    <button class="ghost" data-manage-only onclick="runBackup()">Backup now</button>
+    <button data-manage-only onclick="addRow()">Add user</button>
+    <button data-manage-only onclick="saveAll()">Save</button>
   </header>
   <div class="wrap">
     <p class="help"><b>Production</b> people only see the floor tasks you tick — not Orders, Debtors, or other office pages. <b>Admin</b> can open office pages. Untick <b>See debtors</b> if that admin must not see money still owing.</p>
     <p class="help">Tick <b>Costing</b>, <b>Quoting</b>, and <b>Approval</b> on the office people who usually do that work. New enquiries use those people automatically, so you do not pick them on every enquiry. You can still choose someone else on a single enquiry. Leave Approval unticked if cost sheets should skip approval.</p>
+    <p class="help">One person ticked <b>Manage users</b> can add, delete, and assign roles. Everyone else changes only their own access code — use <b>Change access code</b> in the menu, or the form below if you opened Users.</p>
     <p class="help">The live database is <b>SQLite on Railway</b>. Google Sheets is not used. Every night at 02:00 Johannesburg the app copies SQLite, office JSON, and enquiry files into <code>/app/data/backups</code> (last 14 days stay on the volume). If Google Drive is set, that same copy is uploaded off the server and an email is sent. <b>Backup now</b> runs that copy immediately. <b>Download SQLite</b> is a copy for your PC.</p>
     <p class="help" id="dbLine"></p>
     <p class="help" id="backupLine"></p>
     <p class="help" id="migrateWrap" style="display:none"><button class="ghost" type="button" onclick="migrateGoogle()">Copy old Google spreadsheet once</button></p>
-    <table>
+    <div id="passOnly" class="pass-card" style="display:none">
+      <h2 style="font-size:16px;margin:0 0 8px">Your access code</h2>
+      <p class="help" style="margin:0 0 12px">Enter your current code, then the new one.</p>
+      <label>Name<input id="ownName" autocomplete="username"></label>
+      <label>Current access code<input id="ownCurrent" type="password" autocomplete="current-password"></label>
+      <label>New access code<input id="ownNext" type="password" autocomplete="new-password"></label>
+      <p class="pass-err" id="ownErr"></p>
+      <button type="button" onclick="saveOwnPassword()">Save access code</button>
+    </div>
+    <table id="usersTable">
       <thead>
-        <tr><th>Name</th><th>Access</th><th>Job title</th><th>Enquiry roles</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th></th></tr>
+        <tr><th>Name</th><th>Access</th><th>Job title</th><th>Enquiry roles</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th>Manage users</th><th></th></tr>
       </thead>
       <tbody id="body"></tbody>
     </table>
   </div>
-  <script src="/office-auth.js?v=login-tab"></script>
+  <script src="/office-auth.js?v=users-pass"></script>
   <script>
     const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
     const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval"];
     let rows = [];
+    let canManage = false;
+    let meName = "";
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
     function render() {
       const body = document.getElementById("body");
@@ -64,6 +80,7 @@
         const roleDisabled = u.access !== "Admin" ? " disabled" : "";
         const enquiryRoles = ENQUIRY_ROLES.map((t) => "<label class='t'><input type='checkbox' data-i='"+i+"' data-role='"+t+"'"+(roles.indexOf(t)>=0?" checked":"")+roleDisabled+"> "+t+"</label>").join("");
         const debtDisabled = u.access !== "Admin" ? " disabled" : "";
+        const manageDisabled = u.access !== "Admin" ? " disabled" : "";
         return "<tr>" +
           "<td><input data-i='"+i+"' data-k='name' value='"+esc(u.name)+"'></td>" +
           "<td><select data-i='"+i+"' data-k='access'><option"+(u.access==="Production"?" selected":"")+">Production</option><option"+(u.access==="Admin"?" selected":"")+">Admin</option></select></td>" +
@@ -72,6 +89,7 @@
           "<td><input data-i='"+i+"' data-k='password' placeholder='Leave blank to keep' value=''></td>" +
           "<td><div class='tasks'>"+tasks+"</div></td>" +
           "<td><input type='checkbox' data-i='"+i+"' data-k='seeDebtors'"+(u.canSeeDebtors?" checked":"")+debtDisabled+"></td>" +
+          "<td><input type='checkbox' data-i='"+i+"' data-k='manageUsers'"+(u.canManageUsers?" checked":"")+manageDisabled+"></td>" +
           "<td><button class='ghost' data-del='"+i+"'>Delete</button></td></tr>";
       }).join("");
       body.oninput = body.onchange = (e) => {
@@ -91,6 +109,12 @@
         } else if (k === "seeDebtors") {
           rows[i].canSeeDebtors = e.target.checked;
           rows[i].seeDebtors = e.target.checked ? "Yes" : "No";
+        } else if (k === "manageUsers") {
+          rows.forEach((u, n) => {
+            u.canManageUsers = n === i && e.target.checked && u.access === "Admin";
+            u.manageUsers = u.canManageUsers ? "Yes" : "No";
+          });
+          render();
         } else if (k) {
           rows[i][k] = e.target.value;
           if (k === "access") {
@@ -101,6 +125,8 @@
               rows[i].canSeeDebtors = false;
               rows[i].seeDebtors = "No";
               rows[i].enquiryRoles = [];
+              rows[i].canManageUsers = false;
+              rows[i].manageUsers = "No";
             }
             render();
           }
@@ -207,17 +233,55 @@
         : ("Saving to " + (p.dataDir || "Railway") + ". Enquiries on file: " + (p.enquiryCount == null ? "—" : p.enquiryCount) + ".");
       document.getElementById("migrateWrap").style.display = j.migrateAvailable ? "" : "none";
     }
+    function applyManageMode() {
+      document.querySelectorAll("[data-manage-only]").forEach((el) => {
+        el.style.display = canManage ? "" : "none";
+      });
+      const table = document.getElementById("usersTable");
+      const pass = document.getElementById("passOnly");
+      if (table) table.style.display = canManage ? "" : "none";
+      if (pass) pass.style.display = canManage ? "none" : "";
+      const nameEl = document.getElementById("ownName");
+      if (nameEl && meName && !nameEl.value) nameEl.value = meName;
+    }
+    async function saveOwnPassword() {
+      const err = document.getElementById("ownErr");
+      err.textContent = "";
+      const r = await sdOfficeFetch("/api/office/password", {
+        method: "POST",
+        body: JSON.stringify({
+          name: document.getElementById("ownName").value,
+          current_password: document.getElementById("ownCurrent").value,
+          new_password: document.getElementById("ownNext").value
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      document.getElementById("ownCurrent").value = "";
+      document.getElementById("ownNext").value = "";
+      document.getElementById("status").textContent = "Access code updated";
+    }
     async function load() {
       const r = await sdOfficeFetch("/api/office/users");
       const j = await r.json();
       if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      canManage = !!j.canManageUsers;
       rows = j.rows || [];
+      applyManageMode();
       render();
-      document.getElementById("status").textContent = rows.length + " users";
-      loadDb();
-      loadBackup();
+      document.getElementById("status").textContent = canManage ? (rows.length + " users") : "Change your access code";
+      if (canManage) {
+        loadDb();
+        loadBackup();
+      }
     }
-    sdRequireOffice("users").then((p) => { if (p) load(); });
+    sdRequireOffice("users").then((p) => {
+      if (!p) return;
+      meName = p.name || "";
+      canManage = !!p.canManageUsers;
+      applyManageMode();
+      load();
+    });
   </script>
 </body>
 </html>

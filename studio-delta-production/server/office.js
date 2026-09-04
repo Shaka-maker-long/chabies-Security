@@ -157,7 +157,7 @@ function mountOffice(app) {
     }
     const session = staff.createSession(profile);
     res.setHeader("Set-Cookie", officeCookie(session.token));
-    res.json({ ok: true, ...session });
+    res.json({ ok: true, canManageUsers: staff.canManageUsers(profile), ...session });
   });
 
   app.post("/api/office/logout", (req, res) => {
@@ -172,22 +172,53 @@ function mountOffice(app) {
       res.status(401).json({ ok: false, error: "Log in as Admin first." });
       return;
     }
-    res.json({ ok: true, profile });
+    res.json({ ok: true, profile: Object.assign({}, profile, { canManageUsers: staff.canManageUsers(profile) }) });
   });
 
-  app.get("/api/office/users", requireOffice, (_req, res) => {
-    res.json({ ok: true, rows: staff.listUsers(), tasks: staff.FLOOR_TASKS });
+  app.get("/api/office/users", requireOffice, (req, res) => {
+    const manage = staff.canManageUsers(req.office);
+    const rows = staff.listUsers();
+    res.json({
+      ok: true,
+      rows: manage ? rows : rows.filter((u) => String(u.name).toLowerCase() === String(req.office.name).toLowerCase()),
+      tasks: staff.FLOOR_TASKS,
+      canManageUsers: manage
+    });
   });
   app.put("/api/office/users", requireOffice, (req, res) => {
     try {
+      if (!staff.canManageUsers(req.office)) {
+        res.status(403).json({ ok: false, error: "Only the Users manager can add people or assign roles." });
+        return;
+      }
       res.json({ ok: true, row: staff.upsertUser(req.body || {}) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
   });
   app.delete("/api/office/users/:name", requireOffice, (req, res) => {
-    staff.deleteUser(req.params.name);
-    res.json({ ok: true });
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Users manager can delete people." });
+      return;
+    }
+    try {
+      staff.deleteUser(req.params.name);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.post("/api/office/password", (req, res) => {
+    const session = staff.readSession(req);
+    const body = req.body || {};
+    const name = String((session && session.name) || body.name || "").trim();
+    try {
+      if (!name) throw new Error("Name is required");
+      staff.changeOwnPassword(name, body.current_password || body.currentPassword || body.password, body.new_password || body.newPassword);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.get("/api/office/durations", requireOffice, (_req, res) => {

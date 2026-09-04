@@ -12,13 +12,20 @@
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
     header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
-    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .enq-bar { display:flex; gap:12px 16px; align-items:center; flex-wrap:wrap; padding:10px 16px; background:#fff; border-bottom:1px solid var(--line); }
+    .enq-bar label { font-size:12px; font-weight:600; display:flex; gap:6px; align-items:center; color:var(--ink); }
+    .enq-bar select, .enq-bar input[type=date] { border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; font-weight:400; }
+    .enq-check { font-weight:600; }
+    .enq-total { margin-left:auto; display:flex; gap:14px 18px; align-items:baseline; flex-wrap:wrap; font-size:13px; }
+    .enq-total b { font-family: Outfit, Inter, sans-serif; font-size:18px; }
+    .enq-hint { font-size:12px; color:var(--muted); }
     input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:220px; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
     button.ghost { background:#fff; color:#1d2939; }
     button.danger { background:#fff; color:#b42318; border-color:#fda29b; }
     button:disabled { opacity:.55; cursor:not-allowed; }
-    .wrap { overflow:auto; height:calc(100vh - 88px); }
+    .wrap { overflow:auto; height:calc(100vh - 148px); }
     #grid { border-collapse:separate; border-spacing:0; min-width:3200px; background:#fff; font-size:12px; }
     #grid th, #grid td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
     #grid th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
@@ -102,6 +109,25 @@
       <button class="ghost" onclick="openCapture()">New enquiry</button>
     </div>
   </header>
+  <div class="enq-bar" id="enqFilters">
+    <label>When
+      <select id="period">
+        <option value="all">All dates</option>
+        <option value="day">Day</option>
+        <option value="week">Week</option>
+        <option value="month">Month</option>
+      </select>
+    </label>
+    <label id="periodDateWrap">Date
+      <input type="date" id="periodDate">
+    </label>
+    <label class="enq-check"><input type="checkbox" id="quotedOnly"> Quoted only</label>
+    <span class="enq-hint" id="periodHint"></span>
+    <div class="enq-total">
+      <span>Quote total incl VAT <b id="totIncl">R 0.00</b></span>
+      <span>excl VAT <b id="totExcl">R 0.00</b></span>
+    </div>
+  </div>
   <div class="wrap">
     <table id="grid"></table>
   </div>
@@ -265,7 +291,7 @@
       <div class="body" id="viewBody"></div>
     </div>
   </div>
-  <script src="/office-auth.js?v=login-tab"></script>
+  <script src="/office-auth.js?v=users-pass"></script>
   <script src="/enquiry-process.js?v=cost-multi"></script>
   <script>
     const HEADERS = [
@@ -387,6 +413,75 @@
       const mi = Number(iso.split("-")[1]) - 1;
       return MONTHS[mi] || "";
     }
+    function ymd(d) {
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+    function todayIso() {
+      const d = new Date();
+      return ymd(d);
+    }
+    function weekBounds(iso) {
+      const d = new Date(String(iso || todayIso()) + "T12:00:00");
+      const day = d.getDay();
+      const mondayOffset = day === 0 ? -6 : 1 - day;
+      const mon = new Date(d);
+      mon.setDate(d.getDate() + mondayOffset);
+      const sun = new Date(mon);
+      sun.setDate(mon.getDate() + 6);
+      return { start: ymd(mon), end: ymd(sun) };
+    }
+    function prettyDmy(iso) {
+      const raw = isoToDmy(iso);
+      const m = String(raw).match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (!m) return raw;
+      return Number(m[1]) + " " + (MONTHS[Number(m[2]) - 1] || "") + " " + m[3];
+    }
+    function enquiryDateIso(row) {
+      return dmyToIso(row && row.date_enquired);
+    }
+    function isQuoted(row) {
+      if (!row) return false;
+      if (row.date_quoted || row.quote_no) return true;
+      if (Array.isArray(row.quotes) && row.quotes.length) return true;
+      return /Quoted|Followed Up|Ordered/.test(row.status || "");
+    }
+    function quoteInclOf(row) {
+      const incl = String((row && row.quote_total_incl_vat) || "").trim();
+      if (incl) return parseMoney(incl);
+      return parseMoney(lineIncl({ value_excl_vat: row && row.quote_total_excl_vat }));
+    }
+    function quoteExclOf(row) {
+      return parseMoney(row && row.quote_total_excl_vat);
+    }
+    function matchesPeriod(row) {
+      const period = (document.getElementById("period") || {}).value || "all";
+      if (period === "all") return true;
+      const iso = enquiryDateIso(row);
+      if (!iso) return false;
+      const picked = (document.getElementById("periodDate") || {}).value || todayIso();
+      if (period === "day") return iso === picked;
+      if (period === "month") return iso.slice(0, 7) === picked.slice(0, 7);
+      if (period === "week") {
+        const b = weekBounds(picked);
+        return iso >= b.start && iso <= b.end;
+      }
+      return true;
+    }
+    function updatePeriodHint() {
+      const period = (document.getElementById("period") || {}).value || "all";
+      const wrap = document.getElementById("periodDateWrap");
+      const hint = document.getElementById("periodHint");
+      if (wrap) wrap.style.display = period === "all" ? "none" : "";
+      if (!hint) return;
+      if (period === "all") { hint.textContent = ""; return; }
+      const picked = (document.getElementById("periodDate") || {}).value || todayIso();
+      if (period === "day") hint.textContent = "Enquired " + prettyDmy(picked);
+      else if (period === "month") hint.textContent = (MONTHS[Number(picked.slice(5, 7)) - 1] || "") + " " + picked.slice(0, 4);
+      else if (period === "week") {
+        const b = weekBounds(picked);
+        hint.textContent = prettyDmy(b.start) + " – " + prettyDmy(b.end);
+      }
+    }
     function bumpNext() {
       const nums = rows.map((r) => Number(String(r.enquiry_no || "").replace(/\D/g, ""))).filter((n) => n);
       const max = nums.length ? Math.max.apply(null, nums) : 1995;
@@ -471,9 +566,17 @@
       });
       html += "</tr></thead><tbody>";
       let shown = 0;
+      let totIncl = 0;
+      let totExcl = 0;
+      const quotedOnly = !!(document.getElementById("quotedOnly") && document.getElementById("quotedOnly").checked);
+      updatePeriodHint();
       rows.forEach((row, i) => {
         if (q && searchBlob(row).toLowerCase().indexOf(q) === -1) return;
+        if (!matchesPeriod(row)) return;
+        if (quotedOnly && !isQuoted(row)) return;
         shown += 1;
+        totIncl += quoteInclOf(row);
+        totExcl += quoteExclOf(row);
         html += "<tr data-i=\"" + i + "\">";
         HEADERS.forEach(([k, , , freeze], c) => {
           const width = colWidths[c];
@@ -499,13 +602,21 @@
         html += "</tr>";
       });
       if (!shown) {
-        const msg = q
-          ? "No enquiries match that search."
+        const msg = (q || quotedOnly || ((document.getElementById("period") || {}).value || "all") !== "all")
+          ? "No enquiries match those filters."
           : "No enquiries yet. Use New enquiry — the number starts at #1996 and the month fills from the date.";
         html += "<tr><td class=\"empty\" colspan=\"" + HEADERS.length + "\">" + msg + "</td></tr>";
       }
       html += "</tbody>";
       table.innerHTML = html;
+      const totInclEl = document.getElementById("totIncl");
+      const totExclEl = document.getElementById("totExcl");
+      if (totInclEl) totInclEl.textContent = formatRand(totIncl);
+      if (totExclEl) totExclEl.textContent = formatRand(totExcl);
+      const status = document.getElementById("status");
+      if (status && rows.length) {
+        status.textContent = shown + " of " + rows.length + " enquiries · next " + nextNo;
+      }
       table.onclick = async (e) => {
         const editBtn = e.target.closest("[data-edit-enquiry]");
         if (editBtn) {
@@ -1165,6 +1276,13 @@
     }
     window.sdOnEnquiryProcessClose = function () { load(); };
     document.getElementById("q").oninput = render;
+    const periodDate = document.getElementById("periodDate");
+    if (periodDate && !periodDate.value) periodDate.value = todayIso();
+    ["period", "periodDate", "quotedOnly"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.onchange = render;
+    });
+    updatePeriodHint();
     document.getElementById("mask").addEventListener("click", (e) => {
       if (e.target.id === "mask") closeModal(false);
     });

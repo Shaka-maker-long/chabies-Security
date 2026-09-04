@@ -1223,7 +1223,7 @@
         <i class="bi bi-list-ul"></i>
         <span class="link-text">Dropdowns</span>
       </a>
-      <a id="link-users" class="sidebar-link" href="/users">
+      <a id="link-users" class="sidebar-link" data-nav="users" href="/users">
         <i class="bi bi-person-plus"></i>
         <span class="link-text">Users</span>
       </a>
@@ -1271,6 +1271,7 @@
         <i class="bi bi-moon-stars-fill" id="themeToggleIcon"></i>
         <span id="themeToggleLabel">Dark</span>
       </button>
+      <button class="btn btn-outline-dark w-100 btn-sm mb-2" id="changePassBtn" onclick="openChangePassword()">Change access code</button>
       <button class="btn btn-outline-danger w-100 btn-sm" onclick="logout()">Log Out</button>
     </div>
   </nav>
@@ -1690,6 +1691,7 @@
   </div>
 
   <div class="modal fade" id="passModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="mb-3">Access Code</h3><p class="text-muted" id="passPromptName">Enter code</p><input type="password" id="inputPass" class="form-control text-center mb-3"><button class="btn btn-primary w-100" onclick="submitPass()">ENTER</button></div></div></div>
+  <div class="modal fade" id="changePassModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4"><h3 class="mb-2">Change access code</h3><p class="text-muted small">Anyone can update their own code.</p><label class="form-label">Current access code</label><input type="password" id="changePassCurrent" class="form-control mb-2" autocomplete="current-password"><label class="form-label">New access code</label><input type="password" id="changePassNext" class="form-control mb-3" autocomplete="new-password"><p class="text-danger small mb-2" id="changePassErr"></p><button class="btn btn-dark w-100" onclick="submitChangePassword()">SAVE ACCESS CODE</button></div></div></div>
   <div class="modal fade" id="startModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="brand-font mb-2">Start Order</h3><h1 class="fw-bold text-primary mb-3" id="startModalOrder">...</h1><button class="btn btn-primary btn-lg w-100 mt-3" onclick="confirmStart()">START TIMER</button></div></div></div>
   <div class="modal fade" id="batchWorkModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -2185,7 +2187,7 @@
       'Final QC': ['Front', 'Level 1', 'Back', 'Left Side', 'Right Side', 'Job Card', 'Open', 'Top (Optional)', 'Level 2 (Optional)']
     };
 
-    let passModal, startModal, pauseModal, qcModal, alertModal, confirmModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, welderSteelModal, canvas, ctx, isDrawing = false;
+    let passModal, changePassModal, startModal, pauseModal, qcModal, alertModal, confirmModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, welderSteelModal, canvas, ctx, isDrawing = false;
 
     // =====================================================
     // THEME MANAGEMENT
@@ -2238,6 +2240,7 @@
           return el ? new bootstrap.Modal(el) : null;
         }
         passModal = bindModal('#passModal');
+        changePassModal = bindModal('#changePassModal');
         startModal = bindModal('#startModal');
         pauseModal = bindModal('#pauseModal');
         glassCheckModal = bindModal('#glassCheckModal');
@@ -2470,6 +2473,8 @@
       if (links) links.classList.toggle('d-none-view', !session.canSeeOffice);
       const debtors = document.getElementById('link-debtors');
       if (debtors) debtors.style.display = session.canSeeDebtors ? '' : 'none';
+      const users = document.getElementById('link-users');
+      if (users) users.style.display = floorCanManageUsers() ? '' : 'none';
       const who = document.getElementById('sidebarWho');
       if (who) {
         who.classList.toggle('d-none-view', !session.name);
@@ -2478,6 +2483,48 @@
         if (nameEl) nameEl.textContent = session.name || '';
         if (roleEl) roleEl.textContent = session.canSeeOffice ? 'Office' : 'Shop floor';
       }
+    }
+    function floorCanManageUsers() {
+      if (session.canManageUsers) return true;
+      try {
+        const office = JSON.parse(sessionStorage.getItem('sd-office') || 'null');
+        return !!(office && office.canManageUsers);
+      } catch (e) { return false; }
+    }
+    function openChangePassword() {
+      const err = document.getElementById('changePassErr');
+      if (err) err.textContent = '';
+      const cur = document.getElementById('changePassCurrent');
+      const next = document.getElementById('changePassNext');
+      if (cur) cur.value = '';
+      if (next) next.value = '';
+      if (changePassModal) changePassModal.show();
+    }
+    function submitChangePassword() {
+      const err = document.getElementById('changePassErr');
+      if (!session.name) {
+        if (err) err.textContent = 'Log in first';
+        return;
+      }
+      fetch('/api/office/password', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: session.name,
+          current_password: document.getElementById('changePassCurrent').value,
+          new_password: document.getElementById('changePassNext').value
+        })
+      }).then((r) => r.json()).then((j) => {
+        if (!j.ok) {
+          if (err) err.textContent = j.error || 'Could not save';
+          return;
+        }
+        if (changePassModal) changePassModal.hide();
+        showAlert('Access code updated.');
+      }).catch(() => {
+        if (err) err.textContent = 'Could not save';
+      });
     }
     function safeNextPath() {
       try {

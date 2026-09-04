@@ -34,6 +34,52 @@ function sdHideDebtorsLinks(canSee) {
     a.style.display = canSee ? "" : "none";
   });
 }
+function sdHideUsersLink(canManage) {
+  document.querySelectorAll("[data-nav='users']").forEach((a) => {
+    a.style.display = canManage ? "" : "none";
+  });
+}
+function sdShowChangePassword() {
+  if (document.getElementById("sdPassMask")) return;
+  const wrap = document.createElement("div");
+  wrap.id = "sdPassMask";
+  wrap.className = "sd-login-mask";
+  wrap.innerHTML = "<form class=\"sd-login-card\" id=\"sdPassForm\">" +
+    "<h2>Change access code</h2>" +
+    "<p>Anyone can update their own code. Use the name you log in with.</p>" +
+    "<label>Name</label><input name=\"name\" autocomplete=\"username\">" +
+    "<label>Current access code</label><input name=\"current_password\" type=\"password\" autocomplete=\"current-password\">" +
+    "<label>New access code</label><input name=\"new_password\" type=\"password\" autocomplete=\"new-password\">" +
+    "<p class=\"sd-pass-err\" id=\"sdPassErr\" style=\"color:#b42318;font-size:13px;min-height:16px\"></p>" +
+    "<button type=\"submit\">Save access code</button>" +
+    "<button type=\"button\" class=\"ghost\" id=\"sdPassCancel\" style=\"margin-top:8px;background:#fff;color:#1d2939;border:1px solid #1d2939\">Cancel</button>" +
+    "</form>";
+  document.body.appendChild(wrap);
+  const profile = sdOfficeProfile() || {};
+  if (profile.name) wrap.querySelector("[name=name]").value = profile.name;
+  wrap.querySelector("#sdPassCancel").onclick = () => wrap.remove();
+  wrap.addEventListener("click", (e) => { if (e.target.id === "sdPassMask") wrap.remove(); });
+  wrap.querySelector("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const err = document.getElementById("sdPassErr");
+    err.textContent = "";
+    const fd = new FormData(e.target);
+    const r = await fetch("/api/office/password", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: Object.assign({ "Content-Type": "application/json" }, profile.token ? { "x-sd-token": profile.token } : {}),
+      body: JSON.stringify({
+        name: fd.get("name"),
+        current_password: fd.get("current_password"),
+        new_password: fd.get("new_password")
+      })
+    });
+    const j = await r.json().catch(function () { return {}; });
+    if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+    wrap.remove();
+    alert("Access code updated.");
+  };
+}
 function sdNavCollapsed() {
   return localStorage.getItem("sd-nav-collapsed") === "1";
 }
@@ -107,7 +153,7 @@ function sdMountOfficeShell(active) {
     ["/tasks", "tasks", "bi-check2-square", "My tasks"],
     ["/schedule", "schedule", "bi-calendar2-week", "Office schedule"],
     ["/dropdowns", "dropdowns", "bi-list-ul", "Dropdowns"],
-    ["/users", "users", "bi-person-plus", "Users"],
+    ["/users", "users", "bi-person-plus", "Users", "users"],
     ["/durations", "durations", "bi-hourglass-split", "Task times"],
     ["/debtors", "debtors", "bi-cash-coin", "Debtors"],
     ["/?view=production", "production", "bi-clipboard-data", "Production"],
@@ -125,15 +171,16 @@ function sdMountOfficeShell(active) {
   nav.innerHTML =
     '<div class="sd-sidebar-header">' + mark + '<h5 class="sd-brand-text">STUDIO DELTA</h5></div>' +
     '<div class="sd-sidebar-scroll">' +
-    items.map(([href, id, icon, label]) => {
+    items.map(([href, id, icon, label, nav]) => {
       const on = id === active ? " active" : "";
-      const debt = id === "debtors" ? " data-nav=\"debtors\"" : "";
+      const extra = nav ? " data-nav=\"" + nav + "\"" : (id === "debtors" ? " data-nav=\"debtors\"" : "");
       const section = id === "orders" ? '<div class="sd-nav-label">Office</div>' : (id === "production" ? '<div class="sd-nav-label">Shop</div>' : "");
-      return section + '<a class="sd-link' + on + '" href="' + href + '"' + debt + '><i class="bi ' + icon + '"></i><span class="sd-link-text">' + label + "</span></a>";
+      return section + '<a class="sd-link' + on + '" href="' + href + '"' + extra + '><i class="bi ' + icon + '"></i><span class="sd-link-text">' + label + "</span></a>";
     }).join("") +
     "</div>" +
     '<div class="sd-sidebar-footer">' +
     '<button type="button" class="sd-collapse-btn" id="sdCollapseBtn" title="Hide menu"><i class="bi bi-chevron-left"></i><span class="sd-link-text">Hide menu</span></button>' +
+    '<button type="button" class="sd-logout-btn" id="sdPasswordBtn"><i class="bi bi-key"></i><span class="sd-link-text">Change access code</span></button>' +
     '<button type="button" class="sd-logout-btn" id="sdLogoutBtn"><i class="bi bi-box-arrow-right"></i><span class="sd-link-text">Log Out</span></button>' +
     "</div>";
   const burger = document.createElement("button");
@@ -152,6 +199,8 @@ function sdMountOfficeShell(active) {
   backdrop.onclick = () => document.body.classList.remove("nav-open");
   document.getElementById("sdCollapseBtn").onclick = sdToggleNavCollapsed;
   document.getElementById("sdLogoutBtn").onclick = sdOfficeLogout;
+  const passBtn = document.getElementById("sdPasswordBtn");
+  if (passBtn) passBtn.onclick = sdShowChangePassword;
   nav.querySelectorAll("a").forEach((a) => {
     a.addEventListener("click", () => document.body.classList.remove("nav-open"));
   });
@@ -235,6 +284,7 @@ async function sdRequireOffice(page) {
   }
   sdMountOfficeShell(page);
   sdHideDebtorsLinks(!!profile.canSeeDebtors);
+  sdHideUsersLink(!!profile.canManageUsers);
   sdWarnPersistence();
   return profile;
 }
