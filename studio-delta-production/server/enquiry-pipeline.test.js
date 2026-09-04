@@ -839,4 +839,65 @@ db.saveEnquiryRecord(quoteRaw);
 const quoteKept = pipeline.applyCaptureRoute(quoteHold.enquiry_no, "Coster");
 assert.strictEqual(quoteKept.row.status, "Quoted");
 
+const supplierJob = db.upsertEnquiry({
+  date_enquired: "13/01/2026",
+  client_name: "Supplier Wait Client",
+  enquiry_type: "Catologue",
+  products: [{ product: "Air Chair", category: "Chair" }]
+});
+pipeline.applyAction(supplierJob.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+const waitingSupplier = pipeline.applyAction(supplierJob.enquiry_no, "Coster", {
+  action: "supplier_wait",
+  assignee: "Quoter"
+});
+assert.strictEqual(waitingSupplier.row.status, "Waiting on Supplier");
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "supplier" && t.enquiry_no === supplierJob.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === supplierJob.enquiry_no));
+assert.throws(
+  () => pipeline.applyAction(supplierJob.enquiry_no, "Quoter", { action: "complete_supplier" }),
+  /quotation from the supplier|Upload/
+);
+assert.throws(
+  () => pipeline.applyAction(supplierJob.enquiry_no, "Quoter", {
+    action: "complete_supplier",
+    file_base64: csv,
+    file_name: "supplier.xlsx",
+    file_confirmed: false
+  }),
+  /correct file/
+);
+const supplierDone = pipeline.applyAction(supplierJob.enquiry_no, "Quoter", {
+  action: "complete_supplier",
+  file_base64: csv,
+  file_name: "supplier.xlsx",
+  file_confirmed: true
+});
+assert.strictEqual(supplierDone.row.status, "Costing");
+assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "supplier" && t.enquiry_no === supplierJob.enquiry_no));
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === supplierJob.enquiry_no));
+assert.ok(supplierDone.row.deliverables.some((d) => d.group === "supplier" && /supplier\.xlsx/i.test(d.filename || d.title || "")));
+assert.ok(db.readEnquiryAttachment(supplierJob.enquiry_no, "supplier_1"));
+
+const selfSupplier = db.upsertEnquiry({
+  date_enquired: "14/01/2026",
+  client_name: "Coster Waits Supplier",
+  enquiry_type: "Catologue",
+  products: [{ product: "Air Chair", category: "Chair" }]
+});
+pipeline.applyAction(selfSupplier.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+pipeline.applyAction(selfSupplier.enquiry_no, "Coster", { action: "supplier_wait", assignee: "Coster" });
+assert.throws(
+  () => pipeline.applyAction(selfSupplier.enquiry_no, "Coster", { action: "complete_supplier", assignee: "Coster" }),
+  /quotation from the supplier|Upload/
+);
+const selfDone = pipeline.applyAction(selfSupplier.enquiry_no, "Coster", {
+  action: "complete_supplier",
+  file_base64: png,
+  file_name: "supplier-quote.png",
+  file_confirmed: true
+});
+assert.strictEqual(selfDone.row.status, "Costing");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === selfSupplier.enquiry_no));
+assert.ok(selfDone.row.deliverables.some((d) => d.group === "supplier"));
+
 console.log("enquiry-pipeline.test.js ok");

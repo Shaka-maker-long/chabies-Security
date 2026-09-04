@@ -319,7 +319,7 @@ function availableActions(row) {
     actions.push({ id: "supplier_wait", label: "Waiting on supplier" });
   }
   if (status === "Waiting on Supplier") {
-    actions.push({ id: "complete_supplier", label: "Supplier answered — back to costing" });
+    actions.push({ id: "complete_supplier", label: "Upload supplier quotation" });
   }
   if (openOfKind(row, "approval") || (status === "Costed" && row.approval && row.approval.status === "pending")) {
     actions.push({ id: "complete_approval", label: "Approve or reject costing" });
@@ -538,8 +538,10 @@ function eventLabel(action, row, fromStatus, body) {
       ? "Chase complete — sent to costing"
       : "Still waiting: " + status;
   }
-  if (action === "supplier_wait") return "Waiting on supplier";
-  if (action === "complete_supplier") return "Supplier answered — back to costing";
+  if (action === "supplier_wait") return "Waiting on supplier → " + ((openOfKind(row, "supplier") || {}).assignee || "");
+  if (action === "complete_supplier") {
+    return "Supplier quotation uploaded — costing → " + ((openOfKind(row, "cost_sheet") || {}).assignee || lastAssignee(row, "cost_sheet") || "");
+  }
   if (action === "complete_cost_sheet") return "Cost sheet uploaded";
   if (action === "complete_approval") {
     const d = String(body.decision || "").toLowerCase();
@@ -774,17 +776,36 @@ function supplierWait(row, _actor, body) {
   if (!statusAllows(row, ["Costing", "Re-Cost"])) {
     throw new Error("Waiting on Supplier is only used during costing");
   }
-  const assignee = requireAssignee(body.assignee || (openOfKind(row, "cost_sheet") || {}).assignee);
+  const coster = (openOfKind(row, "cost_sheet") || {}).assignee || lastAssignee(row, "cost_sheet");
+  const assignee = requireAssignee(body.assignee || coster);
   cancelOpenKind(row, "cost_sheet");
   row.status = "Waiting on Supplier";
-  addTask(row, "supplier", assignee);
+  addTask(row, "supplier", assignee, {
+    note: coster ? ("Costing: " + coster) : ""
+  });
 }
 
 function completeSupplier(row, actor, body) {
   if (row.status !== "Waiting on Supplier") throw new Error("This enquiry is not waiting on a supplier");
+  const filename = body.file_name || "supplier-quote";
+  const raw = requireFile(body, "Upload the quotation from the supplier");
+  if (!Array.isArray(row.supplier_quotes)) row.supplier_quotes = [];
+  const n = row.supplier_quotes.length + 1;
+  const file = db.saveEnquiryAttachment(row.enquiry_no, "supplier_" + n, raw, filename);
+  row.supplier_quotes.push({
+    n,
+    uploaded_at: db.nowIso(),
+    by: actor,
+    file
+  });
   closeOpenKind(row, "supplier", actor, body.comments || "");
   row.status = "Costing";
-  addTask(row, "cost_sheet", requireAssignee(body.assignee || lastAssignee(row, "cost_sheet")));
+  const coster = lastAssignee(row, "cost_sheet")
+    || staff.defaultEnquiryAssignee("Costing")
+    || actor;
+  addTask(row, "cost_sheet", requireAssignee(coster), {
+    note: "Supplier quotation uploaded — resume costing"
+  });
 }
 
 function existingCostSheets(row) {

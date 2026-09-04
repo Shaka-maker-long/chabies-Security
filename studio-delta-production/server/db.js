@@ -1468,6 +1468,7 @@ function copyPipeline(from, to) {
   to.approval = cloneJson(from && from.approval, null);
   to.follow_ups = Array.isArray(from && from.follow_ups) ? cloneJson(from.follow_ups, []) : [];
   to.quotes = Array.isArray(from && from.quotes) ? cloneJson(from.quotes, []) : [];
+  to.supplier_quotes = Array.isArray(from && from.supplier_quotes) ? cloneJson(from.supplier_quotes, []) : [];
   to.follow_up_assignee = String((from && from.follow_up_assignee) || "").trim();
   to.quote_assignee = String((from && from.quote_assignee) || "").trim();
   to.correspondence = normalizeCorrespondence(from);
@@ -1583,6 +1584,14 @@ function readEnquiryAttachment(enquiryNo, kind) {
     const list = Array.isArray(row.follow_ups) ? row.follow_ups : [];
     const hit = list.find((f) => Number(f.n) === n);
     meta = hit && hit.file;
+  } else if (want === "supplier") {
+    const list = Array.isArray(row.supplier_quotes) ? row.supplier_quotes : [];
+    meta = list.length ? list[list.length - 1].file : null;
+  } else if (/^supplier_(\d+)$/.test(want)) {
+    const n = Number(want.split("_").pop());
+    const list = Array.isArray(row.supplier_quotes) ? row.supplier_quotes : [];
+    const hit = list.find((s) => Number(s.n) === n);
+    meta = hit && hit.file;
   } else if (/^correspondence_(\d+)$/.test(want)) {
     const mails = (row.correspondence && Array.isArray(row.correspondence.mails)) ? row.correspondence.mails : [];
     const files = (row.correspondence && Array.isArray(row.correspondence.files)) ? row.correspondence.files : [];
@@ -1688,6 +1697,23 @@ function listEnquiryDeliverables(row) {
       title: file.filename || item.label || "Follow-up",
       filename: file.filename || "follow-up",
       kind: file.kind || ("follow_up_" + (item.n || i + 1)),
+      from: item.by || "",
+      order_no: "",
+      open: true,
+      outlook: false
+    });
+  });
+  const supplierQuotes = Array.isArray(src.supplier_quotes) ? src.supplier_quotes : [];
+  supplierQuotes.forEach((item, i) => {
+    const file = item && item.file;
+    if (!file || !file.stored_as) return;
+    const n = item && item.n ? item.n : i + 1;
+    items.push({
+      group: "supplier",
+      label: supplierQuotes.length === 1 ? "Supplier quotation" : ("Supplier quotation " + n),
+      title: file.filename || "Supplier quotation",
+      filename: file.filename || "supplier-quote",
+      kind: file.kind || ("supplier_" + n),
       from: item.by || "",
       order_no: "",
       open: true,

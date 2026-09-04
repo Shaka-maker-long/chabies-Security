@@ -126,6 +126,10 @@ assert.ok(processJs.indexOf("Request access") !== -1);
 assert.ok(processJs.indexOf("request_access") !== -1);
 assert.ok(processJs.indexOf("grant_access") !== -1);
 assert.ok(processJs.indexOf("Create order from this enquiry") !== -1);
+assert.ok(processJs.indexOf("Supplier quotation") !== -1);
+assert.ok(processJs.indexOf("Costing resumes with") !== -1);
+assert.ok(processJs.indexOf("complete_supplier") !== -1);
+assert.ok(/complete_supplier[\s\S]{0,400}fileBlock/.test(processJs));
 assert.ok(processJs.indexOf("/create-order") !== -1);
 assert.ok(officeJs.indexOf("createOrderFromEnquiry") !== -1);
 assert.ok(officeJs.indexOf("/create-order") !== -1);
@@ -136,6 +140,7 @@ assert.ok(pipelineJs.indexOf("function classifyCapture") !== -1);
 assert.ok(pipelineJs.indexOf("function applyCaptureRoute") !== -1);
 assert.ok(pipelineJs.indexOf("Waiting on clients personal details") !== -1);
 assert.ok(pipelineJs.indexOf("Waiting on clients specifictions") !== -1);
+assert.ok(pipelineJs.indexOf("Upload supplier quotation") !== -1);
 assert.ok(officeJs.indexOf("listAccessInbox") !== -1);
 assert.ok(tasksHtml.indexOf("Access requests") !== -1);
 
