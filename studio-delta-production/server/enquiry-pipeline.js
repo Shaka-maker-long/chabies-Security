@@ -311,7 +311,7 @@ function availableActions(row) {
     actions.push({ id: "complete_chase", label: "Update chased information" });
   }
   if (!closed) {
-    actions.push({ id: "add_correspondence", label: "Save email from Outlook" });
+    actions.push({ id: "add_correspondence", label: "Save Correspondance link" });
   }
   if (statusAllows(row, ["Costing", "Re-Cost"])) {
     actions.push({ id: "assign_costing", label: "Change costing person" });
@@ -425,8 +425,7 @@ function processSnapshot(enquiryNo, actorName) {
     waitingStatuses: WAITING_STATUSES,
     closedStatuses: CLOSED_STATUSES.filter((s) => s !== "Rejected"),
     followUpDays: FOLLOW_UP_DAYS,
-    quoteNo: db.quoteNoHint(),
-    outlookAddin: { manifest: "/outlook-addin/manifest.xml", install: "/outlook-addin" }
+    quoteNo: db.quoteNoHint()
   };
 }
 
@@ -592,18 +591,30 @@ function assignCosting(row, actor, body) {
   }
   if (!namedProducts(row).length) throw new Error("Add at least one product name before assigning costing");
   const assignee = requireRoleAssignee("Costing", body.assignee, (openOfKind(row, "cost_sheet") || {}).assignee);
-  archiveCorrespondence(row, actor, body);
   const open = openOfKind(row, "cost_sheet");
   if (open && statusAllows(row, ["Costing", "Re-Cost"])) {
+    archiveCorrespondence(row, actor, body);
     if (!namesMatch(open.assignee, assignee)) access.cancelKind(row, "cost_sheet");
     open.assignee = assignee;
     return;
   }
+  requireCorrespondence(row, actor, body);
   cancelOpenKind(row, "chase_info");
   cancelOpenKind(row, "cost_sheet");
   access.cancelKind(row, "cost_sheet");
   row.status = "Costing";
   addTask(row, "cost_sheet", assignee);
+}
+
+function hasCorrespondence(row) {
+  return db.normalizeCorrespondence(row).mails.length > 0;
+}
+
+function requireCorrespondence(row, actor, body) {
+  archiveCorrespondence(row, actor, body);
+  if (!hasCorrespondence(row)) {
+    throw new Error("Enter a Correspondance link.");
+  }
 }
 
 function archiveCorrespondence(row, actor, body) {
@@ -758,7 +769,7 @@ function completeChase(row, actor, body) {
   closeOpenKind(row, "chase_info", actor, body.comments || "");
   if (next === "costing") {
     if (!namedProducts(row).length) throw new Error("Add the product name(s) on the enquiry before sending to costing");
-    archiveCorrespondence(row, actor, body);
+    requireCorrespondence(row, actor, body);
     row.status = "Costing";
     addTask(row, "cost_sheet", requireRoleAssignee("Costing", body.assignee));
     return;

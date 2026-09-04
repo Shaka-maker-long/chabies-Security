@@ -296,6 +296,11 @@
         <label>Comment
           <textarea id="cap_comment" placeholder="Anything costing should know"></textarea>
         </label>
+        <div id="captureCorrespondence" hidden>
+          <label>Correspondance link *
+            <textarea id="cap_correspondence" class="sd-path" rows="3" placeholder="Link or path" autocomplete="off"></textarea>
+          </label>
+        </div>
         <div class="err" id="captureErr"></div>
         <div class="enq-dup" id="captureDup" hidden></div>
       </div>
@@ -1298,6 +1303,48 @@
       document.getElementById("captureDesignBlock").style.display = type === "New Design" ? "" : "none";
       if (type === "Custom") renderCaptureSpecs();
     }
+    function existingCorrespondenceCount(row) {
+      if (!row) return 0;
+      const mails = row.correspondence && Array.isArray(row.correspondence.mails) ? row.correspondence.mails : [];
+      if (mails.length) return mails.length;
+      const files = Array.isArray(row.deliverables) ? row.deliverables : [];
+      return files.filter((f) => f && f.group === "correspondence").length;
+    }
+    function isAutoCaptureStatus(status) {
+      const s = String(status || "New").trim() || "New";
+      return s === "New" || s === "Waiting on clients personal details" || s === "Waiting on clients specifictions";
+    }
+    function captureWouldCost(payload, existing) {
+      if (!isAutoCaptureStatus(existing ? existing.status : "New")) return false;
+      const name = String((payload && payload.client_name) || "").trim();
+      const email = String((payload && payload.client_email) || "").trim();
+      const number = String((payload && payload.client_number) || "").trim();
+      const province = String((payload && payload.province) || "").trim();
+      if (!(name && (email || number) && province)) return false;
+      const type = String((payload && payload.enquiry_type) || "").trim();
+      const named = (payload && payload.products || []).filter((p) => String(p.product || "").trim());
+      if (!type || !named.length) return false;
+      if (type === "Custom") {
+        return (payload.custom_specs || []).some((s) => {
+          const kind = String((s && s.kind) || "").trim();
+          const detail = String((s && s.detail) || "").trim();
+          return !!(kind && detail && !/^other$/i.test(kind));
+        });
+      }
+      if (type === "New Design") {
+        return String((payload && (payload.design_description || payload.request)) || "").trim().length >= 20;
+      }
+      return true;
+    }
+    function showCaptureCorrespondence(show) {
+      const wrap = document.getElementById("captureCorrespondence");
+      if (wrap) wrap.hidden = !show;
+    }
+    function promptCaptureCorrespondence() {
+      showCaptureCorrespondence(true);
+      const el = document.getElementById("cap_correspondence");
+      if (el) el.focus();
+    }
     function openCapture(index) {
       const i = typeof index === "number" && index >= 0 ? index : -1;
       const existing = i >= 0 ? rows[i] : null;
@@ -1343,6 +1390,8 @@
         fillCaptureSelect("cap_province", "province", "");
       }
       document.getElementById("captureErr").textContent = "";
+      document.getElementById("cap_correspondence").value = "";
+      showCaptureCorrespondence(!!(existing && captureWouldCost(existing, existing) && !existingCorrespondenceCount(existing)));
       renderCaptureLines();
       toggleCaptureType();
       document.getElementById("captureMask").classList.add("open");
@@ -1432,9 +1481,22 @@
         payload.custom_specs = [];
         payload.design_description = "";
       }
+      if (captureWouldCost(payload, existing) && !existingCorrespondenceCount(existing)) {
+        const link = String(document.getElementById("cap_correspondence").value || "").trim();
+        if (!link) {
+          err.textContent = "Enter a Correspondance link.";
+          promptCaptureCorrespondence();
+          return;
+        }
+        payload.correspondence_links = link;
+      }
       const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(payload) });
       const j = await r.json();
-      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      if (!j.ok) {
+        err.textContent = j.error || "Could not save";
+        if (/Correspondance/i.test(j.error || "")) promptCaptureCorrespondence();
+        return;
+      }
       closeCapture();
       await load();
       document.getElementById("status").textContent = (existing ? "Updated " : "Saved ") +

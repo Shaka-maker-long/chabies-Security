@@ -139,7 +139,11 @@
         ".sd-quote-totals .sd-quote-total b{font-size:15px}" +
         ".sd-quote-totals .sd-process-sub{flex:1 1 100%;margin:0}" +
         ".sd-life{font-size:13px;color:#1d2939}" +
-        ".sd-timeline{list-style:none;margin:8px 0 0;padding:0;border-left:2px solid #d0d5dd}" +
+        ".sd-timeline-fold{margin:12px 0 0;border:1px solid #d0d5dd;border-radius:8px;background:#fff;padding:0}" +
+        ".sd-timeline-fold>summary{cursor:pointer;font-weight:700;padding:10px 12px;list-style:none}" +
+        ".sd-timeline-fold>summary::-webkit-details-marker{display:none}" +
+        ".sd-timeline-fold[open]>summary{border-bottom:1px solid #d0d5dd}" +
+        ".sd-timeline{list-style:none;margin:8px 12px 12px;padding:0;border-left:2px solid #d0d5dd}" +
         ".sd-timeline li{position:relative;padding:0 0 12px 16px;font-size:13px}" +
         ".sd-timeline li:last-child{padding-bottom:0}" +
         ".sd-timeline li::before{content:\"\";position:absolute;left:-5px;top:6px;width:8px;height:8px;border-radius:50%;background:#1d2939}" +
@@ -572,18 +576,26 @@
     html += items.map((f) => {
       const server = f.kind ? absoluteHref(fileHref(f.kind)) : "";
       const href = (f.kind && (f.open || f.stored_as) && server) ? server : (f.href || "");
-      const open = href
-        ? "<a class=\"sd-open-mail\" href=\"" + esc(href) + "\" target=\"_blank\" rel=\"noopener\">Open</a>"
-        : "<span class=\"sd-process-sub\">No link yet</span>";
-      const copy = href
-        ? "<button type=\"button\" class=\"ghost\" data-copy-link=\"" + esc(href) + "\">Copy link</button>"
+      const correspondence = f.group === "correspondence";
+      let actions = "";
+      if (correspondence) {
+        actions = href
+          ? "<button type=\"button\" class=\"ghost\" data-copy-link=\"" + esc(href) + "\">Copy link</button>"
+          : "<span class=\"sd-process-sub\">No link yet</span>";
+      } else {
+        actions = href
+          ? "<a class=\"sd-open-mail\" href=\"" + esc(href) + "\" target=\"_blank\" rel=\"noopener\">Open</a>"
+          : "<span class=\"sd-process-sub\">No file yet</span>";
+      }
+      const pathLine = correspondence && href
+        ? "<div class=\"sd-process-sub\" style=\"word-break:break-all\">" + esc(href) + "</div>"
         : "";
       return "<div class=\"sd-file-row\">" +
         "<div class=\"sd-file-meta\"><div class=\"sd-file-type\">" + esc(f.label || "File") + "</div>" +
-        "<div class=\"sd-file-name\">" + esc(f.group === "correspondence" ? "Correspondance link" : (f.title || f.filename || "File")) + "</div>" +
+        "<div class=\"sd-file-name\">" + esc(correspondence ? "Correspondance link" : (f.title || f.filename || "File")) + "</div>" +
         (f.from ? "<div class=\"sd-process-sub\">" + esc(f.from) + "</div>" : "") +
-        (href ? "<div class=\"sd-process-sub\" style=\"word-break:break-all\">" + esc(href) + "</div>" : "") +
-        "</div><div class=\"row-actions\">" + copy + open + "</div></div>";
+        pathLine +
+        "</div><div class=\"row-actions\">" + actions + "</div></div>";
     }).join("");
     return html + "</div></div>";
   }
@@ -797,8 +809,8 @@
     }
     if (actions.length === 1) return true;
     if (row.status === "Waiting on Supplier") return action.id === "complete_supplier";
-    if (/Costing|Re-Cost/.test(row.status || "") && actions.some((a) => a.id === "add_correspondence")) {
-      return action.id === "add_correspondence";
+    if (/Costing|Re-Cost/.test(row.status || "")) {
+      return action.id === "complete_cost_sheet";
     }
     if (actions.some((a) => a.id === "assign_costing") && !/Quoted|Followed Up/.test(row.status || "")) {
       return action.id === "assign_costing";
@@ -823,14 +835,14 @@
       "</div>";
     const events = row.events || [];
     if (events.length) {
-      html += "<h2>Timeline</h2><ol class=\"sd-timeline\">" + events.map((ev) => {
+      html += "<details class=\"sd-timeline-fold\"><summary>Timeline</summary><ol class=\"sd-timeline\">" + events.map((ev) => {
         return "<li><time>" + esc(ev.at_label || ev.at) + "</time>" +
           esc(ev.label || ev.kind) +
           (ev.status ? " · " + esc(ev.status) : "") +
           (ev.actor ? "<div class=\"sd-tl-actor\">" + esc(ev.actor) + "</div>" : "") +
           (ev.note ? "<div class=\"sd-tl-actor\">" + esc(ev.note) + "</div>" : "") +
           "</li>";
-      }).join("") + "</ol>";
+      }).join("") + "</ol></details>";
     }
     html += correspondenceCard(row);
     if (openTasks.length) {

@@ -44,19 +44,29 @@ assert.throws(
   /office Admin/
 );
 
+assert.throws(
+  () => pipeline.applyAction("#1996", "Coster", { action: "assign_costing", assignee: "Coster" }),
+  /Correspondance/
+);
 const costing = pipeline.applyAction("#1996", "Coster", {
   action: "assign_costing",
-  assignee: "Coster"
+  assignee: "Coster",
+  correspondence_mails: [{
+    subject: "Re: Order #S260025 - LAUGE SORENSEN",
+    from: "Studio Delta",
+    rest_id: "AAMkADrestid025",
+    internet_message_id: "<s260025@studio-delta.test>"
+  }]
 });
 assert.strictEqual(costing.row.status, "Costing");
 assert.ok(costing.row.events.some((ev) => ev.kind === "assign_costing" && ev.at));
 assert.ok(costing.row.events.some((ev) => ev.kind === "assign_costing" && ev.actor === "Coster"));
 assert.ok(costing.actions.some((a) => a.id === "assign_costing" && a.label === "Change costing person"));
-assert.ok(costing.actions.some((a) => a.id === "add_correspondence"));
+assert.ok(costing.actions.some((a) => a.id === "add_correspondence" && a.label === "Save Correspondance link"));
 const myCost = pipeline.listMyTasks("Coster");
 assert.strictEqual(myCost.length, 1);
 assert.strictEqual(myCost[0].kind, "cost_sheet");
-assert.strictEqual(myCost[0].correspondence_mails, 0);
+assert.strictEqual(myCost[0].correspondence_mails, 1);
 assert.strictEqual(pipeline.listMyTasks("Quoter").length, 0);
 
 const moved = pipeline.applyAction("#1996", "Coster", { action: "assign_costing", assignee: "Approver" });
@@ -418,7 +428,11 @@ const skip = db.upsertEnquiry({
   category: "Table",
   status: "New"
 });
-pipeline.applyAction(skip.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+pipeline.applyAction(skip.enquiry_no, "Coster", {
+  action: "assign_costing",
+  assignee: "Coster",
+  correspondence_links: "https://files.example/skip"
+});
 assert.throws(
   () => pipeline.applyAction(skip.enquiry_no, "Coster", {
     action: "complete_cost_sheet",
@@ -532,7 +546,10 @@ const roleEnq = db.upsertEnquiry({
   product: "Gate",
   category: "Gate"
 });
-const autoCost = pipeline.applyAction(roleEnq.enquiry_no, "Coster", { action: "assign_costing" });
+const autoCost = pipeline.applyAction(roleEnq.enquiry_no, "Coster", {
+  action: "assign_costing",
+  correspondence_links: "https://files.example/role"
+});
 assert.strictEqual(autoCost.row.status, "Costing");
 assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === roleEnq.enquiry_no));
 const autoSheet = pipeline.applyAction(roleEnq.enquiry_no, "Coster", {
@@ -567,7 +584,11 @@ const multi = db.upsertEnquiry({
   ],
   status: "New"
 });
-pipeline.applyAction(multi.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+pipeline.applyAction(multi.enquiry_no, "Coster", {
+  action: "assign_costing",
+  assignee: "Coster",
+  correspondence_links: "https://files.example/multi"
+});
 assert.throws(
   () => pipeline.applyAction(multi.enquiry_no, "Coster", {
     action: "complete_cost_sheet",
@@ -630,7 +651,11 @@ const locked = db.upsertEnquiry({
   category: "Chair",
   status: "New"
 });
-pipeline.applyAction(locked.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+pipeline.applyAction(locked.enquiry_no, "Coster", {
+  action: "assign_costing",
+  assignee: "Coster",
+  correspondence_links: "https://files.example/locked"
+});
 assert.throws(
   () => pipeline.applyAction(locked.enquiry_no, "Pat", {
     action: "complete_cost_sheet",
@@ -676,7 +701,11 @@ const managerActs = db.upsertEnquiry({
   category: "Chair",
   status: "New"
 });
-pipeline.applyAction(managerActs.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+pipeline.applyAction(managerActs.enquiry_no, "Coster", {
+  action: "assign_costing",
+  assignee: "Coster",
+  correspondence_links: "https://files.example/manager"
+});
 pipeline.applyAction(managerActs.enquiry_no, "Lesedi", {
   action: "complete_cost_sheet",
   file_base64: csv,
@@ -804,6 +833,15 @@ db.upsertEnquiry({
   enquiry_type: "Catologue",
   products: [{ product: "Air Chair", category: "Chair" }]
 });
+assert.throws(
+  () => pipeline.applyCaptureRoute(thin.enquiry_no, "Coster"),
+  /Correspondance/
+);
+assert.strictEqual(db.getEnquiry(thin.enquiry_no).status, "Waiting on clients specifictions");
+pipeline.applyAction(thin.enquiry_no, "Coster", {
+  action: "add_correspondence",
+  correspondence_links: "https://files.example/thin"
+});
 const costRouted = pipeline.applyCaptureRoute(thin.enquiry_no, "Coster");
 assert.strictEqual(costRouted.row.status, "Costing");
 assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === thin.enquiry_no));
@@ -845,7 +883,11 @@ const supplierJob = db.upsertEnquiry({
   enquiry_type: "Catologue",
   products: [{ product: "Air Chair", category: "Chair" }]
 });
-pipeline.applyAction(supplierJob.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+pipeline.applyAction(supplierJob.enquiry_no, "Coster", {
+  action: "assign_costing",
+  assignee: "Coster",
+  correspondence_links: "https://files.example/supplier"
+});
 const waitingSupplier = pipeline.applyAction(supplierJob.enquiry_no, "Coster", {
   action: "supplier_wait",
   assignee: "Quoter"
@@ -884,7 +926,11 @@ const selfSupplier = db.upsertEnquiry({
   enquiry_type: "Catologue",
   products: [{ product: "Air Chair", category: "Chair" }]
 });
-pipeline.applyAction(selfSupplier.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+pipeline.applyAction(selfSupplier.enquiry_no, "Coster", {
+  action: "assign_costing",
+  assignee: "Coster",
+  correspondence_links: "https://files.example/self-supplier"
+});
 pipeline.applyAction(selfSupplier.enquiry_no, "Coster", { action: "supplier_wait", assignee: "Coster" });
 assert.throws(
   () => pipeline.applyAction(selfSupplier.enquiry_no, "Coster", { action: "complete_supplier", assignee: "Coster" }),
