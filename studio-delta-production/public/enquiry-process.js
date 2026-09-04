@@ -553,7 +553,8 @@
     return openSavedFile(kind, filename, true);
   }
   function correspondenceFields() {
-    return "<label>Correspondance link<textarea class=\"sd-path\" name=\"correspondence_links\" rows=\"3\" placeholder=\"Link or path\" autocomplete=\"off\"></textarea></label>";
+    return "<label>Correspondance link *<textarea class=\"sd-path\" name=\"correspondence_links\" rows=\"3\" placeholder=\"Paste the file link or path\" autocomplete=\"off\"></textarea></label>" +
+      "<p class=\"sd-process-sub\">Required before Costing.</p>";
   }
   function fileHref(kind) {
     return "/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/files/" + encodeURIComponent(kind);
