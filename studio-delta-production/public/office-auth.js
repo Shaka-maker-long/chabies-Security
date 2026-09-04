@@ -127,8 +127,8 @@ function sdEnsureScript(src) {
   });
 }
 function sdLoadBrand() {
-  sdEnsureSheet("/sd-brand.css?v=erp-one");
-  sdEnsureSheet("/office-shell.css?v=erp-shell");
+  sdEnsureSheet("/sd-brand.css?v=logged-in");
+  sdEnsureSheet("/office-shell.css?v=logged-in");
   return sdEnsureScript("/sd-splash.js?v=erp-shell");
 }
 function sdForgetOffice() {
@@ -138,13 +138,26 @@ function sdForgetOffice() {
 function sdOfficeLogout() {
   sdForgetOffice().finally(function () { location.href = "/"; });
 }
+function sdPaintOfficeWho(profile) {
+  const nameEl = document.getElementById("officeWhoName");
+  const titleEl = document.getElementById("officeWhoTitle");
+  const who = document.getElementById("officeWho");
+  const name = String(profile && profile.name || "").trim();
+  const title = String(profile && (profile.jobTitle || profile.role) || "").trim();
+  if (nameEl) nameEl.textContent = name;
+  if (titleEl) {
+    titleEl.textContent = title;
+    titleEl.hidden = !title;
+  }
+  if (who) who.hidden = !name;
+}
 function sdMountOfficeShell(active) {
   if (document.getElementById("sdSidebar")) {
     sdApplyNavCollapsed();
     return;
   }
   sdEnsureSheet("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
-  sdEnsureSheet("/office-shell.css?v=erp-shell");
+  sdEnsureSheet("/office-shell.css?v=logged-in");
   document.body.classList.add("office-app");
   const items = [
     ["/", "home", "bi-house-door", "Home"],
@@ -179,6 +192,11 @@ function sdMountOfficeShell(active) {
     }).join("") +
     "</div>" +
     '<div class="sd-sidebar-footer">' +
+    '<div class="office-who" id="officeWho">' +
+    '<span class="office-who-label">Logged in as</span>' +
+    '<strong class="office-who-name" id="officeWhoName"></strong>' +
+    '<span class="office-who-title" id="officeWhoTitle"></span>' +
+    "</div>" +
     '<button type="button" class="sd-collapse-btn" id="sdCollapseBtn" title="Hide menu"><i class="bi bi-chevron-left"></i><span class="sd-link-text">Hide menu</span></button>' +
     '<button type="button" class="sd-logout-btn" id="sdPasswordBtn"><i class="bi bi-key"></i><span class="sd-link-text">Change access code</span></button>' +
     '<button type="button" class="sd-logout-btn" id="sdLogoutBtn"><i class="bi bi-box-arrow-right"></i><span class="sd-link-text">Log Out</span></button>' +
@@ -283,6 +301,7 @@ async function sdRequireOffice(page) {
     return null;
   }
   sdMountOfficeShell(page);
+  sdPaintOfficeWho(profile);
   sdHideDebtorsLinks(!!profile.canSeeDebtors);
   sdHideUsersLink(!!profile.canManageUsers);
   sdWarnPersistence();

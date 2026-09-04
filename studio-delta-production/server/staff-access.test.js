@@ -114,11 +114,13 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   assert.strictEqual(login.canSeeOffice, false);
   assert.strictEqual(login.canSeeDebtors, false);
   assert.ok(login.tasks.indexOf("Welding") !== -1);
+  assert.strictEqual(login.jobTitle, "Welding");
 
   const officeLogin = await callShopFunction("verifyGlobalLogin", ["Office Quiet", "quiet"]);
   assert.strictEqual(officeLogin.success, true);
   assert.strictEqual(officeLogin.canSeeOffice, true);
   assert.strictEqual(officeLogin.canSeeDebtors, false);
+  assert.strictEqual(officeLogin.jobTitle, "Admin");
 
   const dur = await callShopFunction("getTaskDuration", ["Slider", "Welding"]);
   assert.strictEqual(dur.minutes, 45);
@@ -258,6 +260,62 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   assert.strictEqual(meGone.status, 401);
   const ordersGone = await fetch(base + "/api/office/orders", { headers: { "x-sd-token": boss.token } });
   assert.strictEqual(ordersGone.status, 401);
+
+  const bossAgain = await fetch(base + "/api/office/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Office Boss", password: "admin" })
+  });
+  const boss2 = await bossAgain.json();
+  assert.ok(boss2.ok, JSON.stringify(boss2));
+  assert.strictEqual(boss2.canManageUsers, true);
+  assert.strictEqual(boss2.jobTitle, "Admin");
+
+  const meBoss = await fetch(base + "/api/office/me", { headers: { "x-sd-token": boss2.token } });
+  const meBossJson = await meBoss.json();
+  assert.ok(meBossJson.ok);
+  assert.strictEqual(meBossJson.profile.name, "Office Boss");
+  assert.strictEqual(meBossJson.profile.jobTitle, "Admin");
+
+  const promote = await fetch(base + "/api/office/users", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "x-sd-token": boss2.token },
+    body: JSON.stringify({ name: "Site Manager", access: "Production", role: "Manager", password: "mgr", seeDebtors: "Yes" })
+  });
+  const promoted = await promote.json();
+  assert.ok(promoted.ok, JSON.stringify(promoted));
+  assert.strictEqual(promoted.row.access, "Admin");
+  assert.strictEqual(promoted.row.role, "Manager");
+  assert.strictEqual(promoted.row.canManageUsers, true);
+
+  const bossAfter = staff.readSession({ headers: { "x-sd-token": boss2.token } });
+  assert.strictEqual(bossAfter.canManageUsers, false);
+
+  const mgrLogin = await fetch(base + "/api/office/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Site Manager", password: "mgr" })
+  });
+  const mgr = await mgrLogin.json();
+  assert.ok(mgr.ok, JSON.stringify(mgr));
+  assert.strictEqual(mgr.canManageUsers, true);
+  assert.strictEqual(mgr.jobTitle, "Manager");
+  assert.strictEqual(mgr.access, "Admin");
+
+  const bossPut = await fetch(base + "/api/office/users", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "x-sd-token": boss2.token },
+    body: JSON.stringify({ name: "Floor Only", access: "Production", role: "Welding" })
+  });
+  assert.strictEqual(bossPut.status, 403);
+
+  const mgrPut = await fetch(base + "/api/office/users", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "x-sd-token": mgr.token },
+    body: JSON.stringify({ name: "Floor Only", access: "Production", role: "Welding" })
+  });
+  const mgrPutJson = await mgrPut.json();
+  assert.ok(mgrPutJson.ok, JSON.stringify(mgrPutJson));
 
   server.close();
   console.log("staff-access.test.js ok");

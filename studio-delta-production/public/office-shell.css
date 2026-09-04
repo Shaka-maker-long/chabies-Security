@@ -45,6 +45,36 @@ body.office-app.nav-collapsed { --sd-nav: var(--sd-nav-collapsed); }
   padding-top: 10px;
   border-top: 1px solid var(--sd-line);
 }
+.office-who {
+  padding: 4px 10px 8px;
+  min-width: 0;
+}
+.office-who-label {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sd-muted);
+  margin-bottom: 2px;
+}
+.office-who-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--sd-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.office-who-title {
+  display: block;
+  font-size: 11px;
+  color: var(--sd-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.nav-collapsed .office-who { display: none; }
 .sd-sidebar-header {
   display: flex;
   align-items: center;
@@ -135,6 +165,7 @@ body.nav-collapsed .sd-logout-btn {
   body.nav-open .sd-sidebar { left: 0; }
   body.nav-collapsed .sd-link-text,
   body.nav-collapsed .sd-brand-text { display: inline; }
+  body.nav-collapsed .office-who { display: block; }
   body.nav-collapsed .sd-sidebar a,
   body.nav-collapsed .sd-collapse-btn,
   body.nav-collapsed .sd-logout-btn {
