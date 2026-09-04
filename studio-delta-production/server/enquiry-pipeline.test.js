@@ -100,7 +100,7 @@ assert.throws(
     action: "add_correspondence",
     correspondence_files: [{ file_base64: "data:application/octet-stream;base64,QQ==", file_name: "note.msg" }]
   }),
-  /Paste the Correspondance link|Paste the email|subject appears/
+  /Enter a Correspondance link|Paste the email|subject appears/
 );
 const fromDrop = pipeline.applyAction("#1996", "Coster", {
   action: "add_correspondence",

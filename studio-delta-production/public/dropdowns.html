@@ -32,7 +32,7 @@
     <div class="tools" id="status"></div>
   </header>
   <main id="lists"></main>
-  <script src="/office-auth.js?v=pass-reset"></script>
+  <script src="/office-auth.js?v=plain-copy"></script>
   <script>
     const LABELS = {
       type: "TYPE",
@@ -93,7 +93,7 @@
       const r = await sdOfficeFetch("/api/office/dropdowns");
       const j = await r.json();
       dropdowns = j.dropdowns || {};
-      document.getElementById("status").textContent = "Add or delete the lists used on Orders";
+      document.getElementById("status").textContent = "";
       render();
     }
     sdRequireOffice("dropdowns").then((p) => { if (p) load(); });

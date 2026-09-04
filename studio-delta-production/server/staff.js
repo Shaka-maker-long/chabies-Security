@@ -387,10 +387,7 @@ function deleteUser(name) {
 function loginFailureMessage() {
   const users = listUsers();
   if (!users.length) {
-    return "No Users on Railway yet. Wait a few seconds for names to copy from the old spreadsheet, then try again.";
-  }
-  if (users.length === 1 && String(users[0].name).toLowerCase() === "admin") {
-    return "Incorrect name or access code. This boot only has Admin — try Admin / admin, or wait a few seconds for the old Users sheet to copy.";
+    return "No users yet. Try again in a moment.";
   }
   return "Incorrect name or access code";
 }

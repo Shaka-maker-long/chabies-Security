@@ -82,7 +82,6 @@
         <a class="on" href="/enquiries/dashboard">Dashboard</a>
       </nav>
       <h1>Enquiries dashboard</h1>
-      <p class="lede">Johannesburg dates. Pick a month (or a range) and every chart uses that window. Click a line-graph dot — or a bar — to open the enquiries, then click a row for full details.</p>
       <p class="window-chip" id="windowChip"></p>
     </div>
     <div class="tools">
@@ -114,12 +113,10 @@
       <div class="grid">
         <section class="card span2">
           <h2 id="trendTitle">Enquiries and quotes</h2>
-          <p class="hint" id="trendHint">Click a dot to see the enquiries or quotes in that week or month. Switch to revenue for quoted vs ordered excl VAT.</p>
           <canvas id="trend"></canvas>
         </section>
         <section class="card span2">
           <h2>Week of month</h2>
-          <p class="hint">Tick two or more months to overlay week 1–5. Use this to see whether enquiries, quotes, or money land in the first week or later in the month. Click a dot for that week’s list.</p>
           <div id="womMonths" class="wom-months"></div>
           <div class="seg" id="womMetric" role="group" aria-label="Week-of-month metric">
             <button type="button" data-v="enquiries" class="on">Enquiries</button>
@@ -131,27 +128,22 @@
         </section>
         <section class="card">
           <h2>Funnel</h2>
-          <p class="hint">Opened in this window, and how far they got. Click a bar to list them.</p>
           <canvas id="funnel"></canvas>
         </section>
         <section class="card">
           <h2>Pipeline</h2>
-          <p class="hint">Current status of enquiries opened in this window. Click a bar to list them.</p>
           <canvas id="pipeline"></canvas>
         </section>
         <section class="card">
           <h2>Win / loss by period</h2>
-          <p class="hint">Ordered in the period vs losses among enquiries opened then.</p>
           <canvas id="winloss"></canvas>
         </section>
         <section class="card">
           <h2>Time to order</h2>
-          <p class="hint">Calendar days from opened to ordered (this window).</p>
           <canvas id="tto"></canvas>
         </section>
         <section class="card">
           <h2>Stuck / ageing</h2>
-          <p class="hint">Open costing, quoted, and follow-up work, plus overdue 7-day follow-ups.</p>
           <div id="stuck"></div>
         </section>
         <section class="card">
@@ -164,27 +156,22 @@
         </section>
         <section class="card">
           <h2>Enquiry type</h2>
-          <p class="hint">Click Custom or New Design for a split pie (Dimensions / Colour / Other, or each description). Other types open the list.</p>
           <canvas id="types"></canvas>
         </section>
         <section class="card">
           <h2>Stage time (median days)</h2>
-          <p class="hint">Between process events, for enquiries opened in this window.</p>
           <canvas id="stage"></canvas>
         </section>
         <section class="card">
           <h2>Workload</h2>
-          <p class="hint">Open tasks by assignee right now.</p>
           <canvas id="work"></canvas>
         </section>
         <section class="card">
           <h2>Money (excl VAT)</h2>
-          <p class="hint">Quoted vs ordered totals in this window.</p>
           <canvas id="money"></canvas>
         </section>
         <section class="card">
           <h2>Quote value by type</h2>
-          <p class="hint">Quoted excl VAT by enquiry type. Custom and New Design also split the same way as the count pie.</p>
           <canvas id="typeValue"></canvas>
         </section>
         <section class="card">
@@ -193,7 +180,6 @@
         </section>
         <section class="card">
           <h2>Product</h2>
-          <p class="hint">Only the top products are charted so the page stays readable. Search the full list for the rest.</p>
           <canvas id="prod"></canvas>
           <input class="prod-search" id="prodSearch" placeholder="Search products" autocomplete="off">
           <div class="prod-list" id="prodList"></div>
@@ -206,7 +192,7 @@
               <button type="button" data-v="value">Quote value</button>
             </div>
           </div>
-          <p class="hint" id="provHint">Volume opened in this window, and how many of those ordered.</p>
+          <p class="hint" id="provHint" hidden></p>
           <canvas id="prov"></canvas>
         </section>
       </div>
@@ -217,7 +203,7 @@
       <header>
         <div>
           <h2 id="drillTitle">Enquiries</h2>
-          <p class="hint" id="drillHint" style="margin:4px 0 0">Click a row for the full enquiry.</p>
+          <p class="hint" id="drillHint" hidden style="margin:4px 0 0"></p>
         </div>
         <div class="tools">
           <button class="ghost" type="button" id="drillClose">Close</button>
@@ -226,8 +212,8 @@
       <div class="drill-body" id="drillList"></div>
     </div>
   </div>
-  <script src="/office-auth.js?v=pass-reset"></script>
-  <script src="/enquiry-process.js?v=access-lock"></script>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script src="/enquiry-process.js?v=plain-copy"></script>
   <script>
     const charts = {};
     let data = null;
@@ -360,9 +346,7 @@
         const j = await r.json();
         if (!r.ok || !j.ok) throw new Error(j.error || r.statusText);
         document.getElementById("drillTitle").textContent = j.title || "Enquiries";
-        document.getElementById("drillHint").textContent = (j.rows || []).length
-          ? "Click a row to open the full enquiry."
-          : "Nothing in this slice for the selected window.";
+        document.getElementById("drillHint").textContent = "";
         if (!(j.rows || []).length) {
           list.innerHTML = "<p class=\"empty\" style=\"border:0;padding:16px 0\">No enquiries in this slice.</p>";
           return;
@@ -402,9 +386,7 @@
       const mask = document.getElementById("drillMask");
       const list = document.getElementById("drillList");
       document.getElementById("drillTitle").textContent = typeName + (useValue ? " · quote value" : "");
-      document.getElementById("drillHint").textContent = splits.length
-        ? "Click a slice to list those enquiries, then a row for full details."
-        : "No split for this type in the window.";
+      document.getElementById("drillHint").textContent = "";
       mask.classList.add("open");
       if (!splits.length) {
         openDrill({ kind: "type", value: typeName });
@@ -437,13 +419,9 @@
       if (!data) return;
       const labels = data.series.map((s) => s.label);
       const count = metric === "count";
-      const unit = grain === "week" ? "week" : "month";
       document.getElementById("trendTitle").textContent = count
         ? "Enquiries and quotes"
         : "Quoted and ordered revenue";
-      document.getElementById("trendHint").textContent = count
-        ? "Click a dot to list the enquiries or quotes in that " + unit + "."
-        : "Click a dot to list quoted or ordered jobs in that " + unit + " (excl VAT).";
       mk("trend", {
         type: "line",
         data: {
@@ -541,9 +519,6 @@
     function drawProv() {
       if (!data) return;
       const value = provMetric === "value";
-      document.getElementById("provHint").textContent = value
-        ? "Quote value (excl VAT) of enquiries opened in this window, vs ordered value."
-        : "Volume opened in this window, and how many of those ordered.";
       mk("prov", {
         type: "bar",
         data: {
@@ -595,7 +570,7 @@
     function render(d) {
       data = d;
       fillMonths(d.months);
-      document.getElementById("windowChip").textContent = "Showing " + (d.windowLabel || "this window") + " · every chart below uses this filter.";
+      document.getElementById("windowChip").textContent = d.windowLabel || "";
       const k = d.kpis;
       document.getElementById("kpis").innerHTML = [
         ["Open now", k.openNow],
@@ -696,7 +671,7 @@
         if (!j.enquiryCount) {
           document.getElementById("err").hidden = false;
           document.getElementById("err").className = "empty";
-          document.getElementById("err").textContent = "No enquiries yet. Capture one on the sheet and this page will fill in.";
+          document.getElementById("err").textContent = "No enquiries yet.";
           return;
         }
         document.getElementById("app").hidden = false;

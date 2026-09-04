@@ -676,7 +676,7 @@ function archiveCorrespondence(row, actor, body) {
 function addCorrespondence(row, actor, body) {
   const added = archiveCorrespondence(row, actor, body);
   if (!added) {
-    throw new Error("Paste the Correspondance link, then Save update.");
+    throw new Error("Enter a Correspondance link.");
   }
 }
 

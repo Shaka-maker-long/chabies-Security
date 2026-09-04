@@ -306,7 +306,6 @@
     return "<div class=\"sd-cost-slot\" data-product=\"" + esc(product) + "\" data-slot=\"" + fi + "\">" +
       "<label>Cost sheet<input class=\"cost-file-input\" type=\"file\" accept=\".xlsx,.xls,.csv,application/pdf,.pdf\" data-product=\"" + esc(product) + "\" data-slot=\"" + fi + "\"></label>" +
       (slot.name ? "<p class=\"sd-process-sub\">Selected: " + esc(slot.name) + "</p>" : "") +
-      "<p class=\"sd-process-sub\">Excel, CSV, or PDF. Check the preview, then confirm it.</p>" +
       "<div class=\"sd-process-preview\" data-cost-preview></div>" +
       "<label><input class=\"cost-file-ok\" type=\"checkbox\" data-product=\"" + esc(product) + "\" data-slot=\"" + fi + "\"" + (slot.confirmed ? " checked" : "") + "> This is the correct file</label>" +
       (fi > 0 ? "<button type=\"button\" class=\"ghost remove-cost-file\" data-product=\"" + esc(product) + "\" data-slot=\"" + fi + "\">Remove this sheet</button>" : "") +
@@ -317,13 +316,11 @@
     const sheets = Array.isArray(row.cost_sheets) && row.cost_sheets.length
       ? row.cost_sheets
       : (row.cost_sheet && row.cost_sheet.stored_as ? [row.cost_sheet] : []);
-    if (!sheets.length) {
-      return "<p class=\"sd-process-sub\">Upload at least one cost sheet for each product. You can add more than one sheet per item.</p>";
-    }
+    if (!sheets.length) return "";
     const list = sheets.map((s) => {
       return esc((s.product ? s.product + " · " : "") + (s.filename || "cost sheet"));
     }).join("; ");
-    return "<p class=\"sd-process-sub\">Already on file: " + list + ". Those stay in Files. Upload at least one sheet for each product this time — add extra sheets per item if you need them.</p>";
+    return "<p class=\"sd-process-sub\">Already on file: " + list + "</p>";
   }
 
   function productCostBlocks(row) {
@@ -436,7 +433,6 @@
           "<div class=\"sd-quote-total\">Total incl VAT <b data-tot=\"incl\">R 0.00</b></div>" +
           "<div>VAT 15% <b data-tot=\"vat\">R 0.00</b></div>" +
           "<div>Total excl VAT <b data-tot=\"excl\">R 0.00</b></div>" +
-          "<p class=\"sd-process-sub\">Check Total incl VAT against the quote PDF as you type. Exclusive VAT is saved too.</p>" +
           "</div>"
         : "");
   }
@@ -495,7 +491,7 @@
 
   function fileBlock(accept, hint) {
     return "<label>File<input name=\"file\" type=\"file\" accept=\"" + esc(accept) + "\"></label>" +
-      "<p class=\"sd-process-sub\">" + esc(hint) + "</p>" +
+      (hint ? "<p class=\"sd-process-sub\">" + esc(hint) + "</p>" : "") +
       "<div class=\"sd-process-preview\" data-preview></div>" +
       "<label><input name=\"file_ok\" type=\"checkbox\"> This is the correct file</label>";
   }
@@ -553,8 +549,7 @@
     return openSavedFile(kind, filename, true);
   }
   function correspondenceFields() {
-    return "<p class=\"sd-process-sub\">Paste the file link. It is saved on the server as Correspondance link — do not attach a file. Any link or path is fine, including those with //.</p>" +
-      "<label>Correspondance link<textarea class=\"sd-path\" name=\"correspondence_links\" rows=\"3\" placeholder=\"Paste any link or path\" autocomplete=\"off\"></textarea></label>";
+    return "<label>Correspondance link<textarea class=\"sd-path\" name=\"correspondence_links\" rows=\"3\" placeholder=\"Link or path\" autocomplete=\"off\"></textarea></label>";
   }
   function fileHref(kind) {
     return "/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/files/" + encodeURIComponent(kind);
@@ -569,8 +564,7 @@
   }
   function filesCard(row) {
     const items = (row && Array.isArray(row.deliverables)) ? row.deliverables : [];
-    let html = "<div class=\"sd-files sd-correspondence\"><h2>Files</h2>" +
-      "<p class=\"sd-process-sub\">CORRESPONDANCE is a pasted file link saved on the server as Correspondance link — any link or path, including those with //. Cost sheets are per product (more than one sheet per item is fine). Quote PDF (including earlier quotes), follow-up screenshot, proof of payment, and drawing stay here too. Copy link or Open — you do not attach a file for Correspondance.</p>";
+    let html = "<div class=\"sd-files sd-correspondence\"><h2>Files</h2>";
     if (!items.length) {
       return html + "<p class=\"sd-process-sub\">No files on this enquiry yet.</p></div>";
     }
@@ -606,11 +600,7 @@
     if (action.id === "assign_costing") {
       const recost = /Quoted|Followed Up/.test(row.status || "");
       const coster = openAssignee(row, "cost_sheet") || rolePerson("costing");
-      return "<p class=\"sd-process-sub\">" +
-        (recost
-          ? "The client stays on this enquiry. Costing runs again, then you issue another quote PDF. Previous quotes stay in Files."
-          : "Any office Admin, including yourself. Defaults to the Costing person on Users.") +
-        "</p><label>Assign to</label>" + assigneeSelect(coster) +
+      return "<label>Assign to</label>" + assigneeSelect(coster) +
         (recost ? "" : correspondenceFields());
     }
     if (action.id === "add_correspondence") {
@@ -629,7 +619,6 @@
     if (action.id === "complete_cost_sheet") {
       return productCostBlocks(row) +
         "<label>Request approval from (optional)</label>" + assigneeSelect(rolePerson("approval"), "assignee") +
-        "<p class=\"sd-process-sub\">Defaults to the Approval person on Users. Untick Approval on Users if cost sheets should skip approval.</p>" +
         "<label>Quoting person *</label>" + assigneeSelect(row.quote_assignee || rolePerson("quoting"), "quote_assignee");
     }
     if (action.id === "complete_approval") {
@@ -651,33 +640,29 @@
         ? "Last quotation numbers: " + recent.join(", ") + "."
         : "No quotation numbers yet.";
       const prev = (row.quotes || []).map((q) => q.quote_no).filter(Boolean);
-      return (quotedAlready
-        ? "<p class=\"sd-process-sub\">Previous quote" + (prev.length === 1 ? "" : "s") +
-          (prev.length ? " (" + prev.join(", ") + ")" : "") +
-          " stay on this enquiry. The sheet shows the latest quotation number.</p>"
+      return (quotedAlready && prev.length
+        ? "<p class=\"sd-process-sub\">Previous quote" + (prev.length === 1 ? "" : "s") + ": " + prev.join(", ") + "</p>"
         : "") +
         valuesTable(row, true) +
         "<label>Quotation number *<input class=\"sd-quote-no\" name=\"quote_no\" value=\"" + esc(next) + "\" autocomplete=\"off\"></label>" +
-        "<p class=\"sd-process-sub\">" + esc(recentLine) + " Default is the next number (" + esc(hint.next || next) + "). You can change it, but it cannot match an existing quotation.</p>" +
-        fileBlock("application/pdf,.pdf", quotedAlready
-          ? "Upload the revised quote PDF. DATE QUOTED updates to today. Enter the new values including VAT."
-          : "Enter each product value and delivery including VAT here, then upload the quote PDF. DATE QUOTED is saved with the PDF.") +
+        "<p class=\"sd-process-sub\">" + esc(recentLine) + "</p>" +
+        fileBlock("application/pdf,.pdf", "") +
         "<label>Who follows up after 7 days?</label>" + assigneeSelect(row.follow_up_assignee || openAssignee(row, "follow_up"));
     }
     if (action.id === "complete_followup") {
-      return fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "Upload a screenshot of the follow-up.") +
+      return fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "") +
         "<label>Who owns the next follow-up?</label>" + assigneeSelect(row.follow_up_assignee);
     }
     if (action.id === "complete_reject") {
       return "<label>Rejection reason *<textarea name=\"comments\"></textarea></label>";
     }
     if (action.id === "complete_order") {
-      return fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "Upload proof of payment (screenshot or PDF).") +
+      return fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "") +
         "<label>Requires drawing?<select name=\"drawing_required\"><option value=\"\"></option><option value=\"no\">No — ready for Orders</option><option value=\"yes\">Yes — assign drawing</option></select></label>" +
         "<label>Drawing assigned to</label>" + assigneeSelect();
     }
     if (action.id === "complete_drawing") {
-      return fileBlock("application/pdf,.pdf,image/*,.png,.jpg,.jpeg,.webp", "Upload the drawing, check the preview, then confirm it.");
+      return fileBlock("application/pdf,.pdf,image/*,.png,.jpg,.jpeg,.webp", "");
     }
     if (action.id === "close") {
       return "<label>Close as<select name=\"status\">" + closed + "</select></label>" +
@@ -713,8 +698,6 @@
     const pending = (snap && snap.access && snap.access.pendingForMe) || [];
     if (!pending.length) return "";
     return "<div class=\"sd-process-card\"><h2>Access requests</h2>" +
-      "<p class=\"sd-process-sub\">Someone else needs to upload a deliverable that is assigned to you" +
-      (snap.is_manager ? " (or you are the Manager)" : "") + ".</p>" +
       pending.map((g) => {
         return "<div class=\"sd-grant-row\" data-grant=\"" + esc(g.id) + "\">" +
           "<div class=\"grow\"><b>" + esc(g.requester) + "</b> wants to " + esc(accessKindLabel(g.kind)) +
@@ -733,10 +716,9 @@
     const pending = action.request_pending || mine.some((g) => g.status === "pending");
     const granted = mine.some((g) => g.status === "granted");
     let extra = "";
-    if (granted) extra = "<p class=\"sd-process-sub\">Access is granted. Reload this card if Save is still locked.</p>";
-    else if (pending) extra = "<p class=\"sd-process-sub\">Waiting for " + esc(owner) + " or the Manager to grant access.</p>";
-    else extra = "<p class=\"sd-process-sub\">Ask " + esc(owner) + " or the Manager. They will see the request here and on My tasks.</p>";
-    return "<p class=\"sd-process-sub\"><b>" + esc(owner) + "</b> is assigned this step. Only they (or the Manager) can save the deliverable and move STATUS.</p>" +
+    if (granted) extra = "<p class=\"sd-process-sub\">Access granted.</p>";
+    else if (pending) extra = "<p class=\"sd-process-sub\">Waiting for " + esc(owner) + ".</p>";
+    return "<p class=\"sd-process-sub\">Assigned to <b>" + esc(owner) + "</b>.</p>" +
       extra +
       (pending || granted ? "" : "<button type=\"button\" data-request-access=\"" + esc(action.id) + "\" data-request-kind=\"" + esc(action.kind || "") + "\">Request access</button>") +
       "<div class=\"sd-process-err\" data-err></div>";
@@ -850,12 +832,10 @@
         return "<span class=\"sd-task-pill\">" + esc(t.title) + " → " + esc(t.assignee) + "</span>";
       }).join("");
     } else {
-      html += "<p class=\"sd-process-sub\">No open assigned task. Capture and assign the next person from here.</p>";
+      html += "<p class=\"sd-process-sub\">No open assigned task.</p>";
     }
     if (row.ready_for_orders) {
-      html += "<p class=\"sd-process-sub\">POP" + (row.drawing && row.drawing.required ? " and drawing" : "") +
-        " are on file. Create the Orders row with this enquiry number, client, quote, products, and values.</p>" +
-        (row.order_number
+      html += (row.order_number
           ? "<p class=\"sd-process-sub\">Order <b>" + esc(row.order_number) + "</b> is already on Orders.</p>" +
             "<a href=\"/orders\"><button type=\"button\" class=\"ghost sd-create-order\">Open Orders</button></a>"
           : "<button type=\"button\" class=\"sd-create-order\" id=\"sdCreateOrder\">Create order from this enquiry</button>") +

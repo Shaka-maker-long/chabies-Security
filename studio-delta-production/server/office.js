@@ -67,7 +67,7 @@ async function migrateFromGoogle(_req, res) {
   if (!googleMigrateEnabled()) {
     res.status(400).json({
       ok: false,
-      error: "Google Sheets is not the database. Set GOOGLE_MIGRATE=1, SHEET_ID, and Google credentials on Railway only to copy the old spreadsheet once, then remove GOOGLE_MIGRATE."
+      error: "Google copy is not available."
     });
     return;
   }
@@ -82,7 +82,7 @@ async function migrateFromGoogle(_req, res) {
       imported: tabs.ORDERS || 0,
       tabs,
       enquiries: enquiries.imported,
-      message: "Copied the old Google spreadsheet into Railway. Remove GOOGLE_MIGRATE so Google cannot overwrite this again."
+      message: "Copied."
     });
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message || String(e) });

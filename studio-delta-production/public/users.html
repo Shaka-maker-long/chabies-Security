@@ -34,23 +34,17 @@
   <header>
     <h1>Users</h1>
     <span class="msg" id="status"></span>
+    <span class="msg" id="backupLine"></span>
     <button class="ghost" data-manage-only onclick="downloadBackup()">Download JSON backup</button>
     <button class="ghost" data-manage-only onclick="downloadSqlite()">Download SQLite</button>
     <button class="ghost" data-manage-only onclick="runBackup()">Backup now</button>
+    <button class="ghost" id="migrateWrap" type="button" onclick="migrateGoogle()" style="display:none">Copy old Google spreadsheet once</button>
     <button data-manage-only onclick="addRow()">Add user</button>
     <button data-manage-only onclick="saveAll()">Save</button>
   </header>
   <div class="wrap">
-    <p class="help"><b>Production</b> people only see the floor tasks you tick — not Orders, Debtors, or other office pages. <b>Admin</b> can open office pages. Untick <b>See debtors</b> if that admin must not see money still owing.</p>
-    <p class="help">Tick <b>Costing</b>, <b>Quoting</b>, and <b>Approval</b> on the office people who usually do that work. New enquiries use those people automatically, so you do not pick them on every enquiry. You can still choose someone else on a single enquiry. Leave Approval unticked if cost sheets should skip approval.</p>
-    <p class="help">One person with job title <b>Manager</b> can add, delete, and set Access. That person is also office Admin. Until someone is Manager, the first office Admin can still open Users. To change someone else’s access code, type the new code in <b>Access code</b> and Save — the old code must stop working. Everyone else changes only their own access code — use <b>Change access code</b> in the menu, or the form below if you opened Users.</p>
-    <p class="help">The live database is <b>SQLite on Railway</b>. Google Sheets is not used. Every night at 02:00 Johannesburg the app copies SQLite, office JSON, and enquiry files into <code>/app/data/backups</code> (last 14 days stay on the volume). If Google Drive is set, that same copy is uploaded off the server and an email is sent. <b>Backup now</b> runs that copy immediately. <b>Download SQLite</b> is a copy for your PC.</p>
-    <p class="help" id="dbLine"></p>
-    <p class="help" id="backupLine"></p>
-    <p class="help" id="migrateWrap" style="display:none"><button class="ghost" type="button" onclick="migrateGoogle()">Copy old Google spreadsheet once</button></p>
     <div id="passOnly" class="pass-card" style="display:none">
-      <h2 style="font-size:16px;margin:0 0 8px">Your access code</h2>
-      <p class="help" style="margin:0 0 12px">Enter your current code, then the new one.</p>
+      <h2 style="font-size:16px;margin:0 0 8px">Change access code</h2>
       <label>Name<input id="ownName" autocomplete="username"></label>
       <label>Current access code<input id="ownCurrent" type="password" autocomplete="current-password"></label>
       <label>New access code<input id="ownNext" type="password" autocomplete="new-password"></label>
@@ -70,7 +64,7 @@
       <tbody id="body"></tbody>
     </table>
   </div>
-  <script src="/office-auth.js?v=pass-reset"></script>
+  <script src="/office-auth.js?v=plain-copy"></script>
   <script>
     const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
     const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval"];
@@ -218,9 +212,7 @@
         loadBackup();
         return;
       }
-      document.getElementById("status").textContent = j.offsite
-        ? "Backup saved on the volume and on Google Drive"
-        : "Backup saved on the volume (Drive is not configured)";
+      document.getElementById("status").textContent = "Backup saved";
       loadBackup();
     }
     function backupWhen(iso) {
@@ -236,14 +228,14 @@
       const j = await r.json();
       if (!j.ok) return;
       const line = document.getElementById("backupLine");
-      const where = j.backupOffsite ? "On the Railway volume and on Google Drive." : "On the Railway volume only — set GOOGLE_SERVICE_ACCOUNT_JSON so copies also go to Drive.";
-      const stale = j.backupStale ? " A fresh copy is due." : "";
-      line.textContent = "Last backup: " + backupWhen(j.backupAt) + ". " + (j.backupOk ? "OK. " : "Failed. ") +
-        (j.backupLocalCount || 0) + " dated copies kept (14 days). " + where + stale;
-      if (j.backupError) line.textContent += " " + j.backupError;
+      if (!j.backupAt) {
+        line.textContent = "";
+        return;
+      }
+      line.textContent = (j.backupOk ? "Last backup " : "Last backup failed ") + backupWhen(j.backupAt);
     }
     async function migrateGoogle() {
-      if (!confirm("This replaces Users, orders, and shop logs on Railway with the old Google spreadsheet. Enquiries already on Railway are kept, and any Enquiries tab in Google is copied in. Continue?")) return;
+      if (!confirm("Replace Users, orders, and shop logs with the old Google spreadsheet? Existing enquiries stay. Continue?")) return;
       document.getElementById("status").textContent = "Copying from Google…";
       const r = await sdOfficeFetch("/api/office/migrate-from-google", { method: "POST" });
       const j = await r.json();
@@ -255,11 +247,8 @@
       const r = await sdOfficeFetch("/api/office/database");
       const j = await r.json();
       if (!j.ok) return;
-      const p = j.persist || {};
-      document.getElementById("dbLine").textContent = p.usingEphemeralDisk
-        ? "Warning: no Railway volume. Data will disappear on deploy. Mount a volume at /app/data."
-        : ("Saving to " + (p.dataDir || "Railway") + ". Enquiries on file: " + (p.enquiryCount == null ? "—" : p.enquiryCount) + ".");
-      document.getElementById("migrateWrap").style.display = j.migrateAvailable ? "" : "none";
+      const migrate = document.getElementById("migrateWrap");
+      if (migrate) migrate.style.display = (canManage && j.migrateAvailable) ? "" : "none";
     }
     function applyManageMode() {
       document.querySelectorAll("[data-manage-only]").forEach((el) => {
