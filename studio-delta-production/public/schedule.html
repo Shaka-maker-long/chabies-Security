@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta — Schedule</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    header a { color:#344054; text-decoration:none; font-size:13px; font-weight:600; }
+    header a.active { color:#000; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    button.ghost { background:#fff; color:#1d2939; }
+    .wrap { overflow:auto; height:calc(100vh - 58px); }
+    table { border-collapse:collapse; min-width:1600px; background:#fff; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:5px 6px; }
+    th { background:var(--head); position:sticky; top:0; z-index:2; font-size:11px; }
+    td input { width:100%; border:0; font:inherit; background:transparent; }
+    .day { min-width:52px; text-align:center; }
+    .left { min-width:110px; }
+    .msg { font-size:12px; color:#667085; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Schedule</h1>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <button class="ghost" onclick="shift(-7)">← Week</button>
+      <button class="ghost" onclick="shift(7)">Week →</button>
+      <button class="ghost" onclick="addRow()">Add row</button>
+    </div>
+  </header>
+  <div class="wrap"><table id="grid"></table></div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    const LEFT = [
+      ["order_number","ORDER"],
+      ["item_type","ITEM TYPE"],
+      ["category","CATEGORY"],
+      ["product","PRODUCT"],
+      ["province","PROVINCE"],
+      ["order_date","ORDER"],
+      ["courier","COURIER"],
+      ["waybill","WAYBILL"],
+      ["status","STATUS"]
+    ];
+    let start = new URLSearchParams(location.search).get("start") || "";
+    let days = [];
+    let rows = [];
+
+    function dow(iso) {
+      return ["S","M","T","W","T","F","S"][new Date(iso + "T12:00:00").getDay()];
+    }
+    function weekLabel(iso) {
+      const d = new Date(iso + "T12:00:00");
+      const oneJan = new Date(d.getFullYear(), 0, 1);
+      const w = Math.ceil((((d - oneJan) / 86400000) + oneJan.getDay() + 1) / 7);
+      return "Week" + String(w).padStart(2, "0");
+    }
+    function pretty(iso) {
+      const d = new Date(iso + "T12:00:00");
+      return d.getDate() + " " + d.toLocaleString("en-GB", { month: "short" });
+    }
+
+    function render() {
+      const table = document.getElementById("grid");
+      let weeks = "";
+      let drow = "";
+      let dates = "";
+      let cursor = 0;
+      while (cursor < days.length) {
+        const w = weekLabel(days[cursor]);
+        let n = 0;
+        while (cursor + n < days.length && weekLabel(days[cursor + n]) === w) n++;
+        weeks += "<th colspan=\"" + n + "\">" + w + "</th>";
+        cursor += n;
+      }
+      days.forEach((d) => {
+        drow += "<th class=\"day\">" + dow(d) + "</th>";
+        dates += "<th class=\"day\">" + pretty(d) + "</th>";
+      });
+      let html = "<thead><tr><th colspan=\"" + LEFT.length + "\"></th>" + weeks + "</tr>";
+      html += "<tr>";
+      LEFT.forEach(([, l]) => html += "<th class=\"left\">" + l + "</th>");
+      html += drow + "</tr><tr>";
+      LEFT.forEach(() => html += "<th></th>");
+      html += dates + "</tr></thead><tbody>";
+      rows.forEach((row) => {
+        html += "<tr data-id=\"" + row.id + "\">";
+        LEFT.forEach(([k]) => {
+          html += "<td class=\"left\"><input data-k=\"" + k + "\" value=\"" + esc(row[k]) + "\"></td>";
+        });
+        days.forEach((d) => {
+          const v = (row.cells && row.cells[d]) || "";
+          html += "<td class=\"day\"><input data-day=\"" + d + "\" value=\"" + esc(v) + "\"></td>";
+        });
+        html += "</tr>";
+      });
+      html += "</tbody>";
+      table.innerHTML = html;
+      table.onchange = onChange;
+      table.onkeydown = (e) => { if (e.key === "Enter") e.target.blur(); };
+    }
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+
+    async function onChange(e) {
+      const tr = e.target.closest("tr");
+      const id = Number(tr.getAttribute("data-id"));
+      const row = rows.find((r) => r.id === id);
+      if (!row) return;
+      if (e.target.dataset.day) {
+        const day = e.target.dataset.day;
+        const value = e.target.value;
+        if (!row.cells) row.cells = {};
+        row.cells[day] = value;
+        await sdOfficeFetch("/api/office/schedule/cell", {
+          method: "PUT",
+          body: JSON.stringify({ rowId: id, day, value })
+        });
+        return;
+      }
+      row[e.target.dataset.k] = e.target.value;
+      await sdOfficeFetch("/api/office/schedule/row", {
+        method: "PUT",
+        body: JSON.stringify(row)
+      });
+    }
+
+    async function load() {
+      const r = await sdOfficeFetch("/api/office/schedule?start=" + encodeURIComponent(start));
+      const j = await r.json();
+      start = j.start;
+      days = j.days;
+      rows = j.rows;
+      document.getElementById("status").textContent = rows.length + " rows · week of " + start;
+      render();
+    }
+    function shift(n) {
+      const d = new Date(start + "T12:00:00");
+      d.setDate(d.getDate() + n);
+      start = d.toISOString().slice(0, 10);
+      load();
+    }
+    async function addRow() {
+      const r = await sdOfficeFetch("/api/office/schedule/row", {
+        method: "PUT",
+        body: JSON.stringify({ order_number: "S", item_type: "Standard", status: "" })
+      });
+      const j = await r.json();
+      if (!j.ok) { alert(j.error); return; }
+      load();
+    }
+    sdRequireOffice("schedule").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

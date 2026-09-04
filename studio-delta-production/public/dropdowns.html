@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta — Dropdowns</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    header a { color:#344054; text-decoration:none; font-size:13px; font-weight:600; }
+    header a.active { color:#000; }
+    .tools { margin-left:auto; font-size:12px; color:#667085; }
+    main { padding:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+    section { background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px; min-height:220px; display:flex; flex-direction:column; }
+    h2 { font-size:13px; letter-spacing:.04em; margin:0 0 10px; }
+    ul { list-style:none; margin:0; padding:0; overflow:auto; flex:1; max-height:360px; }
+    li { display:flex; gap:8px; align-items:center; padding:6px 0; border-bottom:1px solid #eef2f6; font-size:13px; }
+    li span { flex:1; }
+    li button { border:1px solid #d0d5dd; background:#fff; color:#b42318; border-radius:6px; padding:4px 8px; cursor:pointer; font-weight:600; }
+    .add { display:flex; gap:8px; margin-top:10px; }
+    .add input { flex:1; border:1px solid var(--line); border-radius:6px; padding:8px 10px; }
+    .add button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Dropdowns</h1>
+    <div class="tools" id="status"></div>
+  </header>
+  <main id="lists"></main>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    const LABELS = {
+      type: "TYPE",
+      category: "CATERGORY",
+      product: "PRODUCT",
+      variation: "VARIATION",
+      doors: "DOORS",
+      powder_coating: "POWDER COATING",
+      province: "PROVINCE",
+      source: "SOURCE"
+    };
+    let dropdowns = {};
+
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+
+    function render() {
+      const main = document.getElementById("lists");
+      main.innerHTML = Object.keys(LABELS).map((field) => {
+        const items = dropdowns[field] || [];
+        const rows = items.map((item) =>
+          "<li><span>" + esc(item) + "</span><button type=\"button\" data-field=\"" + field + "\" data-value=\"" + encodeURIComponent(item) + "\">Delete</button></li>"
+        ).join("");
+        return "<section><h2>" + LABELS[field] + " (" + items.length + ")</h2><ul>" + rows + "</ul>" +
+          "<form class=\"add\" data-field=\"" + field + "\"><input name=\"value\" placeholder=\"Add " + LABELS[field].toLowerCase() + "\"><button type=\"submit\">Add</button></form></section>";
+      }).join("");
+      main.querySelectorAll("form.add").forEach((form) => {
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const value = form.value.value;
+          const r = await sdOfficeFetch("/api/office/dropdowns/" + form.getAttribute("data-field"), {
+            method: "POST",
+            body: JSON.stringify({ value })
+          });
+          const j = await r.json();
+          if (!j.ok) { alert(j.error); return; }
+          dropdowns = j.dropdowns;
+          document.getElementById("status").textContent = "Saved";
+          render();
+        };
+      });
+      main.querySelectorAll("li button").forEach((btn) => {
+        btn.onclick = async () => {
+          const field = btn.getAttribute("data-field");
+          const value = decodeURIComponent(btn.getAttribute("data-value"));
+          const r = await sdOfficeFetch("/api/office/dropdowns/" + field + "?value=" + encodeURIComponent(value), {
+            method: "DELETE"
+          });
+          const j = await r.json();
+          if (!j.ok) { alert(j.error); return; }
+          dropdowns = j.dropdowns;
+          document.getElementById("status").textContent = "Deleted";
+          render();
+        };
+      });
+    }
+
+    async function load() {
+      const r = await sdOfficeFetch("/api/office/dropdowns");
+      const j = await r.json();
+      dropdowns = j.dropdowns || {};
+      document.getElementById("status").textContent = "";
+      render();
+    }
+    sdRequireOffice("dropdowns").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

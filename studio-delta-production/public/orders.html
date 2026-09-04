@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta — Orders</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --blue:#cfe2f3; --green:#d9ead3; --ink:#1d2939; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    header a { color:#344054; text-decoration:none; font-size:13px; font-weight:600; }
+    header a.active { color:#000; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; }
+    input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:220px; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    button.ghost { background:#fff; color:#1d2939; }
+    .wrap { overflow:auto; height:calc(100vh - 58px); }
+    table { border-collapse:separate; border-spacing:0; min-width:4200px; background:#fff; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
+    th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
+    td input, td textarea, td select { width:100%; min-width:100%; border:0; font:inherit; background:transparent; padding:0; }
+    td input[readonly] { color:#475467; background:#f8fafc; }
+    td textarea { min-height:42px; white-space:pre-wrap; }
+    .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; min-height:1.2em; cursor:text; }
+    tr:focus-within td { outline:0; }
+    tr:focus-within { outline:2px solid #98a2b3; outline-offset:-2px; }
+    .st-couriers { background:var(--blue); }
+    .st-green { background:var(--green); }
+    .freeze { position:sticky; z-index:3; box-shadow:1px 0 0 var(--line); }
+    th.freeze { z-index:6; background:var(--head); }
+    td.freeze { background:#fff; }
+    td.freeze.st-couriers { background:var(--blue); }
+    td.freeze input, td.freeze select { text-overflow:ellipsis; }
+    .freeze-end { box-shadow:4px 0 8px rgba(16,24,40,.12); }
+    .wrap-text { white-space:normal; }
+    .msg { font-size:12px; color:#667085; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Orders</h1>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <input type="search" id="q" placeholder="Search orders">
+    <button class="ghost" onclick="addRow()">New order</button>
+      <button onclick="saveAll()">Save</button>
+    </div>
+  </header>
+  <div class="wrap">
+    <table id="grid"></table>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    const HEADERS = [
+      ["enquiry_no","ENQUIRY NO", 108, true],
+      ["quote_number","QUOTE NUMBER", 96, true],
+      ["order_number","ORDER NUMBER", 108, true],
+      ["status","STATUS", 112, true],
+      ["assigned_operator","ASSIGNED OPERATOR", 108, true],
+      ["type","TYPE", 100, true],
+      ["category","CATERGORY", 128, true],
+      ["product","PRODUCT", 148, true],
+      ["variation","VARIATION", 168, true],
+      ["doors","DOORS", 180, false],
+      ["detailed_description","DETAILED DESCRIPTION", 280, false],
+      ["dimensions","DIMENSIONS", 180, false],
+      ["powder_coating","POWDER COATING", 190, false],
+      ["client_name","CLIENT NAME", 170, false],
+      ["client_number","CLIENT NUMBER", 150, false],
+      ["email","EMAIL ADDRESS", 210, false],
+      ["payment_date","PAYMENT DATE", 130, false],
+      ["address","ADDRESS", 240, false],
+      ["province","PROVINCE", 150, false],
+      ["price_excl_vat","PRICE (Excl VAT)", 140, false],
+      ["price_incl_vat","PRICE (Incl VAT)", 140, false],
+      ["amount_paid","AMOUNT PAID", 130, false],
+      ["owing","OWING", 120, false],
+      ["month_of_sale","MONTH OF SALE", 130, false],
+      ["source","SOURCE", 150, false],
+      ["city","CITY", 130, false]
+    ];
+    const freezeLeft = {};
+    const colWidths = HEADERS.map((h) => h[2]);
+
+    function layoutFreeze() {
+      const wrap = document.querySelector(".wrap");
+      const avail = wrap && wrap.clientWidth ? wrap.clientWidth : window.innerWidth;
+      const maxFreeze = Math.max(420, Math.floor(avail * 0.45));
+      HEADERS.forEach((h, i) => { colWidths[i] = h[2]; });
+      let total = 0;
+      HEADERS.forEach((h, i) => { if (h[3]) total += colWidths[i]; });
+      if (total > maxFreeze) {
+        const scale = maxFreeze / total;
+        HEADERS.forEach((h, i) => {
+          if (h[3]) colWidths[i] = Math.max(72, Math.floor(h[2] * scale));
+        });
+      }
+      let left = 0;
+      HEADERS.forEach((h, i) => {
+        if (h[3]) {
+          freezeLeft[h[0]] = left;
+          left += colWidths[i];
+        }
+      });
+    }
+    let rows = [];
+    let dropdowns = {};
+    const DROP_FIELDS = {
+      status: 1, type: 1, category: 1, product: 1, variation: 1,
+      doors: 1, powder_coating: 1, province: 1, source: 1
+    };
+    const READONLY_FIELDS = { price_incl_vat: 1, owing: 1, enquiry_no: 1 };
+    const VAT_RATE = 0.15;
+    function parseMoney(s) {
+      const n = Number(String(s || "").replace(/,/g, "").replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+    }
+    function money(n) { return (Math.round(Number(n) * 100) / 100).toFixed(2); }
+    function formatRand(n) {
+      const v = parseMoney(n);
+      const neg = v < 0 ? "-" : "";
+      const [whole, frac] = money(Math.abs(v)).split(".");
+      return neg + "R " + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + frac;
+    }
+    function inclFromExcl(excl) {
+      const n = parseMoney(excl);
+      return n ? money(n * (1 + VAT_RATE)) : "";
+    }
+    function owingOf(row) {
+      const total = parseMoney(row.price_incl_vat) || parseMoney(inclFromExcl(row.price_excl_vat));
+      return formatRand(Math.max(0, total - parseMoney(row.amount_paid)));
+    }
+
+    function statusClass(s) {
+      const v = String(s || "").toLowerCase();
+      if (v.indexOf("courier") !== -1) return "st-couriers";
+      if (v.indexOf("complete") !== -1 || v.indexOf("ready") !== -1) return "st-green";
+      return "";
+    }
+
+    function colStyle(k, width, freeze) {
+      let s = "width:" + width + "px;min-width:" + width + "px;max-width:" + width + "px;";
+      if (freeze) s += "left:" + freezeLeft[k] + "px;";
+      return s;
+    }
+    function colClass(k, width, freeze, extra) {
+      const parts = [];
+      if (extra) parts.push(extra);
+      if (freeze) parts.push("freeze");
+      if (k === "variation") parts.push("freeze-end");
+      return parts.join(" ");
+    }
+
+    function displayValue(k, row) {
+      if (k === "owing") return owingOf(row);
+      return row[k] || "";
+    }
+    function editorHtml(k, row) {
+      if (k === "detailed_description") {
+        return "<textarea data-k=\"" + k + "\">" + esc(row[k]) + "</textarea>";
+      }
+      if (DROP_FIELDS[k]) return selectHtml(k, row[k]);
+      if (READONLY_FIELDS[k]) {
+        return "<input data-k=\"" + k + "\" value=\"" + escAttr(displayValue(k, row)) + "\" readonly>";
+      }
+      return "<input data-k=\"" + k + "\" value=\"" + escAttr(row[k]) + "\">";
+    }
+    function armRow(tr) {
+      if (!tr || tr.getAttribute("data-edit") === "1") return;
+      const i = Number(tr.getAttribute("data-i"));
+      const row = rows[i];
+      if (!row) return;
+      tr.setAttribute("data-edit", "1");
+      tr.querySelectorAll("td").forEach((td) => {
+        const k = td.getAttribute("data-k");
+        if (!k) return;
+        td.innerHTML = editorHtml(k, row);
+      });
+      const first = tr.querySelector("input,select,textarea");
+      if (first) first.focus();
+    }
+
+    function render() {
+      layoutFreeze();
+      const q = document.getElementById("q").value.toLowerCase();
+      const table = document.getElementById("grid");
+      let html = "<thead><tr>";
+      HEADERS.forEach(([k, label, , freeze], i) => {
+        const width = colWidths[i];
+        html += "<th class=\"" + colClass(k, width, freeze, "") + "\" style=\"" + colStyle(k, width, freeze) + "\">" + label + "</th>";
+      });
+      html += "</tr></thead><tbody>";
+      let shown = 0;
+      rows.forEach((row, i) => {
+        const blob = HEADERS.map(([k]) => row[k] || "").join(" ").toLowerCase();
+        if (q && blob.indexOf(q) === -1) return;
+        shown += 1;
+        html += "<tr data-i=\"" + i + "\">";
+        HEADERS.forEach(([k, , , freeze], c) => {
+          const width = colWidths[c];
+          const extra = k === "status" ? statusClass(row[k]) : "";
+          const cls = colClass(k, width, freeze, extra);
+          const style = colStyle(k, width, freeze);
+          const wrap = k === "detailed_description" ? " wrap-text" : "";
+          html += "<td class=\"" + cls + wrap + "\" style=\"" + style + "\" data-k=\"" + k + "\"><span class=\"cell-text\">" + esc(displayValue(k, row)) + "</span></td>";
+        });
+        html += "</tr>";
+      });
+      html += "</tbody>";
+      table.innerHTML = html;
+      const status = document.getElementById("status");
+      if (status && !/Saving|Saved/.test(status.textContent || "")) {
+        status.textContent = (q ? shown + " of " : "") + rows.length + " orders";
+      }
+      table.onclick = (e) => {
+        const tr = e.target.closest("tr");
+        if (!tr || !tr.getAttribute("data-i")) return;
+        armRow(tr);
+      };
+      table.oninput = (e) => {
+        const tr = e.target.closest("tr");
+        if (!tr) return;
+        const i = Number(tr.getAttribute("data-i"));
+        const k = e.target.getAttribute("data-k");
+        rows[i][k] = e.target.value;
+        if (k === "price_excl_vat") {
+          rows[i].price_incl_vat = e.target.value ? formatRand(inclFromExcl(e.target.value)) : "";
+          const incl = tr.querySelector('input[data-k="price_incl_vat"]');
+          const owing = tr.querySelector('input[data-k="owing"]');
+          if (incl) incl.value = rows[i].price_incl_vat;
+          if (owing) owing.value = owingOf(rows[i]);
+        }
+        if (k === "amount_paid") {
+          const owing = tr.querySelector('input[data-k="owing"]');
+          if (owing) owing.value = owingOf(rows[i]);
+        }
+        if (k === "status") {
+          const width = colWidths[2];
+          e.target.parentElement.className = colClass("status", width, true, statusClass(e.target.value));
+        }
+      };
+    }
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+    function escAttr(s) { return esc(s).replace(/"/g, "&quot;"); }
+    function selectHtml(k, value) {
+      const current = String(value || "");
+      const opts = (k === "status" ? (typeof SD_ORDER_STATUSES !== "undefined" ? SD_ORDER_STATUSES.slice() : []) : (dropdowns[k] || [])).slice();
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      let h = "<select data-k=\"" + k + "\"><option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option value=\"" + escAttr(o) + "\"" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      return h + "</select>";
+    }
+
+    async function load() {
+      const [ordersRes, dropRes] = await Promise.all([
+        sdOfficeFetch("/api/office/orders"),
+        sdOfficeFetch("/api/office/dropdowns")
+      ]);
+      const j = await ordersRes.json();
+      const d = await dropRes.json();
+      document.getElementById("status").textContent = "Loading " + (j.rows || []).length + " orders…";
+      rows = j.rows || [];
+      dropdowns = d.dropdowns || {};
+      document.getElementById("status").textContent = rows.length + " orders";
+      render();
+    }
+    function addRow() {
+      const blank = {};
+      HEADERS.forEach(([k]) => blank[k] = "");
+      blank.order_number = "S";
+      blank.status = "Not Yet Started";
+      rows.unshift(blank);
+      render();
+    }
+    async function saveAll() {
+      document.getElementById("status").textContent = "Saving…";
+      for (const row of rows) {
+        if (!String(row.order_number || "").trim()) continue;
+        const r = await sdOfficeFetch("/api/office/orders", {
+          method: "PUT",
+          body: JSON.stringify(row)
+        });
+        const j = await r.json();
+        if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      }
+      await load();
+      document.getElementById("status").textContent = "Saved";
+    }
+    let qTimer = 0;
+    document.getElementById("q").oninput = () => {
+      clearTimeout(qTimer);
+      qTimer = setTimeout(render, 180);
+    };
+    let resizeTimer = 0;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(render, 120);
+    });
+    sdRequireOffice("orders").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

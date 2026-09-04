@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta — Task times</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    header a { color:#344054; text-decoration:none; font-size:13px; font-weight:600; }
+    header a.active { color:#000; }
+    .wrap { overflow:auto; height:calc(100vh - 58px); padding:16px; }
+    table { border-collapse:collapse; background:#fff; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:6px; }
+    th { background:var(--head); position:sticky; top:0; }
+    th.prod { min-width:160px; text-align:left; }
+    input { width:64px; border:1px solid var(--line); border-radius:4px; padding:4px; text-align:right; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    .msg { font-size:12px; color:#667085; margin-left:auto; }
+    p.help { color:#667085; font-size:13px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Task times</h1>
+    <span class="msg" id="status"></span>
+    <button onclick="save()">Save times</button>
+  </header>
+  <div class="wrap">
+    <table id="grid"></table>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
+    let products = [];
+    let mins = {};
+    function key(p, t) { return p + "||" + t; }
+    function render() {
+      let html = "<thead><tr><th class='prod'>PRODUCT</th>";
+      TASKS.forEach((t) => { html += "<th>" + t + "</th>"; });
+      html += "</tr></thead><tbody>";
+      products.forEach((p) => {
+        html += "<tr><td class='prod'><b>" + p + "</b></td>";
+        TASKS.forEach((t) => {
+          const v = mins[key(p, t)] || "";
+          html += "<td><input data-p=\"" + p.replace(/"/g,"&quot;") + "\" data-t=\"" + t + "\" value=\"" + v + "\"></td>";
+        });
+        html += "</tr>";
+      });
+      html += "</tbody>";
+      document.getElementById("grid").innerHTML = html;
+    }
+    async function load() {
+      const [d, drop] = await Promise.all([
+        sdOfficeFetch("/api/office/durations"),
+        sdOfficeFetch("/api/office/dropdowns")
+      ]);
+      const dj = await d.json();
+      const dropj = await drop.json();
+      products = (dropj.dropdowns && dropj.dropdowns.product) ? dropj.dropdowns.product.slice() : [];
+      mins = {};
+      (dj.rows || []).forEach((r) => {
+        mins[key(r.product, r.process)] = r.minutes;
+        if (products.indexOf(r.product) === -1) products.push(r.product);
+      });
+      if (!products.length) products = ["(add products on Dropdowns first)"];
+      render();
+      document.getElementById("status").textContent = products.length + " products";
+    }
+    async function save() {
+      const rows = [];
+      document.querySelectorAll("#grid input").forEach((inp) => {
+        const n = Number(inp.value);
+        if (n > 0) rows.push({ product: inp.getAttribute("data-p"), process: inp.getAttribute("data-t"), minutes: n });
+      });
+      const r = await sdOfficeFetch("/api/office/durations", { method: "PUT", body: JSON.stringify({ rows }) });
+      const j = await r.json();
+      document.getElementById("status").textContent = j.ok ? "Saved" : (j.error || "Could not save");
+    }
+    sdRequireOffice("durations").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>
