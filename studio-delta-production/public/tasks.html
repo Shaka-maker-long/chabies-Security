@@ -89,7 +89,7 @@
             "<div class=\"grow\">" +
             "<h3>" + esc(row.enquiry_no) + " · " + esc(row.client_name || "No client name yet") + "</h3>" +
             "<p>" + esc(kindLabel(row)) + (row.product ? " · " + esc(row.product) : "") + "</p>" +
-            (row.deliverable_count ? "<p>" + row.deliverable_count + " file" + (row.deliverable_count === 1 ? "" : "s") + " on this enquiry</p>" : (row.correspondence_mails ? "<p>" + row.correspondence_mails + " Outlook email" + (row.correspondence_mails === 1 ? "" : "s") + "</p>" : "")) +
+            (row.deliverable_count ? "<p>" + row.deliverable_count + " file" + (row.deliverable_count === 1 ? "" : "s") + " on this enquiry</p>" : (row.correspondence_mails ? "<p>" + row.correspondence_mails + " Correspondance link" + (row.correspondence_mails === 1 ? "" : "s") + "</p>" : "")) +
             "<p><span class=\"pill" + (overdue ? " overdue" : "") + "\">" + esc(row.enquiry_status || "") + "</span>" +
             (overdue ? "<span class=\"pill overdue\">Overdue</span>" : "") +
             when +

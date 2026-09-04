@@ -315,6 +315,13 @@ function mountOffice(app) {
       const actor = req.office && req.office.name;
       const incoming = req.body || {};
       const saved = upsertEnquiry(incoming, { actor });
+      const pasted = String(incoming.correspondence_links || incoming.correspondenceLinks || "").trim();
+      if (actor && pasted) {
+        pipeline.applyAction(saved.enquiry_no, actor, {
+          action: "add_correspondence",
+          correspondence_links: pasted
+        });
+      }
       const row = actor && pipeline.isAutoCaptureStatus(saved.status)
         ? pipeline.applyCaptureRoute(saved.enquiry_no, actor).row
         : saved;
