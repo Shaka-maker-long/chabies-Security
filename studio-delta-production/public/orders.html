@@ -52,7 +52,7 @@
   <div class="wrap">
     <table id="grid"></table>
   </div>
-  <script src="/office-auth.js?v=pass-reset"></script>
+  <script src="/office-auth.js?v=plain-copy"></script>
   <script>
     const HEADERS = [
       ["enquiry_no","ENQUIRY NO", 108, true],
@@ -213,7 +213,7 @@
       table.innerHTML = html;
       const status = document.getElementById("status");
       if (status && !/Saving|Saved/.test(status.textContent || "")) {
-        status.textContent = (q ? shown + " of " : "") + rows.length + " orders (Railway is the database)";
+        status.textContent = (q ? shown + " of " : "") + rows.length + " orders";
       }
       table.onclick = (e) => {
         const tr = e.target.closest("tr");
@@ -266,7 +266,7 @@
       document.getElementById("status").textContent = "Loading " + (j.rows || []).length + " orders…";
       rows = j.rows || [];
       dropdowns = d.dropdowns || {};
-      document.getElementById("status").textContent = rows.length + " orders (Railway is the database)";
+      document.getElementById("status").textContent = rows.length + " orders";
       render();
     }
     function addRow() {

@@ -18,7 +18,6 @@ assert.ok(pane.indexOf("sdShowLogin") !== -1);
 assert.ok(pane.indexOf("sdForgetOffice") === -1);
 
 const processJs = fs.readFileSync(path.join(__dirname, "../public/enquiry-process.js"), "utf8");
-assert.ok(processJs.indexOf("Paste the file link") !== -1);
 assert.ok(processJs.indexOf("Correspondance link") !== -1);
 assert.ok(processJs.indexOf("Drop the Outlook email") === -1);
 assert.ok(processJs.indexOf("correspondence_files") === -1);

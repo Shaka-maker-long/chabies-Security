@@ -46,7 +46,6 @@ function sdShowChangePassword() {
   wrap.className = "sd-login-mask";
   wrap.innerHTML = "<form class=\"sd-login-card\" id=\"sdPassForm\">" +
     "<h2>Change access code</h2>" +
-    "<p>Your own code needs the current one. The Manager can type another person’s name and a new code — their old code stops working.</p>" +
     "<label>Name</label><input name=\"name\" autocomplete=\"username\">" +
     "<label>Current access code</label><input name=\"current_password\" type=\"password\" autocomplete=\"current-password\">" +
     "<label>New access code</label><input name=\"new_password\" type=\"password\" autocomplete=\"new-password\">" +
@@ -232,19 +231,12 @@ function sdShowLogin(message) {
     wrap.innerHTML = '<form class="sd-login-card">' +
       '<div class="sd-login-mark">' + mark + "</div>" +
       "<h2>Studio Delta</h2>" +
-      "<p data-login-hint>" + (message || "Office pages are for Admin. Use the same name and access code as the floor.") + "</p>" +
+      (message ? "<p data-login-hint>" + message + "</p>" : "") +
       "<label>Name</label><input name='name' autocomplete='username'>" +
       "<label>Access code</label><input name='password' type='password' autocomplete='current-password'>" +
       "<button type='submit'>Log in</button>" +
       "<p style='margin:14px 0 0;text-align:center'><a href='/'>Back to floor</a></p></form>";
     document.body.appendChild(wrap);
-    fetch("/health").then((r) => r.json()).then((j) => {
-      const hint = wrap.querySelector("[data-login-hint]");
-      if (!hint || message) return;
-      if (j && j.usingEphemeralDisk) {
-        hint.textContent = "This Railway service has no volume, so logins reset on every deploy. Use your Users name and code. If that fails right after a deploy, wait a few seconds or try Admin / admin.";
-      }
-    }).catch(function () {});
     wrap.querySelector("form").onsubmit = async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
@@ -307,16 +299,4 @@ async function sdRequireOffice(page) {
   sdWarnPersistence();
   return profile;
 }
-function sdWarnPersistence() {
-  fetch("/health").then((r) => r.json()).then((j) => {
-    if (!j || (!j.usingEphemeralDisk && !j.warning)) return;
-    if (document.getElementById("sdPersistBanner")) return;
-    const bar = document.createElement("div");
-    bar.id = "sdPersistBanner";
-    bar.className = "sd-persist-banner";
-    bar.setAttribute("role", "alert");
-    bar.textContent = j.warning || "This Railway service has no volume. Enquiries and shop data are wiped on every deploy. In Railway, add a Volume mounted at /app/data.";
-    document.body.appendChild(bar);
-    document.body.classList.add("has-persist-warning");
-  }).catch(function () {});
-}
+function sdWarnPersistence() {}

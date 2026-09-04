@@ -1291,7 +1291,6 @@
           <div class="col-12 col-sm-8 col-md-6 col-lg-4">
             <div class="card p-4 shadow-sm animate-card login-card">
               <h4 class="mb-2 text-center">Log in</h4>
-              <p class="text-muted small text-center mb-4">One login. Then pick the work you will do today.</p>
               <div class="mb-3">
                 <label class="form-label">Name</label>
                 <input type="text" id="globalLoginName" class="form-control" placeholder="Your name" autocomplete="username" autocapitalize="words">
@@ -1625,7 +1624,6 @@
 
     <div id="view-admin-schedule" class="view-section container d-none-view">
       <h2 class="brand-font mb-2">Worker schedule</h2>
-      <p class="text-muted">Click Not Yet Started orders in the order you want them done. The calendar uses past times for that product and process. Insert a non-order task and everything after it moves forward through 07:45–15:45 (lunch 12:00–12:30, weekdays only).</p>
       <div class="row g-2 mb-3 align-items-end">
         <div class="col-md-3">
           <label class="form-label small fw-bold text-muted mb-1">Process</label>
@@ -1692,7 +1690,7 @@
   </div>
 
   <div class="modal fade" id="passModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="mb-3">Access Code</h3><p class="text-muted" id="passPromptName">Enter code</p><input type="password" id="inputPass" class="form-control text-center mb-3"><button class="btn btn-primary w-100" onclick="submitPass()">ENTER</button></div></div></div>
-  <div class="modal fade" id="changePassModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4"><h3 class="mb-2">Change access code</h3><p class="text-muted small">Your own code needs the current one. The Manager can type another person’s name and a new code.</p><label class="form-label">Name</label><input id="changePassName" class="form-control mb-2" autocomplete="username"><label class="form-label">Current access code</label><input type="password" id="changePassCurrent" class="form-control mb-2" autocomplete="current-password"><label class="form-label">New access code</label><input type="password" id="changePassNext" class="form-control mb-3" autocomplete="new-password"><p class="text-danger small mb-2" id="changePassErr"></p><button class="btn btn-dark w-100" onclick="submitChangePassword()">SAVE ACCESS CODE</button></div></div></div>
+  <div class="modal fade" id="changePassModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4"><h3 class="mb-2">Change access code</h3><label class="form-label">Name</label><input id="changePassName" class="form-control mb-2" autocomplete="username"><label class="form-label">Current access code</label><input type="password" id="changePassCurrent" class="form-control mb-2" autocomplete="current-password"><label class="form-label">New access code</label><input type="password" id="changePassNext" class="form-control mb-3" autocomplete="new-password"><p class="text-danger small mb-2" id="changePassErr"></p><button class="btn btn-dark w-100" onclick="submitChangePassword()">SAVE ACCESS CODE</button></div></div></div>
   <div class="modal fade" id="startModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="brand-font mb-2">Start Order</h3><h1 class="fw-bold text-primary mb-3" id="startModalOrder">...</h1><button class="btn btn-primary btn-lg w-100 mt-3" onclick="confirmStart()">START TIMER</button></div></div></div>
   <div class="modal fade" id="batchWorkModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -1738,7 +1736,6 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content p-4">
         <h3 class="brand-font mb-2">Insert other task</h3>
-        <p class="text-muted small">This sits on the worker calendar. Orders after this time are pushed through the shift (07:45–15:45, lunch skipped).</p>
         <div class="mb-2">
           <label class="form-label fw-bold">Task</label>
           <select id="insertSchedPreset" class="form-select border-dark mb-2" onchange="onInsertSchedPreset()"></select>
@@ -1965,7 +1962,6 @@
           <h5 class="modal-title brand-font">Idle workers</h5>
         </div>
         <div class="modal-body p-3">
-          <p class="text-muted small mb-3">These people have no running job during shift hours. Assign a task so they stay on the clock.</p>
           <div id="idleAlertList"></div>
         </div>
         <div class="modal-footer">
@@ -6089,7 +6085,7 @@ function openSteelModal() {
     function buildProfileCheckboxesHtml() {
       // If no profiles exist in the Google Sheet, show a fallback message instead of hardcoded profiles
       if (!appData.steelProfiles || appData.steelProfiles.length === 0) {
-        return '<div class="text-muted small py-1">No profiles found in Sheet.</div>';
+        return '<div class="text-muted small py-1">No profiles found.</div>';
       }
       
       // Extract just the profile names for the checkboxes
@@ -6848,7 +6844,7 @@ function openSteelModal() {
       const box = document.getElementById('schedQueue');
       const process = document.getElementById('schedProcess').value;
       if (!scheduleQueue.length) {
-        box.innerHTML = '<div class="text-muted p-2">Click orders on the left, in the sequence this worker should do them.</div>';
+        box.innerHTML = '<div class="text-muted p-2">No orders selected.</div>';
         return;
       }
       box.innerHTML = scheduleQueue.map((num, i) => {
@@ -6903,7 +6899,7 @@ function openSteelModal() {
       const worker = document.getElementById('schedWorker').value;
       const process = document.getElementById('schedProcess').value;
       if (!worker) { showAlert('Pick a worker'); return; }
-      if (!scheduleQueue.length) { showAlert('Click the orders in the order they should be done'); return; }
+      if (!scheduleQueue.length) { showAlert('Select the orders first'); return; }
       google.script.run.withSuccessHandler(res => {
         if (!res || !res.success) { showAlert((res && res.message) || 'Could not build schedule'); return; }
         loadScheduleBoard();

@@ -104,7 +104,6 @@
       <a class="on" href="/enquiries">Sheet</a>
       <a href="/enquiries/dashboard">Dashboard</a>
     </nav>
-    <p class="msg" style="margin:0;max-width:560px">Click a row to view the enquiry. Pencil edits. The list icon opens status, costing, and files.</p>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search enquiries">
@@ -164,7 +163,7 @@
         </div>
       </header>
       <div class="body">
-        <p class="hint" id="modalHint"></p>
+          <p class="hint" id="modalHint" hidden></p>
         <div style="overflow:auto">
           <table class="lines">
             <thead>
@@ -198,7 +197,6 @@
             </label>
             <button class="ghost" type="button" id="downloadPdf" onclick="downloadSavedPdf()" style="display:none">Download saved quote</button>
           </div>
-          <p class="hint">Upload the quote, check the preview, then confirm it is the correct PDF. The quote date is saved when the PDF is stored.</p>
           <iframe id="pdfPreview" title="Quote PDF preview"></iframe>
           <label><input type="checkbox" id="pdfOk"> This is the correct quote PDF</label>
         </div>
@@ -216,7 +214,7 @@
         </div>
       </header>
       <div class="body">
-        <p class="hint" id="specHint"></p>
+        <p class="hint" id="specHint" hidden></p>
         <div id="customBlock" class="spec-grid"></div>
         <div id="designBlock" style="display:none">
           <label class="hint" style="display:block;margin-bottom:6px;color:#1d2939;font-weight:600">Full description *</label>
@@ -236,7 +234,7 @@
         </div>
       </header>
       <div class="body stack-form">
-        <p class="hint" id="captureHint">Fill this form instead of typing on the sheet. Products can be added here; Custom and New Design details stay in this window.</p>
+        <p class="hint" id="captureHint" hidden></p>
         <div class="stack-grid">
           <label>Enquiry no
             <input id="cap_enquiry_no" readonly>
@@ -288,7 +286,6 @@
         </div>
         <div id="captureCustomBlock" style="display:none">
           <p class="hint" style="margin:0 0 8px;color:#1d2939;font-weight:600">Custom specification</p>
-          <p class="hint">Is this Dimensions, Colour, or Other? If Other, specify what it is.</p>
           <div id="captureSpecList" class="spec-grid"></div>
         </div>
         <div id="captureDesignBlock" style="display:none">
@@ -315,8 +312,8 @@
       <div class="body" id="viewBody"></div>
     </div>
   </div>
-  <script src="/office-auth.js?v=pass-reset"></script>
-  <script src="/enquiry-process.js?v=access-lock"></script>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script src="/enquiry-process.js?v=plain-copy"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 108, true],
@@ -793,8 +790,7 @@
       const quotes = Array.isArray(row.quotes) ? row.quotes : [];
       const specs = Array.isArray(row.custom_specs) ? row.custom_specs.filter((s) => s && (s.kind || s.detail)) : [];
       document.getElementById("viewTitle").textContent = (row.enquiry_no || "Enquiry") + (row.client_name ? " · " + row.client_name : "");
-      let html = "<p class=\"hint\">This is a read-only view. Use the pencil to edit, or the list icon for status and files.</p>";
-      html += "<div class=\"view-grid\">";
+      let html = "<div class=\"view-grid\">";
       html += viewItem("Enquiry no", row.enquiry_no);
       html += viewItem("Date enquired", displayValue(row, "date_enquired") || row.date_enquired);
       html += viewItem("Month enquired", row.month_enquired);
@@ -950,9 +946,7 @@
       document.getElementById("delivery").value = deliveryIncl(row) || "";
       document.getElementById("modalErr").textContent = "";
       document.getElementById("modalTitle").textContent = mode === "quote" ? "Quote " + row.enquiry_no : "Products " + row.enquiry_no;
-      document.getElementById("modalHint").textContent = mode === "quote"
-        ? "Type each product and delivery including VAT (15%). The total updates as you type so you can check it against the quote PDF. Exclusive VAT is saved too."
-        : "Add the product name (one or more). Costing, quote values, PDFs, and status updates happen on the assigned task — use the list icon on the sheet or open My tasks.";
+      document.getElementById("modalHint").textContent = "";
       document.getElementById("modalSave").textContent = mode === "quote" ? "Save quote" : "Save products";
       document.getElementById("downloadPdf").style.display = row.has_quote_pdf ? "" : "none";
       setQuoteVisible(mode === "quote");
@@ -1114,9 +1108,7 @@
       document.getElementById("designDesc").value = row.design_description || "";
       const custom = row.enquiry_type === "Custom";
       document.getElementById("specTitle").textContent = custom ? "Custom " + (row.enquiry_no || "") : "New Design " + (row.enquiry_no || "");
-      document.getElementById("specHint").textContent = custom
-        ? "Is this Dimensions, Colour, or Other? If Other, specify what it is — that name is saved on the dropdown for next time. Then fill in the details."
-        : "Write a full description of the new design so costing and production know what it is.";
+      document.getElementById("specHint").textContent = "";
       document.getElementById("customBlock").style.display = custom ? "" : "none";
       document.getElementById("designBlock").style.display = custom ? "none" : "";
       if (custom) renderSpecs();
@@ -1320,7 +1312,7 @@
           ? existing.custom_specs.map((s) => Object.assign(emptySpec(), s))
           : [emptySpec()];
         document.getElementById("captureTitle").textContent = "Edit enquiry " + (existing.enquiry_no || "");
-        document.getElementById("captureHint").textContent = "Change only what you need, then save. Quote files and costing stay on the status-update icon.";
+        document.getElementById("captureHint").textContent = "";
         document.getElementById("cap_enquiry_no").value = existing.enquiry_no || "";
         document.getElementById("cap_date_enquired").value = dmyToIso(existing.date_enquired) || dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = existing.client_name || "";
@@ -1337,7 +1329,7 @@
         capture.products = [emptyLine()];
         capture.specs = [emptySpec()];
         document.getElementById("captureTitle").textContent = "New enquiry " + nextNo;
-        document.getElementById("captureHint").textContent = "Fill this form instead of typing on the sheet. Products can be added here; Custom and New Design details stay in this window.";
+        document.getElementById("captureHint").textContent = "";
         document.getElementById("cap_enquiry_no").value = nextNo;
         document.getElementById("cap_date_enquired").value = dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = "";
