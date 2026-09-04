@@ -8,7 +8,7 @@
   
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="/sd-brand.css?v=logged-in">
+  <link rel="stylesheet" href="/sd-brand.css?v=logged-in-2">
   <script src="/sd-splash.js?v=erp-shell"></script>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
@@ -2483,8 +2483,18 @@
         const nameEl = document.getElementById('sidebarWhoName');
         const roleEl = document.getElementById('sidebarWhoRole');
         if (nameEl) nameEl.textContent = session.name || '';
-        if (roleEl) roleEl.textContent = String(session.jobTitle || '').trim() || (session.canSeeOffice ? 'Office' : 'Shop floor');
+        if (roleEl) roleEl.textContent = loggedInJobTitle();
       }
+    }
+    function loggedInJobTitle() {
+      const fromSession = String(session.jobTitle || '').trim();
+      if (fromSession) return fromSession;
+      try {
+        const office = JSON.parse(sessionStorage.getItem('sd-office') || 'null');
+        const title = String((office && (office.jobTitle || office.role)) || '').trim();
+        if (title) return title;
+      } catch (e) {}
+      return session.canSeeOffice ? 'Office' : 'Shop floor';
     }
     function floorCanManageUsers() {
       if (session.canManageUsers) return true;
@@ -2660,6 +2670,11 @@
       session.canSeeOffice = !!res.canSeeOffice;
       session.canSeeDebtors = !!res.canSeeDebtors;
       session.canManageUsers = !!res.canManageUsers;
+      try {
+        const office = JSON.parse(sessionStorage.getItem('sd-office') || 'null');
+        if (office && (office.jobTitle || office.role)) session.jobTitle = office.jobTitle || office.role;
+        if (office && office.canManageUsers) session.canManageUsers = true;
+      } catch (e) {}
       session.access = res.access || (session.canSeeOffice ? 'Admin' : 'Production');
       session.isQcOnly = !!res.isQcOnly;
       session.tasks = res.tasks || [];
