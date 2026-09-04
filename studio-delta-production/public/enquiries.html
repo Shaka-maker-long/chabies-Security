@@ -238,12 +238,13 @@
       <header>
         <h1 id="captureTitle">New enquiry</h1>
         <div class="tools">
+          <button class="ghost" type="button" id="captureBlankBtn" onclick="blankCapture()" hidden>Start blank</button>
           <button class="ghost" type="button" onclick="closeCapture()">Cancel</button>
           <button type="button" onclick="saveCapture()">Save enquiry</button>
         </div>
       </header>
       <div class="body stack-form">
-        <p class="hint" id="captureHint" hidden></p>
+        <p class="hint" id="captureHint">Progress is kept for you if you close this before saving.</p>
         <div class="stack-grid">
           <label>Enquiry no
             <input id="cap_enquiry_no" readonly>
@@ -321,12 +322,13 @@
       <header>
         <h1>Add existing enquiry</h1>
         <div class="tools">
+          <button class="ghost" type="button" id="onboardBlankBtn" onclick="blankOnboard()" hidden>Start blank</button>
           <button class="ghost" type="button" onclick="closeOnboard()">Cancel</button>
           <button type="button" onclick="saveOnboard()">Save onto this system</button>
         </div>
       </header>
       <div class="body stack-form">
-        <p class="hint">Use this for jobs already in progress on the previous system. Pick where it is now — only the fields that stage needs will show.</p>
+        <p class="hint">Use this for jobs already in progress on the previous system. Pick where it is now — only the fields that stage needs will show. Progress is kept for you if you close this before saving.</p>
         <div class="stack-grid">
           <label>Enquiry no *
             <input id="ob_enquiry_no" placeholder="#2004">
@@ -413,11 +415,10 @@
             <select id="ob_quoter"></select>
           </label>
         </div>
-        <div id="obPaneCostSheet" class="onboard-pane onboard-file">
-          <label>Cost sheet * (Excel, CSV, or PDF)
-            <input id="ob_cost_file" type="file" accept=".xlsx,.xls,.csv,application/pdf,.pdf">
-          </label>
-          <label><input type="checkbox" id="ob_cost_ok"> This is the correct file</label>
+        <div id="obPaneCostSheet" class="onboard-pane">
+          <p class="hint" style="color:#1d2939;font-weight:600">One cost sheet per product</p>
+          <p class="hint">Each item needs its own Excel, CSV, or PDF. Tick that each file is correct.</p>
+          <div id="obCostList"></div>
           <label class="enq-check"><input type="checkbox" id="ob_approval_needed"> Still needs costing approval</label>
           <label>Approval person
             <select id="ob_approver"></select>
@@ -566,7 +567,10 @@
       specs: [emptySpec()],
       quoteBase64: "",
       quoteName: "",
-      ignoreDup: false
+      ignoreDup: false,
+      costSheets: {},
+      popBase64: "",
+      popName: ""
     };
     const CLOSED_STATUSES = ["Not within scope", "Not Interested", "Rejected"];
     let modal = { open: false, i: -1, mode: "products", prevStatus: "", lines: [], pdfUrl: "", pdfBase64: "", pdfName: "", confirmed: false };
@@ -1583,21 +1587,13 @@
       openCapture(index);
       promptCaptureCorrespondence(message || "Enter a Correspondance link.");
     }
-    function openCapture(index) {
-      const i = typeof index === "number" && index >= 0 ? index : -1;
-      const existing = i >= 0 ? rows[i] : null;
-      capture.open = true;
-      capture.i = i;
-      capture.ignoreDup = false;
-      document.getElementById("captureDup").hidden = true;
-      document.getElementById("captureDup").innerHTML = "";
+    function fillCaptureFromRow(existing) {
       if (existing) {
         capture.products = ensureLines(existing).map((l) => Object.assign(emptyLine(), l, { value_excl_vat: "", value_incl_vat: "" }));
         capture.specs = Array.isArray(existing.custom_specs) && existing.custom_specs.length
           ? existing.custom_specs.map((s) => Object.assign(emptySpec(), s))
           : [emptySpec()];
         document.getElementById("captureTitle").textContent = "Edit enquiry " + (existing.enquiry_no || "");
-        document.getElementById("captureHint").textContent = "";
         document.getElementById("cap_enquiry_no").value = existing.enquiry_no || "";
         document.getElementById("cap_date_enquired").value = dmyToIso(existing.date_enquired) || dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = existing.client_name || "";
@@ -1614,7 +1610,6 @@
         capture.products = [emptyLine()];
         capture.specs = [emptySpec()];
         document.getElementById("captureTitle").textContent = "New enquiry " + nextNo;
-        document.getElementById("captureHint").textContent = "";
         document.getElementById("cap_enquiry_no").value = nextNo;
         document.getElementById("cap_date_enquired").value = dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = "";
@@ -1627,14 +1622,56 @@
         fillCaptureSelect("cap_source", "source", "");
         fillCaptureSelect("cap_province", "province", "");
       }
-      document.getElementById("captureErr").textContent = "";
       document.getElementById("cap_correspondence").value = "";
+    }
+    function applyCaptureDraft(d) {
+      if (!d) return false;
+      capture.products = Array.isArray(d.products) && d.products.length ? d.products.map((l) => Object.assign(emptyLine(), l)) : [emptyLine()];
+      capture.specs = Array.isArray(d.specs) && d.specs.length ? d.specs.map((s) => Object.assign(emptySpec(), s)) : [emptySpec()];
+      if (d.enquiry_no) document.getElementById("cap_enquiry_no").value = d.enquiry_no;
+      if (d.date_enquired) document.getElementById("cap_date_enquired").value = d.date_enquired;
+      document.getElementById("cap_client_name").value = d.client_name || "";
+      document.getElementById("cap_client_email").value = d.client_email || "";
+      document.getElementById("cap_client_number").value = d.client_number || "";
+      document.getElementById("cap_comment").value = d.comment || "";
+      document.getElementById("captureDesignDesc").value = d.design_description || "";
+      document.getElementById("cap_correspondence").value = d.correspondence || "";
+      fillCaptureSelect("cap_enquiry_source", "enquiry_source", d.enquiry_source || "");
+      fillCaptureSelect("cap_enquiry_type", "enquiry_type", d.enquiry_type || "");
+      fillCaptureSelect("cap_source", "source", d.source || "");
+      fillCaptureSelect("cap_province", "province", d.province || "");
+      return true;
+    }
+    function openCapture(index, skipRestore) {
+      const i = typeof index === "number" && index >= 0 ? index : -1;
+      const existing = i >= 0 ? rows[i] : null;
+      capture.open = true;
+      capture.i = i;
+      capture.ignoreDup = false;
+      document.getElementById("captureDup").hidden = true;
+      document.getElementById("captureDup").innerHTML = "";
+      fillCaptureFromRow(existing);
+      const id = existing ? existing.enquiry_no : "new";
+      const draft = skipRestore ? null : readDraft("capture", id);
+      const restored = draftHasWork(draft) && applyCaptureDraft(draft);
+      const blankBtn = document.getElementById("captureBlankBtn");
+      if (blankBtn) blankBtn.hidden = !restored;
+      document.getElementById("captureHint").textContent = restored
+        ? "Unsaved progress from last time is filled in."
+        : "Progress is kept for you if you close this before saving.";
+      document.getElementById("captureErr").textContent = "";
       renderCaptureLines();
       toggleCaptureType();
       document.getElementById("captureMask").classList.add("open");
       document.getElementById("cap_client_name").focus();
     }
-    function closeCapture() {
+    function blankCapture() {
+      const id = captureDraftId();
+      dropDraft("capture", id);
+      openCapture(capture.i, true);
+    }
+    function closeCapture(keepDraft) {
+      if (keepDraft !== false) persistCaptureDraft();
       document.getElementById("captureMask").classList.remove("open");
       capture.open = false;
       capture.i = -1;
@@ -1642,6 +1679,7 @@
     window.addCaptureLine = addCaptureLine;
     window.openCapture = openCapture;
     window.closeCapture = closeCapture;
+    window.blankCapture = blankCapture;
     document.getElementById("cap_enquiry_type").onchange = toggleCaptureType;
     document.getElementById("ob_enquiry_type").onchange = toggleOnboardType;
     document.getElementById("ob_status").onchange = syncOnboardPanes;
@@ -1651,7 +1689,23 @@
       onboard.quoteName = file.name;
       onboard.quoteBase64 = await readFileAsDataUrl(file);
       document.getElementById("ob_quote_preview").src = onboard.quoteBase64;
+      persistOnboardDraft();
     };
+    document.getElementById("ob_pop_file").onchange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      onboard.popName = file.name;
+      onboard.popBase64 = await readFileAsDataUrl(file);
+      persistOnboardDraft();
+    };
+    document.getElementById("captureMask").addEventListener("input", () => {
+      if (capture.open) schedulePersist(persistCaptureDraft);
+    });
+    document.getElementById("captureMask").addEventListener("change", () => {
+      if (capture.open) schedulePersist(persistCaptureDraft);
+    });
+    document.getElementById("onboardMask").addEventListener("input", () => schedulePersist(persistOnboardDraft));
+    document.getElementById("onboardMask").addEventListener("change", () => schedulePersist(persistOnboardDraft));
     ["cap_client_email", "cap_client_number"].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -1742,7 +1796,8 @@
         if (/Correspondance/i.test(j.error || "")) promptCaptureCorrespondence(j.error);
         return;
       }
-      closeCapture();
+      dropDraft("capture", existing ? existing.enquiry_no : "new");
+      closeCapture(false);
       await load();
       document.getElementById("status").textContent = (existing ? "Updated " : "Saved ") +
         ((j.row && j.row.enquiry_no) || payload.enquiry_no) +
@@ -1779,6 +1834,7 @@
         el.style.display = onboardQuoteish(status) ? "" : "none";
       });
       renderOnboardLines();
+      if (status === "Costed") renderOnboardCostSheets();
     }
     function toggleOnboardType() {
       const type = document.getElementById("ob_enquiry_type").value;
@@ -1823,11 +1879,14 @@
         if (onboard.products.length === 1) onboard.products[0] = emptyLine();
         else onboard.products.splice(idx, 1);
         renderOnboardLines();
+        if (document.getElementById("ob_status").value === "Costed") renderOnboardCostSheets();
+        persistOnboardDraft();
       };
     }
     function addOnboardLine() {
       onboard.products.push(emptyLine());
       renderOnboardLines();
+      if (document.getElementById("ob_status").value === "Costed") renderOnboardCostSheets();
     }
     function captureSpecKindSelectOb(kind, idx) {
       const opts = (dropdowns.custom_spec || ["Dimensions", "Colour", "Other"]).slice();
@@ -1883,12 +1942,191 @@
         reader.readAsDataURL(file);
       });
     }
-    function openOnboard() {
+    function draftKey(kind, extra) {
+      return "sd-enq-draft:" + String(me || "").toLowerCase() + ":" + kind + ":" + (extra || "new");
+    }
+    function writeDraft(kind, extra, data) {
+      try { sessionStorage.setItem(draftKey(kind, extra), JSON.stringify(data)); } catch (e) {
+        try {
+          const slim = Object.assign({}, data);
+          slim.quoteBase64 = "";
+          slim.popBase64 = "";
+          slim.costSheets = {};
+          sessionStorage.setItem(draftKey(kind, extra), JSON.stringify(slim));
+        } catch (err) {}
+      }
+    }
+    function readDraft(kind, extra) {
+      try { return JSON.parse(sessionStorage.getItem(draftKey(kind, extra)) || "null"); } catch (e) { return null; }
+    }
+    function dropDraft(kind, extra) {
+      try { sessionStorage.removeItem(draftKey(kind, extra)); } catch (e) {}
+    }
+    function draftHasWork(d) {
+      if (!d) return false;
+      if (String(d.client_name || "").trim()) return true;
+      if (String(d.correspondence || "").trim()) return true;
+      if (String(d.comment || "").trim()) return true;
+      if (String(d.status || "").trim()) return true;
+      if ((d.products || []).some((p) => String((p && p.product) || "").trim())) return true;
+      return false;
+    }
+    function captureDraftId() {
+      if (capture.i >= 0 && rows[capture.i] && rows[capture.i].enquiry_no) return rows[capture.i].enquiry_no;
+      return "new";
+    }
+    function persistCaptureDraft() {
+      if (!capture.open && !document.getElementById("captureMask").classList.contains("open")) {
+        /* still allow save on close while open flag is being cleared */
+      }
+      const data = {
+        enquiry_no: document.getElementById("cap_enquiry_no").value,
+        date_enquired: document.getElementById("cap_date_enquired").value,
+        enquiry_source: document.getElementById("cap_enquiry_source").value,
+        enquiry_type: document.getElementById("cap_enquiry_type").value,
+        client_name: document.getElementById("cap_client_name").value,
+        source: document.getElementById("cap_source").value,
+        client_email: document.getElementById("cap_client_email").value,
+        client_number: document.getElementById("cap_client_number").value,
+        province: document.getElementById("cap_province").value,
+        comment: document.getElementById("cap_comment").value,
+        correspondence: document.getElementById("cap_correspondence").value,
+        design_description: document.getElementById("captureDesignDesc").value,
+        products: (capture.products || []).map((l) => Object.assign({}, l)),
+        specs: (capture.specs || []).map((s) => Object.assign({}, s))
+      };
+      writeDraft("capture", captureDraftId(), data);
+    }
+    function persistOnboardDraft() {
+      const data = {
+        enquiry_no: document.getElementById("ob_enquiry_no").value,
+        status: document.getElementById("ob_status").value,
+        date_enquired: document.getElementById("ob_date_enquired").value,
+        enquiry_type: document.getElementById("ob_enquiry_type").value,
+        client_name: document.getElementById("ob_client_name").value,
+        enquiry_source: document.getElementById("ob_enquiry_source").value,
+        source: document.getElementById("ob_source").value,
+        province: document.getElementById("ob_province").value,
+        client_email: document.getElementById("ob_client_email").value,
+        client_number: document.getElementById("ob_client_number").value,
+        comment: document.getElementById("ob_comment").value,
+        correspondence: document.getElementById("ob_correspondence").value,
+        design_description: document.getElementById("ob_design_desc").value,
+        delivery: document.getElementById("ob_delivery").value,
+        quote_no: document.getElementById("ob_quote_no").value,
+        date_quoted: document.getElementById("ob_date_quoted").value,
+        follow_done: document.getElementById("ob_follow_done").value,
+        drawing: document.getElementById("ob_drawing").value,
+        approval_needed: document.getElementById("ob_approval_needed").checked,
+        chase: document.getElementById("ob_chase").value,
+        coster: document.getElementById("ob_coster").value,
+        quoter: document.getElementById("ob_quoter").value,
+        approver: document.getElementById("ob_approver").value,
+        drawing_who: document.getElementById("ob_drawing_who").value,
+        products: (onboard.products || []).map((l) => Object.assign({}, l)),
+        specs: (onboard.specs || []).map((s) => Object.assign({}, s)),
+        quoteBase64: onboard.quoteBase64 || "",
+        quoteName: onboard.quoteName || "",
+        quoteOk: document.getElementById("ob_quote_ok").checked,
+        popBase64: onboard.popBase64 || "",
+        popName: onboard.popName || "",
+        popOk: document.getElementById("ob_pop_ok").checked,
+        costSheets: onboard.costSheets || {}
+      };
+      writeDraft("onboard", "new", data);
+    }
+    function schedulePersist(fn) {
+      clearTimeout(schedulePersist.t);
+      schedulePersist.t = setTimeout(fn, 250);
+    }
+    function namedOnboardProducts() {
+      return (onboard.products || []).map((p) => String((p && p.product) || "").trim()).filter(Boolean);
+    }
+    function emptyCostSlot() {
+      return { name: "", base64: "", confirmed: false };
+    }
+    function renderOnboardCostSheets() {
+      const box = document.getElementById("obCostList");
+      if (!box) return;
+      const named = namedOnboardProducts();
+      if (!onboard.costSheets) onboard.costSheets = {};
+      if (!named.length) {
+        box.innerHTML = "<p class=\"hint\">Add product names above first — each item gets its own cost sheet.</p>";
+        return;
+      }
+      named.forEach((product) => {
+        if (!Array.isArray(onboard.costSheets[product]) || !onboard.costSheets[product].length) {
+          onboard.costSheets[product] = [emptyCostSlot()];
+        }
+      });
+      box.innerHTML = named.map((product) => {
+        const slots = onboard.costSheets[product];
+        return "<section class=\"onboard-file\" data-ob-cost=\"" + escAttr(product) + "\">" +
+          "<p class=\"hint\" style=\"color:#1d2939;font-weight:600;margin:0 0 8px\">" + esc(product) + "</p>" +
+          slots.map((slot, fi) => {
+            return "<div class=\"sd-cost-slot\" data-ob-cost-slot=\"" + fi + "\">" +
+              "<label>Cost sheet" + (fi ? " " + (fi + 1) : "") +
+              "<input type=\"file\" accept=\".xlsx,.xls,.csv,application/pdf,.pdf\" data-ob-cost-file=\"" + escAttr(product) + "\" data-slot=\"" + fi + "\"></label>" +
+              (slot.name ? "<p class=\"hint\">Selected: " + esc(slot.name) + "</p>" : "") +
+              "<label><input type=\"checkbox\" data-ob-cost-ok=\"" + escAttr(product) + "\" data-slot=\"" + fi + "\"" + (slot.confirmed ? " checked" : "") + "> This is the correct file</label>" +
+              (fi > 0 ? "<button type=\"button\" class=\"ghost\" data-ob-del-cost=\"" + escAttr(product) + "\" data-slot=\"" + fi + "\">Remove this sheet</button>" : "") +
+              "</div>";
+          }).join("") +
+          "<button type=\"button\" class=\"ghost\" data-ob-add-cost=\"" + escAttr(product) + "\">Add another cost sheet</button>" +
+          "</section>";
+      }).join("");
+      box.querySelectorAll("[data-ob-cost-file]").forEach((input) => {
+        input.onchange = async () => {
+          const product = input.getAttribute("data-ob-cost-file");
+          const fi = Number(input.getAttribute("data-slot") || 0);
+          const file = input.files && input.files[0];
+          if (!onboard.costSheets[product]) onboard.costSheets[product] = [emptyCostSlot()];
+          while (onboard.costSheets[product].length <= fi) onboard.costSheets[product].push(emptyCostSlot());
+          const slot = onboard.costSheets[product][fi];
+          slot.confirmed = false;
+          slot.name = file ? file.name : "";
+          slot.base64 = file ? await readFileAsDataUrl(file) : "";
+          renderOnboardCostSheets();
+          persistOnboardDraft();
+        };
+      });
+      box.querySelectorAll("[data-ob-cost-ok]").forEach((ok) => {
+        ok.onchange = () => {
+          const product = ok.getAttribute("data-ob-cost-ok");
+          const fi = Number(ok.getAttribute("data-slot") || 0);
+          if (onboard.costSheets[product] && onboard.costSheets[product][fi]) {
+            onboard.costSheets[product][fi].confirmed = !!ok.checked;
+            persistOnboardDraft();
+          }
+        };
+      });
+      box.querySelectorAll("[data-ob-add-cost]").forEach((btn) => {
+        btn.onclick = () => {
+          const product = btn.getAttribute("data-ob-add-cost");
+          if (!onboard.costSheets[product]) onboard.costSheets[product] = [];
+          onboard.costSheets[product].push(emptyCostSlot());
+          renderOnboardCostSheets();
+        };
+      });
+      box.querySelectorAll("[data-ob-del-cost]").forEach((btn) => {
+        btn.onclick = () => {
+          const product = btn.getAttribute("data-ob-del-cost");
+          const fi = Number(btn.getAttribute("data-slot") || 0);
+          if (onboard.costSheets[product]) onboard.costSheets[product].splice(fi, 1);
+          renderOnboardCostSheets();
+          persistOnboardDraft();
+        };
+      });
+    }
+    function resetOnboardForm() {
       onboard.products = [emptyLine()];
       onboard.specs = [emptySpec()];
       onboard.quoteBase64 = "";
       onboard.quoteName = "";
       onboard.ignoreDup = false;
+      onboard.costSheets = {};
+      onboard.popBase64 = "";
+      onboard.popName = "";
       document.getElementById("onboardDup").hidden = true;
       document.getElementById("onboardDup").innerHTML = "";
       document.getElementById("onboardErr").textContent = "";
@@ -1907,10 +2145,8 @@
       document.getElementById("ob_follow_done").value = "0";
       document.getElementById("ob_drawing").value = "";
       document.getElementById("ob_approval_needed").checked = false;
-      document.getElementById("ob_cost_ok").checked = false;
       document.getElementById("ob_quote_ok").checked = false;
       document.getElementById("ob_pop_ok").checked = false;
-      document.getElementById("ob_cost_file").value = "";
       document.getElementById("ob_quote_file").value = "";
       document.getElementById("ob_pop_file").value = "";
       document.getElementById("ob_quote_preview").removeAttribute("src");
@@ -1925,12 +2161,62 @@
       fillAssigneeSelect("ob_quoter", enquiryRoles.quoting, me);
       fillAssigneeSelect("ob_approver", enquiryRoles.approval, "");
       fillAssigneeSelect("ob_drawing_who", me);
+    }
+    function applyOnboardDraft(d) {
+      if (!d) return false;
+      onboard.products = Array.isArray(d.products) && d.products.length ? d.products.map((l) => Object.assign(emptyLine(), l)) : [emptyLine()];
+      onboard.specs = Array.isArray(d.specs) && d.specs.length ? d.specs.map((s) => Object.assign(emptySpec(), s)) : [emptySpec()];
+      onboard.quoteBase64 = d.quoteBase64 || "";
+      onboard.quoteName = d.quoteName || "";
+      onboard.costSheets = d.costSheets && typeof d.costSheets === "object" ? d.costSheets : {};
+      onboard.popBase64 = d.popBase64 || "";
+      onboard.popName = d.popName || "";
+      if (d.enquiry_no) document.getElementById("ob_enquiry_no").value = d.enquiry_no;
+      if (d.date_enquired) document.getElementById("ob_date_enquired").value = d.date_enquired;
+      document.getElementById("ob_client_name").value = d.client_name || "";
+      document.getElementById("ob_client_email").value = d.client_email || "";
+      document.getElementById("ob_client_number").value = d.client_number || "";
+      document.getElementById("ob_comment").value = d.comment || "";
+      document.getElementById("ob_correspondence").value = d.correspondence || "";
+      document.getElementById("ob_design_desc").value = d.design_description || "";
+      document.getElementById("ob_delivery").value = d.delivery || "";
+      document.getElementById("ob_quote_no").value = d.quote_no || "";
+      document.getElementById("ob_date_quoted").value = d.date_quoted || "";
+      document.getElementById("ob_follow_done").value = d.follow_done || "0";
+      document.getElementById("ob_drawing").value = d.drawing || "";
+      document.getElementById("ob_approval_needed").checked = !!d.approval_needed;
+      document.getElementById("ob_quote_ok").checked = !!d.quoteOk;
+      document.getElementById("ob_pop_ok").checked = !!d.popOk;
+      fillCaptureSelect("ob_enquiry_source", "enquiry_source", d.enquiry_source || "");
+      fillCaptureSelect("ob_enquiry_type", "enquiry_type", d.enquiry_type || "");
+      fillCaptureSelect("ob_source", "source", d.source || "");
+      fillCaptureSelect("ob_province", "province", d.province || "");
+      document.getElementById("ob_status").value = d.status || "";
+      fillAssigneeSelect("ob_chase", d.chase || me);
+      fillAssigneeSelect("ob_coster", d.coster || enquiryRoles.costing, me);
+      fillAssigneeSelect("ob_quoter", d.quoter || enquiryRoles.quoting, me);
+      fillAssigneeSelect("ob_approver", d.approver || enquiryRoles.approval, "");
+      fillAssigneeSelect("ob_drawing_who", d.drawing_who || me);
+      if (onboard.quoteBase64) document.getElementById("ob_quote_preview").src = onboard.quoteBase64;
+      return true;
+    }
+    function openOnboard(skipRestore) {
+      resetOnboardForm();
+      const draft = skipRestore ? null : readDraft("onboard", "new");
+      const restored = draftHasWork(draft) && applyOnboardDraft(draft);
+      const blankBtn = document.getElementById("onboardBlankBtn");
+      if (blankBtn) blankBtn.hidden = !restored;
       syncOnboardPanes();
       toggleOnboardType();
       document.getElementById("onboardMask").classList.add("open");
       document.getElementById("ob_enquiry_no").focus();
     }
+    function blankOnboard() {
+      dropDraft("onboard", "new");
+      openOnboard(true);
+    }
     function closeOnboard() {
+      persistOnboardDraft();
       document.getElementById("onboardMask").classList.remove("open");
     }
     async function saveOnboard() {
@@ -2002,17 +2288,30 @@
       }
       try {
         if (status === "Costed") {
-          const costFile = document.getElementById("ob_cost_file").files[0];
-          if (!costFile) { err.textContent = "Upload a cost sheet."; return; }
-          payload.file_base64 = await readFileAsDataUrl(costFile);
-          payload.file_name = costFile.name;
-          payload.file_confirmed = document.getElementById("ob_cost_ok").checked;
+          const named = payload.products.filter((p) => p.product);
+          if (!named.length) { err.textContent = "Add at least one product name."; return; }
+          const groups = [];
+          for (const p of named) {
+            const slots = (onboard.costSheets && onboard.costSheets[p.product]) || [];
+            const files = slots.filter((s) => s && s.base64);
+            if (!files.length) { err.textContent = "Upload a cost sheet for " + p.product; return; }
+            if (files.some((s) => !s.confirmed)) { err.textContent = "Tick that this is the correct file for " + p.product; return; }
+            groups.push({
+              product: p.product,
+              files: files.map((s) => ({ file_base64: s.base64, file_name: s.name || "cost-sheet", file_confirmed: true }))
+            });
+          }
+          payload.cost_sheets = groups;
         }
         if (onboardQuoteish(status)) {
           const qf = document.getElementById("ob_quote_file").files[0];
-          if (!qf && !onboard.quoteBase64) { err.textContent = "Upload the quote PDF."; return; }
-          payload.quote_pdf_base64 = onboard.quoteBase64 || (qf ? await readFileAsDataUrl(qf) : "");
-          payload.quote_pdf_name = onboard.quoteName || (qf && qf.name) || "quote.pdf";
+          if (qf) {
+            onboard.quoteBase64 = await readFileAsDataUrl(qf);
+            onboard.quoteName = qf.name;
+          }
+          if (!onboard.quoteBase64) { err.textContent = "Upload the quote PDF."; return; }
+          payload.quote_pdf_base64 = onboard.quoteBase64;
+          payload.quote_pdf_name = onboard.quoteName || "quote.pdf";
           payload.quote_pdf_confirmed = document.getElementById("ob_quote_ok").checked;
           payload.file_base64 = payload.quote_pdf_base64;
           payload.file_name = payload.quote_pdf_name;
@@ -2020,10 +2319,14 @@
         }
         if (status === "Ordered") {
           const pop = document.getElementById("ob_pop_file").files[0];
-          if (!pop) { err.textContent = "Upload proof of payment."; return; }
+          if (pop) {
+            onboard.popBase64 = await readFileAsDataUrl(pop);
+            onboard.popName = pop.name;
+          }
+          if (!onboard.popBase64) { err.textContent = "Upload proof of payment."; return; }
           payload.pop_file = {
-            file_base64: await readFileAsDataUrl(pop),
-            file_name: pop.name,
+            file_base64: onboard.popBase64,
+            file_name: onboard.popName || "pop.pdf",
             file_confirmed: document.getElementById("ob_pop_ok").checked
           };
         }
@@ -2034,7 +2337,8 @@
       const r = await sdOfficeFetch("/api/office/enquiries/onboard", { method: "POST", body: JSON.stringify(payload) });
       const j = await r.json();
       if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
-      closeOnboard();
+      dropDraft("onboard", "new");
+      document.getElementById("onboardMask").classList.remove("open");
       await load();
       document.getElementById("status").textContent = "Brought across " + ((j.row && j.row.enquiry_no) || payload.enquiry_no) +
         (j.row && j.row.status ? " · " + j.row.status : "");
@@ -2064,6 +2368,7 @@
     window.openOnboard = openOnboard;
     window.closeOnboard = closeOnboard;
     window.saveOnboard = saveOnboard;
+    window.blankOnboard = blankOnboard;
     window.addOnboardLine = addOnboardLine;
     window.openClearAll = openClearAll;
     window.closeClearAll = closeClearAll;
