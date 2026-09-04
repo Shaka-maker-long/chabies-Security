@@ -504,7 +504,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
-  <script src="/enquiry-process.js?v=plain-copy"></script>
+  <script src="/enquiry-process.js?v=keep-form"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 108, true],
@@ -2101,21 +2101,6 @@
       if (el) el.onchange = render;
     });
     updatePeriodHint();
-    document.getElementById("mask").addEventListener("click", (e) => {
-      if (e.target.id === "mask") closeModal(false);
-    });
-    document.getElementById("specMask").addEventListener("click", (e) => {
-      if (e.target.id === "specMask") closeSpec(false);
-    });
-    document.getElementById("captureMask").addEventListener("click", (e) => {
-      if (e.target.id === "captureMask") closeCapture();
-    });
-    document.getElementById("onboardMask").addEventListener("click", (e) => {
-      if (e.target.id === "onboardMask") closeOnboard();
-    });
-    document.getElementById("clearMask").addEventListener("click", (e) => {
-      if (e.target.id === "clearMask") closeClearAll();
-    });
     document.getElementById("viewMask").addEventListener("click", (e) => {
       if (e.target.id === "viewMask") closeView();
     });
