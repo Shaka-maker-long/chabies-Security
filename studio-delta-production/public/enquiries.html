@@ -187,9 +187,9 @@
         <div class="totals quote-only">
           <div>Products incl VAT <b id="totProducts">R 0.00</b></div>
           <div>Delivery incl VAT <b id="totDelivery">R 0.00</b></div>
-          <div>Total incl VAT <b id="totIncl">R 0.00</b></div>
+          <div>Total incl VAT <b id="lineTotIncl">R 0.00</b></div>
           <div>VAT 15% <b id="totVat">R 0.00</b></div>
-          <div>Total excl VAT <b id="totExcl">R 0.00</b></div>
+          <div>Total excl VAT <b id="lineTotExcl">R 0.00</b></div>
         </div>
         <div class="pdf-box quote-only">
           <div class="row-actions">
@@ -915,10 +915,12 @@
       const totExcl = productsExcl + deliveryExclAmt;
       document.getElementById("totProducts").textContent = formatRand(productsIncl);
       document.getElementById("totDelivery").textContent = formatRand(deliveryInclAmt);
-      document.getElementById("totIncl").textContent = formatRand(totIncl);
+      const lineInclEl = document.getElementById("lineTotIncl");
+      if (lineInclEl) lineInclEl.textContent = formatRand(totIncl);
       const vatEl = document.getElementById("totVat");
       if (vatEl) vatEl.textContent = formatRand(totIncl - totExcl);
-      document.getElementById("totExcl").textContent = formatRand(totExcl);
+      const lineExclEl = document.getElementById("lineTotExcl");
+      if (lineExclEl) lineExclEl.textContent = formatRand(totExcl);
     }
     function revokePdf() {
       if (modal.pdfUrl && modal.pdfUrl.indexOf("blob:") === 0) URL.revokeObjectURL(modal.pdfUrl);
