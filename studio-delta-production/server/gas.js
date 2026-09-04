@@ -53,6 +53,7 @@ function cachePut(key, val, ttlSec) {
 
 function clearShopCache() {
   cacheStore.clear();
+  scriptSource = null;
 }
 
 function isoWeek(date) {

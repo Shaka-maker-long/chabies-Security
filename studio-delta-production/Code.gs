@@ -557,38 +557,21 @@ function verifyLogin(role, name, password) {
   var ss = getSpreadsheet();
   var sheet = getSheetOrDie(ss, TAB_USERS);
   var data = sheet.getDataRange().getValues();
-  
-  // 1. Find the Admin Password first (Master Key)
-  var adminPassword = null;
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).toLowerCase() === "admin" || String(data[i][1]).toLowerCase() === "manager" || String(data[i][4] || "").toLowerCase() === "admin") {
-      adminPassword = data[i][2];
-      break;
-    }
-  }
+  var pass = String(password || "").trim();
 
-  // 2. Check Credentials
   for (var i = 1; i < data.length; i++) {
     var rowName = data[i][0];
     var rowRole = data[i][1];
-    var rowPass = data[i][2];
+    var rowPass = String(data[i][2] || "").trim();
 
-    // Target Match
     if (role === rowRole && name === rowName) {
-      
-      // A. Normal User Login
-      if (String(password) == String(rowPass)) {
-        var isAdmin = (role === 'Admin'); 
+      if (pass && pass === rowPass) {
+        var isAdmin = (role === 'Admin');
         return { success: true, isAdmin: isAdmin };
-      }
-      
-      // B. Admin "Master Key" Login (Admin logging into a Worker profile)
-      if (adminPassword && String(password) == String(adminPassword)) {
-        return { success: true, isAdmin: true }; // Grants Read-Only access in UI
       }
     }
   }
-  
+
   return { success: false, error: "Incorrect Access Code" };
 }
 
@@ -600,26 +583,15 @@ function verifyGlobalLogin(name, password) {
   if (!data || data.length <= 1) {
     return { success: false, error: "No Users loaded yet. Wait a few seconds and try again, or use Admin / admin." };
   }
-  
-  // 1. Find the Admin Password first (Master Key)
-  var adminPassword = null;
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).toLowerCase() === "admin" || String(data[i][1]).toLowerCase() === "manager" || String(data[i][4] || "").toLowerCase() === "admin") {
-      adminPassword = data[i][2];
-      break;
-    }
-  }
 
-  // 2. Check Credentials (case-insensitive name match)
   var lowerName = String(name).trim().toLowerCase();
+  var pass = String(password || "").trim();
   for (var i = 1; i < data.length; i++) {
     var rowName = String(data[i][0]).trim().toLowerCase();
-    var rowPass = data[i][2];
+    var rowPass = String(data[i][2] || "").trim();
 
     if (lowerName === rowName && rowName !== "") {
-      var ok = String(password) == String(rowPass);
-      if (!ok && adminPassword && String(password) == String(adminPassword)) ok = true;
-      if (ok) {
+      if (pass && pass === rowPass) {
         var profile = readUserRowProfile(data[i]);
         return {
           success: true,
@@ -637,7 +609,7 @@ function verifyGlobalLogin(name, password) {
       }
     }
   }
-  
+
   return { success: false, error: "Incorrect Name or Access Code" };
 }
 

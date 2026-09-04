@@ -299,7 +299,7 @@ function upsertUser(body) {
   const manageUsers = isManagerTitle(role) ? "Yes" : "No";
   const sheet = usersSheet();
   let rowNum = findUserRow(name);
-  let password = String(body.password || "").trim();
+  let password = accessCode(body.password);
   if (!rowNum) {
     if (!password) throw new Error("Access code is required for a new user");
     rowNum = sheet.getLastRow() + 1;
@@ -344,13 +344,13 @@ function canManageUsers(profile) {
 
 function changeOwnPassword(name, currentPassword, nextPassword) {
   const want = String(name || "").trim();
-  const current = String(currentPassword || "");
-  const next = String(nextPassword || "").trim();
+  const current = accessCode(currentPassword);
+  const next = accessCode(nextPassword);
   if (!want) throw new Error("Name is required");
   if (!next) throw new Error("New access code is required");
   const rowNum = findUserRow(want);
   if (!rowNum) throw new Error("Current access code is wrong");
-  const stored = String(usersSheet().getRange(rowNum, 3).getValue() || "");
+  const stored = accessCode(usersSheet().getRange(rowNum, 3).getValue());
   if (!stored || stored !== current) throw new Error("Current access code is wrong");
   usersSheet().getRange(rowNum, 3).setValue(next);
   persistWorkbook();
@@ -382,21 +382,20 @@ function loginFailureMessage() {
   return "Incorrect name or access code";
 }
 
+function accessCode(value) {
+  return String(value == null ? "" : value).trim();
+}
+
 function verifyUser(name, password) {
   const sheet = usersSheet();
   const last = sheet.getLastRow();
   if (last < 2) return null;
   const grid = sheet.getRange(2, 1, last - 1, USER_HEADERS.length).getValues();
-  let adminPassword = "";
-  grid.forEach((row) => {
-    if (parseAccess(row[4], row[1]) === "Admin" && !adminPassword) adminPassword = String(row[2] || "");
-  });
   const want = String(name || "").trim().toLowerCase();
-  const pass = String(password || "");
+  const pass = accessCode(password);
   for (let i = 0; i < grid.length; i++) {
     if (String(grid[i][0] || "").trim().toLowerCase() !== want) continue;
-    const rowPass = String(grid[i][2] || "");
-    if (pass === rowPass || (adminPassword && pass === adminPassword)) {
+    if (pass && pass === accessCode(grid[i][2])) {
       return rowToUser(grid[i], i + 2);
     }
   }
