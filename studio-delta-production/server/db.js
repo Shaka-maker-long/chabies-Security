@@ -14,7 +14,8 @@ const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
   "product", "variation", "doors", "detailed_description", "dimensions", "powder_coating",
   "client_name", "client_number", "email", "payment_date", "address", "province",
-  "price_excl_vat", "price_incl_vat", "amount_paid", "month_of_sale", "source", "city"
+  "price_excl_vat", "price_incl_vat", "amount_paid", "month_of_sale", "source", "city",
+  "enquiry_no"
 ];
 
 const VAT_RATE = 0.15;
@@ -315,7 +316,9 @@ const ORDER_HEADER_MAP = {
   "amount paid": "amount_paid",
   "month of sale": "month_of_sale",
   "source": "source",
-  "city": "city"
+  "city": "city",
+  "enquiry no": "enquiry_no",
+  "enquiry number": "enquiry_no"
 };
 
 function normHeader(s) {
@@ -366,6 +369,11 @@ function ensureOrderHeaders(sheet) {
   if (look.idx.amount_paid == null) {
     const col = Math.max(sheet.getLastColumn(), look.headers.length) + 1;
     sheet.getRange(1, col).setValue("AMOUNT PAID");
+    look = headerLookup(sheet);
+  }
+  if (look.idx.enquiry_no == null) {
+    const col = Math.max(sheet.getLastColumn(), look.headers.length) + 1;
+    sheet.getRange(1, col).setValue("ENQUIRY NO");
     look = headerLookup(sheet);
   }
   return look;
@@ -1096,6 +1104,102 @@ const CAPTURE_STATUSES = [
   "Waiting on clients specifictions",
   "Waiting on productions confirmation"
 ];
+const CLOSED_ENQUIRY_STATUSES = ["Not within scope", "Not Interested", "Rejected"];
+
+function digitsOnly(s) {
+  return String(s || "").replace(/\D/g, "");
+}
+
+function emailsMatch(a, b) {
+  const x = String(a || "").trim().toLowerCase();
+  const y = String(b || "").trim().toLowerCase();
+  return !!(x && y && x === y);
+}
+
+function findOpenEnquiryDuplicates(payload, exceptEnquiryNo) {
+  const email = String((payload && payload.client_email) || "").trim();
+  const number = digitsOnly(payload && payload.client_number);
+  if (!email && number.length < 7) return [];
+  const except = enquiryNumberValue(exceptEnquiryNo || (payload && payload.enquiry_no));
+  return listEnquiries().filter((row) => {
+    if (!row) return false;
+    if (except && enquiryNumberValue(row.enquiry_no) === except) return false;
+    if (CLOSED_ENQUIRY_STATUSES.indexOf(row.status) >= 0) return false;
+    const mailHit = email && emailsMatch(row.client_email, email);
+    const num = digitsOnly(row.client_number);
+    const numHit = number.length >= 7 && num.length >= 7 && (num === number || num.endsWith(number) || number.endsWith(num));
+    return !!(mailHit || numHit);
+  }).map((row) => ({
+    enquiry_no: row.enquiry_no,
+    client_name: row.client_name || "",
+    client_email: row.client_email || "",
+    client_number: row.client_number || "",
+    status: row.status || ""
+  }));
+}
+
+function nextStudioOrderNumber() {
+  let max = 0;
+  listOrders().forEach((o) => {
+    const m = String((o && o.order_number) || "").trim().toUpperCase().match(/^S(\d+)$/);
+    if (m) max = Math.max(max, Number(m[1]));
+  });
+  if (max < 1) {
+    const y = new Date().getFullYear() % 100;
+    max = y * 10000;
+  }
+  return "S" + String(max + 1);
+}
+
+function createOrderFromEnquiry(enquiryNo) {
+  const enquiry = getEnquiry(enquiryNo);
+  if (!enquiry) throw new Error("Enquiry not found");
+  if (!enquiry.ready_for_orders) {
+    throw new Error("Attach proof of payment, and the drawing if this order needs one, before creating an Orders row");
+  }
+  const existing = listOrders().find((o) => {
+    if (!o) return false;
+    if (enquiry.order_number && formatOrderId(o.order_number) === formatOrderId(enquiry.order_number)) return true;
+    return String(o.enquiry_no || "").trim() === String(enquiry.enquiry_no || "").trim();
+  });
+  if (existing) {
+    const raw = getEnquiryRaw(enquiry.enquiry_no);
+    if (raw && !raw.order_number) {
+      raw.order_number = existing.order_number;
+      saveEnquiryRecord(raw);
+    }
+    return { row: decorateMoney(existing), enquiry: getEnquiry(enquiry.enquiry_no), existing: true };
+  }
+  const named = (enquiry.products || []).filter((p) => String(p.product || "").trim());
+  const detail = named.map((p) => {
+    const price = p.value_incl_vat || p.value_excl_vat || "";
+    return p.product + (p.category ? " (" + p.category + ")" : "") + (price ? " · " + price : "");
+  }).join("\n");
+  const saved = upsertOrder({
+    enquiry_no: enquiry.enquiry_no,
+    quote_number: enquiry.quote_no || "",
+    order_number: nextStudioOrderNumber(),
+    status: "Not Yet Started",
+    type: enquiry.enquiry_type || "",
+    category: enquiry.category || "",
+    product: enquiry.product || "",
+    client_name: enquiry.client_name || "",
+    client_number: enquiry.client_number || "",
+    email: enquiry.client_email || "",
+    province: enquiry.province || "",
+    source: enquiry.source || "",
+    price_excl_vat: enquiry.quote_total_excl_vat || "",
+    price_incl_vat: enquiry.quote_total_incl_vat || "",
+    detailed_description: [enquiry.request, enquiry.design_description, detail].filter(Boolean).join("\n"),
+    month_of_sale: formatMonthOfSale(nowIso())
+  });
+  const raw = getEnquiryRaw(enquiry.enquiry_no);
+  if (raw) {
+    raw.order_number = saved.order_number;
+    saveEnquiryRecord(raw);
+  }
+  return { row: decorateMoney(saved), enquiry: getEnquiry(enquiry.enquiry_no), existing: false };
+}
 
 function cloneJson(v, fallback) {
   if (v == null) return fallback;
@@ -1977,6 +2081,10 @@ module.exports = {
   ENQUIRY_FIELDS,
   KEEP_VALUE_STATUSES,
   CAPTURE_STATUSES,
+  CLOSED_ENQUIRY_STATUSES,
+  findOpenEnquiryDuplicates,
+  nextStudioOrderNumber,
+  createOrderFromEnquiry,
   listEnquiries,
   getEnquiry,
   getEnquiryRaw,

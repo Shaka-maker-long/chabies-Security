@@ -53,9 +53,10 @@
   </header>
   <div class="wrap" id="list"></div>
   <script src="/office-auth.js?v=pass-reset"></script>
-  <script src="/enquiry-process.js?v=cost-multi"></script>
+  <script src="/enquiry-process.js?v=access-lock"></script>
   <script>
     let rows = [];
+    let grants = [];
     let me = "";
     const completedView = location.pathname.replace(/\/+$/, "") === "/tasks/completed";
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
@@ -70,7 +71,7 @@
         return !q || blob.indexOf(q) >= 0;
       });
       const list = document.getElementById("list");
-      if (!filtered.length) {
+      if (!filtered.length && (completedView || !grants.length || q)) {
         let empty;
         if (q) empty = "No " + (completedView ? "completed " : "") + "tasks match that search.";
         else if (completedView) empty = "Nothing completed yet. When you finish costing, quoting, a follow-up, or a drawing, that work moves here.";
@@ -99,8 +100,17 @@
         }).join("");
       }
       let html = "";
+      if (!completedView && grants.length && !q) {
+        html += "<section class=\"group\"><h2>Access requests</h2>" + grants.map((g) => {
+          return "<article class=\"card\">" +
+            "<div class=\"grow\"><h3>" + esc(g.enquiry_no) + " · " + esc(g.client_name || "") + "</h3>" +
+            "<p><b>" + esc(g.requester) + "</b> wants to " + esc(g.kind_label || g.kind) + "</p>" +
+            "<p><span class=\"pill\">" + esc(g.enquiry_status || "") + "</span></p></div>" +
+            "<button type=\"button\" data-open=\"" + esc(g.enquiry_no) + "\">Review</button></article>";
+        }).join("") + "</section>";
+      }
       if (completedView) {
-        html = "<section class=\"group\"><h2>Completed</h2>" + cards(filtered) + "</section>";
+        html += "<section class=\"group\"><h2>Completed</h2>" + cards(filtered) + "</section>";
       } else {
         const overdue = filtered.filter((r) => r.overdue);
         const rest = filtered.filter((r) => !r.overdue);
@@ -121,6 +131,12 @@
       const j = await r.json();
       if (!j.ok) { document.getElementById("status").textContent = j.error || "Could not load"; return; }
       rows = j.rows || [];
+      grants = [];
+      if (!completedView) {
+        const g = await sdOfficeFetch("/api/office/access-requests");
+        const gj = await g.json();
+        if (gj.ok) grants = gj.rows || [];
+      }
       if (completedView) document.getElementById("status").textContent = rows.length ? (rows.length + " completed") : "No completed tasks";
       else document.getElementById("status").textContent = rows.length ? (rows.length + " assigned") : "No open tasks";
       render();

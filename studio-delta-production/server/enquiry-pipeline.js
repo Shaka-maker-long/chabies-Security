@@ -1,5 +1,6 @@
 const db = require("./db");
 const staff = require("./staff");
+const access = require("./enquiry-access");
 
 const FOLLOW_UP_DAYS = 7;
 
@@ -221,6 +222,77 @@ function statusAllows(row, list) {
   return list.indexOf(row.status) >= 0;
 }
 
+const DELIVERABLE_ACTIONS = {
+  complete_chase: "chase_info",
+  complete_cost_sheet: "cost_sheet",
+  supplier_wait: "cost_sheet",
+  complete_supplier: "supplier",
+  complete_approval: "approval",
+  complete_quote: "quote",
+  complete_followup: "follow_up",
+  complete_reject: "pop",
+  complete_order: "pop",
+  complete_drawing: "drawing"
+};
+
+function isManagerName(name) {
+  return staff.canManageUsers({ name: String(name || "").trim() });
+}
+
+function actionKind(actionId) {
+  return DELIVERABLE_ACTIONS[actionId] || "";
+}
+
+function actionOwner(row, actionId) {
+  const kind = actionKind(actionId);
+  if (!kind) return "";
+  const open = openOfKind(row, kind);
+  if (open && open.assignee) return open.assignee;
+  if (kind === "quote") return row.quote_assignee || "";
+  if (kind === "follow_up" || kind === "pop") {
+    return row.follow_up_assignee || row.quote_assignee || lastAssignee(row, kind) || "";
+  }
+  if (kind === "drawing") return (row.drawing && row.drawing.assignee) || lastAssignee(row, "drawing") || "";
+  if (kind === "approval") return (row.approval && row.approval.requested_from) || lastAssignee(row, "approval") || "";
+  return lastAssignee(row, kind) || "";
+}
+
+function canAct(row, actor, actionId) {
+  if (!DELIVERABLE_ACTIONS[actionId]) return true;
+  const owner = actionOwner(row, actionId);
+  if (!owner) return true;
+  const who = String(actor || "").trim();
+  if (!who) return false;
+  if (namesMatch(owner, who)) return true;
+  if (isManagerName(who)) return true;
+  return access.grantedFor(row, who, actionKind(actionId));
+}
+
+function assertCanAct(row, actor, actionId) {
+  if (canAct(row, actor, actionId)) return;
+  const owner = actionOwner(row, actionId) || "the assigned person";
+  throw new Error(
+    owner + " is assigned this step. Ask them or the Manager to grant you access, then upload the deliverable."
+  );
+}
+
+function decorateActions(row, actor) {
+  return availableActions(row).map((action) => {
+    const kind = actionKind(action.id);
+    const owner = actionOwner(row, action.id);
+    const locked = !!(kind && owner);
+    const pending = locked ? access.pendingFor(row, actor, kind) : null;
+    return {
+      ...action,
+      kind,
+      assignee: owner,
+      can_act: !locked || canAct(row, actor, action.id),
+      request_pending: !!(pending && pending.id),
+      grant_id: pending ? pending.id : ""
+    };
+  });
+}
+
 function availableActions(row) {
   const status = row.status || "New";
   const actions = [];
@@ -336,20 +408,30 @@ function listMyCompletedTasks(userName) {
   return out;
 }
 
-function processSnapshot(enquiryNo) {
+function processSnapshot(enquiryNo, actorName) {
   const row = db.getEnquiry(enquiryNo);
   if (!row) throw new Error("Enquiry not found");
+  const actor = String(actorName || "").trim();
+  const manager = actor ? isManagerName(actor) : false;
   return {
     row,
+    me: actor,
+    is_manager: manager,
     assignees: officeAssignees(),
     enquiryRoles: staff.enquiryRoleDefaults(),
-    actions: availableActions(row),
+    actions: decorateActions(row, actor),
+    access: access.snapshotFor(row, actor, manager),
     waitingStatuses: WAITING_STATUSES,
     closedStatuses: CLOSED_STATUSES.filter((s) => s !== "Rejected"),
     followUpDays: FOLLOW_UP_DAYS,
     quoteNo: db.quoteNoHint(),
     outlookAddin: { manifest: "/outlook-addin/manifest.xml", install: "/outlook-addin" }
   };
+}
+
+function listAccessInbox(userName) {
+  const actor = String(userName || "").trim();
+  return access.inboxFor(db.listEnquiries(), actor, actor ? isManagerName(actor) : false);
 }
 
 function applyAction(enquiryNo, actorName, body) {
@@ -361,6 +443,39 @@ function applyAction(enquiryNo, actorName, body) {
   if (!Array.isArray(raw.follow_ups)) raw.follow_ups = [];
   if (!Array.isArray(raw.quotes)) raw.quotes = [];
   const action = String((body && body.action) || "").trim();
+  if (action === "request_access") {
+    const forAction = String((body && body.for_action) || "").trim();
+    const kind = String((body && body.kind) || actionKind(forAction) || "").trim();
+    const owner = (forAction ? actionOwner(raw, forAction) : "")
+      || (openOfKind(raw, kind) && openOfKind(raw, kind).assignee)
+      || "";
+    const grant = access.requestAccess(raw, actor, kind, owner);
+    db.appendEnquiryEvent(raw, {
+      kind: "request_access",
+      actor,
+      status: raw.status || "",
+      label: "Asked " + (grant.assignee || "assignee") + " for access to " + access.kindLabel(kind),
+      note: ""
+    });
+    raw.updated_at = db.nowIso();
+    db.saveEnquiryRecord(raw);
+    return processSnapshot(raw.enquiry_no, actor);
+  }
+  if (action === "grant_access" || action === "deny_access") {
+    const grant = action === "grant_access"
+      ? access.grantAccess(raw, actor, body && body.grant_id, isManagerName(actor))
+      : access.denyAccess(raw, actor, body && body.grant_id, isManagerName(actor));
+    db.appendEnquiryEvent(raw, {
+      kind: action,
+      actor,
+      status: raw.status || "",
+      label: (action === "grant_access" ? "Granted " : "Refused ") + (grant.requester || "access") + " — " + access.kindLabel(grant.kind),
+      note: ""
+    });
+    raw.updated_at = db.nowIso();
+    db.saveEnquiryRecord(raw);
+    return processSnapshot(raw.enquiry_no, actor);
+  }
   const handlers = {
     assign_waiting: assignWaiting,
     assign_costing: assignCosting,
@@ -380,6 +495,7 @@ function applyAction(enquiryNo, actorName, body) {
   };
   const fn = handlers[action];
   if (!fn) throw new Error("Unknown process action");
+  assertCanAct(raw, actor, action);
   if (!Array.isArray(raw.events) || !raw.events.length) {
     raw.created_at = raw.created_at || db.nowIso();
     db.appendEnquiryEvent(raw, {
@@ -399,9 +515,11 @@ function applyAction(enquiryNo, actorName, body) {
     label: eventLabel(action, raw, fromStatus, body || {}),
     note: String((body && (body.comments || body.reason || body.note)) || "").trim()
   });
+  const kind = actionKind(action);
+  if (kind) access.consumeKind(raw, kind);
   raw.updated_at = db.nowIso();
   db.saveEnquiryRecord(raw);
-  return processSnapshot(raw.enquiry_no);
+  return processSnapshot(raw.enquiry_no, actor);
 }
 
 function eventLabel(action, row, fromStatus, body) {
@@ -450,6 +568,7 @@ function assignWaiting(row, actor, body) {
   if (!waiting) throw new Error("Choose what you are waiting on");
   const assignee = requireAssignee(body.assignee);
   cancelOpenKind(row, "chase_info");
+  access.cancelKind(row, "chase_info");
   row.status = waiting;
   addTask(row, "chase_info", assignee, { note: waiting });
 }
@@ -460,6 +579,7 @@ function assignCosting(row, actor, body) {
     cancelOpenKind(row, "follow_up");
     cancelOpenKind(row, "pop");
     cancelOpenKind(row, "quote");
+    access.cancelKind(row, "cost_sheet");
     row.status = "Re-Cost";
     addTask(row, "cost_sheet", assignee, { note: "Client wants changes — recost for another quote" });
     return;
@@ -472,11 +592,13 @@ function assignCosting(row, actor, body) {
   archiveCorrespondence(row, actor, body);
   const open = openOfKind(row, "cost_sheet");
   if (open && statusAllows(row, ["Costing", "Re-Cost"])) {
+    if (!namesMatch(open.assignee, assignee)) access.cancelKind(row, "cost_sheet");
     open.assignee = assignee;
     return;
   }
   cancelOpenKind(row, "chase_info");
   cancelOpenKind(row, "cost_sheet");
+  access.cancelKind(row, "cost_sheet");
   row.status = "Costing";
   addTask(row, "cost_sheet", assignee);
 }
@@ -941,8 +1063,12 @@ function reassignTask(row, _actor, body) {
   const id = String(body.task_id || "").trim();
   const task = (row.tasks || []).find((t) => t.id === id && t.status === "open");
   if (!task) throw new Error("Open task not found");
-  task.assignee = requireAssignee(body.assignee);
+  const next = requireAssignee(body.assignee);
+  if (!namesMatch(task.assignee, next)) access.cancelKind(row, task.kind);
+  task.assignee = next;
   if (task.kind === "follow_up") row.follow_up_assignee = task.assignee;
+  if (task.kind === "quote") row.quote_assignee = task.assignee;
+  if (task.kind === "drawing" && row.drawing) row.drawing.assignee = task.assignee;
 }
 
 module.exports = {
@@ -952,7 +1078,11 @@ module.exports = {
   officeAssignees,
   listMyTasks,
   listMyCompletedTasks,
+  listAccessInbox,
   processSnapshot,
   applyAction,
-  availableActions
+  availableActions,
+  canAct,
+  actionOwner,
+  actionKind
 };

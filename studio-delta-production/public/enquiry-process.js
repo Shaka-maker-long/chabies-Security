@@ -148,7 +148,10 @@
         ".sd-product-cost{background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:10px 12px;margin:10px 0}" +
         ".sd-cost-product{margin:0 0 8px;font-size:14px}" +
         ".sd-cost-slot{margin:0 0 12px;padding:0 0 12px;border-bottom:1px solid #eaecf0}" +
-        ".sd-cost-slot:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}";
+        ".sd-cost-slot:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}" +
+        ".sd-locked{background:#fff7ed;border-color:#fdc5a3}" +
+        ".sd-grant-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:8px 10px;margin:6px 0}" +
+        ".sd-create-order{margin-top:10px}";
       document.head.appendChild(css);
     }
     wrap.addEventListener("click", (e) => { if (e.target.id === "sdProcessMask") closeProcess(); });
@@ -683,6 +686,62 @@
     return "";
   }
 
+  function accessKindLabel(kind) {
+    const labels = (state.snap && state.snap.access && state.snap.access.kindLabel) || {};
+    if (typeof labels === "function") return labels(kind);
+    return ({
+      chase_info: "chase missing information",
+      cost_sheet: "upload the cost sheet",
+      supplier: "record the supplier answer",
+      approval: "approve or reject costing",
+      quote: "upload the quote PDF",
+      follow_up: "log a follow-up",
+      pop: "attach proof of payment or the client outcome",
+      drawing: "upload the drawing"
+    })[kind] || String(kind || "this step");
+  }
+
+  async function postProcess(body) {
+    const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/process", {
+      method: "POST",
+      body: JSON.stringify(body || {})
+    });
+    return r.json();
+  }
+
+  function grantInboxHtml(snap) {
+    const pending = (snap && snap.access && snap.access.pendingForMe) || [];
+    if (!pending.length) return "";
+    return "<div class=\"sd-process-card\"><h2>Access requests</h2>" +
+      "<p class=\"sd-process-sub\">Someone else needs to upload a deliverable that is assigned to you" +
+      (snap.is_manager ? " (or you are the Manager)" : "") + ".</p>" +
+      pending.map((g) => {
+        return "<div class=\"sd-grant-row\" data-grant=\"" + esc(g.id) + "\">" +
+          "<div class=\"grow\"><b>" + esc(g.requester) + "</b> wants to " + esc(accessKindLabel(g.kind)) +
+          ".<div class=\"sd-process-sub\">Assigned to " + esc(g.assignee) + "</div></div>" +
+          "<button type=\"button\" data-grant-act=\"grant_access\" data-grant-id=\"" + esc(g.id) + "\">Grant</button>" +
+          "<button type=\"button\" class=\"ghost\" data-grant-act=\"deny_access\" data-grant-id=\"" + esc(g.id) + "\">Refuse</button>" +
+          "</div>";
+      }).join("") +
+      "</div>";
+  }
+
+  function lockedActionHtml(action) {
+    const owner = action.assignee || "the assigned person";
+    const mine = ((state.snap && state.snap.access && state.snap.access.mine) || [])
+      .filter((g) => g.kind === action.kind);
+    const pending = action.request_pending || mine.some((g) => g.status === "pending");
+    const granted = mine.some((g) => g.status === "granted");
+    let extra = "";
+    if (granted) extra = "<p class=\"sd-process-sub\">Access is granted. Reload this card if Save is still locked.</p>";
+    else if (pending) extra = "<p class=\"sd-process-sub\">Waiting for " + esc(owner) + " or the Manager to grant access.</p>";
+    else extra = "<p class=\"sd-process-sub\">Ask " + esc(owner) + " or the Manager. They will see the request here and on My tasks.</p>";
+    return "<p class=\"sd-process-sub\"><b>" + esc(owner) + "</b> is assigned this step. Only they (or the Manager) can save the deliverable and move STATUS.</p>" +
+      extra +
+      (pending || granted ? "" : "<button type=\"button\" data-request-access=\"" + esc(action.id) + "\" data-request-kind=\"" + esc(action.kind || "") + "\">Request access</button>") +
+      "<div class=\"sd-process-err\" data-err></div>";
+  }
+
   function field(form, name) {
     const el = form.querySelector('[name="' + name + '"]');
     return el ? String(el.value || "").trim() : "";
@@ -793,7 +852,17 @@
     } else {
       html += "<p class=\"sd-process-sub\">No open assigned task. Capture and assign the next person from here.</p>";
     }
+    if (row.ready_for_orders) {
+      html += "<p class=\"sd-process-sub\">POP" + (row.drawing && row.drawing.required ? " and drawing" : "") +
+        " are on file. Create the Orders row with this enquiry number, client, quote, products, and values.</p>" +
+        (row.order_number
+          ? "<p class=\"sd-process-sub\">Order <b>" + esc(row.order_number) + "</b> is already on Orders.</p>" +
+            "<a href=\"/orders\"><button type=\"button\" class=\"ghost sd-create-order\">Open Orders</button></a>"
+          : "<button type=\"button\" class=\"sd-create-order\" id=\"sdCreateOrder\">Create order from this enquiry</button>") +
+        "<div class=\"sd-process-err\" id=\"sdCreateOrderErr\"></div>";
+    }
     html += "</div>";
+    html += grantInboxHtml(snap);
     const actions = snap.actions || [];
     if (!actions.length) {
       html += "<p class=\"sd-process-sub\">This enquiry has no further process steps.</p>";
@@ -801,11 +870,17 @@
       html += "<div class=\"sd-process-actions\">";
       actions.forEach((action, i) => {
         const open = shouldExpandAction(action, i, row, actions);
-        html += "<details class=\"sd-process-card\" data-action-i=\"" + i + "\"" + (open ? " open" : "") + ">" +
-          "<summary><h2>" + esc(action.label) + "</h2></summary>" +
-          "<form class=\"sd-process-form\">" + formFor(action, row) +
-          "<div class=\"sd-process-err\" data-err></div>" +
-          "<button type=\"submit\">Save update</button></form></details>";
+        const locked = action.can_act === false;
+        html += "<details class=\"sd-process-card" + (locked ? " sd-locked" : "") + "\" data-action-i=\"" + i + "\"" + (open ? " open" : "") + ">" +
+          "<summary><h2>" + esc(action.label) + (locked ? " · assigned to " + esc(action.assignee || "") : "") + "</h2></summary>";
+        if (locked) {
+          html += "<div class=\"sd-process-form\">" + lockedActionHtml(action) + "</div>";
+        } else {
+          html += "<form class=\"sd-process-form\">" + formFor(action, row) +
+            "<div class=\"sd-process-err\" data-err></div>" +
+            "<button type=\"submit\">Save update</button></form>";
+        }
+        html += "</details>";
       });
       html += "</div>";
     }
@@ -825,11 +900,8 @@
         const action = actions[i];
         const err = form.querySelector("[data-err]");
         err.textContent = "";
-        const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/process", {
-          method: "POST",
-          body: JSON.stringify(collect(form, action, row))
-        });
-        const j = await r.json();
+        const r = await postProcess(collect(form, action, row));
+        const j = r;
         if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
         state.snap = j;
         revokeFile();
@@ -869,6 +941,51 @@
         }
       };
     });
+    body.querySelectorAll("[data-grant-act]").forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        const j = await postProcess({ action: btn.getAttribute("data-grant-act"), grant_id: btn.getAttribute("data-grant-id") });
+        if (!j.ok) {
+          btn.textContent = j.error || "Could not save";
+          return;
+        }
+        state.snap = j;
+        renderBody();
+      };
+    });
+    body.querySelectorAll("[data-request-access]").forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        const card = btn.closest("[data-action-i]");
+        const err = card && card.querySelector("[data-err]");
+        const j = await postProcess({
+          action: "request_access",
+          for_action: btn.getAttribute("data-request-access"),
+          kind: btn.getAttribute("data-request-kind")
+        });
+        if (!j.ok) {
+          if (err) err.textContent = j.error || "Could not request";
+          return;
+        }
+        state.snap = j;
+        renderBody();
+      };
+    });
+    const createBtn = document.getElementById("sdCreateOrder");
+    if (createBtn) {
+      createBtn.onclick = async (e) => {
+        e.preventDefault();
+        const err = document.getElementById("sdCreateOrderErr");
+        if (err) err.textContent = "";
+        const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/create-order", { method: "POST", body: "{}" });
+        const j = await r.json();
+        if (!j.ok) {
+          if (err) err.textContent = j.error || "Could not create the order";
+          return;
+        }
+        window.location.href = "/orders";
+      };
+    }
   }
 
   window.sdOpenEnquiryProcess = async function (enquiryNo, focusTaskId) {

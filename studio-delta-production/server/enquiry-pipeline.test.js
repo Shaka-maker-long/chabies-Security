@@ -619,4 +619,99 @@ assert.strictEqual(multiFiles.filter((f) => f.group === "cost_sheet").length, 3)
 assert.ok(multiFiles.some((f) => f.label === "Cost sheet · Daphne Rectangular Mirror"));
 assert.ok(multiFiles.some((f) => f.label === "Cost sheet · Eve Patio Table"));
 
+staff.upsertUser({ name: "Pat", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes" });
+staff.upsertUser({ name: "Lesedi", access: "Admin", role: "Manager", password: "x", seeDebtors: "Yes" });
+assert.ok(staff.canManageUsers({ name: "Lesedi" }));
+
+const locked = db.upsertEnquiry({
+  date_enquired: "08/01/2026",
+  client_name: "Access Lock Client",
+  product: "Air Chair",
+  category: "Chair",
+  status: "New"
+});
+pipeline.applyAction(locked.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+assert.throws(
+  () => pipeline.applyAction(locked.enquiry_no, "Pat", {
+    action: "complete_cost_sheet",
+    file_base64: csv,
+    file_name: "cost.csv",
+    file_confirmed: true,
+    quote_assignee: "Quoter"
+  }),
+  /Coster is assigned/i
+);
+const asked = pipeline.applyAction(locked.enquiry_no, "Pat", {
+  action: "request_access",
+  for_action: "complete_cost_sheet",
+  kind: "cost_sheet"
+});
+assert.ok(asked.access.mine.some((g) => g.kind === "cost_sheet" && g.status === "pending"));
+assert.ok(pipeline.listAccessInbox("Coster").some((g) => g.enquiry_no === locked.enquiry_no && g.requester === "Pat"));
+assert.ok(pipeline.listAccessInbox("Lesedi").some((g) => g.enquiry_no === locked.enquiry_no));
+assert.throws(
+  () => pipeline.applyAction(locked.enquiry_no, "Quoter", { action: "grant_access", grant_id: asked.access.mine[0].id }),
+  /Manager/i
+);
+const granted = pipeline.applyAction(locked.enquiry_no, "Coster", {
+  action: "grant_access",
+  grant_id: asked.access.mine[0].id
+});
+assert.ok(granted.actions.some((a) => a.id === "complete_cost_sheet" && a.can_act));
+const asPat = pipeline.processSnapshot(locked.enquiry_no, "Pat");
+assert.ok(asPat.actions.some((a) => a.id === "complete_cost_sheet" && a.can_act));
+pipeline.applyAction(locked.enquiry_no, "Pat", {
+  action: "complete_cost_sheet",
+  file_base64: csv,
+  file_name: "cost.csv",
+  file_confirmed: true,
+  quote_assignee: "Quoter"
+});
+assert.strictEqual(db.getEnquiry(locked.enquiry_no).status, "Costed");
+
+const managerActs = db.upsertEnquiry({
+  date_enquired: "09/01/2026",
+  client_name: "Manager Can Act",
+  product: "Air Chair",
+  category: "Chair",
+  status: "New"
+});
+pipeline.applyAction(managerActs.enquiry_no, "Coster", { action: "assign_costing", assignee: "Coster" });
+pipeline.applyAction(managerActs.enquiry_no, "Lesedi", {
+  action: "complete_cost_sheet",
+  file_base64: csv,
+  file_name: "cost.csv",
+  file_confirmed: true,
+  quote_assignee: "Quoter"
+});
+assert.strictEqual(db.getEnquiry(managerActs.enquiry_no).status, "Costed");
+
+const fromEnquiry = db.createOrderFromEnquiry("#1996");
+assert.ok(fromEnquiry.row.order_number);
+assert.strictEqual(fromEnquiry.row.enquiry_no, "#1996");
+assert.strictEqual(fromEnquiry.row.client_name, "Michael Cost");
+assert.strictEqual(fromEnquiry.existing, false);
+assert.strictEqual(db.getEnquiry("#1996").order_number, fromEnquiry.row.order_number);
+const again = db.createOrderFromEnquiry("#1996");
+assert.strictEqual(again.existing, true);
+assert.strictEqual(again.row.order_number, fromEnquiry.row.order_number);
+
+const dups = db.findOpenEnquiryDuplicates({
+  client_email: "lock@example.com",
+  client_number: "0821112222"
+});
+assert.deepStrictEqual(dups, []);
+db.upsertEnquiry({
+  enquiry_no: locked.enquiry_no,
+  client_name: "Access Lock Client",
+  client_email: "lock@example.com",
+  client_number: "082 111 2222",
+  product: "Air Chair"
+});
+const hit = db.findOpenEnquiryDuplicates({
+  client_email: "lock@example.com",
+  client_number: "0821112222"
+}, managerActs.enquiry_no);
+assert.ok(hit.some((r) => r.enquiry_no === locked.enquiry_no));
+
 console.log("enquiry-pipeline.test.js ok");

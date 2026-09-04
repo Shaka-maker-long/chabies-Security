@@ -16,6 +16,9 @@
     .enq-bar { display:flex; gap:12px 16px; align-items:center; flex-wrap:wrap; padding:10px 16px; background:#fff; border-bottom:1px solid var(--line); }
     .enq-bar label { font-size:12px; font-weight:600; display:flex; gap:6px; align-items:center; color:var(--ink); }
     .enq-bar select, .enq-bar input[type=date] { border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; font-weight:400; }
+    .enq-bar select.filter-wide { max-width:220px; }
+    .enq-dup { background:#fff7ed; border:1px solid #fdc5a3; border-radius:8px; padding:8px 10px; font-size:13px; color:#9a3412; }
+    #grid { border-collapse:separate; border-spacing:0; min-width:3800px; background:#fff; font-size:12px; }
     .enq-check { font-weight:600; }
     .enq-total { margin-left:auto; display:flex; gap:14px 18px; align-items:baseline; flex-wrap:wrap; font-size:13px; }
     .enq-total b { font-family: Outfit, Inter, sans-serif; font-size:18px; }
@@ -25,11 +28,10 @@
     button.ghost { background:#fff; color:#1d2939; }
     button.danger { background:#fff; color:#b42318; border-color:#fda29b; }
     button:disabled { opacity:.55; cursor:not-allowed; }
-    .wrap { overflow:auto; height:calc(100vh - 148px); }
-    #grid { border-collapse:separate; border-spacing:0; min-width:3200px; background:#fff; font-size:12px; }
+    .wrap { overflow:auto; height:calc(100vh - 188px); }
+    #grid { border-collapse:separate; border-spacing:0; min-width:3800px; background:#fff; font-size:12px; }
     #grid th, #grid td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
     #grid th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
-    #grid th.has-filter::after { content:"▾"; float:right; color:#98a2b3; font-size:10px; padding-left:6px; }
     .empty { padding:28px 16px; color:var(--muted); font-size:13px; }
     .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; }
     #grid td.wrap-text .cell-text { white-space:pre-wrap; overflow:visible; text-overflow:unset; }
@@ -107,6 +109,7 @@
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search enquiries">
       <button class="ghost" onclick="openCapture()">New enquiry</button>
+      <button class="ghost" type="button" onclick="downloadCsv()">Download CSV</button>
     </div>
   </header>
   <div class="enq-bar" id="enqFilters">
@@ -122,6 +125,26 @@
       <input type="date" id="periodDate">
     </label>
     <label class="enq-check"><input type="checkbox" id="quotedOnly"> Quoted only</label>
+    <label class="enq-check"><input type="checkbox" id="assignedToMe"> Assigned to me</label>
+    <label>Open
+      <select id="openClosed">
+        <option value="all">All</option>
+        <option value="open" selected>Open</option>
+        <option value="closed">Closed</option>
+      </select>
+    </label>
+    <label>STATUS
+      <select id="statusFilter" class="filter-wide"><option value="">All statuses</option></select>
+    </label>
+    <label>Type
+      <select id="typeFilter" class="filter-wide"><option value="">All types</option></select>
+    </label>
+    <label>Source
+      <select id="sourceFilter" class="filter-wide"><option value="">All sources</option></select>
+    </label>
+    <label>CATERGORY
+      <select id="categoryFilter" class="filter-wide"><option value="">All</option></select>
+    </label>
     <span class="enq-hint" id="periodHint"></span>
     <div class="enq-total">
       <span>Quote total incl VAT <b id="totIncl">R 0.00</b></span>
@@ -277,6 +300,7 @@
           <textarea id="cap_comment" placeholder="Anything costing should know"></textarea>
         </label>
         <div class="err" id="captureErr"></div>
+        <div class="enq-dup" id="captureDup" hidden></div>
       </div>
     </div>
   </div>
@@ -292,10 +316,10 @@
     </div>
   </div>
   <script src="/office-auth.js?v=pass-reset"></script>
-  <script src="/enquiry-process.js?v=cost-multi"></script>
+  <script src="/enquiry-process.js?v=access-lock"></script>
   <script>
     const HEADERS = [
-      ["_edit", "", 80, true],
+      ["_edit", "", 108, true],
       ["enquiry_no", "ENQUIRY NO", 108, true],
       ["date_enquired", "DATE ENQUIRED", 128, true],
       ["month_enquired", "MONTH ENQUIRED", 128, true],
@@ -310,6 +334,9 @@
       ["product", "PRODUCT", 240, false],
       ["request", "REQUEST", 240, false],
       ["status", "STATUS", 180, false],
+      ["assigned_to", "ASSIGNED TO", 160, false],
+      ["quote_total_incl_vat", "QUOTE INCL VAT", 140, false],
+      ["quote_total_excl_vat", "QUOTE EXCL VAT", 140, false],
       ["date_quoted", "DATE QUOTED", 128, false],
       ["quote_no", "QUOTE NO.", 120, false],
       ["comment", "COMMENT", 260, false]
@@ -326,6 +353,8 @@
     let dropdowns = {};
     let nextNo = "#1996";
     let vatRate = 0.15;
+    let me = "";
+    const CLOSED_STATUSES = ["Not within scope", "Not Interested", "Rejected"];
     let modal = { open: false, i: -1, mode: "products", prevStatus: "", lines: [], pdfUrl: "", pdfBase64: "", pdfName: "", confirmed: false };
     let specModal = { open: false, i: -1, prevType: "", specs: [] };
     function emptySpec() { return { kind: "", other: "", detail: "" }; }
@@ -553,16 +582,102 @@
         }
         return row[k] || "";
       }
+      if (k === "quote_total_incl_vat" || k === "quote_total_excl_vat") {
+        const n = k === "quote_total_incl_vat" ? quoteInclOf(row) : quoteExclOf(row);
+        return n ? formatRand(n) : "";
+      }
+      if (k === "assigned_to") return row.assigned_to || "";
       return row[k] == null ? "" : row[k];
     }
+    function uniqueOptions(key) {
+      const seen = {};
+      const out = [];
+      rows.forEach((row) => {
+        const v = String(displayValue(row, key) || row[key] || "").trim();
+        if (!v || seen[v]) return;
+        seen[v] = 1;
+        out.push(v);
+      });
+      out.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      return out;
+    }
+    function fillFilterSelect(id, values, allLabel) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const current = el.value;
+      el.innerHTML = "<option value=\"\">" + esc(allLabel) + "</option>" +
+        values.map((v) => "<option" + (v === current ? " selected" : "") + ">" + esc(v) + "</option>").join("");
+      if (current && values.indexOf(current) === -1) el.value = "";
+    }
+    function fillSheetFilters() {
+      fillFilterSelect("statusFilter", uniqueOptions("status"), "All statuses");
+      fillFilterSelect("typeFilter", uniqueOptions("enquiry_type"), "All types");
+      fillFilterSelect("sourceFilter", uniqueOptions("source"), "All sources");
+      fillFilterSelect("categoryFilter", uniqueOptions("category"), "All");
+    }
+    function isClosed(row) {
+      return CLOSED_STATUSES.indexOf(row.status) >= 0;
+    }
+    function assignedToMe(row) {
+      const who = String(me || "").trim().toLowerCase();
+      if (!who) return false;
+      return String(row.assigned_to || "").split(",").some((n) => n.trim().toLowerCase() === who);
+    }
+    function matchesSheetFilters(row) {
+      const quotedOnly = !!(document.getElementById("quotedOnly") && document.getElementById("quotedOnly").checked);
+      const mine = !!(document.getElementById("assignedToMe") && document.getElementById("assignedToMe").checked);
+      const openClosed = (document.getElementById("openClosed") || {}).value || "all";
+      const status = (document.getElementById("statusFilter") || {}).value || "";
+      const type = (document.getElementById("typeFilter") || {}).value || "";
+      const source = (document.getElementById("sourceFilter") || {}).value || "";
+      const category = (document.getElementById("categoryFilter") || {}).value || "";
+      if (quotedOnly && !isQuoted(row)) return false;
+      if (mine && !assignedToMe(row)) return false;
+      if (openClosed === "open" && isClosed(row)) return false;
+      if (openClosed === "closed" && !isClosed(row)) return false;
+      if (status && String(row.status || "") !== status) return false;
+      if (type && String(row.enquiry_type || "") !== type) return false;
+      if (source && String(row.source || "") !== source) return false;
+      if (category && categoryLabel(row) !== category && String(row.category || "") !== category) return false;
+      return true;
+    }
+    function csvEscape(s) {
+      const v = String(s == null ? "" : s);
+      if (/[",\n]/.test(v)) return "\"" + v.replace(/"/g, "\"\"") + "\"";
+      return v;
+    }
+    function filteredRows() {
+      const q = (document.getElementById("q").value || "").toLowerCase();
+      return rows.map((row, i) => ({ row, i })).filter(({ row }) => {
+        if (q && searchBlob(row).toLowerCase().indexOf(q) === -1) return false;
+        if (!matchesPeriod(row)) return false;
+        return matchesSheetFilters(row);
+      });
+    }
+    function downloadCsv() {
+      const cols = HEADERS.filter((h) => h[0] !== "_edit");
+      const lines = [cols.map((h) => csvEscape(h[1])).join(",")];
+      filteredRows().forEach(({ row }) => {
+        lines.push(cols.map(([k]) => csvEscape(displayValue(row, k))).join(","));
+      });
+      const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "enquiries.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    }
+    window.downloadCsv = downloadCsv;
     function render() {
       layoutFreeze();
       const q = document.getElementById("q").value.toLowerCase();
       const table = document.getElementById("grid");
       let html = "<thead><tr>";
       HEADERS.forEach(([k, label, , freeze], i) => {
-        const filter = (DROP_FIELDS[k] || k === "product" || k === "category") ? " has-filter" : "";
-        html += "<th class=\"" + colClass(k, freeze) + filter + "\" style=\"" + colStyle(k, colWidths[i], freeze) + "\">" + label + "</th>";
+        html += "<th class=\"" + colClass(k, freeze) + "\" style=\"" + colStyle(k, colWidths[i], freeze) + "\">" + label + "</th>";
       });
       html += "</tr></thead><tbody>";
       let shown = 0;
@@ -570,10 +685,8 @@
       let totExcl = 0;
       const quotedOnly = !!(document.getElementById("quotedOnly") && document.getElementById("quotedOnly").checked);
       updatePeriodHint();
-      rows.forEach((row, i) => {
-        if (q && searchBlob(row).toLowerCase().indexOf(q) === -1) return;
-        if (!matchesPeriod(row)) return;
-        if (quotedOnly && !isQuoted(row)) return;
+      const listed = filteredRows();
+      listed.forEach(({ row, i }) => {
         shown += 1;
         totIncl += quoteInclOf(row);
         totExcl += quoteExclOf(row);
@@ -586,6 +699,9 @@
             html += "<td class=\"" + cls + "\" style=\"" + style + "\"><div class=\"row-actions-cell\">" +
               "<button type=\"button\" class=\"ghost icon-btn\" title=\"Edit enquiry\" aria-label=\"Edit enquiry\" data-edit-enquiry=\"" + i + "\"><i class=\"bi bi-pencil\"></i></button>" +
               "<button type=\"button\" class=\"ghost icon-btn\" title=\"Status update\" aria-label=\"Status update\" data-open-process=\"" + i + "\"><i class=\"bi bi-list-task\"></i></button>" +
+              (row.ready_for_orders
+                ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Create order\" aria-label=\"Create order\" data-create-order=\"" + i + "\"><i class=\"bi bi-box-seam\"></i></button>"
+                : "") +
               "</div></td>";
             return;
           }
@@ -602,7 +718,15 @@
         html += "</tr>";
       });
       if (!shown) {
-        const msg = (q || quotedOnly || ((document.getElementById("period") || {}).value || "all") !== "all")
+        const filtered = q || quotedOnly
+          || ((document.getElementById("period") || {}).value || "all") !== "all"
+          || (document.getElementById("assignedToMe") && document.getElementById("assignedToMe").checked)
+          || ((document.getElementById("openClosed") || {}).value || "all") !== "all"
+          || (document.getElementById("statusFilter") || {}).value
+          || (document.getElementById("typeFilter") || {}).value
+          || (document.getElementById("sourceFilter") || {}).value
+          || (document.getElementById("categoryFilter") || {}).value;
+        const msg = filtered
           ? "No enquiries match those filters."
           : "No enquiries yet. Use New enquiry — the number starts at #1996 and the month fills from the date.";
         html += "<tr><td class=\"empty\" colspan=\"" + HEADERS.length + "\">" + msg + "</td></tr>";
@@ -636,6 +760,20 @@
             return;
           }
           sdOpenEnquiryProcess((j.row && j.row.enquiry_no) || row.enquiry_no);
+          return;
+        }
+        const orderBtn = e.target.closest("[data-create-order]");
+        if (orderBtn) {
+          const i = Number(orderBtn.getAttribute("data-create-order"));
+          const row = rows[i];
+          if (!row || !row.enquiry_no) return;
+          const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(row.enquiry_no) + "/create-order", { method: "POST", body: "{}" });
+          const j = await r.json();
+          if (!j.ok) {
+            document.getElementById("status").textContent = j.error || "Could not create the order";
+            return;
+          }
+          window.location.href = "/orders";
           return;
         }
         const tr = e.target.closest("tr[data-i]");
@@ -1028,7 +1166,41 @@
       await load();
       document.getElementById("status").textContent = "Saved";
     }
-    let capture = { open: false, i: -1, products: [], specs: [] };
+    let capture = { open: false, i: -1, products: [], specs: [], ignoreDup: false };
+    function digitsOnly(s) {
+      return String(s || "").replace(/\D/g, "");
+    }
+    function findLocalDuplicates(payload) {
+      const email = String((payload && payload.client_email) || "").trim().toLowerCase();
+      const number = digitsOnly(payload && payload.client_number);
+      const except = String((payload && payload.enquiry_no) || "").trim();
+      if (!email && number.length < 7) return [];
+      return rows.filter((row) => {
+        if (!row) return false;
+        if (except && String(row.enquiry_no || "") === except) return false;
+        if (CLOSED_STATUSES.indexOf(row.status) >= 0) return false;
+        const mailHit = email && String(row.client_email || "").trim().toLowerCase() === email;
+        const num = digitsOnly(row.client_number);
+        const numHit = number.length >= 7 && num.length >= 7 && (num === number || num.endsWith(number) || number.endsWith(num));
+        return !!(mailHit || numHit);
+      });
+    }
+    function paintCaptureDup(dups) {
+      const box = document.getElementById("captureDup");
+      if (!box) return;
+      if (!dups || !dups.length) {
+        box.hidden = true;
+        box.innerHTML = "";
+        return;
+      }
+      box.hidden = false;
+      box.innerHTML = "<b>This client already has an open enquiry.</b> " +
+        dups.map((r) => esc(r.enquiry_no) + " · " + esc(r.client_name || "") + " · " + esc(r.status || "")).join("; ") +
+        ". Save anyway only if this is a new job." +
+        "<div class=\"row-actions\" style=\"margin-top:8px\"><button type=\"button\" class=\"ghost\" id=\"capDupConfirm\">Save anyway</button></div>";
+      const btn = document.getElementById("capDupConfirm");
+      if (btn) btn.onclick = () => { capture.ignoreDup = true; saveCapture(); };
+    }
     function fillCaptureSelect(id, key, selected) {
       const el = document.getElementById(id);
       const current = String(selected || "");
@@ -1137,6 +1309,9 @@
       const existing = i >= 0 ? rows[i] : null;
       capture.open = true;
       capture.i = i;
+      capture.ignoreDup = false;
+      document.getElementById("captureDup").hidden = true;
+      document.getElementById("captureDup").innerHTML = "";
       if (existing) {
         capture.products = ensureLines(existing).map((l) => Object.assign(emptyLine(), l, { value_excl_vat: "", value_incl_vat: "" }));
         capture.specs = Array.isArray(existing.custom_specs) && existing.custom_specs.length
@@ -1188,6 +1363,19 @@
     window.openCapture = openCapture;
     window.closeCapture = closeCapture;
     document.getElementById("cap_enquiry_type").onchange = toggleCaptureType;
+    ["cap_client_email", "cap_client_number"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.oninput = () => {
+        if (!capture.open) return;
+        const existing = capture.i >= 0 ? rows[capture.i] : null;
+        paintCaptureDup(findLocalDuplicates({
+          enquiry_no: existing ? existing.enquiry_no : document.getElementById("cap_enquiry_no").value,
+          client_email: document.getElementById("cap_client_email").value,
+          client_number: document.getElementById("cap_client_number").value
+        }));
+      };
+    });
     async function saveCapture() {
       const err = document.getElementById("captureErr");
       err.textContent = "";
@@ -1209,6 +1397,11 @@
       payload.province = document.getElementById("cap_province").value;
       payload.comment = document.getElementById("cap_comment").value;
       if (!existing) payload.status = "New";
+      const dups = findLocalDuplicates(payload);
+      if (dups.length && !capture.ignoreDup) {
+        paintCaptureDup(dups);
+        return;
+      }
       payload.products = capture.products.map((l) => {
         const product = String(l.product || "").trim();
         const category = String(l.category || "").trim();
@@ -1272,13 +1465,14 @@
       dropdowns = j.dropdowns || {};
       nextNo = j.nextEnquiryNo || "#1996";
       document.getElementById("status").textContent = rows.length + " enquiries · next " + nextNo;
+      fillSheetFilters();
       render();
     }
     window.sdOnEnquiryProcessClose = function () { load(); };
     document.getElementById("q").oninput = render;
     const periodDate = document.getElementById("periodDate");
     if (periodDate && !periodDate.value) periodDate.value = todayIso();
-    ["period", "periodDate", "quotedOnly"].forEach((id) => {
+    ["period", "periodDate", "quotedOnly", "assignedToMe", "openClosed", "statusFilter", "typeFilter", "sourceFilter", "categoryFilter"].forEach((id) => {
       const el = document.getElementById(id);
       if (el) el.onchange = render;
     });
@@ -1296,7 +1490,11 @@
       if (e.target.id === "viewMask") closeView();
     });
     window.addEventListener("resize", () => { render(); });
-    sdRequireOffice("enquiries").then((p) => { if (p) load(); });
+    sdRequireOffice("enquiries").then((p) => {
+      if (!p) return;
+      me = p.name || "";
+      load();
+    });
   </script>
 </body>
 </html>
