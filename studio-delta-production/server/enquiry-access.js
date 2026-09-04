@@ -18,7 +18,7 @@ function kindLabel(kind) {
   return ({
     chase_info: "chase missing information",
     cost_sheet: "upload the cost sheet",
-    supplier: "record the supplier answer",
+    supplier: "upload the supplier quotation",
     approval: "approve or reject costing",
     quote: "upload the quote PDF",
     follow_up: "log a follow-up",

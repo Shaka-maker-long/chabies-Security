@@ -489,8 +489,8 @@
     };
   }
 
-  function fileBlock(accept, hint) {
-    return "<label>File<input name=\"file\" type=\"file\" accept=\"" + esc(accept) + "\"></label>" +
+  function fileBlock(accept, hint, label) {
+    return "<label>" + esc(label || "File") + "<input name=\"file\" type=\"file\" accept=\"" + esc(accept) + "\"></label>" +
       (hint ? "<p class=\"sd-process-sub\">" + esc(hint) + "</p>" : "") +
       "<div class=\"sd-process-preview\" data-preview></div>" +
       "<label><input name=\"file_ok\" type=\"checkbox\"> This is the correct file</label>";
@@ -606,8 +606,13 @@
     if (action.id === "add_correspondence") {
       return correspondenceFields();
     }
-    if (action.id === "supplier_wait" || action.id === "complete_supplier") {
-      return "<label>Assign to</label>" + assigneeSelect(openAssignee(row, action.id === "supplier_wait" ? "cost_sheet" : "supplier"));
+    if (action.id === "supplier_wait") {
+      return "<label>Assign to</label>" + assigneeSelect(openAssignee(row, "cost_sheet") || lastCosting(row) || rolePerson("costing"));
+    }
+    if (action.id === "complete_supplier") {
+      const coster = lastCosting(row) || rolePerson("costing");
+      return fileBlock("*/*", "", "Supplier quotation") +
+        (coster ? "<p class=\"sd-process-sub\">Costing resumes with " + esc(coster) + "</p>" : "");
     }
     if (action.id === "complete_chase") {
       return "<label>What next?<select name=\"next\"><option value=\"costing\">Enough to cost — assign costing</option><option value=\"waiting\">Still waiting</option></select></label>" +
@@ -677,7 +682,7 @@
     return ({
       chase_info: "chase missing information",
       cost_sheet: "upload the cost sheet",
-      supplier: "record the supplier answer",
+      supplier: "upload the supplier quotation",
       approval: "approve or reject costing",
       quote: "upload the quote PDF",
       follow_up: "log a follow-up",
@@ -764,7 +769,7 @@
           }).filter((f) => f.file_base64)
         };
       });
-    } else if (/complete_quote|complete_followup|complete_order|complete_drawing/.test(action.id)) {
+    } else if (/complete_quote|complete_followup|complete_order|complete_drawing|complete_supplier/.test(action.id)) {
       Object.assign(body, filePayload(form));
     }
     return body;
@@ -791,6 +796,7 @@
       return action.id === focus;
     }
     if (actions.length === 1) return true;
+    if (row.status === "Waiting on Supplier") return action.id === "complete_supplier";
     if (/Costing|Re-Cost/.test(row.status || "") && actions.some((a) => a.id === "add_correspondence")) {
       return action.id === "add_correspondence";
     }
