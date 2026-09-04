@@ -356,6 +356,41 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const mgrPutJson = await mgrPut.json();
   assert.ok(mgrPutJson.ok, JSON.stringify(mgrPutJson));
 
+  const seedEnq = await fetch(base + "/api/office/enquiries", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "x-sd-token": mgr.token },
+    body: JSON.stringify({ date_enquired: "01/09/2026", client_name: "Wipe Test", status: "New" })
+  });
+  const seedJson = await seedEnq.json();
+  assert.ok(seedJson.ok, JSON.stringify(seedJson));
+
+  const quietClear = await fetch(base + "/api/office/enquiries/clear-all", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": q.token },
+    body: JSON.stringify({ confirm: "CLEAR" })
+  });
+  assert.strictEqual(quietClear.status, 403);
+
+  const badClear = await fetch(base + "/api/office/enquiries/clear-all", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": mgr.token },
+    body: JSON.stringify({ confirm: "yes" })
+  });
+  assert.strictEqual(badClear.status, 400);
+
+  const okClear = await fetch(base + "/api/office/enquiries/clear-all", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": mgr.token },
+    body: JSON.stringify({ confirm: "CLEAR" })
+  });
+  const okClearJson = await okClear.json();
+  assert.ok(okClearJson.ok, JSON.stringify(okClearJson));
+  assert.ok(okClearJson.removed >= 1);
+  const listed = await fetch(base + "/api/office/enquiries", { headers: { "x-sd-token": mgr.token } });
+  const listedJson = await listed.json();
+  assert.strictEqual((listedJson.rows || []).length, 0);
+  assert.strictEqual(listedJson.nextEnquiryNo, "#1996");
+
   server.close();
   console.log("staff-access.test.js ok");
 })().catch((e) => {

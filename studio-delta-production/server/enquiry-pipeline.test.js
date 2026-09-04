@@ -1035,4 +1035,77 @@ assert.strictEqual(pipeline.currentQuoteFollowUps(afterNew.row).length, 1);
 assert.strictEqual(afterNew.row.follow_ups.filter((f) => f.quote_no === "SOQ2503").length, 1);
 assert.strictEqual(afterNew.row.follow_ups.filter((f) => f.quote_no === "SOQ2502").length, 3);
 
+assert.throws(
+  () => pipeline.onboardEnquiry("Coster", {
+    enquiry_no: "#3101",
+    date_enquired: "01/08/2026",
+    client_name: "Old Costing",
+    client_email: "old@example.com",
+    province: "Gauteng",
+    enquiry_type: "Catologue",
+    product: "Air Chair",
+    status: "Costing",
+    costing_assignee: "Coster"
+  }),
+  /Correspondance/
+);
+assert.ok(!db.getEnquiryRaw("#3101"));
+
+const quotedOn = pipeline.onboardEnquiry("Quoter", {
+  enquiry_no: "#3102",
+  date_enquired: "01/08/2026",
+  date_quoted: "15/08/2026",
+  client_name: "Brought Across Quoted",
+  client_email: "quoted-onboard@example.com",
+  province: "Western Cape",
+  enquiry_type: "Catologue",
+  products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "2300" }],
+  delivery_incl_vat: "115",
+  status: "Quoted",
+  quote_no: "SOQ2601",
+  quote_assignee: "Quoter",
+  correspondence_links: "https://files.example/onboard-quoted",
+  file_base64: pdfB64,
+  file_name: "old-quote.pdf",
+  file_confirmed: true
+});
+assert.strictEqual(quotedOn.row.enquiry_no, "#3102");
+assert.strictEqual(quotedOn.row.status, "Quoted");
+assert.strictEqual(quotedOn.row.date_quoted, "15/08/2026");
+assert.strictEqual(quotedOn.row.quote_no, "SOQ2601");
+assert.ok(quotedOn.row.events.some((ev) => ev.kind === "onboard"));
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === "#3102"));
+assert.ok(pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === "#3102"));
+assert.ok(pipeline.isAutoCaptureStatus(quotedOn.row.status) === false);
+
+const holdOn = pipeline.onboardEnquiry("Coster", {
+  enquiry_no: "#3103",
+  date_enquired: "02/08/2026",
+  client_name: "Production Hold",
+  client_email: "hold@example.com",
+  client_number: "0820000000",
+  province: "Gauteng",
+  enquiry_type: "Catologue",
+  product: "Air Chair",
+  status: "Waiting on productions confirmation",
+  chase_assignee: "Coster",
+  correspondence_links: "https://files.example/hold"
+});
+assert.strictEqual(holdOn.row.status, "Waiting on productions confirmation");
+assert.ok(holdOn.row.tasks.some((t) => t.kind === "chase_info" && t.status === "open" && t.assignee === "Coster"));
+assert.ok(!holdOn.row.tasks.some((t) => t.kind === "cost_sheet" && t.status === "open"));
+
+const keptOrder = db.upsertOrder({
+  order_number: "9001",
+  client_name: "Keep Me",
+  status: "Not Yet Started"
+});
+assert.strictEqual(keptOrder.order_number, "9001");
+assert.ok(db.listEnquiries().length >= 1);
+const wiped = db.deleteAllEnquiries();
+assert.ok(wiped >= 1);
+assert.strictEqual(db.listEnquiries().length, 0);
+assert.ok(db.listOrders().some((o) => String(o.order_number) === "9001"));
+assert.strictEqual(db.nextEnquiryNo(), "#1996");
+
 console.log("enquiry-pipeline.test.js ok");

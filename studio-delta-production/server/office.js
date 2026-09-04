@@ -19,6 +19,7 @@ const {
   listEnquiries,
   upsertEnquiry,
   deleteEnquiry,
+  deleteAllEnquiries,
   nextEnquiryNo,
   listEnquiryDropdowns,
   ENQUIRY_FIELDS,
@@ -268,14 +269,18 @@ function mountOffice(app) {
     res.json({ ok: true });
   });
 
-  app.get("/api/office/enquiries", requireOffice, (_req, res) => {
+  app.get("/api/office/enquiries", requireOffice, (req, res) => {
     res.json({
       ok: true,
       rows: listEnquiries(),
       fields: ENQUIRY_FIELDS,
       nextEnquiryNo: nextEnquiryNo(),
       dropdowns: listEnquiryDropdowns(),
-      vatRate: VAT_RATE
+      vatRate: VAT_RATE,
+      canManageUsers: staff.canManageUsers(req.office),
+      assignees: pipeline.officeAssignees(),
+      enquiryRoles: staff.enquiryRoleDefaults(),
+      onboardStatuses: pipeline.ONBOARD_STATUSES
     });
   });
 
@@ -305,6 +310,40 @@ function mountOffice(app) {
   app.get("/api/office/enquiries/dashboard/drill", requireOffice, (req, res) => {
     try {
       res.json({ ok: true, ...require("./enquiry-dashboard").buildDrill(req.query || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/enquiries/clear-all", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can clear all enquiries." });
+      return;
+    }
+    const confirm = String((req.body && (req.body.confirm || req.body.confirmation)) || "").trim();
+    if (confirm.toUpperCase() !== "CLEAR") {
+      res.status(400).json({ ok: false, error: "Type CLEAR to delete every enquiry. Orders stay." });
+      return;
+    }
+    try {
+      const removed = deleteAllEnquiries();
+      res.json({ ok: true, removed, nextEnquiryNo: nextEnquiryNo() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/enquiries/onboard", requireOffice, (req, res) => {
+    try {
+      const snap = pipeline.onboardEnquiry(req.office.name, req.body || {});
+      res.json({
+        ok: true,
+        row: snap.row,
+        nextEnquiryNo: nextEnquiryNo(),
+        dropdowns: listEnquiryDropdowns(),
+        duplicates: findOpenEnquiryDuplicates(snap.row, snap.row.enquiry_no),
+        ...snap
+      });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
