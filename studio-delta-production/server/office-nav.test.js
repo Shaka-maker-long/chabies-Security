@@ -9,7 +9,7 @@ const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 const labels = [
   "Home", "Orders", "Enquiries", "My tasks", "Office schedule", "Dropdowns", "Users",
   "Task times", "Debtors", "Production", "Workers", "Metrics",
-  "QC Reports", "Activity", "Schedule", "Log Out"
+  "QC Reports", "Activity", "Schedule", "Log Out", "Change access code"
 ];
 labels.forEach((label) => {
   assert.ok(js.indexOf('"' + label + '"') !== -1 || js.indexOf(">" + label + "<") !== -1, "office menu missing " + label);
@@ -78,7 +78,10 @@ assert.ok(js.indexOf("/?view=qc") !== -1);
 assert.ok(js.indexOf("/?view=activity") !== -1);
 assert.ok(js.indexOf("/?view=schedule") !== -1);
 assert.ok(js.indexOf("sd-sidebar-scroll") !== -1);
-assert.ok(js.indexOf("sdLogoutBtn") !== -1);
+assert.ok(js.indexOf("Change access code") !== -1);
+assert.ok(js.indexOf("sdHideUsersLink") !== -1);
+assert.ok(floor.indexOf("openChangePassword") !== -1);
+assert.ok(floor.indexOf("Change access code") !== -1);
 assert.ok(js.indexOf("sdWarnPersistence") !== -1);
 assert.ok(css.indexOf(".sd-persist-banner") !== -1);
 
@@ -120,6 +123,10 @@ assert.ok(processJs.indexOf("sd-file-row") !== -1);
 assert.ok(processJs.indexOf("sd-timeline") !== -1);
 assert.ok(processJs.indexOf("Lifespan") !== -1);
 const enquiriesHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries.html"), "utf8");
+assert.ok(enquiriesHtml.indexOf('id="period"') !== -1);
+assert.ok(enquiriesHtml.indexOf('id="quotedOnly"') !== -1);
+assert.ok(enquiriesHtml.indexOf('id="totIncl"') !== -1);
+assert.ok(enquiriesHtml.indexOf("Quoted only") !== -1);
 assert.ok(enquiriesHtml.indexOf('id="captureMask"') !== -1, "New enquiry must open a capture modal");
 assert.ok(enquiriesHtml.indexOf("#grid {") !== -1 || enquiriesHtml.indexOf("#grid{") !== -1);
 assert.ok(enquiriesHtml.indexOf("table { border-collapse:separate; border-spacing:0; min-width:3200px") === -1, "enquiry grid min-width must not apply to all tables");
@@ -177,6 +184,9 @@ const adminFn = codeGs.slice(codeGs.indexOf("function getAdminDashboardData"), c
 assert.ok(adminFn.indexOf("daySlices") === -1, "admin dashboard must not ship daySlices on every load");
 const usersHtml = fs.readFileSync(path.join(__dirname, "../public/users.html"), "utf8");
 assert.ok(usersHtml.indexOf("Enquiry roles") !== -1);
+assert.ok(usersHtml.indexOf("Manage users") !== -1);
+assert.ok(usersHtml.indexOf("Change access code") !== -1);
+assert.ok(usersHtml.indexOf("/api/office/password") !== -1);
 assert.ok(usersHtml.indexOf("data-role") !== -1);
 assert.ok(usersHtml.indexOf('["Costing", "Quoting", "Approval"]') !== -1);
 assert.ok(usersHtml.indexOf("Download JSON backup") !== -1);

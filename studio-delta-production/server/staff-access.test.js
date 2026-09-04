@@ -166,6 +166,51 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
 
   const ordersBoss = await fetch(base + "/api/office/orders", { headers: { "x-sd-token": boss.token } });
   assert.strictEqual(ordersBoss.status, 200);
+  assert.strictEqual(boss.canManageUsers, true);
+  assert.strictEqual(q.canManageUsers, false);
+
+  const quietUsers = await fetch(base + "/api/office/users", { headers: { "x-sd-token": q.token } });
+  const quietUsersJson = await quietUsers.json();
+  assert.strictEqual(quietUsers.status, 200);
+  assert.strictEqual(quietUsersJson.canManageUsers, false);
+  assert.ok((quietUsersJson.rows || []).every((u) => u.name === "Office Quiet"));
+
+  const quietPut = await fetch(base + "/api/office/users", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "x-sd-token": q.token },
+    body: JSON.stringify({ name: "Office Boss", access: "Admin", role: "Admin", password: "hacked" })
+  });
+  assert.strictEqual(quietPut.status, 403);
+
+  const quietDel = await fetch(base + "/api/office/users/" + encodeURIComponent("Floor Only"), {
+    method: "DELETE",
+    headers: { "x-sd-token": q.token }
+  });
+  assert.strictEqual(quietDel.status, 403);
+
+  const quietPass = await fetch(base + "/api/office/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": q.token },
+    body: JSON.stringify({ current_password: "quiet", new_password: "quiet2" })
+  });
+  const quietPassJson = await quietPass.json();
+  assert.ok(quietPassJson.ok, JSON.stringify(quietPassJson));
+  assert.ok(staff.verifyUser("Office Quiet", "quiet2"));
+  assert.ok(!staff.verifyUser("Office Quiet", "quiet"));
+
+  const floorPass = await fetch(base + "/api/office/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Floor Only", current_password: "floor", new_password: "floor2" })
+  });
+  const floorPassJson = await floorPass.json();
+  assert.ok(floorPassJson.ok, JSON.stringify(floorPassJson));
+  assert.ok(staff.verifyUser("Floor Only", "floor2"));
+
+  const bossUsers = await fetch(base + "/api/office/users", { headers: { "x-sd-token": boss.token } });
+  const bossUsersJson = await bossUsers.json();
+  assert.ok(bossUsersJson.canManageUsers);
+  assert.ok((bossUsersJson.rows || []).some((u) => u.name === "Floor Only"));
 
   const viaCookie = staff.readSession({
     headers: { "x-sd-token": "dead-token", cookie: "sd_office=" + boss.token }

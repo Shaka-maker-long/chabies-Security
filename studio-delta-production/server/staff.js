@@ -9,7 +9,7 @@ const FLOOR_TASKS = [
 ];
 
 const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval"];
-const USER_HEADERS = ["Name", "Role", "Password", "Tasks", "Access", "See Debtors", "Enquiry Roles"];
+const USER_HEADERS = ["Name", "Role", "Password", "Tasks", "Access", "See Debtors", "Enquiry Roles", "Manage Users"];
 
 const sessions = new Map();
 const SESSION_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
@@ -30,6 +30,7 @@ function applySessionMap(raw) {
       isAdmin: !!row.isAdmin,
       canSeeOffice: !!row.canSeeOffice,
       canSeeDebtors: !!row.canSeeDebtors,
+      canManageUsers: !!row.canManageUsers,
       tasks: Array.isArray(row.tasks) ? row.tasks : []
     });
   });
@@ -81,6 +82,7 @@ function usersSheet() {
   if (norm.indexOf("access") === -1) sheet.getRange(1, 5).setValue("Access");
   if (norm.indexOf("see debtors") === -1) sheet.getRange(1, 6).setValue("See Debtors");
   if (norm.indexOf("enquiry roles") === -1) sheet.getRange(1, 7).setValue("Enquiry Roles");
+  if (norm.indexOf("manage users") === -1) sheet.getRange(1, 8).setValue("Manage Users");
   return sheet;
 }
 
@@ -102,6 +104,18 @@ function parseAccess(accessCell, roleCell) {
   const r = String(roleCell || "").trim().toLowerCase();
   if (r === "admin") return "Admin";
   return "Production";
+}
+
+function parseYesNo(value) {
+  const v = String(value == null ? "" : value).trim().toLowerCase();
+  return v === "yes" || v === "true" || v === "1";
+}
+
+function parseManageUsers(body, access) {
+  if (access !== "Admin") return "No";
+  if (body && (body.manageUsers === false || body.canManageUsers === false)) return "No";
+  if (body && (body.manageUsers === true || body.canManageUsers === true)) return "Yes";
+  return parseYesNo(body && (body.manageUsers != null ? body.manageUsers : body.manage_users)) ? "Yes" : "No";
 }
 
 function parseSeeDebtors(body, access) {
@@ -198,6 +212,7 @@ function rowToUser(row, id) {
   const access = parseAccess(row[4], row[1]);
   const isAdmin = access === "Admin";
   const debtors = String(row[5] || "").trim().toLowerCase();
+  const manage = isAdmin && parseYesNo(row[7]);
   return {
     id,
     name: String(row[0] || "").trim(),
@@ -208,7 +223,9 @@ function rowToUser(row, id) {
     canSeeOffice: isAdmin,
     canSeeDebtors: isAdmin && debtors !== "no",
     seeDebtors: isAdmin && debtors !== "no" ? "Yes" : "No",
-    enquiryRoles: parseEnquiryRoles(row[6], access)
+    enquiryRoles: parseEnquiryRoles(row[6], access),
+    canManageUsers: manage,
+    manageUsers: manage ? "Yes" : "No"
   };
 }
 
@@ -219,7 +236,8 @@ function seedLocalAdminIfEmpty() {
     access: "Admin",
     role: "Admin",
     password: process.env.LOCAL_ADMIN_CODE || "admin",
-    seeDebtors: "Yes"
+    seeDebtors: "Yes",
+    manageUsers: "Yes"
   });
   console.log("[staff] no Users yet — seeded local Admin (access code: admin)");
   return true;
@@ -234,6 +252,14 @@ function listUsers() {
   for (let i = 0; i < grid.length; i++) {
     const u = rowToUser(grid[i], i + 2);
     if (u.name) out.push(u);
+  }
+  if (!out.some((u) => u.canManageUsers)) {
+    const fallback = out.find((u) => String(u.name).toLowerCase() === "admin" && u.access === "Admin")
+      || out.find((u) => u.access === "Admin");
+    if (fallback) {
+      fallback.canManageUsers = true;
+      fallback.manageUsers = "Yes";
+    }
   }
   return out;
 }
@@ -258,6 +284,7 @@ function upsertUser(body) {
   const tasks = Array.isArray(body.tasks) ? body.tasks.filter((t) => FLOOR_TASKS.indexOf(t) !== -1) : parseTasks(body.tasks);
   const seeDebtors = parseSeeDebtors(body, access);
   const enquiryRoles = parseEnquiryRoles(body.enquiryRoles != null ? body.enquiryRoles : body.enquiry_roles, access);
+  const manageUsers = parseManageUsers(body, access);
   const sheet = usersSheet();
   let rowNum = findUserRow(name);
   let password = String(body.password || "").trim();
@@ -268,20 +295,60 @@ function upsertUser(body) {
     password = String(sheet.getRange(rowNum, 3).getValue() || "");
   }
   sheet.getRange(rowNum, 1, 1, USER_HEADERS.length).setValues([[
-    name, role, password, tasks.join(", "), access, seeDebtors, enquiryRoles.join(", ")
+    name, role, password, tasks.join(", "), access, seeDebtors, enquiryRoles.join(", "), manageUsers
   ]]);
+  if (manageUsers === "Yes") setSoleManager(name);
   persistWorkbook();
   bumpShopCache();
-  return rowToUser([name, role, password, tasks.join(", "), access, seeDebtors, enquiryRoles.join(", ")], rowNum);
+  return rowToUser([name, role, password, tasks.join(", "), access, seeDebtors, enquiryRoles.join(", "), manageUsers], rowNum);
+}
+
+function setSoleManager(name) {
+  const want = String(name || "").trim().toLowerCase();
+  const sheet = usersSheet();
+  const last = sheet.getLastRow();
+  if (last < 2 || !want) return;
+  const names = sheet.getRange(2, 1, last - 1, 1).getValues();
+  const flags = [];
+  for (let i = 0; i < names.length; i++) {
+    flags.push([String(names[i][0] || "").trim().toLowerCase() === want ? "Yes" : "No"]);
+  }
+  sheet.getRange(2, 8, last - 1, 1).setValues(flags);
+}
+
+function canManageUsers(profile) {
+  if (!profile || !profile.name) return false;
+  const live = listUsers().find((u) => String(u.name).toLowerCase() === String(profile.name).toLowerCase());
+  return !!(live && live.canManageUsers);
+}
+
+function changeOwnPassword(name, currentPassword, nextPassword) {
+  const want = String(name || "").trim();
+  const current = String(currentPassword || "");
+  const next = String(nextPassword || "").trim();
+  if (!want) throw new Error("Name is required");
+  if (!next) throw new Error("New access code is required");
+  const rowNum = findUserRow(want);
+  if (!rowNum) throw new Error("Current access code is wrong");
+  const stored = String(usersSheet().getRange(rowNum, 3).getValue() || "");
+  if (!stored || stored !== current) throw new Error("Current access code is wrong");
+  usersSheet().getRange(rowNum, 3).setValue(next);
+  persistWorkbook();
+  bumpShopCache();
+  return { name: String(usersSheet().getRange(rowNum, 1).getValue() || want) };
 }
 
 function deleteUser(name) {
   const rowNum = findUserRow(name);
-  if (rowNum) {
-    usersSheet().deleteRow(rowNum);
-    persistWorkbook();
-    bumpShopCache();
+  if (!rowNum) return;
+  const users = listUsers();
+  const target = users.find((u) => String(u.name).toLowerCase() === String(name || "").trim().toLowerCase());
+  if (target && target.canManageUsers && users.filter((u) => u.canManageUsers).length < 2) {
+    throw new Error("Assign Manage users to someone else before deleting this person");
   }
+  usersSheet().deleteRow(rowNum);
+  persistWorkbook();
+  bumpShopCache();
 }
 
 function loginFailureMessage() {
@@ -324,6 +391,7 @@ function createSession(profile) {
     isAdmin: profile.isAdmin,
     canSeeOffice: profile.canSeeOffice,
     canSeeDebtors: profile.canSeeDebtors,
+    canManageUsers: canManageUsers(profile),
     tasks: profile.tasks
   };
   sessions.set(token, safe);
@@ -366,6 +434,7 @@ function readSession(req) {
   if (!token) return null;
   const row = sessions.get(token) || null;
   if (row && row.isAdmin) row.canSeeOffice = true;
+  if (row) row.canManageUsers = canManageUsers(row);
   return row;
 }
 
@@ -422,6 +491,8 @@ module.exports = {
   seedLocalAdminIfEmpty,
   upsertUser,
   deleteUser,
+  changeOwnPassword,
+  canManageUsers,
   verifyUser,
   loginFailureMessage,
   createSession,
