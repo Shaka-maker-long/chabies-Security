@@ -353,7 +353,10 @@ function mountOffice(app) {
     try {
       const actor = req.office && req.office.name;
       const incoming = req.body || {};
-      const saved = upsertEnquiry(incoming, { actor });
+      const saved = upsertEnquiry(incoming, {
+        actor,
+        createOnly: !!(incoming.create_only || incoming.createOnly)
+      });
       const pasted = String(incoming.correspondence_links || incoming.correspondenceLinks || "").trim();
       if (actor && pasted) {
         pipeline.applyAction(saved.enquiry_no, actor, {

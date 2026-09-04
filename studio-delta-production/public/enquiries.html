@@ -247,7 +247,8 @@
         <p class="hint" id="captureHint">Progress is kept for you if you close this before saving.</p>
         <div class="stack-grid">
           <label>Enquiry no
-            <input id="cap_enquiry_no" readonly>
+            <input id="cap_enquiry_no" placeholder="#1996" autocomplete="off">
+            <span class="hint" id="capEnquiryNoHint">Next number fills in. Change it if this job already has a #.</span>
           </label>
           <label>Date enquired *
             <input id="cap_date_enquired" type="date">
@@ -331,7 +332,8 @@
         <p class="hint">Use this for jobs already in progress on the previous system. Pick where it is now — only the fields that stage needs will show. Progress is kept for you if you close this before saving.</p>
         <div class="stack-grid">
           <label>Enquiry no *
-            <input id="ob_enquiry_no" placeholder="#2004">
+            <input id="ob_enquiry_no" placeholder="#1996" autocomplete="off">
+            <span class="hint">Next number fills in. Change it to keep the old #.</span>
           </label>
           <label>Where is this enquiry now? *
             <select id="ob_status"></select>
@@ -733,6 +735,17 @@
       const nums = rows.map((r) => Number(String(r.enquiry_no || "").replace(/\D/g, ""))).filter((n) => n);
       const max = nums.length ? Math.max.apply(null, nums) : 1995;
       nextNo = "#" + (max + 1);
+    }
+    function normalizeTypedEnquiryNo(raw) {
+      const s = String(raw || "").trim();
+      if (!s) return nextNo;
+      const m = s.replace(/\s+/g, "").match(/^#?(\d+)$/);
+      return m ? "#" + m[1] : "";
+    }
+    function enquiryNoTaken(no, except) {
+      const want = String(no || "").trim();
+      if (!want) return false;
+      return rows.some((r) => r && String(r.enquiry_no || "") === want && String(r.enquiry_no || "") !== String(except || ""));
     }
     function colStyle(k, width, freeze) {
       let s = "width:" + width + "px;min-width:" + width + "px;max-width:" + width + "px;";
@@ -1595,6 +1608,9 @@
           : [emptySpec()];
         document.getElementById("captureTitle").textContent = "Edit enquiry " + (existing.enquiry_no || "");
         document.getElementById("cap_enquiry_no").value = existing.enquiry_no || "";
+        document.getElementById("cap_enquiry_no").readOnly = true;
+        const capHint = document.getElementById("capEnquiryNoHint");
+        if (capHint) capHint.hidden = true;
         document.getElementById("cap_date_enquired").value = dmyToIso(existing.date_enquired) || dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = existing.client_name || "";
         document.getElementById("cap_client_email").value = existing.client_email || "";
@@ -1611,6 +1627,9 @@
         capture.specs = [emptySpec()];
         document.getElementById("captureTitle").textContent = "New enquiry " + nextNo;
         document.getElementById("cap_enquiry_no").value = nextNo;
+        document.getElementById("cap_enquiry_no").readOnly = false;
+        const capHint = document.getElementById("capEnquiryNoHint");
+        if (capHint) capHint.hidden = false;
         document.getElementById("cap_date_enquired").value = dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = "";
         document.getElementById("cap_client_email").value = "";
@@ -1680,6 +1699,15 @@
     window.openCapture = openCapture;
     window.closeCapture = closeCapture;
     window.blankCapture = blankCapture;
+    document.getElementById("cap_enquiry_no").onblur = () => {
+      if (document.getElementById("cap_enquiry_no").readOnly) return;
+      const n = normalizeTypedEnquiryNo(document.getElementById("cap_enquiry_no").value);
+      if (n) document.getElementById("cap_enquiry_no").value = n;
+    };
+    document.getElementById("ob_enquiry_no").onblur = () => {
+      const n = normalizeTypedEnquiryNo(document.getElementById("ob_enquiry_no").value);
+      if (n) document.getElementById("ob_enquiry_no").value = n;
+    };
     document.getElementById("cap_enquiry_type").onchange = toggleCaptureType;
     document.getElementById("ob_enquiry_type").onchange = toggleOnboardType;
     document.getElementById("ob_status").onchange = syncOnboardPanes;
@@ -1729,7 +1757,11 @@
       const type = document.getElementById("cap_enquiry_type").value;
       const existing = capture.i >= 0 ? rows[capture.i] : null;
       const payload = existing ? Object.assign({}, existing) : {};
-      payload.enquiry_no = existing ? existing.enquiry_no : document.getElementById("cap_enquiry_no").value;
+      const typedNo = existing ? existing.enquiry_no : normalizeTypedEnquiryNo(document.getElementById("cap_enquiry_no").value);
+      if (!existing && !typedNo) { err.textContent = "Enquiry number must look like #2004"; return; }
+      if (!existing && enquiryNoTaken(typedNo)) { err.textContent = "Enquiry " + typedNo + " is already on this system"; return; }
+      payload.enquiry_no = typedNo;
+      if (!existing) payload.create_only = true;
       payload.date_enquired = isoToDmy(dateIso);
       payload.enquiry_source = document.getElementById("cap_enquiry_source").value;
       payload.enquiry_type = type;
@@ -2229,8 +2261,11 @@
       const dateIso = document.getElementById("ob_date_enquired").value;
       if (!dateIso) { err.textContent = "Choose the date enquired."; return; }
       const type = document.getElementById("ob_enquiry_type").value;
+      const typedNo = normalizeTypedEnquiryNo(document.getElementById("ob_enquiry_no").value);
+      if (!typedNo) { err.textContent = "Enquiry number must look like #2004"; return; }
+      if (enquiryNoTaken(typedNo)) { err.textContent = "Enquiry " + typedNo + " is already on this system"; return; }
       const payload = {
-        enquiry_no: document.getElementById("ob_enquiry_no").value,
+        enquiry_no: typedNo,
         status,
         date_enquired: isoToDmy(dateIso),
         enquiry_source: document.getElementById("ob_enquiry_source").value,

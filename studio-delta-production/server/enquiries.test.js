@@ -225,4 +225,20 @@ assert.strictEqual(shownQuote.date_quoted, "02/09/2026");
 const saved = JSON.parse(fs.readFileSync(db.dbPath, "utf8"));
 assert.strictEqual(saved.enquiries.length, 8);
 
+assert.throws(
+  () => db.upsertEnquiry({
+    enquiry_no: "#1996",
+    date_enquired: "01/09/2026",
+    client_name: "Taken number"
+  }, { createOnly: true }),
+  /already/
+);
+const customNo = db.upsertEnquiry({
+  enquiry_no: "2200",
+  date_enquired: "01/09/2026",
+  client_name: "Custom No"
+}, { createOnly: true });
+assert.strictEqual(customNo.enquiry_no, "#2200");
+assert.strictEqual(db.nextEnquiryNo(), "#2201");
+
 console.log("enquiries.test.js ok");
