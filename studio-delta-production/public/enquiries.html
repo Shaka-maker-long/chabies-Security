@@ -1426,10 +1426,13 @@
       const email = String((payload && payload.client_email) || "").trim().toLowerCase();
       const number = digitsOnly(payload && payload.client_number);
       const except = String((payload && payload.enquiry_no) || "").trim();
+      const exceptPrev = String((payload && payload.previous_enquiry_no) || "").trim();
       if (!email && number.length < 7) return [];
       return rows.filter((row) => {
         if (!row) return false;
-        if (except && String(row.enquiry_no || "") === except) return false;
+        const no = String(row.enquiry_no || "");
+        if (except && no === except) return false;
+        if (exceptPrev && no === exceptPrev) return false;
         if (CLOSED_STATUSES.indexOf(row.status) >= 0) return false;
         const mailHit = email && String(row.client_email || "").trim().toLowerCase() === email;
         const num = digitsOnly(row.client_number);
@@ -1612,7 +1615,8 @@
           : [emptySpec()];
         document.getElementById("captureTitle").textContent = "Edit enquiry " + (existing.enquiry_no || "");
         document.getElementById("cap_enquiry_no").value = existing.enquiry_no || "";
-        lockCaptureEnquiryNo(true);
+        lockCaptureEnquiryNo(false);
+        setCaptureEnquiryNoHint(true);
         document.getElementById("cap_date_enquired").value = dmyToIso(existing.date_enquired) || dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = existing.client_name || "";
         document.getElementById("cap_client_email").value = existing.client_email || "";
@@ -1630,6 +1634,7 @@
         document.getElementById("captureTitle").textContent = "New enquiry " + nextNo;
         document.getElementById("cap_enquiry_no").value = nextNo;
         lockCaptureEnquiryNo(false);
+        setCaptureEnquiryNoHint(false);
         document.getElementById("cap_date_enquired").value = dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = "";
         document.getElementById("cap_client_email").value = "";
@@ -1682,9 +1687,9 @@
       renderCaptureLines();
       toggleCaptureType();
       document.getElementById("captureMask").classList.add("open");
-      lockCaptureEnquiryNo(!!existing);
-      if (existing) document.getElementById("cap_client_name").focus();
-      else document.getElementById("cap_enquiry_no").focus();
+      lockCaptureEnquiryNo(false);
+      setCaptureEnquiryNoHint(!!existing);
+      document.getElementById("cap_enquiry_no").focus();
     }
     function blankCapture() {
       const id = captureDraftId();
@@ -1701,21 +1706,26 @@
     window.openCapture = openCapture;
     window.closeCapture = closeCapture;
     window.blankCapture = blankCapture;
+    function setCaptureEnquiryNoHint(editing) {
+      const hint = document.getElementById("capEnquiryNoHint");
+      if (!hint) return;
+      hint.hidden = false;
+      hint.textContent = editing
+        ? "You can change this number. Files and any order stay with the enquiry."
+        : "Next number fills in. Change it if this job already has a #.";
+    }
     function lockCaptureEnquiryNo(locked) {
       const el = document.getElementById("cap_enquiry_no");
-      const hint = document.getElementById("capEnquiryNoHint");
       capture.numberLocked = !!locked;
       if (!el) return;
       if (locked) {
         el.setAttribute("readonly", "readonly");
         el.readOnly = true;
         el.classList.add("enq-no-locked");
-        if (hint) hint.hidden = true;
       } else {
         el.removeAttribute("readonly");
         el.readOnly = false;
         el.classList.remove("enq-no-locked");
-        if (hint) hint.hidden = false;
       }
     }
     function formatTypedEnquiryNoField(id) {
@@ -1776,11 +1786,12 @@
       const type = document.getElementById("cap_enquiry_type").value;
       const existing = capture.i >= 0 ? rows[capture.i] : null;
       const payload = existing ? Object.assign({}, existing) : {};
-      const typedNo = existing ? existing.enquiry_no : normalizeTypedEnquiryNo(document.getElementById("cap_enquiry_no").value);
-      if (!existing && !typedNo) { err.textContent = "Enquiry number must look like #2004"; return; }
-      if (!existing && enquiryNoTaken(typedNo)) { err.textContent = "Enquiry " + typedNo + " is already on this system"; return; }
+      const typedNo = normalizeTypedEnquiryNo(document.getElementById("cap_enquiry_no").value) || (existing && existing.enquiry_no) || "";
+      if (!typedNo) { err.textContent = "Enquiry number must look like #2004"; return; }
+      if (enquiryNoTaken(typedNo, existing && existing.enquiry_no)) { err.textContent = "Enquiry " + typedNo + " is already on this system"; return; }
       payload.enquiry_no = typedNo;
-      if (!existing) payload.create_only = true;
+      if (existing) payload.previous_enquiry_no = existing.enquiry_no;
+      else payload.create_only = true;
       payload.date_enquired = isoToDmy(dateIso);
       payload.enquiry_source = document.getElementById("cap_enquiry_source").value;
       payload.enquiry_type = type;
@@ -1848,6 +1859,7 @@
         return;
       }
       dropDraft("capture", existing ? existing.enquiry_no : "new");
+      if (existing && existing.enquiry_no !== typedNo) dropDraft("capture", typedNo);
       closeCapture(false);
       await load();
       document.getElementById("status").textContent = (existing ? "Updated " : "Saved ") +

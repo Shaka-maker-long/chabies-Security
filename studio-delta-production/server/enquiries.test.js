@@ -241,4 +241,44 @@ const customNo = db.upsertEnquiry({
 assert.strictEqual(customNo.enquiry_no, "#2200");
 assert.strictEqual(db.nextEnquiryNo(), "#2201");
 
+const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+const sheetMeta = db.saveEnquiryAttachment("#2200", "cost_sheet", png, "sheet.png");
+const held = db.getEnquiryRaw("#2200");
+held.cost_sheet = sheetMeta;
+db.saveEnquiryRecord(held);
+const pdf = Buffer.from("%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF");
+db.saveEnquiryQuotePdf("#2200", pdf, "quote.pdf");
+db.upsertOrder({
+  order_number: "S260099",
+  enquiry_no: "#2200",
+  client_name: "Custom No",
+  status: "Not Yet Started"
+});
+const moved = db.upsertEnquiry({
+  enquiry_no: "2400",
+  previous_enquiry_no: "#2200",
+  date_enquired: "01/09/2026",
+  client_name: "Custom No"
+});
+assert.strictEqual(moved.enquiry_no, "#2400");
+assert.ok(!db.getEnquiryRaw("#2200"));
+assert.ok(db.getEnquiryRaw("#2400"));
+assert.ok(moved.events.some((ev) => ev.kind === "renumbered"));
+assert.ok(db.readEnquiryAttachment("#2400", "cost_sheet"));
+assert.ok(db.enquiryHasQuotePdf("#2400"));
+assert.ok(!db.enquiryHasQuotePdf("#2200"));
+assert.strictEqual(
+  db.listOrders().find((o) => o.order_number === "S260099").enquiry_no,
+  "#2400"
+);
+assert.throws(
+  () => db.upsertEnquiry({
+    enquiry_no: "#1996",
+    previous_enquiry_no: "#2400",
+    date_enquired: "01/09/2026",
+    client_name: "Taken"
+  }),
+  /already/
+);
+
 console.log("enquiries.test.js ok");
