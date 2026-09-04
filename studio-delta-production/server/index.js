@@ -76,6 +76,7 @@ app.get("/orders", (_req, res) => {
   res.sendFile(path.join(publicDir, "orders.html"));
 });
 app.get("/enquiries", (_req, res) => {
+  noStore(res);
   res.sendFile(path.join(publicDir, "enquiries.html"));
 });
 app.get("/enquiries/dashboard", (_req, res) => {

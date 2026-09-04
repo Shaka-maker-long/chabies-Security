@@ -86,6 +86,10 @@
     .onboard-file iframe { width:100%; height:220px; border:1px solid var(--line); border-radius:6px; background:#fff; }
     .capture-correspondence { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#f8fafc; }
     .capture-correspondence .hint { margin:6px 0 0; }
+    #cap_enquiry_no, #ob_enquiry_no { background:#fff; cursor:text; }
+    #cap_enquiry_no.enq-no-locked { background:#f2f4f7; color:#475467; cursor:default; }
+    #capEnquiryNoHint { display:block; font-weight:400; color:#344054; }
+    #capEnquiryNoHint[hidden] { display:none; }
     .view-sheet { width:min(780px, 96vw); }
     #grid tbody tr[data-i] { cursor:pointer; }
     #grid tbody tr[data-i]:hover td { background:#f2f4f7; }
@@ -247,7 +251,7 @@
         <p class="hint" id="captureHint">Progress is kept for you if you close this before saving.</p>
         <div class="stack-grid">
           <label>Enquiry no
-            <input id="cap_enquiry_no" placeholder="#1996" autocomplete="off">
+            <input id="cap_enquiry_no" type="text" inputmode="numeric" placeholder="#1996" autocomplete="off">
             <span class="hint" id="capEnquiryNoHint">Next number fills in. Change it if this job already has a #.</span>
           </label>
           <label>Date enquired *
@@ -1414,7 +1418,7 @@
       await load();
       document.getElementById("status").textContent = "Saved";
     }
-    let capture = { open: false, i: -1, products: [], specs: [], ignoreDup: false };
+    let capture = { open: false, i: -1, products: [], specs: [], ignoreDup: false, numberLocked: false };
     function digitsOnly(s) {
       return String(s || "").replace(/\D/g, "");
     }
@@ -1608,9 +1612,7 @@
           : [emptySpec()];
         document.getElementById("captureTitle").textContent = "Edit enquiry " + (existing.enquiry_no || "");
         document.getElementById("cap_enquiry_no").value = existing.enquiry_no || "";
-        document.getElementById("cap_enquiry_no").readOnly = true;
-        const capHint = document.getElementById("capEnquiryNoHint");
-        if (capHint) capHint.hidden = true;
+        lockCaptureEnquiryNo(true);
         document.getElementById("cap_date_enquired").value = dmyToIso(existing.date_enquired) || dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = existing.client_name || "";
         document.getElementById("cap_client_email").value = existing.client_email || "";
@@ -1627,9 +1629,7 @@
         capture.specs = [emptySpec()];
         document.getElementById("captureTitle").textContent = "New enquiry " + nextNo;
         document.getElementById("cap_enquiry_no").value = nextNo;
-        document.getElementById("cap_enquiry_no").readOnly = false;
-        const capHint = document.getElementById("capEnquiryNoHint");
-        if (capHint) capHint.hidden = false;
+        lockCaptureEnquiryNo(false);
         document.getElementById("cap_date_enquired").value = dmyToIso(todayDmy());
         document.getElementById("cap_client_name").value = "";
         document.getElementById("cap_client_email").value = "";
@@ -1682,7 +1682,9 @@
       renderCaptureLines();
       toggleCaptureType();
       document.getElementById("captureMask").classList.add("open");
-      document.getElementById("cap_client_name").focus();
+      lockCaptureEnquiryNo(!!existing);
+      if (existing) document.getElementById("cap_client_name").focus();
+      else document.getElementById("cap_enquiry_no").focus();
     }
     function blankCapture() {
       const id = captureDraftId();
@@ -1699,15 +1701,32 @@
     window.openCapture = openCapture;
     window.closeCapture = closeCapture;
     window.blankCapture = blankCapture;
-    document.getElementById("cap_enquiry_no").onblur = () => {
-      if (document.getElementById("cap_enquiry_no").readOnly) return;
-      const n = normalizeTypedEnquiryNo(document.getElementById("cap_enquiry_no").value);
-      if (n) document.getElementById("cap_enquiry_no").value = n;
-    };
-    document.getElementById("ob_enquiry_no").onblur = () => {
-      const n = normalizeTypedEnquiryNo(document.getElementById("ob_enquiry_no").value);
-      if (n) document.getElementById("ob_enquiry_no").value = n;
-    };
+    function lockCaptureEnquiryNo(locked) {
+      const el = document.getElementById("cap_enquiry_no");
+      const hint = document.getElementById("capEnquiryNoHint");
+      capture.numberLocked = !!locked;
+      if (!el) return;
+      if (locked) {
+        el.setAttribute("readonly", "readonly");
+        el.readOnly = true;
+        el.classList.add("enq-no-locked");
+        if (hint) hint.hidden = true;
+      } else {
+        el.removeAttribute("readonly");
+        el.readOnly = false;
+        el.classList.remove("enq-no-locked");
+        if (hint) hint.hidden = false;
+      }
+    }
+    function formatTypedEnquiryNoField(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (id === "cap_enquiry_no" && capture.numberLocked) return;
+      const n = normalizeTypedEnquiryNo(el.value);
+      if (n) el.value = n;
+    }
+    document.getElementById("cap_enquiry_no").addEventListener("blur", () => formatTypedEnquiryNoField("cap_enquiry_no"));
+    document.getElementById("ob_enquiry_no").addEventListener("blur", () => formatTypedEnquiryNoField("ob_enquiry_no"));
     document.getElementById("cap_enquiry_type").onchange = toggleCaptureType;
     document.getElementById("ob_enquiry_type").onchange = toggleOnboardType;
     document.getElementById("ob_status").onchange = syncOnboardPanes;
