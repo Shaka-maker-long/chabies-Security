@@ -1888,7 +1888,7 @@ function upsertEnquiry(row, opts) {
     payload.delivery_incl_vat = "";
   }
 
-  if (fromPipeline && !fromMigrate && payload.status === "Quoted") {
+  if (fromPipeline && !fromMigrate && KEEP_VALUE_STATUSES.indexOf(payload.status) >= 0) {
     const named = payload.products.filter((p) => p.product);
     if (!named.length) throw new Error("Add at least one product before marking Quoted");
     if (named.some((p) => p.value_incl_vat === "" && p.value_excl_vat === "")) {
@@ -1908,7 +1908,9 @@ function upsertEnquiry(row, opts) {
     const savedPdf = saveEnquiryQuotePdf(payload.enquiry_no, row.quote_pdf_base64, row.quote_pdf_name || "quote.pdf");
     payload.quote_pdf_name = savedPdf.quote_pdf_name;
     payload.quote_pdf_uploaded_at = savedPdf.quote_pdf_uploaded_at;
-    payload.date_quoted = todayEnquiryDate();
+    const keepQuotedDate = !!(opts && opts.fromOnboard && String(payload.date_quoted || "").trim());
+    if (!keepQuotedDate) payload.date_quoted = todayEnquiryDate();
+    else payload.date_quoted = enquiryDateFromValue(payload.date_quoted) || payload.date_quoted;
   }
 
   if (payload.status === "Quoted" && !payload.date_quoted) payload.date_quoted = todayEnquiryDate();
@@ -2030,6 +2032,18 @@ function deleteEnquiry(enquiryNo) {
   save();
 }
 
+function deleteAllEnquiries() {
+  const nos = (state.enquiries || []).map((o) => o && o.enquiry_no).filter(Boolean);
+  for (const want of nos) {
+    try { removeEnquiryQuotePdf(want); } catch (e) {}
+    try { removeEnquiryFiles(want); } catch (e) {}
+  }
+  const removed = nos.length;
+  state.enquiries = [];
+  save();
+  return removed;
+}
+
 function recordPayment(orderNumber, amount, note) {
   const num = String(orderNumber || "").trim();
   const existing = listOrders().find((o) => o.order_number === num);
@@ -2102,6 +2116,7 @@ module.exports = {
   saveEnquiryRecord,
   upsertEnquiry,
   deleteEnquiry,
+  deleteAllEnquiries,
   nextEnquiryNo,
   nextQuoteNo,
   recentQuoteNos,

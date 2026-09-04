@@ -1258,6 +1258,385 @@ function reassignTask(row, _actor, body) {
   if (task.kind === "drawing" && row.drawing) row.drawing.assignee = task.assignee;
 }
 
+const ONBOARD_STATUSES = [
+  "New",
+  "Waiting on clients personal details",
+  "Waiting on clients specifictions",
+  "Waiting on productions confirmation",
+  "Costing",
+  "Re-Cost",
+  "Waiting on Supplier",
+  "Costed",
+  "Quoted",
+  "Followed Up",
+  "Ordered",
+  "Not within scope",
+  "Not Interested",
+  "Rejected"
+];
+
+const COSTING_ONWARD = [
+  "Costing", "Re-Cost", "Waiting on Supplier", "Costed", "Quoted", "Followed Up", "Ordered"
+];
+const QUOTED_ONWARD = ["Quoted", "Followed Up", "Ordered"];
+const COSTED_ONWARD = ["Costed", "Quoted", "Followed Up", "Ordered"];
+
+function resolveOnboardStatus(raw) {
+  const s = String(raw || "").trim();
+  const hit = ONBOARD_STATUSES.find((x) => x === s) || ONBOARD_STATUSES.find((x) => namesMatch(x, s));
+  if (!hit) throw new Error("Choose where this enquiry is now");
+  return hit;
+}
+
+function formatOnboardDate(v, label) {
+  const s = String(v || "").trim();
+  if (!s) throw new Error(label || "Date is required");
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) {
+    return dmy[1].padStart(2, "0") + "/" + dmy[2].padStart(2, "0") + "/" + dmy[3];
+  }
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return iso[3] + "/" + iso[2] + "/" + iso[1];
+  const d = db.asDate(s);
+  if (!d) throw new Error(label || "Date must be DD/MM/YYYY");
+  const p = (n) => String(n).padStart(2, "0");
+  const sast = new Date(d.getTime() + 2 * 60 * 60 * 1000);
+  return p(sast.getUTCDate()) + "/" + p(sast.getUTCMonth() + 1) + "/" + sast.getUTCFullYear();
+}
+
+function formatOnboardEnquiryNo(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return db.nextEnquiryNo();
+  const m = s.replace(/\s+/g, "").match(/^#?(\d+)$/);
+  if (!m) throw new Error("Enquiry number must look like #2004");
+  return "#" + m[1];
+}
+
+function confirmedUpload(item, message) {
+  if (!item) throw new Error(message || "Upload a file, check the preview, then confirm it");
+  const raw = item.file_base64 || item.fileBase64 || "";
+  if (!String(raw).trim()) throw new Error(message || "Upload a file, check the preview, then confirm it");
+  if (!item.file_confirmed && !item.fileConfirmed) {
+    throw new Error("Tick that this is the correct file before saving");
+  }
+  return { raw, filename: item.file_name || item.filename || "file" };
+}
+
+function followUpsAlreadyDone(body) {
+  const n = Number(body && (body.follow_ups_done != null ? body.follow_ups_done : body.follow_ups_already_done));
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.min(MAX_FOLLOW_UPS, Math.floor(n));
+}
+
+function saveOnboardCostSheets(row, actor, body, required) {
+  const named = namedProducts(row).map((p) => p.product);
+  const groups = asCostGroups(row, body);
+  const byProduct = new Map(groups.map((g) => [g.product, g]));
+  const existing = existingCostSheets(row);
+  let n = existing.reduce((m, s) => Math.max(m, Number(s.n) || 0), 0);
+  for (const product of named) {
+    const group = byProduct.get(product)
+      || (named.length === 1 && groups[0] && !groups[0].product ? groups[0] : null);
+    const files = ((group && group.files) || []).filter((f) => f && (f.file_base64 || f.fileBase64));
+    if (!files.length) {
+      if (required) throw new Error("Upload a cost sheet for " + product);
+      continue;
+    }
+    for (const file of files) {
+      const got = confirmedUpload(file, "Upload a cost sheet for " + product);
+      if (!isSpreadsheet(got.filename, file.file_type || "") && !isPdf(got.filename, file.file_type || "", null) && !/\.csv$/i.test(got.filename)) {
+        throw new Error("Cost sheet must be Excel (xlsx / xls), CSV, or PDF");
+      }
+      n += 1;
+      const kind = "cost_sheet_" + n;
+      const saved = db.saveEnquiryAttachment(row.enquiry_no, kind, got.raw, got.filename);
+      existing.push({
+        n,
+        product,
+        kind,
+        stored_as: saved.stored_as,
+        filename: saved.filename,
+        mime: saved.mime,
+        uploaded_at: saved.uploaded_at || db.nowIso(),
+        uploaded_by: actor,
+        size: saved.size
+      });
+    }
+  }
+  row.cost_sheets = existing;
+  row.cost_sheet = existing[existing.length - 1] || row.cost_sheet;
+}
+
+function saveOnboardFollowUps(row, actor, body, count) {
+  if (!count) return;
+  const files = Array.isArray(body.follow_up_files) ? body.follow_up_files : [];
+  if (!Array.isArray(row.follow_ups)) row.follow_ups = [];
+  const quoteNo = currentQuoteKey(row);
+  const quotedAt = parseDmy(row.date_quoted) || new Date();
+  for (let i = 1; i <= count; i++) {
+    const item = files[i - 1];
+    let file = null;
+    if (item && (item.file_base64 || item.fileBase64)) {
+      const got = confirmedUpload(item, "Tick that this is the correct follow-up file");
+      file = db.saveEnquiryAttachment(row.enquiry_no, "follow_up_" + i, got.raw, got.filename);
+    }
+    row.follow_ups.push({
+      n: i,
+      quote_no: quoteNo,
+      label: i === 1 ? "Follow up" : "Follow up x" + i,
+      uploaded_at: addDaysIso(quotedAt, FOLLOW_UP_DAYS * i) || db.nowIso(),
+      by: actor,
+      file
+    });
+  }
+}
+
+function seedOnboardTasks(row, actor, body, status) {
+  row.tasks = [];
+  const chase = optionalAssignee(body.chase_assignee || body.assignee) || actor;
+  const coster = assigneeFromRole("Costing", body.costing_assignee || body.assignee, actor);
+  const quoter = assigneeFromRole("Quoting", body.quote_assignee, row.quote_assignee) || actor;
+  const approver = assigneeFromRole("Approval", body.approval_assignee || body.assignee);
+  if (statusAllows({ status }, WAITING_STATUSES)) {
+    addTask(row, "chase_info", requireAssignee(chase), { note: status });
+  }
+  if (status === "Costing" || status === "Re-Cost") {
+    addTask(row, "cost_sheet", requireAssignee(coster || actor));
+  }
+  if (status === "Waiting on Supplier") {
+    addTask(row, "supplier", requireAssignee(optionalAssignee(body.supplier_assignee) || coster || actor), {
+      note: coster ? ("Costing: " + coster) : ""
+    });
+  }
+  if (status === "Costed") {
+    if (row.approval && row.approval.status === "pending") {
+      addTask(row, "approval", requireAssignee(row.approval.requested_from || approver || actor), {
+        note: "Approve or reject the cost sheet"
+      });
+    } else {
+      addTask(row, "quote", requireAssignee(quoter));
+    }
+  }
+  if (status === "Quoted" || status === "Followed Up") {
+    row.quote_assignee = quoter;
+    if (!followUpsExhausted(row)) {
+      assignFollowUpPool(row, followUpDueAt(row) || addDaysIso(row.date_quoted || db.todayEnquiryDate(), FOLLOW_UP_DAYS), nextFollowUpLabel(currentQuoteFollowUps(row).length), body);
+    }
+    addTask(row, "pop", requireAssignee(quoter), { title: "Record client outcome" });
+  }
+  if (status === "Ordered" && row.drawing && row.drawing.required && !(row.drawing.file && row.drawing.file.stored_as)) {
+    addTask(row, "drawing", requireAssignee(row.drawing.assignee || body.drawing_assignee || actor));
+  }
+}
+
+function onboardEnquiry(actorName, body) {
+  const actor = String(actorName || "").trim();
+  if (!actor) throw new Error("Not signed in");
+  const incoming = body || {};
+  let status = resolveOnboardStatus(incoming.status);
+  const enquiryNo = formatOnboardEnquiryNo(incoming.enquiry_no);
+  if (db.getEnquiryRaw(enquiryNo)) {
+    throw new Error("Enquiry " + enquiryNo + " is already on this system");
+  }
+  const dateEnquired = formatOnboardDate(incoming.date_enquired, "Choose the date enquired");
+  const clientName = String(incoming.client_name || "").trim();
+  if (!clientName) throw new Error("Enter the client name");
+
+  const followDone = followUpsAlreadyDone(incoming);
+  if (status === "Followed Up" && followDone < 1) {
+    throw new Error("Say how many follow-ups are already done (1–3)");
+  }
+  if (status === "Quoted" && followDone > 0) status = "Followed Up";
+
+  const payload = {
+    enquiry_no: enquiryNo,
+    date_enquired: dateEnquired,
+    enquiry_source: incoming.enquiry_source || "",
+    enquiry_type: incoming.enquiry_type || "",
+    client_name: clientName,
+    source: incoming.source || "",
+    client_email: incoming.client_email || "",
+    client_number: incoming.client_number || "",
+    province: incoming.province || "",
+    category: incoming.category || "",
+    product: incoming.product || "",
+    products: incoming.products,
+    request: incoming.request || incoming.design_description || "",
+    status,
+    comment: incoming.comment || "",
+    custom_specs: incoming.custom_specs,
+    design_description: incoming.design_description || incoming.request || "",
+    quote_assignee: incoming.quote_assignee || "",
+    follow_up_assignee: incoming.follow_up_assignee || "",
+    delivery_incl_vat: incoming.delivery_incl_vat,
+    delivery_excl_vat: incoming.delivery_excl_vat
+  };
+
+  const previewLines = db.normalizeEnquiryLines(incoming, null);
+  if (COSTING_ONWARD.indexOf(status) >= 0) {
+    if (!namedProducts({ products: previewLines }).length) throw new Error("Add at least one product name");
+    if (!hasClientDetails(payload)) {
+      throw new Error("Client name, email or number, and province are required from Costing onward");
+    }
+    const pasted = String(incoming.correspondence_links || incoming.correspondenceLinks || "").trim();
+    const mails = Array.isArray(incoming.correspondence_mails) ? incoming.correspondence_mails : [];
+    if (!pasted && !mails.length) throw new Error("Enter a Correspondance link.");
+  }
+  payload.products = incoming.products || previewLines;
+
+  if (QUOTED_ONWARD.indexOf(status) >= 0) {
+    payload.quote_no = incoming.quote_no;
+    payload.date_quoted = incoming.date_quoted ? formatOnboardDate(incoming.date_quoted, "Choose the date quoted") : "";
+    payload.quote_pdf_base64 = incoming.file_base64 || incoming.quote_pdf_base64;
+    payload.quote_pdf_name = incoming.file_name || incoming.quote_pdf_name || "quote.pdf";
+    payload.quote_pdf_confirmed = !!(incoming.file_confirmed || incoming.quote_pdf_confirmed);
+    if (!payload.quote_pdf_base64) {
+      throw new Error("Upload the quote PDF, check the preview, then confirm it is the correct file");
+    }
+  }
+
+  let saved;
+  try {
+  saved = db.upsertEnquiry(payload, { actor, fromPipeline: true, fromOnboard: true });
+  const raw = db.getEnquiryRaw(saved.enquiry_no);
+  if (!Array.isArray(raw.tasks)) raw.tasks = [];
+  if (!Array.isArray(raw.follow_ups)) raw.follow_ups = [];
+  if (!Array.isArray(raw.quotes)) raw.quotes = [];
+
+  if (COSTING_ONWARD.indexOf(status) >= 0) {
+    requireCorrespondence(raw, actor, incoming);
+  } else {
+    archiveCorrespondence(raw, actor, incoming);
+  }
+
+  if (status === "Costed") {
+    saveOnboardCostSheets(raw, actor, incoming, true);
+  } else if (Array.isArray(incoming.cost_sheets) && incoming.cost_sheets.length) {
+    saveOnboardCostSheets(raw, actor, incoming, false);
+  }
+
+  if (status === "Waiting on Supplier" && (incoming.supplier_file_base64 || (incoming.supplier_file && (incoming.supplier_file.file_base64 || incoming.supplier_file.fileBase64)))) {
+    const item = incoming.supplier_file || {
+      file_base64: incoming.supplier_file_base64,
+      file_name: incoming.supplier_file_name,
+      file_confirmed: incoming.supplier_file_confirmed
+    };
+    const got = confirmedUpload(item, "Upload the quotation from the supplier");
+    if (!Array.isArray(raw.supplier_quotes)) raw.supplier_quotes = [];
+    const n = raw.supplier_quotes.length + 1;
+    raw.supplier_quotes.push({
+      n,
+      uploaded_at: db.nowIso(),
+      by: actor,
+      file: db.saveEnquiryAttachment(raw.enquiry_no, "supplier_" + n, got.raw, got.filename)
+    });
+  }
+
+  if (status === "Costed") {
+    const quoter = requireRoleAssignee("Quoting", incoming.quote_assignee, raw.quote_assignee);
+    raw.quote_assignee = quoter;
+    const wantsApproval = incoming.approval_needed === true
+      || incoming.approval_needed === "yes"
+      || incoming.approval_needed === "true";
+    const approver = wantsApproval ? assigneeFromRole("Approval", incoming.approval_assignee || incoming.assignee) : "";
+    if (wantsApproval && approver) {
+      raw.approval = {
+        requested_from: approver,
+        requested_at: db.nowIso(),
+        requested_by: actor,
+        status: "pending",
+        comments: "",
+        decided_by: "",
+        decided_at: ""
+      };
+    } else {
+      raw.approval = {
+        requested_from: "",
+        requested_at: db.nowIso(),
+        requested_by: actor,
+        status: "approved",
+        comments: "Brought across from previous system",
+        decided_by: actor,
+        decided_at: db.nowIso()
+      };
+    }
+  }
+
+  if (QUOTED_ONWARD.indexOf(status) >= 0) {
+    recordIssuedQuote(raw, actor);
+    const quoter = assigneeFromRole("Quoting", incoming.quote_assignee, raw.quote_assignee) || actor;
+    raw.quote_assignee = quoter;
+    saveOnboardFollowUps(raw, actor, incoming, followDone);
+  }
+
+  if (status === "Ordered") {
+    const popItem = incoming.pop_file || {
+      file_base64: incoming.pop_file_base64 || incoming.pop_base64,
+      file_name: incoming.pop_file_name || incoming.pop_name,
+      file_confirmed: incoming.pop_file_confirmed || incoming.pop_confirmed
+    };
+    const pop = confirmedUpload(popItem, "Upload proof of payment (screenshot or PDF)");
+    if (!isImage(pop.filename, "") && !isPdf(pop.filename, "", null)) {
+      throw new Error("Proof of payment must be a screenshot or PDF");
+    }
+    const popFile = db.saveEnquiryAttachment(raw.enquiry_no, "pop", pop.raw, pop.filename);
+    raw.client_outcome = {
+      kind: "approved",
+      reason: "",
+      decided_at: db.nowIso(),
+      decided_by: actor,
+      file: popFile
+    };
+    const drawingRaw = incoming.drawing_required;
+    const needsDrawing = drawingRaw === true || drawingRaw === "yes" || drawingRaw === "true";
+    const noDrawing = drawingRaw === false || drawingRaw === "no" || drawingRaw === "false";
+    if (!needsDrawing && !noDrawing) throw new Error("Say whether this order requires a drawing");
+    if (!needsDrawing) {
+      raw.drawing = { required: false, file: null };
+      raw.ready_for_orders = true;
+    } else {
+      raw.drawing = { required: true, file: null, assignee: requireAssignee(incoming.drawing_assignee || incoming.assignee || actor) };
+      raw.ready_for_orders = false;
+      const drawItem = incoming.drawing_file || {
+        file_base64: incoming.drawing_file_base64 || incoming.drawing_base64,
+        file_name: incoming.drawing_file_name,
+        file_confirmed: incoming.drawing_file_confirmed
+      };
+      if (drawItem && (drawItem.file_base64 || drawItem.fileBase64)) {
+        const got = confirmedUpload(drawItem, "Upload the drawing");
+        raw.drawing.file = db.saveEnquiryAttachment(raw.enquiry_no, "drawing", got.raw, got.filename);
+        raw.drawing.uploaded_at = db.nowIso();
+        raw.drawing.uploaded_by = actor;
+        raw.ready_for_orders = true;
+      }
+    }
+  }
+
+  if (CLOSED_STATUSES.indexOf(status) >= 0) {
+    raw.client_outcome = {
+      kind: status === "Rejected" ? "rejected" : "closed",
+      reason: String(incoming.reason || incoming.comments || incoming.comment || "").trim(),
+      decided_at: db.nowIso(),
+      decided_by: actor
+    };
+  }
+
+  seedOnboardTasks(raw, actor, incoming, status);
+  db.appendEnquiryEvent(raw, {
+    kind: "onboard",
+    actor,
+    status,
+    label: "Brought across from previous system — " + status
+  });
+  raw.updated_at = db.nowIso();
+  db.saveEnquiryRecord(raw);
+  return processSnapshot(raw.enquiry_no, actor);
+  } catch (e) {
+    try { db.deleteEnquiry(enquiryNo); } catch (err) {}
+    throw e;
+  }
+}
+
 module.exports = {
   FOLLOW_UP_DAYS,
   MAX_FOLLOW_UPS,
@@ -1277,5 +1656,7 @@ module.exports = {
   availableActions,
   canAct,
   actionOwner,
-  actionKind
+  actionKind,
+  ONBOARD_STATUSES,
+  onboardEnquiry
 };

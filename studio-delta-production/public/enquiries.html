@@ -79,6 +79,11 @@
     .stack-form textarea { min-height:72px; }
     .stack-grid { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
     .capture-sheet { width:min(720px, 96vw); }
+    .onboard-sheet { width:min(860px, 96vw); }
+    .onboard-pane { display:none; }
+    .onboard-pane.show { display:block; }
+    .onboard-file { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#f8fafc; display:flex; flex-direction:column; gap:8px; }
+    .onboard-file iframe { width:100%; height:220px; border:1px solid var(--line); border-radius:6px; background:#fff; }
     .capture-correspondence { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#f8fafc; }
     .capture-correspondence .hint { margin:6px 0 0; }
     .view-sheet { width:min(780px, 96vw); }
@@ -110,6 +115,8 @@
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search enquiries">
       <button class="ghost" onclick="openCapture()">New enquiry</button>
+      <button class="ghost" type="button" onclick="openOnboard()">Add existing enquiry</button>
+      <button class="danger" type="button" id="clearAllBtn" style="display:none" onclick="openClearAll()">Clear all enquiries</button>
       <button class="ghost" type="button" onclick="downloadCsv()">Download CSV</button>
     </div>
   </header>
@@ -309,6 +316,182 @@
       </div>
     </div>
   </div>
+  <div class="mask" id="onboardMask">
+    <div class="sheet onboard-sheet" role="dialog" aria-modal="true">
+      <header>
+        <h1>Add existing enquiry</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeOnboard()">Cancel</button>
+          <button type="button" onclick="saveOnboard()">Save onto this system</button>
+        </div>
+      </header>
+      <div class="body stack-form">
+        <p class="hint">Use this for jobs already in progress on the previous system. Pick where it is now — only the fields that stage needs will show.</p>
+        <div class="stack-grid">
+          <label>Enquiry no *
+            <input id="ob_enquiry_no" placeholder="#2004">
+          </label>
+          <label>Where is this enquiry now? *
+            <select id="ob_status"></select>
+          </label>
+          <label>Date enquired *
+            <input id="ob_date_enquired" type="date">
+          </label>
+          <label>Enquiry type
+            <select id="ob_enquiry_type"></select>
+          </label>
+        </div>
+        <label>Client name *
+          <input id="ob_client_name">
+        </label>
+        <div class="stack-grid">
+          <label>Enquiry source
+            <select id="ob_enquiry_source"></select>
+          </label>
+          <label>How they found us
+            <select id="ob_source"></select>
+          </label>
+          <label>Province
+            <select id="ob_province"></select>
+          </label>
+          <label>Client email
+            <input id="ob_client_email" type="email">
+          </label>
+          <label>Client number
+            <input id="ob_client_number">
+          </label>
+        </div>
+        <div>
+          <p class="hint" style="margin:0 0 8px;color:#1d2939;font-weight:600">Products</p>
+          <div style="overflow:auto">
+            <table class="lines">
+              <thead>
+                <tr>
+                  <th>CATERGORY</th>
+                  <th>PRODUCT</th>
+                  <th class="ob-quote-col">VALUE (Incl VAT)</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="onboardLineBody"></tbody>
+            </table>
+          </div>
+          <div class="row-actions" style="margin-top:8px">
+            <button class="ghost" type="button" onclick="addOnboardLine()">Add product</button>
+            <label class="ob-quote-col">Delivery (Incl VAT) *
+              <input id="ob_delivery" inputmode="decimal" placeholder="Required" style="margin-left:8px;width:120px;border:1px solid var(--line);border-radius:4px;padding:6px;font:inherit">
+            </label>
+          </div>
+        </div>
+        <div id="onboardCustomBlock" style="display:none">
+          <p class="hint" style="margin:0 0 8px;color:#1d2939;font-weight:600">Custom specification</p>
+          <div id="onboardSpecList" class="spec-grid"></div>
+        </div>
+        <div id="onboardDesignBlock" style="display:none">
+          <label>New design description
+            <textarea id="ob_design_desc"></textarea>
+          </label>
+        </div>
+        <label>Comment
+          <textarea id="ob_comment"></textarea>
+        </label>
+        <div id="obPaneCorrespondence" class="onboard-pane capture-correspondence">
+          <label>Correspondance link *
+            <textarea id="ob_correspondence" rows="3" placeholder="Paste the file link or path" autocomplete="off"></textarea>
+          </label>
+        </div>
+        <div id="obPaneChase" class="onboard-pane">
+          <label>Who is chasing this?
+            <select id="ob_chase"></select>
+          </label>
+        </div>
+        <div id="obPaneCosting" class="onboard-pane stack-grid">
+          <label>Costing person
+            <select id="ob_coster"></select>
+          </label>
+          <label>Quoting person
+            <select id="ob_quoter"></select>
+          </label>
+        </div>
+        <div id="obPaneCostSheet" class="onboard-pane onboard-file">
+          <label>Cost sheet * (Excel, CSV, or PDF)
+            <input id="ob_cost_file" type="file" accept=".xlsx,.xls,.csv,application/pdf,.pdf">
+          </label>
+          <label><input type="checkbox" id="ob_cost_ok"> This is the correct file</label>
+          <label class="enq-check"><input type="checkbox" id="ob_approval_needed"> Still needs costing approval</label>
+          <label>Approval person
+            <select id="ob_approver"></select>
+          </label>
+        </div>
+        <div id="obPaneQuoted" class="onboard-pane">
+          <div class="stack-grid">
+            <label>Quote no *
+              <input id="ob_quote_no" placeholder="SOQ2361">
+            </label>
+            <label>Date quoted *
+              <input id="ob_date_quoted" type="date">
+            </label>
+          </div>
+          <div class="onboard-file" style="margin-top:10px">
+            <label>Quote PDF *
+              <input id="ob_quote_file" type="file" accept="application/pdf,.pdf">
+            </label>
+            <iframe id="ob_quote_preview" title="Quote PDF preview"></iframe>
+            <label><input type="checkbox" id="ob_quote_ok"> This is the correct quote PDF</label>
+          </div>
+        </div>
+        <div id="obPaneFollow" class="onboard-pane">
+          <label>Follow-ups already done on this quote
+            <select id="ob_follow_done">
+              <option value="0">None yet</option>
+              <option value="1">1 of 3</option>
+              <option value="2">2 of 3</option>
+              <option value="3">3 of 3 — no further follow-up</option>
+            </select>
+          </label>
+          <p class="hint">Screenshots are optional if you still have them. After 3, the enquiry stays open but drops off follow-up.</p>
+        </div>
+        <div id="obPaneOrdered" class="onboard-pane">
+          <div class="onboard-file">
+            <label>Proof of payment *
+              <input id="ob_pop_file" type="file" accept="image/*,application/pdf,.pdf">
+            </label>
+            <label><input type="checkbox" id="ob_pop_ok"> This is the correct file</label>
+          </div>
+          <label>Does this order need a drawing?
+            <select id="ob_drawing">
+              <option value="">Choose</option>
+              <option value="no">No — ready for Orders</option>
+              <option value="yes">Yes</option>
+            </select>
+          </label>
+          <label>Drawing assignee
+            <select id="ob_drawing_who"></select>
+          </label>
+        </div>
+        <div class="err" id="onboardErr"></div>
+        <div class="enq-dup" id="onboardDup" hidden></div>
+      </div>
+    </div>
+  </div>
+  <div class="mask" id="clearMask">
+    <div class="sheet" role="dialog" aria-modal="true" style="width:min(480px,96vw)">
+      <header>
+        <h1>Clear all enquiries</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeClearAll()">Cancel</button>
+          <button class="danger" type="button" onclick="confirmClearAll()">Delete every enquiry</button>
+        </div>
+      </header>
+      <div class="body stack-form">
+        <p class="hint">This removes every enquiry and its files from this system. Orders are not deleted. Type <b>CLEAR</b> to confirm.</p>
+        <label>Type CLEAR
+          <input id="clearConfirm" autocomplete="off">
+        </label>
+        <div class="err" id="clearErr"></div>
+      </div>
+    </div>
+  </div>
   <div class="mask" id="viewMask">
     <div class="sheet view-sheet" role="dialog" aria-modal="true" aria-labelledby="viewTitle">
       <header>
@@ -359,6 +542,32 @@
     let nextNo = "#1996";
     let vatRate = 0.15;
     let me = "";
+    let canManage = false;
+    let assignees = [];
+    let enquiryRoles = {};
+    const ONBOARD_STATUSES = [
+      "New",
+      "Waiting on clients personal details",
+      "Waiting on clients specifictions",
+      "Waiting on productions confirmation",
+      "Costing",
+      "Re-Cost",
+      "Waiting on Supplier",
+      "Costed",
+      "Quoted",
+      "Followed Up",
+      "Ordered",
+      "Not within scope",
+      "Not Interested",
+      "Rejected"
+    ];
+    const onboard = {
+      products: [emptyLine()],
+      specs: [emptySpec()],
+      quoteBase64: "",
+      quoteName: "",
+      ignoreDup: false
+    };
     const CLOSED_STATUSES = ["Not within scope", "Not Interested", "Rejected"];
     let modal = { open: false, i: -1, mode: "products", prevStatus: "", lines: [], pdfUrl: "", pdfBase64: "", pdfName: "", confirmed: false };
     let specModal = { open: false, i: -1, prevType: "", specs: [] };
@@ -733,7 +942,7 @@
           || (document.getElementById("categoryFilter") || {}).value;
         const msg = filtered
           ? "No enquiries match those filters."
-          : "No enquiries yet. Use New enquiry — the number starts at #1996 and the month fills from the date.";
+          : "No enquiries yet. Use New enquiry, or Add existing enquiry for jobs already in progress on the previous system.";
         html += "<tr><td class=\"empty\" colspan=\"" + HEADERS.length + "\">" + msg + "</td></tr>";
       }
       html += "</tbody>";
@@ -1434,6 +1643,15 @@
     window.openCapture = openCapture;
     window.closeCapture = closeCapture;
     document.getElementById("cap_enquiry_type").onchange = toggleCaptureType;
+    document.getElementById("ob_enquiry_type").onchange = toggleOnboardType;
+    document.getElementById("ob_status").onchange = syncOnboardPanes;
+    document.getElementById("ob_quote_file").onchange = async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+      onboard.quoteName = file.name;
+      onboard.quoteBase64 = await readFileAsDataUrl(file);
+      document.getElementById("ob_quote_preview").src = onboard.quoteBase64;
+    };
     ["cap_client_email", "cap_client_number"].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -1531,6 +1749,325 @@
         (j.row && j.row.status ? " · " + j.row.status : "");
     }
     window.saveCapture = saveCapture;
+    function fillAssigneeSelect(id, selected, fallback) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const current = String(selected || fallback || "");
+      const opts = assignees.slice();
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      let h = "<option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      el.innerHTML = h;
+    }
+    function onboardQuoteish(status) {
+      return status === "Quoted" || status === "Followed Up" || status === "Ordered";
+    }
+    function syncOnboardPanes() {
+      const status = document.getElementById("ob_status").value;
+      const costingOn = ["Costing", "Re-Cost", "Waiting on Supplier", "Costed", "Quoted", "Followed Up", "Ordered"].indexOf(status) >= 0;
+      const waiting = status.indexOf("Waiting on") === 0;
+      document.getElementById("obPaneCorrespondence").classList.toggle("show", costingOn);
+      document.getElementById("obPaneChase").classList.toggle("show", waiting);
+      document.getElementById("obPaneCosting").classList.toggle("show", costingOn);
+      document.getElementById("obPaneCostSheet").classList.toggle("show", status === "Costed");
+      document.getElementById("obPaneQuoted").classList.toggle("show", onboardQuoteish(status));
+      document.getElementById("obPaneFollow").classList.toggle("show", status === "Quoted" || status === "Followed Up");
+      document.getElementById("obPaneOrdered").classList.toggle("show", status === "Ordered");
+      document.querySelectorAll(".ob-quote-col").forEach((el) => {
+        el.style.display = onboardQuoteish(status) ? "" : "none";
+      });
+      renderOnboardLines();
+    }
+    function toggleOnboardType() {
+      const type = document.getElementById("ob_enquiry_type").value;
+      document.getElementById("onboardCustomBlock").style.display = type === "Custom" ? "" : "none";
+      document.getElementById("onboardDesignBlock").style.display = type === "New Design" ? "" : "none";
+      if (type === "Custom") renderOnboardSpecs();
+    }
+    function onboardLineSelect(kind, value, idx) {
+      const current = String(value || "");
+      const opts = (dropdowns[kind] || []).slice();
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      let h = "<select data-ob-line=\"" + idx + "\" data-f=\"" + kind + "\">";
+      h += "<option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      return h + "</select>";
+    }
+    function renderOnboardLines() {
+      const body = document.getElementById("onboardLineBody");
+      if (!body) return;
+      const quoted = onboardQuoteish(document.getElementById("ob_status").value);
+      body.innerHTML = onboard.products.map((line, idx) => {
+        return "<tr>" +
+          "<td>" + onboardLineSelect("category", line.category, idx) + "</td>" +
+          "<td>" + onboardLineSelect("product", line.product, idx) + "</td>" +
+          (quoted ? "<td><input data-ob-line=\"" + idx + "\" data-f=\"value_incl_vat\" inputmode=\"decimal\" value=\"" + escAttr(line.value_incl_vat || "") + "\"></td>" : "") +
+          "<td><button type=\"button\" class=\"danger\" data-ob-del=\"" + idx + "\">Delete</button></td>" +
+          "</tr>";
+      }).join("");
+      body.onchange = body.oninput = (e) => {
+        const el = e.target;
+        const idx = Number(el.getAttribute("data-ob-line"));
+        const f = el.getAttribute("data-f");
+        if (!f || !onboard.products[idx]) return;
+        onboard.products[idx][f] = el.value;
+      };
+      body.onclick = (e) => {
+        const btn = e.target.closest("[data-ob-del]");
+        if (!btn) return;
+        const idx = Number(btn.getAttribute("data-ob-del"));
+        if (onboard.products.length === 1) onboard.products[0] = emptyLine();
+        else onboard.products.splice(idx, 1);
+        renderOnboardLines();
+      };
+    }
+    function addOnboardLine() {
+      onboard.products.push(emptyLine());
+      renderOnboardLines();
+    }
+    function captureSpecKindSelectOb(kind, idx) {
+      const opts = (dropdowns.custom_spec || ["Dimensions", "Colour", "Other"]).slice();
+      let h = "<select data-ob-spec=\"" + idx + "\" data-f=\"kind\">";
+      h += "<option value=\"\"></option>";
+      opts.forEach((o) => {
+        h += "<option" + (o === kind ? " selected" : "") + ">" + esc(o) + "</option>";
+      });
+      return h + "</select>";
+    }
+    function renderOnboardSpecs() {
+      const box = document.getElementById("onboardSpecList");
+      if (!box) return;
+      box.innerHTML = onboard.specs.map((spec, idx) => {
+        const otherOn = spec.kind === "Other" || (!spec.kind && spec.other);
+        return "<div class=\"spec-row\">" +
+          "<div><label class=\"hint\" style=\"display:block;margin-bottom:4px;color:#1d2939\">What is custom?</label>" + captureSpecKindSelectOb(spec.kind || "", idx) +
+          (otherOn ? "<input data-ob-spec=\"" + idx + "\" data-f=\"other\" placeholder=\"Specify what it is\" value=\"" + escAttr(spec.other || "") + "\" style=\"margin-top:6px\">" : "") +
+          "</div>" +
+          "<div><label class=\"hint\" style=\"display:block;margin-bottom:4px;color:#1d2939\">Details</label>" +
+          "<textarea data-ob-spec=\"" + idx + "\" data-f=\"detail\">" + esc(spec.detail || "") + "</textarea></div>" +
+          "<button type=\"button\" class=\"danger\" data-ob-del-spec=\"" + idx + "\">Delete</button>" +
+          "</div>";
+      }).join("") + "<button type=\"button\" class=\"ghost\" id=\"addOnboardSpecBtn\">Add another</button>";
+      box.onchange = box.oninput = (e) => {
+        const el = e.target;
+        const idx = Number(el.getAttribute("data-ob-spec"));
+        const f = el.getAttribute("data-f");
+        if (!f || !onboard.specs[idx]) return;
+        onboard.specs[idx][f] = el.value;
+        if (f === "kind") renderOnboardSpecs();
+      };
+      box.onclick = (e) => {
+        if (e.target.id === "addOnboardSpecBtn") {
+          onboard.specs.push(emptySpec());
+          renderOnboardSpecs();
+          return;
+        }
+        const btn = e.target.closest("[data-ob-del-spec]");
+        if (!btn) return;
+        const idx = Number(btn.getAttribute("data-ob-del-spec"));
+        if (onboard.specs.length === 1) onboard.specs[0] = emptySpec();
+        else onboard.specs.splice(idx, 1);
+        renderOnboardSpecs();
+      };
+    }
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        if (!file) { resolve(""); return; }
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("Could not read the file"));
+        reader.readAsDataURL(file);
+      });
+    }
+    function openOnboard() {
+      onboard.products = [emptyLine()];
+      onboard.specs = [emptySpec()];
+      onboard.quoteBase64 = "";
+      onboard.quoteName = "";
+      onboard.ignoreDup = false;
+      document.getElementById("onboardDup").hidden = true;
+      document.getElementById("onboardDup").innerHTML = "";
+      document.getElementById("onboardErr").textContent = "";
+      bumpNext();
+      document.getElementById("ob_enquiry_no").value = nextNo;
+      document.getElementById("ob_date_enquired").value = dmyToIso(todayDmy());
+      document.getElementById("ob_client_name").value = "";
+      document.getElementById("ob_client_email").value = "";
+      document.getElementById("ob_client_number").value = "";
+      document.getElementById("ob_comment").value = "";
+      document.getElementById("ob_correspondence").value = "";
+      document.getElementById("ob_design_desc").value = "";
+      document.getElementById("ob_delivery").value = "";
+      document.getElementById("ob_quote_no").value = "";
+      document.getElementById("ob_date_quoted").value = "";
+      document.getElementById("ob_follow_done").value = "0";
+      document.getElementById("ob_drawing").value = "";
+      document.getElementById("ob_approval_needed").checked = false;
+      document.getElementById("ob_cost_ok").checked = false;
+      document.getElementById("ob_quote_ok").checked = false;
+      document.getElementById("ob_pop_ok").checked = false;
+      document.getElementById("ob_cost_file").value = "";
+      document.getElementById("ob_quote_file").value = "";
+      document.getElementById("ob_pop_file").value = "";
+      document.getElementById("ob_quote_preview").removeAttribute("src");
+      fillCaptureSelect("ob_enquiry_source", "enquiry_source", "");
+      fillCaptureSelect("ob_enquiry_type", "enquiry_type", "");
+      fillCaptureSelect("ob_source", "source", "");
+      fillCaptureSelect("ob_province", "province", "");
+      const st = document.getElementById("ob_status");
+      st.innerHTML = "<option value=\"\"></option>" + ONBOARD_STATUSES.map((s) => "<option>" + esc(s) + "</option>").join("");
+      fillAssigneeSelect("ob_chase", me);
+      fillAssigneeSelect("ob_coster", enquiryRoles.costing, me);
+      fillAssigneeSelect("ob_quoter", enquiryRoles.quoting, me);
+      fillAssigneeSelect("ob_approver", enquiryRoles.approval, "");
+      fillAssigneeSelect("ob_drawing_who", me);
+      syncOnboardPanes();
+      toggleOnboardType();
+      document.getElementById("onboardMask").classList.add("open");
+      document.getElementById("ob_enquiry_no").focus();
+    }
+    function closeOnboard() {
+      document.getElementById("onboardMask").classList.remove("open");
+    }
+    async function saveOnboard() {
+      const err = document.getElementById("onboardErr");
+      err.textContent = "";
+      const status = String(document.getElementById("ob_status").value || "").trim();
+      if (!status) { err.textContent = "Choose where this enquiry is now."; return; }
+      const client = String(document.getElementById("ob_client_name").value || "").trim();
+      if (!client) { err.textContent = "Enter the client name."; return; }
+      const dateIso = document.getElementById("ob_date_enquired").value;
+      if (!dateIso) { err.textContent = "Choose the date enquired."; return; }
+      const type = document.getElementById("ob_enquiry_type").value;
+      const payload = {
+        enquiry_no: document.getElementById("ob_enquiry_no").value,
+        status,
+        date_enquired: isoToDmy(dateIso),
+        enquiry_source: document.getElementById("ob_enquiry_source").value,
+        enquiry_type: type,
+        client_name: client,
+        source: document.getElementById("ob_source").value,
+        client_email: document.getElementById("ob_client_email").value,
+        client_number: document.getElementById("ob_client_number").value,
+        province: document.getElementById("ob_province").value,
+        comment: document.getElementById("ob_comment").value,
+        correspondence_links: document.getElementById("ob_correspondence").value,
+        chase_assignee: document.getElementById("ob_chase").value,
+        costing_assignee: document.getElementById("ob_coster").value,
+        quote_assignee: document.getElementById("ob_quoter").value,
+        approval_assignee: document.getElementById("ob_approver").value,
+        approval_needed: document.getElementById("ob_approval_needed").checked,
+        follow_ups_done: Number(document.getElementById("ob_follow_done").value || 0),
+        drawing_required: document.getElementById("ob_drawing").value,
+        drawing_assignee: document.getElementById("ob_drawing_who").value,
+        products: onboard.products.map((l) => ({
+          product: String(l.product || "").trim(),
+          category: String(l.category || "").trim(),
+          value_incl_vat: String(l.value_incl_vat || "").trim(),
+          value_excl_vat: ""
+        })).filter((l) => l.product || l.category)
+      };
+      if (onboardQuoteish(status)) {
+        payload.delivery_incl_vat = document.getElementById("ob_delivery").value;
+        payload.quote_no = document.getElementById("ob_quote_no").value;
+        payload.date_quoted = isoToDmy(document.getElementById("ob_date_quoted").value);
+      }
+      payload.custom_specs = [];
+      payload.design_description = "";
+      if (type === "Custom") {
+        payload.custom_specs = onboard.specs.map((s) => ({
+          kind: String(s.kind || "").trim(),
+          other: String(s.other || "").trim(),
+          detail: String(s.detail || "").trim()
+        })).filter((s) => s.kind || s.other || s.detail);
+      } else if (type === "New Design") {
+        payload.design_description = String(document.getElementById("ob_design_desc").value || "").trim();
+        payload.request = payload.design_description;
+      }
+      const dups = findLocalDuplicates(payload);
+      if (dups.length && !onboard.ignoreDup) {
+        const box = document.getElementById("onboardDup");
+        box.hidden = false;
+        box.innerHTML = "Open enquiry already uses this email or number: " +
+          dups.map((r) => esc(r.enquiry_no) + " · " + esc(r.client_name || "")).join("; ") +
+          ". Save anyway only if this is a new job." +
+          "<div class=\"row-actions\" style=\"margin-top:8px\"><button type=\"button\" class=\"ghost\" id=\"obDupConfirm\">Save anyway</button></div>";
+        const btn = document.getElementById("obDupConfirm");
+        if (btn) btn.onclick = () => { onboard.ignoreDup = true; saveOnboard(); };
+        return;
+      }
+      try {
+        if (status === "Costed") {
+          const costFile = document.getElementById("ob_cost_file").files[0];
+          if (!costFile) { err.textContent = "Upload a cost sheet."; return; }
+          payload.file_base64 = await readFileAsDataUrl(costFile);
+          payload.file_name = costFile.name;
+          payload.file_confirmed = document.getElementById("ob_cost_ok").checked;
+        }
+        if (onboardQuoteish(status)) {
+          const qf = document.getElementById("ob_quote_file").files[0];
+          if (!qf && !onboard.quoteBase64) { err.textContent = "Upload the quote PDF."; return; }
+          payload.quote_pdf_base64 = onboard.quoteBase64 || (qf ? await readFileAsDataUrl(qf) : "");
+          payload.quote_pdf_name = onboard.quoteName || (qf && qf.name) || "quote.pdf";
+          payload.quote_pdf_confirmed = document.getElementById("ob_quote_ok").checked;
+          payload.file_base64 = payload.quote_pdf_base64;
+          payload.file_name = payload.quote_pdf_name;
+          payload.file_confirmed = payload.quote_pdf_confirmed;
+        }
+        if (status === "Ordered") {
+          const pop = document.getElementById("ob_pop_file").files[0];
+          if (!pop) { err.textContent = "Upload proof of payment."; return; }
+          payload.pop_file = {
+            file_base64: await readFileAsDataUrl(pop),
+            file_name: pop.name,
+            file_confirmed: document.getElementById("ob_pop_ok").checked
+          };
+        }
+      } catch (e) {
+        err.textContent = (e && e.message) || "Could not read a file";
+        return;
+      }
+      const r = await sdOfficeFetch("/api/office/enquiries/onboard", { method: "POST", body: JSON.stringify(payload) });
+      const j = await r.json();
+      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      closeOnboard();
+      await load();
+      document.getElementById("status").textContent = "Brought across " + ((j.row && j.row.enquiry_no) || payload.enquiry_no) +
+        (j.row && j.row.status ? " · " + j.row.status : "");
+    }
+    function openClearAll() {
+      document.getElementById("clearConfirm").value = "";
+      document.getElementById("clearErr").textContent = "";
+      document.getElementById("clearMask").classList.add("open");
+      document.getElementById("clearConfirm").focus();
+    }
+    function closeClearAll() {
+      document.getElementById("clearMask").classList.remove("open");
+    }
+    async function confirmClearAll() {
+      const err = document.getElementById("clearErr");
+      err.textContent = "";
+      const r = await sdOfficeFetch("/api/office/enquiries/clear-all", {
+        method: "POST",
+        body: JSON.stringify({ confirm: document.getElementById("clearConfirm").value })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { err.textContent = j.error || "Could not clear enquiries"; return; }
+      closeClearAll();
+      await load();
+      document.getElementById("status").textContent = "Cleared " + (j.removed || 0) + " enquiries. Orders were not deleted.";
+    }
+    window.openOnboard = openOnboard;
+    window.closeOnboard = closeOnboard;
+    window.saveOnboard = saveOnboard;
+    window.addOnboardLine = addOnboardLine;
+    window.openClearAll = openClearAll;
+    window.closeClearAll = closeClearAll;
+    window.confirmClearAll = confirmClearAll;
     async function load() {
       const r = await sdOfficeFetch("/api/office/enquiries");
       const j = await r.json();
@@ -1546,6 +2083,11 @@
       });
       dropdowns = j.dropdowns || {};
       nextNo = j.nextEnquiryNo || "#1996";
+      assignees = j.assignees || [];
+      enquiryRoles = j.enquiryRoles || {};
+      if (j.canManageUsers != null) canManage = !!j.canManageUsers;
+      const clearBtn = document.getElementById("clearAllBtn");
+      if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       document.getElementById("status").textContent = rows.length + " enquiries · next " + nextNo;
       fillSheetFilters();
       render();
@@ -1568,6 +2110,12 @@
     document.getElementById("captureMask").addEventListener("click", (e) => {
       if (e.target.id === "captureMask") closeCapture();
     });
+    document.getElementById("onboardMask").addEventListener("click", (e) => {
+      if (e.target.id === "onboardMask") closeOnboard();
+    });
+    document.getElementById("clearMask").addEventListener("click", (e) => {
+      if (e.target.id === "clearMask") closeClearAll();
+    });
     document.getElementById("viewMask").addEventListener("click", (e) => {
       if (e.target.id === "viewMask") closeView();
     });
@@ -1575,6 +2123,9 @@
     sdRequireOffice("enquiries").then((p) => {
       if (!p) return;
       me = p.name || "";
+      canManage = !!p.canManageUsers;
+      const clearBtn = document.getElementById("clearAllBtn");
+      if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       load();
     });
   </script>
