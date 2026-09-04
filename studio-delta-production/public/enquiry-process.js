@@ -175,7 +175,6 @@
         ".sd-create-order{margin-top:10px}";
       document.head.appendChild(css);
     }
-    wrap.addEventListener("click", (e) => { if (e.target.id === "sdProcessMask") closeProcess(); });
     document.getElementById("sdProcessClose").onclick = closeProcess;
   }
 
