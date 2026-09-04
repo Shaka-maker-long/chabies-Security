@@ -7,7 +7,8 @@ const ORDER_COLUMNS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
   "product", "variation", "doors", "detailed_description", "dimensions", "powder_coating",
   "client_name", "client_number", "email", "payment_date", "address", "province",
-  "price_excl_vat", "price_incl_vat", "amount_paid", "month_of_sale", "source", "city"
+  "price_excl_vat", "price_incl_vat", "amount_paid", "month_of_sale", "source", "city",
+  "enquiry_no"
 ];
 
 let opened = null;
@@ -78,6 +79,7 @@ function open() {
       month_of_sale TEXT,
       source TEXT,
       city TEXT,
+      enquiry_no TEXT,
       extra_json TEXT
     );
     CREATE TABLE IF NOT EXISTS enquiries (
@@ -148,6 +150,7 @@ function open() {
   openedPath = file;
   try { db.exec("ALTER TABLE users ADD COLUMN enquiry_roles TEXT"); } catch (e) {}
   try { db.exec("ALTER TABLE users ADD COLUMN manage_users TEXT"); } catch (e) {}
+  try { db.exec("ALTER TABLE orders ADD COLUMN enquiry_no TEXT"); } catch (e) {}
   return db;
 }
 

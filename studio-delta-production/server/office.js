@@ -26,7 +26,9 @@ const {
   readEnquiryAttachment,
   railwayBackup,
   copyEnquiriesFromWorkbook,
-  persistenceInfo
+  persistenceInfo,
+  findOpenEnquiryDuplicates,
+  createOrderFromEnquiry
 } = require("./db");
 const { importGoogleWorkbook, tabCounts, googleMigrateEnabled, dataDir } = require("./workbook-store");
 const staff = require("./staff");
@@ -277,6 +279,21 @@ function mountOffice(app) {
     });
   });
 
+  app.get("/api/office/enquiries/duplicates", requireOffice, (req, res) => {
+    try {
+      res.json({
+        ok: true,
+        rows: findOpenEnquiryDuplicates({
+          client_email: req.query.email || req.query.client_email,
+          client_number: req.query.number || req.query.client_number,
+          enquiry_no: req.query.except || req.query.enquiry_no
+        }, req.query.except || req.query.enquiry_no)
+      });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.get("/api/office/enquiries/dashboard", requireOffice, (req, res) => {
     try {
       res.json({ ok: true, ...require("./enquiry-dashboard").buildDashboard(req.query || {}) });
@@ -296,7 +313,13 @@ function mountOffice(app) {
   app.put("/api/office/enquiries", requireOffice, (req, res) => {
     try {
       const row = upsertEnquiry(req.body || {}, { actor: req.office && req.office.name });
-      res.json({ ok: true, row, nextEnquiryNo: nextEnquiryNo(), dropdowns: listEnquiryDropdowns() });
+      res.json({
+        ok: true,
+        row,
+        nextEnquiryNo: nextEnquiryNo(),
+        dropdowns: listEnquiryDropdowns(),
+        duplicates: findOpenEnquiryDuplicates(row, row.enquiry_no)
+      });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
@@ -330,7 +353,7 @@ function mountOffice(app) {
 
   app.get("/api/office/enquiries/:enquiryNo/process", requireOffice, (req, res) => {
     try {
-      res.json({ ok: true, me: req.office.name, ...pipeline.processSnapshot(req.params.enquiryNo) });
+      res.json({ ok: true, ...pipeline.processSnapshot(req.params.enquiryNo, req.office.name) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
@@ -339,10 +362,23 @@ function mountOffice(app) {
   app.post("/api/office/enquiries/:enquiryNo/process", requireOffice, (req, res) => {
     try {
       const snap = pipeline.applyAction(req.params.enquiryNo, req.office.name, req.body || {});
-      res.json({ ok: true, me: req.office.name, ...snap });
+      res.json({ ok: true, ...snap });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
+  });
+
+  app.post("/api/office/enquiries/:enquiryNo/create-order", requireOffice, (req, res) => {
+    try {
+      const out = createOrderFromEnquiry(req.params.enquiryNo);
+      res.json({ ok: true, ...out });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/access-requests", requireOffice, (req, res) => {
+    res.json({ ok: true, rows: pipeline.listAccessInbox(req.office.name) });
   });
 
   app.post("/api/office/enquiries/:enquiryNo/outlook-mail", requireOffice, (req, res) => {
