@@ -1095,6 +1095,53 @@ assert.strictEqual(holdOn.row.status, "Waiting on productions confirmation");
 assert.ok(holdOn.row.tasks.some((t) => t.kind === "chase_info" && t.status === "open" && t.assignee === "Coster"));
 assert.ok(!holdOn.row.tasks.some((t) => t.kind === "cost_sheet" && t.status === "open"));
 
+assert.throws(
+  () => pipeline.onboardEnquiry("Coster", {
+    enquiry_no: "#3104",
+    date_enquired: "03/08/2026",
+    client_name: "Two Cost Items",
+    client_email: "twocost@example.com",
+    province: "Gauteng",
+    enquiry_type: "Catologue",
+    products: [
+      { product: "Air Chair", category: "Chair" },
+      { product: "Eve Patio Table", category: "Table" }
+    ],
+    status: "Costed",
+    quote_assignee: "Quoter",
+    correspondence_links: "https://files.example/two-cost",
+    cost_sheets: [{
+      product: "Air Chair",
+      files: [{ file_base64: csv, file_name: "chair.csv", file_confirmed: true }]
+    }]
+  }),
+  /cost sheet/
+);
+assert.ok(!db.getEnquiryRaw("#3104"));
+const twoCost = pipeline.onboardEnquiry("Coster", {
+  enquiry_no: "#3105",
+  date_enquired: "03/08/2026",
+  client_name: "Two Cost Items",
+  client_email: "twocost-ok@example.com",
+  province: "Gauteng",
+  enquiry_type: "Catologue",
+  products: [
+    { product: "Air Chair", category: "Chair" },
+    { product: "Eve Patio Table", category: "Table" }
+  ],
+  status: "Costed",
+  quote_assignee: "Quoter",
+  correspondence_links: "https://files.example/two-cost-ok",
+  cost_sheets: [
+    { product: "Air Chair", files: [{ file_base64: csv, file_name: "chair.csv", file_confirmed: true }] },
+    { product: "Eve Patio Table", files: [{ file_base64: csv, file_name: "table.csv", file_confirmed: true }] }
+  ]
+});
+assert.strictEqual(twoCost.row.status, "Costed");
+assert.strictEqual((twoCost.row.cost_sheets || []).length, 2);
+assert.ok(twoCost.row.cost_sheets.some((s) => s.product === "Air Chair"));
+assert.ok(twoCost.row.cost_sheets.some((s) => s.product === "Eve Patio Table"));
+
 const keptOrder = db.upsertOrder({
   order_number: "9001",
   client_name: "Keep Me",
