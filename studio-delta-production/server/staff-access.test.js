@@ -72,6 +72,17 @@ const coster = staff.upsertUser({
   enquiryRoles: ["Costing", "Quoting"]
 });
 assert.deepStrictEqual(coster.enquiryRoles, ["Costing", "Quoting"]);
+assert.ok(staff.ENQUIRY_ROLES.indexOf("Follow-up") >= 0);
+const follower = staff.upsertUser({
+  name: "Office Follower",
+  access: "Admin",
+  role: "Admin",
+  password: "follow",
+  seeDebtors: "Yes",
+  enquiryRoles: ["Follow-up"]
+});
+assert.deepStrictEqual(follower.enquiryRoles, ["Follow-up"]);
+assert.ok(staff.enquiryRoleHolders("Follow-up").indexOf("Office Follower") >= 0);
 assert.strictEqual(staff.defaultEnquiryAssignee("Costing"), "Office Coster");
 assert.strictEqual(staff.defaultEnquiryAssignee("Quoting"), "Office Coster");
 assert.strictEqual(staff.defaultEnquiryAssignee("Approval"), "");

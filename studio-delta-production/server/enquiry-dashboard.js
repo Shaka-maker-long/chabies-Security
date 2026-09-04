@@ -357,8 +357,14 @@ function followUpOverdue(row) {
   const status = statusOf(row);
   if (status !== "Quoted" && status !== "Followed Up") return false;
   const list = Array.isArray(row.follow_ups) ? row.follow_ups : [];
+  const currentNo = String(row.quote_no || "").trim();
+  const tagged = list.filter((f) => String((f && f.quote_no) || "").trim());
+  const use = currentNo && tagged.length
+    ? list.filter((f) => String((f && f.quote_no) || "").trim() === currentNo)
+    : list;
+  if (use.length >= 3) return false;
   let from = 0;
-  if (list.length) from = Date.parse(list[list.length - 1].uploaded_at || "");
+  if (use.length) from = Date.parse(use[use.length - 1].uploaded_at || "");
   if (!from) {
     const d = db.asDate(row.date_quoted);
     from = d ? d.getTime() : 0;

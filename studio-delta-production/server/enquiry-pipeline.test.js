@@ -946,4 +946,93 @@ assert.strictEqual(selfDone.row.status, "Costing");
 assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === selfSupplier.enquiry_no));
 assert.ok(selfDone.row.deliverables.some((d) => d.group === "supplier"));
 
+staff.upsertUser({ name: "Quoter", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes", enquiryRoles: ["Quoting", "Follow-up"] });
+staff.upsertUser({ name: "Pat", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes", enquiryRoles: ["Follow-up"] });
+assert.deepStrictEqual(staff.enquiryRoleHolders("Follow-up").sort(), ["Pat", "Quoter"]);
+
+function toQuoted(clientName, quoteNo) {
+  const enq = db.upsertEnquiry({
+    date_enquired: "16/01/2026",
+    client_name: clientName,
+    enquiry_type: "Catologue",
+    products: [{ product: "Air Chair", category: "Chair" }]
+  });
+  pipeline.applyAction(enq.enquiry_no, "Coster", {
+    action: "assign_costing",
+    assignee: "Coster",
+    correspondence_links: "https://files.example/follow"
+  });
+  pipeline.applyAction(enq.enquiry_no, "Coster", {
+    action: "complete_cost_sheet",
+    file_base64: csv,
+    file_name: "cost.csv",
+    file_confirmed: true,
+    quote_assignee: "Quoter"
+  });
+  pipeline.applyAction(enq.enquiry_no, "Approver", { action: "complete_approval", decision: "approve" });
+  return pipeline.applyAction(enq.enquiry_no, "Quoter", {
+    action: "complete_quote",
+    products: [{ product: "Air Chair", category: "Chair", value_excl_vat: "1000" }],
+    delivery_excl_vat: "100",
+    file_base64: pdfB64,
+    file_name: "quote.pdf",
+    file_confirmed: true,
+    quote_no: quoteNo
+  });
+}
+
+const pooled = toQuoted("Follow Pool", "SOQ2501");
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
+assert.ok(pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
+const firstFollow = pipeline.applyAction(pooled.row.enquiry_no, "Pat", {
+  action: "complete_followup",
+  file_base64: png,
+  file_name: "fu1.png",
+  file_confirmed: true
+});
+assert.strictEqual(firstFollow.row.status, "Followed Up");
+assert.strictEqual(pipeline.currentQuoteFollowUps(firstFollow.row).length, 1);
+assert.ok(firstFollow.row.tasks.some((t) => t.kind === "follow_up" && t.status === "done" && t.assignee === "Pat"));
+assert.ok(firstFollow.row.tasks.some((t) => t.kind === "follow_up" && t.status === "cancelled" && t.assignee === "Quoter"));
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
+assert.ok(pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
+
+const capped = toQuoted("Three Follows", "SOQ2502");
+pipeline.applyAction(capped.row.enquiry_no, "Quoter", { action: "complete_followup", file_base64: png, file_name: "a.png", file_confirmed: true });
+pipeline.applyAction(capped.row.enquiry_no, "Quoter", { action: "complete_followup", file_base64: png, file_name: "b.png", file_confirmed: true });
+const third = pipeline.applyAction(capped.row.enquiry_no, "Pat", { action: "complete_followup", file_base64: png, file_name: "c.png", file_confirmed: true });
+assert.strictEqual(third.row.status, "Followed Up");
+assert.ok(pipeline.followUpsExhausted(third.row));
+assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === capped.row.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === capped.row.enquiry_no));
+assert.ok(!third.actions.some((a) => a.id === "complete_followup"));
+assert.ok(third.actions.some((a) => a.id === "complete_quote"));
+assert.throws(
+  () => pipeline.applyAction(capped.row.enquiry_no, "Quoter", { action: "complete_followup", file_base64: png, file_name: "d.png", file_confirmed: true }),
+  /3 follow-ups|another quote/
+);
+const resetQuote = pipeline.applyAction(capped.row.enquiry_no, "Quoter", {
+  action: "complete_quote",
+  products: [{ product: "Air Chair", category: "Chair", value_excl_vat: "1100" }],
+  delivery_excl_vat: "100",
+  file_base64: pdfB64,
+  file_name: "quote-new.pdf",
+  file_confirmed: true,
+  quote_no: "SOQ2503"
+});
+assert.strictEqual(resetQuote.row.status, "Quoted");
+assert.strictEqual(pipeline.currentQuoteFollowUps(resetQuote.row).length, 0);
+assert.ok(!pipeline.followUpsExhausted(resetQuote.row));
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === capped.row.enquiry_no));
+assert.ok(pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === capped.row.enquiry_no));
+const afterNew = pipeline.applyAction(capped.row.enquiry_no, "Quoter", {
+  action: "complete_followup",
+  file_base64: png,
+  file_name: "new-quote-fu.png",
+  file_confirmed: true
+});
+assert.strictEqual(pipeline.currentQuoteFollowUps(afterNew.row).length, 1);
+assert.strictEqual(afterNew.row.follow_ups.filter((f) => f.quote_no === "SOQ2503").length, 1);
+assert.strictEqual(afterNew.row.follow_ups.filter((f) => f.quote_no === "SOQ2502").length, 3);
+
 console.log("enquiry-pipeline.test.js ok");
