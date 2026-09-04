@@ -208,6 +208,15 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const floorPassJson = await floorPass.json();
   assert.ok(floorPassJson.ok, JSON.stringify(floorPassJson));
   assert.ok(staff.verifyUser("Floor Only", "floor2"));
+  assert.ok(!staff.verifyUser("Floor Only", "floor"), "old access code must stop working");
+  assert.ok(!staff.verifyUser("Floor Only", "admin"), "Manager access code must not log in someone else");
+
+  const floorOldLogin = await callShopFunction("verifyGlobalLogin", ["Floor Only", "floor"]);
+  assert.strictEqual(floorOldLogin.success, false);
+  const floorMasterLogin = await callShopFunction("verifyGlobalLogin", ["Floor Only", "admin"]);
+  assert.strictEqual(floorMasterLogin.success, false, JSON.stringify(floorMasterLogin));
+  const floorNewLogin = await callShopFunction("verifyGlobalLogin", ["Floor Only", "floor2"]);
+  assert.strictEqual(floorNewLogin.success, true);
 
   const bossUsers = await fetch(base + "/api/office/users", { headers: { "x-sd-token": boss.token } });
   const bossUsersJson = await bossUsers.json();

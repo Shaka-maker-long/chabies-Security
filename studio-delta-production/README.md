@@ -125,7 +125,7 @@ Legacy pause columns J/K/L are still written for older reports.
 
 ## Users sheet (login)
 
-Workers log in when they **open this tab**. Moving between Home, Enquiries, Orders, and the other pages stays logged in. A **new tab or window** must log in even if another copy of the app is already open — the login is not shared across tabs. Log Out (or closing the tab) ends that login.
+Workers log in when they **open this tab**. Moving between Home, Enquiries, Orders, and the other pages stays logged in. A **new tab or window** must log in even if another copy of the app is already open — the login is not shared across tabs. Log Out (or closing the tab) ends that login. Each person uses **only their own access code**. After they change it, the old code must not work — including the Manager’s code.
 
 Add a **Tasks** column (column D). The first time the app opens it will create the header if it is missing.
 
