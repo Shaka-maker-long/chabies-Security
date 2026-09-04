@@ -1837,15 +1837,109 @@ function saveEnquiryRecord(row) {
   return decorateEnquiry(existing);
 }
 
+function formatIncomingEnquiryNo(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  if (/^#\d+$/.test(s)) return s;
+  const n = enquiryNumberValue(s);
+  return n ? formatEnquiryNo(n) : "";
+}
+
+function retargetOrdersEnquiryNo(fromNo, toNo) {
+  const fromN = enquiryNumberValue(fromNo);
+  if (!fromN || !toNo) return 0;
+  let changed = 0;
+  try {
+    const sheet = ordersSheet();
+    const { idx } = ensureOrderHeaders(sheet);
+    if (idx.enquiry_no != null) {
+      const last = sheet.getLastRow();
+      if (last >= 2) {
+        const col = idx.enquiry_no + 1;
+        const values = sheet.getRange(2, col, last - 1, 1).getValues();
+        for (let i = 0; i < values.length; i++) {
+          const cur = String(values[i][0] || "").trim();
+          if (!cur) continue;
+          if (enquiryNumberValue(cur) === fromN || cur === fromNo) {
+            sheet.getRange(i + 2, col).setValue(toNo);
+            changed += 1;
+          }
+        }
+        if (changed) persistWorkbook();
+      }
+    }
+  } catch (e) {}
+  (state.orders || []).forEach((o) => {
+    if (!o) return;
+    if (enquiryNumberValue(o.enquiry_no) === fromN || String(o.enquiry_no || "").trim() === fromNo) {
+      o.enquiry_no = toNo;
+    }
+  });
+  return changed;
+}
+
+function moveEnquiryDisk(fromNo, toNo) {
+  const quotesDir = path.join(path.dirname(dbPath), "enquiry-quotes");
+  const fromPdf = path.join(quotesDir, enquiryQuoteKey(fromNo) + ".pdf");
+  const toPdf = path.join(quotesDir, enquiryQuoteKey(toNo) + ".pdf");
+  if (fs.existsSync(fromPdf)) {
+    if (fs.existsSync(toPdf)) throw new Error("Enquiry " + toNo + " already has a quote PDF");
+    fs.mkdirSync(quotesDir, { recursive: true });
+    fs.renameSync(fromPdf, toPdf);
+  }
+  const fromDir = path.join(path.dirname(dbPath), "enquiry-files", enquiryQuoteKey(fromNo));
+  const toDir = path.join(path.dirname(dbPath), "enquiry-files", enquiryQuoteKey(toNo));
+  if (fs.existsSync(fromDir)) {
+    if (fs.existsSync(toDir)) {
+      const names = fs.readdirSync(toDir);
+      if (names.length) throw new Error("Enquiry " + toNo + " already has files");
+      fs.rmSync(toDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(path.dirname(toDir), { recursive: true });
+    fs.renameSync(fromDir, toDir);
+  }
+}
+
+function renameEnquiryNumber(fromRaw, toRaw, opts) {
+  const fromNo = formatIncomingEnquiryNo(fromRaw);
+  const toNo = formatIncomingEnquiryNo(toRaw);
+  if (!fromNo || !toNo) throw new Error("Enquiry number must look like #2004");
+  if (enquiryNumberValue(fromNo) === enquiryNumberValue(toNo)) return getEnquiryRaw(fromNo);
+  const existing = getEnquiryRaw(fromNo);
+  if (!existing) throw new Error("Enquiry not found");
+  if (getEnquiryRaw(toNo)) throw new Error("Enquiry " + toNo + " is already on this system");
+  moveEnquiryDisk(fromNo, toNo);
+  existing.enquiry_no = toNo;
+  retargetOrdersEnquiryNo(fromNo, toNo);
+  appendEnquiryEvent(existing, {
+    kind: "renumbered",
+    actor: opts && opts.actor ? String(opts.actor).trim() : "",
+    status: existing.status || "",
+    label: "Enquiry number changed from " + fromNo + " to " + toNo
+  });
+  existing.updated_at = nowIso();
+  save();
+  return existing;
+}
+
 function upsertEnquiry(row, opts) {
   const fromMigrate = !!(opts && opts.fromMigrate);
   const fromPipeline = !!(opts && opts.fromPipeline) || fromMigrate;
   const payload = {};
   for (const f of ENQUIRY_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]).trim();
-  if (!payload.enquiry_no) payload.enquiry_no = nextEnquiryNo();
+  const previousNo = formatIncomingEnquiryNo(
+    (opts && (opts.previousEnquiryNo || opts.previous_enquiry_no))
+    || row.previous_enquiry_no
+    || row.previousEnquiryNo
+    || ""
+  );
+  if (!payload.enquiry_no) payload.enquiry_no = previousNo || nextEnquiryNo();
   if (!/^#\d+$/.test(payload.enquiry_no)) {
     const n = enquiryNumberValue(payload.enquiry_no);
-    payload.enquiry_no = n ? formatEnquiryNo(n) : nextEnquiryNo();
+    payload.enquiry_no = n ? formatEnquiryNo(n) : (previousNo || nextEnquiryNo());
+  }
+  if (previousNo && enquiryNumberValue(previousNo) !== enquiryNumberValue(payload.enquiry_no)) {
+    renameEnquiryNumber(previousNo, payload.enquiry_no, { actor: opts && opts.actor });
   }
   payload.month_enquired = monthFromEnquiryDate(payload.date_enquired);
   const existing = getEnquiryRaw(payload.enquiry_no);
@@ -2118,6 +2212,7 @@ module.exports = {
   getEnquiryRaw,
   saveEnquiryRecord,
   upsertEnquiry,
+  renameEnquiryNumber,
   deleteEnquiry,
   deleteAllEnquiries,
   nextEnquiryNo,

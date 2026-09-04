@@ -172,8 +172,9 @@ assert.ok(enquiriesHtml.indexOf('id="captureMask"') !== -1, "New enquiry must op
 assert.ok(/<input id="cap_enquiry_no"[^>]*>/.test(enquiriesHtml));
 assert.ok(!/<input id="cap_enquiry_no"[^>]*\breadonly\b/.test(enquiriesHtml), "new enquiry number must be editable");
 assert.ok(enquiriesHtml.indexOf("Next number fills in") !== -1);
-assert.ok(enquiriesHtml.indexOf("lockCaptureEnquiryNo(false)") !== -1, "new enquiry must unlock the number");
-assert.ok(enquiriesHtml.indexOf("lockCaptureEnquiryNo(!!existing)") !== -1, "openCapture must re-apply lock after draft restore");
+assert.ok(enquiriesHtml.indexOf("lockCaptureEnquiryNo(false)") !== -1, "enquiry number stays editable on new and edit");
+assert.ok(enquiriesHtml.indexOf("previous_enquiry_no") !== -1, "edit must send the old number so files can move");
+assert.ok(enquiriesHtml.indexOf("You can change this number") !== -1);
 assert.ok(enquiriesHtml.indexOf("removeAttribute(\"readonly\")") !== -1);
 assert.ok(enquiriesHtml.indexOf("formatTypedEnquiryNoField") !== -1);
 assert.ok(enquiriesHtml.indexOf("create_only") !== -1);
