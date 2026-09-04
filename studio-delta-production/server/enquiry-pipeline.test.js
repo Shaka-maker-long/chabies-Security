@@ -714,4 +714,129 @@ const hit = db.findOpenEnquiryDuplicates({
 }, managerActs.enquiry_no);
 assert.ok(hit.some((r) => r.enquiry_no === locked.enquiry_no));
 
+assert.strictEqual(
+  pipeline.classifyCapture({ client_name: "Name only" }),
+  "Waiting on clients personal details"
+);
+assert.strictEqual(
+  pipeline.classifyCapture({
+    client_name: "Pat Client",
+    client_email: "pat@example.com",
+    province: "Gauteng"
+  }),
+  "Waiting on clients specifictions"
+);
+assert.strictEqual(
+  pipeline.classifyCapture({
+    client_name: "Pat Client",
+    client_number: "0821110000",
+    province: "Gauteng",
+    enquiry_type: "Catologue",
+    products: [{ product: "Air Chair" }]
+  }),
+  "Costing"
+);
+assert.strictEqual(
+  pipeline.classifyCapture({
+    client_name: "Pat Client",
+    client_email: "pat@example.com",
+    province: "Gauteng",
+    enquiry_type: "Custom",
+    products: [{ product: "Air Chair" }],
+    custom_specs: []
+  }),
+  "Waiting on clients specifictions"
+);
+assert.strictEqual(
+  pipeline.classifyCapture({
+    client_name: "Pat Client",
+    client_email: "pat@example.com",
+    province: "Gauteng",
+    enquiry_type: "Custom",
+    products: [{ product: "Air Chair" }],
+    custom_specs: [{ kind: "Dimensions", detail: "800 x 600" }]
+  }),
+  "Costing"
+);
+assert.strictEqual(
+  pipeline.classifyCapture({
+    client_name: "Pat Client",
+    client_email: "pat@example.com",
+    province: "Gauteng",
+    enquiry_type: "New Design",
+    products: [{ product: "Air Chair" }],
+    design_description: "a table"
+  }),
+  "Waiting on clients specifictions"
+);
+assert.ok(pipeline.isAutoCaptureStatus("New"));
+assert.ok(pipeline.isAutoCaptureStatus("Waiting on clients personal details"));
+assert.ok(pipeline.isAutoCaptureStatus("Waiting on clients specifictions"));
+assert.ok(!pipeline.isAutoCaptureStatus("Waiting on productions confirmation"));
+assert.ok(!pipeline.isAutoCaptureStatus("Quoted"));
+assert.ok(!pipeline.isAutoCaptureStatus("Costing"));
+
+const thin = db.upsertEnquiry({
+  date_enquired: "10/01/2026",
+  client_name: "Name Only Route"
+});
+const thinRouted = pipeline.applyCaptureRoute(thin.enquiry_no, "Coster");
+assert.strictEqual(thinRouted.row.status, "Waiting on clients personal details");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "chase_info" && t.enquiry_no === thin.enquiry_no));
+
+db.upsertEnquiry({
+  enquiry_no: thin.enquiry_no,
+  date_enquired: "10/01/2026",
+  client_name: "Name Only Route",
+  client_email: "nameonly@example.com",
+  province: "Gauteng"
+});
+const specRouted = pipeline.applyCaptureRoute(thin.enquiry_no, "Coster");
+assert.strictEqual(specRouted.row.status, "Waiting on clients specifictions");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "chase_info" && t.enquiry_no === thin.enquiry_no));
+
+db.upsertEnquiry({
+  enquiry_no: thin.enquiry_no,
+  date_enquired: "10/01/2026",
+  client_name: "Name Only Route",
+  client_email: "nameonly@example.com",
+  province: "Gauteng",
+  enquiry_type: "Catologue",
+  products: [{ product: "Air Chair", category: "Chair" }]
+});
+const costRouted = pipeline.applyCaptureRoute(thin.enquiry_no, "Coster");
+assert.strictEqual(costRouted.row.status, "Costing");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === thin.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "chase_info" && t.enquiry_no === thin.enquiry_no));
+
+const prodHold = db.upsertEnquiry({
+  date_enquired: "11/01/2026",
+  client_name: "Prod Confirm",
+  client_email: "prod@example.com",
+  province: "Gauteng",
+  enquiry_type: "Catologue",
+  products: [{ product: "Air Chair", category: "Chair" }]
+});
+pipeline.applyAction(prodHold.enquiry_no, "Coster", {
+  action: "assign_waiting",
+  waiting_status: "Waiting on productions confirmation",
+  assignee: "Coster"
+});
+const prodKept = pipeline.applyCaptureRoute(prodHold.enquiry_no, "Coster");
+assert.strictEqual(prodKept.row.status, "Waiting on productions confirmation");
+
+const quoteHold = db.upsertEnquiry({
+  date_enquired: "12/01/2026",
+  client_name: "Quoted Hold",
+  client_email: "quoted@example.com",
+  province: "Gauteng",
+  enquiry_type: "Catologue",
+  products: [{ product: "Air Chair", category: "Chair" }]
+});
+const quoteRaw = db.getEnquiryRaw(quoteHold.enquiry_no);
+quoteRaw.status = "Quoted";
+db.saveEnquiryRecord(quoteRaw);
+const quoteKept = pipeline.applyCaptureRoute(quoteHold.enquiry_no, "Coster");
+assert.strictEqual(quoteKept.row.status, "Quoted");
+
 console.log("enquiry-pipeline.test.js ok");
