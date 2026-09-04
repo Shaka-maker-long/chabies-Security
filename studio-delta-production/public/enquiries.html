@@ -1418,18 +1418,15 @@
           other: String(s.other || "").trim(),
           detail: String(s.detail || "").trim()
         })).filter((s) => s.kind || s.other || s.detail);
-        if (!specs.length) { err.textContent = "Choose Dimensions, Colour, or Other."; return; }
         for (const spec of specs) {
           if (spec.kind === "Other" && !spec.other) { err.textContent = "If it is Other, specify what it is."; return; }
-          if (!spec.detail) { err.textContent = "Write the details for each custom change."; return; }
+          if (spec.kind && spec.kind !== "Other" && !spec.detail) { err.textContent = "Write the details for each custom change."; return; }
         }
         payload.custom_specs = specs;
         payload.design_description = "";
       } else if (type === "New Design") {
-        const desc = String(document.getElementById("captureDesignDesc").value || "").trim();
-        if (desc.length < 20) { err.textContent = "Write a full description of the new design."; return; }
-        payload.design_description = desc;
-        payload.request = desc;
+        payload.design_description = String(document.getElementById("captureDesignDesc").value || "").trim();
+        payload.request = payload.design_description;
         payload.custom_specs = [];
       } else {
         payload.custom_specs = [];
@@ -1440,7 +1437,9 @@
       if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
       closeCapture();
       await load();
-      document.getElementById("status").textContent = (existing ? "Updated " : "Saved ") + ((j.row && j.row.enquiry_no) || payload.enquiry_no);
+      document.getElementById("status").textContent = (existing ? "Updated " : "Saved ") +
+        ((j.row && j.row.enquiry_no) || payload.enquiry_no) +
+        (j.row && j.row.status ? " · " + j.row.status : "");
     }
     window.saveCapture = saveCapture;
     async function load() {

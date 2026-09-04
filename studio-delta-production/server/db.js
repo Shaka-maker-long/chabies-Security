@@ -5,8 +5,7 @@ const {
   unique,
   ENQUIRY_FIELDS,
   ENQUIRY_DROPDOWN_KEYS,
-  DEFAULT_ENQUIRY_DROPDOWNS,
-  NEW_DESIGN_MIN_CHARS
+  DEFAULT_ENQUIRY_DROPDOWNS
 } = require("./enquiries-default");
 const { getBook, persistWorkbook, ORDER_HEADERS, dataDir } = require("./workbook-store");
 
@@ -787,17 +786,6 @@ function applyEnquiryTypeDetails(payload, row, existing) {
 
   if (type === "Custom") {
     payload.design_description = "";
-    if (!payload.custom_specs.length) {
-      throw new Error("For Custom, say whether it is Dimensions, Colour, or Other");
-    }
-    for (const spec of payload.custom_specs) {
-      if (!spec.kind || /^other$/i.test(spec.kind)) {
-        throw new Error("If it is Other, specify what the custom change is");
-      }
-      if (!spec.detail) {
-        throw new Error("Write the " + spec.kind.toLowerCase() + " for this custom enquiry");
-      }
-    }
     rememberCustomSpecKinds(payload.custom_specs);
     payload.request = customSpecSummary(payload.custom_specs);
     return;
@@ -805,9 +793,6 @@ function applyEnquiryTypeDetails(payload, row, existing) {
 
   if (type === "New Design") {
     payload.custom_specs = [];
-    if (payload.design_description.length < NEW_DESIGN_MIN_CHARS) {
-      throw new Error("For a New Design, write a full description of what it is");
-    }
     payload.request = payload.design_description;
     return;
   }

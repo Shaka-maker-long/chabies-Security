@@ -1,6 +1,7 @@
 const db = require("./db");
 const staff = require("./staff");
 const access = require("./enquiry-access");
+const { NEW_DESIGN_MIN_CHARS } = require("./enquiries-default");
 
 const FOLLOW_UP_DAYS = 7;
 
@@ -680,6 +681,74 @@ function addCorrespondence(row, actor, body) {
   }
 }
 
+function hasClientDetails(row) {
+  const name = String((row && row.client_name) || "").trim();
+  const email = String((row && row.client_email) || "").trim();
+  const number = String((row && row.client_number) || "").trim();
+  const province = String((row && row.province) || "").trim();
+  return !!(name && (email || number) && province);
+}
+
+function specRowsComplete(row) {
+  const specs = Array.isArray(row && row.custom_specs) ? row.custom_specs : [];
+  return specs.some((s) => {
+    const kind = String((s && s.kind) || "").trim();
+    const detail = String((s && s.detail) || "").trim();
+    if (!kind || !detail) return false;
+    return !/^other$/i.test(kind);
+  });
+}
+
+function hasSpecifications(row) {
+  const type = String((row && row.enquiry_type) || "").trim();
+  if (!type) return false;
+  if (!namedProducts(row).length) return false;
+  if (type === "Custom") return specRowsComplete(row);
+  if (type === "New Design") {
+    return String((row && (row.design_description || row.request)) || "").trim().length >= NEW_DESIGN_MIN_CHARS;
+  }
+  return true;
+}
+
+function isAutoCaptureStatus(status) {
+  const s = String(status || "New").trim() || "New";
+  return s === "New"
+    || s === "Waiting on clients personal details"
+    || s === "Waiting on clients specifictions";
+}
+
+function classifyCapture(row) {
+  if (!hasClientDetails(row)) return "Waiting on clients personal details";
+  if (!hasSpecifications(row)) return "Waiting on clients specifictions";
+  return "Costing";
+}
+
+function applyCaptureRoute(enquiryNo, actorName) {
+  const actor = String(actorName || "").trim();
+  const raw = db.getEnquiryRaw(enquiryNo);
+  if (!raw) throw new Error("Enquiry not found. Save the enquiry first.");
+  if (!isAutoCaptureStatus(raw.status || "New")) {
+    return processSnapshot(enquiryNo, actor);
+  }
+  const suggested = classifyCapture(raw);
+  if (suggested === "Costing") {
+    if (raw.status === "Costing" && openOfKind(raw, "cost_sheet")) {
+      return processSnapshot(enquiryNo, actor);
+    }
+    const coster = staff.defaultEnquiryAssignee("Costing") || actor;
+    return applyAction(enquiryNo, actor, { action: "assign_costing", assignee: coster });
+  }
+  const chase = openOfKind(raw, "chase_info");
+  if ((raw.status || "New") === suggested && chase) {
+    return processSnapshot(enquiryNo, actor);
+  }
+  return applyAction(enquiryNo, actor, {
+    action: "assign_waiting",
+    waiting_status: suggested,
+    assignee: (chase && chase.assignee) || actor
+  });
+}
+
 function completeChase(row, actor, body) {
   const task = openOfKind(row, "chase_info");
   if (!task) throw new Error("No open chase task");
@@ -1081,6 +1150,9 @@ module.exports = {
   listAccessInbox,
   processSnapshot,
   applyAction,
+  classifyCapture,
+  isAutoCaptureStatus,
+  applyCaptureRoute,
   availableActions,
   canAct,
   actionOwner,

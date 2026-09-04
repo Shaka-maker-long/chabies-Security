@@ -53,24 +53,23 @@ const renamed = db.upsertEnquiry({
 });
 assert.ok(renamed.events.some((ev) => ev.kind === "edited"));
 
-assert.throws(
-  () => db.upsertEnquiry({
-    date_enquired: "01/09/2026",
-    enquiry_type: "Custom",
-    client_name: "No Spec"
-  }),
-  /Dimensions, Colour, or Other/
-);
+const noSpec = db.upsertEnquiry({
+  date_enquired: "01/09/2026",
+  enquiry_type: "Custom",
+  client_name: "No Spec"
+});
+assert.strictEqual(noSpec.status, "New");
+assert.deepStrictEqual(noSpec.custom_specs, []);
 
-assert.throws(
-  () => db.upsertEnquiry({
-    date_enquired: "01/09/2026",
-    enquiry_type: "Custom",
-    client_name: "Other missing",
-    custom_specs: [{ kind: "Other", other: "", detail: "something" }]
-  }),
-  /specify what/
-);
+const leftoverOther = db.upsertEnquiry({
+  date_enquired: "01/09/2026",
+  enquiry_type: "Custom",
+  client_name: "Other missing",
+  custom_specs: [{ kind: "Other", other: "", detail: "something" }]
+});
+assert.strictEqual(leftoverOther.status, "New");
+assert.strictEqual(leftoverOther.custom_specs[0].kind, "Other");
+assert.strictEqual(leftoverOther.custom_specs[0].other, "");
 
 const othered = db.upsertEnquiry({
   date_enquired: "01/09/2026",
@@ -83,15 +82,14 @@ assert.strictEqual(othered.custom_specs[0].kind, "Handle");
 assert.ok(db.listEnquiryDropdowns().custom_spec.indexOf("Handle") >= 0);
 assert.ok(db.listEnquiryDropdowns().custom_spec.indexOf("Dimensions") >= 0);
 
-assert.throws(
-  () => db.upsertEnquiry({
-    date_enquired: "01/09/2026",
-    enquiry_type: "New Design",
-    client_name: "Sketch",
-    design_description: "a table"
-  }),
-  /full description/
-);
+const shortDesign = db.upsertEnquiry({
+  date_enquired: "01/09/2026",
+  enquiry_type: "New Design",
+  client_name: "Sketch",
+  design_description: "a table"
+});
+assert.strictEqual(shortDesign.status, "New");
+assert.strictEqual(shortDesign.design_description, "a table");
 
 const design = db.upsertEnquiry({
   date_enquired: "02/09/2026",
@@ -118,13 +116,13 @@ const second = db.upsertEnquiry({
   client_name: "Sas Promotions",
   status: "Followed Up"
 });
-assert.strictEqual(second.enquiry_no, "#1999");
+assert.strictEqual(second.enquiry_no, "#2002");
 assert.strictEqual(second.month_enquired, "Jan");
 assert.strictEqual(second.status, "New");
-assert.strictEqual(db.nextEnquiryNo(), "#2000");
+assert.strictEqual(db.nextEnquiryNo(), "#2003");
 
 const listed = db.listEnquiries();
-assert.strictEqual(listed[0].enquiry_no, "#1999");
+assert.strictEqual(listed[0].enquiry_no, "#2002");
 assert.ok(listed.some((r) => r.enquiry_no === "#1996"));
 
 const drops = db.listEnquiryDropdowns();
@@ -225,6 +223,6 @@ assert.strictEqual(shownQuote.quote_no, "SOQ9");
 assert.strictEqual(shownQuote.date_quoted, "02/09/2026");
 
 const saved = JSON.parse(fs.readFileSync(db.dbPath, "utf8"));
-assert.strictEqual(saved.enquiries.length, 5);
+assert.strictEqual(saved.enquiries.length, 8);
 
 console.log("enquiries.test.js ok");

@@ -129,6 +129,13 @@ assert.ok(processJs.indexOf("Create order from this enquiry") !== -1);
 assert.ok(processJs.indexOf("/create-order") !== -1);
 assert.ok(officeJs.indexOf("createOrderFromEnquiry") !== -1);
 assert.ok(officeJs.indexOf("/create-order") !== -1);
+assert.ok(officeJs.indexOf("applyCaptureRoute") !== -1);
+assert.ok(officeJs.indexOf("isAutoCaptureStatus") !== -1);
+const pipelineJs = fs.readFileSync(path.join(__dirname, "enquiry-pipeline.js"), "utf8");
+assert.ok(pipelineJs.indexOf("function classifyCapture") !== -1);
+assert.ok(pipelineJs.indexOf("function applyCaptureRoute") !== -1);
+assert.ok(pipelineJs.indexOf("Waiting on clients personal details") !== -1);
+assert.ok(pipelineJs.indexOf("Waiting on clients specifictions") !== -1);
 assert.ok(officeJs.indexOf("listAccessInbox") !== -1);
 assert.ok(tasksHtml.indexOf("Access requests") !== -1);
 

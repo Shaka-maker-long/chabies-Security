@@ -312,7 +312,12 @@ function mountOffice(app) {
 
   app.put("/api/office/enquiries", requireOffice, (req, res) => {
     try {
-      const row = upsertEnquiry(req.body || {}, { actor: req.office && req.office.name });
+      const actor = req.office && req.office.name;
+      const incoming = req.body || {};
+      const saved = upsertEnquiry(incoming, { actor });
+      const row = actor && pipeline.isAutoCaptureStatus(saved.status)
+        ? pipeline.applyCaptureRoute(saved.enquiry_no, actor).row
+        : saved;
       res.json({
         ok: true,
         row,
