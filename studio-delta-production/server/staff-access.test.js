@@ -218,6 +218,25 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const floorNewLogin = await callShopFunction("verifyGlobalLogin", ["Floor Only", "floor2"]);
   assert.strictEqual(floorNewLogin.success, true);
 
+  const managerReset = await fetch(base + "/api/office/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": boss.token },
+    body: JSON.stringify({ name: "Floor Only", new_password: "floor3" })
+  });
+  const managerResetJson = await managerReset.json();
+  assert.ok(managerResetJson.ok, JSON.stringify(managerResetJson));
+  assert.ok(staff.verifyUser("Floor Only", "floor3"));
+  assert.ok(!staff.verifyUser("Floor Only", "floor2"), "Manager reset must retire the previous code");
+  assert.ok(staff.verifyUser("Office Boss", "admin"), "Manager reset must not change the Manager's own code");
+
+  const quietResetOther = await fetch(base + "/api/office/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": q.token },
+    body: JSON.stringify({ name: "Floor Only", new_password: "hacked" })
+  });
+  assert.strictEqual(quietResetOther.status, 403);
+  assert.ok(staff.verifyUser("Floor Only", "floor3"));
+
   const bossUsers = await fetch(base + "/api/office/users", { headers: { "x-sd-token": boss.token } });
   const bossUsersJson = await bossUsers.json();
   assert.ok(bossUsersJson.canManageUsers);

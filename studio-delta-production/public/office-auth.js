@@ -46,7 +46,7 @@ function sdShowChangePassword() {
   wrap.className = "sd-login-mask";
   wrap.innerHTML = "<form class=\"sd-login-card\" id=\"sdPassForm\">" +
     "<h2>Change access code</h2>" +
-    "<p>Anyone can update their own code. Use the name you log in with.</p>" +
+    "<p>Your own code needs the current one. The Manager can type another person’s name and a new code — their old code stops working.</p>" +
     "<label>Name</label><input name=\"name\" autocomplete=\"username\">" +
     "<label>Current access code</label><input name=\"current_password\" type=\"password\" autocomplete=\"current-password\">" +
     "<label>New access code</label><input name=\"new_password\" type=\"password\" autocomplete=\"new-password\">" +

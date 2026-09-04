@@ -211,11 +211,22 @@ function mountOffice(app) {
   app.post("/api/office/password", (req, res) => {
     const session = staff.readSession(req);
     const body = req.body || {};
-    const name = String((session && session.name) || body.name || "").trim();
+    const requested = String(body.name || "").trim();
+    const self = String((session && session.name) || "").trim();
+    const next = body.new_password || body.newPassword;
     try {
+      if (self && requested && self.toLowerCase() !== requested.toLowerCase()) {
+        if (!staff.canManageUsers(session)) {
+          res.status(403).json({ ok: false, error: "Only the Manager can change someone else's access code." });
+          return;
+        }
+        res.json({ ok: true, name: staff.setUserPassword(requested, next).name });
+        return;
+      }
+      const name = self || requested;
       if (!name) throw new Error("Name is required");
-      staff.changeOwnPassword(name, body.current_password || body.currentPassword || body.password, body.new_password || body.newPassword);
-      res.json({ ok: true });
+      staff.changeOwnPassword(name, body.current_password || body.currentPassword || body.password, next);
+      res.json({ ok: true, name });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
