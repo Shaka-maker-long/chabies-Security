@@ -129,6 +129,24 @@ app.get("/sd-splash.js", (_req, res) => {
   noStore(res);
   res.type("application/javascript").sendFile(path.join(publicDir, "sd-splash.js"));
 });
+app.get("/sd-pwa.js", (_req, res) => {
+  noStore(res);
+  res.type("application/javascript").sendFile(path.join(publicDir, "sd-pwa.js"));
+});
+app.get("/manifest.webmanifest", (_req, res) => {
+  res.set("Cache-Control", "no-store, max-age=0");
+  res.type("application/manifest+json").sendFile(path.join(publicDir, "manifest.webmanifest"));
+});
+app.get("/sw.js", (_req, res) => {
+  res.set("Cache-Control", "no-store, max-age=0");
+  res.set("Service-Worker-Allowed", "/");
+  res.type("application/javascript").sendFile(path.join(publicDir, "sw.js"));
+});
+app.get("/offline.html", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "offline.html"));
+});
+app.use("/icons", express.static(path.join(publicDir, "icons"), { maxAge: "7d" }));
 app.get("/facility-floor.png", (_req, res) => {
   noStore(res);
   res.type("image/png").sendFile(path.join(publicDir, "facility-floor.png"));
