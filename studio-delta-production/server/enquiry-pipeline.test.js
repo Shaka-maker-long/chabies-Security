@@ -656,6 +656,10 @@ pipeline.applyAction(locked.enquiry_no, "Coster", {
   assignee: "Coster",
   correspondence_links: "https://files.example/locked"
 });
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.enquiry_no === locked.enquiry_no && t.kind === "cost_sheet"));
+assert.ok(!pipeline.listMyTasks("Lesedi").some((t) => t.enquiry_no === locked.enquiry_no && t.kind === "cost_sheet"));
+assert.ok(pipeline.listMyTasks("Lesedi", { all: true }).some((t) => t.enquiry_no === locked.enquiry_no && t.assignee === "Coster"));
+assert.ok(!pipeline.listMyTasks("Coster", { all: true }).some((t) => t.assignee && t.assignee !== "Coster" && t.enquiry_no === locked.enquiry_no));
 assert.throws(
   () => pipeline.applyAction(locked.enquiry_no, "Pat", {
     action: "complete_cost_sheet",
@@ -693,6 +697,8 @@ pipeline.applyAction(locked.enquiry_no, "Pat", {
   quote_assignee: "Quoter"
 });
 assert.strictEqual(db.getEnquiry(locked.enquiry_no).status, "Costed");
+assert.ok(pipeline.listMyCompletedTasks("Lesedi", { all: true }).some((t) => t.enquiry_no === locked.enquiry_no && t.kind === "cost_sheet"));
+assert.ok(!pipeline.listMyCompletedTasks("Lesedi").some((t) => t.enquiry_no === locked.enquiry_no));
 
 const managerActs = db.upsertEnquiry({
   date_enquired: "09/01/2026",

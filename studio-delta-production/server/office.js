@@ -421,10 +421,16 @@ function mountOffice(app) {
 
   app.get("/api/office/my-tasks", requireOffice, (req, res) => {
     const done = String(req.query.done || "") === "1" || String(req.query.done || "").toLowerCase() === "true";
+    const manager = staff.canManageUsers(req.office);
+    const all = manager && String(req.query.scope || "all").toLowerCase() !== "mine";
     res.json({
       ok: true,
       done,
-      rows: done ? pipeline.listMyCompletedTasks(req.office.name) : pipeline.listMyTasks(req.office.name)
+      scope: all ? "all" : "mine",
+      canViewAll: manager,
+      rows: done
+        ? pipeline.listMyCompletedTasks(req.office.name, { all })
+        : pipeline.listMyTasks(req.office.name, { all })
     });
   });
 
