@@ -12,7 +12,7 @@
     header { display:flex; gap:12px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
     header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
     .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-    input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:180px; }
+    input[type=search], select { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:180px; font:inherit; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
     button.ghost { background:#fff; color:#1d2939; }
     .wrap { padding:16px; max-width:980px; }
@@ -47,6 +47,7 @@
     <span class="msg" id="who"></span>
     <div class="tools">
       <span class="msg" id="status"></span>
+      <select id="personFilter" hidden aria-label="Whose tasks"></select>
       <input type="search" id="q" placeholder="Search my tasks">
       <button class="ghost" type="button" onclick="load()">Refresh</button>
     </div>
@@ -58,23 +59,65 @@
     let rows = [];
     let grants = [];
     let me = "";
+    let canViewAll = false;
     const completedView = location.pathname.replace(/\/+$/, "") === "/tasks/completed";
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
     function kindLabel(row) {
       if (row.label) return row.title + " (" + row.label + ")";
       return row.title || row.kind;
     }
+    function personFilterValue() {
+      return (document.getElementById("personFilter") || {}).value || "";
+    }
+    function fillPersonFilter() {
+      const sel = document.getElementById("personFilter");
+      if (!sel) return;
+      sel.hidden = !canViewAll;
+      if (!canViewAll) { sel.innerHTML = ""; return; }
+      const names = [];
+      rows.forEach((r) => {
+        String(r.assignee || "").split(",").forEach((n) => {
+          const who = n.trim();
+          if (who && names.indexOf(who) === -1) names.push(who);
+        });
+        const doneBy = String(r.completed_by || "").trim();
+        if (doneBy && names.indexOf(doneBy) === -1) names.push(doneBy);
+      });
+      names.sort(function (a, b) { return a.localeCompare(b); });
+      const keep = personFilterValue();
+      let h = "<option value=\"\">Everyone</option>";
+      h += "<option value=\"__me__\"" + (keep === "__me__" ? " selected" : "") + ">Assigned to me</option>";
+      names.forEach((n) => {
+        h += "<option value=\"" + esc(n) + "\"" + (keep === n ? " selected" : "") + ">" + esc(n) + "</option>";
+      });
+      sel.innerHTML = h;
+    }
+    function matchesPerson(row) {
+      const want = personFilterValue();
+      if (!want) return true;
+      if (want === "__me__") {
+        const mine = String(me || "").trim().toLowerCase();
+        if (!mine) return false;
+        return String(row.assignee || "").split(",").some((n) => n.trim().toLowerCase() === mine)
+          || String(row.completed_by || "").trim().toLowerCase() === mine;
+      }
+      const needle = want.toLowerCase();
+      return String(row.assignee || "").split(",").some((n) => n.trim().toLowerCase() === needle)
+        || String(row.completed_by || "").trim().toLowerCase() === needle;
+    }
     function render() {
       const q = document.getElementById("q").value.toLowerCase();
       const filtered = rows.filter((r) => {
+        if (!matchesPerson(r)) return false;
         const blob = [r.enquiry_no, r.client_name, r.product, r.title, r.enquiry_status, r.assignee, r.completed_by, r.completed_at_label].join(" ").toLowerCase();
         return !q || blob.indexOf(q) >= 0;
       });
       const list = document.getElementById("list");
-      if (!filtered.length && (completedView || !grants.length || q)) {
+      if (!filtered.length && (completedView || !grants.length || q || personFilterValue())) {
         let empty;
-        if (q) empty = "No " + (completedView ? "completed " : "") + "tasks match that search.";
+        if (q || personFilterValue()) empty = "No " + (completedView ? "completed " : "") + "tasks match that search.";
         else if (completedView) empty = "Nothing completed yet. When you finish costing, quoting, a follow-up, or a drawing, that work moves here.";
+        else if (canViewAll) empty = "Nothing is assigned to anyone right now.";
         else empty = "Nothing is assigned to you right now. Capture new enquiries on the Enquiries sheet, then assign costing, quoting, follow-up, or drawing to an office Admin. That person will see the work here and update the system from the task.";
         list.innerHTML = "<div class=\"empty\">" + empty + "</div>";
         return;
@@ -89,6 +132,8 @@
             "<div class=\"grow\">" +
             "<h3>" + esc(row.enquiry_no) + " · " + esc(row.client_name || "No client name yet") + "</h3>" +
             "<p>" + esc(kindLabel(row)) + (row.product ? " · " + esc(row.product) : "") + "</p>" +
+            (row.assignee ? "<p>Assigned to <b>" + esc(row.assignee) + "</b>" +
+              (completedView && row.completed_by ? " · done by " + esc(row.completed_by) : "") + "</p>" : "") +
             (row.deliverable_count ? "<p>" + row.deliverable_count + " file" + (row.deliverable_count === 1 ? "" : "s") + " on this enquiry</p>" : (row.correspondence_mails ? "<p>" + row.correspondence_mails + " Correspondance link" + (row.correspondence_mails === 1 ? "" : "s") + "</p>" : "")) +
             "<p><span class=\"pill" + (overdue ? " overdue" : "") + "\">" + esc(row.enquiry_status || "") + "</span>" +
             (overdue ? "<span class=\"pill overdue\">Overdue</span>" : "") +
@@ -115,7 +160,10 @@
         const overdue = filtered.filter((r) => r.overdue);
         const rest = filtered.filter((r) => !r.overdue);
         if (overdue.length) html += "<section class=\"group\"><h2>Overdue</h2>" + cards(overdue) + "</section>";
-        if (rest.length) html += "<section class=\"group\"><h2>Assigned to me</h2>" + cards(rest) + "</section>";
+        const assignedLabel = !canViewAll || personFilterValue() === "__me__"
+          ? "Assigned to me"
+          : (personFilterValue() ? ("Assigned to " + personFilterValue()) : "Assigned");
+        if (rest.length) html += "<section class=\"group\"><h2>" + esc(assignedLabel) + "</h2>" + cards(rest) + "</section>";
       }
       list.innerHTML = html;
       list.onclick = (e) => {
@@ -127,9 +175,13 @@
     window.sdOnEnquiryProcessClose = function () { load(); };
     async function load() {
       document.getElementById("status").textContent = "Loading…";
-      const r = await sdOfficeFetch("/api/office/my-tasks" + (completedView ? "?done=1" : ""));
+      const qs = [];
+      if (completedView) qs.push("done=1");
+      if (canViewAll) qs.push("scope=all");
+      const r = await sdOfficeFetch("/api/office/my-tasks" + (qs.length ? "?" + qs.join("&") : ""));
       const j = await r.json();
       if (!j.ok) { document.getElementById("status").textContent = j.error || "Could not load"; return; }
+      if (j.canViewAll) canViewAll = true;
       rows = j.rows || [];
       grants = [];
       if (!completedView) {
@@ -137,11 +189,14 @@
         const gj = await g.json();
         if (gj.ok) grants = gj.rows || [];
       }
-      if (completedView) document.getElementById("status").textContent = rows.length ? (rows.length + " completed") : "No completed tasks";
-      else document.getElementById("status").textContent = rows.length ? (rows.length + " assigned") : "No open tasks";
+      fillPersonFilter();
+      const shown = rows.filter(matchesPerson).length;
+      if (completedView) document.getElementById("status").textContent = shown ? (shown + " completed") : "No completed tasks";
+      else document.getElementById("status").textContent = shown ? (shown + " assigned") : "No open tasks";
       render();
     }
     document.getElementById("q").oninput = render;
+    document.getElementById("personFilter").onchange = render;
     if (completedView) {
       document.title = "Studio Delta — Tasks completed";
       document.getElementById("tabDone").className = "on";
@@ -152,7 +207,11 @@
     sdRequireOffice("tasks").then((p) => {
       if (!p) return;
       me = p.name || "";
-      document.getElementById("who").textContent = me ? ("Signed in as " + me) : "";
+      canViewAll = !!p.canManageUsers;
+      document.getElementById("who").textContent = me
+        ? ("Signed in as " + me + (canViewAll ? " · everyone’s tasks" : ""))
+        : "";
+      if (canViewAll) document.getElementById("q").placeholder = completedView ? "Search everyone’s completed tasks" : "Search everyone’s tasks";
       const want = new URLSearchParams(location.search).get("enquiry");
       load().then(() => {
         if (want) sdOpenEnquiryProcess(want);

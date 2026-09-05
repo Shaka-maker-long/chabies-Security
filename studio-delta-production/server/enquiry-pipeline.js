@@ -422,34 +422,50 @@ function availableActions(row) {
   return actions;
 }
 
-function listMyTasks(userName) {
+function listMyTasks(userName, opts) {
   const me = String(userName || "").trim();
+  const all = !!(opts && opts.all) && isManagerName(me);
   const out = [];
   for (const row of db.listEnquiries()) {
     const tasks = Array.isArray(row.tasks) ? row.tasks : [];
     for (const task of tasks) {
       if (task.status !== "open") continue;
-      if (!namesMatch(task.assignee, me)) continue;
+      if (!all && !namesMatch(task.assignee, me)) continue;
       const dueAt = task.due_at || (task.kind === "follow_up" ? followUpDueAt(row) : "");
       out.push(decorateTask(row, task, dueAt));
     }
     if (statusAllows(row, ["Quoted", "Followed Up"]) && !followUpsExhausted(row)) {
-      const mineOpen = (row.tasks || []).some((t) => t.kind === "follow_up" && t.status === "open" && namesMatch(t.assignee, me));
-      const inPool = followUpPeople(row).some((n) => namesMatch(n, me)) || namesMatch(row.follow_up_assignee, me);
-      if (inPool && !mineOpen) {
-        const dueAt = followUpDueAt(row);
-        if (dueAt && isOverdue(dueAt)) {
+      const dueAt = followUpDueAt(row);
+      if (!dueAt || !isOverdue(dueAt)) continue;
+      if (all) {
+        const anyOpen = (row.tasks || []).some((t) => t.kind === "follow_up" && t.status === "open");
+        if (!anyOpen) {
           out.push(decorateTask(row, {
             id: "follow-due",
             kind: "follow_up",
             title: nextFollowUpLabel(currentQuoteFollowUps(row).length),
-            assignee: me,
+            assignee: followUpPeople(row).join(", ") || row.follow_up_assignee || "",
             status: "open",
             created_at: row.date_quoted || "",
             due_at: dueAt,
             note: "Quote or last follow-up is 7 or more days old"
           }, dueAt));
         }
+        continue;
+      }
+      const mineOpen = (row.tasks || []).some((t) => t.kind === "follow_up" && t.status === "open" && namesMatch(t.assignee, me));
+      const inPool = followUpPeople(row).some((n) => namesMatch(n, me)) || namesMatch(row.follow_up_assignee, me);
+      if (inPool && !mineOpen) {
+        out.push(decorateTask(row, {
+          id: "follow-due",
+          kind: "follow_up",
+          title: nextFollowUpLabel(currentQuoteFollowUps(row).length),
+          assignee: me,
+          status: "open",
+          created_at: row.date_quoted || "",
+          due_at: dueAt,
+          note: "Quote or last follow-up is 7 or more days old"
+        }, dueAt));
       }
     }
   }
@@ -477,14 +493,15 @@ function decorateTask(row, task, dueAt) {
   };
 }
 
-function listMyCompletedTasks(userName) {
+function listMyCompletedTasks(userName, opts) {
   const me = String(userName || "").trim();
+  const all = !!(opts && opts.all) && isManagerName(me);
   const out = [];
   for (const row of db.listEnquiries()) {
     const tasks = Array.isArray(row.tasks) ? row.tasks : [];
     for (const task of tasks) {
       if (task.status !== "done") continue;
-      if (!namesMatch(task.assignee, me) && !namesMatch(task.completed_by, me)) continue;
+      if (!all && !namesMatch(task.assignee, me) && !namesMatch(task.completed_by, me)) continue;
       out.push(decorateTask(row, task, task.due_at));
     }
   }
