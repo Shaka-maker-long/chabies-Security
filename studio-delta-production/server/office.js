@@ -17,6 +17,7 @@ const {
   VAT_RATE,
   normalizeOrdersSheet,
   listEnquiries,
+  getEnquiry,
   upsertEnquiry,
   deleteEnquiry,
   deleteAllEnquiries,
@@ -376,7 +377,28 @@ function mountOffice(app) {
         duplicates: findOpenEnquiryDuplicates(row, row.enquiry_no)
       });
     } catch (e) {
-      res.status(400).json({ ok: false, error: e.message || String(e) });
+      const incoming = req.body || {};
+      const msg = e.message || String(e);
+      const existing = /already/.test(msg) ? getEnquiry(incoming.enquiry_no) : null;
+      if (existing && (incoming.create_only || incoming.createOnly)) {
+        const sameClient = String(existing.client_name || "").trim().toLowerCase()
+          === String(incoming.client_name || "").trim().toLowerCase();
+        if (sameClient) {
+          return res.json({
+            ok: true,
+            row: existing,
+            nextEnquiryNo: nextEnquiryNo(),
+            dropdowns: listEnquiryDropdowns(),
+            replayed: true
+          });
+        }
+      }
+      res.status(400).json({
+        ok: false,
+        error: msg,
+        existing: existing || undefined,
+        nextEnquiryNo: nextEnquiryNo()
+      });
     }
   });
 

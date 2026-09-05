@@ -625,11 +625,12 @@ function formatEnquiryNo(n) {
 }
 
 function nextEnquiryNo() {
-  let max = FIRST_ENQUIRY_NO - 1;
+  let max = 0;
   for (const row of state.enquiries || []) {
     const n = enquiryNumberValue(row && row.enquiry_no);
     if (n > max) max = n;
   }
+  if (!max) return formatEnquiryNo(FIRST_ENQUIRY_NO);
   return formatEnquiryNo(max + 1);
 }
 

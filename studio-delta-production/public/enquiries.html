@@ -56,6 +56,21 @@
     .mask.open { display:flex; }
     .sheet { width:min(920px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:24px auto; }
     .sheet header { position:static; border-radius:12px 12px 0 0; }
+    .sheet header.form-head {
+      position:sticky; top:0; z-index:3; background:#fff;
+      align-items:flex-start; flex-wrap:wrap;
+    }
+    .form-head-err {
+      flex:1 0 100%; color:#b42318; font-size:13px; font-weight:600;
+      margin:6px 0 0; min-height:0;
+    }
+    .form-head-err:empty { display:none; }
+    .form-foot {
+      display:flex; gap:12px; align-items:center; justify-content:space-between;
+      flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line);
+    }
+    .form-foot .err { flex:1; margin:0; }
+    .is-missing { border-color:#f97066 !important; box-shadow:0 0 0 3px rgba(249,112,102,.28); }
     .sheet .body { padding:16px; display:flex; flex-direction:column; gap:14px; }
     .lines { width:100%; min-width:0; border-collapse:collapse; font-size:12px; }
     .lines th, .lines td { border:1px solid var(--line); padding:6px; }
@@ -168,12 +183,13 @@
   </div>
   <div class="mask" id="mask">
     <div class="sheet" role="dialog" aria-modal="true">
-      <header>
+      <header class="form-head">
         <h1 id="modalTitle">Products</h1>
         <div class="tools">
           <button class="ghost" type="button" onclick="closeModal(false)">Cancel</button>
-          <button type="button" id="modalSave" onclick="confirmModal()">Save products</button>
+          <button type="button" id="modalSave" data-save="modal" onclick="confirmModal()">Save products</button>
         </div>
+        <p class="form-head-err" id="modalErr" role="alert"></p>
       </header>
       <div class="body">
           <p class="hint" id="modalHint" hidden></p>
@@ -213,18 +229,22 @@
           <iframe id="pdfPreview" title="Quote PDF preview"></iframe>
           <label><input type="checkbox" id="pdfOk"> This is the correct quote PDF</label>
         </div>
-        <div class="err" id="modalErr"></div>
+        <div class="form-foot">
+          <p class="err" id="modalErrFoot" role="alert"></p>
+          <button type="button" data-save="modal" onclick="confirmModal()">Save products</button>
+        </div>
       </div>
     </div>
   </div>
   <div class="mask" id="specMask">
     <div class="sheet" role="dialog" aria-modal="true">
-      <header>
+      <header class="form-head">
         <h1 id="specTitle">Custom specification</h1>
         <div class="tools">
           <button class="ghost" type="button" onclick="closeSpec(false)">Cancel</button>
-          <button type="button" onclick="confirmSpec()">Save specification</button>
+          <button type="button" data-save="spec" onclick="confirmSpec()">Save specification</button>
         </div>
+        <p class="form-head-err" id="specErr" role="alert"></p>
       </header>
       <div class="body">
         <p class="hint" id="specHint" hidden></p>
@@ -233,19 +253,26 @@
           <label class="hint" style="display:block;margin-bottom:6px;color:#1d2939;font-weight:600">Full description *</label>
           <textarea id="designDesc" placeholder="Describe the new design: what it is, materials, size, how it will be used."></textarea>
         </div>
-        <div class="err" id="specErr"></div>
+        <div class="form-foot">
+          <p class="err" id="specErrFoot" role="alert"></p>
+          <button type="button" data-save="spec" onclick="confirmSpec()">Save specification</button>
+        </div>
       </div>
     </div>
   </div>
   <div class="mask" id="captureMask">
     <div class="sheet capture-sheet" role="dialog" aria-modal="true">
-      <header>
+      <header class="form-head">
         <h1 id="captureTitle">New enquiry</h1>
         <div class="tools">
           <button class="ghost" type="button" id="captureBlankBtn" onclick="blankCapture()" hidden>Start blank</button>
           <button class="ghost" type="button" onclick="closeCapture()">Cancel</button>
-          <button type="button" onclick="saveCapture()">Save enquiry</button>
+          <button class="ghost" type="button" id="captureDupBtn" hidden>Save anyway</button>
+          <button class="ghost" type="button" id="captureUseNextBtn" hidden>Use next number</button>
+          <button class="ghost" type="button" id="captureShowTakenBtn" hidden>Show this enquiry</button>
+          <button type="button" data-save="capture" onclick="saveCapture()">Save enquiry</button>
         </div>
+        <p class="form-head-err" id="captureErr" role="alert"></p>
       </header>
       <div class="body stack-form">
         <p class="hint" id="captureHint">Progress is kept for you if you close this before saving.</p>
@@ -317,20 +344,27 @@
           </label>
           <p class="hint">Required before Costing.</p>
         </div>
-        <div class="err" id="captureErr"></div>
         <div class="enq-dup" id="captureDup" hidden></div>
+        <div class="form-foot">
+          <p class="err" id="captureErrFoot" role="alert"></p>
+          <button type="button" data-save="capture" onclick="saveCapture()">Save enquiry</button>
+        </div>
       </div>
     </div>
   </div>
   <div class="mask" id="onboardMask">
     <div class="sheet onboard-sheet" role="dialog" aria-modal="true">
-      <header>
+      <header class="form-head">
         <h1>Add existing enquiry</h1>
         <div class="tools">
           <button class="ghost" type="button" id="onboardBlankBtn" onclick="blankOnboard()" hidden>Start blank</button>
           <button class="ghost" type="button" onclick="closeOnboard()">Cancel</button>
-          <button type="button" onclick="saveOnboard()">Save onto this system</button>
+          <button class="ghost" type="button" id="onboardDupBtn" hidden>Save anyway</button>
+          <button class="ghost" type="button" id="onboardUseNextBtn" hidden>Use next number</button>
+          <button class="ghost" type="button" id="onboardShowTakenBtn" hidden>Show this enquiry</button>
+          <button type="button" data-save="onboard" onclick="saveOnboard()">Save onto this system</button>
         </div>
+        <p class="form-head-err" id="onboardErr" role="alert"></p>
       </header>
       <div class="body stack-form">
         <p class="hint">Use this for jobs already in progress on the previous system. Pick where it is now — only the fields that stage needs will show. Progress is kept for you if you close this before saving.</p>
@@ -476,8 +510,11 @@
             <select id="ob_drawing_who"></select>
           </label>
         </div>
-        <div class="err" id="onboardErr"></div>
         <div class="enq-dup" id="onboardDup" hidden></div>
+        <div class="form-foot">
+          <p class="err" id="onboardErrFoot" role="alert"></p>
+          <button type="button" data-save="onboard" onclick="saveOnboard()">Save onto this system</button>
+        </div>
       </div>
     </div>
   </div>
@@ -511,7 +548,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
-  <script src="/enquiry-process.js?v=keep-form"></script>
+  <script src="/enquiry-process.js?v=save-notice"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 108, true],
@@ -576,7 +613,8 @@
       ignoreDup: false,
       costSheets: {},
       popBase64: "",
-      popName: ""
+      popName: "",
+      saving: false
     };
     const CLOSED_STATUSES = ["Not within scope", "Not Interested", "Rejected"];
     let modal = { open: false, i: -1, mode: "products", prevStatus: "", lines: [], pdfUrl: "", pdfBase64: "", pdfName: "", confirmed: false };
@@ -735,10 +773,17 @@
         hint.textContent = prettyDmy(b.start) + " – " + prettyDmy(b.end);
       }
     }
+    function enquiryNoValue(raw) {
+      const m = String(raw || "").trim().match(/#?\s*(\d+)/);
+      return m ? Number(m[1]) : 0;
+    }
     function bumpNext() {
-      const nums = rows.map((r) => Number(String(r.enquiry_no || "").replace(/\D/g, ""))).filter((n) => n);
-      const max = nums.length ? Math.max.apply(null, nums) : 1995;
-      nextNo = "#" + (max + 1);
+      const nums = rows.map((r) => enquiryNoValue(r && r.enquiry_no)).filter((n) => n);
+      const max = nums.length ? Math.max.apply(null, nums) : 0;
+      nextNo = max ? "#" + (max + 1) : "#1996";
+      while (enquiryNoTaken(nextNo)) {
+        nextNo = "#" + (enquiryNoValue(nextNo) + 1);
+      }
     }
     function normalizeTypedEnquiryNo(raw) {
       const s = String(raw || "").trim();
@@ -746,10 +791,16 @@
       const m = s.replace(/\s+/g, "").match(/^#?(\d+)$/);
       return m ? "#" + m[1] : "";
     }
+    function findEnquiryByNo(no) {
+      const n = enquiryNoValue(no);
+      if (!n) return null;
+      return rows.find((r) => enquiryNoValue(r && r.enquiry_no) === n) || null;
+    }
     function enquiryNoTaken(no, except) {
-      const want = String(no || "").trim();
-      if (!want) return false;
-      return rows.some((r) => r && String(r.enquiry_no || "") === want && String(r.enquiry_no || "") !== String(except || ""));
+      const hit = findEnquiryByNo(no);
+      if (!hit) return false;
+      const skip = enquiryNoValue(except);
+      return !skip || enquiryNoValue(hit.enquiry_no) !== skip;
     }
     function colStyle(k, width, freeze) {
       let s = "width:" + width + "px;min-width:" + width + "px;max-width:" + width + "px;";
@@ -1189,7 +1240,7 @@
       document.getElementById("modalErr").textContent = "";
       document.getElementById("modalTitle").textContent = mode === "quote" ? "Quote " + row.enquiry_no : "Products " + row.enquiry_no;
       document.getElementById("modalHint").textContent = "";
-      document.getElementById("modalSave").textContent = mode === "quote" ? "Save quote" : "Save products";
+      setSaveLabels("modal", mode === "quote" ? "Save quote" : "Save products");
       document.getElementById("downloadPdf").style.display = row.has_quote_pdf ? "" : "none";
       setQuoteVisible(mode === "quote");
       renderLines();
@@ -1418,7 +1469,7 @@
       await load();
       document.getElementById("status").textContent = "Saved";
     }
-    let capture = { open: false, i: -1, products: [], specs: [], ignoreDup: false, numberLocked: false };
+    let capture = { open: false, i: -1, products: [], specs: [], ignoreDup: false, numberLocked: false, saving: false };
     function digitsOnly(s) {
       return String(s || "").replace(/\D/g, "");
     }
@@ -1440,12 +1491,81 @@
         return !!(mailHit || numHit);
       });
     }
+    function setSheetError(id, message, focusId) {
+      const msg = String(message || "");
+      const top = document.getElementById(id);
+      const foot = document.getElementById(id + "Foot");
+      if (top) top.textContent = msg;
+      if (foot) foot.textContent = msg;
+      document.querySelectorAll(".is-missing").forEach((el) => el.classList.remove("is-missing"));
+      if (!focusId) return;
+      const el = typeof focusId === "string" ? document.getElementById(focusId) : focusId;
+      if (!el) return;
+      el.classList.add("is-missing");
+      try { el.focus(); } catch (e) {}
+      if (el.scrollIntoView) el.scrollIntoView({ block: "center" });
+    }
+    function setSaveBusy(which, busy, fallbackLabel) {
+      document.querySelectorAll("[data-save=\"" + which + "\"]").forEach((btn) => {
+        if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+        btn.disabled = !!busy;
+        btn.textContent = busy ? "Saving…" : (btn.dataset.label || fallbackLabel || "Save");
+      });
+    }
+    function setSaveLabels(which, label) {
+      document.querySelectorAll("[data-save=\"" + which + "\"]").forEach((btn) => {
+        btn.dataset.label = label;
+        if (!btn.disabled) btn.textContent = label;
+      });
+    }
+    function hideTakenActions(prefix) {
+      ["UseNextBtn", "ShowTakenBtn"].forEach((suf) => {
+        const el = document.getElementById(prefix + suf);
+        if (el) el.hidden = true;
+      });
+    }
+    function takenEnquiryMessage(no) {
+      const hit = findEnquiryByNo(no);
+      let msg = "Enquiry " + no + " is already on this system";
+      if (hit) {
+        msg += " — " + (hit.client_name || "no name") + " · " + (hit.status || "New");
+        if (isClosed(hit)) msg += " (closed, so it is hidden while Open is selected)";
+      }
+      return msg + ".";
+    }
+    function showTakenEnquiry(no) {
+      const hit = findEnquiryByNo(no);
+      closeCapture(true);
+      closeOnboard();
+      const openClosed = document.getElementById("openClosed");
+      if (openClosed) openClosed.value = "all";
+      const q = document.getElementById("q");
+      if (q) q.value = no;
+      render();
+      const idx = rows.findIndex((r) => enquiryNoValue(r && r.enquiry_no) === enquiryNoValue(no));
+      if (idx >= 0) openCapture(idx);
+      else if (hit) document.getElementById("status").textContent = takenEnquiryMessage(no);
+    }
+    function offerTakenNumber(prefix, typedNo) {
+      bumpNext();
+      const msg = takenEnquiryMessage(typedNo) + " Next free number is " + nextNo + ".";
+      setSheetError(prefix === "capture" ? "captureErr" : "onboardErr", msg, prefix === "capture" ? "cap_enquiry_no" : "ob_enquiry_no");
+      const useBtn = document.getElementById(prefix + "UseNextBtn");
+      const showBtn = document.getElementById(prefix + "ShowTakenBtn");
+      if (useBtn) {
+        useBtn.hidden = false;
+        useBtn.textContent = "Use " + nextNo;
+      }
+      if (showBtn) showBtn.hidden = false;
+    }
     function paintCaptureDup(dups) {
       const box = document.getElementById("captureDup");
       if (!box) return;
+      const topBtn = document.getElementById("captureDupBtn");
       if (!dups || !dups.length) {
         box.hidden = true;
         box.innerHTML = "";
+        if (topBtn) topBtn.hidden = true;
         return;
       }
       box.hidden = false;
@@ -1455,6 +1575,8 @@
         "<div class=\"row-actions\" style=\"margin-top:8px\"><button type=\"button\" class=\"ghost\" id=\"capDupConfirm\">Save anyway</button></div>";
       const btn = document.getElementById("capDupConfirm");
       if (btn) btn.onclick = () => { capture.ignoreDup = true; saveCapture(); };
+      if (topBtn) topBtn.hidden = false;
+      setSheetError("captureErr", "This client already has an open enquiry. Save anyway only if this is a new job.");
     }
     function fillCaptureSelect(id, key, selected) {
       const el = document.getElementById(id);
@@ -1593,15 +1715,7 @@
       return true;
     }
     function promptCaptureCorrespondence(message) {
-      const wrap = document.getElementById("captureCorrespondence");
-      const el = document.getElementById("cap_correspondence");
-      const err = document.getElementById("captureErr");
-      if (err && message) err.textContent = message;
-      if (wrap && wrap.scrollIntoView) wrap.scrollIntoView({ block: "center" });
-      if (el) {
-        el.focus();
-        if (el.scrollIntoView) el.scrollIntoView({ block: "center" });
-      }
+      setSheetError("captureErr", message || "Enter a Correspondance link.", "cap_correspondence");
     }
     function openCaptureForCorrespondence(index, message) {
       openCapture(index);
@@ -1683,7 +1797,10 @@
       document.getElementById("captureHint").textContent = restored
         ? "Unsaved progress from last time is filled in."
         : "Progress is kept for you if you close this before saving.";
-      document.getElementById("captureErr").textContent = "";
+      setSheetError("captureErr", "");
+      const dupBtn = document.getElementById("captureDupBtn");
+      if (dupBtn) dupBtn.hidden = true;
+      hideTakenActions("capture");
       renderCaptureLines();
       toggleCaptureType();
       document.getElementById("captureMask").classList.add("open");
@@ -1777,18 +1894,22 @@
       };
     });
     async function saveCapture() {
-      const err = document.getElementById("captureErr");
-      err.textContent = "";
+      if (capture.saving) return;
+      hideTakenActions("capture");
+      setSheetError("captureErr", "");
       const client = String(document.getElementById("cap_client_name").value || "").trim();
-      if (!client) { err.textContent = "Enter the client name."; return; }
+      if (!client) { setSheetError("captureErr", "Enter the client name.", "cap_client_name"); return; }
       const dateIso = document.getElementById("cap_date_enquired").value;
-      if (!dateIso) { err.textContent = "Choose the date enquired."; return; }
+      if (!dateIso) { setSheetError("captureErr", "Choose the date enquired.", "cap_date_enquired"); return; }
       const type = document.getElementById("cap_enquiry_type").value;
       const existing = capture.i >= 0 ? rows[capture.i] : null;
       const payload = existing ? Object.assign({}, existing) : {};
       const typedNo = normalizeTypedEnquiryNo(document.getElementById("cap_enquiry_no").value) || (existing && existing.enquiry_no) || "";
-      if (!typedNo) { err.textContent = "Enquiry number must look like #2004"; return; }
-      if (enquiryNoTaken(typedNo, existing && existing.enquiry_no)) { err.textContent = "Enquiry " + typedNo + " is already on this system"; return; }
+      if (!typedNo) { setSheetError("captureErr", "Enquiry number must look like #2004", "cap_enquiry_no"); return; }
+      if (enquiryNoTaken(typedNo, existing && existing.enquiry_no)) {
+        offerTakenNumber("capture", typedNo);
+        return;
+      }
       payload.enquiry_no = typedNo;
       if (existing) payload.previous_enquiry_no = existing.enquiry_no;
       else payload.create_only = true;
@@ -1830,8 +1951,8 @@
           detail: String(s.detail || "").trim()
         })).filter((s) => s.kind || s.other || s.detail);
         for (const spec of specs) {
-          if (spec.kind === "Other" && !spec.other) { err.textContent = "If it is Other, specify what it is."; return; }
-          if (spec.kind && spec.kind !== "Other" && !spec.detail) { err.textContent = "Write the details for each custom change."; return; }
+          if (spec.kind === "Other" && !spec.other) { setSheetError("captureErr", "If it is Other, specify what it is."); return; }
+          if (spec.kind && spec.kind !== "Other" && !spec.detail) { setSheetError("captureErr", "Write the details for each custom change."); return; }
         }
         payload.custom_specs = specs;
         payload.design_description = "";
@@ -1851,20 +1972,35 @@
         }
         payload.correspondence_links = link;
       }
-      const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(payload) });
-      const j = await r.json();
-      if (!j.ok) {
-        err.textContent = j.error || "Could not save";
-        if (/Correspondance/i.test(j.error || "")) promptCaptureCorrespondence(j.error);
-        return;
+      capture.saving = true;
+      setSaveBusy("capture", true);
+      try {
+        const r = await sdOfficeFetch("/api/office/enquiries", { method: "PUT", body: JSON.stringify(payload) });
+        const j = await r.json().catch(function () { return {}; });
+        if (!j.ok) {
+          if (/already/.test(j.error || "") || j.existing) {
+            if (j.nextEnquiryNo) nextNo = j.nextEnquiryNo;
+            await load();
+            offerTakenNumber("capture", typedNo);
+            return;
+          }
+          setSheetError("captureErr", j.error || "Could not save");
+          if (/Correspondance/i.test(j.error || "")) promptCaptureCorrespondence(j.error);
+          return;
+        }
+        dropDraft("capture", existing ? existing.enquiry_no : "new");
+        if (existing && existing.enquiry_no !== typedNo) dropDraft("capture", typedNo);
+        closeCapture(false);
+        await load();
+        document.getElementById("status").textContent = (existing ? "Updated " : "Saved ") +
+          ((j.row && j.row.enquiry_no) || payload.enquiry_no) +
+          (j.row && j.row.status ? " · " + j.row.status : "");
+      } catch (e) {
+        setSheetError("captureErr", (e && e.message) || "Could not save");
+      } finally {
+        capture.saving = false;
+        setSaveBusy("capture", false);
       }
-      dropDraft("capture", existing ? existing.enquiry_no : "new");
-      if (existing && existing.enquiry_no !== typedNo) dropDraft("capture", typedNo);
-      closeCapture(false);
-      await load();
-      document.getElementById("status").textContent = (existing ? "Updated " : "Saved ") +
-        ((j.row && j.row.enquiry_no) || payload.enquiry_no) +
-        (j.row && j.row.status ? " · " + j.row.status : "");
     }
     window.saveCapture = saveCapture;
     function fillAssigneeSelect(id, selected, fallback) {
@@ -2272,6 +2408,8 @@
       syncOnboardPanes();
       toggleOnboardType();
       document.getElementById("onboardMask").classList.add("open");
+      hideTakenActions("onboard");
+      setSheetError("onboardErr", "");
       document.getElementById("ob_enquiry_no").focus();
     }
     function blankOnboard() {
@@ -2283,18 +2421,19 @@
       document.getElementById("onboardMask").classList.remove("open");
     }
     async function saveOnboard() {
-      const err = document.getElementById("onboardErr");
-      err.textContent = "";
+      if (onboard.saving) return;
+      hideTakenActions("onboard");
+      setSheetError("onboardErr", "");
       const status = String(document.getElementById("ob_status").value || "").trim();
-      if (!status) { err.textContent = "Choose where this enquiry is now."; return; }
+      if (!status) { setSheetError("onboardErr", "Choose where this enquiry is now.", "ob_status"); return; }
       const client = String(document.getElementById("ob_client_name").value || "").trim();
-      if (!client) { err.textContent = "Enter the client name."; return; }
+      if (!client) { setSheetError("onboardErr", "Enter the client name.", "ob_client_name"); return; }
       const dateIso = document.getElementById("ob_date_enquired").value;
-      if (!dateIso) { err.textContent = "Choose the date enquired."; return; }
+      if (!dateIso) { setSheetError("onboardErr", "Choose the date enquired.", "ob_date_enquired"); return; }
       const type = document.getElementById("ob_enquiry_type").value;
       const typedNo = normalizeTypedEnquiryNo(document.getElementById("ob_enquiry_no").value);
-      if (!typedNo) { err.textContent = "Enquiry number must look like #2004"; return; }
-      if (enquiryNoTaken(typedNo)) { err.textContent = "Enquiry " + typedNo + " is already on this system"; return; }
+      if (!typedNo) { setSheetError("onboardErr", "Enquiry number must look like #2004", "ob_enquiry_no"); return; }
+      if (enquiryNoTaken(typedNo)) { offerTakenNumber("onboard", typedNo); return; }
       const payload = {
         enquiry_no: typedNo,
         status,
@@ -2350,18 +2489,21 @@
           "<div class=\"row-actions\" style=\"margin-top:8px\"><button type=\"button\" class=\"ghost\" id=\"obDupConfirm\">Save anyway</button></div>";
         const btn = document.getElementById("obDupConfirm");
         if (btn) btn.onclick = () => { onboard.ignoreDup = true; saveOnboard(); };
+        const topBtn = document.getElementById("onboardDupBtn");
+        if (topBtn) topBtn.hidden = false;
+        setSheetError("onboardErr", "Open enquiry already uses this email or number. Save anyway only if this is a new job.");
         return;
       }
       try {
         if (status === "Costed") {
           const named = payload.products.filter((p) => p.product);
-          if (!named.length) { err.textContent = "Add at least one product name."; return; }
+          if (!named.length) { setSheetError("onboardErr", "Add at least one product name."); return; }
           const groups = [];
           for (const p of named) {
             const slots = (onboard.costSheets && onboard.costSheets[p.product]) || [];
             const files = slots.filter((s) => s && s.base64);
-            if (!files.length) { err.textContent = "Upload a cost sheet for " + p.product; return; }
-            if (files.some((s) => !s.confirmed)) { err.textContent = "Tick that this is the correct file for " + p.product; return; }
+            if (!files.length) { setSheetError("onboardErr", "Upload a cost sheet for " + p.product); return; }
+            if (files.some((s) => !s.confirmed)) { setSheetError("onboardErr", "Tick that this is the correct file for " + p.product); return; }
             groups.push({
               product: p.product,
               files: files.map((s) => ({ file_base64: s.base64, file_name: s.name || "cost-sheet", file_confirmed: true }))
@@ -2375,7 +2517,7 @@
             onboard.quoteBase64 = await readFileAsDataUrl(qf);
             onboard.quoteName = qf.name;
           }
-          if (!onboard.quoteBase64) { err.textContent = "Upload the quote PDF."; return; }
+          if (!onboard.quoteBase64) { setSheetError("onboardErr", "Upload the quote PDF.", "ob_quote_file"); return; }
           payload.quote_pdf_base64 = onboard.quoteBase64;
           payload.quote_pdf_name = onboard.quoteName || "quote.pdf";
           payload.quote_pdf_confirmed = document.getElementById("ob_quote_ok").checked;
@@ -2389,7 +2531,7 @@
             onboard.popBase64 = await readFileAsDataUrl(pop);
             onboard.popName = pop.name;
           }
-          if (!onboard.popBase64) { err.textContent = "Upload proof of payment."; return; }
+          if (!onboard.popBase64) { setSheetError("onboardErr", "Upload proof of payment.", "ob_pop_file"); return; }
           payload.pop_file = {
             file_base64: onboard.popBase64,
             file_name: onboard.popName || "pop.pdf",
@@ -2397,17 +2539,34 @@
           };
         }
       } catch (e) {
-        err.textContent = (e && e.message) || "Could not read a file";
+        setSheetError("onboardErr", (e && e.message) || "Could not read a file");
         return;
       }
-      const r = await sdOfficeFetch("/api/office/enquiries/onboard", { method: "POST", body: JSON.stringify(payload) });
-      const j = await r.json();
-      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
-      dropDraft("onboard", "new");
-      document.getElementById("onboardMask").classList.remove("open");
-      await load();
-      document.getElementById("status").textContent = "Brought across " + ((j.row && j.row.enquiry_no) || payload.enquiry_no) +
-        (j.row && j.row.status ? " · " + j.row.status : "");
+      onboard.saving = true;
+      setSaveBusy("onboard", true);
+      try {
+        const r = await sdOfficeFetch("/api/office/enquiries/onboard", { method: "POST", body: JSON.stringify(payload) });
+        const j = await r.json().catch(function () { return {}; });
+        if (!j.ok) {
+          if (/already/.test(j.error || "")) {
+            await load();
+            offerTakenNumber("onboard", typedNo);
+            return;
+          }
+          setSheetError("onboardErr", j.error || "Could not save");
+          return;
+        }
+        dropDraft("onboard", "new");
+        document.getElementById("onboardMask").classList.remove("open");
+        await load();
+        document.getElementById("status").textContent = "Brought across " + ((j.row && j.row.enquiry_no) || payload.enquiry_no) +
+          (j.row && j.row.status ? " · " + j.row.status : "");
+      } catch (e) {
+        setSheetError("onboardErr", (e && e.message) || "Could not save");
+      } finally {
+        onboard.saving = false;
+        setSaveBusy("onboard", false);
+      }
     }
     function openClearAll() {
       document.getElementById("clearConfirm").value = "";
@@ -2435,6 +2594,26 @@
     window.closeOnboard = closeOnboard;
     window.saveOnboard = saveOnboard;
     window.blankOnboard = blankOnboard;
+    document.getElementById("captureDupBtn").onclick = () => { capture.ignoreDup = true; saveCapture(); };
+    document.getElementById("captureUseNextBtn").onclick = () => {
+      bumpNext();
+      document.getElementById("cap_enquiry_no").value = nextNo;
+      hideTakenActions("capture");
+      setSheetError("captureErr", "");
+    };
+    document.getElementById("captureShowTakenBtn").onclick = () => {
+      showTakenEnquiry(normalizeTypedEnquiryNo(document.getElementById("cap_enquiry_no").value));
+    };
+    document.getElementById("onboardDupBtn").onclick = () => { onboard.ignoreDup = true; saveOnboard(); };
+    document.getElementById("onboardUseNextBtn").onclick = () => {
+      bumpNext();
+      document.getElementById("ob_enquiry_no").value = nextNo;
+      hideTakenActions("onboard");
+      setSheetError("onboardErr", "");
+    };
+    document.getElementById("onboardShowTakenBtn").onclick = () => {
+      showTakenEnquiry(normalizeTypedEnquiryNo(document.getElementById("ob_enquiry_no").value));
+    };
     window.addOnboardLine = addOnboardLine;
     window.openClearAll = openClearAll;
     window.closeClearAll = closeClearAll;

@@ -916,13 +916,24 @@
         e.preventDefault();
         const action = actions[i];
         const err = form.querySelector("[data-err]");
+        const btn = form.querySelector("button[type=submit]");
         err.textContent = "";
-        const r = await postProcess(collect(form, action, row));
-        const j = r;
-        if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
-        state.snap = j;
-        revokeFile();
-        renderBody();
+        if (btn) { btn.disabled = true; btn.textContent = "Saving…"; }
+        try {
+          const j = await postProcess(collect(form, action, row));
+          if (!j.ok) {
+            err.textContent = j.error || "Could not save";
+            if (err.scrollIntoView) err.scrollIntoView({ block: "nearest" });
+            return;
+          }
+          state.snap = j;
+          revokeFile();
+          renderBody();
+        } catch (ex) {
+          err.textContent = (ex && ex.message) || "Could not save";
+        } finally {
+          if (btn && form.isConnected) { btn.disabled = false; btn.textContent = "Save update"; }
+        }
       };
     });
     body.querySelectorAll("[data-copy-link]").forEach((btn) => {
