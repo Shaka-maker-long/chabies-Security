@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Users</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    header a { color:#344054; text-decoration:none; font-size:13px; font-weight:600; }
+    header a.active { color:#000; }
+    .wrap { padding:16px; }
+    table { border-collapse:collapse; width:100%; background:#fff; font-size:13px; }
+    th, td { border:1px solid var(--line); padding:8px; vertical-align:top; }
+    th { background:var(--head); text-align:left; }
+    .tasks { display:flex; flex-wrap:wrap; gap:6px 10px; }
+    label.t { font-size:12px; display:flex; gap:4px; align-items:center; }
+    input, select { border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:6px 10px; font-weight:600; cursor:pointer; }
+    button.ghost { background:#fff; color:#1d2939; }
+    .msg { font-size:12px; color:#667085; margin-left:auto; }
+    p.help { color:#667085; font-size:13px; max-width:860px; }
+    .pass-card { max-width:420px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; }
+    .pass-card label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; margin:0 0 10px; }
+    .pass-card input { font-weight:400; }
+    .pass-err { color:#b42318; font-size:12px; min-height:16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Users</h1>
+    <span class="msg" id="status"></span>
+    <span class="msg" id="backupLine"></span>
+    <button class="ghost" data-manage-only onclick="downloadBackup()">Download JSON backup</button>
+    <button class="ghost" data-manage-only onclick="downloadSqlite()">Download SQLite</button>
+    <button class="ghost" data-manage-only onclick="runBackup()">Backup now</button>
+    <button class="ghost" id="migrateWrap" type="button" onclick="migrateGoogle()" style="display:none">Copy old Google spreadsheet once</button>
+    <button data-manage-only onclick="addRow()">Add user</button>
+    <button data-manage-only onclick="saveAll()">Save</button>
+  </header>
+  <div class="wrap">
+    <div id="passOnly" class="pass-card" style="display:none">
+      <h2 style="font-size:16px;margin:0 0 8px">Change access code</h2>
+      <label>Name<input id="ownName" autocomplete="username"></label>
+      <label>Current access code<input id="ownCurrent" type="password" autocomplete="current-password"></label>
+      <label>New access code<input id="ownNext" type="password" autocomplete="new-password"></label>
+      <p class="pass-err" id="ownErr"></p>
+      <button type="button" onclick="saveOwnPassword()">Save access code</button>
+    </div>
+    <datalist id="jobTitles">
+      <option value="Manager"></option>
+      <option value="Admin"></option>
+      <option value="Welding"></option>
+      <option value="Quality Control"></option>
+    </datalist>
+    <table id="usersTable">
+      <thead>
+        <tr><th>Name</th><th>Access</th><th>Job title</th><th>Enquiry roles</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th></th></tr>
+      </thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
+    const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval", "Follow-up"];
+    let rows = [];
+    let canManage = false;
+    let meName = "";
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+    function render() {
+      const body = document.getElementById("body");
+      body.innerHTML = rows.map((u, i) => {
+        const tasks = TASKS.map((t) => "<label class='t'><input type='checkbox' data-i='"+i+"' data-task='"+t+"'"+(u.tasks.indexOf(t)>=0?" checked":"")+"> "+t+"</label>").join("");
+        const roles = (u.enquiryRoles || []);
+        const roleDisabled = u.access !== "Admin" ? " disabled" : "";
+        const enquiryRoles = ENQUIRY_ROLES.map((t) => "<label class='t'><input type='checkbox' data-i='"+i+"' data-role='"+t+"'"+(roles.indexOf(t)>=0?" checked":"")+roleDisabled+"> "+t+"</label>").join("");
+        const debtDisabled = u.access !== "Admin" ? " disabled" : "";
+        return "<tr>" +
+          "<td><input data-i='"+i+"' data-k='name' value='"+esc(u.name)+"'></td>" +
+          "<td><select data-i='"+i+"' data-k='access'><option"+(u.access==="Production"?" selected":"")+">Production</option><option"+(u.access==="Admin"?" selected":"")+">Admin</option></select></td>" +
+          "<td><input data-i='"+i+"' data-k='role' list='jobTitles' placeholder='Manager, Welding…' value='"+esc(u.role)+"'></td>" +
+          "<td><div class='tasks'>"+enquiryRoles+"</div></td>" +
+          "<td><input data-i='"+i+"' data-k='password' placeholder='Leave blank to keep' value=''></td>" +
+          "<td><div class='tasks'>"+tasks+"</div></td>" +
+          "<td><input type='checkbox' data-i='"+i+"' data-k='seeDebtors'"+(u.canSeeDebtors?" checked":"")+debtDisabled+"></td>" +
+          "<td><button class='ghost' data-del='"+i+"'>Delete</button></td></tr>";
+      }).join("");
+      body.oninput = body.onchange = (e) => {
+        const i = Number(e.target.getAttribute("data-i"));
+        if (Number.isNaN(i)) return;
+        const k = e.target.getAttribute("data-k");
+        const task = e.target.getAttribute("data-task");
+        if (task) {
+          const set = new Set(rows[i].tasks);
+          if (e.target.checked) set.add(task); else set.delete(task);
+          rows[i].tasks = TASKS.filter((t) => set.has(t));
+        } else if (e.target.getAttribute("data-role")) {
+          const role = e.target.getAttribute("data-role");
+          const set = new Set(rows[i].enquiryRoles || []);
+          if (e.target.checked) set.add(role); else set.delete(role);
+          rows[i].enquiryRoles = ENQUIRY_ROLES.filter((t) => set.has(t));
+        } else if (k === "seeDebtors") {
+          rows[i].canSeeDebtors = e.target.checked;
+          rows[i].seeDebtors = e.target.checked ? "Yes" : "No";
+        } else if (k) {
+          rows[i][k] = e.target.value;
+          if (k === "role" && String(rows[i].role || "").trim().toLowerCase() === "manager") {
+            rows[i].access = "Admin";
+            if (rows[i].seeDebtors !== "No") {
+              rows[i].canSeeDebtors = true;
+              rows[i].seeDebtors = "Yes";
+            }
+            rows.forEach((u, n) => {
+              if (n !== i && String(u.role || "").trim().toLowerCase() === "manager") u.role = "Admin";
+            });
+            render();
+          } else if (k === "access") {
+            if (rows[i].access === "Admin") {
+              rows[i].canSeeDebtors = true;
+              rows[i].seeDebtors = "Yes";
+            } else {
+              rows[i].canSeeDebtors = false;
+              rows[i].seeDebtors = "No";
+              rows[i].enquiryRoles = [];
+              if (String(rows[i].role || "").trim().toLowerCase() === "manager") rows[i].role = "Admin";
+            }
+            render();
+          }
+        }
+      };
+      body.onclick = async (e) => {
+        const i = e.target.getAttribute("data-del");
+        if (i == null) return;
+        const name = rows[Number(i)].name;
+        if (name) {
+          const r = await sdOfficeFetch("/api/office/users/" + encodeURIComponent(name), { method: "DELETE" });
+          const j = await r.json();
+          if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+        }
+        rows.splice(Number(i), 1);
+        render();
+      };
+    }
+    function addRow() {
+      rows.unshift({ name: "", access: "Production", role: "", password: "", tasks: [], enquiryRoles: [], canSeeDebtors: false, seeDebtors: "No" });
+      render();
+    }
+    async function saveAll() {
+      document.getElementById("status").textContent = "Saving…";
+      document.querySelectorAll("#body input[data-k='password']").forEach((el) => {
+        const i = Number(el.getAttribute("data-i"));
+        if (!Number.isNaN(i) && rows[i]) rows[i].password = el.value;
+      });
+      const managers = rows.filter((u) => String(u.name || "").trim() && String(u.role || "").trim().toLowerCase() === "manager");
+      if (managers.length > 1) {
+        document.getElementById("status").textContent = "Only one person can have the Manager job title.";
+        return;
+      }
+      for (const u of rows) {
+        if (!String(u.name || "").trim()) continue;
+        const payload = {
+          name: u.name,
+          access: u.access,
+          role: u.role,
+          password: u.password,
+          tasks: u.tasks,
+          enquiryRoles: u.enquiryRoles,
+          seeDebtors: u.seeDebtors,
+          canSeeDebtors: u.canSeeDebtors,
+          manageUsers: false,
+          canManageUsers: false
+        };
+        const r = await sdOfficeFetch("/api/office/users", { method: "PUT", body: JSON.stringify(payload) });
+        const j = await r.json();
+        if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      }
+      await load();
+      document.getElementById("status").textContent = "Saved";
+    }
+    async function downloadBlob(url, filename, fail) {
+      const r = await sdOfficeFetch(url);
+      if (!r.ok) {
+        document.getElementById("status").textContent = fail;
+        return;
+      }
+      const blob = await r.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(href);
+    }
+    async function downloadBackup() {
+      await downloadBlob("/api/office/backup", "studio-delta-railway-backup.json", "Could not download JSON backup");
+    }
+    async function downloadSqlite() {
+      const day = new Date().toISOString().slice(0, 10);
+      await downloadBlob("/api/office/backup.db", "studio-delta-" + day + ".db", "Could not download SQLite");
+    }
+    async function runBackup() {
+      document.getElementById("status").textContent = "Backing up…";
+      const r = await sdOfficeFetch("/api/office/backups/run", { method: "POST" });
+      const j = await r.json();
+      if (!j.ok) {
+        document.getElementById("status").textContent = j.error || "Backup failed";
+        loadBackup();
+        return;
+      }
+      document.getElementById("status").textContent = "Backup saved";
+      loadBackup();
+    }
+    function backupWhen(iso) {
+      if (!iso) return "never";
+      try {
+        return new Date(iso).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" });
+      } catch (e) {
+        return iso;
+      }
+    }
+    async function loadBackup() {
+      const r = await sdOfficeFetch("/api/office/backups");
+      const j = await r.json();
+      if (!j.ok) return;
+      const line = document.getElementById("backupLine");
+      if (!j.backupAt) {
+        line.textContent = "";
+        return;
+      }
+      line.textContent = (j.backupOk ? "Last backup " : "Last backup failed ") + backupWhen(j.backupAt);
+    }
+    async function migrateGoogle() {
+      if (!confirm("Replace Users, orders, and shop logs with the old Google spreadsheet? Existing enquiries stay. Continue?")) return;
+      document.getElementById("status").textContent = "Copying from Google…";
+      const r = await sdOfficeFetch("/api/office/migrate-from-google", { method: "POST" });
+      const j = await r.json();
+      if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      await load();
+      document.getElementById("status").textContent = j.message || "Copied";
+    }
+    async function loadDb() {
+      const r = await sdOfficeFetch("/api/office/database");
+      const j = await r.json();
+      if (!j.ok) return;
+      const migrate = document.getElementById("migrateWrap");
+      if (migrate) migrate.style.display = (canManage && j.migrateAvailable) ? "" : "none";
+    }
+    function applyManageMode() {
+      document.querySelectorAll("[data-manage-only]").forEach((el) => {
+        el.style.display = canManage ? "" : "none";
+      });
+      const table = document.getElementById("usersTable");
+      const pass = document.getElementById("passOnly");
+      if (table) table.style.display = canManage ? "" : "none";
+      if (pass) pass.style.display = canManage ? "none" : "";
+      const nameEl = document.getElementById("ownName");
+      if (nameEl && meName && !nameEl.value) nameEl.value = meName;
+    }
+    async function saveOwnPassword() {
+      const err = document.getElementById("ownErr");
+      err.textContent = "";
+      const r = await sdOfficeFetch("/api/office/password", {
+        method: "POST",
+        body: JSON.stringify({
+          name: document.getElementById("ownName").value,
+          current_password: document.getElementById("ownCurrent").value,
+          new_password: document.getElementById("ownNext").value
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      document.getElementById("ownCurrent").value = "";
+      document.getElementById("ownNext").value = "";
+      document.getElementById("status").textContent = "Access code updated";
+    }
+    async function load() {
+      const r = await sdOfficeFetch("/api/office/users");
+      const j = await r.json();
+      if (!j.ok) { document.getElementById("status").textContent = j.error; return; }
+      canManage = !!j.canManageUsers;
+      rows = j.rows || [];
+      applyManageMode();
+      render();
+      document.getElementById("status").textContent = canManage ? (rows.length + " users") : "Change your access code";
+      if (canManage) {
+        loadDb();
+        loadBackup();
+      }
+    }
+    sdRequireOffice("users").then((p) => {
+      if (!p) return;
+      meName = p.name || "";
+      canManage = !!p.canManageUsers;
+      applyManageMode();
+      load();
+    });
+  </script>
+</body>
+</html>

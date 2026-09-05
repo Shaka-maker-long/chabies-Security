@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Debtors</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    header a { color:#344054; text-decoration:none; font-size:13px; font-weight:600; }
+    header a.active { color:#000; }
+    .tools { margin-left:auto; font-size:12px; color:#667085; }
+    .wrap { overflow:auto; height:calc(100vh - 58px); padding:16px; }
+    table { border-collapse:collapse; width:100%; min-width:1100px; background:#fff; font-size:13px; }
+    th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+    th { background:var(--head); position:sticky; top:0; }
+    .owing { color:#b42318; font-weight:700; }
+    .pay { display:flex; gap:6px; align-items:center; }
+    .pay input { width:110px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+    .pay button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:6px 10px; font-weight:600; cursor:pointer; }
+    .hist { color:#667085; font-size:12px; margin-top:6px; }
+    .empty { padding:40px; text-align:center; color:#667085; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Debtors</h1>
+    <div class="tools" id="status"></div>
+  </header>
+  <div class="wrap" id="wrap"></div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+    function pretty(iso) {
+      if (!iso) return "";
+      return String(iso).slice(0, 10);
+    }
+    function render(rows) {
+      const wrap = document.getElementById("wrap");
+      document.getElementById("status").textContent = rows.length
+        ? rows.length + " still owing"
+        : "Nobody is owing";
+      if (!rows.length) {
+        wrap.innerHTML = "<div class=\"empty\">No debtors. When an order is not paid in full it will show here.</div>";
+        return;
+      }
+      let html = "<table><thead><tr><th>ORDER</th><th>CLIENT</th><th>NUMBER</th><th>EMAIL</th><th>TOTAL (Incl VAT)</th><th>PAID</th><th>OWING</th><th>RECORD PAYMENT</th></tr></thead><tbody>";
+      rows.forEach((row) => {
+        const hist = (row.payments || []).map((p) => pretty(p.at) + " R " + String(p.amount || "").replace(/^R\s*/, "") + (p.note ? " · " + p.note : "")).join("<br>");
+        html += "<tr data-order=\"" + esc(row.order_number) + "\">";
+        html += "<td>" + esc(row.order_number) + "</td>";
+        html += "<td>" + esc(row.client_name) + "</td>";
+        html += "<td>" + esc(row.client_number) + "</td>";
+        html += "<td>" + esc(row.email) + "</td>";
+        html += "<td>" + esc(row.total) + "</td>";
+        html += "<td>" + esc(row.paid) + "</td>";
+        html += "<td class=\"owing\">" + esc(row.owing) + "</td>";
+        html += "<td><form class=\"pay\"><input name=\"amount\" type=\"number\" min=\"0.01\" step=\"0.01\" placeholder=\"Amount\"><input name=\"note\" placeholder=\"Note\"><button type=\"submit\">Add payment</button></form>";
+        if (hist) html += "<div class=\"hist\">" + hist + "</div>";
+        html += "</td></tr>";
+      });
+      html += "</tbody></table>";
+      wrap.innerHTML = html;
+      wrap.querySelectorAll("form.pay").forEach((form) => {
+        form.onsubmit = async (e) => {
+          e.preventDefault();
+          const tr = form.closest("tr");
+          const order = tr.getAttribute("data-order");
+          const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(order) + "/payments", {
+            method: "POST",
+            body: JSON.stringify({ amount: form.amount.value, note: form.note.value })
+          });
+          const j = await r.json();
+          if (!j.ok) { alert(j.error); return; }
+          render(j.debtors || []);
+        };
+      });
+    }
+    async function load() {
+      const r = await sdOfficeFetch("/api/office/debtors");
+      const j = await r.json();
+      render(j.rows || []);
+    }
+    sdRequireOffice("debtors").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

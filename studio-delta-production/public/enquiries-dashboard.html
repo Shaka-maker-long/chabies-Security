@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Enquiries dashboard</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --card:#fff; --ok:#027a48; --bad:#b42318; --steel:#b54708; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:520px; }
+    .tabs { display:flex; gap:4px; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff; }
+    .seg button { border:0; background:transparent; padding:7px 10px; font:inherit; font-size:12px; font-weight:600; cursor:pointer; color:var(--muted); }
+    .seg button.on { background:#1d2939; color:#fff; }
+    .wrap { padding:16px; }
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+    .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    .kpi span { display:block; color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    .kpi b { display:block; margin-top:4px; font-family: Outfit, Inter, sans-serif; font-size:22px; }
+    .kpi.alert b { color:var(--bad); }
+    .grid { display:grid; grid-template-columns:1.35fr 1fr; gap:12px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px 16px; min-width:0; }
+    .card h2 { margin:0 0 2px; font-size:15px; }
+    .hint { margin:0 0 10px; color:var(--muted); font-size:12px; }
+    .span2 { grid-column:1 / -1; }
+    canvas { max-height:280px; width:100%; cursor:pointer; }
+    .empty, .err, .load { padding:36px 16px; text-align:center; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:12px; }
+    .err { color:var(--bad); }
+    table.mini { width:100%; border-collapse:collapse; font-size:13px; }
+    table.mini th, table.mini td { text-align:left; padding:6px 4px; border-bottom:1px solid var(--line); }
+    table.mini th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+    table.mini td.r, table.mini th.r { text-align:right; }
+    table.mini tbody tr[data-stuck] { cursor:pointer; }
+    table.mini tbody tr[data-stuck]:hover { background:#f2f4f7; }
+    .month-pick { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--muted); }
+    .month-pick select { border:1px solid var(--line); border-radius:8px; padding:7px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink); background:#fff; }
+    .window-chip { font-size:12px; font-weight:700; color:var(--ink); }
+    .drill-mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
+    .drill-mask.open { display:flex; }
+    .drill-sheet { width:min(720px,96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:12px auto; }
+    .drill-sheet header { position:static; display:flex; gap:12px; align-items:flex-start; padding:16px; border-bottom:1px solid var(--line); }
+    .drill-sheet h2 { margin:0; font-size:18px; font-family:Outfit, Inter, sans-serif; }
+    .drill-sheet .tools { margin-left:auto; }
+    .drill-sheet button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    .drill-sheet button.ghost { background:#fff; color:#1d2939; }
+    .drill-body { padding:12px 16px 20px; }
+    .drill-item { width:100%; text-align:left; background:#fff; color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:12px; margin:0 0 8px; cursor:pointer; }
+    .drill-item:hover { border-color:#1d2939; }
+    .drill-item b { display:block; font-size:14px; }
+    .drill-item span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+    .drill-totals { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+    .drill-totals span { background:#f2f4f7; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:600; }
+    .drill-totals b { display:block; margin-top:2px; font-size:14px; }
+    .prod-search { width:100%; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; font-size:12px; margin:8px 0; }
+    .prod-list { max-height:180px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
+    .prod-list button { display:flex; justify-content:space-between; gap:8px; width:100%; border:0; border-bottom:1px solid var(--line); background:#fff; padding:8px 10px; cursor:pointer; font:inherit; font-size:12px; text-align:left; }
+    .prod-list button:last-child { border-bottom:0; }
+    .prod-list button:hover { background:#f2f4f7; }
+    .wom-months { display:flex; flex-wrap:wrap; gap:8px 12px; margin:0 0 10px; font-size:12px; }
+    .wom-months label { display:flex; align-items:center; gap:6px; font-weight:600; color:#344054; }
+    .split-pie { max-width:360px; margin:0 auto 12px; }
+    .card-head { display:flex; flex-wrap:wrap; gap:8px; align-items:center; justify-content:space-between; }
+    .card-head h2 { margin:0; }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns:1fr; }
+      .span2 { grid-column:auto; }
+      .tools { width:100%; margin-left:0; }
+      header { align-items:flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Enquiries views">
+        <a href="/enquiries">Sheet</a>
+        <a class="on" href="/enquiries/dashboard">Dashboard</a>
+      </nav>
+      <h1>Enquiries dashboard</h1>
+      <p class="window-chip" id="windowChip"></p>
+    </div>
+    <div class="tools">
+      <label class="month-pick">Month
+        <select id="month" aria-label="Filter all charts to one month">
+          <option value="">All in range</option>
+        </select>
+      </label>
+      <div class="seg" id="grain" role="group" aria-label="Time grain">
+        <button type="button" data-v="week">Weekly</button>
+        <button type="button" data-v="month" class="on">Monthly</button>
+      </div>
+      <div class="seg" id="range" role="group" aria-label="Date range">
+        <button type="button" data-v="6m" class="on">6 months</button>
+        <button type="button" data-v="year">This year</button>
+        <button type="button" data-v="all">All time</button>
+      </div>
+      <div class="seg" id="metric" role="group" aria-label="Line metric">
+        <button type="button" data-v="count" class="on">Count</button>
+        <button type="button" data-v="revenue">Revenue</button>
+      </div>
+    </div>
+  </header>
+  <div class="wrap">
+    <div id="load" class="load">Loading dashboard…</div>
+    <div id="err" class="err" hidden></div>
+    <div id="app" hidden>
+      <div class="kpis" id="kpis"></div>
+      <div class="grid">
+        <section class="card span2">
+          <h2 id="trendTitle">Enquiries and quotes</h2>
+          <canvas id="trend"></canvas>
+        </section>
+        <section class="card span2">
+          <h2>Week of month</h2>
+          <div id="womMonths" class="wom-months"></div>
+          <p class="hint">Rand figures exclude VAT.</p>
+          <div class="seg" id="womMetric" role="group" aria-label="Week-of-month metric">
+            <button type="button" data-v="enquiries" class="on">Enquiries</button>
+            <button type="button" data-v="quotes">Quotes</button>
+            <button type="button" data-v="quoteRevenue">Quoted R</button>
+            <button type="button" data-v="orderedRevenue">Ordered R</button>
+          </div>
+          <canvas id="wom"></canvas>
+        </section>
+        <section class="card">
+          <h2>Funnel</h2>
+          <canvas id="funnel"></canvas>
+        </section>
+        <section class="card">
+          <h2>Pipeline</h2>
+          <canvas id="pipeline"></canvas>
+        </section>
+        <section class="card">
+          <h2>Win / loss by period</h2>
+          <canvas id="winloss"></canvas>
+        </section>
+        <section class="card">
+          <h2>Time to order</h2>
+          <canvas id="tto"></canvas>
+        </section>
+        <section class="card">
+          <h2>Stuck / ageing</h2>
+          <div id="stuck"></div>
+        </section>
+        <section class="card">
+          <h2>Ageing (median days open)</h2>
+          <canvas id="ageing"></canvas>
+        </section>
+        <section class="card">
+          <h2>Source</h2>
+          <canvas id="source"></canvas>
+        </section>
+        <section class="card">
+          <h2>Enquiry type</h2>
+          <canvas id="types"></canvas>
+        </section>
+        <section class="card">
+          <h2>Stage time (median days)</h2>
+          <canvas id="stage"></canvas>
+        </section>
+        <section class="card">
+          <h2>Workload</h2>
+          <canvas id="work"></canvas>
+        </section>
+        <section class="card">
+          <h2>Money (excl VAT)</h2>
+          <canvas id="money"></canvas>
+        </section>
+        <section class="card">
+          <h2>Quote value by type (excl VAT)</h2>
+          <canvas id="typeValue"></canvas>
+        </section>
+        <section class="card">
+          <h2>CATERGORY</h2>
+          <canvas id="cat"></canvas>
+        </section>
+        <section class="card">
+          <h2>Product value (excl VAT)</h2>
+          <p class="hint">Each product’s own value, not the quote total.</p>
+          <canvas id="prod"></canvas>
+          <input class="prod-search" id="prodSearch" placeholder="Search products" autocomplete="off">
+          <div class="prod-list" id="prodList"></div>
+        </section>
+        <section class="card span2">
+          <div class="card-head">
+            <h2>Province</h2>
+            <div class="seg" id="provMetric" role="group" aria-label="Province metric">
+              <button type="button" data-v="count" class="on">Count</button>
+              <button type="button" data-v="value">Quote value excl VAT</button>
+            </div>
+          </div>
+          <p class="hint" id="provHint" hidden></p>
+          <canvas id="prov"></canvas>
+        </section>
+      </div>
+    </div>
+  </div>
+  <div class="drill-mask" id="drillMask">
+    <div class="drill-sheet" role="dialog" aria-modal="true" aria-labelledby="drillTitle">
+      <header>
+        <div>
+          <h2 id="drillTitle">Enquiries</h2>
+          <p class="hint" id="drillHint" hidden style="margin:4px 0 0"></p>
+        </div>
+        <div class="tools">
+          <button class="ghost" type="button" id="drillClose">Close</button>
+        </div>
+      </header>
+      <div class="drill-body" id="drillList"></div>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script src="/enquiry-process.js?v=save-notice"></script>
+  <script>
+    const charts = {};
+    let data = null;
+    let metric = "count";
+    let grain = "month";
+    let range = "6m";
+    let month = "";
+    let womMetric = "enquiries";
+    let provMetric = "count";
+    let womPicked = null;
+    const PAL = ["#1d2939", "#027a48", "#3538cd", "#b54708", "#b42318", "#667085", "#6941c6", "#026aa2"];
+    const FUNNEL_STAGES = ["captured", "costing", "quoted", "followed", "ordered"];
+
+    function qs(over) {
+      const m = over && Object.prototype.hasOwnProperty.call(over, "month") ? over.month : month;
+      return "grain=" + encodeURIComponent(grain)
+        + "&range=" + encodeURIComponent(range)
+        + (m ? "&month=" + encodeURIComponent(m) : "");
+    }
+    function bindSeg(id, get, set) {
+      const root = document.getElementById(id);
+      root.querySelectorAll("button").forEach((b) => {
+        b.classList.toggle("on", b.dataset.v === get());
+        b.addEventListener("click", () => {
+          set(b.dataset.v);
+          root.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+          if (id === "metric") drawTrend();
+          else if (id === "womMetric") drawWom();
+          else if (id === "provMetric") drawProv();
+          else {
+            if (id === "range") {
+              month = "";
+              womPicked = null;
+              const sel = document.getElementById("month");
+              if (sel) sel.value = "";
+            }
+            load();
+          }
+        });
+      });
+    }
+    bindSeg("grain", () => grain, (v) => (grain = v));
+    bindSeg("range", () => range, (v) => (range = v));
+    bindSeg("metric", () => metric, (v) => (metric = v));
+    bindSeg("womMetric", () => womMetric, (v) => (womMetric = v));
+    bindSeg("provMetric", () => provMetric, (v) => (provMetric = v));
+    document.getElementById("month").addEventListener("change", (e) => {
+      month = e.target.value || "";
+      womPicked = null;
+      load();
+    });
+
+    function kill(id) {
+      if (charts[id]) {
+        charts[id].destroy();
+        charts[id] = null;
+      }
+    }
+    function clickOpt(handler) {
+      return {
+        onClick: (evt, els) => {
+          if (!els || !els.length) return;
+          handler(els[0]);
+        }
+      };
+    }
+    function mk(id, cfg) {
+      kill(id);
+      cfg.options = cfg.options || {};
+      cfg.options.onClick = cfg.options.onClick || undefined;
+      charts[id] = new Chart(document.getElementById(id), cfg);
+    }
+    function bar(id, labels, values, color, horizontal, onBar, money) {
+      const valueScale = { beginAtZero: true, ticks: money ? { callback: randTick } : { precision: 0 } };
+      const categoryScale = {};
+      mk(id, {
+        type: "bar",
+        data: { labels, datasets: [{ data: values, backgroundColor: color || PAL[0] }] },
+        options: Object.assign({
+          indexAxis: horizontal ? "y" : "x",
+          plugins: { legend: { display: false } },
+          scales: horizontal
+            ? { x: valueScale, y: categoryScale }
+            : { x: categoryScale, y: valueScale }
+        }, clickOpt((el) => { if (onBar) onBar(el.index, labels[el.index]); }))
+      });
+    }
+    function doughnut(id, labels, values, onSlice) {
+      mk(id, {
+        type: "doughnut",
+        data: { labels, datasets: [{ data: values, backgroundColor: PAL }] },
+        options: Object.assign({
+          plugins: { legend: { position: "bottom" } }
+        }, clickOpt((el) => { if (onSlice) onSlice(el.index, labels[el.index]); }))
+      });
+    }
+    function randTick(v) {
+      if (Math.abs(v) >= 10000) return "R " + Math.round(v / 1000) + "k";
+      return "R " + Math.round(v).toLocaleString("en-ZA");
+    }
+    function formatR(n) {
+      const v = Number(n) || 0;
+      return "R " + v.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function fillMonths(list) {
+      const sel = document.getElementById("month");
+      const keep = month;
+      sel.innerHTML = "<option value=\"\">All in range</option>" +
+        (list || []).map((m) => "<option value=\"" + m.key + "\"" + (m.key === keep ? " selected" : "") + ">" + m.label + "</option>").join("");
+      sel.value = keep;
+    }
+
+    function closeDrill() {
+      document.getElementById("drillMask").classList.remove("open");
+    }
+    function esc(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+    function drillMoneyHtml(j) {
+      const t = j.totals || {};
+      return "<div class=\"drill-totals\">"
+        + "<span>Products excl VAT<b>" + formatR(t.products_excl_vat) + "</b></span>"
+        + "<span>Delivery excl VAT<b>" + formatR(t.delivery_excl_vat) + "</b></span>"
+        + "</div>";
+    }
+    function drillRowHtml(row) {
+      const bits = [row.status, row.enquiry_type, row.enquiry_source, row.province]
+        .filter(Boolean).join(" · ");
+      const products = (row.products || []).length
+        ? (row.products || []).map((p) => esc(p.product) + (Number(p.value_excl_vat) ? " " + formatR(p.value_excl_vat) : "")).join(" · ")
+        : "No products yet";
+      const delivery = "Delivery " + (Number(row.delivery_excl_vat) ? formatR(row.delivery_excl_vat) : "—");
+      return "<button type=\"button\" class=\"drill-item\" data-enquiry=\"" + esc(row.enquiry_no) + "\">"
+        + "<b>" + esc(row.enquiry_no) + " · " + esc(row.client_name || "No client name yet") + "</b>"
+        + "<span>" + esc(bits) + (row.opened_at_label ? " · opened " + esc(row.opened_at_label) : "") + "</span>"
+        + "<span>" + products + "</span>"
+        + "<span>" + delivery + "</span>"
+        + "</button>";
+    }
+    async function openDrill(params) {
+      const q = qs(params)
+        + "&kind=" + encodeURIComponent(params.kind || "enquiries")
+        + (params.key ? "&key=" + encodeURIComponent(params.key) : "")
+        + (params.stage ? "&stage=" + encodeURIComponent(params.stage) : "")
+        + (params.value ? "&value=" + encodeURIComponent(params.value) : "")
+        + (params.type ? "&type=" + encodeURIComponent(params.type) : "")
+        + (params.week ? "&week=" + encodeURIComponent(params.week) : "")
+        + (params.series ? "&series=" + encodeURIComponent(params.series) : "")
+        + (params.slice ? "&slice=" + encodeURIComponent(params.slice) : "");
+      const mask = document.getElementById("drillMask");
+      const list = document.getElementById("drillList");
+      document.getElementById("drillTitle").textContent = "Loading…";
+      document.getElementById("drillHint").hidden = true;
+      list.innerHTML = "<p class=\"hint\">Loading this slice…</p>";
+      mask.classList.add("open");
+      try {
+        const r = await sdOfficeFetch("/api/office/enquiries/dashboard/drill?" + q);
+        const j = await r.json();
+        if (!r.ok || !j.ok) throw new Error(j.error || r.statusText);
+        document.getElementById("drillTitle").textContent = j.title || "Enquiries";
+        document.getElementById("drillHint").hidden = false;
+        document.getElementById("drillHint").textContent = "Money excludes VAT.";
+        if (!(j.rows || []).length) {
+          list.innerHTML = drillMoneyHtml(j) + "<p class=\"empty\" style=\"border:0;padding:16px 0\">No enquiries in this slice.</p>";
+          return;
+        }
+        list.innerHTML = drillMoneyHtml(j) + j.rows.map(drillRowHtml).join("");
+        list.querySelectorAll("[data-enquiry]").forEach((btn) => {
+          btn.addEventListener("click", () => sdOpenEnquiryProcess(btn.getAttribute("data-enquiry")));
+        });
+      } catch (e) {
+        document.getElementById("drillTitle").textContent = "Could not load";
+        list.innerHTML = "<p class=\"err\" style=\"border:0\">" + esc(e.message || e) + "</p>";
+      }
+    }
+    document.getElementById("drillClose").onclick = closeDrill;
+    document.getElementById("drillMask").addEventListener("click", (e) => {
+      if (e.target.id === "drillMask") closeDrill();
+    });
+    window.sdOnEnquiryProcessClose = function () { /* keep the drill list open */ };
+
+    function clickType(label, useValue) {
+      if (label === "Custom" || label === "New Design") openTypeSplit(label, useValue);
+      else openDrill({ kind: "type", value: label });
+    }
+
+    function openTypeSplit(typeName, useValue) {
+      const splits = ((data && data.typeSplits) || {})[typeName] || [];
+      const mask = document.getElementById("drillMask");
+      const list = document.getElementById("drillList");
+      document.getElementById("drillTitle").textContent = typeName + (useValue ? " · quote value" : "");
+      document.getElementById("drillHint").textContent = "";
+      mask.classList.add("open");
+      if (!splits.length) {
+        openDrill({ kind: "type", value: typeName });
+        return;
+      }
+      list.innerHTML = "<div class=\"split-pie\"><canvas id=\"splitPie\"></canvas></div><div id=\"splitList\"></div>";
+      kill("splitPie");
+      charts.splitPie = new Chart(document.getElementById("splitPie"), {
+        type: "doughnut",
+        data: {
+          labels: splits.map((s) => s.label),
+          datasets: [{
+            data: splits.map((s) => useValue ? s.quoteValue : s.count),
+            backgroundColor: PAL
+          }]
+        },
+        options: {
+          plugins: { legend: { position: "bottom" } },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const slice = splits[els[0].index];
+            if (!slice) return;
+            openDrill({ kind: "typeSubtype", type: typeName, value: slice.value || slice.label });
+          }
+        }
+      });
+    }
+
+    function drawTrend() {
+      if (!data) return;
+      const labels = data.series.map((s) => s.label);
+      const count = metric === "count";
+          document.getElementById("trendTitle").textContent = count
+        ? "Enquiries and quotes"
+        : "Quoted and ordered revenue (excl VAT)";
+      mk("trend", {
+        type: "line",
+        data: {
+          labels,
+          datasets: count
+            ? [
+                { label: "Enquiries", data: data.series.map((s) => s.enquiries), borderColor: PAL[0], backgroundColor: "rgba(29,41,57,.08)", tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 },
+                { label: "Quotes", data: data.series.map((s) => s.quotes), borderColor: PAL[1], backgroundColor: "rgba(2,122,72,.08)", tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 }
+              ]
+            : [
+                { label: "Quoted R excl VAT", data: data.series.map((s) => s.quoteRevenue), borderColor: PAL[2], tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 },
+                { label: "Ordered R excl VAT", data: data.series.map((s) => s.orderedRevenue), borderColor: PAL[1], tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 }
+              ]
+        },
+        options: {
+          interaction: { mode: "nearest", intersect: true },
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: count ? { precision: 0 } : { callback: randTick }
+            }
+          },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const el = els[0];
+            const point = data.series[el.index];
+            if (!point) return;
+            const kinds = count ? ["enquiries", "quotes"] : ["quotes", "ordered"];
+            openDrill({ kind: kinds[el.datasetIndex] || "enquiries", key: point.key });
+          }
+        }
+      });
+    }
+
+    function drawWom() {
+      if (!data || !data.weekCompare) return;
+      const months = data.weekCompare.months || [];
+      const labels = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"];
+      const picked = months.filter((m) => (womPicked || []).indexOf(m.key) >= 0);
+      const moneyish = womMetric === "quoteRevenue" || womMetric === "orderedRevenue";
+      mk("wom", {
+        type: "line",
+        data: {
+          labels,
+          datasets: picked.map((m, i) => ({
+            label: m.label,
+            data: m[womMetric] || [0, 0, 0, 0, 0],
+            borderColor: PAL[i % PAL.length],
+            tension: 0.25,
+            fill: false,
+            pointRadius: 4,
+            pointHoverRadius: 8,
+            pointHitRadius: 16
+          }))
+        },
+        options: {
+          interaction: { mode: "nearest", intersect: true },
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: moneyish ? { callback: randTick } : { precision: 0 }
+            }
+          },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const el = els[0];
+            const m = picked[el.datasetIndex];
+            if (!m) return;
+            const series = womMetric === "quoteRevenue" ? "quotes" : womMetric === "orderedRevenue" ? "ordered" : womMetric;
+            openDrill({ kind: "wom", month: m.key, week: el.index + 1, series });
+          }
+        }
+      });
+    }
+
+    function fillWomMonths(months) {
+      const box = document.getElementById("womMonths");
+      const list = months || [];
+      if (!womPicked) {
+        const active = list.filter((m) => (m.enquiries || []).some((n) => n) || (m.quotes || []).some((n) => n));
+        womPicked = (active.length ? active : list).slice(-3).map((m) => m.key);
+      }
+      box.innerHTML = list.map((m) => {
+        const on = womPicked.indexOf(m.key) >= 0 ? " checked" : "";
+        return "<label><input type=\"checkbox\" value=\"" + m.key + "\"" + on + "> " + m.label + "</label>";
+      }).join("");
+      box.onchange = () => {
+        womPicked = Array.from(box.querySelectorAll("input:checked")).map((el) => el.value);
+        drawWom();
+      };
+    }
+
+    function drawProv() {
+      if (!data) return;
+      const value = provMetric === "value";
+      mk("prov", {
+        type: "bar",
+        data: {
+          labels: data.provinces.map((x) => x.label),
+          datasets: value
+            ? [
+                { label: "Quoted R excl VAT", data: data.provinces.map((x) => x.quoteValue), backgroundColor: PAL[0] },
+                { label: "Ordered R excl VAT", data: data.provinces.map((x) => x.orderedValue), backgroundColor: PAL[1] }
+              ]
+            : [
+                { label: "Opened", data: data.provinces.map((x) => x.opened), backgroundColor: PAL[0] },
+                { label: "Ordered", data: data.provinces.map((x) => x.ordered), backgroundColor: PAL[1] }
+              ]
+        },
+        options: {
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            y: {
+              beginAtZero: true,
+              ticks: value ? { callback: randTick } : { precision: 0 }
+            }
+          },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const el = els[0];
+            const label = data.provinces[el.index] && data.provinces[el.index].label;
+            openDrill({ kind: "province", value: label, slice: el.datasetIndex === 1 ? "ordered" : "" });
+          }
+        }
+      });
+    }
+
+    function renderProducts(q) {
+      const all = ((data && data.products) || []).slice();
+      const needle = String(q || "").toLowerCase();
+      const top = all.slice(0, 8);
+      bar("prod", top.map((x) => x.label), top.map((x) => x.productValue || 0), PAL[4], true, (_i, label) => openDrill({ kind: "product", value: label }), true);
+      const filtered = needle ? all.filter((p) => p.label.toLowerCase().indexOf(needle) >= 0) : all;
+      const shown = filtered.slice(0, 40);
+      document.getElementById("prodList").innerHTML = shown.length
+        ? shown.map((p) => "<button type=\"button\" data-product=\"" + esc(p.label) + "\"><span>" + esc(p.label) + "</span><b>" + formatR(p.productValue) + (p.count ? " · " + p.count : "") + "</b></button>").join("")
+        : "<p class=\"hint\" style=\"padding:8px\">No products match that search.</p>";
+      document.getElementById("prodList").onclick = (e) => {
+        const btn = e.target.closest("[data-product]");
+        if (btn) openDrill({ kind: "product", value: btn.getAttribute("data-product") });
+      };
+    }
+
+    function render(d) {
+      data = d;
+      fillMonths(d.months);
+      document.getElementById("windowChip").textContent = d.windowLabel || "";
+      const k = d.kpis;
+      document.getElementById("kpis").innerHTML = [
+        ["Open now", k.openNow],
+        ["Quoted, waiting", k.quotedWaiting],
+        ["Overdue follow-ups", k.overdueFollowUps, k.overdueFollowUps > 0],
+        ["Ordered in window", k.orderedInPeriod],
+        ["Median days to order", k.medianDaysToOrder == null ? "—" : k.medianDaysToOrder],
+        ["80th % days to order", k.p80DaysToOrder == null ? "—" : k.p80DaysToOrder]
+      ].map(([label, val, alert]) =>
+        "<div class=\"kpi" + (alert ? " alert" : "") + "\"><span>" + label + "</span><b>" + val + "</b></div>"
+      ).join("");
+
+      drawTrend();
+      bar("funnel", d.funnel.map((x) => x.label), d.funnel.map((x) => x.count), PAL[0], true, (i) => {
+        openDrill({ kind: "funnel", stage: FUNNEL_STAGES[i] || "captured" });
+      });
+      bar("pipeline", d.pipeline.map((x) => x.status), d.pipeline.map((x) => x.count), PAL[2], true, (_i, label) => {
+        openDrill({ kind: "pipeline", value: label });
+      });
+      mk("winloss", {
+        type: "bar",
+        data: {
+          labels: d.winLossByPeriod.map((x) => x.label),
+          datasets: [
+            { label: "Ordered", data: d.winLossByPeriod.map((x) => x.ordered), backgroundColor: PAL[1] },
+            { label: "Rejected", data: d.winLossByPeriod.map((x) => x.rejected), backgroundColor: PAL[4] },
+            { label: "Not Interested", data: d.winLossByPeriod.map((x) => x.notInterested), backgroundColor: PAL[5] },
+            { label: "Not within scope", data: d.winLossByPeriod.map((x) => x.notInScope), backgroundColor: PAL[3] }
+          ]
+        },
+        options: {
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            x: { stacked: true },
+            y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } }
+          },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const el = els[0];
+            const point = d.winLossByPeriod[el.index];
+            const names = ["Ordered", "Rejected", "Not Interested", "Not within scope"];
+            const seriesPoint = d.series[el.index];
+            openDrill({ kind: "winloss", value: names[el.datasetIndex], key: seriesPoint && seriesPoint.key });
+          }
+        }
+      });
+      bar("tto", d.timeToOrder.buckets.map((x) => x.label), d.timeToOrder.buckets.map((x) => x.count), PAL[3]);
+
+      const st = d.stuck;
+      document.getElementById("stuck").innerHTML =
+        "<table class=\"mini\"><tr><th>Bucket</th><th class=\"r\">Count</th></tr>" +
+        "<tr data-stuck=\"Costing\"><td>Costing open</td><td class=\"r\">" + st.costingOpen + "</td></tr>" +
+        "<tr data-stuck=\"Quoted\"><td>Quoted waiting</td><td class=\"r\">" + st.quotedWaiting + "</td></tr>" +
+        "<tr data-stuck=\"Followed Up\"><td>Follow-up due</td><td class=\"r\">" + st.followUpDue + "</td></tr>" +
+        "<tr data-stuck=\"overdue\"><td>Overdue follow-up (7 days)</td><td class=\"r\">" + st.overdueFollowUps + "</td></tr>" +
+        "<tr data-stuck=\"supplier\"><td>Waiting on supplier</td><td class=\"r\">" + st.waitingOnSupplier + "</td></tr>" +
+        "<tr><td>Oldest open (days)</td><td class=\"r\">" + (st.oldestOpenDays == null ? "—" : st.oldestOpenDays) + "</td></tr></table>";
+      document.getElementById("stuck").onclick = (e) => {
+        const tr = e.target.closest("[data-stuck]");
+        if (tr) openDrill({ kind: "stuck", value: tr.getAttribute("data-stuck") });
+      };
+      bar("ageing", (st.ageing || []).map((x) => x.label), (st.ageing || []).map((x) => x.medianDays || 0), PAL[5], false, (_i, label) => {
+        openDrill({ kind: "stuck", value: label });
+      });
+
+      doughnut("source", d.sources.map((x) => x.label), d.sources.map((x) => x.count), (_i, label) => openDrill({ kind: "source", value: label }));
+      doughnut("types", d.types.map((x) => x.label), d.types.map((x) => x.count), (_i, label) => clickType(label, false));
+      doughnut("typeValue", d.types.map((x) => x.label), d.types.map((x) => x.quoteValue), (_i, label) => clickType(label, true));
+      bar("stage", d.stageTime.map((x) => x.label), d.stageTime.map((x) => x.medianDays), PAL[6]);
+      bar("work", d.workload.map((x) => x.name), d.workload.map((x) => x.count), PAL[0], false, (_i, label) => openDrill({ kind: "workload", value: label }));
+      mk("money", {
+        type: "bar",
+        data: {
+          labels: ["Quoted", "Ordered"],
+          datasets: [{ data: [d.money.quotedExclVat, d.money.orderedExclVat], backgroundColor: [PAL[2], PAL[1]] }]
+        },
+        options: Object.assign({
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { callback: randTick } } }
+        }, clickOpt((el) => openDrill({ kind: el.index === 0 ? "quotes" : "ordered" })))
+      });
+      bar("cat", d.categories.map((x) => x.label), d.categories.map((x) => x.count), PAL[3], false, (_i, label) => openDrill({ kind: "category", value: label }));
+      renderProducts(document.getElementById("prodSearch").value);
+      fillWomMonths(d.weekCompare && d.weekCompare.months);
+      drawWom();
+      drawProv();
+    }
+
+    async function load() {
+      document.getElementById("load").hidden = false;
+      document.getElementById("err").hidden = true;
+      document.getElementById("app").hidden = true;
+      try {
+        const r = await sdOfficeFetch("/api/office/enquiries/dashboard?" + qs());
+        const j = await r.json();
+        if (!r.ok || !j.ok) throw new Error(j.error || r.statusText);
+        document.getElementById("load").hidden = true;
+        if (!j.enquiryCount) {
+          document.getElementById("err").hidden = false;
+          document.getElementById("err").className = "empty";
+          document.getElementById("err").textContent = "No enquiries yet.";
+          return;
+        }
+        document.getElementById("app").hidden = false;
+        render(j);
+      } catch (e) {
+        document.getElementById("load").hidden = true;
+        document.getElementById("err").hidden = false;
+        document.getElementById("err").className = "err";
+        document.getElementById("err").textContent = "Could not load the dashboard. " + (e.message || e);
+      }
+    }
+
+    document.getElementById("prodSearch").addEventListener("input", (e) => renderProducts(e.target.value));
+
+    sdRequireOffice("enquiries").then((p) => { if (p) load(); });
+
+</script>
+</body>
+</html>
