@@ -78,6 +78,10 @@ The GitHub repo is a website plus this app. Railway should build from the **repo
 4. **Settings → Networking → Generate domain**. Login is name + access code from the Railway `Users` table. If Users is empty, the app seeds **Admin** / **admin** — change that code on Users.
 5. Keep **one replica**.
 
+## Install as an app (PWA)
+
+On a phone, tablet, or Chrome desktop, open the Railway URL and use **Install app** / **Add to Home Screen**. Studio Delta then opens full screen from the home screen (steel icon, starts on Home). Live orders, enquiries, and the floor still need a network; if the device is offline you get a short Studio Delta page instead of a browser error. The Outlook add-in is not part of the installed app.
+
 Google Drive QC is optional. If you still generate QC PDFs: enable Sheets/Drive/Docs APIs, share the Drive folders with the service account (same IDs as `Code.gs`). Floor start / pause / finish does not need Google.
 
 QC PDFs still fill worker / order / Yes-No answers. Inserting photos into the Google Doc template is not wired on Railway (text tags for missing photos stay as-is). Floor start / pause / finish does not need Drive.
