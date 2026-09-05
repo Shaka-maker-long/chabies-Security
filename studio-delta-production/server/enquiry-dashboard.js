@@ -53,9 +53,10 @@ function monthKey(d) {
 }
 
 function monthLabel(key) {
-  const [y, m] = key.split("-");
+  const m = String(key || "").match(/^(\d{4})-(\d{2})$/);
+  if (!m) return String(key || "").trim();
   const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return names[Number(m) - 1] + " " + y;
+  return names[Number(m[2]) - 1] + " " + m[1];
 }
 
 function weekKey(d) {
@@ -180,7 +181,48 @@ function pickerMonths(rows) {
   return Array.from(keys).sort().reverse().map((key) => ({ key, label: monthLabel(key) }));
 }
 
+function namedProducts(row) {
+  const lines = Array.isArray(row.products) ? row.products : [];
+  const named = lines.filter((p) => String((p && p.product) || "").trim());
+  if (named.length) {
+    return named.map((p) => ({
+      product: String(p.product).trim(),
+      category: String((p && p.category) || "").trim(),
+      value_excl_vat: db.parseMoney(p.value_excl_vat)
+    }));
+  }
+  return String(row.product || "").split(",").map((p) => p.trim()).filter(Boolean).map((product) => ({
+    product,
+    category: String(row.category || "").trim(),
+    value_excl_vat: 0
+  }));
+}
+
+function deliveryExclOf(row) {
+  return db.parseMoney(row.delivery_excl_vat);
+}
+
+function productsTotalExclOf(row) {
+  const fromLines = namedProducts(row).reduce((sum, p) => sum + (p.value_excl_vat || 0), 0);
+  if (fromLines) return Math.round(fromLines * 100) / 100;
+  return db.parseMoney(row.products_total_excl_vat);
+}
+
+function moneyOf(row) {
+  const products = namedProducts(row);
+  const productsTotal = productsTotalExclOf(row);
+  const delivery = deliveryExclOf(row);
+  const quote = db.parseMoney(row.quote_total_excl_vat) || Math.round((productsTotal + delivery) * 100) / 100;
+  return {
+    products,
+    products_total_excl_vat: productsTotal,
+    delivery_excl_vat: delivery,
+    quote_total_excl_vat: quote
+  };
+}
+
 function cardOf(row) {
+  const money = moneyOf(row);
   return {
     enquiry_no: row.enquiry_no,
     client_name: row.client_name || "",
@@ -192,7 +234,10 @@ function cardOf(row) {
     province: row.province || "",
     opened_at_label: row.opened_at_label || "",
     date_quoted: row.date_quoted || "",
-    quote_total_excl_vat: row.quote_total_excl_vat || "",
+    products: money.products,
+    products_total_excl_vat: money.products_total_excl_vat,
+    delivery_excl_vat: money.delivery_excl_vat,
+    quote_total_excl_vat: money.quote_total_excl_vat || "",
     quote_no: row.quote_no || ""
   };
 }
@@ -247,7 +292,7 @@ function reachedQuoted(status) {
 }
 
 function revenueOf(row) {
-  return db.parseMoney(row.quote_total_excl_vat || row.products_total_excl_vat);
+  return moneyOf(row).quote_total_excl_vat;
 }
 
 function bump(map, key, amount) {
@@ -423,7 +468,7 @@ function buildDashboard(query) {
   const provinceOrderedQuote = {};
   const category = {};
   const product = {};
-  const productQuote = {};
+  const productValueMap = {};
   const womMap = {};
   bucketKeys("month", win.from, win.to).forEach((key) => ensureWom(womMap, key));
   const assignee = {};
@@ -504,9 +549,9 @@ function buildDashboard(query) {
         bump(provinceOrderedQuote, row.province, rev);
       }
       bump(category, row.category);
-      String(row.product || "").split(",").map((p) => p.trim()).filter(Boolean).forEach((p) => {
-        bump(product, p);
-        bump(productQuote, p, rev);
+      namedProducts(row).forEach((p) => {
+        bump(product, p.product);
+        bump(productValueMap, p.product, p.value_excl_vat);
       });
       const etype = String(row.enquiry_type || "").trim();
       if (etype === "Custom") {
@@ -610,8 +655,8 @@ function buildDashboard(query) {
   const productRows = Object.keys(product).map((label) => ({
     label,
     count: product[label],
-    quoteValue: Math.round((productQuote[label] || 0) * 100) / 100
-  })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    productValue: Math.round((productValueMap[label] || 0) * 100) / 100
+  })).sort((a, b) => b.productValue - a.productValue || b.count - a.count || a.label.localeCompare(b.label));
 
   const typeRows = Object.keys(type).map((label) => ({
     label,
@@ -761,8 +806,8 @@ function matchesDrill(row, query, win) {
   if (kind === "category") return openedIn && fieldOrBlank(row.category) === value;
   if (kind === "product") {
     if (!openedIn) return false;
-    return String(row.product || "").split(",").map((p) => p.trim()).filter(Boolean).indexOf(value) >= 0
-      || (value === "(blank)" && !String(row.product || "").trim());
+    const names = namedProducts(row).map((p) => p.product);
+    return names.indexOf(value) >= 0 || (value === "(blank)" && !names.length);
   }
   if (kind === "province") {
     if (String((query && query.slice) || "") === "ordered") {
@@ -811,8 +856,13 @@ function drillTitle(query, win) {
   if (kind === "funnel") return (funnelNames[query.stage] || "Funnel") + " · " + win.windowLabel;
   if (kind === "typeSubtype") return (String((query && query.type) || "") + " · " + value + " · " + win.windowLabel).trim();
   if (kind === "wom") {
-    return (query.series === "quotes" || query.series === "quoteRevenue" ? "Quotes" : query.series === "ordered" || query.series === "orderedRevenue" ? "Ordered" : "Enquiries")
-      + " · " + monthLabel(String((query && query.month) || "")) + " week " + String((query && query.week) || "");
+    const series = String((query && query.series) || "enquiries");
+    const name = series === "quotes" || series === "quoteRevenue" ? "Quotes"
+      : series === "ordered" || series === "orderedRevenue" ? "Ordered"
+      : "Enquiries";
+    const monthBit = monthLabel(String((query && query.month) || ""));
+    const weekBit = String((query && query.week) || "");
+    return name + " · " + (monthBit ? monthBit + " " : "") + "week " + weekBit;
   }
   if (kind === "pipeline") return (value || "Pipeline") + " · " + win.windowLabel;
   if (kind === "stuck") return (value === "overdue" ? "Overdue follow-ups" : value) + " · " + win.windowLabel;
@@ -826,6 +876,11 @@ function buildDrill(query) {
     .filter((row) => matchesDrill(row, query, win))
     .map(cardOf)
     .sort((a, b) => String(b.enquiry_no).localeCompare(String(a.enquiry_no), undefined, { numeric: true }));
+  const totals = rows.reduce((acc, row) => {
+    acc.products += Number(row.products_total_excl_vat) || 0;
+    acc.delivery += Number(row.delivery_excl_vat) || 0;
+    return acc;
+  }, { products: 0, delivery: 0 });
   return {
     tz: "Africa/Johannesburg",
     grain: win.grain,
@@ -835,6 +890,10 @@ function buildDrill(query) {
     kind: String((query && query.kind) || "enquiries"),
     key: String((query && query.key) || ""),
     title: drillTitle(query, win),
+    totals: {
+      products_excl_vat: Math.round(totals.products * 100) / 100,
+      delivery_excl_vat: Math.round(totals.delivery * 100) / 100
+    },
     rows
   };
 }
