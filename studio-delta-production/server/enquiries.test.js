@@ -281,4 +281,22 @@ assert.throws(
   /already/
 );
 
+db.deleteAllEnquiries();
+assert.strictEqual(db.nextEnquiryNo(), "#1996");
+const onboarded = db.upsertEnquiry({
+  enquiry_no: "#414",
+  date_enquired: "04/09/2026",
+  client_name: "Onboarded old"
+}, { createOnly: true });
+assert.strictEqual(onboarded.enquiry_no, "#414");
+assert.strictEqual(db.nextEnquiryNo(), "#415");
+assert.throws(
+  () => db.upsertEnquiry({
+    enquiry_no: "#414",
+    date_enquired: "04/09/2026",
+    client_name: "Dup 414"
+  }, { createOnly: true }),
+  /already/
+);
+
 console.log("enquiries.test.js ok");
