@@ -56,6 +56,9 @@
     .drill-item:hover { border-color:#1d2939; }
     .drill-item b { display:block; font-size:14px; }
     .drill-item span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+    .drill-totals { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+    .drill-totals span { background:#f2f4f7; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:600; }
+    .drill-totals b { display:block; margin-top:2px; font-size:14px; }
     .prod-search { width:100%; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; font-size:12px; margin:8px 0; }
     .prod-list { max-height:180px; overflow:auto; border:1px solid var(--line); border-radius:8px; }
     .prod-list button { display:flex; justify-content:space-between; gap:8px; width:100%; border:0; border-bottom:1px solid var(--line); background:#fff; padding:8px 10px; cursor:pointer; font:inherit; font-size:12px; text-align:left; }
@@ -118,6 +121,7 @@
         <section class="card span2">
           <h2>Week of month</h2>
           <div id="womMonths" class="wom-months"></div>
+          <p class="hint">Rand figures exclude VAT.</p>
           <div class="seg" id="womMetric" role="group" aria-label="Week-of-month metric">
             <button type="button" data-v="enquiries" class="on">Enquiries</button>
             <button type="button" data-v="quotes">Quotes</button>
@@ -171,7 +175,7 @@
           <canvas id="money"></canvas>
         </section>
         <section class="card">
-          <h2>Quote value by type</h2>
+          <h2>Quote value by type (excl VAT)</h2>
           <canvas id="typeValue"></canvas>
         </section>
         <section class="card">
@@ -179,7 +183,8 @@
           <canvas id="cat"></canvas>
         </section>
         <section class="card">
-          <h2>Product</h2>
+          <h2>Product value (excl VAT)</h2>
+          <p class="hint">Each product’s own value, not the quote total.</p>
           <canvas id="prod"></canvas>
           <input class="prod-search" id="prodSearch" placeholder="Search products" autocomplete="off">
           <div class="prod-list" id="prodList"></div>
@@ -189,7 +194,7 @@
             <h2>Province</h2>
             <div class="seg" id="provMetric" role="group" aria-label="Province metric">
               <button type="button" data-v="count" class="on">Count</button>
-              <button type="button" data-v="value">Quote value</button>
+              <button type="button" data-v="value">Quote value excl VAT</button>
             </div>
           </div>
           <p class="hint" id="provHint" hidden></p>
@@ -227,10 +232,11 @@
     const PAL = ["#1d2939", "#027a48", "#3538cd", "#b54708", "#b42318", "#667085", "#6941c6", "#026aa2"];
     const FUNNEL_STAGES = ["captured", "costing", "quoted", "followed", "ordered"];
 
-    function qs() {
+    function qs(over) {
+      const m = over && Object.prototype.hasOwnProperty.call(over, "month") ? over.month : month;
       return "grain=" + encodeURIComponent(grain)
         + "&range=" + encodeURIComponent(range)
-        + (month ? "&month=" + encodeURIComponent(month) : "");
+        + (m ? "&month=" + encodeURIComponent(m) : "");
     }
     function bindSeg(id, get, set) {
       const root = document.getElementById(id);
@@ -285,7 +291,8 @@
       cfg.options.onClick = cfg.options.onClick || undefined;
       charts[id] = new Chart(document.getElementById(id), cfg);
     }
-    function bar(id, labels, values, color, horizontal, onBar) {
+    function bar(id, labels, values, color, horizontal, onBar, money) {
+      const ticks = money ? { callback: randTick } : { precision: 0 };
       mk(id, {
         type: "bar",
         data: { labels, datasets: [{ data: values, backgroundColor: color || PAL[0] }] },
@@ -293,8 +300,8 @@
           indexAxis: horizontal ? "y" : "x",
           plugins: { legend: { display: false } },
           scales: {
-            x: { beginAtZero: true, ticks: { precision: 0 } },
-            y: { beginAtZero: true, ticks: { precision: 0 } }
+            x: { beginAtZero: true, ticks: ticks },
+            y: { beginAtZero: true, ticks: ticks }
           }
         }, clickOpt((el) => { if (onBar) onBar(el.index, labels[el.index]); }))
       });
@@ -312,6 +319,10 @@
       if (Math.abs(v) >= 10000) return "R " + Math.round(v / 1000) + "k";
       return "R " + Math.round(v).toLocaleString("en-ZA");
     }
+    function formatR(n) {
+      const v = Number(n) || 0;
+      return "R " + v.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
     function fillMonths(list) {
       const sel = document.getElementById("month");
       const keep = month;
@@ -326,8 +337,29 @@
     function esc(s) {
       return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     }
+    function drillMoneyHtml(j) {
+      const t = j.totals || {};
+      return "<div class=\"drill-totals\">"
+        + "<span>Products excl VAT<b>" + formatR(t.products_excl_vat) + "</b></span>"
+        + "<span>Delivery excl VAT<b>" + formatR(t.delivery_excl_vat) + "</b></span>"
+        + "</div>";
+    }
+    function drillRowHtml(row) {
+      const bits = [row.status, row.enquiry_type, row.enquiry_source, row.province]
+        .filter(Boolean).join(" · ");
+      const products = (row.products || []).length
+        ? (row.products || []).map((p) => esc(p.product) + (Number(p.value_excl_vat) ? " " + formatR(p.value_excl_vat) : "")).join(" · ")
+        : "No products yet";
+      const delivery = "Delivery " + (Number(row.delivery_excl_vat) ? formatR(row.delivery_excl_vat) : "—");
+      return "<button type=\"button\" class=\"drill-item\" data-enquiry=\"" + esc(row.enquiry_no) + "\">"
+        + "<b>" + esc(row.enquiry_no) + " · " + esc(row.client_name || "No client name yet") + "</b>"
+        + "<span>" + esc(bits) + (row.opened_at_label ? " · opened " + esc(row.opened_at_label) : "") + "</span>"
+        + "<span>" + products + "</span>"
+        + "<span>" + delivery + "</span>"
+        + "</button>";
+    }
     async function openDrill(params) {
-      const q = qs()
+      const q = qs(params)
         + "&kind=" + encodeURIComponent(params.kind || "enquiries")
         + (params.key ? "&key=" + encodeURIComponent(params.key) : "")
         + (params.stage ? "&stage=" + encodeURIComponent(params.stage) : "")
@@ -339,6 +371,7 @@
       const mask = document.getElementById("drillMask");
       const list = document.getElementById("drillList");
       document.getElementById("drillTitle").textContent = "Loading…";
+      document.getElementById("drillHint").hidden = true;
       list.innerHTML = "<p class=\"hint\">Loading this slice…</p>";
       mask.classList.add("open");
       try {
@@ -346,22 +379,13 @@
         const j = await r.json();
         if (!r.ok || !j.ok) throw new Error(j.error || r.statusText);
         document.getElementById("drillTitle").textContent = j.title || "Enquiries";
-        document.getElementById("drillHint").textContent = "";
+        document.getElementById("drillHint").hidden = false;
+        document.getElementById("drillHint").textContent = "Money excludes VAT.";
         if (!(j.rows || []).length) {
-          list.innerHTML = "<p class=\"empty\" style=\"border:0;padding:16px 0\">No enquiries in this slice.</p>";
+          list.innerHTML = drillMoneyHtml(j) + "<p class=\"empty\" style=\"border:0;padding:16px 0\">No enquiries in this slice.</p>";
           return;
         }
-        list.innerHTML = j.rows.map((row) => {
-          const bits = [row.status, row.product, row.enquiry_type, row.enquiry_source, row.province]
-            .filter(Boolean).join(" · ");
-          const money = row.quote_total_excl_vat && Number(row.quote_total_excl_vat)
-            ? " · R " + Number(row.quote_total_excl_vat).toLocaleString("en-ZA")
-            : "";
-          return "<button type=\"button\" class=\"drill-item\" data-enquiry=\"" + esc(row.enquiry_no) + "\">"
-            + "<b>" + esc(row.enquiry_no) + " · " + esc(row.client_name || "No client name yet") + "</b>"
-            + "<span>" + esc(bits + money) + (row.opened_at_label ? " · opened " + esc(row.opened_at_label) : "") + "</span>"
-            + "</button>";
-        }).join("");
+        list.innerHTML = drillMoneyHtml(j) + j.rows.map(drillRowHtml).join("");
         list.querySelectorAll("[data-enquiry]").forEach((btn) => {
           btn.addEventListener("click", () => sdOpenEnquiryProcess(btn.getAttribute("data-enquiry")));
         });
@@ -419,9 +443,9 @@
       if (!data) return;
       const labels = data.series.map((s) => s.label);
       const count = metric === "count";
-      document.getElementById("trendTitle").textContent = count
+          document.getElementById("trendTitle").textContent = count
         ? "Enquiries and quotes"
-        : "Quoted and ordered revenue";
+        : "Quoted and ordered revenue (excl VAT)";
       mk("trend", {
         type: "line",
         data: {
@@ -432,8 +456,8 @@
                 { label: "Quotes", data: data.series.map((s) => s.quotes), borderColor: PAL[1], backgroundColor: "rgba(2,122,72,.08)", tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 }
               ]
             : [
-                { label: "Quoted R", data: data.series.map((s) => s.quoteRevenue), borderColor: PAL[2], tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 },
-                { label: "Ordered R", data: data.series.map((s) => s.orderedRevenue), borderColor: PAL[1], tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 }
+                { label: "Quoted R excl VAT", data: data.series.map((s) => s.quoteRevenue), borderColor: PAL[2], tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 },
+                { label: "Ordered R excl VAT", data: data.series.map((s) => s.orderedRevenue), borderColor: PAL[1], tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 }
               ]
         },
         options: {
@@ -525,8 +549,8 @@
           labels: data.provinces.map((x) => x.label),
           datasets: value
             ? [
-                { label: "Quoted R", data: data.provinces.map((x) => x.quoteValue), backgroundColor: PAL[0] },
-                { label: "Ordered R", data: data.provinces.map((x) => x.orderedValue), backgroundColor: PAL[1] }
+                { label: "Quoted R excl VAT", data: data.provinces.map((x) => x.quoteValue), backgroundColor: PAL[0] },
+                { label: "Ordered R excl VAT", data: data.provinces.map((x) => x.orderedValue), backgroundColor: PAL[1] }
               ]
             : [
                 { label: "Opened", data: data.provinces.map((x) => x.opened), backgroundColor: PAL[0] },
@@ -552,14 +576,14 @@
     }
 
     function renderProducts(q) {
-      const all = (data && data.products) || [];
+      const all = ((data && data.products) || []).slice();
       const needle = String(q || "").toLowerCase();
       const top = all.slice(0, 8);
-      bar("prod", top.map((x) => x.label), top.map((x) => x.count), PAL[4], true, (_i, label) => openDrill({ kind: "product", value: label }));
+      bar("prod", top.map((x) => x.label), top.map((x) => x.productValue || 0), PAL[4], true, (_i, label) => openDrill({ kind: "product", value: label }), true);
       const filtered = needle ? all.filter((p) => p.label.toLowerCase().indexOf(needle) >= 0) : all;
       const shown = filtered.slice(0, 40);
       document.getElementById("prodList").innerHTML = shown.length
-        ? shown.map((p) => "<button type=\"button\" data-product=\"" + esc(p.label) + "\"><span>" + esc(p.label) + "</span><b>" + p.count + (p.quoteValue ? " · R " + Math.round(p.quoteValue).toLocaleString("en-ZA") : "") + "</b></button>").join("")
+        ? shown.map((p) => "<button type=\"button\" data-product=\"" + esc(p.label) + "\"><span>" + esc(p.label) + "</span><b>" + formatR(p.productValue) + (p.count ? " · " + p.count : "") + "</b></button>").join("")
         : "<p class=\"hint\" style=\"padding:8px\">No products match that search.</p>";
       document.getElementById("prodList").onclick = (e) => {
         const btn = e.target.closest("[data-product]");

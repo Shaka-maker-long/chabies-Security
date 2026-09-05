@@ -40,6 +40,8 @@ const rows = [
     enquiry_type: "Custom",
     category: "Table",
     product: "Air Chair",
+    products: [{ product: "Air Chair", category: "Table", value_excl_vat: "4300.00" }],
+    delivery_excl_vat: "350.50",
     province: "Western Cape",
     quote_total_excl_vat: "4650.50",
     custom_specs: [
@@ -65,6 +67,8 @@ const rows = [
     enquiry_type: "Catologue",
     category: "Mirror",
     product: "Daphne Rectangular Mirror",
+    products: [{ product: "Daphne Rectangular Mirror", category: "Mirror", value_excl_vat: "11000.00" }],
+    delivery_excl_vat: "1000.00",
     province: "Gauteng",
     quote_total_excl_vat: "12000.00",
     lifespan_ms: 35 * 86400000,
@@ -187,7 +191,14 @@ try {
   assert.ok(month.weekCompare.weeks.length === 5);
   assert.ok(month.weekCompare.months.some((m) => m.key === "2026-06" && m.enquiries[2] === 1));
   assert.ok(month.provinces.some((p) => p.label === "Gauteng" && p.quoteValue >= 0));
-  assert.ok(month.products.some((p) => p.label === "Daphne Rectangular Mirror"));
+  const daphne = month.products.find((p) => p.label === "Daphne Rectangular Mirror");
+  const air = month.products.find((p) => p.label === "Air Chair");
+  assert.ok(daphne);
+  assert.strictEqual(daphne.productValue, 11000, "product chart must use the product value, not the quote total");
+  assert.ok(daphne.count >= 2);
+  assert.ok(air);
+  assert.strictEqual(air.productValue, 4300);
+  assert.ok(!month.products.some((p) => p.quoteValue === 16650.5), "must not roll the full quote onto a product");
   assert.ok(month.workload.some((w) => w.name === "Coster" && w.count >= 2));
   assert.ok(month.timeToOrder.buckets.some((b) => b.count === 1));
   assert.ok(month.stageTime.some((s) => s.n >= 1));
@@ -236,6 +247,20 @@ try {
   assert.ok(drillDesign.rows.some((r) => r.enquiry_no === "#2002"));
   const drillWom = dash.buildDrill({ kind: "wom", month: "2026-06", week: 3, series: "enquiries" });
   assert.ok(drillWom.rows.some((r) => r.enquiry_no === "#2001"));
+  assert.ok(!/undefined/.test(drillWom.title));
+  assert.ok(/Jun 2026/.test(drillWom.title));
+  assert.ok(drillWom.totals);
+
+  const drillQuotesMoney = dash.buildDrill({ grain: "month", range: "6m", kind: "quotes", key: "2026-08" });
+  assert.strictEqual(drillQuotesMoney.totals.products_excl_vat, 15300);
+  assert.strictEqual(drillQuotesMoney.totals.delivery_excl_vat, 1350.5);
+  const quotedAir = drillQuotesMoney.rows.find((r) => r.enquiry_no === "#1997");
+  assert.ok(quotedAir);
+  assert.strictEqual(quotedAir.delivery_excl_vat, 350.5);
+  assert.ok(quotedAir.products.some((p) => p.product === "Air Chair" && p.value_excl_vat === 4300));
+
+  const blankWom = dash.buildDrill({ kind: "wom", week: 1, series: "enquiries" });
+  assert.ok(!/undefined/.test(blankWom.title), "missing month must not print undefined");
 } finally {
   db.listEnquiries = orig;
 }
