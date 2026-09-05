@@ -292,17 +292,17 @@
       charts[id] = new Chart(document.getElementById(id), cfg);
     }
     function bar(id, labels, values, color, horizontal, onBar, money) {
-      const ticks = money ? { callback: randTick } : { precision: 0 };
+      const valueScale = { beginAtZero: true, ticks: money ? { callback: randTick } : { precision: 0 } };
+      const categoryScale = {};
       mk(id, {
         type: "bar",
         data: { labels, datasets: [{ data: values, backgroundColor: color || PAL[0] }] },
         options: Object.assign({
           indexAxis: horizontal ? "y" : "x",
           plugins: { legend: { display: false } },
-          scales: {
-            x: { beginAtZero: true, ticks: ticks },
-            y: { beginAtZero: true, ticks: ticks }
-          }
+          scales: horizontal
+            ? { x: valueScale, y: categoryScale }
+            : { x: categoryScale, y: valueScale }
         }, clickOpt((el) => { if (onBar) onBar(el.index, labels[el.index]); }))
       });
     }

@@ -271,6 +271,8 @@ assert.ok(dashHtml.indexOf("Product value (excl VAT)") !== -1);
 assert.ok(dashHtml.indexOf("qs(params)") !== -1, "week-of-month drill must send the clicked month");
 assert.ok(dashHtml.indexOf("drillMoneyHtml") !== -1);
 assert.ok(dashHtml.indexOf("Delivery excl VAT") !== -1);
+assert.ok(dashHtml.indexOf("categoryScale") !== -1, "product bars must keep names on the category axis");
+assert.ok(!/x: \{ beginAtZero: true, ticks: ticks \},\s*y: \{ beginAtZero: true, ticks: ticks \}/.test(dashHtml), "money ticks must not overwrite product names");
 assert.ok(dashHtml.indexOf(">Outlook<") === -1, "Outlook pie must be replaced by quote value by type");
 
 assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");
