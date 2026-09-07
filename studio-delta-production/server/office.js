@@ -5,6 +5,7 @@ const {
   upsertOrder,
   deleteOrder,
   listSchedule,
+  listDeliveryItems,
   upsertScheduleRow,
   setScheduleCell,
   countOrders,
@@ -39,6 +40,14 @@ const pipeline = require("./enquiry-pipeline");
 const desk = require("./enquiry-desk");
 const fs = require("fs");
 const sqlite = require("./sqlite-store");
+const {
+  SCHEDULE_CODES,
+  mondayOf,
+  workdays,
+  isoWeekInfo,
+  weekKey,
+  weekOptions
+} = require("./office-schedule");
 
 function officeCookie(token, clear) {
   if (clear) return "sd_office=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
@@ -91,26 +100,6 @@ async function migrateFromGoogle(_req, res) {
   } catch (e) {
     res.status(400).json({ ok: false, error: e.message || String(e) });
   }
-}
-
-function workdays(fromIso, days) {
-  const out = [];
-  const d = new Date(fromIso + "T12:00:00");
-  while (out.length < days) {
-    const dow = d.getDay();
-    if (dow !== 0 && dow !== 6) {
-      out.push(d.toISOString().slice(0, 10));
-    }
-    d.setDate(d.getDate() + 1);
-  }
-  return out;
-}
-
-function mondayOf(dateIso) {
-  const d = new Date((dateIso || new Date().toISOString().slice(0, 10)) + "T12:00:00");
-  const day = d.getDay() || 7;
-  d.setDate(d.getDate() - day + 1);
-  return d.toISOString().slice(0, 10);
 }
 
 function sendEnquiryFile(res, enquiryNo, kind, download) {
@@ -582,7 +571,24 @@ function mountOffice(app) {
       ok: true,
       start,
       days,
-      rows: listSchedule(fromDay, toDay)
+      rows: listSchedule(fromDay, toDay),
+      codes: SCHEDULE_CODES
+    });
+  });
+
+  app.get("/api/office/schedule/delivery", requireOffice, (_req, res) => {
+    const items = listDeliveryItems();
+    const categories = Array.from(new Set(
+      items.map((i) => i.category).concat(listOrders().map((o) => o.category)).filter(Boolean)
+    )).sort();
+    const current = isoWeekInfo(mondayOf());
+    res.json({
+      ok: true,
+      items,
+      categories,
+      weeks: weekOptions(items),
+      currentWeekKey: weekKey(current),
+      codes: SCHEDULE_CODES
     });
   });
 
