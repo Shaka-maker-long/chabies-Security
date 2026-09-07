@@ -492,14 +492,14 @@ function deleteOrder(orderNumber) {
   save();
 }
 
-function scheduleFieldsFromOrder(order, sortOrder) {
+function scheduleFieldsFromOrder(order, sortOrder, previous) {
   return {
     order_number: formatOrderId(order.order_number),
     item_type: String(order.type || ""),
     category: String(order.category || ""),
     product: String(order.product || ""),
     province: String(order.province || ""),
-    order_date: String(order.payment_date || ""),
+    order_date: String(order.payment_date || (previous && previous.order_date) || ""),
     status: String(order.status || ""),
     sort_order: Number(sortOrder) || 0
   };
@@ -520,9 +520,10 @@ function syncScheduleFromOrders(given) {
   });
   let changed = false;
   orders.forEach((order, i) => {
-    const fields = scheduleFieldsFromOrder(order, i + 1);
+    const existing = have.get(formatOrderId(order.order_number));
+    const fields = scheduleFieldsFromOrder(order, i + 1, existing);
     if (!fields.order_number) return;
-    const row = have.get(fields.order_number);
+    const row = existing;
     if (!row) {
       const created = {
         id: state.nextScheduleId++,

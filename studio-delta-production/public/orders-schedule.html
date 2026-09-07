@@ -21,26 +21,25 @@
     .tools input[type=search]:focus { outline:none; border-color:#2f6fed; box-shadow:0 0 0 3px rgba(47,111,237,.15); }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
-    .wrap { overflow:auto; height:calc(100vh - 118px); }
-    table { border-collapse:separate; border-spacing:0; min-width:2200px; background:#fff; font-size:12px; }
+    .board { display:flex; height:calc(100vh - 118px); min-width:0; background:#fff; }
+    .meta-pane { flex:0 0 auto; overflow:auto hidden; max-width:min(70vw, 992px); box-shadow:4px 0 10px rgba(16,24,40,.12); z-index:2; scrollbar-width:none; }
+    .meta-pane::-webkit-scrollbar { display:none; }
+    .cal-pane { flex:1 1 auto; overflow:auto; min-width:0; }
+    table { border-collapse:separate; border-spacing:0; background:#fff; font-size:12px; }
+    #grid { min-width:1600px; }
     th, td { border:1px solid var(--line); padding:4px 6px; height:34px; white-space:nowrap; background:#fff; }
-    thead th { background:var(--head); font-size:11px; }
+    thead th { background:var(--head); font-size:11px; position:sticky; z-index:5; }
+    thead tr:nth-child(1) th { top:0; }
+    thead tr:nth-child(2) th { top:34px; }
+    thead tr:nth-child(3) th { top:68px; }
     body.office-app #grid thead th.day { text-transform:none; letter-spacing:0; }
-    thead tr:nth-child(1) th { position:sticky; top:0; z-index:5; }
-    thead tr:nth-child(2) th { position:sticky; top:34px; z-index:5; }
-    thead tr:nth-child(3) th { position:sticky; top:68px; z-index:5; }
     .day { min-width:58px; text-align:center; }
-    .left { box-sizing:border-box; }
     .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; }
     td input { width:100%; border:0; font:inherit; background:transparent; }
     .code-cell { text-align:center; font-weight:700; cursor:pointer; user-select:none; }
     .code-cell:focus { outline:2px solid #2f6fed; outline-offset:-2px; }
-    .freeze { position:sticky; z-index:3; background:#fff; }
-    thead th.freeze { z-index:8; background:var(--head); }
-    .l8 { box-shadow:3px 0 8px rgba(16,24,40,.12); }
-    .week-lock { left:0; z-index:9; font-weight:700; letter-spacing:.02em; min-width:var(--lock); width:var(--lock); }
+    .week-lock { font-weight:700; letter-spacing:.02em; text-align:left; }
     tr.unplanned td { background:var(--warn); }
-    tr.unplanned td.freeze { background:var(--warn); }
     tr.unplanned td input { background:transparent; }
     #picker {
       position:fixed; z-index:30; display:none; width:240px; background:#fff;
@@ -83,7 +82,10 @@
     </div>
   </header>
   <div class="legend" id="legend"></div>
-  <div class="wrap" id="scroller"><table id="grid"></table></div>
+  <div class="board">
+    <div class="meta-pane" id="metaPane"><table id="meta"></table></div>
+    <div class="cal-pane" id="scroller"><table id="grid"></table></div>
+  </div>
   <div id="picker" role="listbox" aria-label="Schedule code"></div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
@@ -93,18 +95,11 @@
       ["category","CATEGORY", true, 100],
       ["product","PRODUCT", true, 168],
       ["province","PROVINCE", true, 112],
-      ["order_date","ORDER", true, 72],
+      ["order_date","ORDER", false, 72],
       ["courier","COURIER", false, 120],
       ["waybill","WAYBILL", false, 112],
       ["status","STATUS", true, 120]
     ];
-    const LEFT_LEFTS = [];
-    LEFT.reduce((x, col, i) => {
-      LEFT_LEFTS[i] = x;
-      return x + col[3];
-    }, 0);
-    const LOCK_W = LEFT.reduce((n, col) => n + col[3], 0);
-    document.documentElement.style.setProperty("--lock", LOCK_W + "px");
     let start = new URLSearchParams(location.search).get("start") || "";
     let days = [];
     let rows = [];
@@ -202,13 +197,9 @@
       box.style.top = top + "px";
     }
 
-    function leftCell(tag, i) {
+    function colStyle(i) {
       const w = LEFT[i][3];
-      return "<" + tag + " class=\"left freeze l" + i + "\" style=\"left:" + LEFT_LEFTS[i] + "px;width:" + w + "px;min-width:" + w + "px;max-width:" + w + "px\">";
-    }
-    function lockWidth() {
-      const lock = document.getElementById("frozenWeek");
-      return lock ? lock.getBoundingClientRect().width : LOCK_W;
+      return "width:" + w + "px;min-width:" + w + "px;max-width:" + w + "px";
     }
 
     function paintStatus() {
@@ -220,16 +211,18 @@
     }
 
     function render() {
+      const meta = document.getElementById("meta");
       const table = document.getElementById("grid");
       const shown = rows.filter(matches);
-      const wrap = table.parentElement;
-      let empty = wrap.querySelector(".empty");
+      const board = document.querySelector(".board");
+      let empty = board.querySelector(".empty");
       if (!rows.length || !shown.length) {
+        meta.innerHTML = "";
         table.innerHTML = "";
         if (!empty) {
           empty = document.createElement("div");
           empty.className = "empty";
-          wrap.appendChild(empty);
+          board.appendChild(empty);
         }
         empty.textContent = rows.length
           ? "No orders match that search."
@@ -256,31 +249,34 @@
         dates += "<th class=\"day\" data-day=\"" + d + "\">" + pretty(d) + "</th>";
       });
       const frozen = weekLabel(start || days[0]);
-      let html = "<thead><tr><th class=\"left freeze week-lock\" id=\"frozenWeek\" colspan=\"" + LEFT.length + "\">" + frozen + "</th>";
-      html += weeks + "</tr><tr>";
-      LEFT.forEach(([, l], i) => html += leftCell("th", i) + l + "</th>");
-      html += drow + "</tr><tr>";
-      LEFT.forEach((col, i) => html += leftCell("th", i) + "</th>");
-      html += dates + "</tr></thead><tbody>";
+      let left = "<thead><tr><th class=\"week-lock\" id=\"frozenWeek\" colspan=\"" + LEFT.length + "\">" + frozen + "</th></tr><tr>";
+      LEFT.forEach(([, l], i) => { left += "<th style=\"" + colStyle(i) + "\">" + l + "</th>"; });
+      left += "</tr><tr>";
+      LEFT.forEach((col, i) => { left += "<th style=\"" + colStyle(i) + "\"></th>"; });
+      left += "</tr></thead><tbody>";
+      let cal = "<thead><tr>" + weeks + "</tr><tr>" + drow + "</tr><tr>" + dates + "</tr></thead><tbody>";
       shown.forEach((row) => {
-        html += "<tr data-id=\"" + row.id + "\"" + (isPlanned(row) ? "" : " class=\"unplanned\"") + ">";
+        const mark = isPlanned(row) ? "" : " class=\"unplanned\"";
+        left += "<tr data-id=\"" + row.id + "\"" + mark + ">";
         LEFT.forEach(([k,, locked], i) => {
           const v = displayValue(row, k);
           if (locked) {
-            html += leftCell("td", i) + "<span class=\"cell-text\" title=\"" + esc(v) + "\">" + esc(v) + "</span></td>";
+            left += "<td style=\"" + colStyle(i) + "\"><span class=\"cell-text\" title=\"" + esc(v) + "\">" + esc(v) + "</span></td>";
           } else {
-            html += leftCell("td", i) + "<input data-k=\"" + k + "\" value=\"" + esc(v) + "\"></td>";
+            left += "<td style=\"" + colStyle(i) + "\"><input data-k=\"" + k + "\" value=\"" + esc(v) + "\"></td>";
           }
         });
+        left += "</tr>";
+        cal += "<tr data-id=\"" + row.id + "\"" + mark + ">";
         days.forEach((d) => {
           const v = (row.cells && row.cells[d]) || "";
-          html += "<td class=\"day code-cell\" data-day=\"" + d + "\" data-code=\"" + esc(v) + "\" tabindex=\"0\" style=\"" + codeStyle(v) + "\">" + esc(v) + "</td>";
+          cal += "<td class=\"day code-cell\" data-day=\"" + d + "\" data-code=\"" + esc(v) + "\" tabindex=\"0\" style=\"" + codeStyle(v) + "\">" + esc(v) + "</td>";
         });
-        html += "</tr>";
+        cal += "</tr>";
       });
-      html += "</tbody>";
-      table.innerHTML = html;
-      table.onchange = onChange;
+      meta.innerHTML = left + "</tbody>";
+      table.innerHTML = cal + "</tbody>";
+      meta.onchange = onChange;
       table.onclick = onGridClick;
       table.onkeydown = onGridKey;
       paintStatus();
@@ -291,8 +287,7 @@
       const wrap = document.getElementById("scroller");
       const th = wrap.querySelector('th[data-week-start="' + monday + '"]');
       if (!th) return false;
-      const left = th.offsetLeft - lockWidth();
-      wrap.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+      wrap.scrollTo({ left: Math.max(0, th.offsetLeft), behavior: "smooth" });
       const frozen = document.getElementById("frozenWeek");
       if (frozen) frozen.textContent = weekLabel(monday);
       return true;
@@ -302,13 +297,20 @@
       const wrap = document.getElementById("scroller");
       const frozen = document.getElementById("frozenWeek");
       if (!wrap || !frozen || !days.length) return;
-      const edge = wrap.getBoundingClientRect().left + lockWidth() + 4;
+      const edge = wrap.getBoundingClientRect().left + 4;
       let pick = days[0];
       for (let i = 0; i < days.length; i++) {
         const th = wrap.querySelector('thead tr:nth-child(3) th.day[data-day="' + days[i] + '"]');
         if (th && th.getBoundingClientRect().right > edge) { pick = days[i]; break; }
       }
       frozen.textContent = weekLabel(pick);
+    }
+
+    function syncScrollY(from, to) {
+      if (syncScrollY.lock) return;
+      syncScrollY.lock = true;
+      to.scrollTop = from.scrollTop;
+      syncScrollY.lock = false;
     }
 
     function onGridClick(e) {
@@ -332,7 +334,9 @@
       });
       row.delivery_days = Array.from(daysSet);
       row.delivery_planned = daysSet.size > 0;
-      if (tr) tr.classList.toggle("unplanned", !row.delivery_planned);
+      document.querySelectorAll('tr[data-id="' + row.id + '"]').forEach((el) => {
+        el.classList.toggle("unplanned", !row.delivery_planned);
+      });
       paintStatus();
     }
 
@@ -361,7 +365,15 @@
       const id = Number(tr.getAttribute("data-id"));
       const row = rows.find((r) => r.id === id);
       if (!row) return;
-      row[e.target.dataset.k] = e.target.value;
+      let value = e.target.value;
+      if (e.target.dataset.k === "order_date") {
+        value = value.trim();
+        row.order_date = value;
+        row.order_date_label = value;
+        e.target.value = value;
+      } else {
+        row[e.target.dataset.k] = value;
+      }
       await sdOfficeFetch("/api/office/schedule/row", {
         method: "PUT",
         body: JSON.stringify(row)
@@ -402,7 +414,13 @@
       query = e.target.value.trim().toLowerCase();
       render();
     });
-    document.getElementById("scroller").addEventListener("scroll", syncFrozenWeek, { passive: true });
+    document.getElementById("scroller").addEventListener("scroll", () => {
+      syncFrozenWeek();
+      syncScrollY(document.getElementById("scroller"), document.getElementById("metaPane"));
+    }, { passive: true });
+    document.getElementById("metaPane").addEventListener("scroll", () => {
+      syncScrollY(document.getElementById("metaPane"), document.getElementById("scroller"));
+    }, { passive: true });
     document.addEventListener("click", (e) => {
       if (e.target.closest("#picker") || e.target.closest(".code-cell")) return;
       closePicker();
