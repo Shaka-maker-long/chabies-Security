@@ -187,7 +187,8 @@ function countdownRemainingMs(order, nowMs) {
   else if (typeof pausedAt === "string" && pausedAt) pausedAt = new Date(pausedAt).getTime();
   else pausedAt = Number(pausedAt) || 0;
   const end = order.isPaused && pausedAt ? pausedAt : nowMs;
-  return target * 60 * 1000 - Math.max(0, end - start - pauseMs);
+  const prior = Number(order.priorWorkMs) || 0;
+  return target * 60 * 1000 - Math.max(0, end - start - pauseMs) - prior;
 }
 
 function bumpShopCache() {

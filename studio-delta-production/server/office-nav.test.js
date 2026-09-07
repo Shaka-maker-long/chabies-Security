@@ -87,6 +87,7 @@ assert.ok(floor.indexOf("Your duration for this order is") !== -1);
 assert.ok(floor.indexOf("Estimated finish") !== -1);
 assert.ok(floor.indexOf("lunch is not counted") !== -1);
 assert.ok(floor.indexOf("Time left") !== -1);
+assert.ok(floor.indexOf("data-priorworkms") !== -1);
 assert.ok(floor.indexOf("estimateCompletionAt") !== -1);
 assert.ok(floor.indexOf("getMyCompletedWork") !== -1);
 assert.ok(floor.indexOf('id="view-completed"') !== -1);
