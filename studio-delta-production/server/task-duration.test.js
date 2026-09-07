@@ -76,6 +76,10 @@ function seedDuration(product, process, minutes) {
   const started = await callShopFunction("startOrder", [none.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
   assert.strictEqual(started.success, true, JSON.stringify(started));
   assert.strictEqual(started.targetMinutes, 0);
+  const startedLog = openLog("S-DUR-1");
+  const startedMeta = JSON.parse((startedLog && startedLog.values[12]) || "{}");
+  const openPause = (startedMeta.pauses || []).some((p) => p && !p.end);
+  assert.strictEqual(openPause, false, "missing task time must not auto-pause the job");
 
   const pauseStart = new Date(Date.now() - 90 * 60 * 1000);
   const pauseEnd = new Date(pauseStart.getTime() + 30 * 60 * 1000);

@@ -2713,7 +2713,7 @@
       if (mins > 0 && label) {
         return '<div class="task-duration-banner">Your duration for this order is ' + label + '</div>';
       }
-      return '<div class="task-duration-banner is-learn">No time is saved for this product yet. Pauses do not count. When you finish we will save the duration so the next job can count down.</div>';
+      return '<div class="task-duration-banner is-learn">No time is saved for this product yet. That does not pause the job. When you finish we save the duration so the next one can count down.</div>';
     }
     function countdownHtml(o) {
       const banner = durationBannerHtml(o);
@@ -4212,7 +4212,7 @@
       if (mins > 0 && spoken) {
         html += '<div class="start-duration"><strong>Your duration for this order is ' + spoken + '</strong><span class="small text-muted">The clock counts down working time only. Pauses do not count.</span></div>';
       } else {
-        html += '<div class="start-duration is-learn"><strong>No time is saved for this product yet</strong><span class="small">When you finish, we will save how long it took (pauses ignored) so the next job can count down.</span></div>';
+        html += '<div class="start-duration is-learn"><strong>No time is saved for this product yet</strong><span class="small">That does not pause the job. Keep working. When you finish we save how long it took so the next one can count down.</span></div>';
       }
       html += '<div class="mb-2"><strong>Type</strong><div>' + (brief.type || '—') + '</div></div>';
       html += '<div class="mb-2"><strong>Variation</strong><div>' + (brief.variation || '—') + '</div></div>';
@@ -4440,7 +4440,7 @@
            if (res.durationLabel) {
              showAlert('Your duration for this order is ' + res.durationLabel + '. The clock counts down working time only — pauses do not count.');
            } else {
-             showAlert('No time is saved for this product yet. When you finish we will save the duration so the next job can count down.');
+             showAlert('No time is saved for this product yet. Keep the job running — when you finish we will save the duration so the next one can count down.');
            }
            loadDashboard(true);
         } else if (res.needsSwitchReason) {
