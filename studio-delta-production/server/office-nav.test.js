@@ -278,6 +278,8 @@ assert.ok(ordersHtml.indexOf("enquiry_no") !== -1);
 assert.ok(ordersHtml.indexOf("Save order") !== -1);
 assert.ok(ordersHtml.indexOf("data-edit-order") !== -1);
 assert.ok(ordersHtml.indexOf("wrap-text") === -1);
+assert.ok(enquiriesHtml.indexOf("wrap-text") === -1, "enquiry sheet rows must not wrap");
+assert.ok(enquiriesHtml.indexOf("height:36px") !== -1);
 assert.ok(ordersHtml.indexOf("addRow()") === -1);
 assert.ok(ordersHtml.indexOf("/orders/schedule") !== -1);
 assert.ok(ordersHtml.indexOf("Production schedule") !== -1);

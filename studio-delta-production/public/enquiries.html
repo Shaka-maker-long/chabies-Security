@@ -31,12 +31,11 @@
     button:disabled { opacity:.55; cursor:not-allowed; }
     .wrap { overflow:auto; height:calc(100vh - 188px); }
     #grid { border-collapse:separate; border-spacing:0; min-width:3800px; background:#fff; font-size:12px; }
-    #grid th, #grid td { border:1px solid var(--line); padding:4px 6px; vertical-align:top; white-space:nowrap; background:#fff; }
-    #grid th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; }
+    #grid th, #grid td { border:1px solid var(--line); padding:4px 6px; vertical-align:middle; white-space:nowrap; background:#fff; height:36px; }
+    #grid th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; height:34px; }
     .empty { padding:28px 16px; color:var(--muted); font-size:13px; }
-    .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; }
-    #grid td.wrap-text .cell-text { white-space:pre-wrap; overflow:visible; text-overflow:unset; }
-    .row-actions-cell { display:flex; gap:4px; align-items:center; }
+    .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    .row-actions-cell { display:flex; gap:4px; align-items:center; flex-wrap:nowrap; }
     .icon-btn {
       width:28px; height:28px; min-height:28px; padding:0;
       display:inline-flex; align-items:center; justify-content:center;
@@ -48,7 +47,6 @@
     td.freeze { background:#fff; }
     td.freeze input, td.freeze select { text-overflow:ellipsis; }
     .freeze-end { box-shadow:4px 0 8px rgba(16,24,40,.12); }
-    .wrap-text { white-space:normal; }
     .msg { font-size:12px; color:var(--muted); }
     .tabs { display:flex; gap:4px; flex-wrap:wrap; }
     .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
@@ -1024,14 +1022,13 @@
             return;
           }
           if (k === "status") {
-            html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><span class=\"cell-text\">" + esc(displayValue(row, "status")) + "</span></td>";
+            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><span class=\"cell-text\" title=\"" + escAttr(displayValue(row, "status")) + "\">" + esc(displayValue(row, "status")) + "</span></td>";
             return;
           }
           const extra = k === "product" && namedLines(ensureLines(row)).length > 1
             ? " <span>" + namedLines(row.products).length + " products</span>"
             : "";
-          const wrap = (k === "request" || k === "comment") ? " wrap-text" : "";
-          html += "<td class=\"" + cls + wrap + "\" style=\"" + style + "\"><span class=\"cell-text\">" + esc(displayValue(row, k)) + extra + "</span></td>";
+          html += "<td class=\"" + cls + "\" style=\"" + style + "\"><span class=\"cell-text\" title=\"" + escAttr(displayValue(row, k)) + "\">" + esc(displayValue(row, k)) + extra + "</span></td>";
         });
         html += "</tr>";
       });
