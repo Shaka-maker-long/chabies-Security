@@ -194,16 +194,21 @@ assert.ok(!doneCost.some((t) => t.status === "open"));
 
 assert.throws(
   () => pipeline.applyAction("#1996", "Approver", { action: "complete_approval", decision: "reject", assignee: "Coster" }),
-  /Comments/
+  /why costing is rejected|Comments/
 );
 
 const recost = pipeline.applyAction("#1996", "Approver", {
   action: "complete_approval",
   decision: "reject",
+  reason: "Need another supplier price",
   comments: "Supplier price is wrong",
   assignee: "Coster"
 });
 assert.strictEqual(recost.row.status, "Re-Cost");
+assert.strictEqual(recost.row.approval.status, "rejected");
+assert.strictEqual(recost.row.approval.reason, "Need another supplier price");
+assert.strictEqual(recost.row.costing_reject_reason, "Need another supplier price — Supplier price is wrong");
+assert.ok(recost.row.events.some((ev) => ev.kind === "complete_approval" && /Need another supplier price/.test(ev.label || "")));
 assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet"));
 
 pipeline.applyAction("#1996", "Coster", {
@@ -222,6 +227,7 @@ const approved = pipeline.applyAction("#1996", "Approver", {
 });
 assert.strictEqual(approved.row.approval.status, "approved");
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "quote"));
+assert.ok(approved.actions.some((a) => a.id === "reject_costing"));
 
 const pdf = Buffer.from("%PDF-1.1\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n");
 const pdfB64 = "data:application/pdf;base64," + pdf.toString("base64");
@@ -296,7 +302,9 @@ const fromIncl = db.normalizeEnquiryLines({
 }, null);
 assert.strictEqual(fromIncl[0].value_excl_vat, "1000.00");
 assert.strictEqual(fromIncl[0].value_incl_vat, "1150.00");
-assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up"));
+assert.ok(quoted.row.tasks.some((t) => t.kind === "follow_up" && t.status === "open"));
+assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up"));
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "pop"));
 assert.strictEqual(quoted.row.quotes.length, 1);
 assert.strictEqual(quoted.row.quotes[0].quote_no, "SOQ2361");
 assert.ok(quoted.row.quotes[0].file && quoted.row.quotes[0].file.stored_as);
@@ -455,6 +463,49 @@ assert.strictEqual(skipped.row.approval.comments, "Approval skipped");
 assert.strictEqual(skipped.row.quote_assignee, "Quoter");
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "quote" && t.enquiry_no === skip.enquiry_no));
 assert.ok(!pipeline.listMyTasks("Approver").some((t) => t.kind === "approval" && t.enquiry_no === skip.enquiry_no));
+assert.ok(skipped.actions.some((a) => a.id === "reject_costing"));
+assert.throws(
+  () => pipeline.applyAction(skip.enquiry_no, "Quoter", { action: "reject_costing", assignee: "Coster" }),
+  /why costing is rejected|Other/
+);
+assert.throws(
+  () => pipeline.applyAction(skip.enquiry_no, "Quoter", {
+    action: "reject_costing",
+    reason: "Other",
+    assignee: "Coster"
+  }),
+  /Say why/
+);
+assert.throws(
+  () => pipeline.applyAction(skip.enquiry_no, "Approver", {
+    action: "reject_costing",
+    reason: "Incomplete cost sheet",
+    assignee: "Coster"
+  }),
+  /assigned this step|Quoter/
+);
+const quoteReject = pipeline.applyAction(skip.enquiry_no, "Quoter", {
+  action: "reject_costing",
+  reason: "Incomplete cost sheet",
+  comments: "Missing fittings",
+  assignee: "Coster"
+});
+assert.strictEqual(quoteReject.row.status, "Re-Cost");
+assert.strictEqual(quoteReject.row.approval.status, "rejected");
+assert.strictEqual(quoteReject.row.approval.reason, "Incomplete cost sheet");
+assert.strictEqual(quoteReject.row.approval.rejected_by, "quoting");
+assert.strictEqual(quoteReject.row.costing_reject_reason, "Incomplete cost sheet — Missing fittings");
+assert.ok(quoteReject.row.events.some((ev) => ev.kind === "reject_costing" && /Incomplete cost sheet/.test(ev.label || "")));
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === skip.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "quote" && t.enquiry_no === skip.enquiry_no));
+pipeline.applyAction(skip.enquiry_no, "Coster", {
+  action: "complete_cost_sheet",
+  file_base64: csv,
+  file_name: "cost.csv",
+  file_confirmed: true,
+  quote_assignee: "Quoter"
+});
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "quote" && t.enquiry_no === skip.enquiry_no));
 
 assert.throws(
   () => pipeline.applyAction(skip.enquiry_no, "Quoter", {
@@ -956,6 +1007,16 @@ staff.upsertUser({ name: "Quoter", access: "Admin", role: "Admin", password: "x"
 staff.upsertUser({ name: "Pat", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes", enquiryRoles: ["Follow-up"] });
 assert.deepStrictEqual(staff.enquiryRoleHolders("Follow-up").sort(), ["Pat", "Quoter"]);
 
+function makeFollowUpsDue(enquiryNo) {
+  const raw = db.getEnquiryRaw(enquiryNo);
+  (raw.tasks || []).forEach((t) => {
+    if (t.kind === "follow_up" && t.status === "open") {
+      t.due_at = "2026-01-01T00:00:00.000Z";
+    }
+  });
+  db.saveEnquiryRecord(raw);
+}
+
 function toQuoted(clientName, quoteNo) {
   const enq = db.upsertEnquiry({
     date_enquired: "16/01/2026",
@@ -988,6 +1049,11 @@ function toQuoted(clientName, quoteNo) {
 }
 
 const pooled = toQuoted("Follow Pool", "SOQ2501");
+assert.ok(pooled.row.tasks.some((t) => t.kind === "follow_up" && t.status === "open"));
+assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "pop" && t.enquiry_no === pooled.row.enquiry_no));
+makeFollowUpsDue(pooled.row.enquiry_no);
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
 assert.ok(pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
 const firstFollow = pipeline.applyAction(pooled.row.enquiry_no, "Pat", {
@@ -1000,6 +1066,9 @@ assert.strictEqual(firstFollow.row.status, "Followed Up");
 assert.strictEqual(pipeline.currentQuoteFollowUps(firstFollow.row).length, 1);
 assert.ok(firstFollow.row.tasks.some((t) => t.kind === "follow_up" && t.status === "done" && t.assignee === "Pat"));
 assert.ok(firstFollow.row.tasks.some((t) => t.kind === "follow_up" && t.status === "cancelled" && t.assignee === "Quoter"));
+assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
+makeFollowUpsDue(pooled.row.enquiry_no);
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
 assert.ok(pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === pooled.row.enquiry_no));
 
@@ -1029,6 +1098,10 @@ const resetQuote = pipeline.applyAction(capped.row.enquiry_no, "Quoter", {
 assert.strictEqual(resetQuote.row.status, "Quoted");
 assert.strictEqual(pipeline.currentQuoteFollowUps(resetQuote.row).length, 0);
 assert.ok(!pipeline.followUpsExhausted(resetQuote.row));
+assert.ok(resetQuote.row.tasks.some((t) => t.kind === "follow_up" && t.status === "open"));
+assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === capped.row.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === capped.row.enquiry_no));
+makeFollowUpsDue(capped.row.enquiry_no);
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === capped.row.enquiry_no));
 assert.ok(pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === capped.row.enquiry_no));
 const afterNew = pipeline.applyAction(capped.row.enquiry_no, "Quoter", {

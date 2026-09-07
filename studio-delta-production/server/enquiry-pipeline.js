@@ -6,6 +6,15 @@ const { NEW_DESIGN_MIN_CHARS } = require("./enquiries-default");
 const FOLLOW_UP_DAYS = 7;
 const MAX_FOLLOW_UPS = 3;
 
+const COSTING_REJECT_REASONS = [
+  "Incomplete cost sheet",
+  "Cost too high",
+  "Wrong product or specifictions",
+  "Missing supplier quotation",
+  "Need another supplier price",
+  "Other"
+];
+
 const WAITING_STATUSES = [
   "Waiting on clients personal details",
   "Waiting on clients specifictions",
@@ -291,6 +300,7 @@ const DELIVERABLE_ACTIONS = {
   supplier_wait: "cost_sheet",
   complete_supplier: "supplier",
   complete_approval: "approval",
+  reject_costing: "quote",
   complete_quote: "quote",
   complete_followup: "follow_up",
   complete_reject: "pop",
@@ -399,6 +409,7 @@ function availableActions(row) {
   }
   if (status === "Costed" && row.approval && row.approval.status === "approved") {
     actions.push({ id: "complete_quote", label: "Upload quote PDF" });
+    actions.push({ id: "reject_costing", label: "Reject costing" });
   }
   if (statusAllows(row, ["Quoted", "Followed Up"])) {
     actions.push({ id: "complete_quote", label: "Issue another quote" });
@@ -432,6 +443,7 @@ function listMyTasks(userName, opts) {
       if (task.status !== "open") continue;
       if (!all && !namesMatch(task.assignee, me)) continue;
       const dueAt = task.due_at || (task.kind === "follow_up" ? followUpDueAt(row) : "");
+      if (task.kind === "follow_up" && !isOverdue(dueAt)) continue;
       out.push(decorateTask(row, task, dueAt));
     }
     if (statusAllows(row, ["Quoted", "Followed Up"]) && !followUpsExhausted(row)) {
@@ -527,7 +539,8 @@ function processSnapshot(enquiryNo, actorName) {
     followUpDays: FOLLOW_UP_DAYS,
     followUpMax: MAX_FOLLOW_UPS,
     followUpPeople: staff.enquiryRoleHolders("Follow-up"),
-    quoteNo: db.quoteNoHint()
+    quoteNo: db.quoteNoHint(),
+    costingRejectReasons: COSTING_REJECT_REASONS.slice()
   };
 }
 
@@ -587,6 +600,7 @@ function applyAction(enquiryNo, actorName, body) {
     complete_supplier: completeSupplier,
     complete_cost_sheet: completeCostSheet,
     complete_approval: completeApproval,
+    reject_costing: rejectCosting,
     complete_quote: completeQuote,
     complete_followup: completeFollowup,
     complete_reject: completeReject,
@@ -646,8 +660,10 @@ function eventLabel(action, row, fromStatus, body) {
   if (action === "complete_cost_sheet") return "Cost sheet uploaded";
   if (action === "complete_approval") {
     const d = String(body.decision || "").toLowerCase();
-    return d.indexOf("reject") >= 0 ? "Costing rejected — Re-Cost" : "Costing approved";
+    if (d.indexOf("reject") >= 0) return costingRejectedLabel(row, body);
+    return "Costing approved";
   }
+  if (action === "reject_costing") return costingRejectedLabel(row, body);
   if (action === "complete_quote") {
     const n = Array.isArray(row.quotes) ? row.quotes.length : 0;
     return (n > 1 ? "Quote " + n + " issued" : "Quote PDF issued") + (row.quote_no ? " " + row.quote_no : "");
@@ -1046,24 +1062,59 @@ function completeCostSheet(row, actor, body) {
   addTask(row, "quote", quoter);
 }
 
+function resolveCostingReject(body) {
+  const reason = String((body && body.reason) || "").trim();
+  const comments = String((body && (body.comments || body.note)) || "").trim();
+  const known = COSTING_REJECT_REASONS.find((r) => r === reason)
+    || COSTING_REJECT_REASONS.find((r) => namesMatch(r, reason));
+  if (known === "Other") {
+    if (!comments) throw new Error("Say why costing is rejected");
+    return { reason: "Other", comments };
+  }
+  if (known) return { reason: known, comments };
+  if (comments) return { reason: comments, comments };
+  throw new Error("Choose why costing is rejected. Comments are required if you pick Other");
+}
+
+function costingRejectNote(decided) {
+  if (decided.comments && decided.comments !== decided.reason) {
+    return decided.reason + " — " + decided.comments;
+  }
+  return decided.reason;
+}
+
+function costingRejectedLabel(row, body) {
+  const reason = String((row.approval && row.approval.reason) || (body && body.reason) || "").trim();
+  return reason ? "Costing rejected — " + reason : "Costing rejected — Re-Cost";
+}
+
+function applyCostingReject(row, actor, body) {
+  const decided = resolveCostingReject(body);
+  row.approval = row.approval || {};
+  row.approval.status = "rejected";
+  row.approval.reason = decided.reason;
+  row.approval.comments = decided.comments || decided.reason;
+  row.approval.decided_by = actor;
+  row.approval.decided_at = db.nowIso();
+  row.status = "Re-Cost";
+  const coster = requireRoleAssignee("Costing", body.assignee, lastAssignee(row, "cost_sheet"));
+  addTask(row, "cost_sheet", coster, { note: costingRejectNote(decided) });
+  return decided;
+}
+
 function completeApproval(row, actor, body) {
   if (row.status !== "Costed" || !row.approval || row.approval.status !== "pending") {
     throw new Error("There is no cost sheet waiting for approval");
   }
   const decision = String(body.decision || "").trim().toLowerCase();
   const comments = String(body.comments || "").trim();
-  closeOpenKind(row, "approval", actor, comments);
   if (decision === "reject" || decision === "rejected") {
-    if (!comments) throw new Error("Comments are required when costing is rejected");
-    row.approval.status = "rejected";
-    row.approval.comments = comments;
-    row.approval.decided_by = actor;
-    row.approval.decided_at = db.nowIso();
-    row.status = "Re-Cost";
-    const coster = requireRoleAssignee("Costing", body.assignee, lastAssignee(row, "cost_sheet"));
-    addTask(row, "cost_sheet", coster, { note: comments });
+    const decided = applyCostingReject(row, actor, body);
+    closeOpenKind(row, "approval", actor, costingRejectNote(decided));
+    row.approval.rejected_by = "approval";
     return;
   }
+  closeOpenKind(row, "approval", actor, comments);
   if (decision !== "approve" && decision !== "approved") {
     throw new Error("Choose approve or reject");
   }
@@ -1075,6 +1126,15 @@ function completeApproval(row, actor, body) {
   row.quote_assignee = quotePerson;
   cancelOpenKind(row, "quote");
   addTask(row, "quote", quotePerson);
+}
+
+function rejectCosting(row, actor, body) {
+  if (row.status !== "Costed" || !row.approval || row.approval.status !== "approved") {
+    throw new Error("Costing can only be sent back after the cost sheet is ready to quote");
+  }
+  const decided = applyCostingReject(row, actor, body);
+  closeOpenKind(row, "quote", actor, costingRejectNote(decided));
+  row.approval.rejected_by = "quoting";
 }
 
 function lastAssignee(row, kind) {
@@ -1660,6 +1720,7 @@ function onboardEnquiry(actorName, body) {
 module.exports = {
   FOLLOW_UP_DAYS,
   MAX_FOLLOW_UPS,
+  COSTING_REJECT_REASONS,
   currentQuoteFollowUps,
   followUpsExhausted,
   WAITING_STATUSES,
