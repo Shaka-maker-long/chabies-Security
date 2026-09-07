@@ -41,6 +41,7 @@ const staff = require("./staff");
 const pipeline = require("./enquiry-pipeline");
 const desk = require("./enquiry-desk");
 const paintShop = require("./powder-shop");
+const glassPo = require("./glass-po");
 const fs = require("fs");
 const sqlite = require("./sqlite-store");
 const {
@@ -235,11 +236,58 @@ function mountOffice(app) {
     try {
       const { callShopFunction } = require("./gas");
       const data = await callShopFunction("listMaterialsToOrder", []);
-      res.json({ ok: true, glass: (data && data.glass) || [], wood: (data && data.wood) || [] });
+      const glass = glassPo.snapshot();
+      res.json({
+        ok: true,
+        glass: glass.glass,
+        wood: (data && data.wood) || [],
+        toOrder: glass.toOrder,
+        outstanding: glass.outstanding,
+        received: glass.received,
+        toOrderCount: glass.toOrderCount,
+        outstandingCount: glass.outstandingCount
+      });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message || String(e) });
     }
   });
+
+  app.post("/api/office/glass-po", requireOffice, (req, res) => {
+    try {
+      const result = glassPo.createPurchaseOrder(
+        (req.body && (req.body.lineIds || req.body.ids)) || [],
+        req.office && req.office.name
+      );
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/glass-po/receive", requireOffice, (req, res) => {
+    try {
+      const result = glassPo.receiveGlass(req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/glass-po/invoices/:invoiceId", requireOffice, (req, res) => {
+    const file = glassPo.readInvoiceFile(req.params.invoiceId);
+    if (!file) {
+      res.status(404).json({ ok: false, error: "Invoice not found." });
+      return;
+    }
+    const download = String((req.query && req.query.download) || "") === "1";
+    res.setHeader("Content-Type", file.mime || "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "invoice").replace(/"/g, "") + "\""
+    );
+    res.send(file.buffer);
+  });
+
   app.put("/api/office/materials-to-order", requireOffice, async (req, res) => {
     try {
       const { callShopFunction } = require("./gas");
