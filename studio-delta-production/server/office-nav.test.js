@@ -278,6 +278,8 @@ assert.ok(dashHtml.indexOf("Quote value by type") !== -1);
 assert.ok(dashHtml.indexOf("Week of month") !== -1);
 assert.ok(dashHtml.indexOf("prodSearch") !== -1);
 assert.ok(dashHtml.indexOf("Product value (excl VAT)") !== -1);
+assert.ok(dashHtml.indexOf("Open work that still needs doing") !== -1);
+assert.ok(dashHtml.indexOf("Follow-up only after 7 days") !== -1);
 assert.ok(dashHtml.indexOf("/sd-pwa.js?v=pwa") !== -1, "dashboard must boot the PWA");
 assert.ok(dashHtml.indexOf("qs(params)") !== -1, "week-of-month drill must send the clicked month");
 assert.ok(dashHtml.indexOf("drillMoneyHtml") !== -1);

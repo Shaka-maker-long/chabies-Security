@@ -399,6 +399,10 @@ function firstEvent(row, kind) {
   return hit && hit.at ? Date.parse(hit.at) : 0;
 }
 
+function isOpenWorkTask(row, task) {
+  return require("./enquiry-pipeline").isActionableOpenTask(row, task);
+}
+
 function followUpOverdue(row) {
   const status = statusOf(row);
   if (status !== "Quoted" && status !== "Followed Up") return false;
@@ -517,7 +521,7 @@ function buildDashboard(query) {
       if (!isClosed(status) && status !== "Ordered") openNow += 1;
       if (followUpOverdue(row)) overdueFollowUps += 1;
       (row.tasks || []).forEach((t) => {
-        if (t.status !== "open" || !t.assignee) return;
+        if (!isOpenWorkTask(row, t) || !t.assignee) return;
         bump(assignee, t.assignee);
       });
       const ageDays = opened ? (Date.now() - opened) / 86400000 : 0;
@@ -823,7 +827,7 @@ function matchesDrill(row, query, win) {
   }
   if (kind === "workload") {
     if (!openedIn) return false;
-    return (row.tasks || []).some((t) => t.status === "open" && t.assignee === value);
+    return (row.tasks || []).some((t) => isOpenWorkTask(row, t) && t.assignee === value);
   }
   if (kind === "stuck") {
     if (!openedIn) return false;
