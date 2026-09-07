@@ -265,7 +265,7 @@ const ALLOWED = new Set([
   "undoAutoSwitch", "leaveBatchForOrder", "getIdleWorkers", "pollIdleAlerts", "assignIndirectTask",
   "grantOvertime", "listOvertimeGrants", "getOrderJobBrief", "noteMissedResume", "getFloorAdminDesk", "checkMissedResumes",
   "getActivityReport", "getScheduleBoard", "generateWorkerSchedule", "insertScheduleTask", "clearWorkerScheduleFrom",
-  "checkIdleWorkers", "enforceShiftHours", "lazySetup", "getTaskDuration", "getMyCompletedWork",
+  "checkIdleWorkers", "enforceShiftHours", "lazySetup", "getTaskDuration", "getTaskTimeEstimate", "getMyCompletedWork",
   "getGlassTypes", "getWoodTypes", "listMaterialsToOrder", "markMaterialOrdered"
 ]);
 

@@ -937,6 +937,7 @@ function getOrdersForRole(role, workerName, skipCache) {
 
       if ((isStageValid || isAlreadyActive) && isNotFinished) {
         var plateMins = getTaskDurationMinutes(productName, "Plate Cutting");
+        var plateEta = estimateCompletionPack(plateInfo.startTime || new Date(), plateMins);
         relevantOrders.push({
           rowIndex: i + 1,
           order: orderNum,
@@ -952,6 +953,8 @@ function getOrdersForRole(role, workerName, skipCache) {
           startedAt: plateInfo.startTime || "",
           targetMinutes: plateMins,
           durationLabel: formatSpokenDuration(plateMins),
+          etaAt: plateEta.etaAt,
+          etaLabel: plateEta.etaLabel,
           pauseMs: plateInfo.pauseMs || 0,
           pausedAt: plateInfo.pausedAt || "",
           batchShare: plateInfo.batchShare || 1,
@@ -969,6 +972,7 @@ function getOrdersForRole(role, workerName, skipCache) {
     
     if (role === 'Admin' || includesStatusCaseInsensitive(allowedStatuses, mainStatus)) {
       var roleMins = getTaskDurationMinutes(productName, role);
+      var roleEta = estimateCompletionPack(assignment && assignment.startTime ? assignment.startTime : new Date(), roleMins);
       relevantOrders.push({
         rowIndex: i + 1,
         order: orderNum,
@@ -984,6 +988,8 @@ function getOrdersForRole(role, workerName, skipCache) {
         startedAt: assignment && assignment.startTime ? assignment.startTime : "",
         targetMinutes: roleMins,
         durationLabel: formatSpokenDuration(roleMins),
+        etaAt: roleEta.etaAt,
+        etaLabel: roleEta.etaLabel,
         pauseMs: assignment ? (assignment.pauseMs || 0) : 0,
         pausedAt: assignment ? (assignment.pausedAt || "") : "",
         batchShare: assignment ? (assignment.batchShare || 1) : 1,
@@ -1067,6 +1073,74 @@ function formatSpokenDuration(totalMins) {
   var minPart = m === 1 ? "1 minute" : (m > 1 ? m + " minutes" : "");
   if (hourPart && minPart) return hourPart + " " + minPart;
   return hourPart || minPart;
+}
+
+function coerceEstimateDate(value) {
+  if (!value) return null;
+  if (Object.prototype.toString.call(value) === "[object Date]") {
+    return isNaN(value.getTime()) ? null : value;
+  }
+  var d = new Date(value);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+function formatEstimateClock(date) {
+  var at = coerceEstimateDate(date);
+  if (!at) return "";
+  var sast = asSast(at);
+  var hh = String(sast.getUTCHours()).padStart(2, "0");
+  var mm = String(sast.getUTCMinutes()).padStart(2, "0");
+  var stamp = hh + ":" + mm;
+  var day = sastDayStamp(at);
+  var now = new Date();
+  if (day === sastDayStamp(now)) return stamp;
+  if (day === sastDayStamp(addSastDays(now, 1))) return "tomorrow " + stamp;
+  var days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return days[sast.getUTCDay()] + " " + stamp;
+}
+
+function estimateCompletionAt(startDate, workMinutes) {
+  var cursor = coerceEstimateDate(startDate);
+  var remaining = Number(workMinutes);
+  if (!cursor || !(remaining > 0)) return null;
+  var safety = 0;
+  while (remaining > 0 && safety++ < 20000) {
+    var mins = sastMinsOfDay(cursor);
+    if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) {
+      cursor = sastWallToDate(cursor, 12, 30);
+      continue;
+    }
+    var chunkEnd = mins < LUNCH_START_MINS
+      ? sastWallToDate(cursor, 12, 0)
+      : sastWallToDate(addSastDays(cursor, 1), 12, 0);
+    var avail = (chunkEnd.getTime() - cursor.getTime()) / 60000;
+    if (avail <= 0) {
+      cursor = new Date(cursor.getTime() + 1000);
+      continue;
+    }
+    var take = Math.min(remaining, avail);
+    cursor = new Date(cursor.getTime() + take * 60000);
+    remaining -= take;
+  }
+  return cursor;
+}
+
+function estimateCompletionPack(startDate, workMinutes) {
+  var at = estimateCompletionAt(startDate, workMinutes);
+  if (!at) return { etaAt: "", etaLabel: "" };
+  return { etaAt: at.toISOString(), etaLabel: formatEstimateClock(at) };
+}
+
+function getTaskTimeEstimate(startDate, workMinutes) {
+  return estimateCompletionPack(startDate, workMinutes);
+}
+
+function attachTaskEstimate(order, startDate) {
+  order = order || {};
+  var pack = estimateCompletionPack(startDate || order.startedAt || new Date(), order.targetMinutes);
+  order.etaAt = pack.etaAt;
+  order.etaLabel = pack.etaLabel;
+  return order;
 }
 
 function taskDurationSheet() {
@@ -1519,6 +1593,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
     
     var firstProduct = orderData[parseInt(rowIndex, 10) - 1] ? String(orderData[parseInt(rowIndex, 10) - 1][6] || "").trim() : "";
     var targetMinutes = getTaskDurationMinutes(firstProduct, role);
+    var startEta = estimateCompletionPack(startTime, targetMinutes);
     return {
       success: true,
       newStatus: started[0] ? started[0].newStatus : "",
@@ -1527,6 +1602,8 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       batchId: batchId,
       targetMinutes: targetMinutes,
       durationLabel: formatSpokenDuration(targetMinutes),
+      etaAt: startEta.etaAt,
+      etaLabel: startEta.etaLabel,
       product: firstProduct
     };
     
@@ -3400,7 +3477,9 @@ function emptyJobBrief(orderNumber, process) {
     highlights: [],
     process: String(process || ""),
     targetMinutes: 0,
-    durationLabel: ""
+    durationLabel: "",
+    etaAt: "",
+    etaLabel: ""
   };
 }
 
@@ -3416,6 +3495,7 @@ function getOrderJobBrief(orderNumber, process) {
     var description = String(data[i][9] || "");
     var product = String(data[i][6] || "");
     var minutes = getTaskDurationMinutes(product, process);
+    var eta = estimateCompletionPack(new Date(), minutes);
     return {
       order: want,
       type: String(data[i][4] || ""),
@@ -3427,7 +3507,9 @@ function getOrderJobBrief(orderNumber, process) {
       highlights: parseDescriptionHighlights(description),
       process: String(process || ""),
       targetMinutes: minutes,
-      durationLabel: formatSpokenDuration(minutes)
+      durationLabel: formatSpokenDuration(minutes),
+      etaAt: eta.etaAt,
+      etaLabel: eta.etaLabel
     };
   }
   return emptyJobBrief(want, process);

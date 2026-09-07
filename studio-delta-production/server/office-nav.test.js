@@ -84,6 +84,9 @@ assert.ok(floor.indexOf("safeNextPath") === -1 || floor.indexOf("if (next && ses
 assert.ok(floor.indexOf('id="homeScore"') !== -1);
 assert.ok(floor.indexOf("loadHomeScore") !== -1);
 assert.ok(floor.indexOf("Your duration for this order is") !== -1);
+assert.ok(floor.indexOf("Estimated finish") !== -1);
+assert.ok(floor.indexOf("lunch is not counted") !== -1);
+assert.ok(floor.indexOf("estimateCompletionAt") !== -1);
 assert.ok(floor.indexOf("getMyCompletedWork") !== -1);
 assert.ok(floor.indexOf('id="view-completed"') !== -1);
 assert.ok(floor.indexOf('id="completedWorkBtn"') !== -1);
