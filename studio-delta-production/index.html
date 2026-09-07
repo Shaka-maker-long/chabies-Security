@@ -4703,11 +4703,11 @@
            session.pendingSwitchReason = null;
            session.pendingWorkTogether = false;
            session.skipRunningChoice = false;
+           loadDashboard(true);
            if (res.remainingLabel) {
              const etaBit = res.etaLabel ? ' Estimated finish ' + res.etaLabel + '.' : '';
              showAlert('Continuing · ' + res.remainingLabel + ' left.' + etaBit + ' Lunch is not counted.');
            }
-           loadDashboard(true);
         } else if (res.needsSwitchReason) {
            loadDashboard(true);
            if (!session.skipRunningChoice && !session.pendingWorkTogether) {

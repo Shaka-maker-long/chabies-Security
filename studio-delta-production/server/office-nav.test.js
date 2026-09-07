@@ -359,6 +359,7 @@ assert.ok(codeGs.indexOf("var WORK_LOCKS_DISABLED = true") !== -1);
 assert.ok(codeGs.indexOf("function workLocksDisabled") !== -1);
 assert.ok(codeGs.indexOf("hourPart") !== -1 && codeGs.indexOf("minPart") !== -1, "task times speak hours and minutes");
 assert.ok(codeGs.indexOf("minutesFromDurationHours") !== -1);
+assert.ok(codeGs.indexOf("function resumeCountdownResult") !== -1);
 const durationsHtml = fs.readFileSync(path.join(__dirname, "../public/durations.html"), "utf8");
 assert.ok(durationsHtml.indexOf("3.5 is 3 hours 30 minutes") !== -1);
 assert.ok(durationsHtml.indexOf("hours: Math.round") !== -1);
