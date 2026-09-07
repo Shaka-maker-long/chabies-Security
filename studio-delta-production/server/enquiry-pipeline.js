@@ -653,7 +653,10 @@ function eventLabel(action, row, fromStatus, body) {
     return (n > 1 ? "Quote " + n + " issued" : "Quote PDF issued") + (row.quote_no ? " " + row.quote_no : "");
   }
   if (action === "complete_followup") return "Follow-up logged";
-  if (action === "complete_reject") return "Client rejected";
+  if (action === "complete_reject") {
+    const reason = String((row.client_outcome && row.client_outcome.reason) || "").trim();
+    return reason ? "Client rejected — " + reason : "Client rejected";
+  }
   if (action === "complete_order") {
     return row.drawing && row.drawing.required ? "POP saved — drawing required" : "POP saved — ready for Orders";
   }

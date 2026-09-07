@@ -1752,6 +1752,15 @@ function listEnquiryDeliverables(row) {
   return items;
 }
 
+function closeReasonOf(row) {
+  const fromOutcome = String((row && row.client_outcome && row.client_outcome.reason) || "").trim();
+  if (fromOutcome) return fromOutcome;
+  const ev = (Array.isArray(row && row.events) ? row.events : []).filter((e) =>
+    e && (e.kind === "complete_reject" || e.kind === "close")
+  ).slice(-1)[0];
+  return String((ev && ev.note) || "").trim();
+}
+
 function decorateEnquiry(row) {
   const products = normalizeEnquiryLines(row, null);
   const named = products.filter((p) => p.product);
@@ -1805,7 +1814,8 @@ function decorateEnquiry(row) {
     ordered_at: life.ordered_at,
     ordered_at_label: life.ordered_at_label,
     lifespan_ms: life.lifespan_ms,
-    lifespan_label: life.lifespan_label
+    lifespan_label: life.lifespan_label,
+    close_reason: closeReasonOf(row)
   };
 }
 
@@ -2199,6 +2209,7 @@ module.exports = {
   listDebtors,
   recordPayment,
   decorateMoney,
+  closeReasonOf,
   migrateJsonOrdersToWorkbook,
   normalizeOrdersSheet,
   ENQUIRY_FIELDS,
