@@ -1033,17 +1033,9 @@
     });
     const createBtn = document.getElementById("sdCreateOrder");
     if (createBtn) {
-      createBtn.onclick = async (e) => {
+      createBtn.onclick = (e) => {
         e.preventDefault();
-        const err = document.getElementById("sdCreateOrderErr");
-        if (err) err.textContent = "";
-        const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/create-order", { method: "POST", body: "{}" });
-        const j = await r.json();
-        if (!j.ok) {
-          if (err) err.textContent = j.error || "Could not create the order";
-          return;
-        }
-        window.location.href = "/orders";
+        window.location.href = "/orders/from-enquiry?enquiry=" + encodeURIComponent(state.enquiryNo);
       };
     }
   }

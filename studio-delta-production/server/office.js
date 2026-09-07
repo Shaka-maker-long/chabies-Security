@@ -32,9 +32,12 @@ const {
   persistenceInfo,
   findOpenEnquiryDuplicates,
   createOrderFromEnquiry,
+  createOrderDraftFromEnquiry,
+  createOrdersFromEnquiryForm,
   nextStudioOrderNumber,
   formatOrderId
 } = require("./db");
+const fromEnquiry = require("./create-order-from-enquiry");
 const jobCard = require("./job-card");
 const { importGoogleWorkbook, tabCounts, googleMigrateEnabled, dataDir } = require("./workbook-store");
 const staff = require("./staff");
@@ -673,6 +676,41 @@ function mountOffice(app) {
     try {
       const out = createOrderFromEnquiry(req.params.enquiryNo);
       res.json({ ok: true, ...out });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/enquiries/:enquiryNo/create-order-draft", requireOffice, (req, res) => {
+    try {
+      const out = createOrderDraftFromEnquiry(req.params.enquiryNo);
+      res.json({ ok: true, ...out });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/enquiries/:enquiryNo/create-orders", requireOffice, (req, res) => {
+    try {
+      const out = createOrdersFromEnquiryForm(req.params.enquiryNo, req.body || {});
+      res.json({ ok: true, ...out });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/delivery-estimate", requireOffice, (req, res) => {
+    try {
+      const types = [].concat(req.query.type || req.query.types || []).filter(Boolean);
+      res.json({
+        ok: true,
+        delivery: fromEnquiry.estimateDelivery({
+          types,
+          province: req.query.province || "",
+          date: req.query.date || "",
+          now: req.query.now || ""
+        })
+      });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
