@@ -1417,6 +1417,17 @@
         </div>
         <p class="small text-muted mb-2">During shift hours, workers with no running job appear here. Assign a non-order task; it closes automatically when they start an order.</p>
         <div id="idleWorkersList"><span class="text-muted small">Loading…</span></div>
+        <hr>
+        <h5 class="brand-font">Overtime</h5>
+        <p class="small text-muted">After 16:00 and on weekends the floor is locked unless you grant overtime. Regular time cannot go past 8 hours without overtime.</p>
+        <div class="d-flex gap-2 flex-wrap mb-2">
+          <select id="otWorker" class="form-select form-select-sm" style="max-width:220px"></select>
+          <button type="button" class="btn btn-sm btn-dark" onclick="grantSelectedOvertime()">Grant overtime today</button>
+        </div>
+        <div id="otList" class="small mb-3"></div>
+        <h5 class="brand-font">Did not resume by 08:00</h5>
+        <p class="small text-muted">Overnight jobs do not start themselves at 07:45. If someone has not resumed by 08:00, set the time they actually started or mark that they will resume later.</p>
+        <div id="resumeChaseList" class="small"></div>
       </div>
       <h2 class="brand-font mb-3">Worker Information</h2>
 
@@ -1587,7 +1598,7 @@
     
     <div id="view-admin-activity" class="view-section container d-none-view">
       <h2 class="brand-font mb-3">Employee Activity</h2>
-      <p class="text-muted">Paid hours are 07:45–12:00 and 12:30–15:45 (7.5 hours). The floor auto-pauses running jobs at lunch and at 15:45. Resume or start after 15:45 is overtime and stays on the clock. Overnight jobs are split by calendar day.</p>
+      <p class="text-muted">Paid hours are 07:45–12:00 and 12:30–15:45. Clocks auto-pause at lunch and at 16:00. After 16:00 and on weekends the floor is locked unless Admin grants overtime. Regular time cannot go past 8 hours without overtime. Overnight jobs stay paused — workers resume themselves.</p>
       <div class="row g-2 mb-3">
         <div class="col-md-3">
           <select id="activityPeriod" class="form-select border-dark" onchange="scheduleActivityReport()">
@@ -1688,7 +1699,7 @@
 
   <div class="modal fade" id="passModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="mb-3">Access Code</h3><p class="text-muted" id="passPromptName">Enter code</p><input type="password" id="inputPass" class="form-control text-center mb-3"><button class="btn btn-primary w-100" onclick="submitPass()">ENTER</button></div></div></div>
   <div class="modal fade" id="changePassModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4"><h3 class="mb-2">Change access code</h3><label class="form-label">Name</label><input id="changePassName" class="form-control mb-2" autocomplete="username"><label class="form-label">Current access code</label><input type="password" id="changePassCurrent" class="form-control mb-2" autocomplete="current-password"><label class="form-label">New access code</label><input type="password" id="changePassNext" class="form-control mb-3" autocomplete="new-password"><p class="text-danger small mb-2" id="changePassErr"></p><button class="btn btn-dark w-100" onclick="submitChangePassword()">SAVE ACCESS CODE</button></div></div></div>
-  <div class="modal fade" id="startModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="brand-font mb-2">Start Order</h3><h1 class="fw-bold text-primary mb-3" id="startModalOrder">...</h1><button class="btn btn-primary btn-lg w-100 mt-3" onclick="confirmStart()">START TIMER</button></div></div></div>
+  <div class="modal fade" id="startModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content p-4"><h3 class="brand-font mb-2 text-center">Start Order</h3><h1 class="fw-bold text-primary mb-3 text-center" id="startModalOrder">...</h1><div id="startConfirmBox" class="text-start small mb-3"></div><button class="btn btn-primary btn-lg w-100 mt-2" id="startTimerBtn" onclick="confirmStart()" disabled>START TIMER</button></div></div></div>
   <div class="modal fade" id="batchWorkModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content p-4 text-center">
@@ -1707,12 +1718,12 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content p-4 text-center">
         <h3 class="brand-font mb-2">Already working</h3>
-        <p class="mb-3" id="runningChoiceMsg">You already have an order running.</p>
+        <p class="mb-3" id="runningChoiceMsg">You already have an order running. Work on them together, or tick only the orders you will work on now. The rest are paused.</p>
         <div id="runningChoiceList" class="text-start mb-3 small"></div>
-        <p class="small text-muted mb-3">Together = one clock, time split across the orders. Switch = pause the current order (you will need a reason) and start the new one.</p>
+        <p class="small text-muted mb-3">Together splits one clock across the ticked orders. Only selected pauses every order you leave unticked.</p>
         <div class="d-grid gap-2">
-          <button class="btn btn-dark" id="btnWorkTogether" onclick="confirmWorkTogether()">Work on A and B</button>
-          <button class="btn btn-outline-dark" id="btnSwitchOrders" onclick="confirmSwitchFromRunning()">Switch from A to B</button>
+          <button class="btn btn-dark" id="btnWorkTogether" onclick="confirmWorkTogether()">Work on selected together</button>
+          <button class="btn btn-outline-dark" id="btnSwitchOrders" onclick="confirmSwitchFromRunning()">Only selected — pause the rest</button>
           <button class="btn btn-link text-muted" data-bs-dismiss="modal">Cancel</button>
         </div>
       </div>
@@ -1720,6 +1731,7 @@
   </div>
   <div class="modal fade" id="qcModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title brand-font">Checklist</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body p-4">
     <div class="mb-3"><strong>Order:</strong> <span id="qcOrderNum"></span></div>
+    <div class="mb-3 p-2 bg-light border rounded small" id="qcVariationBox"></div>
     <div id="qcChecklistContainer"></div>
     
     <div id="qcPhotoContainer" class="mt-3 d-none">
@@ -2078,7 +2090,7 @@
   </script>
   <script>
     let appData = { users:[], workerStats: {}, currentOrders:[], steelProfiles:[], backboards:[] };
-    let session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, canSeeOffice: false, canSeeDebtors: false, access: '', tasks: [], jobTitle: '', overtimeWarned: {}, pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pauseModalMode: 'pause' };
+    let session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, canSeeOffice: false, canSeeDebtors: false, access: '', tasks: [], jobTitle: '', overtimeWarned: {}, pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pendingKeepOrders: [], pendingBrief: null, pauseModalMode: 'pause' };
     let idleAlertModal = null;
     let backboardSelectionModal = null;
     let idlePollTimer = null;
@@ -3418,7 +3430,7 @@
     }
     
     function logout() { 
-      session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, canSeeOffice: false, canSeeDebtors: false, access: '', tasks: [], jobTitle: '', overtimeWarned: {}, pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pauseModalMode: 'pause' }; 
+      session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, canSeeOffice: false, canSeeDebtors: false, access: '', tasks: [], jobTitle: '', overtimeWarned: {}, pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pendingKeepOrders: [], pendingBrief: null, pauseModalMode: 'pause' }; 
       clearPersistedSession();
       forgetOfficeSession();
       stopIdleAlertPolling();
@@ -3883,14 +3895,56 @@
       return start('START', startTaskForOrder(o));
     }
 
+    function renderMarkedDescription(text) {
+      const src = String(text || '');
+      const esc = src.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return esc.replace(/⟦([^⟧]+)⟧/g, '<mark>$1</mark>').replace(/\[\[([^\]]+)\]\]/g, '<mark>$1</mark>');
+    }
+
+    function fillStartConfirm(brief) {
+      session.pendingBrief = brief || {};
+      document.getElementById('startModalOrder').innerText = (brief && brief.order) || session.activeOrder || '';
+      const highlights = (brief && brief.highlights) || [];
+      let html = '<div class="mb-2"><strong>Type</strong><div>' + (brief.type || '—') + '</div></div>';
+      html += '<div class="mb-2"><strong>Variation</strong><div>' + (brief.variation || '—') + '</div></div>';
+      html += '<div class="mb-2"><strong>Dimensions</strong><div>' + (brief.dimensions || '—') + '</div></div>';
+      html += '<div class="mb-2"><strong>Description</strong><div>' + renderMarkedDescription(brief.description || '') + '</div></div>';
+      html += '<label class="d-flex gap-2 align-items-start mb-2"><input type="checkbox" id="startUnderstood" onchange="syncStartTimerBtn()"><span>I understand the type, variation, description, and dimensions.</span></label>';
+      highlights.forEach((h) => {
+        html += '<label class="d-flex gap-2 align-items-start mb-2"><input type="checkbox" class="start-highlight" data-text="' + String(h).replace(/"/g, '&quot;') + '" onchange="syncStartTimerBtn()"><span>I saw this important note: <mark>' + h + '</mark></span></label>';
+      });
+      document.getElementById('startConfirmBox').innerHTML = html;
+      syncStartTimerBtn();
+    }
+
+    function syncStartTimerBtn() {
+      const understood = !!(document.getElementById('startUnderstood') && document.getElementById('startUnderstood').checked);
+      const marks = Array.from(document.querySelectorAll('.start-highlight'));
+      const allMarks = marks.every(el => el.checked);
+      const btn = document.getElementById('startTimerBtn');
+      if (btn) btn.disabled = !(understood && allMarks);
+    }
+
+    function readJobConfirm() {
+      const understood = !!(document.getElementById('startUnderstood') && document.getElementById('startUnderstood').checked);
+      const highlights = Array.from(document.querySelectorAll('.start-highlight:checked')).map(el => el.getAttribute('data-text') || '');
+      return { understood: understood, highlights: highlights };
+    }
+
     function continueToStartModal() {
-      if ((session.pendingStartTask || session.role) === 'Assembly') {
-        document.getElementById('glassCheckOrder').innerText = session.activeOrder;
-        if (glassCheckModal) glassCheckModal.show();
-      } else {
-        document.getElementById('startModalOrder').innerText = session.activeOrder; 
-        if (startModal) startModal.show(); 
-      }
+      const showNext = () => {
+        if ((session.pendingStartTask || session.role) === 'Assembly') {
+          document.getElementById('glassCheckOrder').innerText = session.activeOrder;
+          if (glassCheckModal) glassCheckModal.show();
+        } else if (startModal) startModal.show();
+      };
+      google.script.run.withSuccessHandler(brief => {
+        fillStartConfirm(brief || { order: session.activeOrder });
+        showNext();
+      }).withFailureHandler(() => {
+        fillStartConfirm({ order: session.activeOrder, type: '', variation: '', description: '', dimensions: '', highlights: [] });
+        showNext();
+      }).getOrderJobBrief(session.activeOrder);
     }
 
     function formatOrderNames(names) {
@@ -3910,23 +3964,33 @@
       );
     }
 
+    function selectedKeepOrders() {
+      return Array.from(document.querySelectorAll('.keep-order:checked')).map(el => el.value).filter(Boolean);
+    }
+
     function showRunningChoiceModal(running, newOrderNames) {
       session.pendingRunningOrders = running || [];
       const runningNames = (running || []).map(o => o.order).filter(Boolean);
-      const newNames = Array.isArray(newOrderNames) ? newOrderNames : [newOrderNames];
-      const fromLabel = formatOrderNames(runningNames) || 'the current order';
-      const toLabel = formatOrderNames(newNames) || 'the new order';
-      const togetherLabel = formatOrderNames(runningNames.concat(newNames));
-      document.getElementById('runningChoiceMsg').innerText =
-        'You have ' + fromLabel + ' running. Work together, or switch to ' + toLabel + '?';
-      document.getElementById('runningChoiceList').innerHTML =
-        '<div><strong>Running:</strong> ' + fromLabel + '</div><div><strong>New:</strong> ' + toLabel + '</div>';
-      document.getElementById('btnWorkTogether').innerText = 'Work on ' + togetherLabel;
-      document.getElementById('btnSwitchOrders').innerText = 'Switch from ' + fromLabel + ' to ' + toLabel;
+      const newNames = (Array.isArray(newOrderNames) ? newOrderNames : [newOrderNames]).filter(Boolean);
+      let html = '';
+      runningNames.forEach(n => {
+        html += '<label class="d-flex gap-2 mb-1"><input type="checkbox" class="keep-order" value="' + n + '" checked> <span>Running · ' + n + '</span></label>';
+      });
+      newNames.forEach(n => {
+        html += '<label class="d-flex gap-2 mb-1"><input type="checkbox" class="keep-order" value="' + n + '" checked> <span>New · ' + n + '</span></label>';
+      });
+      document.getElementById('runningChoiceList').innerHTML = html || '<div class="text-muted">No orders listed.</div>';
       if (runningChoiceModal) runningChoiceModal.show();
     }
 
     function confirmWorkTogether() {
+      const keep = selectedKeepOrders();
+      if (!keep.length) { showAlert('Tick the orders you will work on.'); return; }
+      if (session.activeOrder && keep.indexOf(session.activeOrder) === -1) {
+        showAlert('Keep the new order ticked, or cancel.');
+        return;
+      }
+      session.pendingKeepOrders = keep;
       session.pendingWorkTogether = true;
       session.skipRunningChoice = true;
       if (runningChoiceModal) runningChoiceModal.hide();
@@ -3946,6 +4010,13 @@
     }
 
     function confirmSwitchFromRunning() {
+      const keep = selectedKeepOrders();
+      if (!keep.length) { showAlert('Tick the orders you will work on now. The rest will pause.'); return; }
+      if (session.activeOrder && keep.indexOf(session.activeOrder) === -1) {
+        showAlert('Keep the new order ticked, or cancel.');
+        return;
+      }
+      session.pendingKeepOrders = keep;
       session.pendingWorkTogether = false;
       session.skipRunningChoice = true;
       if (runningChoiceModal) runningChoiceModal.hide();
@@ -4000,6 +4071,7 @@
       session.skipRunningChoice = false;
       session.pendingStartMode = 'start';
       session.startConfirmed = false;
+      session.pendingKeepOrders = [];
 
       const running = myRunningOrders([row]);
       if (running.length) {
@@ -4069,7 +4141,7 @@
            showAlert(res.message || res.error || "Could not start");
            loadDashboard();
         }
-      }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).startOrder(session.pendingRow, session.name, session.pendingStartTask || session.role, session.pendingBatchRows, session.pendingSwitchReason, !!session.pendingWorkTogether);
+      }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).startOrder(session.pendingRow, session.name, session.pendingStartTask || session.role, session.pendingBatchRows, session.pendingSwitchReason, !!session.pendingWorkTogether, session.pendingKeepOrders || [], readJobConfirm());
     }
 
     function onPauseReasonChange() {
@@ -4217,7 +4289,7 @@
            showAlert(res.message);
            loadDashboard();
         }
-      }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).workerResumeOrder(session.pendingRow, session.activeOrder, session.name, session.pendingSwitchReason, !!session.pendingWorkTogether);
+      }).withFailureHandler(err => { isSubmitting=false; showAlert("Error: "+err); loadDashboard(); }).workerResumeOrder(session.pendingRow, session.activeOrder, session.name, session.pendingSwitchReason, !!session.pendingWorkTogether, session.pendingKeepOrders || []);
     }
 
 
@@ -4313,6 +4385,12 @@
       }
 
       document.getElementById('qcOrderNum').innerText = ord;
+      const qcOrder = (appData.currentOrders || []).find(o => o.rowIndex === row) || {};
+      const varBox = document.getElementById('qcVariationBox');
+      if (varBox) {
+        varBox.innerHTML = '<div><strong>Variation</strong></div><div>' + (qcOrder.variation || '—') + '</div>' +
+          (qcOrder.description ? '<div class="mt-2"><strong>Description</strong><div>' + renderMarkedDescription(qcOrder.description) + '</div></div>' : '');
+      }
       
       // 5. PHOTO INPUTS
       const reqPhotos = PHOTO_REQS[qcKey]; 
@@ -6514,16 +6592,64 @@ function openSteelModal() {
       const box = document.getElementById('idleWorkersList');
       if (!box) return;
       google.script.run.withSuccessHandler(data => {
-        const workers = (data && data.workers) || [];
-        const tasks = (data && data.tasks) || [];
-        if (!workers.length) {
-          box.innerHTML = '<span class="text-muted small">No idle workers right now.</span>';
-          return;
+        const idle = (data && data.idle) || data || {};
+        const workers = idle.workers || [];
+        const tasks = idle.tasks || [];
+        box.innerHTML = workers.length
+          ? workers.map(w => idleWorkerRowHtml(w, tasks, 'idle-task-')).join('')
+          : '<span class="text-muted small">No idle workers right now.</span>';
+        const otSel = document.getElementById('otWorker');
+        if (otSel) {
+          const names = (data && data.workers) || [];
+          otSel.innerHTML = '<option value="">Grant overtime to…</option>' + names.map(n => '<option>' + n + '</option>').join('');
         }
-        box.innerHTML = workers.map(w => idleWorkerRowHtml(w, tasks, 'idle-task-')).join('');
+        const otBox = document.getElementById('otList');
+        if (otBox) {
+          const grants = (data && data.overtime) || [];
+          otBox.textContent = grants.length
+            ? grants.map(g => g.worker + (g.note ? ' · ' + g.note : '')).join(', ')
+            : 'No overtime granted today.';
+        }
+        const chase = document.getElementById('resumeChaseList');
+        if (chase) {
+          const rows = (data && data.missedResumes) || [];
+          chase.innerHTML = rows.length ? rows.map(r => {
+            const nameJs = JSON.stringify(String(r.worker || ''));
+            return '<div class="border rounded p-2 mb-2"><strong>' + r.worker + '</strong> · ' + (r.orders || '') +
+              '<div class="d-flex flex-wrap gap-2 mt-2">' +
+              '<input type="time" class="form-control form-control-sm" style="max-width:130px" id="resume-time-' + r.row + '" value="07:45">' +
+              '<button class="btn btn-sm btn-dark" onclick="noteResumeStarted(' + nameJs + ',' + r.row + ')">Set actual start</button>' +
+              '<button class="btn btn-sm btn-outline-dark" onclick="noteResumeLater(' + nameJs + ')">Other task — resume later</button>' +
+              '</div></div>';
+          }).join('') : '<span class="text-muted">Nobody is waiting on a morning resume.</span>';
+        }
       }).withFailureHandler(err => {
         box.innerHTML = '<span class="text-danger small">'+err+'</span>';
-      }).getIdleWorkers();
+      }).getFloorAdminDesk();
+    }
+
+    function grantSelectedOvertime() {
+      const worker = (document.getElementById('otWorker') || {}).value;
+      if (!worker) { showAlert('Choose a worker'); return; }
+      google.script.run.withSuccessHandler(res => {
+        if (!res || !res.success) { showAlert((res && res.message) || 'Could not grant overtime'); return; }
+        loadIdleWorkers();
+      }).grantOvertime(worker, '', session.name, 'Granted from Workers');
+    }
+
+    function noteResumeStarted(worker, row) {
+      const timeEl = document.getElementById('resume-time-' + row);
+      google.script.run.withSuccessHandler(res => {
+        if (!res || !res.success) { showAlert((res && res.message) || 'Could not save start time'); return; }
+        loadIdleWorkers();
+      }).noteMissedResume(worker, 'started', { actualStart: timeEl ? timeEl.value : '07:45' }, session.name);
+    }
+
+    function noteResumeLater(worker) {
+      google.script.run.withSuccessHandler(res => {
+        if (!res || !res.success) { showAlert((res && res.message) || 'Could not save'); return; }
+        loadIdleWorkers();
+      }).noteMissedResume(worker, 'later', { task: 'Waiting for materials' }, session.name);
     }
 
     function idleWorkerRowHtml(w, tasks, idPrefix) {

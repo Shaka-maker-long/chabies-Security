@@ -24,10 +24,16 @@ var SAST_OFFSET_MS = 2 * 60 * 60 * 1000; // South Africa has no DST
 var STANDARD_DAY_MINS = 7 * 60 + 30; // paid shift: 07:45-15:45 minus 30 min lunch
 var SHIFT_START_MINS = 7 * 60 + 45;
 var SHIFT_END_MINS = 15 * 60 + 45;
+var SHIFT_LOCK_MINS = 16 * 60;
 var LUNCH_START_MINS = 12 * 60;
 var LUNCH_END_MINS = 12 * 60 + 30;
 var SHIFT_DURATION = STANDARD_DAY_MINS;
+var MAX_REGULAR_MINS = 8 * 60;
+var RESUME_CHASE_MINS = 8 * 60;
 var IDLE_GRACE_MINS = 10;
+var TAB_OVERTIME = "Overtime_Grants";
+var TAB_RESUME_CHASE = "Resume_Chase";
+var SYSTEM_PAUSE_NOT_SELECTED = "Not working this order now";
 var INDIRECT_TASKS = ["Cleaning", "Maintenance", "Material handling", "Waiting for materials", "Waiting for plate", "Meeting", "Training", "Other"];
 
 
@@ -623,7 +629,7 @@ function getOrdersForRole(role, workerName, skipCache) {
     if (cached) return cached;
   }
   var ss = getSpreadsheet();
-  var data = getSheetGrid(ss, TAB_ORDERS, 7);
+  var data = getSheetGrid(ss, TAB_ORDERS, 11);
   var logData = getLogPack(ss).values;
   var activeAssignments = getActiveAssignmentsFromData(logData);
   var plateMap = (role === 'Plate Cutting') ? buildPlateStatusMap(logData) : {};
@@ -692,7 +698,12 @@ function getOrdersForRole(role, workerName, skipCache) {
           targetMinutes: getTaskDurationMinutes(productName, "Plate Cutting"),
           pauseMs: plateInfo.pauseMs || 0,
           pausedAt: plateInfo.pausedAt || "",
-          batchShare: plateInfo.batchShare || 1
+          batchShare: plateInfo.batchShare || 1,
+          type: String(data[i][4] || ""),
+          variation: String(data[i][7] || ""),
+          description: String(data[i][9] || ""),
+          dimensions: String(data[i][10] || ""),
+          highlights: parseDescriptionHighlights(data[i][9])
         });
       }
       continue; 
@@ -717,7 +728,12 @@ function getOrdersForRole(role, workerName, skipCache) {
         targetMinutes: getTaskDurationMinutes(productName, role),
         pauseMs: assignment ? (assignment.pauseMs || 0) : 0,
         pausedAt: assignment ? (assignment.pausedAt || "") : "",
-        batchShare: assignment ? (assignment.batchShare || 1) : 1
+        batchShare: assignment ? (assignment.batchShare || 1) : 1,
+        type: String(data[i][4] || ""),
+        variation: String(data[i][7] || ""),
+        description: String(data[i][9] || ""),
+        dimensions: String(data[i][10] || ""),
+        highlights: parseDescriptionHighlights(data[i][9])
       });
     }
   }
@@ -975,11 +991,13 @@ function joinWorkerOrdersTogether(ss, workerName, extraOrderNums, pack) {
   return { batchId: batchId, batchShare: share, handled: handled };
 }
 
-function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, workTogether) {
+function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, workTogether, keepOrders, jobConfirm) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000); 
   
   try {
+    var gate = floorChangeGate(workerName, "start");
+    if (!gate.ok) return { success: false, locked: true, message: gate.message };
     var ss = getSpreadsheet();
     var sheet = getSheetOrDie(ss, TAB_ORDERS);
     var logSheet = getSheetOrDie(ss, TAB_LOGS);
@@ -1012,16 +1030,36 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
     var batchShare = rowsToStart.length > 1 ? rowsToStart.length : 1;
     var runningOthers = listRunningOrdersForWorker(pack.values, workerName, exceptOrders);
 
+    var keepMap = {};
+    (keepOrders || []).forEach(function (o) { if (o) keepMap[String(o)] = true; });
+    exceptOrders.forEach(function (o) { keepMap[String(o)] = true; });
+
+    var firstOrderNum = orderData[parseInt(rowIndex, 10) - 1] ? orderData[parseInt(rowIndex, 10) - 1][1] : "";
+    var brief = getOrderJobBrief(firstOrderNum);
+    var confirmErr = assertJobConfirm(brief, jobConfirm);
+    if (confirmErr) {
+      return { success: false, needsJobConfirm: true, brief: brief, message: confirmErr };
+    }
+
     if (workTogether) {
-      var join = joinWorkerOrdersTogether(ss, workerName, exceptOrders, pack);
+      var joinKeep = exceptOrders.slice();
+      (keepOrders || []).forEach(function (o) {
+        if (o && joinKeep.indexOf(String(o)) === -1) joinKeep.push(String(o));
+      });
+      var join = joinWorkerOrdersTogether(ss, workerName, joinKeep, pack);
       if (join.batchId) {
         batchId = join.batchId;
         batchShare = join.batchShare;
       }
       runningOthers = [];
       pack = getLogPack(ss);
+    } else if ((keepOrders || []).length) {
+      var pauseReason = isUserPauseReason(switchReason) ? switchReason : SYSTEM_PAUSE_NOT_SELECTED;
+      autoPauseWorkerOtherJobs(ss, workerName, exceptOrders.concat(keepOrders || []), pauseReason, batchId, pack);
+      runningOthers = [];
+      pack = getLogPack(ss);
     } else if (runningOthers.length && !isUserPauseReason(switchReason)) {
-      return { success: false, needsSwitchReason: true, runningOrders: runningOthers, message: "Choose why you are leaving the current order." };
+      return { success: false, needsSwitchReason: true, runningOrders: runningOthers, message: "Choose which orders stay open, or pause the rest." };
     }
 
     closeIndirectTasksForWorker(ss, workerName, pack);
@@ -1073,7 +1111,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       meta.batchId = batchId;
       meta.batchShare = batchShare;
       meta.entryType = "production";
-      meta = applyShiftWindowToMeta(meta);
+      meta = applyShiftWindowToMeta(meta, null, workerName);
 
       if (role !== 'Plate Cutting') {
         sheet.getRange(thisRow, 3, 1, 2).setValues([[nextStatus, workerName]]);
@@ -1110,6 +1148,8 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
   lock.waitLock(120000); 
   
   try {
+    var gate = floorChangeGate(workerName, "finish");
+    if (!gate.ok) return { success: false, locked: true, message: gate.message };
     var ss = getSpreadsheet();
     var sheet = getSheetOrDie(ss, TAB_ORDERS);
     var logSheet = getSheetOrDie(ss, TAB_LOGS);
@@ -2341,6 +2381,8 @@ function workerPauseOrder(rowIndex, orderNum, workerName, reason) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
+    var gate = floorChangeGate(workerName, "pause");
+    if (!gate.ok) return { success: false, locked: true, message: gate.message };
     if (!isUserPauseReason(reason)) {
       return { success: false, message: "Choose a pause reason: No materials, Touch up (with order number), or Other." };
     }
@@ -2369,16 +2411,27 @@ function workerPauseOrder(rowIndex, orderNum, workerName, reason) {
   }
 }
 
-function workerResumeOrder(rowIndex, orderNum, workerName, switchReason, workTogether) {
+function workerResumeOrder(rowIndex, orderNum, workerName, switchReason, workTogether, keepOrders) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
+    var gate = floorChangeGate(workerName, "resume");
+    if (!gate.ok) return { success: false, locked: true, message: gate.message };
     var ss = getSpreadsheet();
     var pack = getLogPack(ss);
     var runningOthers = listRunningOrdersForWorker(pack.values, workerName, [orderNum]);
+    if ((keepOrders || []).length && !workTogether) {
+      autoPauseWorkerOtherJobs(ss, workerName, (keepOrders || []).concat([orderNum]), SYSTEM_PAUSE_NOT_SELECTED, "", pack);
+      pack = getLogPack(ss);
+      runningOthers = [];
+    }
     if (workTogether) {
       closeIndirectTasksForWorker(ss, workerName, pack);
-      var join = joinWorkerOrdersTogether(ss, workerName, [orderNum], pack);
+      var joinKeep = [orderNum];
+      (keepOrders || []).forEach(function (o) {
+        if (o && joinKeep.indexOf(String(o)) === -1) joinKeep.push(String(o));
+      });
+      var join = joinWorkerOrdersTogether(ss, workerName, joinKeep, pack);
       pack = getLogPack(ss);
       var okTogether = resumeWorkerLog(ss, workerName, orderNum, pack);
       if (!okTogether && !(join.handled && join.handled[String(orderNum)])) {
@@ -2744,19 +2797,20 @@ function paidWindowState(now) {
   if (dow === 0 || dow === 6) return { inPaid: false, reason: "Outside shift", kind: "weekend" };
   if (mins < SHIFT_START_MINS) return { inPaid: false, reason: "Outside shift", kind: "before" };
   if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) return { inPaid: false, reason: "Lunch", kind: "lunch" };
-  if (mins >= SHIFT_END_MINS) return { inPaid: false, reason: "End of shift", kind: "end" };
+  if (mins >= SHIFT_LOCK_MINS) return { inPaid: false, reason: "End of shift", kind: "end" };
   return { inPaid: true, reason: "", kind: "paid" };
 }
 
-function isOvertimeStartAllowed(now) {
+function isOvertimeStartAllowed(now, workerName) {
   var kind = paidWindowState(now).kind;
-  return kind === "end" || kind === "weekend";
+  if (kind !== "end" && kind !== "weekend") return false;
+  return workerHasOvertime(workerName, now);
 }
 
-function applyShiftWindowToMeta(meta, now) {
+function applyShiftWindowToMeta(meta, now, workerName) {
   meta = meta || defaultLogMeta();
   var state = paidWindowState(now);
-  if (state.kind === "end" || state.kind === "weekend") {
+  if (isOvertimeStartAllowed(now, workerName)) {
     meta.overtimeContinue = true;
     return meta;
   }
@@ -2764,6 +2818,175 @@ function applyShiftWindowToMeta(meta, now) {
     meta = addPauseToMeta(meta, state.reason, now);
   }
   return meta;
+}
+
+function getOvertimeSheet(ss) {
+  ss = ss || getSpreadsheet();
+  var sheet = ss.getSheetByName(TAB_OVERTIME);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_OVERTIME);
+    sheet.appendRow(["Date", "Worker", "Granted By", "Note", "Created"]);
+    try { sheet.hideSheet(); } catch (e) {}
+  }
+  return sheet;
+}
+
+function getResumeChaseSheet(ss) {
+  ss = ss || getSpreadsheet();
+  var sheet = ss.getSheetByName(TAB_RESUME_CHASE);
+  if (!sheet) {
+    sheet = ss.insertSheet(TAB_RESUME_CHASE);
+    sheet.appendRow(["Date", "Worker", "Orders", "Status", "Actual Start", "Note", "Noted By"]);
+    try { sheet.hideSheet(); } catch (e) {}
+  }
+  return sheet;
+}
+
+function workerHasOvertime(workerName, now) {
+  var want = String(workerName || "").trim().toLowerCase();
+  if (!want) return false;
+  var day = sastDayStamp(now || new Date());
+  var sheet = getOvertimeSheet();
+  if (sheet.getLastRow() < 2) return false;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]) === day && String(data[i][1] || "").trim().toLowerCase() === want) return true;
+  }
+  return false;
+}
+
+function grantOvertime(workerName, dateStamp, grantedBy, note) {
+  var worker = String(workerName || "").trim();
+  if (!worker) return { success: false, message: "Choose a worker." };
+  var day = String(dateStamp || sastDayStamp(new Date())).trim() || sastDayStamp(new Date());
+  var sheet = getOvertimeSheet();
+  if (sheet.getLastRow() >= 2) {
+    var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    for (var i = 0; i < existing.length; i++) {
+      if (String(existing[i][0]) === day && String(existing[i][1] || "").trim().toLowerCase() === worker.toLowerCase()) {
+        return { success: true, already: true };
+      }
+    }
+  }
+  sheet.appendRow([day, worker, String(grantedBy || ""), String(note || ""), new Date()]);
+  bumpFloorCache();
+  return { success: true };
+}
+
+function listOvertimeGrants(dateStamp) {
+  var day = String(dateStamp || sastDayStamp(new Date())).trim();
+  var sheet = getOvertimeSheet();
+  var rows = [];
+  if (sheet.getLastRow() < 2) return rows;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]) === day) {
+      rows.push({
+        date: String(data[i][0] || ""),
+        worker: String(data[i][1] || ""),
+        grantedBy: String(data[i][2] || ""),
+        note: String(data[i][3] || "")
+      });
+    }
+  }
+  return rows;
+}
+
+function workerMinutesToday(workerName, now) {
+  now = now || new Date();
+  var want = String(workerName || "").trim();
+  if (!want) return 0;
+  var pack = getLogPack(getSpreadsheet());
+  var day0 = sastWallToDate(now, 0, 0);
+  var day1 = addSastDays(day0, 1);
+  var total = 0;
+  for (var i = 1; i < pack.values.length; i++) {
+    if (String(pack.values[i][2] || "").trim() !== want) continue;
+    var slices = splitWorkByDay(pack.values[i], day0, day1);
+    for (var s = 0; s < slices.length; s++) total += Number(slices[s].mins) || 0;
+  }
+  return total;
+}
+
+function floorChangeGate(workerName, action) {
+  var profile = getUserProfileByName(workerName);
+  if (profile && String(profile.access || "").toLowerCase() === "admin") return { ok: true, admin: true };
+  var state = paidWindowState();
+  var ot = workerHasOvertime(workerName);
+  if ((state.kind === "end" || state.kind === "weekend") && !ot) {
+    return {
+      ok: false,
+      locked: true,
+      message: state.kind === "weekend"
+        ? "Weekend work needs overtime from Admin."
+        : "The floor is closed after 16:00 unless Admin grants overtime."
+    };
+  }
+  if ((action === "start" || action === "resume") && !ot && workerMinutesToday(workerName) >= MAX_REGULAR_MINS) {
+    return {
+      ok: false,
+      locked: true,
+      message: "8 hours are already logged today. Admin must grant overtime to continue."
+    };
+  }
+  return { ok: true, overtime: ot };
+}
+
+function parseDescriptionHighlights(text) {
+  var src = String(text || "");
+  var found = [];
+  var re = /⟦([^⟧]+)⟧|\[\[([^\]]+)\]\]/g;
+  var m;
+  while ((m = re.exec(src))) {
+    var part = String(m[1] || m[2] || "").trim();
+    if (part && found.indexOf(part) === -1) found.push(part);
+  }
+  return found;
+}
+
+function descriptionPlain(text) {
+  return String(text || "").replace(/⟦/g, "").replace(/⟧/g, "").replace(/\[\[/g, "").replace(/\]\]/g, "");
+}
+
+function getOrderJobBrief(orderNumber) {
+  var want = String(orderNumber || "").trim();
+  var ss = getSpreadsheet();
+  var sheet = getSheetOrDie(ss, TAB_ORDERS);
+  var last = sheet.getLastRow();
+  if (last < 2) return { order: want, type: "", variation: "", description: "", dimensions: "", highlights: [] };
+  var data = sheet.getRange(2, 1, last - 1, 11).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][1] || "").trim() !== want) continue;
+    var description = String(data[i][9] || "");
+    return {
+      order: want,
+      type: String(data[i][4] || ""),
+      product: String(data[i][6] || ""),
+      variation: String(data[i][7] || ""),
+      description: description,
+      description_plain: descriptionPlain(description),
+      dimensions: String(data[i][10] || ""),
+      highlights: parseDescriptionHighlights(description)
+    };
+  }
+  return { order: want, type: "", variation: "", description: "", dimensions: "", highlights: [] };
+}
+
+function assertJobConfirm(brief, jobConfirm) {
+  brief = brief || {};
+  var confirm = jobConfirm && typeof jobConfirm === "object" ? jobConfirm : null;
+  if (!confirm || !confirm.understood) {
+    return "Confirm the order type, variation, description, and dimensions before starting.";
+  }
+  var need = brief.highlights || [];
+  var got = {};
+  (confirm.highlights || []).forEach(function (h) { got[String(h || "").trim().toLowerCase()] = true; });
+  for (var i = 0; i < need.length; i++) {
+    if (!got[String(need[i]).trim().toLowerCase()]) {
+      return "Confirm that you saw the important note: " + need[i];
+    }
+  }
+  return "";
 }
 
 function getPauseIntervalsForRow(row) {
@@ -3142,7 +3365,7 @@ function resumeWorkerLog(ss, workerName, orderNum, pack) {
       var sheetRow = packSheetRow(pack, i);
       var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
       meta = closeOpenPauseInMeta(meta, new Date());
-      if (isOvertimeStartAllowed()) meta.overtimeContinue = true;
+      if (isOvertimeStartAllowed(null, workerName)) meta.overtimeContinue = true;
       writeLogPauseState(logSheet, sheetRow, meta, logs[i][4]);
       return true;
     }
@@ -3338,6 +3561,14 @@ function enforceShiftHours(now) {
       continue;
     }
     if (isPaused) continue;
+    var worker = String(logs[i][2] || "").trim();
+    if (workerHasOvertime(worker, at) && (state.kind === "end" || state.kind === "weekend")) continue;
+    if (!workerHasOvertime(worker, at) && workerMinutesToday(worker, at) >= MAX_REGULAR_MINS && state.inPaid) {
+      meta = addPauseToMeta(meta, "8 hour limit", at);
+      writeLogPauseState(logSheet, sheetRow, meta, taskName);
+      paused++;
+      continue;
+    }
     if (meta.overtimeContinue && (state.kind === "end" || state.kind === "weekend")) continue;
     meta = addPauseToMeta(meta, state.reason, at);
     writeLogPauseState(logSheet, sheetRow, meta, taskName);
@@ -3349,8 +3580,149 @@ function enforceShiftHours(now) {
   return { success: true, paused: paused, resumed: resumed, reason: state.reason, kind: state.kind };
 }
 
+function workerOpenShiftPauses(logs, workerName) {
+  var orders = [];
+  for (var i = 1; i < logs.length; i++) {
+    if (logs[i][6]) continue;
+    if (String(logs[i][2] || "").trim() !== String(workerName || "").trim()) continue;
+    var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
+    if (meta.entryType === "indirect") continue;
+    if (!hasOpenPause(meta.pauses) && !logs[i][9]) continue;
+    var last = meta.pauses && meta.pauses.length ? meta.pauses[meta.pauses.length - 1] : null;
+    var reason = last && !last.end ? String(last.reason || "") : String(logs[i][11] || "");
+    if (reason === "End of shift" || reason === "Outside shift" || reason === "8 hour limit") {
+      orders.push(String(logs[i][1] || ""));
+    }
+  }
+  return orders;
+}
+
+function resumeChaseStatusToday(workerName, now) {
+  var day = sastDayStamp(now || new Date());
+  var want = String(workerName || "").trim().toLowerCase();
+  var sheet = getResumeChaseSheet();
+  if (sheet.getLastRow() < 2) return "";
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  for (var i = data.length - 1; i >= 0; i--) {
+    if (String(data[i][0]) === day && String(data[i][1] || "").trim().toLowerCase() === want) {
+      return String(data[i][3] || "");
+    }
+  }
+  return "";
+}
+
+function checkMissedResumes(now) {
+  now = now || new Date();
+  if (sastDayOfWeek(now) === 0 || sastDayOfWeek(now) === 6) return { added: 0 };
+  if (sastMinsOfDay(now) < RESUME_CHASE_MINS) return { added: 0 };
+  var ss = getSpreadsheet();
+  var logs = getLogPack(ss).values;
+  var users = getUsersAndRoles();
+  var sheet = getResumeChaseSheet(ss);
+  var added = 0;
+  for (var u = 0; u < users.length; u++) {
+    var name = users[u].name;
+    if (!name || String(users[u].role || "").toLowerCase() === "admin") continue;
+    if (workerHasRunningJob(logs, name)) continue;
+    var orders = workerOpenShiftPauses(logs, name);
+    if (!orders.length) continue;
+    var st = resumeChaseStatusToday(name, now);
+    if (st && String(st).toLowerCase() !== "open") continue;
+    if (st) continue;
+    sheet.appendRow([sastDayStamp(now), name, orders.join(", "), "Open", "", "", ""]);
+    added++;
+  }
+  return { added: added };
+}
+
+function listMissedResumes(dateStamp) {
+  var day = String(dateStamp || sastDayStamp(new Date())).trim();
+  var sheet = getResumeChaseSheet();
+  var rows = [];
+  if (sheet.getLastRow() < 2) return rows;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]) !== day) continue;
+    if (String(data[i][3] || "").toLowerCase() !== "open") continue;
+    rows.push({
+      row: i + 2,
+      worker: String(data[i][1] || ""),
+      orders: String(data[i][2] || ""),
+      status: String(data[i][3] || "")
+    });
+  }
+  return rows;
+}
+
+function markResumeChase(workerName, status, actualStart, note, adminName, now) {
+  var day = sastDayStamp(now || new Date());
+  var want = String(workerName || "").trim().toLowerCase();
+  var sheet = getResumeChaseSheet();
+  if (sheet.getLastRow() < 2) return;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
+  for (var i = data.length - 1; i >= 0; i--) {
+    if (String(data[i][0]) === day && String(data[i][1] || "").trim().toLowerCase() === want) {
+      sheet.getRange(i + 2, 4, 1, 4).setValues([[status, actualStart || "", note || "", adminName || ""]]);
+      return;
+    }
+  }
+}
+
+function noteMissedResume(workerName, action, payload, adminName) {
+  payload = payload || {};
+  var name = String(workerName || "").trim();
+  if (!name) return { success: false, message: "Choose a worker." };
+  var ss = getSpreadsheet();
+  var now = new Date();
+  if (action === "later") {
+    var task = String(payload.task || "Waiting for materials");
+    assignIndirectTask(name, task, adminName);
+    markResumeChase(name, "Later", "", task, adminName, now);
+    bumpFloorCache();
+    return { success: true };
+  }
+  if (action === "started") {
+    var hhmm = String(payload.actualStart || "").trim();
+    var parts = hhmm.split(":");
+    var hours = Number(parts[0]);
+    var mins = Number(parts[1] || 0);
+    if (!Number.isFinite(hours) || hours < 0 || hours > 23) {
+      return { success: false, message: "Enter the actual start time (HH:MM)." };
+    }
+    var at = sastWallToDate(now, hours, mins);
+    if (at.getTime() > now.getTime()) at = now;
+    var pack = getLogPack(ss);
+    var logSheet = getSheetOrDie(ss, TAB_LOGS);
+    for (var i = 1; i < pack.values.length; i++) {
+      if (pack.values[i][6]) continue;
+      if (String(pack.values[i][2] || "").trim() !== name) continue;
+      var meta = parseLogMeta(pack.values[i].length > 12 ? pack.values[i][12] : "");
+      if (meta.entryType === "indirect") continue;
+      if (!hasOpenPause(meta.pauses) && !pack.values[i][9]) continue;
+      meta = closeOpenPauseInMeta(meta, at);
+      writeLogPauseState(logSheet, packSheetRow(pack, i), meta, pack.values[i][4]);
+    }
+    markResumeChase(name, "Started", hhmm, "", adminName, now);
+    bumpFloorCache();
+    return { success: true };
+  }
+  return { success: false, message: "Choose Started or Later." };
+}
+
+function getFloorAdminDesk() {
+  return {
+    overtime: listOvertimeGrants(),
+    missedResumes: listMissedResumes(),
+    idle: getIdleWorkers(),
+    workers: getUsersAndRoles().filter(function (u) {
+      return u.name && String(u.role || "").toLowerCase() !== "admin";
+    }).map(function (u) { return u.name; })
+  };
+}
+
 function checkIdleWorkers() {
   try { enforceShiftHours(); } catch (ignoreShift) {}
+  try { checkMissedResumes(); } catch (ignoreResume) {}
   if (!isWithinShiftNow()) return;
   var ss = getSpreadsheet();
   var logs = getLogPack(ss).values;
@@ -3432,7 +3804,14 @@ function pollIdleAlerts(workerName) {
     return { ok: true, alerts: [], canAssign: false, tasks: INDIRECT_TASKS };
   }
   var data = getIdleWorkers();
-  return { ok: true, alerts: data.workers || [], canAssign: true, tasks: data.tasks || INDIRECT_TASKS };
+  return {
+    ok: true,
+    alerts: data.workers || [],
+    canAssign: true,
+    tasks: data.tasks || INDIRECT_TASKS,
+    missedResumes: listMissedResumes(),
+    overtime: listOvertimeGrants()
+  };
 }
 
 function assignIndirectTask(workerName, taskName, assignedBy) {
