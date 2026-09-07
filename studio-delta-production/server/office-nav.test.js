@@ -234,6 +234,8 @@ assert.ok(enquiriesHtml.indexOf(">Dashboard<") !== -1);
 assert.ok(enquiriesHtml.indexOf('id="assignedToMe"') !== -1);
 assert.ok(enquiriesHtml.indexOf("Assigned to me") !== -1);
 assert.ok(enquiriesHtml.indexOf('id="openClosed"') !== -1);
+assert.ok(enquiriesHtml.indexOf("typedEnquiryNoQuery") !== -1, "searching an enquiry number must still find a rejected row");
+assert.ok(enquiriesHtml.indexOf("Closed jobs stay on the system") !== -1);
 assert.ok(enquiriesHtml.indexOf('id="statusFilter"') !== -1);
 assert.ok(enquiriesHtml.indexOf("Download CSV") !== -1);
 assert.ok(enquiriesHtml.indexOf("QUOTE INCL VAT") !== -1);

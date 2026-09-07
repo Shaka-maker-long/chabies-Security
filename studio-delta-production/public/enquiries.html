@@ -933,10 +933,24 @@
       if (/[",\n]/.test(v)) return "\"" + v.replace(/"/g, "\"\"") + "\"";
       return v;
     }
+    function typedEnquiryNoQuery(raw) {
+      const m = String(raw || "").trim().replace(/\s+/g, "").match(/^#?(\d+)$/);
+      return m ? Number(m[1]) : 0;
+    }
+    function searchHitsHidden(q) {
+      const needle = String(q || "").toLowerCase();
+      if (!needle) return [];
+      return rows.filter((row) => {
+        if (searchBlob(row).toLowerCase().indexOf(needle) === -1) return false;
+        return !matchesPeriod(row) || !matchesSheetFilters(row);
+      });
+    }
     function filteredRows() {
       const q = (document.getElementById("q").value || "").toLowerCase();
+      const wantNo = typedEnquiryNoQuery(q);
       return rows.map((row, i) => ({ row, i })).filter(({ row }) => {
         if (q && searchBlob(row).toLowerCase().indexOf(q) === -1) return false;
+        if (wantNo && enquiryNoValue(row.enquiry_no) === wantNo) return true;
         if (!matchesPeriod(row)) return false;
         return matchesSheetFilters(row);
       });
@@ -1013,7 +1027,13 @@
           || (document.getElementById("typeFilter") || {}).value
           || (document.getElementById("sourceFilter") || {}).value
           || (document.getElementById("categoryFilter") || {}).value;
-        const msg = rows.length && filtered
+        const hidden = searchHitsHidden(q);
+        const hit = hidden[0];
+        const msg = hit
+          ? esc(hit.enquiry_no || "That enquiry") + (hit.client_name ? " · " + esc(hit.client_name) : "")
+            + " is " + esc(hit.status || "closed")
+            + ". Closed jobs stay on the system — switch Open to All to see them."
+          : rows.length && filtered
           ? "No enquiries match those filters."
           : "No enquiries yet. Use New enquiry, or Add existing enquiry for jobs already in progress on the previous system.";
         html += "<tr><td class=\"empty\" colspan=\"" + HEADERS.length + "\">" + msg + "</td></tr>";
