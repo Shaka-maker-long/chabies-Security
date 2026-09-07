@@ -136,6 +136,22 @@ assert.ok(drops.custom_spec.indexOf("Handle") >= 0);
 assert.ok(drops.custom_spec.indexOf("Dimensions") >= 0);
 assert.ok(drops.custom_spec.indexOf("Colour") >= 0);
 
+db.addDropdownItem("product", "Zara Test Bench");
+db.addDropdownItem("category", "Test Category X");
+db.addDropdownItem("province", "Test Province");
+db.addDropdownItem("source", "Trade Show");
+db.addDropdownItem("type", "Trade");
+const fromSheet = db.listEnquiryDropdowns();
+assert.ok(fromSheet.product.indexOf("Zara Test Bench") >= 0);
+assert.ok(fromSheet.category.indexOf("Test Category X") >= 0);
+assert.ok(fromSheet.province.indexOf("Test Province") >= 0);
+assert.ok(fromSheet.source.indexOf("Trade Show") >= 0);
+assert.ok(fromSheet.enquiry_source.indexOf("Trade Show") >= 0);
+assert.ok(fromSheet.enquiry_type.indexOf("Trade") >= 0);
+assert.ok(fromSheet.enquiry_type.indexOf("Catologue") >= 0);
+db.removeDropdownItem("product", "Zara Test Bench");
+assert.ok(db.listEnquiryDropdowns().product.indexOf("Zara Test Bench") === -1);
+
 const jumped = db.upsertEnquiry({
   enquiry_no: "#1996",
   date_enquired: "30/11/2025",
