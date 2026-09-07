@@ -81,12 +81,14 @@
         <a class="on" href="/orders">Sheet</a>
         <a href="/orders/schedule">Production schedule</a>
         <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
       </nav>
       <h1>Orders</h1>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search orders">
+      <button class="ghost" type="button" onclick="location.href='/orders/job-card'">Generate job card</button>
       <button class="ghost" type="button" onclick="openForm()">New order</button>
     </div>
   </header>
@@ -119,7 +121,8 @@
             <input id="f_quote_number" autocomplete="off">
           </label>
           <label>Status
-            <select id="f_status"></select>
+            <input id="f_status" readonly>
+            <span class="hint">Status starts as Not Yet Started. Generating a job card moves it to Ready for Steelwork. The shop floor updates it after that.</span>
           </label>
           <label>Assigned operator
             <select id="f_assigned_operator"></select>
@@ -212,6 +215,7 @@
         <h1 id="viewTitle">Order</h1>
         <div class="tools">
           <button class="ghost" type="button" id="viewEnquiryBtn" hidden>Open enquiry</button>
+          <button class="ghost" type="button" id="viewJobCardBtn" hidden>Job card</button>
           <button class="ghost" type="button" id="viewEditBtn">Edit</button>
           <button class="ghost" type="button" onclick="closeView()">Close</button>
         </div>
@@ -250,7 +254,7 @@
       ["source", "SOURCE", 140, false],
       ["city", "CITY", 120, false]
     ];
-    const DROP_FIELDS = ["status", "type", "category", "product", "variation", "doors", "powder_coating", "province", "source", "assigned_operator"];
+    const DROP_FIELDS = ["type", "category", "product", "variation", "doors", "powder_coating", "province", "source", "assigned_operator"];
     const VAT_RATE = 0.15;
     const freezeLeft = {};
     const colWidths = HEADERS.map((h) => h[2]);
@@ -279,6 +283,10 @@
     function owingOf(row) {
       const total = parseMoney(row.price_incl_vat) || parseMoney(inclFromExcl(row.price_excl_vat));
       return formatRand(Math.max(0, total - parseMoney(row.amount_paid)));
+    }
+    function canGenerateJobCard(status) {
+      const s = String(status || "").trim();
+      return !s || s === "Not Yet Started" || s === "Ready for Steelwork" || s === "Profile Cutting";
     }
     function statusClass(s) {
       const v = String(s || "").toLowerCase();
@@ -340,10 +348,7 @@
     function fillSelect(id, key, value) {
       const el = document.getElementById(id);
       const current = String(value || "");
-      const opts = (key === "status"
-        ? (typeof SD_ORDER_STATUSES !== "undefined" ? SD_ORDER_STATUSES.slice() : [])
-        : key === "assigned_operator" ? operators.slice()
-        : (dropdowns[key] || []).slice());
+      const opts = (key === "assigned_operator" ? operators.slice() : (dropdowns[key] || []).slice());
       if (current && opts.indexOf(current) === -1) opts.unshift(current);
       el.innerHTML = "<option value=\"\"></option>" + opts.map((o) =>
         "<option value=\"" + esc(o) + "\"" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>"
@@ -381,9 +386,11 @@
         HEADERS.forEach(([k, , , freeze], c) => {
           const extra = k === "status" ? statusClass(row[k]) : "";
           if (k === "_edit") {
+            const canCard = canGenerateJobCard(row.status);
             html += "<td class=\"" + colClass(k, freeze, "") + "\" style=\"" + colStyle(k, colWidths[c], freeze) + "\">" +
               "<div class=\"row-actions-cell\">" +
               "<button type=\"button\" class=\"ghost icon-btn\" title=\"Edit order\" aria-label=\"Edit order\" data-edit-order=\"" + i + "\"><i class=\"bi bi-pencil\"></i></button>" +
+              (canCard ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Generate job card\" aria-label=\"Generate job card\" data-job-card=\"" + esc(row.order_number) + "\"><i class=\"bi bi-file-earmark-pdf\"></i></button>" : "") +
               "</div></td>";
             return;
           }
@@ -430,7 +437,8 @@
       document.getElementById("f_month_of_sale").value = (existing && existing.month_of_sale) || "";
       document.getElementById("f_price_excl_vat").value = (existing && existing.price_excl_vat) || "";
       document.getElementById("f_amount_paid").value = (existing && existing.amount_paid) || "";
-      DROP_FIELDS.forEach((k) => fillSelect("f_" + k, k, existing ? existing[k] : (k === "status" ? "Not Yet Started" : "")));
+      document.getElementById("f_status").value = existing ? (existing.status || "Not Yet Started") : "Not Yet Started";
+      DROP_FIELDS.forEach((k) => fillSelect("f_" + k, k, existing ? existing[k] : ""));
       updateMoneyFields();
       document.getElementById("formMask").classList.add("open");
       document.getElementById(existing ? "f_client_name" : "f_order_number").focus();
@@ -539,6 +547,11 @@
         if (row.enquiry_no && typeof sdOpenEnquiryProcess === "function") sdOpenEnquiryProcess(row.enquiry_no);
         else if (row.enquiry_no) location.href = "/enquiries";
       };
+      const cardBtn = document.getElementById("viewJobCardBtn");
+      cardBtn.hidden = !canGenerateJobCard(row.status);
+      cardBtn.onclick = () => {
+        location.href = "/orders/job-card?order=" + encodeURIComponent(row.order_number || "");
+      };
       document.getElementById("viewEditBtn").onclick = () => {
         closeView();
         openForm(i);
@@ -569,6 +582,11 @@
     }
 
     document.getElementById("grid").onclick = (e) => {
+      const card = e.target.closest("[data-job-card]");
+      if (card) {
+        location.href = "/orders/job-card?order=" + encodeURIComponent(card.getAttribute("data-job-card"));
+        return;
+      }
       const edit = e.target.closest("[data-edit-order]");
       if (edit) {
         openForm(Number(edit.getAttribute("data-edit-order")));
