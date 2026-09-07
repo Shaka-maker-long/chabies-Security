@@ -79,7 +79,15 @@ assert.ok(page.indexOf("Ready for Steelwork") !== -1);
 assert.ok(page.indexOf("Printed job cards") !== -1);
 assert.ok(page.indexOf("Open / print") !== -1);
 assert.ok(page.indexOf("/api/office/job-cards") !== -1);
+assert.ok(page.indexOf("name=\"dimCheck\"") !== -1);
+assert.ok(page.indexOf("Dimensions did not change") !== -1);
+assert.ok(page.indexOf("Update to the actual dimensions") !== -1);
+assert.ok(page.indexOf("dimension_check") !== -1);
 assert.ok(officeJs.indexOf("listGeneratedJobCards") !== -1);
+assert.strictEqual(jobCard.isStandardType("Standard"), true);
+assert.strictEqual(jobCard.isStandardType("Custom"), false);
+assert.strictEqual(jobCard.hasUsableDimensions({ height: 1, width: 1, depth: 1 }), false);
+assert.strictEqual(jobCard.hasUsableDimensions({ height: 1460, width: 560, depth: 560 }), true);
 
 db.upsertOrder({
   order_number: "S260193",
@@ -161,6 +169,77 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
     missing = e.message;
   }
   assert.ok(missing);
+
+  db.upsertOrder({
+    order_number: "S260210",
+    status: "Not Yet Started",
+    type: "Custom",
+    product: "Talitha Bookshelf",
+    client_name: "Custom Client",
+    doors: "N/A",
+    powder_coating: "Ferrograin Black",
+    variation: "",
+    detailed_description: "Talitha Bookshelf custom",
+    dimensions: "",
+    province: "Gauteng"
+  });
+  db.upsertOrder({
+    order_number: "S260211",
+    status: "Not Yet Started",
+    type: "New Design",
+    product: "New Design",
+    client_name: "New Design Client",
+    doors: "N/A",
+    powder_coating: "Ferrograin Black",
+    variation: "",
+    detailed_description: "A new bench",
+    dimensions: "",
+    province: "Western Cape"
+  });
+
+  let noCheck = null;
+  try {
+    await jobCard.generateJobCard({ order_number: "S260210", cutting_text: samplePaste });
+  } catch (e) {
+    noCheck = e.message;
+  }
+  assert.ok(noCheck && /not Standard|did not change|actual/i.test(noCheck));
+
+  const customOk = await jobCard.generateJobCard({
+    order_number: "S260210",
+    cutting_text: samplePaste,
+    dimension_check: "unchanged"
+  });
+  assert.strictEqual(customOk.status, "Ready for Steelwork");
+  assert.strictEqual(customOk.record.dimension_check, "unchanged");
+  const customOrder = db.listOrders().find((o) => o.order_number === "S260210");
+  assert.ok(/Height:\s*1460mm/.test(customOrder.dimensions));
+  assert.ok(/Width:\s*560mm/.test(customOrder.dimensions));
+
+  let placeholder = null;
+  try {
+    await jobCard.generateJobCard({
+      order_number: "S260211",
+      cutting_text: samplePaste,
+      dimension_check: "unchanged"
+    });
+  } catch (e) {
+    placeholder = e.message;
+  }
+  assert.ok(placeholder && /1 × 1 × 1|actual dimensions|millimetres/i.test(placeholder));
+
+  const newDesignOk = await jobCard.generateJobCard({
+    order_number: "S260211",
+    cutting_text: samplePaste,
+    dimension_check: "updated",
+    dimensions: { height: 1500, width: 600, depth: 400 }
+  });
+  assert.strictEqual(newDesignOk.status, "Ready for Steelwork");
+  assert.strictEqual(newDesignOk.record.dimension_check, "updated");
+  assert.strictEqual(newDesignOk.record.dimensions.height, 1500);
+  const newDesignOrder = db.listOrders().find((o) => o.order_number === "S260211");
+  assert.ok(/Height:\s*1500mm/.test(newDesignOrder.dimensions));
+  assert.ok(/Width:\s*600mm/.test(newDesignOrder.dimensions));
 
   console.log("job-card.test.js ok");
 })().catch((e) => {
