@@ -31,6 +31,11 @@ assert.strictEqual(sched.formatOrderDate("7 Jan 2026"), "07-Jan");
 assert.deepStrictEqual(sched.workdays("2026-09-21", 5), [
   "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25"
 ]);
+assert.strictEqual(sched.SCHEDULE_WORKDAYS, 180);
+const horizon = sched.workdays("2026-09-07", sched.SCHEDULE_WORKDAYS);
+assert.strictEqual(horizon.length, 180);
+assert.ok(horizon.indexOf("2026-11-30") !== -1, "grid must pass week 48");
+assert.ok(horizon[horizon.length - 1] >= "2027-05-01", "grid must reach the following year");
 assert.ok(sched.DELIVERY_CODES.indexOf("LD") !== -1);
 assert.ok(sched.DELIVERY_CODES.indexOf("LC") !== -1);
 assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "LD" && c.label === "Latest Delivery"));

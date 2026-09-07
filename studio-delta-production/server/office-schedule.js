@@ -15,6 +15,7 @@ const SCHEDULE_CODES = [
 ];
 
 const DELIVERY_CODES = ["LD", "LC"];
+const SCHEDULE_WORKDAYS = 180;
 
 function parseDay(iso) {
   const s = String(iso || "").slice(0, 10);
@@ -155,6 +156,7 @@ function weekOptions(items, aroundIso) {
 module.exports = {
   SCHEDULE_CODES,
   DELIVERY_CODES,
+  SCHEDULE_WORKDAYS,
   mondayOf,
   workdays,
   isoWeekInfo,

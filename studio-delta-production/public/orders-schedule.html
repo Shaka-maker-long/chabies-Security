@@ -7,7 +7,7 @@
   <script src="/sd-pwa.js?v=pwa"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <style>
-    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --warn:#fff4e0; --lock:992px; }
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --warn:#fff4e0; --lock:992px; --day:44px; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
@@ -21,19 +21,20 @@
     .tools input[type=search]:focus { outline:none; border-color:#2f6fed; box-shadow:0 0 0 3px rgba(47,111,237,.15); }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
-    .board { display:flex; height:calc(100vh - 118px); min-width:0; background:#fff; }
-    .meta-pane { flex:0 0 auto; overflow:auto hidden; max-width:min(70vw, 992px); box-shadow:4px 0 10px rgba(16,24,40,.12); z-index:2; scrollbar-width:none; }
+    .board { display:flex; height:calc(100vh - 118px); min-width:0; overflow:hidden; background:#fff; }
+    .meta-pane { flex:0 1 auto; width:max-content; max-width:min(var(--lock), 50%); overflow-x:hidden; overflow-y:auto; box-shadow:4px 0 10px rgba(16,24,40,.12); z-index:2; scrollbar-width:none; }
     .meta-pane::-webkit-scrollbar { display:none; }
-    .cal-pane { flex:1 1 auto; overflow:auto; min-width:0; }
+    .cal-pane { flex:1 1 auto; overflow-x:auto; overflow-y:auto; min-width:0; }
     table { border-collapse:separate; border-spacing:0; background:#fff; font-size:12px; }
-    #grid { min-width:1600px; }
+    #meta { table-layout:fixed; width:var(--lock); max-width:100%; }
+    #grid { table-layout:fixed; }
     th, td { border:1px solid var(--line); padding:4px 6px; height:34px; white-space:nowrap; background:#fff; }
     thead th { background:var(--head); font-size:11px; position:sticky; z-index:5; }
     thead tr:nth-child(1) th { top:0; }
     thead tr:nth-child(2) th { top:34px; }
     thead tr:nth-child(3) th { top:68px; }
     body.office-app #grid thead th.day { text-transform:none; letter-spacing:0; }
-    .day { min-width:58px; text-align:center; }
+    #grid th.day, #grid td.day { width:var(--day); min-width:var(--day); max-width:var(--day); text-align:center; padding:4px 2px; }
     .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; }
     td input { width:100%; border:0; font:inherit; background:transparent; }
     .code-cell { text-align:center; font-weight:700; cursor:pointer; user-select:none; }
@@ -72,7 +73,7 @@
         <a href="/orders/delivery">Delivery summary</a>
       </nav>
       <h1>Production schedule</h1>
-      <p class="lede">Search any column, jump a week or scroll the dates. Amber rows still need Latest Delivery (LD) or Latest Courier (LC).</p>
+      <p class="lede">Search any column, jump a week or scroll the dates through the year. Amber rows still need Latest Delivery (LD) or Latest Courier (LC).</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -263,7 +264,7 @@
           if (locked) {
             left += "<td style=\"" + colStyle(i) + "\"><span class=\"cell-text\" title=\"" + esc(v) + "\">" + esc(v) + "</span></td>";
           } else {
-            left += "<td style=\"" + colStyle(i) + "\"><input data-k=\"" + k + "\" value=\"" + esc(v) + "\"></td>";
+            left += "<td style=\"" + colStyle(i) + "\"><input data-k=\"" + k + "\" value=\"" + esc(v) + "\"" + (k === "order_date" ? " placeholder=\"07-Jan\"" : "") + "></td>";
           }
         });
         left += "</tr>";
@@ -276,6 +277,9 @@
       });
       meta.innerHTML = left + "</tbody>";
       table.innerHTML = cal + "</tbody>";
+      const gridW = Math.max(days.length * 44, 1600);
+      table.style.width = gridW + "px";
+      table.style.minWidth = gridW + "px";
       meta.onchange = onChange;
       table.onclick = onGridClick;
       table.onkeydown = onGridKey;
