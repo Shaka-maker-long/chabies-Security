@@ -195,6 +195,15 @@ function followUpDueAt(row) {
   return "";
 }
 
+function isActionableOpenTask(row, task) {
+  if (!task || task.status !== "open") return false;
+  if (task.kind === "follow_up") {
+    const dueAt = task.due_at || followUpDueAt(row);
+    return isOverdue(dueAt);
+  }
+  return true;
+}
+
 function currentQuoteKey(row) {
   return String((row && row.quote_no) || "").trim();
 }
@@ -442,8 +451,8 @@ function listMyTasks(userName, opts) {
     for (const task of tasks) {
       if (task.status !== "open") continue;
       if (!all && !namesMatch(task.assignee, me)) continue;
+      if (!isActionableOpenTask(row, task)) continue;
       const dueAt = task.due_at || (task.kind === "follow_up" ? followUpDueAt(row) : "");
-      if (task.kind === "follow_up" && !isOverdue(dueAt)) continue;
       out.push(decorateTask(row, task, dueAt));
     }
     if (statusAllows(row, ["Quoted", "Followed Up"]) && !followUpsExhausted(row)) {
@@ -1739,5 +1748,6 @@ module.exports = {
   actionOwner,
   actionKind,
   ONBOARD_STATUSES,
-  onboardEnquiry
+  onboardEnquiry,
+  isActionableOpenTask
 };

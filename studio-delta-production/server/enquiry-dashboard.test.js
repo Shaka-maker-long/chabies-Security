@@ -52,7 +52,11 @@ const rows = [
       { kind: "created", at: daysAgo(20) },
       { kind: "complete_quote", at: daysAgo(12) }
     ],
-    tasks: [{ status: "open", assignee: "Coster", kind: "follow_up" }],
+    tasks: [
+      { status: "open", assignee: "Coster", kind: "follow_up" },
+      { status: "open", assignee: "Pat", kind: "follow_up", due_at: iso(now + 7 * 86400000) },
+      { status: "open", assignee: "Quoter", kind: "pop" }
+    ],
     follow_ups: [],
     correspondence: { mails: [{ subject: "Quote" }] }
   },
@@ -201,6 +205,12 @@ try {
   assert.strictEqual(air.productValue, 4300);
   assert.ok(!month.products.some((p) => p.quoteValue === 16650.5), "must not roll the full quote onto a product");
   assert.ok(month.workload.some((w) => w.name === "Coster" && w.count >= 2));
+  assert.ok(month.workload.some((w) => w.name === "Quoter" && w.count >= 1), "record client outcome is work to do");
+  assert.ok(!month.workload.some((w) => w.name === "Pat"), "follow-up that is not due must not count as workload");
+  const drillWorkPat = dash.buildDrill({ grain: "month", range: "6m", kind: "workload", value: "Pat" });
+  assert.ok(!drillWorkPat.rows.some((r) => r.enquiry_no === "#1997"));
+  const drillWorkQuoter = dash.buildDrill({ grain: "month", range: "6m", kind: "workload", value: "Quoter" });
+  assert.ok(drillWorkQuoter.rows.some((r) => r.enquiry_no === "#1997"));
   assert.ok(month.timeToOrder.buckets.some((b) => b.count === 1));
   assert.ok(month.stageTime.some((s) => s.n >= 1));
 
