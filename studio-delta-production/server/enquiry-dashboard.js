@@ -59,9 +59,20 @@ function monthLabel(key) {
   return names[Number(m[2]) - 1] + " " + m[1];
 }
 
-function weekKey(d) {
+function sastUtcDate(d) {
   const p = sastParts(d);
-  const date = new Date(Date.UTC(p.y, p.m, p.day));
+  return new Date(Date.UTC(p.y, p.m, p.day));
+}
+
+function isoWeekMonday(d) {
+  const date = sastUtcDate(d);
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 1 - dayNum);
+  return date;
+}
+
+function weekKey(d) {
+  const date = sastUtcDate(d);
   const dayNum = date.getUTCDay() || 7;
   date.setUTCDate(date.getUTCDate() + 4 - dayNum);
   const year = date.getUTCFullYear();
@@ -327,7 +338,15 @@ function shorten(s, n) {
 
 function weekOfMonth(d) {
   const p = sastParts(d);
-  return Math.min(5, Math.floor((p.day - 1) / 7) + 1);
+  const first = new Date(Date.UTC(p.y, p.m, 1));
+  const weeks = Math.round((isoWeekMonday(d) - isoWeekMonday(first)) / (7 * 86400000));
+  return Math.min(5, Math.max(1, weeks + 1));
+}
+
+function hasFollowUpRecord(row) {
+  const list = Array.isArray(row && row.follow_ups) ? row.follow_ups : [];
+  if (list.length > 0) return true;
+  return ((row && row.events) || []).some((e) => e && e.kind === "complete_followup");
 }
 
 function emptyWom() {
@@ -555,7 +574,7 @@ function buildDashboard(query) {
       funnelCaptured += 1;
       if (reachedCosting(status) || reachedQuoted(status)) funnelCosting += 1;
       if (reachedQuoted(status)) funnelQuoted += 1;
-      if (status === "Followed Up" || status === "Ordered") funnelFollowed += 1;
+      if (hasFollowUpRecord(row)) funnelFollowed += 1;
       if (status === "Ordered") funnelOrdered += 1;
       bump(source, row.enquiry_source || row.source);
       bump(type, row.enquiry_type);
@@ -794,7 +813,7 @@ function matchesDrill(row, query, win) {
     const stage = String((query && query.stage) || "captured");
     if (stage === "costing") return reachedCosting(status) || reachedQuoted(status);
     if (stage === "quoted") return reachedQuoted(status);
-    if (stage === "followed") return status === "Followed Up" || status === "Ordered";
+    if (stage === "followed") return hasFollowUpRecord(row);
     if (stage === "ordered") return status === "Ordered";
     return true;
   }
@@ -923,5 +942,7 @@ module.exports = {
   resolveWindow,
   weekKey,
   monthKey,
+  weekOfMonth,
+  hasFollowUpRecord,
   FUNNEL
 };

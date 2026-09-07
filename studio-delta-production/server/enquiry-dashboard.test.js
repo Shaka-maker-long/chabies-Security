@@ -178,6 +178,10 @@ try {
   assert.strictEqual(captured.count, 7);
   const orderedFunnel = month.funnel.find((x) => x.label === "Ordered");
   assert.strictEqual(orderedFunnel.count, 1);
+  const followedFunnel = month.funnel.find((x) => x.label === "Followed up");
+  assert.strictEqual(followedFunnel.count, 0, "Ordered without a follow-up record must not count as Followed up");
+  const drillFollowedEmpty = dash.buildDrill({ grain: "month", range: "6m", kind: "funnel", stage: "followed" });
+  assert.ok(!drillFollowedEmpty.rows.some((r) => r.enquiry_no === "#1998"));
   assert.ok(month.pipeline.some((p) => p.status === "Costing" && p.count === 1));
   assert.strictEqual(month.stuck.costingOpen, 1);
   assert.strictEqual(month.stuck.quotedWaiting, 1);
@@ -301,6 +305,85 @@ try {
 
   const blankWom = dash.buildDrill({ kind: "wom", week: 1, series: "enquiries" });
   assert.ok(!/undefined/.test(blankWom.title), "missing month must not print undefined");
+
+  assert.strictEqual(dash.weekOfMonth(new Date("2026-09-01T06:00:00.000Z")), 1, "1 Sep 2026 is ISO week 1 of September");
+  assert.strictEqual(dash.weekOfMonth(new Date("2026-09-06T20:00:00.000Z")), 1, "6 Sep 2026 stays in week 1");
+  assert.strictEqual(dash.weekOfMonth(new Date("2026-09-07T06:00:00.000Z")), 2, "7 Sep 2026 is ISO week 2 of September");
+  assert.strictEqual(dash.weekOfMonth(new Date("2026-06-15T08:00:00.000Z")), 3);
+
+  assert.ok(!dash.hasFollowUpRecord({ status: "Ordered", follow_ups: [], events: [{ kind: "complete_order" }] }));
+  assert.ok(dash.hasFollowUpRecord({ status: "Quoted", follow_ups: [{ n: 1, label: "Follow up" }] }));
+  assert.ok(dash.hasFollowUpRecord({ status: "Quoted", follow_ups: [], events: [{ kind: "complete_followup" }] }));
+
+  rows.push({
+    enquiry_no: "#2004",
+    status: "Followed Up",
+    created_at: daysAgo(28),
+    date_enquired: "10/08/2026",
+    date_quoted: "12/08/2026",
+    enquiry_source: "Website",
+    enquiry_type: "Catologue",
+    category: "Chair",
+    product: "Air Chair",
+    province: "Gauteng",
+    events: [
+      { kind: "created", at: daysAgo(28) },
+      { kind: "complete_quote", at: daysAgo(26) },
+      { kind: "complete_followup", at: daysAgo(9) }
+    ],
+    tasks: [],
+    follow_ups: [{ n: 1, quote_no: "SOQ2401", label: "Follow up", uploaded_at: daysAgo(9), by: "Pat" }],
+    correspondence: { mails: [] }
+  });
+  const withFollow = dash.buildDashboard({ grain: "month", range: "6m" });
+  assert.strictEqual(withFollow.funnel.find((x) => x.label === "Followed up").count, 1);
+  assert.strictEqual(withFollow.funnel.find((x) => x.label === "Ordered").count, 1);
+  const drillFollowed = dash.buildDrill({ grain: "month", range: "6m", kind: "funnel", stage: "followed" });
+  assert.ok(drillFollowed.rows.some((r) => r.enquiry_no === "#2004"));
+  assert.ok(!drillFollowed.rows.some((r) => r.enquiry_no === "#1998"), "Ordered without a follow-up record stays off Followed up");
+  rows.pop();
+
+  rows.push({
+    enquiry_no: "#2005",
+    status: "New",
+    created_at: "2026-09-07T06:00:00.000Z",
+    date_enquired: "07/09/2026",
+    enquiry_source: "Website",
+    enquiry_type: "Catologue",
+    category: "Mirror",
+    product: "Sep Week 2 Mirror",
+    province: "Gauteng",
+    events: [{ kind: "created", at: "2026-09-07T06:00:00.000Z" }],
+    tasks: [],
+    correspondence: { mails: [] }
+  });
+  rows.push({
+    enquiry_no: "#2006",
+    status: "New",
+    created_at: "2026-09-01T06:00:00.000Z",
+    date_enquired: "01/09/2026",
+    enquiry_source: "Website",
+    enquiry_type: "Catologue",
+    category: "Mirror",
+    product: "Sep Week 1 Mirror",
+    province: "Gauteng",
+    events: [{ kind: "created", at: "2026-09-01T06:00:00.000Z" }],
+    tasks: [],
+    correspondence: { mails: [] }
+  });
+  const sep = dash.buildDashboard({ grain: "month", month: "2026-09" });
+  const sepWom = sep.weekCompare.months.find((m) => m.key === "2026-09");
+  assert.ok(sepWom);
+  assert.ok(sepWom.enquiries[0] >= 1, "1 Sep 2026 belongs in week of month 1");
+  assert.ok(sepWom.enquiries[1] >= 1, "7 Sep 2026 belongs in week of month 2");
+  const drillSepW1 = dash.buildDrill({ kind: "wom", month: "2026-09", week: 1, series: "enquiries" });
+  assert.ok(drillSepW1.rows.some((r) => r.enquiry_no === "#2006"));
+  assert.ok(!drillSepW1.rows.some((r) => r.enquiry_no === "#2005"));
+  const drillSepW2 = dash.buildDrill({ kind: "wom", month: "2026-09", week: 2, series: "enquiries" });
+  assert.ok(drillSepW2.rows.some((r) => r.enquiry_no === "#2005"));
+  assert.ok(!drillSepW2.rows.some((r) => r.enquiry_no === "#2006"));
+  rows.pop();
+  rows.pop();
 } finally {
   db.listEnquiries = orig;
 }
