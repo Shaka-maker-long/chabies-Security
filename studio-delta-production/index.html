@@ -1400,6 +1400,7 @@
         </div>
         <button id="btnSwitchTask" class="btn btn-outline-dark btn-sm d-none" onclick="showTaskPicker()">Switch task</button>
       </div>
+      <p id="workLockOffNote" class="small text-muted mb-3">Work lock is off for testing. Start and finish stay available after 16:00, and a job already on someone else can still be opened.</p>
       
       <div class="row mb-3">
         <div class="col-md-6 mb-2 mb-md-0">
@@ -1495,7 +1496,7 @@
         <div id="idleWorkersList"><span class="text-muted small">Loading…</span></div>
         <hr>
         <h5 class="brand-font">Overtime</h5>
-        <p class="small text-muted">After 16:00 and on weekends the floor is locked unless you grant overtime. Regular time cannot go past 8 hours without overtime.</p>
+        <p class="small text-muted">Work lock is off for testing. After 16:00 and weekend lock, and the 8-hour cap, stay off until WORK_LOCKS_DISABLED is set back to false.</p>
         <div class="d-flex gap-2 flex-wrap mb-2">
           <select id="otWorker" class="form-select form-select-sm" style="max-width:220px"></select>
           <button type="button" class="btn btn-sm btn-dark" onclick="grantSelectedOvertime()">Grant overtime today</button>
@@ -2264,6 +2265,7 @@
     };
 
     // --- PHOTO REQUIREMENTS ---
+    const WORK_LOCKS_DISABLED = true;
     const PHOTO_REQS = {
       'Quality Control': ['Front', 'Left Side', 'Right Side', 'Back', 'Open', 'Top (Optional)', 'Level 1', 'Level 2 (Optional)'],
       // Assembly now has NO photos
@@ -3923,13 +3925,13 @@
         });
         orders.forEach(o => {
           const isMine = o.assigned === session.name;
-          const isLocked = o.assigned && !isMine;
+          const isLocked = !WORK_LOCKS_DISABLED && o.assigned && !isMine;
           const cardId = `card-${o.rowIndex}`;
           const existingCard = document.getElementById(cardId);
           const productLine = o.productName ? `<div class="product-sub">${o.productName}</div>` : '';
 
           let innerBtn = '';
-          if (session.isAdmin) {
+          if (session.isAdmin && !WORK_LOCKS_DISABLED) {
              innerBtn = `<button class="btn btn-secondary w-100 position-relative" style="z-index: 10;" disabled><i class="bi bi-eye-fill"></i> ADMIN VIEW ONLY</button>`;
           } else {
              if (isMine) {
@@ -3959,7 +3961,7 @@
           const batchStartStatuses =['ready for powder coating', 'ready for delivery'];
           const batchFinishStatuses =['powder coating', 'out for delivery'];
           let isSelectable = false;
-          if (!isLocked && !session.isAdmin) {
+          if (!isLocked && (!session.isAdmin || WORK_LOCKS_DISABLED)) {
              if ((!isMine && batchStartStatuses.includes(lowerStatus)) || (isMine && batchFinishStatuses.includes(lowerStatus))) {
                  isSelectable = true;
              }

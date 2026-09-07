@@ -33,6 +33,11 @@ var RESUME_CHASE_MINS = 8 * 60;
 var IDLE_GRACE_MINS = 10;
 var TAB_OVERTIME = "Overtime_Grants";
 var TAB_RESUME_CHASE = "Resume_Chase";
+// Set false to bring back assignment lock, Admin look-only, and after-16:00 lock.
+var WORK_LOCKS_DISABLED = true;
+function workLocksDisabled() {
+  return WORK_LOCKS_DISABLED === true;
+}
 var TAB_GLASS_TYPES = "Glass_Types";
 var TAB_WOOD_TYPES = "Wood_Types";
 var TAB_GLASS_TO_ORDER = "Glass_To_Order";
@@ -869,7 +874,7 @@ function verifyGlobalLogin(name, password) {
 }
 
 function getOrdersForRole(role, workerName, skipCache) {
-  if (workerName && role && role !== "Admin" && !workerCanPerformTask(workerName, role)) {
+  if (workerName && role && role !== "Admin" && !workerCanPerformTask(workerName, role) && !workLocksDisabled()) {
     return [];
   }
   var cacheKey = "orders:" + String(role || "");
@@ -1226,7 +1231,7 @@ function getFloorLayout() {
         process: asg.process || "",
         paused: !!asg.isPaused
       });
-      continue;
+      if (!workLocksDisabled()) continue;
     }
     if (!st || st === "not yet started") {
       office.push({ order: order, status: status || "Not Yet Started" });
@@ -1427,7 +1432,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
 
       if (role === 'Plate Cutting') {
         var plateInfo = plateMap[String(orderNum)] || emptyPlateStatus();
-        if (plateInfo.assigned !== "" && plateInfo.assigned !== workerName) {
+        if (plateInfo.assigned !== "" && plateInfo.assigned !== workerName && !workLocksDisabled()) {
           throw new Error("Plate Cutting is already being done by " + plateInfo.assigned);
         }
         if (plateInfo.assigned === workerName) {
@@ -1437,7 +1442,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       } else {
         var currentAssignment = activeAssignments[orderNum];
         var currentAssigned = currentAssignment ? currentAssignment.worker : ""; 
-        if (currentAssigned !== "" && currentAssigned !== workerName) {
+        if (currentAssigned !== "" && currentAssigned !== workerName && !workLocksDisabled()) {
           throw new Error("Order locked by " + currentAssigned);
         }
         if (currentAssigned === workerName && currentAssignment && !currentAssignment.isPaused) {
@@ -3305,6 +3310,7 @@ function workerMinutesToday(workerName, now) {
 }
 
 function floorChangeGate(workerName, action) {
+  if (workLocksDisabled()) return { ok: true, unlocked: true };
   var profile = getUserProfileByName(workerName);
   if (profile && String(profile.access || "").toLowerCase() === "admin") return { ok: true, admin: true };
   var state = paidWindowState();
@@ -3954,6 +3960,9 @@ function alreadyAlertedToday(idleSheet, workerName) {
 }
 
 function enforceShiftHours(now) {
+  if (workLocksDisabled() && !now) {
+    return { success: true, paused: 0, resumed: 0, skipped: true, reason: "", kind: "unlocked" };
+  }
   var at = now ? new Date(now) : new Date();
   var state = paidWindowState(at);
   var ss = getSpreadsheet();
