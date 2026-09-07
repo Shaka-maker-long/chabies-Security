@@ -7,7 +7,7 @@
   <script src="/sd-pwa.js?v=pwa"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <style>
-    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --warn:#fff4e0; --lock:88px; }
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --warn:#fff4e0; --lock:992px; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
@@ -29,15 +29,15 @@
     thead tr:nth-child(2) th { position:sticky; top:34px; z-index:5; }
     thead tr:nth-child(3) th { position:sticky; top:68px; z-index:5; }
     .day { min-width:58px; text-align:center; }
-    .left { min-width:110px; max-width:160px; }
-    .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; max-width:150px; }
+    .left { box-sizing:border-box; }
+    .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; }
     td input { width:100%; border:0; font:inherit; background:transparent; }
     .code-cell { text-align:center; font-weight:700; cursor:pointer; user-select:none; }
     .code-cell:focus { outline:2px solid #2f6fed; outline-offset:-2px; }
-    .freeze { position:sticky; left:0; z-index:3; box-shadow:2px 0 0 var(--line); min-width:var(--lock); max-width:var(--lock); }
-    thead th.freeze { z-index:7; background:var(--head); }
-    td.freeze { background:#fff; }
-    .week-lock { font-weight:700; letter-spacing:.02em; }
+    .freeze { position:sticky; z-index:3; background:#fff; }
+    thead th.freeze { z-index:8; background:var(--head); }
+    .l8 { box-shadow:3px 0 8px rgba(16,24,40,.12); }
+    .week-lock { left:0; z-index:9; font-weight:700; letter-spacing:.02em; min-width:var(--lock); width:var(--lock); }
     tr.unplanned td { background:var(--warn); }
     tr.unplanned td.freeze { background:var(--warn); }
     tr.unplanned td input { background:transparent; }
@@ -87,16 +87,23 @@
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
     const LEFT = [
-      ["order_number","ORDER", true],
-      ["item_type","ITEM TYPE", true],
-      ["category","CATEGORY", true],
-      ["product","PRODUCT", true],
-      ["province","PROVINCE", true],
-      ["order_date","ORDER", true],
-      ["courier","COURIER", false],
-      ["waybill","WAYBILL", false],
-      ["status","STATUS", true]
+      ["order_number","ORDER", true, 96],
+      ["item_type","ITEM TYPE", true, 92],
+      ["category","CATEGORY", true, 100],
+      ["product","PRODUCT", true, 168],
+      ["province","PROVINCE", true, 112],
+      ["order_date","ORDER", true, 72],
+      ["courier","COURIER", false, 120],
+      ["waybill","WAYBILL", false, 112],
+      ["status","STATUS", true, 120]
     ];
+    const LEFT_LEFTS = [];
+    LEFT.reduce((x, col, i) => {
+      LEFT_LEFTS[i] = x;
+      return x + col[3];
+    }, 0);
+    const LOCK_W = LEFT.reduce((n, col) => n + col[3], 0);
+    document.documentElement.style.setProperty("--lock", LOCK_W + "px");
     let start = new URLSearchParams(location.search).get("start") || "";
     let days = [];
     let rows = [];
@@ -194,6 +201,15 @@
       box.style.top = top + "px";
     }
 
+    function leftCell(tag, i) {
+      const w = LEFT[i][3];
+      return "<" + tag + " class=\"left freeze l" + i + "\" style=\"left:" + LEFT_LEFTS[i] + "px;width:" + w + "px;min-width:" + w + "px;max-width:" + w + "px\">";
+    }
+    function lockWidth() {
+      const lock = document.getElementById("frozenWeek");
+      return lock ? lock.getBoundingClientRect().width : LOCK_W;
+    }
+
     function paintStatus() {
       const shown = rows.filter(matches);
       const open = shown.filter((r) => !isPlanned(r)).length;
@@ -239,21 +255,20 @@
         dates += "<th class=\"day\" data-day=\"" + d + "\">" + pretty(d) + "</th>";
       });
       const frozen = weekLabel(start || days[0]);
-      let html = "<thead><tr><th class=\"left freeze week-lock\" id=\"frozenWeek\">" + frozen + "</th>";
-      html += "<th colspan=\"" + (LEFT.length - 1) + "\"></th>" + weeks + "</tr><tr>";
-      LEFT.forEach(([k, l], i) => html += "<th class=\"left" + (i === 0 ? " freeze" : "") + "\">" + l + "</th>");
+      let html = "<thead><tr><th class=\"left freeze week-lock\" id=\"frozenWeek\" colspan=\"" + LEFT.length + "\">" + frozen + "</th>";
+      html += weeks + "</tr><tr>";
+      LEFT.forEach(([, l], i) => html += leftCell("th", i) + l + "</th>");
       html += drow + "</tr><tr>";
-      LEFT.forEach((item, i) => html += "<th class=\"left" + (i === 0 ? " freeze" : "") + "\"></th>");
+      LEFT.forEach((col, i) => html += leftCell("th", i) + "</th>");
       html += dates + "</tr></thead><tbody>";
       shown.forEach((row) => {
         html += "<tr data-id=\"" + row.id + "\"" + (isPlanned(row) ? "" : " class=\"unplanned\"") + ">";
         LEFT.forEach(([k,, locked], i) => {
           const v = displayValue(row, k);
-          const freeze = i === 0 ? " freeze" : "";
           if (locked) {
-            html += "<td class=\"left" + freeze + "\"><span class=\"cell-text\" title=\"" + esc(v) + "\">" + esc(v) + "</span></td>";
+            html += leftCell("td", i) + "<span class=\"cell-text\" title=\"" + esc(v) + "\">" + esc(v) + "</span></td>";
           } else {
-            html += "<td class=\"left" + freeze + "\"><input data-k=\"" + k + "\" value=\"" + esc(v) + "\"></td>";
+            html += leftCell("td", i) + "<input data-k=\"" + k + "\" value=\"" + esc(v) + "\"></td>";
           }
         });
         days.forEach((d) => {
@@ -275,8 +290,7 @@
       const wrap = document.getElementById("scroller");
       const th = wrap.querySelector('th[data-week-start="' + monday + '"]');
       if (!th) return false;
-      const lock = wrap.querySelector("th.freeze");
-      const left = th.offsetLeft - (lock ? lock.offsetWidth : 0);
+      const left = th.offsetLeft - lockWidth();
       wrap.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
       const frozen = document.getElementById("frozenWeek");
       if (frozen) frozen.textContent = weekLabel(monday);
@@ -287,8 +301,7 @@
       const wrap = document.getElementById("scroller");
       const frozen = document.getElementById("frozenWeek");
       if (!wrap || !frozen || !days.length) return;
-      const lock = wrap.querySelector("th.freeze");
-      const edge = wrap.getBoundingClientRect().left + (lock ? lock.getBoundingClientRect().width : 88) + 4;
+      const edge = wrap.getBoundingClientRect().left + lockWidth() + 4;
       let pick = days[0];
       for (let i = 0; i < days.length; i++) {
         const th = wrap.querySelector('thead tr:nth-child(3) th.day[data-day="' + days[i] + '"]');
