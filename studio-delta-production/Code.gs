@@ -999,35 +999,74 @@ function getOrdersForRole(role, workerName, skipCache) {
   return relevantOrders;
 }
 
+function hoursFromDurationCell(raw, header) {
+  var n = Number(raw) || 0;
+  if (!(n > 0)) return 0;
+  var label = String(header || "").trim().toLowerCase();
+  if (label === "hours" || label === "hour") return Math.round(n * 100) / 100;
+  if (n > 24 || (n >= 15 && Math.round(n) === n)) return Math.round((n / 60) * 100) / 100;
+  return Math.round(n * 100) / 100;
+}
+
+function minutesFromDurationHours(hours) {
+  var n = Number(hours) || 0;
+  if (!(n > 0)) return 0;
+  return Math.max(1, Math.round(n * 60));
+}
+
+function migrateTaskDurationSheet(sheet) {
+  if (!sheet) return sheet;
+  if (sheet.getLastRow() < 1) {
+    sheet.getRange(1, 1, 1, 3).setValues([["Product", "Process", "Hours"]]);
+    return sheet;
+  }
+  var header = String(sheet.getRange(1, 3).getValue() || "").trim();
+  var label = header.toLowerCase();
+  if (label === "hours" || label === "hour") return sheet;
+  sheet.getRange(1, 3).setValue("Hours");
+  if (sheet.getLastRow() >= 2) {
+    var n = sheet.getLastRow() - 1;
+    var vals = sheet.getRange(2, 3, n, 1).getValues();
+    var i;
+    for (i = 0; i < vals.length; i++) {
+      vals[i][0] = hoursFromDurationCell(vals[i][0], header || "Minutes");
+    }
+    sheet.getRange(2, 3, n, 1).setValues(vals);
+  }
+  return sheet;
+}
+
 function getTaskDurationMinutes(product, process) {
-  var ss = getSpreadsheet();
-  var sheet = ss.getSheetByName("Task_Durations");
+  var sheet = taskDurationSheet();
   var rows = [];
   if (sheet && sheet.getLastRow() >= 2) {
     var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 3).getValues();
     for (var i = 0; i < grid.length; i++) {
       var prod = String(grid[i][0] || "").trim();
       var proc = String(grid[i][1] || "").trim();
-      var mins = Number(grid[i][2]) || 0;
-      if (prod && proc && mins > 0) rows.push({ product: prod, process: proc, minutes: mins });
+      var hours = Number(grid[i][2]) || 0;
+      if (prod && proc && hours > 0) rows.push({ product: prod, process: proc, hours: hours });
     }
   }
   var p = String(product || "").trim().toLowerCase();
   var t = String(process || "").trim().toLowerCase();
   for (var r = 0; r < rows.length; r++) {
-    if (rows[r].product.toLowerCase() === p && rows[r].process.toLowerCase() === t) return rows[r].minutes;
+    if (rows[r].product.toLowerCase() === p && rows[r].process.toLowerCase() === t) {
+      return minutesFromDurationHours(rows[r].hours);
+    }
   }
   return 0;
 }
 
 function formatSpokenDuration(totalMins) {
-  var mins = Math.max(0, Number(totalMins) || 0);
+  var mins = Math.max(0, Math.round(Number(totalMins) || 0));
   if (mins <= 0) return "";
-  var hours = Math.round((mins / 60) * 100) / 100;
-  if (hours === 1) return "1 hour";
-  var text = String(hours);
-  if (text.indexOf(".") !== -1) text = text.replace(/0+$/, "").replace(/\.$/, "");
-  return text + " hours";
+  var h = Math.floor(mins / 60);
+  var m = mins % 60;
+  var hourPart = h === 1 ? "1 hour" : (h > 1 ? h + " hours" : "");
+  var minPart = m === 1 ? "1 minute" : (m > 1 ? m + " minutes" : "");
+  if (hourPart && minPart) return hourPart + " " + minPart;
+  return hourPart || minPart;
 }
 
 function taskDurationSheet() {
@@ -1035,20 +1074,21 @@ function taskDurationSheet() {
   var sheet = ss.getSheetByName("Task_Durations");
   if (!sheet) {
     sheet = ss.insertSheet("Task_Durations");
-    sheet.appendRow(["Product", "Process", "Minutes"]);
+    sheet.appendRow(["Product", "Process", "Hours"]);
   } else if (sheet.getLastRow() < 1) {
-    sheet.appendRow(["Product", "Process", "Minutes"]);
+    sheet.appendRow(["Product", "Process", "Hours"]);
   }
-  return sheet;
+  return migrateTaskDurationSheet(sheet);
 }
 
 function saveTaskDurationIfEmpty(product, process, minutes) {
   var p = String(product || "").trim();
   var t = String(process || "").trim();
   var mins = Math.round(Number(minutes) || 0);
-  if (!p || !t || mins <= 0) return false;
+  var hours = Math.round((mins / 60) * 100) / 100;
+  if (!p || !t || hours <= 0) return false;
   if (getTaskDurationMinutes(p, t) > 0) return false;
-  taskDurationSheet().appendRow([p, t, mins]);
+  taskDurationSheet().appendRow([p, t, hours]);
   return true;
 }
 

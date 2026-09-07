@@ -88,15 +88,53 @@ function usersSheet() {
   return sheet;
 }
 
+function hoursFromDurationCell(raw, header) {
+  const n = Number(raw) || 0;
+  if (!(n > 0)) return 0;
+  const label = String(header || "").trim().toLowerCase();
+  if (label === "hours" || label === "hour") return Math.round(n * 100) / 100;
+  if (n > 24 || (n >= 15 && Math.round(n) === n)) return Math.round((n / 60) * 100) / 100;
+  return Math.round(n * 100) / 100;
+}
+
+function minutesFromDurationHours(hours) {
+  const n = Number(hours) || 0;
+  if (!(n > 0)) return 0;
+  return Math.max(1, Math.round(n * 60));
+}
+
+function migrateTaskDurationSheet(sheet) {
+  if (!sheet) return sheet;
+  if (sheet.getLastRow() < 1) {
+    sheet.getRange(1, 1, 1, 3).setValues([["Product", "Process", "Hours"]]);
+    persistWorkbook();
+    return sheet;
+  }
+  const header = String(sheet.getRange(1, 3).getValue() || "").trim();
+  const label = header.toLowerCase();
+  if (label === "hours" || label === "hour") return sheet;
+  sheet.getRange(1, 3).setValue("Hours");
+  if (sheet.getLastRow() >= 2) {
+    const n = sheet.getLastRow() - 1;
+    const vals = sheet.getRange(2, 3, n, 1).getValues();
+    for (let i = 0; i < vals.length; i++) {
+      vals[i][0] = hoursFromDurationCell(vals[i][0], header || "Minutes");
+    }
+    sheet.getRange(2, 3, n, 1).setValues(vals);
+  }
+  persistWorkbook();
+  return sheet;
+}
+
 function durationsSheet() {
   const book = getBook();
   let sheet = book.getSheetByName("Task_Durations");
   if (!sheet) {
     sheet = book.insertSheet("Task_Durations");
-    sheet.getRange(1, 1, 1, 3).setValues([["Product", "Process", "Minutes"]]);
+    sheet.getRange(1, 1, 1, 3).setValues([["Product", "Process", "Hours"]]);
     persistWorkbook();
   }
-  return sheet;
+  return migrateTaskDurationSheet(sheet);
 }
 
 function isManagerTitle(role) {
@@ -493,6 +531,17 @@ function dropSession(req) {
   return had;
 }
 
+function durationHoursFromRow(r) {
+  if (!r) return 0;
+  if (r.hours != null && String(r.hours).trim() !== "") {
+    const n = Number(r.hours);
+    return n > 0 ? Math.round(n * 100) / 100 : 0;
+  }
+  const mins = Number(r.minutes) || 0;
+  if (mins > 0) return Math.round((mins / 60) * 100) / 100;
+  return 0;
+}
+
 function listDurations() {
   const sheet = durationsSheet();
   const last = sheet.getLastRow();
@@ -502,8 +551,15 @@ function listDurations() {
     grid.forEach((r) => {
       const product = String(r[0] || "").trim();
       const process = String(r[1] || "").trim();
-      const minutes = Number(r[2]) || 0;
-      if (product && process) rows.push({ product, process, minutes });
+      const hours = Number(r[2]) || 0;
+      if (product && process) {
+        rows.push({
+          product,
+          process,
+          hours,
+          minutes: minutesFromDurationHours(hours)
+        });
+      }
     });
   }
   return rows;
@@ -515,8 +571,9 @@ function setDurations(rows) {
   if (last >= 2) {
     sheet.getRange(2, 1, last - 1, 3).clearContent();
   }
-  const clean = (rows || []).filter((r) => r && r.product && r.process && Number(r.minutes) > 0)
-    .map((r) => [String(r.product).trim(), String(r.process).trim(), Number(r.minutes)]);
+  sheet.getRange(1, 3).setValue("Hours");
+  const clean = (rows || []).filter((r) => r && r.product && r.process && durationHoursFromRow(r) > 0)
+    .map((r) => [String(r.product).trim(), String(r.process).trim(), durationHoursFromRow(r)]);
   if (clean.length) sheet.getRange(2, 1, clean.length, 3).setValues(clean);
   persistWorkbook();
   bumpShopCache();
@@ -528,7 +585,7 @@ function durationMinutes(product, process) {
   const t = String(process || "").trim().toLowerCase();
   const rows = listDurations();
   const hit = rows.find((r) => r.product.toLowerCase() === p && r.process.toLowerCase() === t);
-  return hit ? hit.minutes : 0;
+  return hit ? minutesFromDurationHours(hit.hours) : 0;
 }
 
 module.exports = {

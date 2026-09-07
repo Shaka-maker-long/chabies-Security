@@ -98,6 +98,11 @@ assert.deepStrictEqual(floorRoles.enquiryRoles, []);
 
 assert.strictEqual(staff.durationMinutes("Slider", "Welding"), 45);
 assert.strictEqual(staff.durationMinutes("Slider", "Painting"), 0);
+staff.setDurations([{ product: "Slider", process: "Welding", hours: 3.5 }]);
+assert.strictEqual(staff.durationMinutes("Slider", "Welding"), 210);
+assert.strictEqual(staff.listDurations()[0].hours, 3.5);
+staff.setDurations([{ product: "Slider", process: "Welding", minutes: 45 }]);
+assert.strictEqual(staff.durationMinutes("Slider", "Welding"), 45);
 
 const now = Date.parse("2026-08-27T10:00:00+02:00");
 const started = Date.parse("2026-08-27T09:30:00+02:00");
