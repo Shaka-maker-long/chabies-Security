@@ -9,8 +9,13 @@ const PLACEHOLDERS = [
   { key: "{{client_name}}", label: "Client name" },
   { key: "{{enquiry_no}}", label: "Enquiry number" },
   { key: "{{quote_no}}", label: "Quote number" },
-  { key: "{{product}}", label: "Product" }
+  { key: "{{product}}", label: "Product" },
+  { key: "{{client_email}}", label: "Client email" },
+  { key: "{{client_number}}", label: "Client number" },
+  { key: "{{province}}", label: "Province" },
+  { key: "{{status}}", label: "Status" }
 ];
+const FILL_KEYS = PLACEHOLDERS.map((p) => p.key.replace(/[{}]/g, ""));
 
 function repliesPath() {
   return nodePath.join(dataDir(), "email-replies.json");
@@ -97,17 +102,26 @@ function productLine(row) {
   return String(row.product || row.design_description || row.request || "").trim();
 }
 
-function fillText(text, enquiry) {
+function fillValues(enquiry) {
   const row = enquiry || {};
-  const map = {
-    "{{client_name}}": String(row.client_name || "").trim() || "there",
-    "{{enquiry_no}}": String(row.enquiry_no || "").trim() || "the enquiry",
-    "{{quote_no}}": String(row.quote_no || "").trim() || "the quotation",
-    "{{product}}": productLine(row) || "your request"
+  return {
+    client_name: String(row.client_name || "").trim() || "there",
+    enquiry_no: String(row.enquiry_no || "").trim() || "the enquiry",
+    quote_no: String(row.quote_no || "").trim() || "the quotation",
+    product: productLine(row) || String(row.product || "").trim() || "your request",
+    client_email: String(row.client_email || "").trim() || "the client email",
+    client_number: String(row.client_number || "").trim() || "the client number",
+    province: String(row.province || "").trim() || "the province",
+    status: String(row.status || "").trim() || "the status"
   };
+}
+
+function fillText(text, enquiry) {
+  const values = fillValues(enquiry);
+  const keyRe = new RegExp("\\{\\{(" + FILL_KEYS.join("|") + ")\\}\\}", "g");
   return String(text || "")
-    .replace(/\[Client['’]s Name\]/gi, map["{{client_name}}"])
-    .replace(/\{\{(client_name|enquiry_no|quote_no|product)\}\}/g, (m) => map[m] || m);
+    .replace(/\[Client['’]s Name\]/gi, values.client_name)
+    .replace(keyRe, (_, key) => values[key] || "");
 }
 
 function fillReply(reply, enquiryNo) {
@@ -236,7 +250,10 @@ function enquiryOptions() {
     client_email: row.client_email || "",
     product: productLine(row),
     quote_no: row.quote_no || "",
-    status: row.status || ""
+    status: row.status || "",
+    province: row.province || "",
+    source: row.source || "",
+    enquiry_type: row.enquiry_type || ""
   }));
 }
 
@@ -252,6 +269,7 @@ module.exports = {
   restoreReplies,
   fillReply,
   fillText,
+  fillValues,
   loadBookings,
   upsertBooking,
   deleteBooking,

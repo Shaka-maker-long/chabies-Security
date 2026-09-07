@@ -323,7 +323,8 @@ function mountOffice(app) {
         ok: true,
         replies: desk.loadReplies(),
         topics: desk.TOPICS,
-        placeholders: desk.PLACEHOLDERS
+        placeholders: desk.PLACEHOLDERS,
+        enquiries: desk.enquiryOptions()
       });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });

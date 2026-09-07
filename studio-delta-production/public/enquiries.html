@@ -544,6 +544,7 @@
       <header>
         <h1 id="viewTitle">Enquiry</h1>
         <div class="tools">
+          <button class="ghost" type="button" id="viewEmailBtn">Write email</button>
           <button class="ghost" type="button" onclick="closeView()">Close</button>
         </div>
       </header>
@@ -1186,6 +1187,12 @@
         html += "</tbody></table></div>";
       }
       document.getElementById("viewBody").innerHTML = html;
+      const emailBtn = document.getElementById("viewEmailBtn");
+      if (emailBtn) {
+        emailBtn.onclick = () => {
+          location.href = "/enquiries/replies?enquiry=" + encodeURIComponent(row.enquiry_no || "");
+        };
+      }
       document.getElementById("viewMask").classList.add("open");
     }
     function closeView() {
