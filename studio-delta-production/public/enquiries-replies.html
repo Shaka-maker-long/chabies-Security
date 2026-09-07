@@ -42,8 +42,17 @@
     .chips { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
     .chips button { font-size:11px; padding:4px 8px; }
     .msg { font-size:12px; color:var(--muted); }
+    .picker { margin:16px 16px 0; display:grid; grid-template-columns: minmax(240px, 340px) 1fr; gap:14px; align-items:start; }
+    .facts { display:grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap:8px 12px; }
+    .facts div { min-width:0; }
+    .facts b { display:block; font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; letter-spacing:.02em; }
+    .facts span { display:block; font-size:13px; word-break:break-word; }
+    .facts span.empty { color:#98a2b3; }
+    .picked { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+    .picked a { font-size:13px; font-weight:600; color:#1d2939; }
     @media (max-width: 860px) {
       .wrap { grid-template-columns: 1fr; }
+      .picker { grid-template-columns: 1fr; }
       .list { max-height:none; }
       .tools { width:100%; margin-left:0; }
     }
@@ -59,7 +68,7 @@
         <a href="/enquiries/bookings">Showroom bookings</a>
       </nav>
       <h1>Standard email replies</h1>
-      <p class="lede">Studio Delta’s standard Outlook replies. Pick a type, fill from an enquiry, then copy into the mail. {{client_name}} and [Client's Name] become the client; {{quote_no}} is the quotation number.</p>
+      <p class="lede">Pick an enquiry first. The system pulls the client name, email, cell, quote number, product, and province into the preview — {{client_name}} and [Client's Name] become that person. Then choose the reply and copy it, or open it in mail.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -69,7 +78,26 @@
   </header>
   <div id="load" class="load">Loading replies…</div>
   <div id="err" class="err" hidden></div>
-  <div class="wrap" id="app" hidden>
+  <div id="app" hidden>
+  <section class="card picker">
+    <div>
+      <label>Search enquiry
+        <input id="enqSearch" type="search" placeholder="Name, #2604, email, or product" autocomplete="off">
+      </label>
+      <label>Enquiry
+        <select name="enquiry_no" id="enqSelect"><option value="">No enquiry — leave placeholders</option></select>
+      </label>
+    </div>
+    <div>
+      <p class="hint" id="pullHint">Select an enquiry to pull the client’s details into this reply.</p>
+      <div class="facts" id="facts" hidden></div>
+      <div class="picked" id="pickedActions" hidden>
+        <a id="openEnquiry" href="/enquiries">Open on the sheet</a>
+        <a id="mailLink" href="#" hidden>Open in mail</a>
+      </div>
+    </div>
+  </section>
+  <div class="wrap">
     <section class="card">
       <div class="seg" id="topics"></div>
       <div class="list" id="list"></div>
@@ -85,10 +113,7 @@
         <p class="hint">Placeholders</p>
         <div class="chips" id="chips"></div>
         <label>Body <textarea name="body" required></textarea></label>
-        <label>Fill from enquiry
-          <select name="enquiry_no"><option value="">Leave placeholders</option></select>
-        </label>
-        <p class="hint">Preview</p>
+        <p class="hint">Preview with enquiry data</p>
         <div class="preview" id="preview"></div>
         <div class="row">
           <button type="submit">Save</button>
@@ -100,6 +125,7 @@
       </form>
     </section>
   </div>
+  </div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
     let replies = [];
@@ -108,25 +134,38 @@
     let enquiries = [];
     let topicFilter = "";
     let currentId = "";
+    let selectedEnquiry = "";
 
     function esc(s) {
       return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     }
     function setStatus(t) { document.getElementById("status").textContent = t || ""; }
-    function fillText(text, row) {
-      const map = {
-        "{{client_name}}": (row && row.client_name) || "there",
-        "{{enquiry_no}}": (row && row.enquiry_no) || "the enquiry",
-        "{{quote_no}}": (row && row.quote_no) || "the quotation",
-        "{{product}}": (row && row.product) || "your request"
+    function fillValues(row) {
+      return {
+        client_name: (row && row.client_name) || "there",
+        enquiry_no: (row && row.enquiry_no) || "the enquiry",
+        quote_no: (row && row.quote_no) || "the quotation",
+        product: (row && row.product) || "your request",
+        client_email: (row && row.client_email) || "the client email",
+        client_number: (row && row.client_number) || "the client number",
+        province: (row && row.province) || "the province",
+        status: (row && row.status) || "the status"
       };
+    }
+    function fillText(text, row) {
+      const values = fillValues(row);
       return String(text || "")
-        .replace(/\[Client['’]s Name\]/gi, map["{{client_name}}"])
-        .replace(/\{\{(client_name|enquiry_no|quote_no|product)\}\}/g, (m) => map[m] || m);
+        .replace(/\[Client['’]s Name\]/gi, values.client_name)
+        .replace(/\{\{(client_name|enquiry_no|quote_no|product|client_email|client_number|province|status)\}\}/g, (_, key) => values[key] || "");
+    }
+    function matchEnquiry(raw) {
+      const want = String(raw || "").trim().replace(/^#/, "");
+      if (!want) return "";
+      const hit = enquiries.find((e) => String(e.enquiry_no || "").replace(/^#/, "") === want);
+      return hit ? hit.enquiry_no : "";
     }
     function enquiryOf() {
-      const no = document.querySelector("[name=enquiry_no]").value;
-      return enquiries.find((e) => e.enquiry_no === no) || null;
+      return enquiries.find((e) => e.enquiry_no === selectedEnquiry) || null;
     }
     function shown() {
       return topicFilter ? replies.filter((r) => r.topic === topicFilter) : replies;
@@ -147,13 +186,99 @@
         if (btn) openReply(btn.getAttribute("data-id"));
       };
     }
+    function fact(label, value) {
+      const v = String(value || "").trim();
+      return "<div><b>" + esc(label) + "</b><span" + (v ? "" : " class=\"empty\"") + ">" + esc(v || "Not on the enquiry") + "</span></div>";
+    }
+    function renderFacts() {
+      const row = enquiryOf();
+      const hint = document.getElementById("pullHint");
+      const facts = document.getElementById("facts");
+      const actions = document.getElementById("pickedActions");
+      const mail = document.getElementById("mailLink");
+      if (!row) {
+        hint.textContent = "Select an enquiry to pull the client’s details into this reply.";
+        facts.hidden = true;
+        actions.hidden = true;
+        mail.hidden = true;
+        mail.removeAttribute("href");
+        return;
+      }
+      hint.textContent = "Pulled from " + row.enquiry_no + (row.client_name ? " · " + row.client_name : "") + ". Switching replies keeps this enquiry.";
+      facts.hidden = false;
+      facts.innerHTML = fact("Client", row.client_name) +
+        fact("Enquiry", row.enquiry_no) +
+        fact("Quote", row.quote_no) +
+        fact("Product", row.product) +
+        fact("Email", row.client_email) +
+        fact("Cell", row.client_number) +
+        fact("Province", row.province) +
+        fact("Status", row.status);
+      actions.hidden = false;
+      document.getElementById("openEnquiry").href = "/enquiries";
+    }
+    function mailHref(subject, body) {
+      const row = enquiryOf();
+      if (!row || !row.client_email) return "";
+      return "mailto:" + encodeURIComponent(row.client_email) +
+        "?subject=" + encodeURIComponent(subject || "") +
+        "&body=" + encodeURIComponent(body || "");
+    }
     function preview() {
       const form = document.getElementById("form");
       const row = enquiryOf();
-      const sub = fillText(form.subject.value, row);
-      const body = fillText(form.body.value, row);
-      document.getElementById("preview").textContent = sub + "\n\n" + body;
+      const sub = form.hidden ? "" : fillText(form.subject.value, row);
+      const body = form.hidden ? "" : fillText(form.body.value, row);
+      if (!form.hidden) document.getElementById("preview").textContent = sub + "\n\n" + body;
+      const mail = document.getElementById("mailLink");
+      const href = mailHref(sub, body);
+      if (href) {
+        mail.hidden = false;
+        mail.href = href;
+      } else {
+        mail.hidden = true;
+        mail.removeAttribute("href");
+      }
       return { subject: sub, body: body };
+    }
+    function applyEnquiry(no, quiet) {
+      selectedEnquiry = matchEnquiry(no) || String(no || "").trim();
+      if (selectedEnquiry && !enquiries.some((e) => e.enquiry_no === selectedEnquiry)) selectedEnquiry = "";
+      const sel = document.getElementById("enqSelect");
+      if (sel) sel.value = selectedEnquiry;
+      renderFacts();
+      preview();
+      if (!quiet && selectedEnquiry) {
+        const row = enquiryOf();
+        setStatus("Pulled " + selectedEnquiry + (row && row.client_name ? " · " + row.client_name : ""));
+      }
+    }
+    function filteredEnquiries() {
+      const q = String(document.getElementById("enqSearch").value || "").trim().toLowerCase();
+      if (!q) return enquiries;
+      return enquiries.filter((row) => {
+        const blob = [row.enquiry_no, row.client_name, row.client_email, row.client_number, row.product, row.quote_no, row.province, row.status]
+          .join(" ").toLowerCase();
+        return blob.indexOf(q) !== -1;
+      });
+    }
+    function renderEnquirySelect() {
+      const sel = document.getElementById("enqSelect");
+      const rows = filteredEnquiries();
+      const keep = selectedEnquiry;
+      sel.innerHTML = "<option value=\"\">No enquiry — leave placeholders</option>" +
+        rows.map((row) => "<option value=\"" + esc(row.enquiry_no) + "\">" +
+          esc(row.enquiry_no + " · " + (row.client_name || "No name") + (row.product ? " · " + row.product : "")) +
+          "</option>").join("");
+      if (keep && rows.some((r) => r.enquiry_no === keep)) sel.value = keep;
+      else if (rows.length === 1 && qHasSearch()) {
+        sel.value = rows[0].enquiry_no;
+        applyEnquiry(rows[0].enquiry_no, true);
+        return;
+      }
+    }
+    function qHasSearch() {
+      return String(document.getElementById("enqSearch").value || "").trim() !== "";
     }
     function openReply(id) {
       const row = replies.find((r) => r.id === id) || { id: "", title: "", topic: "Enquiry", subject: "", body: "" };
@@ -191,12 +316,20 @@
         replies = j.replies || [];
         topics = j.topics || [];
         placeholders = j.placeholders || [];
-        enquiries = (enq.ok && enq.rows) ? enq.rows.map((row) => ({
-          enquiry_no: row.enquiry_no,
-          client_name: row.client_name || "",
-          quote_no: row.quote_no || "",
-          product: (row.products && row.products.map((p) => p.product).filter(Boolean).join(", ")) || row.product || ""
-        })) : [];
+        enquiries = Array.isArray(j.enquiries) && j.enquiries.length
+          ? j.enquiries
+          : ((enq.ok && enq.rows) ? enq.rows.map((row) => ({
+            enquiry_no: row.enquiry_no,
+            client_name: row.client_name || "",
+            client_email: row.client_email || "",
+            client_number: row.client_number || "",
+            quote_no: row.quote_no || "",
+            product: (row.products && row.products.map((p) => p.product).filter(Boolean).join(", ")) || row.product || "",
+            province: row.province || "",
+            status: row.status || "",
+            source: row.source || "",
+            enquiry_type: row.enquiry_type || ""
+          })) : []);
         document.getElementById("load").hidden = true;
         document.getElementById("app").hidden = false;
         const topicBox = document.getElementById("topics");
@@ -211,12 +344,12 @@
         };
         const sel = document.querySelector("[name=topic]");
         sel.innerHTML = topics.map((t) => "<option>" + esc(t) + "</option>").join("");
-        const enqSel = document.querySelector("[name=enquiry_no]");
-        enqSel.innerHTML = "<option value=\"\">Leave placeholders</option>" +
-          enquiries.map((row) => "<option value=\"" + esc(row.enquiry_no) + "\">" + esc(row.enquiry_no + " · " + (row.client_name || "No name")) + "</option>").join("");
         document.getElementById("chips").innerHTML = placeholders.map((p) =>
-          "<button type=\"button\" class=\"ghost\" data-ph=\"" + esc(p.key) + "\">" + esc(p.key) + "</button>"
+          "<button type=\"button\" class=\"ghost\" data-ph=\"" + esc(p.key) + "\">" + esc(p.label || p.key) + " " + esc(p.key) + "</button>"
         ).join("");
+        const fromUrl = new URLSearchParams(location.search).get("enquiry") || selectedEnquiry;
+        renderEnquirySelect();
+        applyEnquiry(fromUrl, true);
         renderList();
         if (currentId && replies.some((r) => r.id === currentId)) openReply(currentId);
         else if (replies[0]) openReply(replies[0].id);
@@ -249,7 +382,12 @@
       openReply(currentId);
     };
     document.getElementById("form").oninput = preview;
-    document.querySelector("[name=enquiry_no]").onchange = preview;
+    document.getElementById("enqSelect").onchange = () => applyEnquiry(document.getElementById("enqSelect").value);
+    document.getElementById("enqSearch").oninput = () => {
+      renderEnquirySelect();
+      renderFacts();
+      preview();
+    };
     document.getElementById("chips").onclick = (e) => {
       const btn = e.target.closest("[data-ph]");
       if (!btn) return;

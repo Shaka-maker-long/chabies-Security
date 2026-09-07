@@ -20,7 +20,10 @@ db.listEnquiries = () => [{
   client_email: "blaire@example.com",
   product: "Blaire Dressing Table",
   quote_no: "SOQ2604",
-  status: "Quoted"
+  status: "Quoted",
+  province: "KwaZulu-Natal",
+  source: "Instagram",
+  enquiry_type: "Catologue"
 }];
 db.getEnquiry = (no) => (no === "#2604" ? db.listEnquiries()[0] : null);
 
@@ -38,6 +41,19 @@ try {
   assert.ok(filled.body.indexOf("Blaire Bedroom Client") !== -1);
   assert.ok(desk.fillText("Good day [Client's Name],", { client_name: "Pat" }).indexOf("Pat") !== -1);
   assert.ok(desk.fillText("Hi {{client_name}}", null).indexOf("there") !== -1);
+  assert.ok(desk.fillText("{{client_email}} {{client_number}} {{province}} {{status}}", {
+    client_email: "pat@studio",
+    client_number: "0821",
+    province: "Gauteng",
+    status: "Quoted"
+  }).indexOf("pat@studio") !== -1);
+  const filledMore = desk.fillReply({
+    subject: "{{enquiry_no}} {{quote_no}}",
+    body: "{{client_email}} / {{client_number}} / {{province}}"
+  }, "#2604");
+  assert.ok(filledMore.body.indexOf("blaire@example.com") !== -1);
+  assert.ok(filledMore.body.indexOf("0820000000") !== -1);
+  assert.ok(filledMore.body.indexOf("KwaZulu-Natal") !== -1);
 
   const added = desk.upsertReply({
     title: "Custom chase",
@@ -92,7 +108,11 @@ try {
 
   desk.deleteBooking(first.booking.id);
   assert.ok(!desk.loadBookings().some((b) => b.id === first.booking.id));
-  assert.ok(desk.enquiryOptions().some((r) => r.enquiry_no === "#2604"));
+  const opt = desk.enquiryOptions().find((r) => r.enquiry_no === "#2604");
+  assert.ok(opt);
+  assert.strictEqual(opt.client_email, "blaire@example.com");
+  assert.strictEqual(opt.province, "KwaZulu-Natal");
+  assert.strictEqual(opt.product, "Blaire Dressing Table");
 } finally {
   db.listEnquiries = origList;
   db.getEnquiry = origGet;
