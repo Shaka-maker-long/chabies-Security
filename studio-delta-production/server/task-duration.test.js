@@ -105,7 +105,7 @@ function seedDuration(product, process, minutes) {
   assert.strictEqual(saved.length, 1, JSON.stringify(saved));
   assert.strictEqual(String(saved[0][0]), "Slider");
   assert.strictEqual(String(saved[0][1]), "Welding");
-  assert.ok(Number(saved[0][2]) >= 55 && Number(saved[0][2]) <= 70);
+  assert.ok(Number(saved[0][2]) >= 0.9 && Number(saved[0][2]) <= 1.2, "first finish must save hours: " + JSON.stringify(saved));
 
   const briefNow = await callShopFunction("getOrderJobBrief", ["S-DUR-1", "Welding"]);
   assert.ok(briefNow.targetMinutes >= 55, JSON.stringify(briefNow));
@@ -138,7 +138,7 @@ function seedDuration(product, process, minutes) {
   assert.strictEqual(finish2.onTime, true, JSON.stringify(finish2));
   assert.strictEqual(durationRows().length, 1, "still one duration row");
 
-  seedDuration("Talitha", "Welding", 30);
+  seedDuration("Talitha", "Welding", 0.5);
   const late = db.upsertOrder({
     order_number: "S-DUR-3",
     status: "Ready for Welding",
@@ -148,7 +148,7 @@ function seedDuration(product, process, minutes) {
   });
   const start3 = await callShopFunction("startOrder", [late.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
   assert.strictEqual(start3.targetMinutes, 30, JSON.stringify(start3));
-  assert.strictEqual(start3.durationLabel, "0.5 hours");
+  assert.strictEqual(start3.durationLabel, "30 minutes");
   writeOpenLog("S-DUR-3", new Date(Date.now() - 80 * 60 * 1000), {
     pauses: [],
     batchId: "",
@@ -164,6 +164,18 @@ function seedDuration(product, process, minutes) {
   assert.strictEqual(finish3.success, true, JSON.stringify(finish3));
   assert.strictEqual(finish3.overtime, true, JSON.stringify(finish3));
   assert.strictEqual(finish3.onTime, false);
+
+  seedDuration("Long Gate", "Welding", 3.5);
+  const long = db.upsertOrder({
+    order_number: "S-DUR-4",
+    status: "Ready for Welding",
+    type: "Gate",
+    product: "Long Gate",
+    price_excl_vat: "100.00"
+  });
+  const start4 = await callShopFunction("startOrder", [long.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
+  assert.strictEqual(start4.targetMinutes, 210, JSON.stringify(start4));
+  assert.strictEqual(start4.durationLabel, "3 hours 30 minutes");
 
   const mine = await callShopFunction("getMyCompletedWork", ["Thabo"]);
   assert.ok(mine.items && mine.items.length >= 3, JSON.stringify(mine));

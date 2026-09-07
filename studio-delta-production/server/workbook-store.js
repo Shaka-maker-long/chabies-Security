@@ -27,7 +27,7 @@ const SEED_TABS = {
   Overtime_Grants: [["Date", "Worker", "Granted By", "Note", "Created"]],
   Resume_Chase: [["Date", "Worker", "Orders", "Status", "Actual Start", "Note", "Noted By"]],
   Schedule: [["Worker", "Block Start", "Block End", "Process", "Order", "Notes"]],
-  Task_Durations: [["Product", "Process", "Minutes"]],
+  Task_Durations: [["Product", "Process", "Hours"]],
   Glass_Types: [["Name"], ["Reeded"], ["Clear"], ["Ocean view"]],
   Wood_Types: [["Name"]],
   Glass_To_Order: [["ID", "Timestamp", "Order #", "Worker", "Component", "Glass type", "Thickness", "Height", "Width", "Quantity", "Status"]],

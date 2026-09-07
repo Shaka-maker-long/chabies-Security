@@ -2663,13 +2663,14 @@
       return isNaN(d.getTime()) ? 0 : d.getTime();
     }
     function formatSpokenDuration(totalMins) {
-      const mins = Math.max(0, Number(totalMins) || 0);
+      const mins = Math.max(0, Math.round(Number(totalMins) || 0));
       if (mins <= 0) return '';
-      const hours = Math.round((mins / 60) * 100) / 100;
-      if (hours === 1) return '1 hour';
-      let text = String(hours);
-      if (text.indexOf('.') !== -1) text = text.replace(/0+$/, '').replace(/\.$/, '');
-      return text + ' hours';
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      const hourPart = h === 1 ? '1 hour' : (h > 1 ? h + ' hours' : '');
+      const minPart = m === 1 ? '1 minute' : (m > 1 ? m + ' minutes' : '');
+      if (hourPart && minPart) return hourPart + ' ' + minPart;
+      return hourPart || minPart;
     }
     function remainingCountdownMs(o, now) {
       const target = Number(o && o.targetMinutes) || 0;

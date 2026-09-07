@@ -32,25 +32,20 @@
     <button onclick="save()">Save times</button>
   </header>
   <div class="wrap">
-    <p class="help">Hours per product and process (1.5 is one hour thirty minutes). The floor counts down that time (pauses do not count). If a cell is empty, the first finished job writes that time here so the next one can count down.</p>
+    <p class="help">Type hours. 3.5 is 3 hours 30 minutes — that 3.5 is what we save. The floor counts down 3 hours 30 minutes (pauses do not count). If a cell is empty, the first finished job writes that time here so the next one can count down.</p>
     <table id="grid"></table>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
     const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
     let products = [];
-    let mins = {};
+    let hours = {};
     function key(p, t) { return p + "||" + t; }
-    function hoursFromMinutes(mins) {
-      const n = Number(mins) || 0;
+    function hoursValue(raw) {
+      const n = Number(raw);
       if (!(n > 0)) return "";
-      const h = Math.round((n / 60) * 100) / 100;
+      const h = Math.round(n * 100) / 100;
       return String(h);
-    }
-    function minutesFromHours(hours) {
-      const n = Number(hours);
-      if (!(n > 0)) return 0;
-      return Math.max(1, Math.round(n * 60));
     }
     function render() {
       let html = "<thead><tr><th class='prod'>PRODUCT</th>";
@@ -59,7 +54,7 @@
       products.forEach((p) => {
         html += "<tr><td class='prod'><b>" + p + "</b></td>";
         TASKS.forEach((t) => {
-          const v = hoursFromMinutes(mins[key(p, t)]);
+          const v = hoursValue(hours[key(p, t)]);
           html += "<td><input data-p=\"" + p.replace(/"/g,"&quot;") + "\" data-t=\"" + t + "\" inputmode=\"decimal\" step=\"0.25\" min=\"0\" placeholder=\"h\" value=\"" + v + "\"></td>";
         });
         html += "</tr>";
@@ -75,9 +70,10 @@
       const dj = await d.json();
       const dropj = await drop.json();
       products = (dropj.dropdowns && dropj.dropdowns.product) ? dropj.dropdowns.product.slice() : [];
-      mins = {};
+      hours = {};
       (dj.rows || []).forEach((r) => {
-        mins[key(r.product, r.process)] = r.minutes;
+        const h = r.hours != null && r.hours !== "" ? Number(r.hours) : (Number(r.minutes) || 0) / 60;
+        hours[key(r.product, r.process)] = h;
         if (products.indexOf(r.product) === -1) products.push(r.product);
       });
       if (!products.length) products = ["(add products on Dropdowns first)"];
@@ -87,8 +83,8 @@
     async function save() {
       const rows = [];
       document.querySelectorAll("#grid input").forEach((inp) => {
-        const minutes = minutesFromHours(inp.value);
-        if (minutes > 0) rows.push({ product: inp.getAttribute("data-p"), process: inp.getAttribute("data-t"), minutes: minutes });
+        const n = Number(inp.value);
+        if (n > 0) rows.push({ product: inp.getAttribute("data-p"), process: inp.getAttribute("data-t"), hours: Math.round(n * 100) / 100 });
       });
       const r = await sdOfficeFetch("/api/office/durations", { method: "PUT", body: JSON.stringify({ rows }) });
       const j = await r.json();
