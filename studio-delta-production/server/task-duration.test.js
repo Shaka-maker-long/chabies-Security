@@ -12,6 +12,7 @@ delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
 const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const db = require("./db");
+const staff = require("./staff");
 const { callShopFunction } = require("./gas");
 
 initWorkbook();
@@ -177,6 +178,50 @@ function seedDuration(product, process, minutes) {
   assert.strictEqual(finish3.success, true, JSON.stringify(finish3));
   assert.strictEqual(finish3.overtime, true, JSON.stringify(finish3));
   assert.strictEqual(finish3.onTime, false);
+
+  seedDuration("Pause Gate", "Welding", 3);
+  const pauseOrd = db.upsertOrder({
+    order_number: "S-DUR-5",
+    status: "Ready for Welding",
+    type: "Gate",
+    product: "Pause Gate",
+    price_excl_vat: "100.00"
+  });
+  const start5 = await callShopFunction("startOrder", [pauseOrd.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
+  assert.strictEqual(start5.success, true, JSON.stringify(start5));
+  assert.strictEqual(start5.targetMinutes, 180, JSON.stringify(start5));
+  writeOpenLog("S-DUR-5", new Date(Date.now() - 10 * 60 * 1000), {
+    pauses: [],
+    batchId: "",
+    batchShare: 1,
+    batchSplitAt: null,
+    entryType: "production",
+    overtimeContinue: true,
+    targetMinutes: 180
+  });
+  const paused5 = await callShopFunction("workerPauseOrder", [pauseOrd.id, "S-DUR-5", "Thabo", "No materials"]);
+  assert.strictEqual(paused5.success, true, JSON.stringify(paused5));
+  const pollPaused = await callShopFunction("pollFloor", ["Welding", "Thabo"]);
+  const cardPaused = (pollPaused.orders || []).find((o) => String(o.order) === "S-DUR-5");
+  assert.ok(cardPaused && cardPaused.isPaused, JSON.stringify(cardPaused));
+  const remPaused = staff.countdownRemainingMs(cardPaused, Date.now());
+  assert.ok(remPaused > 165 * 60 * 1000 && remPaused < 176 * 60 * 1000, "paused remaining " + remPaused);
+
+  const resumed5 = await callShopFunction("workerResumeOrder", [pauseOrd.id, "S-DUR-5", "Thabo", "", false, []]);
+  assert.strictEqual(resumed5.success, true, JSON.stringify(resumed5));
+  assert.ok(resumed5.remainingMinutes >= 165 && resumed5.remainingMinutes <= 176, JSON.stringify(resumed5));
+  assert.ok(String(resumed5.remainingLabel || "").indexOf("2 hours") !== -1, JSON.stringify(resumed5));
+  const pollResumed = await callShopFunction("pollFloor", ["Welding", "Thabo"]);
+  const cardResumed = (pollResumed.orders || []).find((o) => String(o.order) === "S-DUR-5");
+  assert.ok(cardResumed && !cardResumed.isPaused, JSON.stringify(cardResumed));
+  const remResumed = staff.countdownRemainingMs(cardResumed, Date.now());
+  assert.ok(
+    remResumed > 165 * 60 * 1000 && remResumed < 176 * 60 * 1000,
+    "resume must keep remaining, not reset to 3 hours: " + remResumed + " " + JSON.stringify(cardResumed)
+  );
+  await callShopFunction("finishOrder", [
+    pauseOrd.id, start5.logId, null, "", [], "Thabo", [], "S-DUR-5", []
+  ]);
 
   seedDuration("Long Gate", "Welding", 3.5);
   const long = db.upsertOrder({
