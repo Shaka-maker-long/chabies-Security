@@ -66,10 +66,11 @@ db.setScheduleCell(side.id, "2026-09-22", "LC");
 db.setScheduleCell(cabinet.id, "2026-09-24", "QC");
 
 const delivery = db.listDeliveryItems();
-assert.strictEqual(delivery.length, 2);
-assert.ok(delivery.some((i) => i.order_number === "S260186" && i.code === "LD" && i.week === 39));
-assert.ok(delivery.some((i) => i.order_number === "S260207" && i.code === "LC" && i.weekday === "Tuesday"));
-assert.ok(!delivery.some((i) => i.code === "QC"));
+assert.strictEqual(delivery.items.length, 2);
+assert.ok(delivery.items.some((i) => i.order_number === "S260186" && i.code === "LD" && i.week === 39));
+assert.ok(delivery.items.some((i) => i.order_number === "S260207" && i.code === "LC" && i.weekday === "Tuesday"));
+assert.ok(!delivery.items.some((i) => i.code === "QC"));
+assert.ok(delivery.categories.indexOf("Cabinet") !== -1);
 
 const again = db.upsertScheduleRow({
   order_number: "S260186",
@@ -95,9 +96,9 @@ assert.strictEqual(refreshed.cells["2026-09-21"], "LD");
 
 db.deleteOrder("S260207");
 assert.ok(!db.listSchedule("2026-09-21", "2026-09-25").some((r) => r.order_number === "S260207"));
-assert.ok(!db.listDeliveryItems().some((i) => i.order_number === "S260207"));
+assert.ok(!db.listDeliveryItems().items.some((i) => i.order_number === "S260207"));
 
-const weeks = sched.weekOptions(delivery, "2026-09-21");
+const weeks = sched.weekOptions(delivery.items, "2026-09-21");
 assert.ok(weeks.some((w) => w.key === "2026-W39"));
 
 console.log("office-schedule.test.js ok");

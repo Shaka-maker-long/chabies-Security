@@ -511,8 +511,8 @@ function findScheduleRowByOrder(orderNumber) {
   return state.schedule_rows.find((r) => formatOrderId(r.order_number) === want) || null;
 }
 
-function syncScheduleFromOrders() {
-  const orders = listOrders();
+function syncScheduleFromOrders(given) {
+  const orders = given || listOrders();
   const have = new Map();
   state.schedule_rows.forEach((r) => {
     const key = formatOrderId(r.order_number);
@@ -535,7 +535,8 @@ function syncScheduleFromOrders() {
       changed = true;
       return;
     }
-    const keys = ["order_number", "item_type", "category", "product", "province", "order_date", "status", "sort_order"];
+    row.sort_order = fields.sort_order;
+    const keys = ["order_number", "item_type", "category", "product", "province", "order_date", "status"];
     const same = keys.every((k) => String(row[k] || "") === String(fields[k] || ""));
     if (!same) {
       Object.assign(row, fields);
@@ -543,7 +544,7 @@ function syncScheduleFromOrders() {
     }
   });
   if (changed) save();
-  return { synced: orders.length };
+  return { synced: orders.length, orders };
 }
 
 function deleteScheduleForOrder(orderNumber, persist = true) {
@@ -556,25 +557,33 @@ function deleteScheduleForOrder(orderNumber, persist = true) {
 }
 
 function listSchedule(fromDay, toDay) {
-  syncScheduleFromOrders();
-  const live = new Set(listOrders().map((o) => formatOrderId(o.order_number)).filter(Boolean));
-  const rows = state.schedule_rows.slice().sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
-  return rows.filter((r) => {
-    const num = formatOrderId(r.order_number);
-    if (live.has(num)) return true;
-    return state.schedule_cells.some((c) => c.row_id === r.id);
-  }).map((r) => {
-    const cells = {};
-    for (const c of state.schedule_cells) {
-      if (c.row_id === r.id && c.day >= fromDay && c.day <= toDay) cells[c.day] = c.value;
+  const { orders } = syncScheduleFromOrders();
+  const live = new Set(orders.map((o) => formatOrderId(o.order_number)).filter(Boolean));
+  const withCells = new Set();
+  const cellsByRow = new Map();
+  for (const c of state.schedule_cells) {
+    withCells.add(c.row_id);
+    if (c.day < fromDay || c.day > toDay) continue;
+    let bag = cellsByRow.get(c.row_id);
+    if (!bag) {
+      bag = {};
+      cellsByRow.set(c.row_id, bag);
     }
-    return { ...r, cells };
-  });
+    bag[c.day] = c.value;
+  }
+  const rows = state.schedule_rows.slice().sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
+  return rows.filter((r) => live.has(formatOrderId(r.order_number)) || withCells.has(r.id)).map((r) => ({
+    ...r,
+    cells: cellsByRow.get(r.id) || {}
+  }));
 }
 
 function listDeliveryItems() {
-  syncScheduleFromOrders();
-  return require("./office-schedule").collectDeliveryItems(state.schedule_rows, state.schedule_cells);
+  const { orders } = syncScheduleFromOrders();
+  return {
+    items: require("./office-schedule").collectDeliveryItems(state.schedule_rows, state.schedule_cells),
+    categories: Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort()
+  };
 }
 
 function upsertScheduleRow(row) {
