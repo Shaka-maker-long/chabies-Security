@@ -258,6 +258,12 @@
       font-size: 0.82rem;
       color: var(--text-muted, #667085);
     }
+    .task-eta {
+      font-weight: 600;
+      font-size: 0.88rem;
+      margin: 0.15rem 0 0.4rem;
+      color: #175cd3;
+    }
     .start-duration {
       background: #eff8ff;
       border: 1px solid #b2ddff;
@@ -2672,6 +2678,69 @@
       if (hourPart && minPart) return hourPart + ' ' + minPart;
       return hourPart || minPart;
     }
+    const LUNCH_START_MINS = 12 * 60;
+    const LUNCH_END_MINS = 12 * 60 + 30;
+    function asSast(date) { return new Date(date.getTime() + 2 * 60 * 60 * 1000); }
+    function sastMinsOfDay(date) {
+      const d = asSast(date);
+      return d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60;
+    }
+    function sastWallToDate(date, hours, minutes) {
+      const d = asSast(date);
+      return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hours - 2, minutes, 0, 0));
+    }
+    function addSastDays(date, days) { return new Date(date.getTime() + days * 86400000); }
+    function sastDayStamp(date) {
+      const d = asSast(date);
+      const y = d.getUTCFullYear();
+      const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+      const day = String(d.getUTCDate()).padStart(2, '0');
+      return y + '-' + m + '-' + day;
+    }
+    function formatEstimateClock(date) {
+      if (!date || isNaN(date.getTime())) return '';
+      const sast = asSast(date);
+      const stamp = String(sast.getUTCHours()).padStart(2, '0') + ':' + String(sast.getUTCMinutes()).padStart(2, '0');
+      const day = sastDayStamp(date);
+      const now = new Date();
+      if (day === sastDayStamp(now)) return stamp;
+      if (day === sastDayStamp(addSastDays(now, 1))) return 'tomorrow ' + stamp;
+      return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][sast.getUTCDay()] + ' ' + stamp;
+    }
+    function estimateCompletionAt(startDate, workMinutes) {
+      let cursor = startDate instanceof Date ? startDate : new Date(startDate);
+      let remaining = Number(workMinutes);
+      if (isNaN(cursor.getTime()) || !(remaining > 0)) return null;
+      let safety = 0;
+      while (remaining > 0 && safety++ < 20000) {
+        const mins = sastMinsOfDay(cursor);
+        if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) {
+          cursor = sastWallToDate(cursor, 12, 30);
+          continue;
+        }
+        const chunkEnd = mins < LUNCH_START_MINS
+          ? sastWallToDate(cursor, 12, 0)
+          : sastWallToDate(addSastDays(cursor, 1), 12, 0);
+        const avail = (chunkEnd.getTime() - cursor.getTime()) / 60000;
+        if (avail <= 0) {
+          cursor = new Date(cursor.getTime() + 1000);
+          continue;
+        }
+        const take = Math.min(remaining, avail);
+        cursor = new Date(cursor.getTime() + take * 60000);
+        remaining -= take;
+      }
+      return cursor;
+    }
+    function etaLineHtml(o) {
+      const mins = Number(o && o.targetMinutes) || 0;
+      if (mins <= 0) return '';
+      const start = parseStartMs(o && o.startedAt) || Date.now();
+      const at = estimateCompletionAt(new Date(start), mins);
+      const label = (at && formatEstimateClock(at)) || (o && o.etaLabel) || '';
+      if (!label) return '';
+      return '<div class="task-eta">Estimated finish ' + label + ' · lunch is not counted</div>';
+    }
     function remainingCountdownMs(o, now) {
       const target = Number(o && o.targetMinutes) || 0;
       if (target <= 0) return null;
@@ -2709,7 +2778,7 @@
       const mins = Number(o && o.targetMinutes) || 0;
       const label = (o && o.durationLabel) || formatSpokenDuration(mins);
       if (mins > 0 && label) {
-        return '<div class="task-duration-banner">Your duration for this order is ' + label + '</div>';
+        return '<div class="task-duration-banner">Your duration for this order is ' + label + '</div>' + etaLineHtml(o);
       }
       return '<div class="task-duration-banner is-learn">No time is saved for this product yet. That does not pause the job. When you finish we save the duration so the next one can count down.</div>';
     }
@@ -2733,7 +2802,7 @@
       const body = card.querySelector('.card-body');
       if (!body) return;
       const html = countdownHtml(o);
-      const oldBits = body.querySelectorAll('.task-countdown, .task-duration-banner');
+      const oldBits = body.querySelectorAll('.task-countdown, .task-duration-banner, .task-eta');
       if (!html) {
         oldBits.forEach((el) => el.remove());
         return;
@@ -4208,7 +4277,10 @@
       const spoken = (brief && brief.durationLabel) || formatSpokenDuration(mins);
       let html = '';
       if (mins > 0 && spoken) {
-        html += '<div class="start-duration"><strong>Your duration for this order is ' + spoken + '</strong><span class="small text-muted">The clock counts down working time only. Pauses do not count.</span></div>';
+        const eta = (brief && brief.etaLabel) || formatEstimateClock(estimateCompletionAt(new Date(), mins));
+        html += '<div class="start-duration"><strong>Your duration for this order is ' + spoken + '</strong>';
+        if (eta) html += '<strong>Estimated finish ' + eta + '</strong>';
+        html += '<span class="small text-muted">The clock counts down working time only. Lunch 12:00–12:30 is not counted. Other pauses do not count.</span></div>';
       } else {
         html += '<div class="start-duration is-learn"><strong>No time is saved for this product yet</strong><span class="small">That does not pause the job. Keep working. When you finish we save how long it took so the next one can count down.</span></div>';
       }
@@ -4436,7 +4508,8 @@
            session.pendingWorkTogether = false;
            session.skipRunningChoice = false;
            if (res.durationLabel) {
-             showAlert('Your duration for this order is ' + res.durationLabel + '. The clock counts down working time only — pauses do not count.');
+             const etaBit = res.etaLabel ? ' Estimated finish ' + res.etaLabel + '.' : '';
+             showAlert('Your duration for this order is ' + res.durationLabel + '.' + etaBit + ' Lunch is not counted.');
            } else {
              showAlert('No time is saved for this product yet. Keep the job running — when you finish we will save the duration so the next one can count down.');
            }

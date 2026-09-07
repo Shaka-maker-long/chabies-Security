@@ -58,6 +58,19 @@ function seedDuration(product, process, minutes) {
 (async function main() {
   await callShopFunction("grantOvertime", ["Thabo", "", "Admin", "test"]);
 
+  const lunchCross = await callShopFunction("getTaskTimeEstimate", ["2026-09-07T11:00:00+02:00", 120]);
+  assert.strictEqual(Date.parse(lunchCross.etaAt), Date.parse("2026-09-07T13:30:00+02:00"), JSON.stringify(lunchCross));
+  assert.ok(String(lunchCross.etaLabel).indexOf("13:30") !== -1, JSON.stringify(lunchCross));
+
+  const threeAndHalf = await callShopFunction("getTaskTimeEstimate", ["2026-09-07T11:00:00+02:00", 210]);
+  assert.strictEqual(Date.parse(threeAndHalf.etaAt), Date.parse("2026-09-07T15:00:00+02:00"), JSON.stringify(threeAndHalf));
+
+  const noLunch = await callShopFunction("getTaskTimeEstimate", ["2026-09-07T08:00:00+02:00", 60]);
+  assert.strictEqual(Date.parse(noLunch.etaAt), Date.parse("2026-09-07T09:00:00+02:00"), JSON.stringify(noLunch));
+
+  const duringLunch = await callShopFunction("getTaskTimeEstimate", ["2026-09-07T12:10:00+02:00", 30]);
+  assert.strictEqual(Date.parse(duringLunch.etaAt), Date.parse("2026-09-07T13:00:00+02:00"), JSON.stringify(duringLunch));
+
   const spoken = await callShopFunction("getTaskDuration", ["Slider", "Welding"]);
   assert.strictEqual(spoken.minutes, 0);
   assert.strictEqual(spoken.durationLabel, "");
@@ -176,6 +189,8 @@ function seedDuration(product, process, minutes) {
   const start4 = await callShopFunction("startOrder", [long.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
   assert.strictEqual(start4.targetMinutes, 210, JSON.stringify(start4));
   assert.strictEqual(start4.durationLabel, "3 hours 30 minutes");
+  assert.ok(start4.etaLabel, JSON.stringify(start4));
+  assert.ok(start4.etaAt, JSON.stringify(start4));
 
   const mine = await callShopFunction("getMyCompletedWork", ["Thabo"]);
   assert.ok(mine.items && mine.items.length >= 3, JSON.stringify(mine));
