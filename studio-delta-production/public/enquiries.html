@@ -549,7 +549,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
-  <script src="/enquiry-process.js?v=reject-reason"></script>
+  <script src="/enquiry-process.js?v=reject-costing"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 108, true],
@@ -852,14 +852,20 @@
     function closeReason(row) {
       return String((row && row.close_reason) || (row && row.client_outcome && row.client_outcome.reason) || "").trim();
     }
+    function costingRejectReason(row) {
+      return String((row && row.costing_reject_reason) || "").trim();
+    }
     function searchBlob(row) {
-      return HEADERS.map(([k]) => k === "_edit" ? "" : (row[k] || "")).join(" ") + " " + namedLines(row.products).map((l) => l.product + " " + l.category).join(" ") + " " + closeReason(row);
+      return HEADERS.map(([k]) => k === "_edit" ? "" : (row[k] || "")).join(" ") + " " + namedLines(row.products).map((l) => l.product + " " + l.category).join(" ") + " " + closeReason(row) + " " + costingRejectReason(row);
     }
     function displayValue(row, k) {
       if (k === "status") {
         const st = row.status || "New";
         const reason = closeReason(row);
-        return reason && isClosed(row) ? st + " — " + reason : st;
+        if (reason && isClosed(row)) return st + " — " + reason;
+        const costingReject = costingRejectReason(row);
+        if (costingReject && st === "Re-Cost") return st + " — " + costingReject;
+        return st;
       }
       if (k === "product") {
         const label = productLabel(row);
@@ -1119,6 +1125,9 @@
       html += viewItem("Status", row.status || "New");
       if (closeReason(row) && isClosed(row)) {
         html += viewItem(row.status === "Rejected" ? "Rejection reason" : "Close reason", closeReason(row), true);
+      }
+      if (costingRejectReason(row) && row.status === "Re-Cost") {
+        html += viewItem("Costing rejected", costingRejectReason(row), true);
       }
       html += viewItem("Enquiry source", row.enquiry_source);
       html += viewItem("Enquiry type", row.enquiry_type);

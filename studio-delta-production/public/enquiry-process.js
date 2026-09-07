@@ -619,6 +619,26 @@
   function correspondenceCard(row) {
     return filesCard(row);
   }
+  function costingRejectReasons() {
+    const reasons = (state.snap && state.snap.costingRejectReasons) || [
+      "Incomplete cost sheet",
+      "Cost too high",
+      "Wrong product or specifictions",
+      "Missing supplier quotation",
+      "Need another supplier price",
+      "Other"
+    ];
+    return reasons;
+  }
+  function costingRejectFields(row) {
+    return "<label>Why reject costing *<select name=\"reason\">" +
+      "<option value=\"\"></option>" +
+      costingRejectReasons().map((r) => "<option>" + esc(r) + "</option>").join("") +
+      "</select></label>" +
+      "<label>Comment (required if Other)<textarea name=\"comments\"></textarea></label>" +
+      "<label>Costing person if rejected</label>" +
+      assigneeSelect(rolePerson("costing") || lastCosting(row));
+  }
   function formFor(action, row) {
     const waiting = (state.snap.waitingStatuses || []).map((s) => "<option>" + esc(s) + "</option>").join("");
     const closed = (state.snap.closedStatuses || []).map((s) => "<option>" + esc(s) + "</option>").join("");
@@ -659,11 +679,15 @@
       return costSheetLinks(row) +
         productNamesLine(row) +
         "<label>Decision<select name=\"decision\"><option value=\"approve\">Approve — send to quote</option><option value=\"reject\">Reject — back to costing</option></select></label>" +
-        "<label>Comments (required if rejected)<textarea name=\"comments\"></textarea></label>" +
+        costingRejectFields(row) +
         "<label>Quoting person if approved</label>" +
-        assigneeSelect(row.quote_assignee || rolePerson("quoting"), "quote_assignee") +
-        "<label>Costing person if rejected</label>" +
-        assigneeSelect(rolePerson("costing") || lastCosting(row));
+        assigneeSelect(row.quote_assignee || rolePerson("quoting"), "quote_assignee");
+    }
+    if (action.id === "reject_costing") {
+      return costSheetLinks(row) +
+        productNamesLine(row) +
+        "<p class=\"sd-process-sub\">Send this back to costing. The quote is not issued.</p>" +
+        costingRejectFields(row);
     }
     if (action.id === "complete_quote") {
       const hint = (state.snap && state.snap.quoteNo) || {};
@@ -771,7 +795,7 @@
     body.quote_assignee = field(form, "quote_assignee");
     body.waiting_status = field(form, "waiting_status");
     body.comments = field(form, "comments");
-    body.reason = body.comments;
+    body.reason = field(form, "reason") || body.comments;
     if (action.id === "complete_chase") body.next = field(form, "next");
     if (action.id === "complete_approval") body.decision = field(form, "decision");
     if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
@@ -828,6 +852,7 @@
     }
     if (actions.length === 1) return true;
     if (row.status === "Waiting on Supplier") return action.id === "complete_supplier";
+    if (row.status === "Costed") return action.id === "complete_quote" || action.id === "complete_approval";
     if (/Costing|Re-Cost/.test(row.status || "")) {
       return action.id === "complete_cost_sheet";
     }
@@ -844,13 +869,16 @@
     const body = document.getElementById("sdProcessBody");
     document.getElementById("sdProcessTitle").textContent = row.enquiry_no + " · " + (row.client_name || "Enquiry");
     const closeReason = String((row.close_reason) || (row.client_outcome && row.client_outcome.reason) || "").trim();
+    const costingReject = String(row.costing_reject_reason || "").trim();
     document.getElementById("sdProcessSub").textContent = (row.status || "New")
       + (closeReason ? " — " + closeReason : "")
+      + (costingReject && row.status === "Re-Cost" ? " — " + costingReject : "")
       + (row.product ? " · " + row.product : "");
     document.getElementById("sdProcessSheetLink").href = "/enquiries";
     let html = "<div class=\"sd-process-card\"><div class=\"sd-process-meta\">" +
       "<span>Status <b>" + esc(row.status || "New") + "</b></span>" +
       (closeReason ? "<span>" + (row.status === "Rejected" ? "Rejection reason" : "Close reason") + " <b>" + esc(closeReason) + "</b></span>" : "") +
+      (costingReject ? "<span>Costing rejected <b>" + esc(costingReject) + "</b></span>" : "") +
       (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_no ? " · " + esc(row.quote_no) : "") +
         ((row.quotes || []).length > 1 ? " · " + (row.quotes.length) + " quotes" : "") + "</span>" : "") +
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +
