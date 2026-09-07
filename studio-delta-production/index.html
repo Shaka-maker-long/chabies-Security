@@ -2908,6 +2908,44 @@
       if (p === 'Quality Control') return ROAD_STOPS.filter((s) => s.id === 'Pre-Powder Coating QC')[0];
       return ROAD_STOPS.filter((s) => s.role === p || s.id === p)[0] || ROAD_STOPS.filter((s) => s.id === 'New orders')[0];
     }
+    function taskNameFromLabel(raw) {
+      const s = String(raw || '').trim().toLowerCase();
+      if (!s) return '';
+      if (/weld/.test(s)) return 'Welding';
+      if (/tag/.test(s)) return 'Tagging';
+      if (/grind/.test(s)) return 'Grinding';
+      if (/assembl/.test(s)) return 'Assembly';
+      if (/paint prep|paint preparation/.test(s)) return 'Paint Preparation';
+      if (/paint/.test(s)) return 'Painting';
+      if (/plate/.test(s)) return 'Plate Cutting';
+      if (/profile|steel|cut/.test(s)) return 'Profile Cutting';
+      if (/qc|quality|powder/.test(s)) return 'Quality Control';
+      return '';
+    }
+    function stationTaskStep(workerName, assignedRows) {
+      if (assignedRows && assignedRows[0] && assignedRows[0].process) {
+        const fromJob = processToRoadStep(assignedRows[0].process);
+        if (fromJob) return fromJob;
+      }
+      const mine = session.name && String(session.name).toLowerCase() === String(workerName || '').toLowerCase();
+      const labels = mine ? (session.tasks || []).concat([session.jobTitle, session.role]) : [];
+      for (let i = 0; i < labels.length; i++) {
+        const raw = String(labels[i] || '').trim();
+        if (!raw) continue;
+        const name = taskNameFromLabel(raw) || raw;
+        const step = ROAD_STOPS.filter((s) => s.role === name || s.id === name)[0];
+        if (step) return step;
+      }
+      const guessed = taskNameFromLabel((session.jobTitle || '') + ' ' + (session.role || '') + ' ' + (workerName || ''));
+      if (guessed) return ROAD_STOPS.filter((s) => s.role === guessed || s.id === guessed)[0] || processToRoadStep(guessed);
+      return null;
+    }
+    function openStationWork(workerName, assignedRows) {
+      const step = stationTaskStep(workerName, assignedRows);
+      if (!step) return false;
+      openFloorBoard(step.role, step.id, step.qcFilter || '');
+      return true;
+    }
     function animForProcess(process) {
       const p = String(process || '').toLowerCase();
       if (p === 'welding' || p === 'tagging') return 'weld';
@@ -3131,7 +3169,7 @@
       pop.querySelector('.floor-pop-title').textContent = title || '';
       const list = pop.querySelector('.floor-pop-list');
       if (!rows.length) {
-        list.innerHTML = '<li class="text-muted">No orders here right now.</li>';
+        list.innerHTML = '<li class="text-muted">No orders on this person right now. Tap the numbered pile for work waiting to start, or tap your own station.</li>';
       } else {
         list.innerHTML = shown.map((row, i) =>
           '<li><button type="button" data-floor-i="' + i + '">' + floorEsc(row.order) + '</button></li>'
@@ -3248,11 +3286,22 @@
           if (String(name).toLowerCase() === String(worker).toLowerCase()) rows = rows.concat(data.workers[name]);
         });
         const pin = matchFloorStation(worker);
-        bindSpot(btn, 'Station', pin ? pin.name : worker, rows, function (row) {
-          const step = processToRoadStep(row && row.process);
-          openFloorBoard(step.role, step.id, step.qcFilter || '');
-        });
         bindFloorDrag(btn, 'station', worker);
+        btn.addEventListener('click', function (ev) {
+          ev.stopPropagation();
+          if (btn.dataset.dragged === '1') {
+            btn.dataset.dragged = '';
+            return;
+          }
+          const mine = session.name && String(session.name).toLowerCase() === String(worker).toLowerCase();
+          if (mine) {
+            if (openStationWork(worker, rows)) return;
+          }
+          showFloorPopover(btn, 'Station', pin ? pin.name : worker, rows, function (row) {
+            const step = processToRoadStep(row && row.process);
+            openFloorBoard(step.role, step.id, step.qcFilter || '');
+          });
+        });
       });
     }
     function stopFloorTwin() {
@@ -3290,7 +3339,7 @@
       if (sub) {
         sub.innerText = session.canSeeOffice
           ? 'Drag people and piles to place them. Tap for the order list. Welding and tagging share the weld animation.'
-          : ('Hi ' + session.name + '. Drag your station if it is in the wrong place, then tap it to open the work.');
+          : ('Hi ' + session.name + '. Tap your station to open your jobs. The numbered piles are orders waiting to start.');
       }
       const reset = document.getElementById('floorResetBtn');
       if (reset) reset.classList.toggle('d-none-view', !(session.canSeeOffice || (session.tasks && session.tasks.length)));
