@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Job card</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:720px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .page { max-width:980px; margin:0 auto; padding:18px 16px 48px; display:flex; flex-direction:column; gap:16px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; }
+    .card h2 { margin:0 0 12px; font-size:15px; }
+    .hint { font-size:12px; color:var(--muted); margin:0 0 10px; }
+    .err { color:var(--bad); font-size:13px; font-weight:600; min-height:0; }
+    .ok { color:var(--ok); font-size:13px; font-weight:600; }
+    label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; }
+    input, select, textarea { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; font-weight:400; }
+    input[readonly], textarea[readonly] { background:#f2f4f7; color:#344054; }
+    textarea { min-height:140px; resize:vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .grid.four { grid-template-columns:repeat(4, 1fr); }
+    .hero { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+    .product-image { width:220px; max-width:100%; height:auto; border:1px solid var(--line); background:#f2f4f7; display:none; }
+    .form-grow { flex:1; min-width:240px; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:6px 8px; text-align:left; }
+    th { background:#1d2939; color:#fff; }
+    .empty { color:var(--muted); text-align:center; }
+    .mode { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; background:#eef2f6; color:#344054; border-radius:999px; padding:3px 8px; }
+    .mode.regen { background:#ecfdf3; color:#067647; }
+    @media (max-width: 720px) {
+      .grid, .grid.four { grid-template-columns:1fr; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a class="on" href="/orders/job-card">Job card</a>
+      </nav>
+      <h1>Generate job card</h1>
+      <p class="lede">Pick an order that has not started, paste the cutting list, then generate the PDF. Date start is the day you generate. After that the order is Ready for Steelwork. You can regenerate only while it is Ready for Steelwork or Profile Cutting.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+    </div>
+  </header>
+  <div class="page">
+    <div class="card">
+      <h2>Order</h2>
+      <p class="hint" id="emptyHint">Only Not Yet Started orders appear for a first card. Ready for Steelwork and Profile Cutting stay on this list so you can fix a mistake.</p>
+      <div class="hero">
+        <img id="productImage" class="product-image" alt="Product">
+        <div class="form-grow">
+          <label>Order number
+            <select id="orderNumber"></select>
+          </label>
+          <p class="hint" id="modeHint"></p>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:12px">
+        <label>Customer name<input id="customer" readonly></label>
+        <label>Product<input id="product" readonly></label>
+        <label>Design type<input id="designType" readonly></label>
+        <label>Glass type<input id="glassType" readonly></label>
+        <label>Powder coating<input id="colour" readonly></label>
+        <label>Province<input id="province" readonly></label>
+        <label>Variation<textarea id="variation" readonly style="min-height:72px"></textarea></label>
+        <label>Description<textarea id="description" readonly style="min-height:72px"></textarea></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Product dimensions (mm)</h2>
+      <p class="hint">Saved from the Studio Delta catalog. Change a value only if this job is a custom size.</p>
+      <div class="grid four">
+        <label>Height<input id="dimHeight" type="number" min="0" step="1"></label>
+        <label>Width<input id="dimWidth" type="number" min="0" step="1"></label>
+        <label>Depth<input id="dimDepth" type="number" min="0" step="1"></label>
+        <label>Diameter<input id="dimDiameter" type="number" min="0" step="1"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Paste cutting list from Excel</h2>
+      <p class="hint">First column is the material name (for example 13mm SQ Square Tube), second is the description (Width). Then length or height, width, quantity, and cut angle.</p>
+      <textarea id="pasted" placeholder="13mm SQ Square Tube	Width	600		2	2
+13mm SQ Square Tube	Height	600		4	2
+1.6mm Plate	Top (Bend)	587	401	1	0"></textarea>
+      <div class="tools" style="margin:10px 0 0; justify-content:flex-start">
+        <button type="button" class="ghost" id="parseBtn">Parse cutting list</button>
+      </div>
+      <div id="cuttingWrap"></div>
+    </div>
+
+    <div class="card">
+      <p class="err" id="formErr" role="alert"></p>
+      <p class="ok" id="formOk"></p>
+      <div class="tools" style="margin:0; justify-content:flex-start">
+        <button type="button" id="generateBtn">Generate job card</button>
+        <a id="pdfLink" class="tabs" href="#" hidden style="padding:8px 12px; border:1px solid #1d2939">Open PDF</a>
+      </div>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    let eligible = [];
+    let current = null;
+    let cutting = { bars: [], plates: [], tubes: [], wood: [] };
+
+    function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+    function setErr(msg) { document.getElementById("formErr").textContent = msg || ""; }
+    function setOk(msg) { document.getElementById("formOk").textContent = msg || ""; }
+
+    function tableHtml(title, rows, cols) {
+      if (!rows.length) return "";
+      let html = "<h3 style=\"font-size:13px;margin:16px 0 8px\">" + esc(title) + "</h3><table><thead><tr>";
+      cols.forEach((c) => { html += "<th>" + esc(c[1]) + "</th>"; });
+      html += "</tr></thead><tbody>";
+      rows.forEach((row) => {
+        html += "<tr>";
+        cols.forEach((c) => { html += "<td>" + esc(row[c[0]]) + "</td>"; });
+        html += "</tr>";
+      });
+      return html + "</tbody></table>";
+    }
+    function renderCutting() {
+      const wrap = document.getElementById("cuttingWrap");
+      const total = (cutting.bars.length + cutting.plates.length + cutting.tubes.length + cutting.wood.length);
+      if (!total) {
+        wrap.innerHTML = "<p class=\"hint empty\">Nothing parsed yet.</p>";
+        return;
+      }
+      wrap.innerHTML =
+        tableHtml("Bars", cutting.bars, [["description","Description"],["name","Name"],["length","Length (mm)"],["quantity","Qty"],["cutAngle45","Cut angle 45"]]) +
+        tableHtml("Tubes", cutting.tubes, [["description","Description"],["name","Name"],["length","Length (mm)"],["quantity","Qty"],["cutAngle45","Cut angle 45"]]) +
+        tableHtml("Plates", cutting.plates, [["description","Description"],["name","Name"],["height","Height (mm)"],["width","Width (mm)"],["quantity","Qty"]]) +
+        tableHtml("Wood", cutting.wood, [["description","Description"],["name","Name"],["height","Height (mm)"],["width","Width (mm)"],["quantity","Qty"]]);
+    }
+
+    function fillOrder(row) {
+      current = row || null;
+      const img = document.getElementById("productImage");
+      document.getElementById("customer").value = (row && row.client_name) || "";
+      document.getElementById("product").value = (row && row.product) || "";
+      document.getElementById("designType").value = (row && row.type) || "";
+      document.getElementById("glassType").value = (row && row.doors) || "N/A";
+      document.getElementById("colour").value = (row && row.powder_coating) || "";
+      document.getElementById("province").value = (row && row.province) || "";
+      document.getElementById("variation").value = (row && row.variation) || "";
+      document.getElementById("description").value = (row && row.detailed_description) || (row && row.product) || "";
+      const dims = (row && row.catalog_dimensions) || {};
+      document.getElementById("dimHeight").value = dims.height != null ? dims.height : "";
+      document.getElementById("dimWidth").value = dims.width != null ? dims.width : "";
+      document.getElementById("dimDepth").value = dims.depth != null ? dims.depth : "";
+      document.getElementById("dimDiameter").value = dims.diameter != null ? dims.diameter : "";
+      if (row && row.image_url) {
+        img.src = row.image_url;
+        img.style.display = "block";
+      } else {
+        img.removeAttribute("src");
+        img.style.display = "none";
+      }
+      const hint = document.getElementById("modeHint");
+      if (!row) {
+        hint.textContent = "";
+        return;
+      }
+      hint.innerHTML = row.mode === "regenerate"
+        ? "<span class=\"mode regen\">Regenerate</span> This order already has a job card (or is on steel / profile). Generating again replaces the PDF and keeps the current status."
+        : "<span class=\"mode\">First card</span> Generating will move this order to Ready for Steelwork.";
+    }
+
+    function selected() {
+      const n = document.getElementById("orderNumber").value;
+      return eligible.find((r) => r.order_number === n) || null;
+    }
+
+    async function parseList() {
+      setErr("");
+      const text = document.getElementById("pasted").value;
+      const r = await sdOfficeFetch("/api/office/job-cards/parse", { method: "POST", body: JSON.stringify({ text }) });
+      const j = await r.json();
+      if (!j.ok) { setErr(j.error || "Could not parse"); return; }
+      cutting = j.cutting || { bars: [], plates: [], tubes: [], wood: [] };
+      renderCutting();
+      if (!j.count) setErr("No valid cutting-list rows. Check tabs and quantities.");
+    }
+
+    async function generate() {
+      const row = selected();
+      setErr("");
+      setOk("");
+      if (!row) { setErr("Choose an order number."); return; }
+      const btn = document.getElementById("generateBtn");
+      btn.disabled = true;
+      btn.textContent = "Generating…";
+      try {
+        const r = await sdOfficeFetch("/api/office/job-cards", {
+          method: "POST",
+          body: JSON.stringify({
+            order_number: row.order_number,
+            cutting,
+            dimensions: {
+              height: document.getElementById("dimHeight").value,
+              width: document.getElementById("dimWidth").value,
+              depth: document.getElementById("dimDepth").value,
+              diameter: document.getElementById("dimDiameter").value
+            }
+          })
+        });
+        const j = await r.json();
+        if (!j.ok) { setErr(j.error || "Could not generate"); return; }
+        setOk("Job card saved. Status is now " + (j.status || "") + ".");
+        const link = document.getElementById("pdfLink");
+        link.href = j.pdf_url;
+        link.hidden = false;
+        window.open(j.pdf_url, "_blank");
+        await load();
+        document.getElementById("orderNumber").value = row.order_number;
+        fillOrder(selected());
+      } catch (e) {
+        setErr(e.message || "Could not generate");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Generate job card";
+      }
+    }
+
+    async function load() {
+      const r = await sdOfficeFetch("/api/office/job-cards/eligible");
+      const j = await r.json();
+      if (!j.ok) {
+        document.getElementById("status").textContent = j.error || "Could not load orders";
+        return;
+      }
+      eligible = j.rows || [];
+      const sel = document.getElementById("orderNumber");
+      const keep = sel.value || new URLSearchParams(location.search).get("order") || "";
+      sel.innerHTML = "<option value=\"\">— Select an order —</option>" + eligible.map((row) => {
+        const tag = row.mode === "regenerate" ? " · regenerate" : "";
+        return "<option value=\"" + esc(row.order_number) + "\">" + esc(row.order_number) + " · " + esc(row.product || "No product") + " · " + esc(row.status) + tag + "</option>";
+      }).join("");
+      document.getElementById("status").textContent = eligible.length ? eligible.length + " orders ready for a job card" : "No orders waiting for a job card";
+      document.getElementById("emptyHint").hidden = eligible.length > 0;
+      if (keep && eligible.some((r) => r.order_number === keep)) sel.value = keep;
+      fillOrder(selected());
+    }
+
+    document.getElementById("orderNumber").onchange = () => {
+      setErr("");
+      setOk("");
+      document.getElementById("pdfLink").hidden = true;
+      fillOrder(selected());
+    };
+    document.getElementById("parseBtn").onclick = parseList;
+    document.getElementById("generateBtn").onclick = generate;
+
+    sdRequireOffice("orders").then(load);
+  </script>
+</body>
+</html>

@@ -83,6 +83,10 @@ app.get("/orders/delivery", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "orders-delivery.html"));
 });
+app.get("/orders/job-card", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "job-card.html"));
+});
 app.get("/enquiries", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "enquiries.html"));

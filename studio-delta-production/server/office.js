@@ -32,8 +32,10 @@ const {
   persistenceInfo,
   findOpenEnquiryDuplicates,
   createOrderFromEnquiry,
-  nextStudioOrderNumber
+  nextStudioOrderNumber,
+  formatOrderId
 } = require("./db");
+const jobCard = require("./job-card");
 const { importGoogleWorkbook, tabCounts, googleMigrateEnabled, dataDir } = require("./workbook-store");
 const staff = require("./staff");
 const pipeline = require("./enquiry-pipeline");
@@ -257,8 +259,58 @@ function mountOffice(app) {
 
   app.put("/api/office/orders", requireOffice, (req, res) => {
     try {
-      const row = upsertOrder(req.body || {});
+      const body = req.body || {};
+      const existing = listOrders().find((o) => o.order_number === formatOrderId(body.order_number)) || null;
+      const row = upsertOrder(jobCard.applyOfficeOrderStatusLock(body, existing));
       res.json({ ok: true, row });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/job-cards/eligible", requireOffice, (_req, res) => {
+    res.json({ ok: true, rows: jobCard.listEligibleOrders() });
+  });
+
+  app.get("/api/office/job-cards/catalog", requireOffice, (req, res) => {
+    const product = (req.query && req.query.product) || "";
+    const found = require("./product-catalog").lookupProduct(product);
+    res.json({
+      ok: true,
+      product: found,
+      catalog: product ? undefined : require("./product-catalog").listCatalog()
+    });
+  });
+
+  app.get("/api/office/job-cards/:orderNumber", requireOffice, (req, res) => {
+    const rec = jobCard.getJobCard(req.params.orderNumber);
+    if (!rec) {
+      res.status(404).json({ ok: false, error: "No job card saved for this order yet." });
+      return;
+    }
+    res.json({ ok: true, record: rec });
+  });
+
+  app.get("/api/office/job-cards/:orderNumber/pdf", requireOffice, (req, res) => {
+    const file = jobCard.readJobCardPdf(req.params.orderNumber);
+    if (!file) {
+      res.status(404).json({ ok: false, error: "No job card PDF for this order." });
+      return;
+    }
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "inline; filename=\"" + file.filename + "\"");
+    res.send(file.buffer);
+  });
+
+  app.post("/api/office/job-cards/parse", requireOffice, (req, res) => {
+    const cutting = jobCard.parsePastedCuttingList((req.body && (req.body.text || req.body.cutting_text)) || "");
+    res.json({ ok: true, cutting, count: jobCard.cuttingCount(cutting) });
+  });
+
+  app.post("/api/office/job-cards", requireOffice, async (req, res) => {
+    try {
+      const result = await jobCard.generateJobCard(req.body || {});
+      res.json({ ok: true, ...result });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
