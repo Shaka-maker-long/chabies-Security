@@ -3210,6 +3210,7 @@ function isOvertimeStartAllowed(now, workerName) {
 
 function applyShiftWindowToMeta(meta, now, workerName) {
   meta = meta || defaultLogMeta();
+  if (workLocksDisabled()) return meta;
   var state = paidWindowState(now);
   if (isOvertimeStartAllowed(now, workerName)) {
     meta.overtimeContinue = true;
