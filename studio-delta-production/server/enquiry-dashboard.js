@@ -238,7 +238,8 @@ function cardOf(row) {
     products_total_excl_vat: money.products_total_excl_vat,
     delivery_excl_vat: money.delivery_excl_vat,
     quote_total_excl_vat: money.quote_total_excl_vat || "",
-    quote_no: row.quote_no || ""
+    quote_no: row.quote_no || "",
+    close_reason: db.closeReasonOf(row)
   };
 }
 

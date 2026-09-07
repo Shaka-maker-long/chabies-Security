@@ -219,7 +219,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
-  <script src="/enquiry-process.js?v=save-notice"></script>
+  <script src="/enquiry-process.js?v=reject-reason"></script>
   <script>
     const charts = {};
     let data = null;
@@ -352,9 +352,11 @@
         ? (row.products || []).map((p) => esc(p.product) + (Number(p.value_excl_vat) ? " " + formatR(p.value_excl_vat) : "")).join(" · ")
         : "No products yet";
       const delivery = "Delivery " + (Number(row.delivery_excl_vat) ? formatR(row.delivery_excl_vat) : "—");
+      const reason = String(row.close_reason || "").trim();
       return "<button type=\"button\" class=\"drill-item\" data-enquiry=\"" + esc(row.enquiry_no) + "\">"
         + "<b>" + esc(row.enquiry_no) + " · " + esc(row.client_name || "No client name yet") + "</b>"
         + "<span>" + esc(bits) + (row.opened_at_label ? " · opened " + esc(row.opened_at_label) : "") + "</span>"
+        + (reason ? "<span>" + (row.status === "Rejected" ? "Rejected because " : "Closed: ") + esc(reason) + "</span>" : "")
         + "<span>" + products + "</span>"
         + "<span>" + delivery + "</span>"
         + "</button>";

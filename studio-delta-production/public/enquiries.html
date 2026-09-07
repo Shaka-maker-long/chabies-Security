@@ -549,7 +549,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
-  <script src="/enquiry-process.js?v=save-notice"></script>
+  <script src="/enquiry-process.js?v=reject-reason"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 108, true],
@@ -566,7 +566,7 @@
       ["category", "CATERGORY", 180, false],
       ["product", "PRODUCT", 240, false],
       ["request", "REQUEST", 240, false],
-      ["status", "STATUS", 180, false],
+      ["status", "STATUS", 240, false],
       ["assigned_to", "ASSIGNED TO", 160, false],
       ["quote_total_incl_vat", "QUOTE INCL VAT", 140, false],
       ["quote_total_excl_vat", "QUOTE EXCL VAT", 140, false],
@@ -849,10 +849,18 @@
       });
       return h + "</select>";
     }
+    function closeReason(row) {
+      return String((row && row.close_reason) || (row && row.client_outcome && row.client_outcome.reason) || "").trim();
+    }
     function searchBlob(row) {
-      return HEADERS.map(([k]) => k === "_edit" ? "" : (row[k] || "")).join(" ") + " " + namedLines(row.products).map((l) => l.product + " " + l.category).join(" ");
+      return HEADERS.map(([k]) => k === "_edit" ? "" : (row[k] || "")).join(" ") + " " + namedLines(row.products).map((l) => l.product + " " + l.category).join(" ") + " " + closeReason(row);
     }
     function displayValue(row, k) {
+      if (k === "status") {
+        const st = row.status || "New";
+        const reason = closeReason(row);
+        return reason && isClosed(row) ? st + " — " + reason : st;
+      }
       if (k === "product") {
         const label = productLabel(row);
         return label === "Add product" ? "" : label;
@@ -1007,7 +1015,7 @@
             return;
           }
           if (k === "status") {
-            html += "<td class=\"" + cls + "\" style=\"" + style + "\"><span class=\"cell-text\">" + esc(row[k] || "New") + "</span></td>";
+            html += "<td class=\"" + cls + " wrap-text\" style=\"" + style + "\"><span class=\"cell-text\">" + esc(displayValue(row, "status")) + "</span></td>";
             return;
           }
           const extra = k === "product" && namedLines(ensureLines(row)).length > 1
@@ -1109,6 +1117,9 @@
       html += viewItem("Date enquired", displayValue(row, "date_enquired") || row.date_enquired);
       html += viewItem("Month enquired", row.month_enquired);
       html += viewItem("Status", row.status || "New");
+      if (closeReason(row) && isClosed(row)) {
+        html += viewItem(row.status === "Rejected" ? "Rejection reason" : "Close reason", closeReason(row), true);
+      }
       html += viewItem("Enquiry source", row.enquiry_source);
       html += viewItem("Enquiry type", row.enquiry_type);
       html += viewItem("Client name", row.client_name, true);

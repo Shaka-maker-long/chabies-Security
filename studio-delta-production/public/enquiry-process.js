@@ -843,10 +843,14 @@
     const openTasks = (row.tasks || []).filter((t) => t.status === "open");
     const body = document.getElementById("sdProcessBody");
     document.getElementById("sdProcessTitle").textContent = row.enquiry_no + " · " + (row.client_name || "Enquiry");
-    document.getElementById("sdProcessSub").textContent = (row.status || "New") + (row.product ? " · " + row.product : "");
+    const closeReason = String((row.close_reason) || (row.client_outcome && row.client_outcome.reason) || "").trim();
+    document.getElementById("sdProcessSub").textContent = (row.status || "New")
+      + (closeReason ? " — " + closeReason : "")
+      + (row.product ? " · " + row.product : "");
     document.getElementById("sdProcessSheetLink").href = "/enquiries";
     let html = "<div class=\"sd-process-card\"><div class=\"sd-process-meta\">" +
       "<span>Status <b>" + esc(row.status || "New") + "</b></span>" +
+      (closeReason ? "<span>" + (row.status === "Rejected" ? "Rejection reason" : "Close reason") + " <b>" + esc(closeReason) + "</b></span>" : "") +
       (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_no ? " · " + esc(row.quote_no) : "") +
         ((row.quotes || []).length > 1 ? " · " + (row.quotes.length) + " quotes" : "") + "</span>" : "") +
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +

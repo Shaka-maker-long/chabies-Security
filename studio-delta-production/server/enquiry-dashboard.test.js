@@ -90,6 +90,7 @@ const rows = [
     category: "Gate",
     product: "Driveway Gate",
     province: "KwaZulu-Natal",
+    client_outcome: { kind: "rejected", reason: "Too expensive" },
     events: [
       { kind: "created", at: daysAgo(8) },
       { kind: "complete_reject", at: daysAgo(1), status: "Rejected" }
@@ -241,6 +242,9 @@ try {
 
   const drillEnq = dash.buildDrill({ grain: "month", range: "6m", kind: "enquiries", key: "2026-08" });
   assert.ok(drillEnq.rows.every((r) => r.enquiry_no !== "#2001"));
+  const rejected = drillEnq.rows.find((r) => r.enquiry_no === "#1999");
+  assert.ok(rejected);
+  assert.strictEqual(rejected.close_reason, "Too expensive");
   const drillCustom = dash.buildDrill({ grain: "month", range: "6m", kind: "typeSubtype", type: "Custom", value: "Dimensions" });
   assert.ok(drillCustom.rows.some((r) => r.enquiry_no === "#1997"));
   const drillDesign = dash.buildDrill({ grain: "month", range: "6m", kind: "typeSubtype", type: "New Design", value: "Steel dining table with a live-edge oak top and arched black base." });
