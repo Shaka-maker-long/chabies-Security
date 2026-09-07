@@ -247,6 +247,64 @@
     .task-countdown.over {
       color: #b42318;
     }
+    .task-duration-banner {
+      font-weight: 700;
+      font-size: 0.95rem;
+      margin: 0 0 0.35rem;
+      color: var(--text-primary);
+    }
+    .task-duration-banner.is-learn {
+      font-weight: 600;
+      font-size: 0.82rem;
+      color: var(--text-muted, #667085);
+    }
+    .start-duration {
+      background: #eff8ff;
+      border: 1px solid #b2ddff;
+      border-radius: 10px;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .start-duration strong { display: block; font-size: 1.05rem; }
+    .start-duration.is-learn {
+      background: #fffaeb;
+      border-color: #fedf89;
+    }
+    .home-head-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .completed-card {
+      background: var(--bg-surface, #fff);
+      border: 1px solid var(--border, #d0d5dd);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin: 0 0 10px;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .completed-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.35rem;
+      flex-shrink: 0;
+    }
+    .completed-icon.is-trophy { background: #fef7c3; color: #b54708; }
+    .completed-icon.is-over { background: #fee4e2; color: #b42318; }
+    .completed-icon.is-plain { background: #f2f4f7; color: #667085; }
+    .completed-card h3 { margin: 0 0 4px; font-size: 1.05rem; }
+    .completed-card p { margin: 0; font-size: 0.86rem; color: #667085; }
+    .completed-empty, .completed-error {
+      background: #fff;
+      border: 1px solid #d0d5dd;
+      border-radius: 12px;
+      padding: 28px 18px;
+      color: #667085;
+      text-align: center;
+    }
 
     /* =====================================================
        BUTTONS
@@ -1309,7 +1367,10 @@
           <h1 class="h2 fw-bold mb-1">Home</h1>
           <p class="text-muted mb-0" id="taskPickSubtitle">Select the task you will do now.</p>
         </div>
-        <button type="button" id="floorResetBtn" class="btn btn-outline-dark btn-sm d-none-view" onclick="resetFloorLayout()">Reset layout</button>
+        <div class="home-head-tools">
+          <button type="button" id="completedWorkBtn" class="btn btn-outline-dark btn-sm" onclick="openCompletedWork()">Completed work</button>
+          <button type="button" id="floorResetBtn" class="btn btn-outline-dark btn-sm d-none-view" onclick="resetFloorLayout()">Reset layout</button>
+        </div>
       </div>
       <div id="homeScore" class="home-score d-none-view mb-4"></div>
       <div class="road-map" id="roleGrid"></div>
@@ -1362,6 +1423,7 @@
       <ul class="nav nav-pills nav-fill mb-4 bg-white p-2 rounded shadow-sm" id="dashTabs">
         <li class="nav-item"><button class="nav-link active" data-bs-toggle="pill" data-bs-target="#pane-available">Available</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pane-progress">In Progress</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="pill" data-bs-target="#pane-completed">Completed</button></li>
       </ul>
       
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -1383,7 +1445,21 @@
       <div class="tab-content">
         <div class="tab-pane fade show active" id="pane-available"><div id="container-available" class="order-grid"></div></div>
         <div class="tab-pane fade" id="pane-progress"><div id="container-progress" class="order-grid"></div></div>
+        <div class="tab-pane fade" id="pane-completed"><div id="container-completed"></div></div>
       </div>
+    </div>
+
+    <div id="view-completed" class="view-section container d-none-view">
+      <button class="btn btn-outline-dark mb-4" onclick="navTo('view-roles')">&larr; BACK</button>
+      <div class="sd-page-head mb-3">
+        <div>
+          <p class="sd-page-kicker">Studio Delta · Shop floor</p>
+          <h2>Completed work</h2>
+          <p class="text-muted mb-0">Pauses do not count. A trophy means you finished within the time on the task sheet. The alarm means you went overtime.</p>
+        </div>
+        <button type="button" class="btn btn-outline-dark btn-sm" onclick="loadCompletedWork()">Refresh</button>
+      </div>
+      <div id="completedWorkPage"></div>
     </div>
 
     <div id="view-admin-prod" class="view-section container d-none-view">
@@ -2273,6 +2349,12 @@
         console.warn('Bootstrap modals not initialized:', e);
       }
       
+      try {
+        const completedTab = document.querySelector('#dashTabs button[data-bs-target="#pane-completed"]');
+        if (completedTab) {
+          completedTab.addEventListener('shown.bs.tab', function () { loadCompletedWork(); });
+        }
+      } catch (e) {}
       try { initSigPad(); } catch (e) { console.warn('Signature pad init error:', e); }
       try {
         initApp();
@@ -2362,7 +2444,7 @@
       document.getElementById(viewId).classList.remove('d-none-view');
       document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
       let linkId = '';
-      if(viewId === 'view-global-login' || viewId === 'view-users' || viewId === 'view-dashboard') linkId = 'link-roles';
+      if(viewId === 'view-global-login' || viewId === 'view-users' || viewId === 'view-dashboard' || viewId === 'view-completed') linkId = 'link-roles';
       if(viewId === 'view-roles') linkId = 'link-roles';
       if(viewId === 'view-admin-prod') linkId = 'link-prod';
       if(viewId === 'view-admin-workers') linkId = 'link-work';
@@ -2561,6 +2643,18 @@
       const d = new Date(value);
       return isNaN(d.getTime()) ? 0 : d.getTime();
     }
+    function formatSpokenDuration(totalMins) {
+      const mins = Math.max(0, Math.round(Number(totalMins) || 0));
+      if (mins <= 0) return '';
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      const parts = [];
+      if (h === 1) parts.push('1 hour');
+      else if (h > 1) parts.push(h + ' hours');
+      if (m === 1) parts.push('1 minute');
+      else if (m > 0) parts.push(m + ' minutes');
+      return parts.join(' ');
+    }
     function remainingCountdownMs(o, now) {
       const target = Number(o && o.targetMinutes) || 0;
       if (target <= 0) return null;
@@ -2592,12 +2686,23 @@
       const split = share > 1 ? ' · split ' + share + ' ways' : '';
       return (f.over ? 'Time up · ' : 'Time left · ') + f.text + split;
     }
+    function durationBannerHtml(o) {
+      const started = !!parseStartMs(o && o.startedAt);
+      if (!started) return '';
+      const mins = Number(o && o.targetMinutes) || 0;
+      const label = (o && o.durationLabel) || formatSpokenDuration(mins);
+      if (mins > 0 && label) {
+        return '<div class="task-duration-banner">Your duration for this order is ' + label + '</div>';
+      }
+      return '<div class="task-duration-banner is-learn">No time is saved for this product yet. Pauses do not count. When you finish we will save the duration so the next job can count down.</div>';
+    }
     function countdownHtml(o) {
+      const banner = durationBannerHtml(o);
       const rem = remainingCountdownMs(o, Date.now());
-      if (rem == null) return '';
+      if (rem == null) return banner;
       const f = formatCountdown(rem);
       const share = countdownShare(o);
-      return '<div class="task-countdown' + (f.over ? ' over' : '') +
+      return banner + '<div class="task-countdown' + (f.over ? ' over' : '') +
         '" data-order="' + String(o.order || '').replace(/"/g, '') +
         '" data-started="' + parseStartMs(o.startedAt) +
         '" data-target="' + (Number(o.targetMinutes) || 0) +
@@ -2611,19 +2716,29 @@
       const body = card.querySelector('.card-body');
       if (!body) return;
       const html = countdownHtml(o);
-      const old = body.querySelector('.task-countdown');
+      const oldBits = body.querySelectorAll('.task-countdown, .task-duration-banner');
       if (!html) {
-        if (old) old.remove();
+        oldBits.forEach((el) => el.remove());
         return;
       }
       const wrap = document.createElement('div');
       wrap.innerHTML = html;
-      const next = wrap.firstElementChild;
-      if (old) old.replaceWith(next);
-      else {
-        const actions = body.querySelector('.action-btn-container');
-        if (actions) body.insertBefore(next, actions);
-        else body.appendChild(next);
+      const actions = body.querySelector('.action-btn-container');
+      const first = wrap.firstElementChild;
+      if (!first) return;
+      if (oldBits.length) {
+        oldBits[0].replaceWith(first);
+        for (let i = 1; i < oldBits.length; i++) oldBits[i].remove();
+        let cursor = first;
+        while (wrap.firstElementChild) {
+          const next = wrap.firstElementChild;
+          cursor.after(next);
+          cursor = next;
+        }
+      } else if (actions) {
+        while (wrap.firstElementChild) body.insertBefore(wrap.firstElementChild, actions);
+      } else {
+        while (wrap.firstElementChild) body.appendChild(wrap.firstElementChild);
       }
     }
     function tickCountdowns() {
@@ -3620,6 +3735,65 @@
       });
     }
 
+    function formatCompletedWhen(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return d.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', dateStyle: 'medium', timeStyle: 'short' });
+    }
+    function completedWorkHtml(res) {
+      if (!res || !res.items) {
+        return '<div class="completed-error">Could not load completed work.</div>';
+      }
+      if (!res.items.length) {
+        return '<div class="completed-empty">No completed work yet. Finish an order and it will show here. Pauses do not count toward the time.</div>';
+      }
+      return res.items.map((item) => {
+        let icon = '<div class="completed-icon is-plain" title="No estimate"><i class="bi bi-dash-circle"></i></div>';
+        let verdict = 'No estimate was saved for this product when you finished.';
+        if (item.onTime) {
+          icon = '<div class="completed-icon is-trophy" title="Finished within time"><i class="bi bi-trophy-fill"></i></div>';
+          verdict = 'Finished within the estimated time.';
+        } else if (item.overtime) {
+          icon = '<div class="completed-icon is-over" title="Went overtime"><i class="bi bi-alarm-fill"></i></div>';
+          verdict = 'Went overtime.';
+        }
+        const est = item.durationLabel ? ('Estimate ' + item.durationLabel) : 'No estimate';
+        const took = item.actualLabel ? ('took ' + item.actualLabel) : '';
+        return '<article class="completed-card">' + icon +
+          '<div><h3>' + (item.order || '') + (item.product ? ' · ' + item.product : '') + '</h3>' +
+          '<p>' + (item.process || '') + (item.end ? ' · ' + formatCompletedWhen(item.end) : '') + '</p>' +
+          '<p>' + est + (took ? ' · ' + took : '') + '</p>' +
+          '<p>' + verdict + '</p></div></article>';
+      }).join('');
+    }
+    function paintCompletedWork(res) {
+      const html = completedWorkHtml(res);
+      const page = document.getElementById('completedWorkPage');
+      const dash = document.getElementById('container-completed');
+      if (page) page.innerHTML = html;
+      if (dash) dash.innerHTML = html;
+    }
+    function loadCompletedWork(silent) {
+      const page = document.getElementById('completedWorkPage');
+      const dash = document.getElementById('container-completed');
+      if (!silent) {
+        const loading = '<div class="text-center p-4"><div class="spinner-border" role="status"></div><p class="text-muted mt-2 mb-0">Loading completed work…</p></div>';
+        if (page && !page.closest('.d-none-view')) page.innerHTML = loading;
+        if (dash) dash.innerHTML = loading;
+      }
+      if (!session.name) {
+        paintCompletedWork({ items: [] });
+        return;
+      }
+      google.script.run.withSuccessHandler(paintCompletedWork).withFailureHandler(() => {
+        paintCompletedWork(null);
+      }).getMyCompletedWork(session.name);
+    }
+    function openCompletedWork() {
+      navTo('view-completed');
+      loadCompletedWork();
+    }
     function enterDashboard() {
       navTo('view-dashboard');
       document.getElementById('dashUser').innerText = session.name;
@@ -3905,7 +4079,15 @@
       session.pendingBrief = brief || {};
       document.getElementById('startModalOrder').innerText = (brief && brief.order) || session.activeOrder || '';
       const highlights = (brief && brief.highlights) || [];
-      let html = '<div class="mb-2"><strong>Type</strong><div>' + (brief.type || '—') + '</div></div>';
+      const mins = Number(brief && brief.targetMinutes) || 0;
+      const spoken = (brief && brief.durationLabel) || formatSpokenDuration(mins);
+      let html = '';
+      if (mins > 0 && spoken) {
+        html += '<div class="start-duration"><strong>Your duration for this order is ' + spoken + '</strong><span class="small text-muted">The clock counts down working time only. Pauses do not count.</span></div>';
+      } else {
+        html += '<div class="start-duration is-learn"><strong>No time is saved for this product yet</strong><span class="small">When you finish, we will save how long it took (pauses ignored) so the next job can count down.</span></div>';
+      }
+      html += '<div class="mb-2"><strong>Type</strong><div>' + (brief.type || '—') + '</div></div>';
       html += '<div class="mb-2"><strong>Variation</strong><div>' + (brief.variation || '—') + '</div></div>';
       html += '<div class="mb-2"><strong>Dimensions</strong><div>' + (brief.dimensions || '—') + '</div></div>';
       html += '<div class="mb-2"><strong>Description</strong><div>' + renderMarkedDescription(brief.description || '') + '</div></div>';
@@ -3944,7 +4126,7 @@
       }).withFailureHandler(() => {
         fillStartConfirm({ order: session.activeOrder, type: '', variation: '', description: '', dimensions: '', highlights: [] });
         showNext();
-      }).getOrderJobBrief(session.activeOrder);
+      }).getOrderJobBrief(session.activeOrder, session.pendingStartTask || session.role);
     }
 
     function formatOrderNames(names) {
@@ -4128,6 +4310,11 @@
            session.pendingSwitchReason = null;
            session.pendingWorkTogether = false;
            session.skipRunningChoice = false;
+           if (res.durationLabel) {
+             showAlert('Your duration for this order is ' + res.durationLabel + '. The clock counts down working time only — pauses do not count.');
+           } else {
+             showAlert('No time is saved for this product yet. When you finish we will save the duration so the next job can count down.');
+           }
            loadDashboard(true);
         } else if (res.needsSwitchReason) {
            loadDashboard(true);
@@ -4928,6 +5115,16 @@ function openSteelModal() {
                         btn.disabled = false;
                     }
                 }
+              }
+              if (result && result.success !== false) {
+                if (result.savedDuration && result.durationLabel) {
+                  showAlert('Saved ' + result.durationLabel + ' on the task time sheet. Next time this product will count down.');
+                } else if (result.overtime) {
+                  showAlert('Finished over the estimated time.');
+                } else if (result.onTime) {
+                  showAlert('Finished within the estimated time.');
+                }
+                loadCompletedWork(true);
               }
               loadDashboard(true);
             })
