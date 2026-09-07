@@ -577,10 +577,7 @@ function mountOffice(app) {
   });
 
   app.get("/api/office/schedule/delivery", requireOffice, (_req, res) => {
-    const items = listDeliveryItems();
-    const categories = Array.from(new Set(
-      items.map((i) => i.category).concat(listOrders().map((o) => o.category)).filter(Boolean)
-    )).sort();
+    const { items, categories } = listDeliveryItems();
     const current = isoWeekInfo(mondayOf());
     res.json({
       ok: true,

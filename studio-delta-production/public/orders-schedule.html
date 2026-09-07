@@ -26,8 +26,19 @@
     .day { min-width:58px; text-align:center; }
     .left { min-width:110px; max-width:160px; }
     .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; max-width:150px; }
-    td input, td select { width:100%; border:0; font:inherit; background:transparent; }
-    td select { text-align:center; font-weight:700; min-height:26px; border-radius:4px; }
+    td input { width:100%; border:0; font:inherit; background:transparent; }
+    .code-cell { text-align:center; font-weight:700; cursor:pointer; user-select:none; }
+    .code-cell:focus { outline:2px solid #2f6fed; outline-offset:-2px; }
+    #picker {
+      position:fixed; z-index:30; display:none; width:240px; background:#fff;
+      border:1px solid var(--line); border-radius:10px; padding:8px;
+      box-shadow:0 10px 28px rgba(16,24,40,.18);
+    }
+    #picker.open { display:block; }
+    #picker h2 { margin:0 0 6px; font-size:11px; color:var(--muted); font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    #picker .chips { display:flex; flex-wrap:wrap; gap:4px; }
+    #picker button { border:0; border-radius:6px; padding:6px 8px; font:inherit; font-size:11px; font-weight:700; cursor:pointer; }
+    #picker .clear { width:100%; margin-top:6px; background:#fff; color:#1d2939; border:1px solid var(--line); }
     .msg { font-size:12px; color:var(--muted); }
     .legend { display:flex; flex-wrap:wrap; gap:6px; padding:8px 16px; background:#fff; border-bottom:1px solid var(--line); }
     .legend span { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#344054; font-weight:600; }
@@ -55,6 +66,7 @@
   </header>
   <div class="legend" id="legend"></div>
   <div class="wrap"><table id="grid"></table></div>
+  <div id="picker" role="listbox" aria-label="Schedule code"></div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
     const LEFT = [
@@ -72,6 +84,7 @@
     let days = [];
     let rows = [];
     let codes = [];
+    let pickCell = null;
 
     function dow(iso) {
       return ["S","M","T","W","T","F","S"][new Date(iso + "T12:00:00").getDay()];
@@ -102,25 +115,40 @@
       }).join("");
     }
 
-    function codeSelect(day, value) {
+    function paintCell(td, value) {
+      td.dataset.code = value || "";
+      td.textContent = value || "";
+      td.setAttribute("style", codeStyle(value));
+    }
+
+    function renderPicker() {
+      const box = document.getElementById("picker");
       const groups = {};
       codes.forEach((c) => {
         if (!groups[c.group]) groups[c.group] = [];
         groups[c.group].push(c);
       });
-      let html = "<select data-day=\"" + day + "\" style=\"" + codeStyle(value) + "\">";
-      html += "<option value=\"\"></option>";
-      Object.keys(groups).forEach((g) => {
-        html += "<optgroup label=\"" + esc(g) + "\">";
-        groups[g].forEach((c) => {
-          html += "<option value=\"" + esc(c.code) + "\"" + (c.code === value ? " selected" : "") + ">" + esc(c.code) + " — " + esc(c.label) + "</option>";
-        });
-        html += "</optgroup>";
-      });
-      if (value && !codes.some((c) => c.code === value)) {
-        html += "<option value=\"" + esc(value) + "\" selected>" + esc(value) + "</option>";
-      }
-      return html + "</select>";
+      box.innerHTML = Object.keys(groups).map((g) => {
+        return "<h2>" + esc(g) + "</h2><div class=\"chips\">" + groups[g].map((c) => {
+          return "<button type=\"button\" data-code=\"" + esc(c.code) + "\" style=\"" + codeStyle(c.code) + "\" title=\"" + esc(c.label) + "\">" + esc(c.code) + "</button>";
+        }).join("") + "</div>";
+      }).join("") + "<button type=\"button\" class=\"clear\" data-code=\"\">Clear</button>";
+    }
+
+    function closePicker() {
+      pickCell = null;
+      document.getElementById("picker").classList.remove("open");
+    }
+
+    function openPicker(td) {
+      pickCell = td;
+      const box = document.getElementById("picker");
+      box.classList.add("open");
+      const r = td.getBoundingClientRect();
+      const left = Math.min(Math.max(8, r.left), window.innerWidth - 256);
+      const top = r.bottom + 6 + 200 > window.innerHeight ? Math.max(8, r.top - 206) : r.bottom + 6;
+      box.style.left = left + "px";
+      box.style.top = top + "px";
     }
 
     function render() {
@@ -172,33 +200,53 @@
         });
         days.forEach((d) => {
           const v = (row.cells && row.cells[d]) || "";
-          html += "<td class=\"day\">" + codeSelect(d, v) + "</td>";
+          html += "<td class=\"day code-cell\" data-day=\"" + d + "\" data-code=\"" + esc(v) + "\" tabindex=\"0\" style=\"" + codeStyle(v) + "\">" + esc(v) + "</td>";
         });
         html += "</tr>";
       });
       html += "</tbody>";
       table.innerHTML = html;
       table.onchange = onChange;
-      table.onkeydown = (e) => { if (e.key === "Enter") e.target.blur(); };
+      table.onclick = onGridClick;
+      table.onkeydown = onGridKey;
+    }
+
+    function onGridClick(e) {
+      const td = e.target.closest(".code-cell");
+      if (td) { openPicker(td); return; }
+      closePicker();
+    }
+    function onGridKey(e) {
+      if (e.key === "Enter") {
+        if (e.target.classList.contains("code-cell")) { e.preventDefault(); openPicker(e.target); }
+        else e.target.blur();
+      }
+    }
+
+    async function applyCode(value) {
+      if (!pickCell) return;
+      const td = pickCell;
+      const tr = td.closest("tr");
+      const id = Number(tr.getAttribute("data-id"));
+      const day = td.getAttribute("data-day");
+      const row = rows.find((r) => r.id === id);
+      if (!row) return;
+      if (!row.cells) row.cells = {};
+      row.cells[day] = value;
+      paintCell(td, value);
+      closePicker();
+      await sdOfficeFetch("/api/office/schedule/cell", {
+        method: "PUT",
+        body: JSON.stringify({ rowId: id, day, value })
+      });
     }
 
     async function onChange(e) {
+      if (!e.target.dataset.k) return;
       const tr = e.target.closest("tr");
       const id = Number(tr.getAttribute("data-id"));
       const row = rows.find((r) => r.id === id);
       if (!row) return;
-      if (e.target.dataset.day) {
-        const day = e.target.dataset.day;
-        const value = e.target.value;
-        if (!row.cells) row.cells = {};
-        row.cells[day] = value;
-        e.target.setAttribute("style", codeStyle(value));
-        await sdOfficeFetch("/api/office/schedule/cell", {
-          method: "PUT",
-          body: JSON.stringify({ rowId: id, day, value })
-        });
-        return;
-      }
       row[e.target.dataset.k] = e.target.value;
       await sdOfficeFetch("/api/office/schedule/row", {
         method: "PUT",
@@ -207,6 +255,8 @@
     }
 
     async function load() {
+      document.getElementById("status").textContent = "Loading orders…";
+      closePicker();
       const r = await sdOfficeFetch("/api/office/schedule?start=" + encodeURIComponent(start));
       const j = await r.json();
       start = j.start;
@@ -215,6 +265,7 @@
       codes = j.codes || [];
       document.getElementById("status").textContent = rows.length + " orders · week of " + pretty(start);
       renderLegend();
+      renderPicker();
       render();
     }
     function shift(n) {
@@ -223,6 +274,15 @@
       start = d.toISOString().slice(0, 10);
       load();
     }
+    document.getElementById("picker").onclick = (e) => {
+      const btn = e.target.closest("button[data-code]");
+      if (btn) applyCode(btn.getAttribute("data-code"));
+    };
+    document.addEventListener("click", (e) => {
+      if (e.target.closest("#picker") || e.target.closest(".code-cell")) return;
+      closePicker();
+    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePicker(); });
     sdRequireOffice("orders").then((p) => { if (p) load(); });
   </script>
 </body>
