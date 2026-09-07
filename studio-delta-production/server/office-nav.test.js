@@ -7,7 +7,7 @@ const css = fs.readFileSync(path.join(__dirname, "../public/office-shell.css"), 
 const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 
 const labels = [
-  "Home", "Orders", "Enquiries", "My tasks", "Office schedule", "Dropdowns", "Users",
+  "Home", "Orders", "Enquiries", "My tasks", "Dropdowns", "Users",
   "Task times", "Debtors", "Production", "Workers", "Metrics",
   "QC Reports", "Activity", "Schedule", "Log Out", "Change access code"
 ];
@@ -17,6 +17,8 @@ labels.forEach((label) => {
 
 assert.ok(js.indexOf("/enquiries") !== -1);
 assert.ok(js.indexOf("/tasks") !== -1);
+assert.ok(js.indexOf("Office schedule") === -1, "office schedule is an Orders subpage");
+assert.ok(js.indexOf('"/schedule"') === -1);
 
 const officeJs = fs.readFileSync(path.join(__dirname, "office.js"), "utf8");
 assert.ok(officeJs.indexOf("listMyCompletedTasks") !== -1);
@@ -277,6 +279,16 @@ assert.ok(ordersHtml.indexOf("Save order") !== -1);
 assert.ok(ordersHtml.indexOf("data-edit-order") !== -1);
 assert.ok(ordersHtml.indexOf("wrap-text") === -1);
 assert.ok(ordersHtml.indexOf("addRow()") === -1);
+assert.ok(ordersHtml.indexOf("/orders/schedule") !== -1);
+assert.ok(ordersHtml.indexOf("Production schedule") !== -1);
+const scheduleHtml = fs.readFileSync(path.join(__dirname, "../public/orders-schedule.html"), "utf8");
+assert.ok(scheduleHtml.indexOf("Production schedule") !== -1);
+assert.ok(scheduleHtml.indexOf("/orders") !== -1);
+assert.ok(scheduleHtml.indexOf("sdRequireOffice(\"orders\")") !== -1);
+assert.ok(indexJs.indexOf("/orders/schedule") !== -1);
+assert.ok(indexJs.indexOf("redirect(302, \"/orders/schedule\")") !== -1);
+assert.ok(floor.indexOf("Office schedule") === -1);
+assert.ok(floor.indexOf("id=\"link-office-schedule\"") === -1);
 
 const dashHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries-dashboard.html"), "utf8");
 assert.ok(dashHtml.indexOf("/enquiries/replies") !== -1);

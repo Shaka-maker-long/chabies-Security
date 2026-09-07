@@ -13,6 +13,9 @@
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
     header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
     .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:220px; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
@@ -73,7 +76,13 @@
 </head>
 <body>
   <header>
-    <h1>Orders</h1>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a class="on" href="/orders">Sheet</a>
+        <a href="/orders/schedule">Production schedule</a>
+      </nav>
+      <h1>Orders</h1>
+    </div>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search orders">
