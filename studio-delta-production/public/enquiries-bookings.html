@@ -72,7 +72,7 @@
         <a class="on" href="/enquiries/bookings">Showroom bookings</a>
       </nav>
       <h1>Showroom bookings</h1>
-      <p class="lede">Client visits to the showroom. Times are Africa/Johannesburg. Link an enquiry so name and number fill in.</p>
+      <p class="lede">Client visits to the showroom. Times are Africa/Johannesburg. After a successful visit, make an enquiry or start a quote from that walk-in — name, email, and cell come across.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -178,6 +178,37 @@
       return bookings.slice();
     }
     function setStatus(t) { document.getElementById("status").textContent = t || ""; }
+    function setFilter(v) {
+      filter = v;
+      Array.from(document.getElementById("filter").querySelectorAll("button")).forEach((b) => {
+        b.classList.toggle("on", b.getAttribute("data-v") === v);
+      });
+    }
+    function enquiryQuoted(row) {
+      const status = String((row && row.status) || "");
+      return status === "Quoted" || status === "Followed Up" || status === "Ordered" || !!(row && row.quote_no);
+    }
+    async function transferVisit(id, wantQuote) {
+      const r = await sdOfficeFetch("/api/office/enquiries/bookings/" + encodeURIComponent(id) + "/enquiry", {
+        method: "POST",
+        body: "{}"
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || "Could not make the enquiry");
+      bookings = j.bookings || [];
+      render();
+      const no = j.enquiry && j.enquiry.enquiry_no;
+      if (!no) throw new Error("The enquiry did not come back");
+      if (j.created) setStatus("Made enquiry " + no + " from this visit");
+      else if (j.linkedExisting) setStatus("Linked this visit to " + no);
+      else setStatus(no);
+      if (wantQuote && enquiryQuoted(j.enquiry)) {
+        location.href = "/enquiries/replies?enquiry=" + encodeURIComponent(no);
+        return j;
+      }
+      if (typeof sdOpenEnquiryProcess === "function") sdOpenEnquiryProcess(no);
+      return j;
+    }
 
     function render() {
       const today = todayKey();
@@ -210,13 +241,20 @@
           if (row.client_number) bits.push(row.client_number);
           if (row.booked_by) bits.push("booked by " + row.booked_by);
           const note = row.notes ? "<p>" + esc(row.notes) + "</p>" : "";
-          const enq = row.enquiry_no
-            ? "<p><button type=\"button\" class=\"ghost\" data-open=\"" + esc(row.enquiry_no) + "\">Open enquiry</button></p>"
-            : "";
+          const transfer = row.status === "Done"
+            ? (row.enquiry_no
+              ? "<button type=\"button\" class=\"ghost\" data-open=\"" + esc(row.enquiry_no) + "\">Open enquiry</button>" +
+                "<button type=\"button\" class=\"ghost\" data-quote=\"" + esc(row.id) + "\">Quote</button>"
+              : "<button type=\"button\" class=\"ghost\" data-enquiry=\"" + esc(row.id) + "\">Make enquiry</button>" +
+                "<button type=\"button\" class=\"ghost\" data-quote=\"" + esc(row.id) + "\">Start quote</button>")
+            : (row.enquiry_no
+              ? "<button type=\"button\" class=\"ghost\" data-open=\"" + esc(row.enquiry_no) + "\">Open enquiry</button>"
+              : "");
           return "<div class=\"visit\">" +
             "<div class=\"when\">" + esc(row.time) + "<span>" + esc(row.duration_min + " min") + "</span></div>" +
-            "<div class=\"grow\"><b>" + who + "</b><p><span class=\"pill " + esc(row.status) + "\">" + esc(row.status) + "</span>" + esc(bits.join(" · ")) + "</p>" + note + enq + "</div>" +
+            "<div class=\"grow\"><b>" + who + "</b><p><span class=\"pill " + esc(row.status) + "\">" + esc(row.status) + "</span>" + esc(bits.join(" · ")) + "</p>" + note + "</div>" +
             "<div class=\"actions\">" +
+            transfer +
             "<button type=\"button\" class=\"ghost\" data-edit=\"" + esc(row.id) + "\">Edit</button>" +
             (row.status === "Booked" ? "<button type=\"button\" class=\"ghost\" data-status=\"" + esc(row.id) + "|Done\">Done</button>" +
               "<button type=\"button\" class=\"ghost\" data-status=\"" + esc(row.id) + "|No-show\">No-show</button>" +
@@ -303,6 +341,18 @@
     document.getElementById("addBtn").onclick = () => openForm(null);
     document.getElementById("closeBtn").onclick = closeForm;
     document.getElementById("list").onclick = async (e) => {
+      const make = e.target.closest("[data-enquiry]");
+      if (make) {
+        try { await transferVisit(make.getAttribute("data-enquiry"), false); }
+        catch (err) { setStatus(err.message); }
+        return;
+      }
+      const quote = e.target.closest("[data-quote]");
+      if (quote) {
+        try { await transferVisit(quote.getAttribute("data-quote"), true); }
+        catch (err) { setStatus(err.message); }
+        return;
+      }
       const open = e.target.closest("[data-open]");
       if (open && typeof sdOpenEnquiryProcess === "function") {
         sdOpenEnquiryProcess(open.getAttribute("data-open"));
@@ -318,8 +368,16 @@
       const [id, status] = st.getAttribute("data-status").split("|");
       const row = bookings.find((b) => b.id === id);
       if (!row) return;
-      try { await saveBooking(Object.assign({}, row, { status })); }
-      catch (err) { setStatus(err.message); }
+      try {
+        await saveBooking(Object.assign({}, row, { status }));
+        if (status === "Done") {
+          setFilter("past");
+          render();
+          setStatus(row.enquiry_no
+            ? "Visit done. Open the enquiry or start the quote."
+            : "Visit done. Make an enquiry or start a quote from this visit.");
+        }
+      } catch (err) { setStatus(err.message); }
     };
     document.querySelector("[name=enquiry_no]").onchange = () => {
       const no = document.querySelector("[name=enquiry_no]").value;

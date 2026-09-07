@@ -375,6 +375,27 @@ function mountOffice(app) {
     }
   });
 
+  app.post("/api/office/enquiries/bookings/:id/enquiry", requireOffice, (req, res) => {
+    try {
+      const actor = req.office && req.office.name;
+      const out = desk.transferVisit(req.params.id, actor);
+      let row = out.enquiry;
+      if (out.created && actor && pipeline.isAutoCaptureStatus(row && row.status)) {
+        row = pipeline.applyCaptureRoute(row.enquiry_no, actor).row;
+      }
+      res.json({
+        ok: true,
+        booking: out.booking,
+        bookings: out.bookings,
+        enquiry: row,
+        created: out.created,
+        linkedExisting: out.linkedExisting
+      });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.delete("/api/office/enquiries/bookings/:id", requireOffice, (req, res) => {
     try {
       res.json({ ok: true, bookings: desk.deleteBooking(req.params.id) });
