@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Create orders from enquiry</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:780px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .page { padding:18px 16px 48px; max-width:1100px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin:0 0 16px; }
+    .card h2 { margin:0 0 12px; font-size:16px; }
+    .hint { font-size:12px; color:var(--muted); margin:4px 0 0; font-weight:400; }
+    .grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:12px 16px; }
+    .grid.four { grid-template-columns:repeat(4, 1fr); }
+    label { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:600; }
+    input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-weight:400; font-size:13px; width:100%; }
+    input[readonly] { background:#f2f4f7; color:#344054; }
+    textarea { min-height:72px; resize:vertical; }
+    .locked { background:#f8fafc; border:1px dashed var(--line); border-radius:8px; padding:10px 12px; font-size:13px; }
+    .locked b { display:block; font-size:16px; font-family: Outfit, Inter, sans-serif; }
+    .empty, .load, .err { padding:36px 16px; text-align:center; color:var(--muted); }
+    .err { color:var(--bad); }
+    .msg { font-size:13px; color:var(--muted); }
+    .msg.bad { color:var(--bad); }
+    .msg.ok { color:var(--ok); }
+    .delivery { background:#fff7ed; border-color:#fdc5a3; }
+    .delivery p { margin:0 0 12px; font-size:14px; }
+    .split { font-size:13px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+    .split ol { margin:8px 0 0; padding-left:20px; }
+    .product { border:1px solid var(--line); border-radius:10px; padding:14px; margin:0 0 12px; }
+    .product h3 { margin:0 0 12px; font-size:14px; }
+    .foot { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .done { display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
+    .done a { color:#175cd3; }
+    @media (max-width: 800px) {
+      .grid, .grid.four { grid-template-columns:1fr; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Create orders from enquiry</h1>
+      <p class="lede">One enquiry form. Quantity splits into A, B, C across the whole order. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
+    </div>
+    <div class="tools">
+      <a href="/enquiries"><button class="ghost" type="button">Back to Enquiries</button></a>
+    </div>
+  </header>
+  <div class="page" id="page">
+    <div class="load" id="boot">Loading the enquiry…</div>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    const TYPES = ["Standard", "Custom", "New Design"];
+    const LEAD = { Standard: { g: 5, o: 7 }, Custom: { g: 7, o: 8 }, "New Design": { g: 8, o: 10 } };
+    const VAT = 0.15;
+    const params = new URLSearchParams(location.search);
+    const enquiryNo = params.get("enquiry") || "";
+    let draft = null;
+    let dropdowns = {};
+    let dateTouched = false;
+    let saving = false;
+
+    function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+    function parseMoney(s) {
+      const n = Number(String(s || "").replace(/,/g, "").replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+    }
+    function money(n) { return (Math.round(Number(n) * 100) / 100).toFixed(2); }
+    function exclFromIncl(incl) {
+      const n = parseMoney(incl);
+      return n ? money(n / (1 + VAT)) : "";
+    }
+    function ymd(d) {
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+    }
+    function dateAtNoon(iso) {
+      const m = String(iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0) : null;
+    }
+    function addDays(iso, days) {
+      const d = dateAtNoon(iso);
+      if (!d) return "";
+      d.setDate(d.getDate() + days);
+      return ymd(d);
+    }
+    function nextTueThu(iso) {
+      let cur = iso;
+      for (let i = 0; i < 14; i++) {
+        const dow = (dateAtNoon(cur) || new Date()).getDay();
+        if (dow === 2 || dow === 4) return cur;
+        cur = addDays(cur, 1);
+      }
+      return iso;
+    }
+    function isoWeek(iso) {
+      const d = dateAtNoon(iso);
+      if (!d) return 0;
+      const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const dayNum = utc.getUTCDay() || 7;
+      utc.setUTCDate(utc.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+      return Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
+    }
+    function prettyDate(iso) {
+      const d = dateAtNoon(iso);
+      if (!d) return "";
+      return d.toLocaleDateString("en-GB", { weekday: "long" }) + " " + d.getDate() + " " +
+        d.toLocaleDateString("en-GB", { month: "long" }) + " " + d.getFullYear();
+    }
+    function isGauteng(p) { return /gauteng/i.test(String(p || "")); }
+    function strictType(types) {
+      if (types.indexOf("New Design") !== -1) return "New Design";
+      if (types.indexOf("Custom") !== -1) return "Custom";
+      return "Standard";
+    }
+    function splitLetter(i) {
+      let n = i + 1, s = "";
+      while (n > 0) { n -= 1; s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26); }
+      return s;
+    }
+    function options(list, selected) {
+      const have = {};
+      const out = ['<option value=""></option>'];
+      (list || []).forEach((v) => {
+        if (!v || have[v]) return;
+        have[v] = true;
+        out.push("<option" + (v === selected ? " selected" : "") + ">" + esc(v) + "</option>");
+      });
+      if (selected && !have[selected]) out.push("<option selected>" + esc(selected) + "</option>");
+      return out.join("");
+    }
+    function typeOptions(selected) {
+      return TYPES.map((t) => "<option" + (t === selected ? " selected" : "") + ">" + t + "</option>").join("");
+    }
+    function enquiryLink() {
+      return "/enquiries?q=" + encodeURIComponent(enquiryNo);
+    }
+    function collect() {
+      const products = [...document.querySelectorAll("[data-product]")].map((el) => ({
+        category: el.getAttribute("data-category") || "",
+        product: el.getAttribute("data-name") || "",
+        type: el.querySelector("[data-f=type]").value,
+        variation: el.querySelector("[data-f=variation]").value,
+        doors: el.querySelector("[data-f=doors]").value,
+        detailed_description: el.querySelector("[data-f=detailed_description]").value,
+        dimensions: el.querySelector("[data-f=dimensions]").value,
+        powder_coating: el.querySelector("[data-f=powder_coating]").value,
+        price_incl_vat: el.querySelector("[data-f=price_incl_vat]").value,
+        amount_paid: el.querySelector("[data-f=amount_paid]").value,
+        quantity: el.querySelector("[data-f=quantity]").value
+      }));
+      return {
+        order_number: document.getElementById("f_order_number").value,
+        shared: {
+          client_name: document.getElementById("f_client_name").value,
+          client_number: document.getElementById("f_client_number").value,
+          email: document.getElementById("f_email").value,
+          address: document.getElementById("f_address").value,
+          province: document.getElementById("f_province").value,
+          city: document.getElementById("f_city").value,
+          source: document.getElementById("f_source").value
+        },
+        products,
+        delivery_date: document.getElementById("f_delivery").value
+      };
+    }
+    function persist() {
+      if (!enquiryNo || !document.getElementById("form")) return;
+      const data = collect();
+      data.dateTouched = dateTouched;
+      sdWriteFormDraft("from-enquiry", enquiryNo, data);
+    }
+    function plannedNumbers(orderNumber, products) {
+      const base = String(orderNumber || "").trim().toUpperCase().replace(/\s+[A-Z]+$/, "");
+      const units = [];
+      products.forEach((p) => {
+        const qty = Math.max(0, Math.floor(Number(p.quantity) || 0));
+        for (let i = 0; i < qty; i++) units.push(p.product);
+      });
+      if (!units.length) return [];
+      if (units.length === 1) return [{ no: base, product: units[0] }];
+      return units.map((product, i) => ({ no: base + " " + splitLetter(i), product }));
+    }
+    function refreshDeliveryCopy() {
+      const dateEl = document.getElementById("f_delivery");
+      const copy = document.getElementById("deliveryCopy");
+      const codeEl = document.getElementById("deliveryCode");
+      if (!dateEl || !copy) return;
+      const types = [...document.querySelectorAll("[data-f=type]")].map((el) => el.value);
+      const province = document.getElementById("f_province").value;
+      const used = strictType(types);
+      const weeks = isGauteng(province) ? LEAD[used].g : LEAD[used].o;
+      if (!dateTouched) {
+        const today = ymd(new Date());
+        dateEl.value = nextTueThu(addDays(today, weeks * 7));
+      }
+      const date = dateEl.value;
+      const week = isoWeek(date);
+      const pretty = prettyDate(date);
+      const dow = (dateAtNoon(date) || new Date()).getDay();
+      const tueThu = dow === 2 || dow === 4;
+      copy.textContent = date
+        ? (dateTouched
+          ? "Delivery is " + pretty + " in week " + week + "."
+          : "Based on today's date the estimated delivery date is " + pretty + " in week " + week + ".")
+        : "Choose a Tuesday or Thursday.";
+      if (!tueThu && date) copy.textContent = "Deliveries are Tuesday and Thursday only.";
+      const code = isGauteng(province) ? "LD" : "LC";
+      codeEl.textContent = isGauteng(province)
+        ? "Gauteng — Latest Delivery (LD) on the production schedule."
+        : "Outside Gauteng — Latest Courier (LC) on the production schedule.";
+      codeEl.setAttribute("data-code", code);
+      refreshSplit();
+      persist();
+    }
+    function refreshSplit() {
+      const box = document.getElementById("splitBox");
+      if (!box) return;
+      const data = collect();
+      const planned = plannedNumbers(data.order_number, data.products);
+      if (!planned.length) {
+        box.innerHTML = "Add a quantity of at least 1 to see the order numbers.";
+        return;
+      }
+      if (planned.length === 1) {
+        box.innerHTML = "One unit — saved as <b>" + esc(planned[0].no) + "</b> (" + esc(planned[0].product) + ").";
+        return;
+      }
+      box.innerHTML = "More than one unit — letters run across the whole order:<ol>" +
+        planned.map((u) => "<li><b>" + esc(u.no) + "</b> — " + esc(u.product) + "</li>").join("") + "</ol>";
+    }
+    function refreshExcl(input) {
+      const card = input.closest("[data-product]");
+      const out = card && card.querySelector("[data-excl]");
+      if (out) out.value = exclFromIncl(input.value);
+    }
+    function renderExisting(rows) {
+      const page = document.getElementById("page");
+      const nos = rows.map((r) => r.order_number).filter(Boolean);
+      page.innerHTML = "<div class=\"card done\">" +
+        "<h2>Orders already created</h2>" +
+        "<p class=\"msg\">" + esc(enquiryNo) + " is already on Orders as <b>" + esc(nos.join(", ")) + "</b>.</p>" +
+        "<a href=\"/orders\"><button type=\"button\">Open Orders</button></a>" +
+        "<a href=\"" + enquiryLink() + "\"><button class=\"ghost\" type=\"button\">Back to enquiry</button></a>" +
+        "</div>";
+    }
+    function renderForm() {
+      const page = document.getElementById("page");
+      const saved = sdReadFormDraft("from-enquiry", enquiryNo) || {};
+      const shared = Object.assign({}, draft.shared, saved.shared || {});
+      const products = (saved.products && saved.products.length === (draft.products || []).length)
+        ? saved.products
+        : (draft.products || []);
+      const orderNo = saved.order_number || draft.order_number;
+      dateTouched = !!saved.dateTouched;
+      const deliveryDate = saved.delivery_date || (draft.delivery && draft.delivery.date) || "";
+      page.innerHTML =
+        "<form class=\"card\" id=\"form\">" +
+          "<h2>Enquiry " + esc(enquiryNo) + "</h2>" +
+          "<div class=\"grid\">" +
+            "<label>Order number *" +
+              "<input id=\"f_order_number\" value=\"" + esc(orderNo) + "\" autocomplete=\"off\">" +
+              "<span class=\"hint\">Next Studio number fills in. You can change it. One number on this form — split letters are added on save.</span>" +
+            "</label>" +
+            "<div class=\"locked\">Quote number (from the enquiry)<b id=\"quoteNo\">" + esc(draft.quote_number || "—") + "</b>" +
+              "<span class=\"hint\">Locked. Status starts as Not Yet Started on every unit.</span></div>" +
+          "</div>" +
+        "</form>" +
+        "<div class=\"card\">" +
+          "<h2>Client</h2>" +
+          "<div class=\"grid four\">" +
+            "<label>Client name *<input id=\"f_client_name\" value=\"" + esc(shared.client_name) + "\"></label>" +
+            "<label>Client number<input id=\"f_client_number\" value=\"" + esc(shared.client_number) + "\"></label>" +
+            "<label>Email<input id=\"f_email\" type=\"email\" value=\"" + esc(shared.email) + "\"></label>" +
+            "<label>Source<select id=\"f_source\">" + options(dropdowns.source, shared.source) + "</select></label>" +
+          "</div>" +
+          "<div class=\"grid\" style=\"margin-top:12px\">" +
+            "<label>Address<input id=\"f_address\" value=\"" + esc(shared.address) + "\"></label>" +
+            "<label>Province<select id=\"f_province\">" + options(dropdowns.province, shared.province) + "</select></label>" +
+            "<label>City<input id=\"f_city\" value=\"" + esc(shared.city) + "\" placeholder=\"Type the city\"></label>" +
+          "</div>" +
+        "</div>" +
+        "<div class=\"card delivery\">" +
+          "<h2>Delivery date</h2>" +
+          "<p id=\"deliveryCopy\"></p>" +
+          "<p class=\"hint\" id=\"deliveryCode\"></p>" +
+          "<label>Delivery date" +
+            "<input id=\"f_delivery\" type=\"date\" value=\"" + esc(deliveryDate) + "\">" +
+            "<span class=\"hint\">Deliveries leave on Tuesday and Thursday only. Change this date if you need a different week — the date you save is the one that goes on the schedule.</span>" +
+          "</label>" +
+        "</div>" +
+        "<div class=\"card\">" +
+          "<h2>Products</h2>" +
+          "<p class=\"hint\">Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Price is including VAT; exclusive VAT is calculated.</p>" +
+          "<div id=\"products\"></div>" +
+          "<div class=\"split\" id=\"splitBox\"></div>" +
+        "</div>" +
+        "<div class=\"foot\">" +
+          "<button type=\"button\" id=\"saveBtn\">Create orders</button>" +
+          "<span class=\"msg\" id=\"formMsg\">Progress stays on this device if you leave the page. Save to clear it.</span>" +
+        "</div>";
+      const box = document.getElementById("products");
+      box.innerHTML = products.map((p, i) => {
+        const d = draft.products[i] || p;
+        return "<article class=\"product\" data-product data-name=\"" + esc(d.product) + "\" data-category=\"" + esc(d.category) + "\">" +
+          "<h3>" + esc(d.category ? d.category + " · " + d.product : d.product) + "</h3>" +
+          "<div class=\"grid four\">" +
+            "<label>Type<select data-f=\"type\">" + typeOptions(p.type || d.type) + "</select></label>" +
+            "<label>Quantity<input data-f=\"quantity\" type=\"number\" min=\"1\" step=\"1\" value=\"" + esc(p.quantity || 1) + "\"></label>" +
+            "<label>Price incl VAT<input data-f=\"price_incl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_incl_vat || "") + "\"></label>" +
+            "<label>Price excl VAT<input data-excl readonly value=\"" + esc(exclFromIncl(p.price_incl_vat)) + "\"></label>" +
+          "</div>" +
+          "<div class=\"grid four\" style=\"margin-top:12px\">" +
+            "<label>Amount paid<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "0.00") + "\"></label>" +
+            "<label>Variation<select data-f=\"variation\">" + options(dropdowns.variation, p.variation) + "</select></label>" +
+            "<label>Doors<select data-f=\"doors\">" + options(dropdowns.doors, p.doors) + "</select></label>" +
+            "<label>Powder coating<select data-f=\"powder_coating\">" + options(dropdowns.powder_coating, p.powder_coating) + "</select></label>" +
+          "</div>" +
+          "<div class=\"grid\" style=\"margin-top:12px\">" +
+            "<label>Dimensions<input data-f=\"dimensions\" value=\"" + esc(p.dimensions || "") + "\"></label>" +
+            "<label>Detailed description<textarea data-f=\"detailed_description\">" + esc(p.detailed_description || "") + "</textarea></label>" +
+          "</div>" +
+        "</article>";
+      }).join("") || "<p class=\"msg\">This enquiry has no products to turn into orders.</p>";
+      const formRoot = document.getElementById("page");
+      formRoot.addEventListener("input", (e) => {
+        if (e.target && e.target.id === "f_delivery") dateTouched = true;
+        if (e.target && e.target.getAttribute("data-f") === "price_incl_vat") refreshExcl(e.target);
+        if (e.target && (e.target.id === "f_province" || e.target.getAttribute("data-f") === "type") && !dateTouched) {
+          refreshDeliveryCopy();
+          return;
+        }
+        refreshSplit();
+        persist();
+      });
+      formRoot.addEventListener("change", (e) => {
+        if (e.target && e.target.id === "f_delivery") dateTouched = true;
+        if (e.target && (e.target.id === "f_province" || e.target.getAttribute("data-f") === "type")) refreshDeliveryCopy();
+        else { refreshSplit(); persist(); }
+      });
+      document.getElementById("saveBtn").onclick = saveForm;
+      refreshDeliveryCopy();
+    }
+    async function saveForm() {
+      if (saving) return;
+      const msg = document.getElementById("formMsg");
+      const btn = document.getElementById("saveBtn");
+      const data = collect();
+      const dow = (dateAtNoon(data.delivery_date) || new Date(0)).getDay();
+      if (!data.shared.client_name.trim()) {
+        msg.textContent = "Client name is required.";
+        msg.className = "msg bad";
+        return;
+      }
+      if (!/^S\d+/i.test(String(data.order_number || "").trim())) {
+        msg.textContent = "Order number must look like S260100.";
+        msg.className = "msg bad";
+        return;
+      }
+      if (!data.delivery_date || (dow !== 2 && dow !== 4)) {
+        msg.textContent = "Deliveries are Tuesday and Thursday only.";
+        msg.className = "msg bad";
+        return;
+      }
+      saving = true;
+      btn.disabled = true;
+      btn.textContent = "Creating…";
+      msg.textContent = "";
+      msg.className = "msg";
+      try {
+        const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(enquiryNo) + "/create-orders", {
+          method: "POST",
+          body: JSON.stringify(data)
+        });
+        const j = await r.json();
+        if (!j.ok) {
+          msg.textContent = j.error || "Could not create the orders";
+          msg.className = "msg bad";
+          return;
+        }
+        sdDropFormDraft("from-enquiry", enquiryNo);
+        const nos = (j.rows || []).map((row) => row.order_number).join(", ");
+        document.getElementById("page").innerHTML = "<div class=\"card done\">" +
+          "<h2>Orders created</h2>" +
+          "<p class=\"msg ok\">Saved " + esc(nos) + ". Delivery " + esc((j.delivery && j.delivery.pretty) || data.delivery_date) +
+          " is on the production schedule as " + esc((j.delivery && j.delivery.scheduleCode) || "") + ".</p>" +
+          "<a href=\"/orders\"><button type=\"button\">Open Orders</button></a>" +
+          "<a href=\"/orders/schedule\"><button class=\"ghost\" type=\"button\">Open production schedule</button></a>" +
+          "</div>";
+      } catch (e) {
+        msg.textContent = (e && e.message) || "Could not create the orders";
+        msg.className = "msg bad";
+      } finally {
+        saving = false;
+        if (btn && btn.isConnected) {
+          btn.disabled = false;
+          btn.textContent = "Create orders";
+        }
+      }
+    }
+    async function boot() {
+      const page = document.getElementById("page");
+      if (!enquiryNo) {
+        page.innerHTML = "<div class=\"err\">Open this form from an enquiry that is ready for Orders.</div>";
+        return;
+      }
+      try {
+        const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(enquiryNo) + "/create-order-draft");
+        const j = await r.json();
+        if (!j.ok) {
+          page.innerHTML = "<div class=\"err\">" + esc(j.error || "Could not load the enquiry") +
+            "</div><p class=\"empty\"><a href=\"/enquiries\">Back to Enquiries</a></p>";
+          return;
+        }
+        if (j.existing && j.existingOrders && j.existingOrders.length) {
+          renderExisting(j.existingOrders);
+          return;
+        }
+        draft = j;
+        dropdowns = j.dropdowns || {};
+        renderForm();
+      } catch (e) {
+        page.innerHTML = "<div class=\"err\">" + esc((e && e.message) || "Could not load the enquiry") + "</div>";
+      }
+    }
+    sdRequireOffice("orders").then((p) => { if (p) boot(); });
+  </script>
+</body>
+</html>

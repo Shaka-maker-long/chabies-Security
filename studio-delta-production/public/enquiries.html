@@ -1092,13 +1092,7 @@
           const i = Number(orderBtn.getAttribute("data-create-order"));
           const row = rows[i];
           if (!row || !row.enquiry_no) return;
-          const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(row.enquiry_no) + "/create-order", { method: "POST", body: "{}" });
-          const j = await r.json();
-          if (!j.ok) {
-            document.getElementById("status").textContent = j.error || "Could not create the order";
-            return;
-          }
-          window.location.href = "/orders";
+          window.location.href = "/orders/from-enquiry?enquiry=" + encodeURIComponent(row.enquiry_no);
           return;
         }
         const tr = e.target.closest("tr[data-i]");

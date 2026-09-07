@@ -8,6 +8,7 @@ const {
   DEFAULT_ENQUIRY_DROPDOWNS
 } = require("./enquiries-default");
 const { getBook, persistWorkbook, ORDER_HEADERS, dataDir } = require("./workbook-store");
+const fromEnquiry = require("./create-order-from-enquiry");
 
 const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
@@ -1252,16 +1253,108 @@ function findOpenEnquiryDuplicates(payload, exceptEnquiryNo) {
 }
 
 function nextStudioOrderNumber() {
-  let max = 0;
-  listOrders().forEach((o) => {
-    const m = String((o && o.order_number) || "").trim().toUpperCase().match(/^S(\d+)$/);
-    if (m) max = Math.max(max, Number(m[1]));
+  return fromEnquiry.nextStudioOrderNumberFrom(listOrders());
+}
+
+function ordersLinkedToEnquiry(enquiry) {
+  const no = String((enquiry && enquiry.enquiry_no) || "").trim();
+  const linked = String((enquiry && enquiry.order_number) || "").trim();
+  return listOrders().filter((o) => {
+    if (!o) return false;
+    if (linked && fromEnquiry.normalizeBaseOrderNumber(o.order_number) === fromEnquiry.normalizeBaseOrderNumber(linked)) {
+      return true;
+    }
+    if (linked && formatOrderId(o.order_number) === formatOrderId(linked)) return true;
+    return no && String(o.enquiry_no || "").trim() === no;
   });
-  if (max < 1) {
-    const y = new Date().getFullYear() % 100;
-    max = y * 10000;
+}
+
+function createOrderDraftFromEnquiry(enquiryNo, now) {
+  const enquiry = getEnquiry(enquiryNo);
+  if (!enquiry) throw new Error("Enquiry not found");
+  if (!enquiry.ready_for_orders) {
+    throw new Error("Attach proof of payment, and the drawing if this order needs one, before creating an Orders row");
   }
-  return "S" + String(max + 1);
+  const existing = ordersLinkedToEnquiry(enquiry);
+  return {
+    ...fromEnquiry.buildDraft(enquiry, nextStudioOrderNumber(), now),
+    ready_for_orders: true,
+    existing: existing.length > 0,
+    existingOrders: existing.map((o) => decorateMoney(o)),
+    dropdowns: listDropdowns(),
+    vatRate: VAT_RATE,
+    enquiry
+  };
+}
+
+function createOrdersFromEnquiryForm(enquiryNo, body) {
+  const enquiry = getEnquiry(enquiryNo);
+  if (!enquiry) throw new Error("Enquiry not found");
+  if (!enquiry.ready_for_orders) {
+    throw new Error("Attach proof of payment, and the drawing if this order needs one, before creating an Orders row");
+  }
+  const existing = ordersLinkedToEnquiry(enquiry);
+  if (existing.length) {
+    const raw = getEnquiryRaw(enquiry.enquiry_no);
+    if (raw && !raw.order_number) {
+      raw.order_number = existing[0].order_number;
+      saveEnquiryRecord(raw);
+    }
+    return {
+      existing: true,
+      rows: existing.map((o) => decorateMoney(o)),
+      enquiry: getEnquiry(enquiry.enquiry_no)
+    };
+  }
+  const others = listOrders();
+  const plan = fromEnquiry.planCreate(enquiry, body || {}, others);
+  const month = formatMonthOfSale(nowIso());
+  const rows = plan.units.map((unit) => {
+    const pair = vatPair(unit.price_incl_vat, "");
+    const paid = parseMoney(unit.amount_paid);
+    return decorateMoney(upsertOrder({
+      enquiry_no: plan.enquiry_no,
+      quote_number: plan.quote_number,
+      order_number: unit.order_number,
+      status: "Not Yet Started",
+      type: unit.type,
+      category: unit.category,
+      product: unit.product,
+      variation: unit.variation,
+      doors: unit.doors,
+      detailed_description: unit.detailed_description,
+      dimensions: unit.dimensions,
+      powder_coating: unit.powder_coating,
+      client_name: plan.shared.client_name,
+      client_number: plan.shared.client_number,
+      email: plan.shared.email,
+      address: plan.shared.address,
+      province: plan.shared.province,
+      city: plan.shared.city,
+      source: plan.shared.source,
+      price_excl_vat: pair.excl,
+      price_incl_vat: pair.incl,
+      amount_paid: unit.amount_paid,
+      payment_date: paid > 0 ? nowIso().slice(0, 10) : "",
+      month_of_sale: month
+    }));
+  });
+  rows.forEach((row) => {
+    const sched = findScheduleRowByOrder(row.order_number);
+    if (sched) setScheduleCell(sched.id, plan.delivery.date, plan.delivery.scheduleCode, false);
+  });
+  save();
+  const raw = getEnquiryRaw(enquiry.enquiry_no);
+  if (raw) {
+    raw.order_number = rows[0].order_number;
+    saveEnquiryRecord(raw);
+  }
+  return {
+    existing: false,
+    rows,
+    enquiry: getEnquiry(enquiry.enquiry_no),
+    delivery: plan.delivery
+  };
 }
 
 function createOrderFromEnquiry(enquiryNo) {
@@ -2360,6 +2453,8 @@ module.exports = {
   findOpenEnquiryDuplicates,
   nextStudioOrderNumber,
   createOrderFromEnquiry,
+  createOrderDraftFromEnquiry,
+  createOrdersFromEnquiryForm,
   listEnquiries,
   getEnquiry,
   getEnquiryRaw,
