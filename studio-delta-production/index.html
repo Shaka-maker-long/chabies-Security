@@ -815,6 +815,12 @@
     }
     .task-card i { font-size: 1.8rem; color: var(--text-secondary); }
     .task-card h4 { margin: 0; font-size: 1.15rem; }
+    .task-chooser-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+      gap: 12px;
+    }
+    .task-chooser-grid .task-card { border: 1px solid var(--border); width: 100%; }
     .task-counts {
       display: flex;
       gap: 6px;
@@ -1373,6 +1379,7 @@
         </div>
       </div>
       <div id="homeScore" class="home-score d-none-view mb-4"></div>
+      <div id="myTaskChooser" class="mb-4"></div>
       <div class="road-map" id="roleGrid"></div>
     </div>
 
@@ -2941,10 +2948,68 @@
       return null;
     }
     function openStationWork(workerName, assignedRows) {
+      const mine = session.name && String(session.name).toLowerCase() === String(workerName || '').toLowerCase();
+      const stops = myTaskStops();
+      if (mine && stops.length > 1) {
+        const chooser = document.getElementById('myTaskChooser');
+        if (chooser) chooser.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        return true;
+      }
+      if (mine && stops.length === 1) {
+        openFloorBoard(stops[0].role, stops[0].id, stops[0].qcFilter || '');
+        return true;
+      }
       const step = stationTaskStep(workerName, assignedRows);
       if (!step) return false;
       openFloorBoard(step.role, step.id, step.qcFilter || '');
       return true;
+    }
+    function myTaskStops() {
+      const tasks = session.tasks || [];
+      return ROAD_STOPS.filter((step) => {
+        if (session.canSeeOffice) return true;
+        if (step.id === 'New orders') return tasks.indexOf('Profile Cutting') !== -1;
+        if (step.role === 'Quality Control') return tasks.indexOf('Quality Control') !== -1;
+        return tasks.indexOf(step.role) !== -1 || tasks.indexOf(step.id) !== -1;
+      });
+    }
+    function stopCountKey(step) {
+      if (!step) return '';
+      if (step.id === 'New orders' || step.id === 'Pre-Powder Coating QC' || step.id === 'Powder Coating' || step.id === 'Final QC') return step.id;
+      return step.role;
+    }
+    function renderMyTaskChooser(counts) {
+      const box = document.getElementById('myTaskChooser');
+      if (!box) return;
+      const stops = myTaskStops();
+      if (!stops.length) {
+        box.innerHTML = '';
+        return;
+      }
+      box.innerHTML = '<h2 class="h5 fw-bold mb-1">What are you doing now?</h2>' +
+        '<p class="text-muted small mb-3">Select the task. The next screen lists every order ready for that work.</p>' +
+        '<div class="task-chooser-grid">' +
+        stops.map((step) => {
+          const icon = TASK_ICONS[step.id] || TASK_ICONS[step.role] || 'bi-clipboard-check';
+          const key = stopCountKey(step);
+          return '<button type="button" class="card task-card role-card" data-task-stop="' + floorEsc(step.id) + '">' +
+            '<i class="bi ' + icon + '"></i><h4>' + floorEsc(step.label) + '</h4>' +
+            taskCountPills(key, counts) +
+            '</button>';
+        }).join('') + '</div>';
+      box.querySelectorAll('[data-task-stop]').forEach((btn) => {
+        btn.addEventListener('click', function () {
+          selectRoadStep(btn.getAttribute('data-task-stop'));
+        });
+      });
+    }
+    function loadMyTaskCounts() {
+      renderMyTaskChooser(null);
+      google.script.run.withSuccessHandler(function (counts) {
+        renderMyTaskChooser(counts || {});
+      }).withFailureHandler(function () {
+        renderMyTaskChooser({});
+      }).getFloorTaskCounts();
     }
     function animForProcess(process) {
       const p = String(process || '').toLowerCase();
@@ -3338,12 +3403,13 @@
       const sub = document.getElementById('taskPickSubtitle');
       if (sub) {
         sub.innerText = session.canSeeOffice
-          ? 'Drag people and piles to place them. Tap for the order list. Welding and tagging share the weld animation.'
-          : ('Hi ' + session.name + '. Tap your station to open your jobs. The numbered piles are orders waiting to start.');
+          ? 'Pick a task to open that order list, or use the floor map. Tick tasks on Users for each person.'
+          : ('Hi ' + session.name + '. Choose the task you are doing now. You will see every order ready for that task.');
       }
       const reset = document.getElementById('floorResetBtn');
       if (reset) reset.classList.toggle('d-none-view', !(session.canSeeOffice || (session.tasks && session.tasks.length)));
       loadHomeScore();
+      loadMyTaskCounts();
       try {
         if (!(session.canSeeOffice || (session.tasks && session.tasks.length))) {
           stopFloorTwin();
