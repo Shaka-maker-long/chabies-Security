@@ -242,6 +242,66 @@ function deleteBooking(id) {
   return saveBookings(loadBookings().filter((b) => b.id !== key));
 }
 
+function dateEnquiredFromVisit(date) {
+  const m = String(date || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  return m[3] + "/" + m[2] + "/" + m[1];
+}
+
+function visitComment(booking) {
+  const when = [booking && booking.date, booking && booking.time].filter(Boolean).join(" ");
+  const bits = ["Showroom visit" + (when ? " " + when : "")];
+  if (booking && booking.notes) bits.push(String(booking.notes).trim());
+  return bits.join(" — ");
+}
+
+function transferVisit(bookingId, actor) {
+  const key = String(bookingId || "").trim();
+  const bookings = loadBookings();
+  const booking = bookings.find((row) => row.id === key);
+  if (!booking) throw new Error("That visit is not on the diary");
+
+  if (booking.enquiry_no) {
+    const enquiry = db.getEnquiry(booking.enquiry_no);
+    if (enquiry) {
+      return { booking, bookings, enquiry, created: false, linkedExisting: true };
+    }
+  }
+
+  const dups = db.findOpenEnquiryDuplicates({
+    client_email: booking.client_email,
+    client_number: booking.client_number
+  });
+  let enquiry = null;
+  let created = false;
+  let linkedExisting = false;
+  if (dups.length) {
+    enquiry = db.getEnquiry(dups[0].enquiry_no);
+    if (!enquiry) throw new Error("Could not open the matching enquiry " + dups[0].enquiry_no);
+    linkedExisting = true;
+  } else {
+    enquiry = db.upsertEnquiry({
+      client_name: booking.client_name,
+      client_email: booking.client_email,
+      client_number: booking.client_number,
+      enquiry_source: "Showroom",
+      enquiry_type: "Showroom Appointment",
+      date_enquired: dateEnquiredFromVisit(booking.date),
+      comment: visitComment(booking)
+    }, { actor, createOnly: true });
+    created = true;
+  }
+
+  const saved = upsertBooking(Object.assign({}, booking, { enquiry_no: enquiry.enquiry_no }), actor);
+  return {
+    booking: saved.booking,
+    bookings: saved.bookings,
+    enquiry,
+    created,
+    linkedExisting
+  };
+}
+
 function enquiryOptions() {
   return db.listEnquiries().map((row) => ({
     enquiry_no: row.enquiry_no,
@@ -273,6 +333,7 @@ module.exports = {
   loadBookings,
   upsertBooking,
   deleteBooking,
+  transferVisit,
   bookingOverlap,
   enquiryOptions
 };

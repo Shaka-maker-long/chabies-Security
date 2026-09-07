@@ -25,7 +25,7 @@ db.listEnquiries = () => [{
   source: "Instagram",
   enquiry_type: "Catologue"
 }];
-db.getEnquiry = (no) => (no === "#2604" ? db.listEnquiries()[0] : null);
+db.getEnquiry = (no) => (no === "#2604" ? db.listEnquiries()[0] : origGet(no));
 
 try {
   const replies = desk.loadReplies();
@@ -113,6 +113,55 @@ try {
   assert.strictEqual(opt.client_email, "blaire@example.com");
   assert.strictEqual(opt.province, "KwaZulu-Natal");
   assert.strictEqual(opt.product, "Blaire Dressing Table");
+
+  const walk = desk.upsertBooking({
+    client_name: "Showroom Walk-in",
+    client_email: "walkin@studio.test",
+    client_number: "0825555555",
+    date: "2026-09-11",
+    time: "09:00",
+    notes: "Wants a Blaire dresser",
+    status: "Done"
+  }, "Pat");
+  const made = desk.transferVisit(walk.booking.id, "Pat");
+  assert.ok(made.created);
+  assert.ok(/^#\d+$/.test(made.enquiry.enquiry_no));
+  assert.strictEqual(made.enquiry.enquiry_source, "Showroom");
+  assert.strictEqual(made.enquiry.enquiry_type, "Showroom Appointment");
+  assert.ok(/Blaire dresser/.test(made.enquiry.comment));
+  assert.strictEqual(made.booking.enquiry_no, made.enquiry.enquiry_no);
+  const again = desk.transferVisit(walk.booking.id, "Pat");
+  assert.strictEqual(again.created, false);
+  assert.strictEqual(again.enquiry.enquiry_no, made.enquiry.enquiry_no);
+
+  const already = desk.upsertBooking({
+    enquiry_no: "#2604",
+    date: "2026-09-13",
+    time: "11:00",
+    status: "Done"
+  }, "Admin");
+  const linked = desk.transferVisit(already.booking.id, "Admin");
+  assert.strictEqual(linked.created, false);
+  assert.strictEqual(linked.enquiry.enquiry_no, "#2604");
+
+  const seeded = db.upsertEnquiry({
+    client_name: "Blaire Bedroom Client",
+    client_email: "blaire@example.com",
+    client_number: "0820000000",
+    enquiry_source: "Website",
+    enquiry_type: "Catologue"
+  });
+  const sameMail = desk.upsertBooking({
+    client_name: "Blaire again",
+    client_email: "blaire@example.com",
+    date: "2026-09-12",
+    time: "14:00",
+    status: "Done"
+  }, "Pat");
+  const hit = desk.transferVisit(sameMail.booking.id, "Pat");
+  assert.ok(hit.linkedExisting);
+  assert.strictEqual(hit.enquiry.enquiry_no, seeded.enquiry_no);
+  assert.strictEqual(hit.booking.enquiry_no, seeded.enquiry_no);
 } finally {
   db.listEnquiries = origList;
   db.getEnquiry = origGet;
