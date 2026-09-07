@@ -12,21 +12,27 @@
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
     header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
-    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:640px; }
     .tabs { display:flex; gap:4px; flex-wrap:wrap; }
     .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
     .tabs a.on { background:#1d2939; color:#fff; }
     .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
-    .wrap { overflow:auto; height:calc(100vh - 78px); }
+    .wrap { overflow:auto; height:calc(100vh - 118px); }
     table { border-collapse:collapse; min-width:1600px; background:#fff; font-size:12px; }
-    th, td { border:1px solid var(--line); padding:5px 6px; }
+    th, td { border:1px solid var(--line); padding:4px 6px; height:34px; white-space:nowrap; }
     th { background:var(--head); position:sticky; top:0; z-index:2; font-size:11px; }
-    td input { width:100%; border:0; font:inherit; background:transparent; }
-    .day { min-width:52px; text-align:center; }
-    .left { min-width:110px; }
+    .day { min-width:58px; text-align:center; }
+    .left { min-width:110px; max-width:160px; }
+    .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; max-width:150px; }
+    td input, td select { width:100%; border:0; font:inherit; background:transparent; }
+    td select { text-align:center; font-weight:700; min-height:26px; border-radius:4px; }
     .msg { font-size:12px; color:var(--muted); }
+    .legend { display:flex; flex-wrap:wrap; gap:6px; padding:8px 16px; background:#fff; border-bottom:1px solid var(--line); }
+    .legend span { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#344054; font-weight:600; }
+    .swatch { min-width:28px; padding:2px 6px; border-radius:4px; text-align:center; font-size:11px; font-weight:700; }
+    .empty { padding:36px 16px; color:var(--muted); font-size:13px; text-align:center; }
     @media (max-width: 720px) { .tools { width:100%; margin-left:0; } }
   </style>
 </head>
@@ -36,51 +42,104 @@
       <nav class="tabs" aria-label="Orders views">
         <a href="/orders">Sheet</a>
         <a class="on" href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
       </nav>
       <h1>Production schedule</h1>
-      <p class="lede">Week grid for orders on the floor. Times follow the week you pick.</p>
+      <p class="lede">Every order from the sheet is listed here. Mark Latest Delivery (LD) or Latest Courier (LC) on a weekday so it appears on Delivery summary.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
       <button class="ghost" type="button" onclick="shift(-7)">← Week</button>
       <button class="ghost" type="button" onclick="shift(7)">Week →</button>
-      <button class="ghost" type="button" onclick="addRow()">Add row</button>
     </div>
   </header>
+  <div class="legend" id="legend"></div>
   <div class="wrap"><table id="grid"></table></div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
     const LEFT = [
-      ["order_number","ORDER"],
-      ["item_type","ITEM TYPE"],
-      ["category","CATEGORY"],
-      ["product","PRODUCT"],
-      ["province","PROVINCE"],
-      ["order_date","ORDER"],
-      ["courier","COURIER"],
-      ["waybill","WAYBILL"],
-      ["status","STATUS"]
+      ["order_number","ORDER", true],
+      ["item_type","ITEM TYPE", true],
+      ["category","CATEGORY", true],
+      ["product","PRODUCT", true],
+      ["province","PROVINCE", true],
+      ["order_date","ORDER", true],
+      ["courier","COURIER", false],
+      ["waybill","WAYBILL", false],
+      ["status","STATUS", true]
     ];
     let start = new URLSearchParams(location.search).get("start") || "";
     let days = [];
     let rows = [];
+    let codes = [];
 
     function dow(iso) {
       return ["S","M","T","W","T","F","S"][new Date(iso + "T12:00:00").getDay()];
     }
     function weekLabel(iso) {
       const d = new Date(iso + "T12:00:00");
-      const oneJan = new Date(d.getFullYear(), 0, 1);
-      const w = Math.ceil((((d - oneJan) / 86400000) + oneJan.getDay() + 1) / 7);
+      const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const dayNum = utc.getUTCDay() || 7;
+      utc.setUTCDate(utc.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+      const w = Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
       return "Week" + String(w).padStart(2, "0");
     }
     function pretty(iso) {
       const d = new Date(iso + "T12:00:00");
       return d.getDate() + " " + d.toLocaleString("en-GB", { month: "short" });
     }
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+    function codeStyle(code) {
+      const hit = codes.find((c) => c.code === code);
+      if (!hit) return "";
+      return "background:" + hit.bg + ";color:" + hit.fg;
+    }
+
+    function renderLegend() {
+      document.getElementById("legend").innerHTML = codes.map((c) => {
+        return "<span><b class=\"swatch\" style=\"" + codeStyle(c.code) + "\">" + esc(c.code) + "</b>" + esc(c.label) + "</span>";
+      }).join("");
+    }
+
+    function codeSelect(day, value) {
+      const groups = {};
+      codes.forEach((c) => {
+        if (!groups[c.group]) groups[c.group] = [];
+        groups[c.group].push(c);
+      });
+      let html = "<select data-day=\"" + day + "\" style=\"" + codeStyle(value) + "\">";
+      html += "<option value=\"\"></option>";
+      Object.keys(groups).forEach((g) => {
+        html += "<optgroup label=\"" + esc(g) + "\">";
+        groups[g].forEach((c) => {
+          html += "<option value=\"" + esc(c.code) + "\"" + (c.code === value ? " selected" : "") + ">" + esc(c.code) + " — " + esc(c.label) + "</option>";
+        });
+        html += "</optgroup>";
+      });
+      if (value && !codes.some((c) => c.code === value)) {
+        html += "<option value=\"" + esc(value) + "\" selected>" + esc(value) + "</option>";
+      }
+      return html + "</select>";
+    }
 
     function render() {
       const table = document.getElementById("grid");
+      if (!rows.length) {
+        table.innerHTML = "";
+        const wrap = table.parentElement;
+        let empty = wrap.querySelector(".empty");
+        if (!empty) {
+          empty = document.createElement("div");
+          empty.className = "empty";
+          wrap.appendChild(empty);
+        }
+        empty.textContent = "No orders yet. New orders from the sheet appear here automatically so you can mark LD or LC.";
+        empty.hidden = false;
+        return;
+      }
+      const empty = table.parentElement.querySelector(".empty");
+      if (empty) empty.hidden = true;
       let weeks = "";
       let drow = "";
       let dates = "";
@@ -104,12 +163,16 @@
       html += dates + "</tr></thead><tbody>";
       rows.forEach((row) => {
         html += "<tr data-id=\"" + row.id + "\">";
-        LEFT.forEach(([k]) => {
-          html += "<td class=\"left\"><input data-k=\"" + k + "\" value=\"" + esc(row[k]) + "\"></td>";
+        LEFT.forEach(([k,, locked]) => {
+          if (locked) {
+            html += "<td class=\"left\"><span class=\"cell-text\" title=\"" + esc(row[k]) + "\">" + esc(row[k]) + "</span></td>";
+          } else {
+            html += "<td class=\"left\"><input data-k=\"" + k + "\" value=\"" + esc(row[k]) + "\"></td>";
+          }
         });
         days.forEach((d) => {
           const v = (row.cells && row.cells[d]) || "";
-          html += "<td class=\"day\"><input data-day=\"" + d + "\" value=\"" + esc(v) + "\"></td>";
+          html += "<td class=\"day\">" + codeSelect(d, v) + "</td>";
         });
         html += "</tr>";
       });
@@ -118,7 +181,6 @@
       table.onchange = onChange;
       table.onkeydown = (e) => { if (e.key === "Enter") e.target.blur(); };
     }
-    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
 
     async function onChange(e) {
       const tr = e.target.closest("tr");
@@ -130,6 +192,7 @@
         const value = e.target.value;
         if (!row.cells) row.cells = {};
         row.cells[day] = value;
+        e.target.setAttribute("style", codeStyle(value));
         await sdOfficeFetch("/api/office/schedule/cell", {
           method: "PUT",
           body: JSON.stringify({ rowId: id, day, value })
@@ -149,22 +212,15 @@
       start = j.start;
       days = j.days;
       rows = j.rows;
-      document.getElementById("status").textContent = rows.length + " rows · week of " + start;
+      codes = j.codes || [];
+      document.getElementById("status").textContent = rows.length + " orders · week of " + pretty(start);
+      renderLegend();
       render();
     }
     function shift(n) {
       const d = new Date(start + "T12:00:00");
       d.setDate(d.getDate() + n);
       start = d.toISOString().slice(0, 10);
-      load();
-    }
-    async function addRow() {
-      const r = await sdOfficeFetch("/api/office/schedule/row", {
-        method: "PUT",
-        body: JSON.stringify({ order_number: "S", item_type: "Standard", status: "" })
-      });
-      const j = await r.json();
-      if (!j.ok) { alert(j.error); return; }
       load();
     }
     sdRequireOffice("orders").then((p) => { if (p) load(); });

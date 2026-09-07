@@ -475,6 +475,7 @@ function upsertOrder(row) {
   persistWorkbook();
   payload.id = rowNum;
   payload.payments = state.paymentsByOrder[orderNumber];
+  syncScheduleFromOrders();
   return payload;
 }
 
@@ -487,12 +488,82 @@ function deleteOrder(orderNumber) {
     persistWorkbook();
   }
   if (state.paymentsByOrder) delete state.paymentsByOrder[orderNumber];
+  deleteScheduleForOrder(orderNumber, false);
   save();
 }
 
+function scheduleFieldsFromOrder(order, sortOrder) {
+  return {
+    order_number: formatOrderId(order.order_number),
+    item_type: String(order.type || ""),
+    category: String(order.category || ""),
+    product: String(order.product || ""),
+    province: String(order.province || ""),
+    order_date: String(order.payment_date || ""),
+    status: String(order.status || ""),
+    sort_order: Number(sortOrder) || 0
+  };
+}
+
+function findScheduleRowByOrder(orderNumber) {
+  const want = formatOrderId(orderNumber);
+  if (!want) return null;
+  return state.schedule_rows.find((r) => formatOrderId(r.order_number) === want) || null;
+}
+
+function syncScheduleFromOrders() {
+  const orders = listOrders();
+  const have = new Map();
+  state.schedule_rows.forEach((r) => {
+    const key = formatOrderId(r.order_number);
+    if (key) have.set(key, r);
+  });
+  let changed = false;
+  orders.forEach((order, i) => {
+    const fields = scheduleFieldsFromOrder(order, i + 1);
+    if (!fields.order_number) return;
+    const row = have.get(fields.order_number);
+    if (!row) {
+      const created = {
+        id: state.nextScheduleId++,
+        courier: "",
+        waybill: "",
+        ...fields
+      };
+      state.schedule_rows.push(created);
+      have.set(fields.order_number, created);
+      changed = true;
+      return;
+    }
+    const keys = ["order_number", "item_type", "category", "product", "province", "order_date", "status", "sort_order"];
+    const same = keys.every((k) => String(row[k] || "") === String(fields[k] || ""));
+    if (!same) {
+      Object.assign(row, fields);
+      changed = true;
+    }
+  });
+  if (changed) save();
+  return { synced: orders.length };
+}
+
+function deleteScheduleForOrder(orderNumber, persist = true) {
+  const row = findScheduleRowByOrder(orderNumber);
+  if (!row) return false;
+  state.schedule_rows = state.schedule_rows.filter((r) => r.id !== row.id);
+  state.schedule_cells = state.schedule_cells.filter((c) => c.row_id !== row.id);
+  if (persist) save();
+  return true;
+}
+
 function listSchedule(fromDay, toDay) {
+  syncScheduleFromOrders();
+  const live = new Set(listOrders().map((o) => formatOrderId(o.order_number)).filter(Boolean));
   const rows = state.schedule_rows.slice().sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
-  return rows.map((r) => {
+  return rows.filter((r) => {
+    const num = formatOrderId(r.order_number);
+    if (live.has(num)) return true;
+    return state.schedule_cells.some((c) => c.row_id === r.id);
+  }).map((r) => {
     const cells = {};
     for (const c of state.schedule_cells) {
       if (c.row_id === r.id && c.day >= fromDay && c.day <= toDay) cells[c.day] = c.value;
@@ -501,25 +572,34 @@ function listSchedule(fromDay, toDay) {
   });
 }
 
+function listDeliveryItems() {
+  syncScheduleFromOrders();
+  return require("./office-schedule").collectDeliveryItems(state.schedule_rows, state.schedule_cells);
+}
+
 function upsertScheduleRow(row) {
-  const orderNumber = String(row.order_number || "").trim();
+  const orderNumber = formatOrderId(row.order_number);
   if (!orderNumber) throw new Error("Order number is required");
   let id = row.id ? Number(row.id) : 0;
   let existing = id ? state.schedule_rows.find((r) => r.id === id) : null;
+  if (!existing) existing = findScheduleRowByOrder(orderNumber);
+  const keep = existing || {};
+  const take = (key, fallback) => (row[key] != null && row[key] !== "" ? row[key] : (keep[key] || fallback));
   const payload = {
     order_number: orderNumber,
-    item_type: row.item_type || "",
-    category: row.category || "",
-    product: row.product || "",
-    province: row.province || "",
-    order_date: row.order_date || "",
-    courier: row.courier || "",
-    waybill: row.waybill || "",
-    status: row.status || "",
-    sort_order: Number(row.sort_order) || 0
+    item_type: take("item_type", ""),
+    category: take("category", ""),
+    product: take("product", ""),
+    province: take("province", ""),
+    order_date: take("order_date", ""),
+    courier: row.courier != null ? row.courier : (keep.courier || ""),
+    waybill: row.waybill != null ? row.waybill : (keep.waybill || ""),
+    status: take("status", ""),
+    sort_order: Number(row.sort_order != null ? row.sort_order : keep.sort_order) || 0
   };
   if (existing) {
     Object.assign(existing, payload);
+    id = existing.id;
   } else {
     id = state.nextScheduleId++;
     existing = { id, ...payload };
@@ -2213,8 +2293,11 @@ module.exports = {
   upsertOrder,
   deleteOrder,
   listSchedule,
+  listDeliveryItems,
   upsertScheduleRow,
   setScheduleCell,
+  syncScheduleFromOrders,
+  deleteScheduleForOrder,
   countOrders,
   listDropdowns,
   addDropdownItem,
