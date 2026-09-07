@@ -83,6 +83,7 @@ assert.ok(page.indexOf("name=\"dimCheck\"") !== -1);
 assert.ok(page.indexOf("Dimensions did not change") !== -1);
 assert.ok(page.indexOf("Update to the actual dimensions") !== -1);
 assert.ok(page.indexOf("dimension_check") !== -1);
+assert.ok(page.indexOf("persistJobCardDraft") !== -1, "job card form keeps unsaved progress");
 assert.ok(officeJs.indexOf("listGeneratedJobCards") !== -1);
 assert.strictEqual(jobCard.isStandardType("Standard"), true);
 assert.strictEqual(jobCard.isStandardType("Custom"), false);

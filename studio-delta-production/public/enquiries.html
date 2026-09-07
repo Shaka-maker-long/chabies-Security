@@ -1927,6 +1927,10 @@
     });
     document.getElementById("onboardMask").addEventListener("input", () => schedulePersist(persistOnboardDraft));
     document.getElementById("onboardMask").addEventListener("change", () => schedulePersist(persistOnboardDraft));
+    window.addEventListener("pagehide", () => {
+      if (capture.open) persistCaptureDraft();
+      if (document.getElementById("onboardMask").classList.contains("open")) persistOnboardDraft();
+    });
     ["cap_client_email", "cap_client_number"].forEach((id) => {
       const el = document.getElementById(id);
       if (!el) return;
@@ -2192,21 +2196,30 @@
       return "sd-enq-draft:" + String(me || "").toLowerCase() + ":" + kind + ":" + (extra || "new");
     }
     function writeDraft(kind, extra, data) {
-      try { sessionStorage.setItem(draftKey(kind, extra), JSON.stringify(data)); } catch (e) {
+      const key = draftKey(kind, extra);
+      try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) {
         try {
           const slim = Object.assign({}, data);
           slim.quoteBase64 = "";
           slim.popBase64 = "";
           slim.costSheets = {};
-          sessionStorage.setItem(draftKey(kind, extra), JSON.stringify(slim));
+          localStorage.setItem(key, JSON.stringify(slim));
         } catch (err) {}
       }
+      try { sessionStorage.removeItem(key); } catch (e) {}
     }
     function readDraft(kind, extra) {
-      try { return JSON.parse(sessionStorage.getItem(draftKey(kind, extra)) || "null"); } catch (e) { return null; }
+      const key = draftKey(kind, extra);
+      try {
+        const local = localStorage.getItem(key);
+        if (local) return JSON.parse(local);
+      } catch (e) {}
+      try { return JSON.parse(sessionStorage.getItem(key) || "null"); } catch (e) { return null; }
     }
     function dropDraft(kind, extra) {
-      try { sessionStorage.removeItem(draftKey(kind, extra)); } catch (e) {}
+      const key = draftKey(kind, extra);
+      try { localStorage.removeItem(key); } catch (e) {}
+      try { sessionStorage.removeItem(key); } catch (e) {}
     }
     function draftHasWork(d) {
       if (!d) return false;

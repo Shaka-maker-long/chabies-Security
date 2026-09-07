@@ -89,6 +89,7 @@
     <div class="card">
       <h2>Generate a job card</h2>
       <p class="hint" id="emptyHint">Only Not Yet Started orders appear for a first card. Ready for Steelwork and Profile Cutting stay on this list so you can fix a mistake.</p>
+      <p class="hint" id="jobCardDraftHint">Cutting list and dimension answers stay on this device if you leave this page. Generate clears them.</p>
       <div class="hero">
         <img id="productImage" class="product-image" alt="Product">
         <div class="form-grow">
@@ -247,6 +248,57 @@
       syncGenerateReady();
     }
 
+    let jobCardDraftOrder = "";
+    function persistJobCardDraft() {
+      const order = jobCardDraftOrder || (document.getElementById("orderNumber") && document.getElementById("orderNumber").value) || "";
+      if (!order || typeof sdWriteFormDraft !== "function") return;
+      sdWriteFormDraft("job-card", order, {
+        pasted: document.getElementById("pasted").value,
+        cutting: cutting,
+        dimHeight: document.getElementById("dimHeight").value,
+        dimWidth: document.getElementById("dimWidth").value,
+        dimDepth: document.getElementById("dimDepth").value,
+        dimDiameter: document.getElementById("dimDiameter").value,
+        dimCheck: chosenCheck()
+      });
+    }
+    function applyJobCardDraft(order) {
+      jobCardDraftOrder = order || "";
+      const hint = document.getElementById("jobCardDraftHint");
+      if (!order || typeof sdReadFormDraft !== "function") {
+        if (hint) hint.textContent = "Cutting list and dimension answers stay on this device if you leave this page. Generate clears them.";
+        return false;
+      }
+      const draft = sdReadFormDraft("job-card", order);
+      if (!draft) {
+        if (hint) hint.textContent = "Cutting list and dimension answers stay on this device if you leave this page. Generate clears them.";
+        return false;
+      }
+      if (draft.pasted != null) document.getElementById("pasted").value = draft.pasted;
+      if (draft.cutting) {
+        cutting = draft.cutting;
+        renderCutting();
+      }
+      ["dimHeight", "dimWidth", "dimDepth", "dimDiameter"].forEach((id) => {
+        const key = id.replace("dim", "");
+        const field = key.charAt(0).toLowerCase() + key.slice(1);
+        if (draft[id] != null && draft[id] !== "") document.getElementById(id).value = draft[id];
+        else if (draft.dimensions && draft.dimensions[field] != null) document.getElementById(id).value = draft.dimensions[field];
+      });
+      if (draft.dimCheck) {
+        const el = document.querySelector('input[name="dimCheck"][value="' + draft.dimCheck + '"]');
+        if (el) el.checked = true;
+      }
+      const cut = draft.cutting || {};
+      const cutCount = (cut.bars || []).length + (cut.plates || []).length + (cut.tubes || []).length + (cut.wood || []).length;
+      const meaningful = !!(String(draft.pasted || "").trim() || draft.dimCheck || cutCount);
+      if (hint) hint.textContent = meaningful
+        ? "Unsaved progress from last time is filled in. Generate to clear it."
+        : "Cutting list and dimension answers stay on this device if you leave this page. Generate clears them.";
+      syncGenerateReady();
+      return meaningful;
+    }
+
     function fillOrder(row) {
       current = row || null;
       const img = document.getElementById("productImage");
@@ -275,6 +327,7 @@
       const hint = document.getElementById("modeHint");
       if (!row) {
         hint.textContent = "";
+        jobCardDraftOrder = "";
         syncDimCheck();
         return;
       }
@@ -282,6 +335,7 @@
         ? "<span class=\"mode regen\">Regenerate</span> This order already has a job card (or is on steel / profile). Generating again replaces the PDF and keeps the current status. Non-Standard jobs must confirm dimensions again."
         : "<span class=\"mode\">First card</span> Generating will move this order to Ready for Steelwork.";
       syncDimCheck();
+      applyJobCardDraft(row.order_number);
     }
 
     function selected() {
@@ -297,6 +351,7 @@
       if (!j.ok) { setErr(j.error || "Could not parse"); return; }
       cutting = j.cutting || { bars: [], plates: [], tubes: [], wood: [] };
       renderCutting();
+      persistJobCardDraft();
       if (!j.count) setErr("No valid cutting-list rows. Check tabs and quantities.");
     }
 
@@ -335,6 +390,8 @@
         });
         const j = await r.json();
         if (!j.ok) { setErr(j.error || "Could not generate"); return; }
+        if (typeof sdDropFormDraft === "function") sdDropFormDraft("job-card", row.order_number);
+        jobCardDraftOrder = "";
         setOk("Job card saved. Status is now " + (j.status || "") + ". It is on the printed list above.");
         const link = document.getElementById("pdfLink");
         link.href = j.pdf_url;
@@ -417,20 +474,26 @@
     }
 
     document.getElementById("orderNumber").onchange = () => {
+      persistJobCardDraft();
       setErr("");
       setOk("");
       document.getElementById("pdfLink").hidden = true;
+      document.getElementById("pasted").value = "";
+      cutting = { bars: [], plates: [], tubes: [], wood: [] };
+      renderCutting();
       fillOrder(selected());
     };
     document.getElementById("parseBtn").onclick = parseList;
     document.getElementById("generateBtn").onclick = generate;
     document.getElementById("printedQ").oninput = renderPrinted;
+    document.getElementById("pasted").oninput = persistJobCardDraft;
     ["dimHeight", "dimWidth", "dimDepth", "dimDiameter"].forEach((id) => {
-      document.getElementById(id).oninput = syncGenerateReady;
+      document.getElementById(id).oninput = () => { syncGenerateReady(); persistJobCardDraft(); };
     });
     document.querySelectorAll("input[name=\"dimCheck\"]").forEach((el) => {
-      el.onchange = syncGenerateReady;
+      el.onchange = () => { syncGenerateReady(); persistJobCardDraft(); };
     });
+    window.addEventListener("pagehide", persistJobCardDraft);
 
     sdRequireOffice("orders").then(() => Promise.all([load(), loadPrinted()]));
   </script>

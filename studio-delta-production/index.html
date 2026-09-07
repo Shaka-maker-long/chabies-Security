@@ -1808,6 +1808,7 @@
   <div class="modal fade" id="qcModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title brand-font">Checklist</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body p-4">
     <div class="mb-3"><strong>Order:</strong> <span id="qcOrderNum"></span></div>
     <div class="mb-3 p-2 bg-light border rounded small" id="qcVariationBox"></div>
+    <p id="qcDraftNote" class="small text-muted mb-3">Answers stay on this device if you close this screen. Confirm finish clears them.</p>
     <div id="qcChecklistContainer"></div>
     
     <div id="qcPhotoContainer" class="mt-3 d-none">
@@ -2344,6 +2345,15 @@
         
         document.getElementById('qcModal').addEventListener('shown.bs.modal', function () {
           initCanvas();
+          if (session.qcRestoreSignature) restoreQcSignature(session.qcRestoreSignature);
+          bindQcDraftAutosave();
+        });
+        document.getElementById('qcModal').addEventListener('hidden.bs.modal', function () {
+          persistQcDraft();
+        });
+        window.addEventListener('pagehide', function () { persistQcDraft(); });
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'hidden') persistQcDraft();
         });
       } catch(e) {
         console.warn('Bootstrap modals not initialized:', e);
@@ -4506,6 +4516,275 @@
         .reportScratchedGlass(session.activeOrder, session.name);
     }
     
+    function qcDraftKey() {
+      const worker = String((session && session.name) || "").toLowerCase();
+      const order = String((session && session.activeOrder) || "");
+      const qc = String((session && session.currentQcKey) || "");
+      return "sd-qc-draft:" + worker + ":" + order + ":" + qc;
+    }
+    function readQcDraft() {
+      try { return JSON.parse(localStorage.getItem(qcDraftKey()) || "null"); } catch (e) { return null; }
+    }
+    function dropQcDraft() {
+      try { localStorage.removeItem(qcDraftKey()); } catch (e) {}
+      session.qcDraftPhotos = {};
+      session.qcRestoreSignature = "";
+    }
+    function writeQcDraft(data) {
+      const key = qcDraftKey();
+      try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) {
+        try {
+          const slim = Object.assign({}, data);
+          slim.photos = {};
+          localStorage.setItem(key, JSON.stringify(slim));
+        } catch (err) {}
+      }
+    }
+    function qcFieldVal(id) {
+      const el = document.getElementById(id);
+      return el ? el.value : "";
+    }
+    function setQcFieldVal(id, value) {
+      const el = document.getElementById(id);
+      if (!el || value == null) return;
+      if (el.tagName === "SELECT" && value && ![...el.options].some((o) => o.value === value)) {
+        const opt = document.createElement("option");
+        opt.value = value;
+        opt.textContent = value;
+        el.appendChild(opt);
+      }
+      el.value = value;
+    }
+    function collectSteelDraftRows() {
+      const rows = [];
+      document.querySelectorAll("#materialRowsContainer .material-row").forEach((el) => {
+        rows.push({
+          category: el.dataset.category || "",
+          name: el.dataset.name || "",
+          size: el.dataset.size || "",
+          custom: el.dataset.custom === "true"
+        });
+      });
+      return rows;
+    }
+    function collectBackboardDraftRows() {
+      const rows = [];
+      document.querySelectorAll("#backboardRowsContainer .backboard-row").forEach((el) => {
+        rows.push({
+          category: el.dataset.category || "",
+          name: el.dataset.name || "",
+          size: el.dataset.size || "",
+          custom: el.dataset.custom === "true"
+        });
+      });
+      return rows;
+    }
+    function collectQcDraft() {
+      const answers = [];
+      const qs = QC_DATA[session.currentQcKey] || [];
+      qs.forEach((_q, i) => {
+        const el = document.querySelector('input[name="q' + i + '"]:checked');
+        answers.push(el ? el.value : "");
+      });
+      let signature = "";
+      try {
+        if (hasSigned && canvas) signature = canvas.toDataURL();
+      } catch (e) {}
+      return {
+        savedAt: Date.now(),
+        answers: answers,
+        steel: collectSteelDraftRows(),
+        backboard: collectBackboardDraftRows(),
+        glassRows: collectGlassWoodRows("#glassRowsContainer .glass-order-row", "glass"),
+        woodRows: collectGlassWoodRows("#woodRowsContainer .wood-order-row", "wood"),
+        woodRequired: !!(document.getElementById("woodRequired") && document.getElementById("woodRequired").checked),
+        glassFields: {
+          component: qcFieldVal("glassComponent"),
+          type: qcFieldVal("glassType"),
+          typeCustom: qcFieldVal("glassTypeCustom"),
+          thickness: qcFieldVal("glassThickness"),
+          height: qcFieldVal("glassHeight"),
+          width: qcFieldVal("glassWidth"),
+          qty: qcFieldVal("glassQty")
+        },
+        woodFields: {
+          component: qcFieldVal("woodComponent"),
+          typeSaved: qcFieldVal("woodTypeSaved"),
+          typeInput: qcFieldVal("woodTypeInput"),
+          thickness: qcFieldVal("woodThickness"),
+          height: qcFieldVal("woodHeight"),
+          width: qcFieldVal("woodWidth"),
+          qty: qcFieldVal("woodQty")
+        },
+        signature: signature,
+        hasSigned: !!hasSigned,
+        photos: session.qcDraftPhotos || {}
+      };
+    }
+    function qcDraftHasWork(draft) {
+      if (!draft) return false;
+      if ((draft.answers || []).some((a) => a === "Y" || a === "N")) return true;
+      if ((draft.steel || []).length || (draft.backboard || []).length) return true;
+      if ((draft.glassRows || []).length || (draft.woodRows || []).length) return true;
+      if (draft.woodRequired) return true;
+      if (draft.hasSigned || draft.signature) return true;
+      if (draft.photos && Object.keys(draft.photos).length) return true;
+      const g = draft.glassFields || {};
+      const w = draft.woodFields || {};
+      return !!(g.component || g.type || g.height || g.width || w.component || w.typeInput || w.height || w.width);
+    }
+    function persistQcDraft() {
+      if (session.qcApplyingDraft || isSubmitting) return;
+      if (!session.activeOrder || !session.currentQcKey) return;
+      if (session.role === "Grinding") return;
+      writeQcDraft(collectQcDraft());
+    }
+    function scheduleQcDraft() {
+      clearTimeout(session.qcDraftTimer);
+      session.qcDraftTimer = setTimeout(persistQcDraft, 250);
+    }
+    function bindQcDraftAutosave() {
+      const modal = document.getElementById("qcModal");
+      if (!modal || modal.dataset.draftBound === "1") return;
+      modal.dataset.draftBound = "1";
+      modal.addEventListener("input", scheduleQcDraft);
+      modal.addEventListener("change", persistQcDraft);
+      modal.addEventListener("click", function (e) {
+        if (e.target.closest(".btn-outline-danger, .btn-check, label, #woodRequired")) {
+          setTimeout(persistQcDraft, 40);
+        }
+      });
+    }
+    function appendSteelRow(item) {
+      const container = document.getElementById("materialRowsContainer");
+      if (!container || !item || !item.name) return;
+      const rowId = "mrow-" + Date.now() + "-" + Math.floor(Math.random() * 99);
+      const row = document.createElement("div");
+      row.className = "material-row d-flex justify-content-between align-items-center mb-2 p-2 border rounded bg-light";
+      row.id = rowId;
+      row.dataset.category = item.category || "";
+      row.dataset.name = item.name;
+      row.dataset.size = item.size || "";
+      row.dataset.custom = item.custom ? "true" : "false";
+      row.innerHTML = "<div><div class=\"fw-bold\">" + item.name + "</div>" +
+        "<div class=\"small text-muted\">" + (item.category || "") + " | " + (item.size || "") + "</div></div>" +
+        "<button type=\"button\" class=\"btn btn-sm btn-outline-danger\" onclick=\"document.getElementById('" + rowId + "').remove()\" title=\"Remove\"><i class=\"bi bi-trash\"></i></button>";
+      container.appendChild(row);
+    }
+    function appendBackboardRow(item) {
+      const container = document.getElementById("backboardRowsContainer");
+      if (!container || !item || !item.name) return;
+      const rowId = "brow-" + Date.now() + "-" + Math.floor(Math.random() * 99);
+      const row = document.createElement("div");
+      row.className = "backboard-row d-flex justify-content-between align-items-center mb-2 p-2 border rounded bg-light";
+      row.id = rowId;
+      row.dataset.category = item.category || "";
+      row.dataset.name = item.name;
+      row.dataset.size = item.size || "";
+      row.dataset.custom = item.custom ? "true" : "false";
+      row.innerHTML = "<div><div class=\"fw-bold\">" + item.name + "</div>" +
+        "<div class=\"small text-muted\">" + (item.category || "") + " | " + (item.size || "") + "</div></div>" +
+        "<button type=\"button\" class=\"btn btn-sm btn-outline-danger\" onclick=\"document.getElementById('" + rowId + "').remove()\" title=\"Remove\"><i class=\"bi bi-trash\"></i></button>";
+      container.appendChild(row);
+    }
+    function renderSavedPhotoThumb(idx) {
+      const input = document.getElementById("photo-input-" + idx);
+      if (!input) return;
+      let wrap = document.getElementById("qc-saved-photo-" + idx);
+      const saved = session.qcDraftPhotos && session.qcDraftPhotos[idx];
+      if (!saved || !saved.dataUrl) {
+        if (wrap) wrap.remove();
+        return;
+      }
+      if (!wrap) {
+        wrap = document.createElement("div");
+        wrap.id = "qc-saved-photo-" + idx;
+        wrap.className = "qc-saved-photo small text-muted mt-1";
+        input.parentNode.appendChild(wrap);
+      }
+      wrap.innerHTML = "<img alt=\"\" src=\"" + saved.dataUrl + "\" style=\"max-height:56px;border:1px solid #d0d5dd;border-radius:4px;margin-right:8px\">" +
+        "Saved on this device. Confirm uses this photo unless you take a new one.";
+    }
+    function bindQcPhotoDrafts() {
+      document.querySelectorAll(".photo-input").forEach((input) => {
+        input.addEventListener("change", function () {
+          const idx = String(input.dataset.idx || "0");
+          const file = input.files && input.files[0];
+          if (!file) return;
+          toBase64(file).then((dataUrl) => {
+            session.qcDraftPhotos = session.qcDraftPhotos || {};
+            session.qcDraftPhotos[idx] = {
+              name: file.name,
+              mime: file.type,
+              data: String(dataUrl).split(",")[1],
+              dataUrl: dataUrl
+            };
+            renderSavedPhotoThumb(idx);
+            persistQcDraft();
+          }).catch(() => {});
+        });
+      });
+    }
+    function restoreQcSignature(dataUrl) {
+      if (!dataUrl || !canvas || !ctx) return;
+      const img = new Image();
+      img.onload = function () {
+        const rect = canvas.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return;
+        ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        hasSigned = true;
+      };
+      img.src = dataUrl;
+    }
+    function applyQcDraftCore(draft) {
+      if (!draft) return false;
+      (draft.answers || []).forEach((a, i) => {
+        if (a !== "Y" && a !== "N") return;
+        const el = document.querySelector('input[name="q' + i + '"][value="' + a + '"]');
+        if (el) el.checked = true;
+      });
+      (draft.steel || []).forEach((item) => appendSteelRow(item));
+      (draft.backboard || []).forEach((item) => appendBackboardRow(item));
+      session.qcDraftPhotos = draft.photos || {};
+      Object.keys(session.qcDraftPhotos).forEach((idx) => renderSavedPhotoThumb(idx));
+      if (draft.hasSigned && draft.signature) session.qcRestoreSignature = draft.signature;
+      return qcDraftHasWork(draft);
+    }
+    function applyQcDraftGlassWood(draft) {
+      if (!draft) return;
+      (draft.glassRows || []).forEach((line) => pushMaterialRow("glassRowsContainer", "glass-order-row", line, "glass"));
+      (draft.woodRows || []).forEach((line) => pushMaterialRow("woodRowsContainer", "wood-order-row", line, "wood"));
+      const woodOn = !!draft.woodRequired || (draft.woodRows || []).length > 0;
+      const woodBox = document.getElementById("woodRequired");
+      if (woodBox) woodBox.checked = woodOn;
+      syncWoodRequired();
+      const g = draft.glassFields || {};
+      setQcFieldVal("glassComponent", g.component);
+      setQcFieldVal("glassType", g.type);
+      setQcFieldVal("glassTypeCustom", g.typeCustom);
+      setQcFieldVal("glassThickness", g.thickness);
+      setQcFieldVal("glassHeight", g.height);
+      setQcFieldVal("glassWidth", g.width);
+      setQcFieldVal("glassQty", g.qty || "1");
+      const wrap = document.getElementById("glassTypeCustomWrap");
+      if (wrap) wrap.classList.toggle("d-none", g.type !== "__custom__");
+      const w = draft.woodFields || {};
+      setQcFieldVal("woodComponent", w.component);
+      setQcFieldVal("woodTypeSaved", w.typeSaved);
+      setQcFieldVal("woodTypeInput", w.typeInput);
+      setQcFieldVal("woodThickness", w.thickness);
+      setQcFieldVal("woodHeight", w.height);
+      setQcFieldVal("woodWidth", w.width);
+      setQcFieldVal("woodQty", w.qty || "1");
+    }
+    function setQcDraftNote(restored) {
+      const note = document.getElementById("qcDraftNote");
+      if (!note) return;
+      note.textContent = restored
+        ? "Unsaved progress from last time is filled in. It stays on this device until you confirm finish."
+        : "Answers stay on this device if you close this screen. Confirm finish clears them.";
+    }
+
     function preFinish(row, ord) { 
       session.pendingRow = row; 
       session.activeOrder = ord; 
@@ -4573,7 +4852,6 @@
 
       if (qcKey === 'Quality Control') {
         document.getElementById('qcChecklistContainer').innerHTML += glassWoodOrderHtml();
-        loadGlassWoodLookups();
       }
 
       document.getElementById('qcOrderNum').innerText = ord;
@@ -4601,7 +4879,23 @@
         phContainer.classList.add('d-none');
       }
       
-      clearSignature(); 
+      session.qcApplyingDraft = true;
+      session.qcDraftPhotos = {};
+      session.qcRestoreSignature = "";
+      clearSignature();
+      const draft = readQcDraft();
+      const restored = applyQcDraftCore(draft);
+      bindQcPhotoDrafts();
+      if (qcKey === 'Quality Control') {
+        loadGlassWoodLookups(function () {
+          applyQcDraftGlassWood(draft);
+          session.qcApplyingDraft = false;
+          setQcDraftNote(restored || qcDraftHasWork(draft));
+        });
+      } else {
+        session.qcApplyingDraft = false;
+        setQcDraftNote(restored);
+      }
       // initCanvas will be called when modal is shown via event listener
       if (qcModal) qcModal.show();
     }
@@ -4686,29 +4980,8 @@ function openSteelModal() {
          return;
       }
 
-      // Add visual row to QC container
-      const container = document.getElementById('materialRowsContainer');
-      const rowId = 'mrow-' + Date.now();
-      const fullSize = size + ' ' + unit;
-
-      const row = document.createElement('div');
-      row.className = 'material-row d-flex justify-content-between align-items-center mb-2 p-2 border rounded bg-light';
-      row.id = rowId;
-      row.dataset.category = cat;
-      row.dataset.name = finalName;
-      row.dataset.size = fullSize;
-      row.dataset.custom = isCustom;
-
-      row.innerHTML = `
-        <div>
-          <div class="fw-bold">${finalName}</div>
-          <div class="small text-muted">${cat} | ${fullSize}</div>
-        </div>
-        <button type="button" class="btn btn-sm btn-outline-danger" onclick="document.getElementById('${rowId}').remove()" title="Remove">
-          <i class="bi bi-trash"></i>
-        </button>
-      `;
-      container.appendChild(row);
+      appendSteelRow({ category: cat, name: finalName, size: size + ' ' + unit, custom: isCustom });
+      persistQcDraft();
 
       if (steelSelectionModal) steelSelectionModal.hide();
     }
@@ -4765,24 +5038,32 @@ function openSteelModal() {
       if (extra) html += extra;
       el.innerHTML = html;
     }
-    function loadGlassWoodLookups() {
+    function loadGlassWoodLookups(after) {
       const typeSel = document.getElementById('glassType');
-      if (typeSel) {
+      if (typeSel && typeSel.dataset.bound !== '1') {
+        typeSel.dataset.bound = '1';
         typeSel.addEventListener('change', function () {
           const wrap = document.getElementById('glassTypeCustomWrap');
           if (wrap) wrap.classList.toggle('d-none', typeSel.value !== '__custom__');
         });
       }
+      let left = 2;
+      function done() {
+        left -= 1;
+        if (left <= 0 && after) after();
+      }
       google.script.run.withSuccessHandler((res) => {
         fillSelect('glassType', (res && res.types) || ['Reeded','Clear','Ocean view'], 'Glass type', '<option value="__custom__">+ Add another glass</option>');
         fillSelect('glassComponent', (res && res.components) || ['Door','Side','Shelf','backboard'], 'Component');
         fillSelect('glassThickness', (res && res.thickness) || ['4mm','6mm','8mm','10mm'], 'Thickness');
-      }).getGlassTypes();
+        done();
+      }).withFailureHandler(done).getGlassTypes();
       google.script.run.withSuccessHandler((res) => {
         fillSelect('woodTypeSaved', (res && res.types) || [], 'Saved wood types');
         fillSelect('woodComponent', (res && res.components) || ['Door','Side','Shelf','backboard'], 'Component');
         fillSelect('woodThickness', (res && res.thickness) || ['16mm','20mm','25mm'], 'Thickness');
-      }).getWoodTypes();
+        done();
+      }).withFailureHandler(done).getWoodTypes();
     }
     function syncWoodRequired() {
       const on = !!(document.getElementById('woodRequired') && document.getElementById('woodRequired').checked);
@@ -4837,6 +5118,7 @@ function openSteelModal() {
         typeSel.value = custom;
         document.getElementById('glassTypeCustomWrap').classList.add('d-none');
       }
+      persistQcDraft();
     }
     function addWoodOrderLine() {
       const saved = (document.getElementById('woodTypeSaved') || {}).value || '';
@@ -4862,6 +5144,7 @@ function openSteelModal() {
         sel.appendChild(opt);
         sel.value = line.type;
       }
+      persistQcDraft();
     }
     function collectGlassWoodRows(sel, kind) {
       const rows = [];
@@ -4956,28 +5239,8 @@ function openSteelModal() {
          return;
       }
 
-      const container = document.getElementById('backboardRowsContainer');
-      const rowId = 'brow-' + Date.now();
-      const fullSize = size + ' ' + unit;
-
-      const row = document.createElement('div');
-      row.className = 'backboard-row d-flex justify-content-between align-items-center mb-2 p-2 border rounded bg-light';
-      row.id = rowId;
-      row.dataset.category = cat;
-      row.dataset.name = finalName;
-      row.dataset.size = fullSize;
-      row.dataset.custom = isCustom;
-
-      row.innerHTML = `
-        <div>
-          <div class="fw-bold">${finalName}</div>
-          <div class="small text-muted">${cat} | ${fullSize}</div>
-        </div>
-        <button type="button" class="btn btn-sm btn-outline-danger" onclick="document.getElementById('${rowId}').remove()" title="Remove">
-          <i class="bi bi-trash"></i>
-        </button>
-      `;
-      container.appendChild(row);
+      appendBackboardRow({ category: cat, name: finalName, size: size + ' ' + unit, custom: isCustom });
+      persistQcDraft();
 
       if (backboardSelectionModal) backboardSelectionModal.hide();
     }
@@ -5157,15 +5420,18 @@ function openSteelModal() {
             if(!hasSigned) { showAlert("Please sign before confirming."); return; } 
             
             sig = canvas.toDataURL();
+            persistQcDraft();
             
             // 3. GATHER PHOTOS
             const inputs = document.querySelectorAll('.photo-input');
+            const savedPhotos = session.qcDraftPhotos || {};
             // Check if all required photos are uploaded (optional ones can be skipped)
             if(inputs.length > 0) {
                 let areAllRequiredPhotosUploaded = true;
                 for(let input of inputs) {
                     const isOptional = input.dataset.optional === 'true';
-                    if(!isOptional && input.files.length === 0) {
+                    const idx = String(input.dataset.idx || "0");
+                    if(!isOptional && input.files.length === 0 && !savedPhotos[idx]) {
                         areAllRequiredPhotosUploaded = false;
                         break;
                     }
@@ -5179,12 +5445,20 @@ function openSteelModal() {
             // Build photos array: include actual photo data or null for skipped optional photos
             // This ensures array indices match the expected photo positions in the template
             for(let input of inputs) {
+                const idx = String(input.dataset.idx || "0");
+                const saved = savedPhotos[idx];
                 if(input.files.length > 0) {
                     let b64 = await toBase64(input.files[0]);
                     fileData.push({
                         name: input.files[0].name,
                         mime: input.files[0].type,
                         data: b64.split(',')[1] 
+                    });
+                } else if (saved && saved.data) {
+                    fileData.push({
+                        name: saved.name || ("photo-" + idx + ".jpg"),
+                        mime: saved.mime || "image/jpeg",
+                        data: saved.data
                     });
                 } else {
                     // Only optional photos should reach here due to validation above
@@ -5310,6 +5584,7 @@ function openSteelModal() {
                 }
               }
               if (result && result.success !== false) {
+                dropQcDraft();
                 if (result.savedDuration && result.durationLabel) {
                   showAlert('Saved ' + result.durationLabel + ' on the task time sheet. Next time this product will count down.');
                 } else if (result.overtime) {
@@ -6894,6 +7169,7 @@ function openSteelModal() {
     function handlePointerEnd(e) {
       e.preventDefault();
       isDrawing = false;
+      persistQcDraft();
     }
     
     function handleTouchStart(e) {
@@ -6925,6 +7201,7 @@ function openSteelModal() {
     function handleTouchEnd(e) {
       e.preventDefault();
       isDrawing = false;
+      persistQcDraft();
     }
     
     function sD(e) { 
@@ -6947,6 +7224,7 @@ function openSteelModal() {
       if (canvas && canvas.width > 0 && canvas.height > 0) {
         ctx.clearRect(0, 0, canvas.width, canvas.height); 
       }
+      if (!session.qcApplyingDraft) persistQcDraft();
     }
 
     // --- ADMIN QC REPORTS LOGIC ---

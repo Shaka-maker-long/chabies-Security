@@ -29,6 +29,29 @@ function sdOfficeFetch(url, opts) {
   opts.headers = Object.assign({ "Content-Type": "application/json", "x-sd-token": p.token || "" }, opts.headers || {});
   return fetch(url, opts);
 }
+function sdFormWho() {
+  const p = sdOfficeProfile() || {};
+  return String(p.name || "office").toLowerCase();
+}
+function sdFormDraftKey(kind, extra) {
+  return "sd-form-draft:" + sdFormWho() + ":" + kind + ":" + String(extra || "new");
+}
+function sdWriteFormDraft(kind, extra, data) {
+  const key = sdFormDraftKey(kind, extra);
+  try { localStorage.setItem(key, JSON.stringify(data)); } catch (e) {
+    try {
+      const slim = Object.assign({}, data);
+      delete slim.photos;
+      localStorage.setItem(key, JSON.stringify(slim));
+    } catch (err) {}
+  }
+}
+function sdReadFormDraft(kind, extra) {
+  try { return JSON.parse(localStorage.getItem(sdFormDraftKey(kind, extra)) || "null"); } catch (e) { return null; }
+}
+function sdDropFormDraft(kind, extra) {
+  try { localStorage.removeItem(sdFormDraftKey(kind, extra)); } catch (e) {}
+}
 function sdHideDebtorsLinks(canSee) {
   document.querySelectorAll("[data-nav='debtors']").forEach((a) => {
     a.style.display = canSee ? "" : "none";
