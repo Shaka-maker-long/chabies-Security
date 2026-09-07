@@ -2661,11 +2661,22 @@
       } catch (e) { return ''; }
     }
     function parseStartMs(value) {
-      if (!value) return 0;
-      if (typeof value === 'number') return value;
-      const n = Number(value);
-      if (n && !isNaN(n) && String(value).trim() !== '' && !String(value).includes('-') && !String(value).includes(':')) return n;
-      const d = new Date(value);
+      if (value == null || value === '') return 0;
+      if (value instanceof Date) return isNaN(value.getTime()) ? 0 : value.getTime();
+      if (typeof value === 'number' && isFinite(value)) {
+        if (value >= 20000 && value <= 120000) return Math.round((value - 25569) * 86400000) - 2 * 60 * 60 * 1000;
+        return value;
+      }
+      const s = String(value).trim();
+      if (!s) return 0;
+      const spaced = s.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})(?::(\d{2}))?$/);
+      if (spaced) {
+        const d = new Date(spaced[1] + 'T' + spaced[2] + ':' + (spaced[3] || '00') + '+02:00');
+        if (!isNaN(d.getTime())) return d.getTime();
+      }
+      const n = Number(s);
+      if (n && !isNaN(n) && s.indexOf('-') === -1 && s.indexOf(':') === -1) return n;
+      const d = new Date(s);
       return isNaN(d.getTime()) ? 0 : d.getTime();
     }
     function formatSpokenDuration(totalMins) {
@@ -2732,14 +2743,14 @@
       }
       return cursor;
     }
-    function etaLineHtml(o) {
-      const mins = Number(o && o.targetMinutes) || 0;
-      if (mins <= 0) return '';
-      const start = parseStartMs(o && o.startedAt) || Date.now();
-      const at = estimateCompletionAt(new Date(start), mins);
+    function etaLineHtml(o, remMs) {
+      const leftMs = remMs != null ? remMs : remainingCountdownMs(o, Date.now());
+      if (leftMs == null || leftMs <= 0) return '';
+      const at = estimateCompletionAt(new Date(), leftMs / 60000);
       const label = (at && formatEstimateClock(at)) || (o && o.etaLabel) || '';
       if (!label) return '';
-      return '<div class="task-eta">Estimated finish ' + label + ' · lunch is not counted</div>';
+      const pauseBit = o && o.isPaused ? ' if you resume now' : '';
+      return '<div class="task-eta">Estimated finish ' + label + pauseBit + ' · lunch is not counted</div>';
     }
     function remainingCountdownMs(o, now) {
       const target = Number(o && o.targetMinutes) || 0;
@@ -2776,11 +2787,23 @@
       const started = !!parseStartMs(o && o.startedAt);
       if (!started) return '';
       const mins = Number(o && o.targetMinutes) || 0;
-      const label = (o && o.durationLabel) || formatSpokenDuration(mins);
-      if (mins > 0 && label) {
-        return '<div class="task-duration-banner">Your duration for this order is ' + label + '</div>' + etaLineHtml(o);
+      const total = (o && o.durationLabel) || formatSpokenDuration(mins);
+      if (!(mins > 0) || !total) {
+        return '<div class="task-duration-banner is-learn">No time is saved for this product yet. That does not pause the job. When you finish we save the duration so the next one can count down.</div>';
       }
-      return '<div class="task-duration-banner is-learn">No time is saved for this product yet. That does not pause the job. When you finish we save the duration so the next one can count down.</div>';
+      const remMs = remainingCountdownMs(o, Date.now());
+      if (remMs == null) {
+        return '<div class="task-duration-banner">Your duration for this order is ' + total + '</div>' + etaLineHtml(o);
+      }
+      if (remMs <= 0) {
+        return '<div class="task-duration-banner">Time is up · estimate was ' + total + '</div>';
+      }
+      const remLabel = (o && o.remainingLabel) || formatSpokenDuration(remMs / 60000);
+      const justStarted = remMs > mins * 60000 - 30 * 1000;
+      const headline = justStarted
+        ? ('Your duration for this order is ' + total)
+        : ('Time left ' + remLabel + ' of ' + total);
+      return '<div class="task-duration-banner">' + headline + '</div>' + etaLineHtml(o, remMs);
     }
     function countdownHtml(o) {
       const banner = durationBannerHtml(o);
@@ -2840,6 +2863,22 @@
         const share = Number(el.getAttribute('data-share')) || 1;
         el.classList.toggle('over', f.over);
         el.textContent = countdownLabel(f, share);
+        const host = el.parentElement;
+        const banner = host && host.querySelector('.task-duration-banner');
+        if (banner && !banner.classList.contains('is-learn')) {
+          const total = formatSpokenDuration(target);
+          if (rem <= 0) banner.textContent = 'Time is up · estimate was ' + total;
+          else if (rem > target * 60000 - 30 * 1000) banner.textContent = 'Your duration for this order is ' + total;
+          else banner.textContent = 'Time left ' + formatSpokenDuration(rem / 60000) + ' of ' + total;
+        }
+        const eta = host && host.querySelector('.task-eta');
+        if (eta) {
+          if (rem <= 0) eta.textContent = '';
+          else {
+            const at = estimateCompletionAt(new Date(), rem / 60000);
+            eta.textContent = at ? ('Estimated finish ' + formatEstimateClock(at) + ' · lunch is not counted') : eta.textContent;
+          }
+        }
         const order = el.getAttribute('data-order');
         if (f.over && order && session.overtimeWarned && !session.overtimeWarned[order]) {
           session.overtimeWarned[order] = true;
@@ -4661,6 +4700,10 @@
            session.pendingSwitchReason = null;
            session.pendingWorkTogether = false;
            session.skipRunningChoice = false;
+           if (res.remainingLabel) {
+             const etaBit = res.etaLabel ? ' Estimated finish ' + res.etaLabel + '.' : '';
+             showAlert('Continuing · ' + res.remainingLabel + ' left.' + etaBit + ' Lunch is not counted.');
+           }
            loadDashboard(true);
         } else if (res.needsSwitchReason) {
            loadDashboard(true);

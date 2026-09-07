@@ -937,8 +937,7 @@ function getOrdersForRole(role, workerName, skipCache) {
 
       if ((isStageValid || isAlreadyActive) && isNotFinished) {
         var plateMins = getTaskDurationMinutes(productName, "Plate Cutting");
-        var plateEta = estimateCompletionPack(plateInfo.startTime || new Date(), plateMins);
-        relevantOrders.push({
+        relevantOrders.push(decorateOrderTiming({
           rowIndex: i + 1,
           order: orderNum,
           productName: productName,
@@ -953,8 +952,6 @@ function getOrdersForRole(role, workerName, skipCache) {
           startedAt: plateInfo.startTime || "",
           targetMinutes: plateMins,
           durationLabel: formatSpokenDuration(plateMins),
-          etaAt: plateEta.etaAt,
-          etaLabel: plateEta.etaLabel,
           pauseMs: plateInfo.pauseMs || 0,
           pausedAt: plateInfo.pausedAt || "",
           batchShare: plateInfo.batchShare || 1,
@@ -963,7 +960,7 @@ function getOrdersForRole(role, workerName, skipCache) {
           description: String(data[i][9] || ""),
           dimensions: String(data[i][10] || ""),
           highlights: parseDescriptionHighlights(data[i][9])
-        });
+        }));
       }
       continue; 
     }
@@ -972,8 +969,7 @@ function getOrdersForRole(role, workerName, skipCache) {
     
     if (role === 'Admin' || includesStatusCaseInsensitive(allowedStatuses, mainStatus)) {
       var roleMins = getTaskDurationMinutes(productName, role);
-      var roleEta = estimateCompletionPack(assignment && assignment.startTime ? assignment.startTime : new Date(), roleMins);
-      relevantOrders.push({
+      relevantOrders.push(decorateOrderTiming({
         rowIndex: i + 1,
         order: orderNum,
         productName: productName,
@@ -988,8 +984,6 @@ function getOrdersForRole(role, workerName, skipCache) {
         startedAt: assignment && assignment.startTime ? assignment.startTime : "",
         targetMinutes: roleMins,
         durationLabel: formatSpokenDuration(roleMins),
-        etaAt: roleEta.etaAt,
-        etaLabel: roleEta.etaLabel,
         pauseMs: assignment ? (assignment.pauseMs || 0) : 0,
         pausedAt: assignment ? (assignment.pausedAt || "") : "",
         batchShare: assignment ? (assignment.batchShare || 1) : 1,
@@ -998,7 +992,7 @@ function getOrdersForRole(role, workerName, skipCache) {
         description: String(data[i][9] || ""),
         dimensions: String(data[i][10] || ""),
         highlights: parseDescriptionHighlights(data[i][9])
-      });
+      }));
     }
   }
   floorCachePut(cacheKey, relevantOrders, CACHE_TTL_FLOOR);
@@ -1135,12 +1129,44 @@ function getTaskTimeEstimate(startDate, workMinutes) {
   return estimateCompletionPack(startDate, workMinutes);
 }
 
+function remainingMsFromState(startedAt, targetMinutes, pauseMs, pausedAt, isPaused, now) {
+  var target = Number(targetMinutes) || 0;
+  if (target <= 0) return null;
+  var start = coerceEstimateDate(startedAt);
+  if (!start) return null;
+  now = now || new Date();
+  var end = now;
+  if (isPaused) {
+    var paused = coerceEstimateDate(pausedAt);
+    if (paused) end = paused;
+  }
+  return target * 60000 - Math.max(0, end.getTime() - start.getTime() - (Number(pauseMs) || 0));
+}
+
+function decorateOrderTiming(order, now) {
+  order = order || {};
+  now = now || new Date();
+  var rem = remainingMsFromState(order.startedAt, order.targetMinutes, order.pauseMs, order.pausedAt, order.isPaused, now);
+  if (rem == null) {
+    var fresh = estimateCompletionPack(now, order.targetMinutes);
+    order.remainingMinutes = 0;
+    order.remainingLabel = "";
+    order.etaAt = fresh.etaAt;
+    order.etaLabel = fresh.etaLabel;
+    return order;
+  }
+  var remMin = Math.max(0, rem / 60000);
+  order.remainingMinutes = Math.round(remMin * 10) / 10;
+  order.remainingLabel = formatSpokenDuration(remMin);
+  var eta = estimateCompletionPack(now, remMin);
+  order.etaAt = eta.etaAt;
+  order.etaLabel = eta.etaLabel;
+  return order;
+}
+
 function attachTaskEstimate(order, startDate) {
   order = order || {};
-  var pack = estimateCompletionPack(startDate || order.startedAt || new Date(), order.targetMinutes);
-  order.etaAt = pack.etaAt;
-  order.etaLabel = pack.etaLabel;
-  return order;
+  return decorateOrderTiming(order, startDate ? coerceEstimateDate(startDate) : new Date());
 }
 
 function taskDurationSheet() {
@@ -2959,7 +2985,30 @@ function workerResumeOrder(rowIndex, orderNum, workerName, switchReason, workTog
     closeIndirectTasksForWorker(ss, workerName, pack);
     var ok = resumeWorkerLog(ss, workerName, orderNum, pack);
     if (!ok) return {success: false, message: "No paused tasks found for you on this order."};
-    return {success: true};
+    pack = getLogPack(ss);
+    var resumedRow = null;
+    var logs = pack.values;
+    for (var ri = logs.length - 1; ri >= 1; ri--) {
+      if (String(logs[ri][1]) === String(orderNum) && String(logs[ri][2]).trim() === String(workerName).trim() && !logs[ri][6]) {
+        resumedRow = logs[ri];
+        break;
+      }
+    }
+    var resumedMeta = resumedRow ? parseLogMeta(resumedRow.length > 12 ? resumedRow[12] : "") : defaultLogMeta();
+    var resumedAcc = resumedRow ? pauseAccounting(resumedMeta, resumedRow[9]) : { pauseMs: 0, pausedAt: "" };
+    var resumedTarget = Number(resumedMeta.targetMinutes) || 0;
+    var remMs = remainingMsFromState(resumedRow ? resumedRow[5] : null, resumedTarget, resumedAcc.pauseMs, "", false, new Date());
+    var remMin = remMs == null ? 0 : Math.max(0, remMs / 60000);
+    var remEta = estimateCompletionPack(new Date(), remMin);
+    return {
+      success: true,
+      remainingMinutes: Math.round(remMin * 10) / 10,
+      remainingLabel: formatSpokenDuration(remMin),
+      targetMinutes: resumedTarget,
+      durationLabel: formatSpokenDuration(resumedTarget),
+      etaAt: remEta.etaAt,
+      etaLabel: remEta.etaLabel
+    };
   } catch(e) {
     return {success: false, message: e.toString()};
   } finally {
