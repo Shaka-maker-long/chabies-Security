@@ -734,7 +734,7 @@ function plateStatusFromLogRow(row) {
       logId: row[0],
       batchId: meta.batchId || "",
       isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1),
-      startTime: row[5] || "",
+      startTime: countdownOrigin(row[5], meta) || row[5] || "",
       pauseMs: acc.pauseMs,
       pausedAt: acc.pausedAt,
       batchShare: meta.batchShare || 1,
@@ -1132,6 +1132,13 @@ function getTaskTimeEstimate(startDate, workMinutes) {
   return estimateCompletionPack(startDate, workMinutes);
 }
 
+function countdownOrigin(startCell, meta) {
+  var fromRow = coerceEstimateDate(startCell);
+  var fromMeta = meta && meta.countdownStartedAt ? coerceEstimateDate(meta.countdownStartedAt) : null;
+  if (fromRow && fromMeta) return fromRow.getTime() <= fromMeta.getTime() ? fromRow : fromMeta;
+  return fromMeta || fromRow || "";
+}
+
 function remainingMsFromState(startedAt, targetMinutes, pauseMs, pausedAt, isPaused, now, priorWorkMs) {
   var target = Number(targetMinutes) || 0;
   if (target <= 0) return null;
@@ -1483,28 +1490,14 @@ function joinWorkerOrdersTogether(ss, workerName, extraOrderNums, pack) {
     var row = pack.values[rec.valuesIndex];
     var startMs = coerceEstimateDate(row[5]);
     startMs = startMs ? startMs.getTime() : now.getTime();
-    var acc = pauseAccounting(rec.meta, "");
-    var thisBoutMs = Math.max(0, now.getTime() - startMs - (Number(acc.pauseMs) || 0));
-    logSheet.getRange(sheetRow, 7).setValue(now);
-    pack.values[rec.valuesIndex][6] = now;
-
-    var newMeta = defaultLogMeta();
-    newMeta.batchId = batchId;
-    newMeta.batchShare = share;
-    newMeta.entryType = rec.meta.entryType || "production";
-    newMeta.targetMinutes = Number(rec.meta.targetMinutes) || 0;
-    newMeta.priorWorkMs = (Number(rec.meta.priorWorkMs) || 0) + thisBoutMs;
-    newMeta.countdownStartedAt = Number(rec.meta.countdownStartedAt) || startMs;
-    newMeta.overtimeContinue = !!rec.meta.overtimeContinue;
-    newMeta.durationSaved = !!rec.meta.durationSaved;
-    var uniqueId = Utilities.getUuid();
-    logSheet.appendRow([
-      uniqueId, row[1], row[2], row[3], row[4], now, "", "", "",
-      "", "", "", JSON.stringify(newMeta)
-    ]);
-    if (overviewSheet) {
-      overviewSheet.appendRow([uniqueId, row[1], row[2], row[4], now, "", ""]);
-    }
+    rec.meta.batchId = batchId;
+    rec.meta.batchShare = share;
+    rec.meta.batchSplitAt = null;
+    if (!rec.meta.batchJoinedAt) rec.meta.batchJoinedAt = now.getTime();
+    rec.meta.entryType = rec.meta.entryType || "production";
+    var origin = countdownOrigin(row[5], rec.meta);
+    rec.meta.countdownStartedAt = origin ? origin.getTime() : startMs;
+    writeLogPauseState(logSheet, sheetRow, rec.meta, row[4]);
     handled[rec.order] = true;
   }
   invalidateLogPack();
@@ -2468,7 +2461,7 @@ function getActiveAssignmentsFromData(logData) {
       logId: logData[i][0],
       batchId: meta.batchId || "",
       isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1),
-      startTime: logData[i][5] || "",
+      startTime: countdownOrigin(logData[i][5], meta) || logData[i][5] || "",
       pauseMs: acc.pauseMs,
       pausedAt: acc.pausedAt,
       batchShare: meta.batchShare || 1,
@@ -3338,6 +3331,7 @@ function parseLogMeta(cell) {
     meta.durationSaved = !!parsed.durationSaved;
     meta.priorWorkMs = Number(parsed.priorWorkMs) || 0;
     meta.countdownStartedAt = Number(parsed.countdownStartedAt) || 0;
+    meta.batchJoinedAt = Number(parsed.batchJoinedAt) || 0;
     return meta;
   } catch (e) {
     return meta;
@@ -3648,6 +3642,13 @@ function sumPauseMinutesInWindow(pauses, wStart, wEnd, taskName, allowAfterShift
   return total;
 }
 
+function netWorkMinutesInWindow(start, end, pauses, taskName, allowAfterShift) {
+  if (!start || !end) return 0;
+  var raw = calcRawServerMins(start, end, taskName, allowAfterShift);
+  var pauseMins = sumPauseMinutesInWindow(pauses, start, end, taskName, allowAfterShift);
+  return Math.max(0, raw - pauseMins);
+}
+
 function calculateWorkMinutesMeta(start, end, taskName, meta, legacyPausedMins) {
   if (!start) return 0;
   var actualEnd = end ? end : new Date();
@@ -3655,6 +3656,7 @@ function calculateWorkMinutesMeta(start, end, taskName, meta, legacyPausedMins) 
   var pauses = meta.pauses || [];
   var share = Math.max(1, parseFloat(meta.batchShare) || 1);
   var splitAt = meta.batchSplitAt ? new Date(meta.batchSplitAt) : null;
+  var joinedAt = meta.batchJoinedAt ? new Date(meta.batchJoinedAt) : null;
 
   var allowAfterShift = !!meta.overtimeContinue;
 
@@ -3663,18 +3665,28 @@ function calculateWorkMinutesMeta(start, end, taskName, meta, legacyPausedMins) 
     return Math.max(0, rawLegacy - (parseFloat(legacyPausedMins) || 0));
   }
 
-  if (splitAt && splitAt.getTime() > start.getTime() && splitAt.getTime() < actualEnd.getTime()) {
-    var beforeRaw = calcRawServerMins(start, splitAt, taskName, allowAfterShift);
-    var afterRaw = calcRawServerMins(splitAt, actualEnd, taskName, allowAfterShift);
-    var beforePause = sumPauseMinutesInWindow(pauses, start, splitAt, taskName, allowAfterShift);
-    var afterPause = sumPauseMinutesInWindow(pauses, splitAt, actualEnd, taskName, allowAfterShift);
-    return Math.max(0, beforeRaw - beforePause) / share + Math.max(0, afterRaw - afterPause);
+  var t0 = start.getTime();
+  var t1 = actualEnd.getTime();
+  var joinMs = joinedAt && !isNaN(joinedAt.getTime()) ? joinedAt.getTime() : 0;
+  var splitMs = splitAt && !isNaN(splitAt.getTime()) ? splitAt.getTime() : 0;
+  if (joinMs && joinMs > t0 && joinMs < t1) {
+    var beforeJoin = netWorkMinutesInWindow(start, new Date(joinMs), pauses, taskName, allowAfterShift);
+    if (splitMs && splitMs > joinMs && splitMs < t1) {
+      var midJoin = netWorkMinutesInWindow(new Date(joinMs), new Date(splitMs), pauses, taskName, allowAfterShift) / share;
+      var afterLeave = netWorkMinutesInWindow(new Date(splitMs), actualEnd, pauses, taskName, allowAfterShift);
+      return beforeJoin + midJoin + afterLeave;
+    }
+    return beforeJoin + netWorkMinutesInWindow(new Date(joinMs), actualEnd, pauses, taskName, allowAfterShift) / share;
   }
 
-  var raw = calcRawServerMins(start, actualEnd, taskName, allowAfterShift);
-  var pauseMins = sumPauseMinutesInWindow(pauses, start, actualEnd, taskName, allowAfterShift);
-  var net = Math.max(0, raw - pauseMins);
-  if (!splitAt && share > 1 && meta.batchId) return net / share;
+  if (splitMs && splitMs > t0 && splitMs < t1) {
+    var beforeSplit = netWorkMinutesInWindow(start, new Date(splitMs), pauses, taskName, allowAfterShift);
+    var afterSplit = netWorkMinutesInWindow(new Date(splitMs), actualEnd, pauses, taskName, allowAfterShift);
+    return beforeSplit / share + afterSplit;
+  }
+
+  var net = netWorkMinutesInWindow(start, actualEnd, pauses, taskName, allowAfterShift);
+  if (!splitMs && share > 1 && meta.batchId) return net / share;
   return net;
 }
 

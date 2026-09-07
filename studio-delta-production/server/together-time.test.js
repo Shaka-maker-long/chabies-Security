@@ -191,9 +191,12 @@ const CONFIRM = { understood: true, highlights: [] };
   const pollKeep = await callShopFunction("pollFloor", ["Welding", "Thabo"]);
   const cardE = pollKeep.orders.find((o) => String(o.order) === "S-2005");
   assert.ok(cardE && !cardE.isPaused, JSON.stringify(cardE));
-  assert.ok(Number(cardE.priorWorkMs) >= 8 * 60 * 1000, "together must keep worked time: " + JSON.stringify(cardE));
+  const startMs = cardE.startedAt instanceof Date ? cardE.startedAt.getTime() : Date.parse(cardE.startedAt) || Number(cardE.startedAt);
+  assert.ok(Date.now() - startMs >= 8 * 60 * 1000, "together must keep the original start: " + JSON.stringify(cardE));
   const remE = staff.countdownRemainingMs(cardE, Date.now());
   assert.ok(remE > 165 * 60 * 1000 && remE < 176 * 60 * 1000, "together must not reset countdown: " + remE + " " + JSON.stringify(cardE));
+  const stillOpen = openLogs("S-2005");
+  assert.strictEqual(stillOpen.length, 1, "together must not replace the open log: " + JSON.stringify(stillOpen.map((x) => x.row[0])));
 
   console.log("together-time.test.js ok");
 })().catch((e) => {
