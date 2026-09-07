@@ -694,7 +694,7 @@ function floorCachePut(key, value, ttl) {
 }
 
 function emptyPlateStatus() {
-  return {status: '', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: "", batchShare: 1};
+  return {status: '', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: "", batchShare: 1, priorWorkMs: 0};
 }
 
 function pauseAccounting(meta, legacyPauseStart) {
@@ -737,10 +737,11 @@ function plateStatusFromLogRow(row) {
       startTime: row[5] || "",
       pauseMs: acc.pauseMs,
       pausedAt: acc.pausedAt,
-      batchShare: meta.batchShare || 1
+      batchShare: meta.batchShare || 1,
+      priorWorkMs: Number(meta.priorWorkMs) || 0
     };
   }
-  return {status: 'Finished', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: "", batchShare: 1};
+  return {status: 'Finished', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: "", batchShare: 1, priorWorkMs: 0};
 }
 
 function buildPlateStatusMap(logData) {
@@ -955,6 +956,7 @@ function getOrdersForRole(role, workerName, skipCache) {
           pauseMs: plateInfo.pauseMs || 0,
           pausedAt: plateInfo.pausedAt || "",
           batchShare: plateInfo.batchShare || 1,
+          priorWorkMs: plateInfo.priorWorkMs || 0,
           type: String(data[i][4] || ""),
           variation: String(data[i][7] || ""),
           description: String(data[i][9] || ""),
@@ -987,6 +989,7 @@ function getOrdersForRole(role, workerName, skipCache) {
         pauseMs: assignment ? (assignment.pauseMs || 0) : 0,
         pausedAt: assignment ? (assignment.pausedAt || "") : "",
         batchShare: assignment ? (assignment.batchShare || 1) : 1,
+        priorWorkMs: assignment ? (assignment.priorWorkMs || 0) : 0,
         type: String(data[i][4] || ""),
         variation: String(data[i][7] || ""),
         description: String(data[i][9] || ""),
@@ -1129,7 +1132,7 @@ function getTaskTimeEstimate(startDate, workMinutes) {
   return estimateCompletionPack(startDate, workMinutes);
 }
 
-function remainingMsFromState(startedAt, targetMinutes, pauseMs, pausedAt, isPaused, now) {
+function remainingMsFromState(startedAt, targetMinutes, pauseMs, pausedAt, isPaused, now, priorWorkMs) {
   var target = Number(targetMinutes) || 0;
   if (target <= 0) return null;
   var start = coerceEstimateDate(startedAt);
@@ -1140,13 +1143,13 @@ function remainingMsFromState(startedAt, targetMinutes, pauseMs, pausedAt, isPau
     var paused = coerceEstimateDate(pausedAt);
     if (paused) end = paused;
   }
-  return target * 60000 - Math.max(0, end.getTime() - start.getTime() - (Number(pauseMs) || 0));
+  return target * 60000 - Math.max(0, end.getTime() - start.getTime() - (Number(pauseMs) || 0)) - (Number(priorWorkMs) || 0);
 }
 
 function decorateOrderTiming(order, now) {
   order = order || {};
   now = now || new Date();
-  var rem = remainingMsFromState(order.startedAt, order.targetMinutes, order.pauseMs, order.pausedAt, order.isPaused, now);
+  var rem = remainingMsFromState(order.startedAt, order.targetMinutes, order.pauseMs, order.pausedAt, order.isPaused, now, order.priorWorkMs);
   if (rem == null) {
     var fresh = estimateCompletionPack(now, order.targetMinutes);
     order.remainingMinutes = 0;
@@ -1456,6 +1459,11 @@ function joinWorkerOrdersTogether(ss, workerName, extraOrderNums, pack) {
       continue;
     }
     var sheetRow = packSheetRow(pack, rec.valuesIndex);
+    var row = pack.values[rec.valuesIndex];
+    var startMs = coerceEstimateDate(row[5]);
+    startMs = startMs ? startMs.getTime() : now.getTime();
+    var acc = pauseAccounting(rec.meta, "");
+    var thisBoutMs = Math.max(0, now.getTime() - startMs - (Number(acc.pauseMs) || 0));
     logSheet.getRange(sheetRow, 7).setValue(now);
     pack.values[rec.valuesIndex][6] = now;
 
@@ -1463,7 +1471,11 @@ function joinWorkerOrdersTogether(ss, workerName, extraOrderNums, pack) {
     newMeta.batchId = batchId;
     newMeta.batchShare = share;
     newMeta.entryType = rec.meta.entryType || "production";
-    var row = pack.values[rec.valuesIndex];
+    newMeta.targetMinutes = Number(rec.meta.targetMinutes) || 0;
+    newMeta.priorWorkMs = (Number(rec.meta.priorWorkMs) || 0) + thisBoutMs;
+    newMeta.countdownStartedAt = Number(rec.meta.countdownStartedAt) || startMs;
+    newMeta.overtimeContinue = !!rec.meta.overtimeContinue;
+    newMeta.durationSaved = !!rec.meta.durationSaved;
     var uniqueId = Utilities.getUuid();
     logSheet.appendRow([
       uniqueId, row[1], row[2], row[3], row[4], now, "", "", "",
@@ -1599,6 +1611,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       meta.batchShare = batchShare;
       meta.entryType = "production";
       meta.targetMinutes = getTaskDurationMinutes(String(orderRow[6] || "").trim(), role);
+      meta.countdownStartedAt = startTime.getTime();
       meta = applyShiftWindowToMeta(meta, null, workerName);
 
       if (role !== 'Plate Cutting') {
@@ -2437,7 +2450,8 @@ function getActiveAssignmentsFromData(logData) {
       startTime: logData[i][5] || "",
       pauseMs: acc.pauseMs,
       pausedAt: acc.pausedAt,
-      batchShare: meta.batchShare || 1
+      batchShare: meta.batchShare || 1,
+      priorWorkMs: Number(meta.priorWorkMs) || 0
     };
   }
   return assignments;
@@ -2974,7 +2988,31 @@ function workerResumeOrder(rowIndex, orderNum, workerName, switchReason, workTog
       if (!okTogether && !(join.handled && join.handled[String(orderNum)])) {
         return {success: false, message: "No paused tasks found for you on this order."};
       }
-      return {success: true, batchId: join.batchId || ""};
+      pack = getLogPack(ss);
+      var togetherRow = null;
+      var togetherLogs = pack.values;
+      for (var ti = togetherLogs.length - 1; ti >= 1; ti--) {
+        if (String(togetherLogs[ti][1]) === String(orderNum) && String(togetherLogs[ti][2]).trim() === String(workerName).trim() && !togetherLogs[ti][6]) {
+          togetherRow = togetherLogs[ti];
+          break;
+        }
+      }
+      var togetherMeta = togetherRow ? parseLogMeta(togetherRow.length > 12 ? togetherRow[12] : "") : defaultLogMeta();
+      var togetherAcc = togetherRow ? pauseAccounting(togetherMeta, togetherRow[9]) : { pauseMs: 0, pausedAt: "" };
+      var togetherTarget = Number(togetherMeta.targetMinutes) || 0;
+      var togetherRem = remainingMsFromState(togetherRow ? togetherRow[5] : null, togetherTarget, togetherAcc.pauseMs, "", false, new Date(), togetherMeta.priorWorkMs);
+      var togetherMin = togetherRem == null ? 0 : Math.max(0, togetherRem / 60000);
+      var togetherEta = estimateCompletionPack(new Date(), togetherMin);
+      return {
+        success: true,
+        batchId: join.batchId || "",
+        remainingMinutes: Math.round(togetherMin * 10) / 10,
+        remainingLabel: formatSpokenDuration(togetherMin),
+        targetMinutes: togetherTarget,
+        durationLabel: formatSpokenDuration(togetherTarget),
+        etaAt: togetherEta.etaAt,
+        etaLabel: togetherEta.etaLabel
+      };
     }
     if (runningOthers.length && !isUserPauseReason(switchReason)) {
       return { success: false, needsSwitchReason: true, runningOrders: runningOthers, message: "Choose why you are leaving the current order." };
@@ -3279,7 +3317,9 @@ function defaultLogMeta() {
     entryType: "production",
     overtimeContinue: false,
     targetMinutes: 0,
-    durationSaved: false
+    durationSaved: false,
+    priorWorkMs: 0,
+    countdownStartedAt: 0
   };
 }
 
@@ -3299,6 +3339,8 @@ function parseLogMeta(cell) {
     meta.overtimeContinue = !!parsed.overtimeContinue;
     meta.targetMinutes = Number(parsed.targetMinutes) || 0;
     meta.durationSaved = !!parsed.durationSaved;
+    meta.priorWorkMs = Number(parsed.priorWorkMs) || 0;
+    meta.countdownStartedAt = Number(parsed.countdownStartedAt) || 0;
     return meta;
   } catch (e) {
     return meta;

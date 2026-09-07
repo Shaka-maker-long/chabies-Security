@@ -121,6 +121,16 @@ assert.strictEqual(
   }, now),
   35 * 60 * 1000
 );
+assert.strictEqual(
+  staff.countdownRemainingMs({
+    targetMinutes: 180,
+    startedAt: now,
+    pauseMs: 0,
+    isPaused: false,
+    priorWorkMs: 10 * 60 * 1000
+  }, now),
+  170 * 60 * 1000
+);
 assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 0, startedAt: started }, now), null);
 assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null);
 

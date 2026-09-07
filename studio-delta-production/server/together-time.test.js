@@ -12,6 +12,7 @@ delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
 const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const db = require("./db");
+const staff = require("./staff");
 const { callShopFunction } = require("./gas");
 
 initWorkbook();
@@ -172,6 +173,27 @@ const CONFIRM = { understood: true, highlights: [] };
   const countsAfterSwitch = await callShopFunction("getFloorTaskCounts", []);
   assert.ok(countsAfterSwitch.Welding.active >= 1, "running order stays Active: " + JSON.stringify(countsAfterSwitch.Welding));
   assert.ok(countsAfterSwitch.Welding.paused >= 1, "switched-away order is Paused: " + JSON.stringify(countsAfterSwitch.Welding));
+
+  staff.setDurations([{ product: "Slider", process: "Welding", hours: 3 }]);
+  const e = order("S-2005");
+  const f = order("S-2006");
+  const startE = await callShopFunction("startOrder", [e.id, "Thabo", "Welding", [], "No materials", false, null, CONFIRM]);
+  assert.strictEqual(startE.success, true, JSON.stringify(startE));
+  const logE = openLogs("S-2005")[0];
+  assert.ok(logE, "open log for S-2005");
+  const sheet = book.getSheetByName("Production_Log");
+  sheet.getRange(logE.i + 1, 6).setValue(new Date(Date.now() - 10 * 60 * 1000));
+  persistWorkbook();
+  const pausedE = await callShopFunction("workerPauseOrder", [e.id, "S-2005", "Thabo", "No materials"]);
+  assert.strictEqual(pausedE.success, true, JSON.stringify(pausedE));
+  const togetherResume = await callShopFunction("startOrder", [f.id, "Thabo", "Welding", [], "", true, ["S-2005", "S-2006"], CONFIRM]);
+  assert.strictEqual(togetherResume.success, true, JSON.stringify(togetherResume));
+  const pollKeep = await callShopFunction("pollFloor", ["Welding", "Thabo"]);
+  const cardE = pollKeep.orders.find((o) => String(o.order) === "S-2005");
+  assert.ok(cardE && !cardE.isPaused, JSON.stringify(cardE));
+  assert.ok(Number(cardE.priorWorkMs) >= 8 * 60 * 1000, "together must keep worked time: " + JSON.stringify(cardE));
+  const remE = staff.countdownRemainingMs(cardE, Date.now());
+  assert.ok(remE > 165 * 60 * 1000 && remE < 176 * 60 * 1000, "together must not reset countdown: " + remE + " " + JSON.stringify(cardE));
 
   console.log("together-time.test.js ok");
 })().catch((e) => {
