@@ -271,8 +271,12 @@ assert.ok(enquiriesHtml.indexOf("offerTakenNumber") !== -1);
 assert.ok(enquiriesHtml.indexOf("Use next number") !== -1);
 assert.ok(enquiriesHtml.indexOf("Saving…") !== -1);
 const ordersHtml = fs.readFileSync(path.join(__dirname, "../public/orders.html"), "utf8");
-assert.ok(ordersHtml.indexOf("ENQUIRY NO") !== -1);
+assert.ok(ordersHtml.indexOf("ENQUIRY NO") === -1, "enquiry number stays linked but is not a sheet column");
 assert.ok(ordersHtml.indexOf("enquiry_no") !== -1);
+assert.ok(ordersHtml.indexOf("Save order") !== -1);
+assert.ok(ordersHtml.indexOf("data-edit-order") !== -1);
+assert.ok(ordersHtml.indexOf("wrap-text") === -1);
+assert.ok(ordersHtml.indexOf("addRow()") === -1);
 
 const dashHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries-dashboard.html"), "utf8");
 assert.ok(dashHtml.indexOf("/enquiries/replies") !== -1);
@@ -335,7 +339,8 @@ assert.ok(dashHtml.indexOf(">Outlook<") === -1, "Outlook pie must be replaced by
 
 assert.ok(ordersHtml.indexOf("Import from Sheets") === -1, "Orders must not import from Google Sheets");
 assert.ok(ordersHtml.indexOf("cell-text") !== -1);
-assert.ok(ordersHtml.indexOf("armRow") !== -1);
+assert.ok(ordersHtml.indexOf("armRow") === -1, "orders must edit through a form, not cells");
+assert.ok(ordersHtml.indexOf("openForm") !== -1);
 assert.ok(officeJs.indexOf("delete copy.payments") !== -1);
 assert.ok(indexJs.indexOf("gzipSync") !== -1);
 const gasJs = fs.readFileSync(path.join(__dirname, "gas.js"), "utf8");
