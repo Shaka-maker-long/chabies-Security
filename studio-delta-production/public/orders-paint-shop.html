@@ -175,14 +175,28 @@
     }
     async function load() {
       setMsg("status", "Loading…");
-      const r = await sdOfficeFetch("/api/office/paint-shop");
-      const j = await r.json();
-      if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
-      data = j;
-      renderReady();
-      renderSent();
-      renderReceived();
-      setMsg("status", (j.readyCount || 0) + " ready · " + (j.sentCount || 0) + " at the shop");
+      try {
+        const r = await sdOfficeFetch("/api/office/paint-shop");
+        const j = await r.json().catch(function () { return {}; });
+        if (!j.ok) {
+          const err = j.error || "Could not load Paint shop. Log in again if this stays blank.";
+          setMsg("status", err, true);
+          document.getElementById("readyBox").innerHTML = '<div class="err">' + err + "</div>";
+          document.getElementById("sentBox").innerHTML = '<div class="err">' + err + "</div>";
+          document.getElementById("recvBox").innerHTML = '<div class="empty">No paint shop invoices received yet.</div>';
+          return;
+        }
+        data = j;
+        renderReady();
+        renderSent();
+        renderReceived();
+        setMsg("status", (j.readyCount || 0) + " ready · " + (j.sentCount || 0) + " at the shop");
+      } catch (e) {
+        const err = (e && e.message) || "Could not load Paint shop.";
+        setMsg("status", err, true);
+        document.getElementById("readyBox").innerHTML = '<div class="err">' + err + "</div>";
+        document.getElementById("sentBox").innerHTML = '<div class="err">' + err + "</div>";
+      }
     }
     async function sendSelected() {
       const orderNumbers = selectedReady();
