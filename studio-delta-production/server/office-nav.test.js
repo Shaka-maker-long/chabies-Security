@@ -304,6 +304,7 @@ assert.ok(scheduleHtml.indexOf("COURIER") !== -1);
 assert.ok(scheduleHtml.indexOf("WAYBILL") !== -1);
 assert.ok(scheduleHtml.indexOf("STATUS") !== -1);
 assert.ok(scheduleHtml.indexOf("leftCell") !== -1, "all order columns stay frozen");
+assert.ok(scheduleHtml.indexOf("th.day { text-transform:none") !== -1 || scheduleHtml.indexOf("th.day { text-transform: none") !== -1);
 assert.ok(scheduleHtml.indexOf("07-Jan") !== -1 || scheduleHtml.indexOf("order_date_label") !== -1);
 assert.ok(indexJs.indexOf("/orders/schedule") !== -1);
 assert.ok(indexJs.indexOf("/orders/delivery") !== -1);
