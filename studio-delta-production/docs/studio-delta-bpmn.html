@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Delta — BPMN of features so far</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #1d2939;
+      --muted: #667085;
+      --line: #d0d5dd;
+      --paper: #f8f9fc;
+      --task: #fff;
+      --brass: #b54708;
+      --steel: #1d2939;
+      --ready: #067647;
+      --warn: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    header {
+      padding: 22px 24px 16px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+    }
+    header h1 {
+      font-family: Outfit, Inter, sans-serif;
+      font-size: 22px;
+      margin: 0 0 6px;
+    }
+    header p { margin: 0; color: var(--muted); font-size: 14px; max-width: 820px; }
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 12px 24px;
+      background: #fff;
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    nav a {
+      text-decoration: none;
+      color: var(--ink);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 600;
+      background: #fff;
+    }
+    nav a:hover { border-color: var(--steel); }
+    main { padding: 20px 24px 64px; display: grid; gap: 28px; }
+    section {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 18px 18px 10px;
+      overflow: auto;
+    }
+    section h2 {
+      font-family: Outfit, Inter, sans-serif;
+      font-size: 18px;
+      margin: 0 0 4px;
+    }
+    section .lead { color: var(--muted); font-size: 13px; margin: 0 0 14px; }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px 22px;
+      font-size: 12px;
+      color: var(--muted);
+      padding: 0 24px 8px;
+    }
+    .legend span { display: flex; align-items: center; gap: 8px; }
+    .swatch {
+      width: 22px; height: 14px; border: 1.5px solid var(--ink); background: #fff; border-radius: 4px;
+    }
+    .swatch.event { border-radius: 50%; width: 14px; height: 14px; }
+    .swatch.end { border-width: 3px; }
+    .swatch.gate { transform: rotate(45deg); width: 12px; height: 12px; border-radius: 1px; }
+    .swatch.sys { background: #eff8ff; border-color: #175cd3; }
+    svg { display: block; min-width: 980px; }
+    text { font-family: Inter, system-ui, sans-serif; fill: var(--ink); }
+    .lane-title { font-weight: 700; font-size: 12px; }
+    .pool-title { font-weight: 700; font-size: 13px; fill: #fff; }
+    footer { padding: 0 24px 32px; color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Studio Delta — features so far</h1>
+    <p>BPMN of the live processes: enquiry to order, job card, shop clock (countdown, pauses, overtime), production, and completed work. This page is documentation only. It is not a screen in the app.</p>
+  </header>
+  <nav>
+    <a href="#e2e">Enquiry to delivery</a>
+    <a href="#enquiry">Enquiry office</a>
+    <a href="#clock">Job card and shop clock</a>
+    <a href="#shop">Shop production</a>
+    <a href="#shift">Shift and overtime</a>
+  </nav>
+  <div class="legend">
+    <span><i class="swatch event"></i> Start / intermediate event</span>
+    <span><i class="swatch event end"></i> End event</span>
+    <span><i class="swatch"></i> User / manual task</span>
+    <span><i class="swatch sys"></i> System task</span>
+    <span><i class="swatch gate"></i> Exclusive gateway</span>
+    <span>Dashed arrow = message / hand-off between pools</span>
+  </div>
+  <main>
+    <section id="e2e">
+      <h2>1. Enquiry to delivery</h2>
+      <p class="lead">One order’s life. Office captures and quotes. Shop makes it. Client receives it.</p>
+      <svg id="svg-e2e" width="1180" height="420"></svg>
+    </section>
+    <section id="enquiry">
+      <h2>2. Enquiry office</h2>
+      <p class="lead">STATUS is not typed. Capture, costing, approval, quote, follow-up (7 days, max 3), then POP and create order. Closed: Not within scope, Not Interested, Rejected.</p>
+      <svg id="svg-enquiry" width="1280" height="560"></svg>
+    </section>
+    <section id="clock">
+      <h2>3. Job card and shop clock</h2>
+      <p class="lead">Office generates the job card (sizes confirmed if not Standard). The floor starts a clock from Task times, ignores pauses, and records completed work with a trophy or overtime alarm.</p>
+      <svg id="svg-clock" width="1280" height="620"></svg>
+    </section>
+    <section id="shop">
+      <h2>4. Shop production</h2>
+      <p class="lead">Main line plus plate cutting in parallel. Ready for Assembly can go to paint prep. Painting returns to Ready for Assembly.</p>
+      <svg id="svg-shop" width="1380" height="480"></svg>
+    </section>
+    <section id="shift">
+      <h2>5. Shift, pause, and overtime</h2>
+      <p class="lead">Paid windows 07:45–12:00 and 12:30–15:45. Lunch and 16:00 auto-pause. After 16:00 and weekends need an overtime grant. Regular time cannot pass 8 hours without overtime.</p>
+      <svg id="svg-shift" width="1180" height="420"></svg>
+    </section>
+  </main>
+  <footer>Studio Delta · Africa/Johannesburg · documentation BPMN, not an in-app editor.</footer>
+  <script>
+    const NS = "http://www.w3.org/2000/svg";
+    function el(tag, attrs, text) {
+      const n = document.createElementNS(NS, tag);
+      Object.entries(attrs || {}).forEach(([k, v]) => n.setAttribute(k, v));
+      if (text != null) n.textContent = text;
+      return n;
+    }
+    function wrap(label, max) {
+      const words = String(label).split(/\s+/);
+      const lines = [];
+      let cur = "";
+      words.forEach((w) => {
+        const next = cur ? cur + " " + w : w;
+        if (next.length > max && cur) { lines.push(cur); cur = w; }
+        else cur = next;
+      });
+      if (cur) lines.push(cur);
+      return lines;
+    }
+    function svgRoot(id) { return document.getElementById(id); }
+
+    function pool(svg, x, y, w, h, title) {
+      svg.appendChild(el("rect", { x, y, width: w, height: h, fill: "#fff", stroke: "#1d2939", "stroke-width": 1.6, rx: 4 }));
+      svg.appendChild(el("rect", { x, y, width: 28, height: h, fill: "#1d2939" }));
+      const t = el("text", { x: x + 14, y: y + h / 2, "text-anchor": "middle", "transform": "rotate(-90 " + (x + 14) + " " + (y + h / 2) + ")", class: "pool-title" }, title);
+      svg.appendChild(t);
+    }
+    function lane(svg, x, y, w, h, title) {
+      svg.appendChild(el("rect", { x, y, width: w, height: h, fill: "none", stroke: "#d0d5dd" }));
+      svg.appendChild(el("text", { x: x + 10, y: y + 18, class: "lane-title" }, title));
+    }
+    function task(svg, x, y, w, h, label, kind) {
+      const fill = kind === "sys" ? "#eff8ff" : "#fff";
+      const stroke = kind === "sys" ? "#175cd3" : "#1d2939";
+      svg.appendChild(el("rect", { x, y, width: w, height: h, rx: 8, fill, stroke, "stroke-width": 1.6 }));
+      const lines = wrap(label, 18);
+      lines.forEach((line, i) => {
+        svg.appendChild(el("text", {
+          x: x + w / 2,
+          y: y + h / 2 - (lines.length - 1) * 7 + i * 14,
+          "text-anchor": "middle",
+          "font-size": 11,
+          "font-weight": 600
+        }, line));
+      });
+      return { x: x + w, y: y + h / 2, cx: x + w / 2, cy: y + h / 2, l: x, t: y, w, h };
+    }
+    function start(svg, x, y) {
+      svg.appendChild(el("circle", { cx: x, cy: y, r: 11, fill: "#fff", stroke: "#067647", "stroke-width": 2 }));
+      return { x: x + 11, y, cx: x, cy: y };
+    }
+    function end(svg, x, y) {
+      svg.appendChild(el("circle", { cx: x, cy: y, r: 12, fill: "#fff", stroke: "#b42318", "stroke-width": 3.5 }));
+      return { x: x + 12, y, cx: x, cy: y };
+    }
+    function gateway(svg, x, y, label) {
+      svg.appendChild(el("polygon", {
+        points: [x, y - 16, x + 16, y, x, y + 16, x - 16, y].join(" "),
+        fill: "#fff", stroke: "#1d2939", "stroke-width": 1.6
+      }));
+      svg.appendChild(el("text", { x, y: y + 4, "text-anchor": "middle", "font-size": 12, "font-weight": 700 }, "X"));
+      if (label) svg.appendChild(el("text", { x, y: y + 28, "text-anchor": "middle", "font-size": 10, fill: "#667085" }, label));
+      return { x: x + 16, y, cx: x, cy: y };
+    }
+    function arrow(svg, x1, y1, x2, y2, dashed, label) {
+      const id = "m" + Math.round(x1 + x2 + y1 + y2) + Math.random().toString(36).slice(2, 6);
+      const defs = svg.querySelector("defs") || svg.insertBefore(el("defs"), svg.firstChild);
+      defs.appendChild(el("marker", { id, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto" }))
+        .appendChild(el("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: "#1d2939" }));
+      svg.appendChild(el("line", {
+        x1, y1, x2, y2,
+        stroke: "#1d2939",
+        "stroke-width": 1.3,
+        "stroke-dasharray": dashed ? "5 4" : "none",
+        "marker-end": "url(#" + id + ")"
+      }));
+      if (label) {
+        svg.appendChild(el("text", {
+          x: (x1 + x2) / 2,
+          y: (y1 + y2) / 2 - 6,
+          "text-anchor": "middle",
+          "font-size": 10,
+          fill: "#667085"
+        }, label));
+      }
+    }
+
+    (function e2e() {
+      const s = svgRoot("svg-e2e");
+      pool(s, 40, 20, 1120, 370, "Studio Delta");
+      lane(s, 68, 20, 1092, 110, "Client");
+      lane(s, 68, 130, 1092, 130, "Office");
+      lane(s, 68, 260, 1092, 130, "Shop floor");
+      const a = start(s, 110, 75);
+      const b = task(s, 150, 44, 130, 62, "Ask for a quote / visit showroom");
+      const c = task(s, 150, 164, 140, 62, "Capture enquiry and cost / quote", "sys");
+      const d = task(s, 360, 44, 130, 62, "Receive quote and decide");
+      const e = task(s, 360, 164, 140, 62, "POP, drawing, create order");
+      const f = task(s, 570, 164, 140, 62, "Generate job card");
+      const g = task(s, 570, 294, 150, 62, "Make the order on the floor clock");
+      const h = task(s, 800, 294, 140, 62, "Final QC and out for delivery");
+      const i = task(s, 800, 44, 140, 62, "Receive the furniture");
+      const z = end(s, 1010, 75);
+      arrow(s, a.x, a.y, b.l, b.cy);
+      arrow(s, b.cx, b.t + b.h, c.cx, c.t, true, "enquiry");
+      arrow(s, c.x, c.cy, e.l, e.cy);
+      arrow(s, c.cx, c.t, d.cx, d.t + d.h, true, "quote PDF");
+      arrow(s, d.x, d.cy, i.l, i.cy);
+      arrow(s, e.x, e.cy, f.l, f.cy);
+      arrow(s, f.cx, f.t + f.h, g.cx, g.t, true, "Ready for Steelwork");
+      arrow(s, g.x, g.cy, h.l, h.cy);
+      arrow(s, h.cx, h.t, i.cx, i.t + i.h, true, "delivery");
+      arrow(s, i.x, i.cy, z.cx - 12, z.cy);
+    })();
+
+    (function enquiry() {
+      const s = svgRoot("svg-enquiry");
+      pool(s, 30, 16, 1230, 528, "Office enquiry");
+      lane(s, 58, 16, 1202, 100, "Capture");
+      lane(s, 58, 116, 1202, 130, "Costing / Approval");
+      lane(s, 58, 246, 1202, 130, "Quoting");
+      lane(s, 58, 376, 1202, 168, "Follow-up / outcome");
+      const st = start(s, 100, 66);
+      const cap = task(s, 140, 36, 150, 60, "New enquiry or showroom booking");
+      const g1 = gateway(s, 360, 66, "Capture complete?");
+      const wait = task(s, 400, 36, 150, 60, "Waiting on details or specifictions");
+      const cost = task(s, 140, 151, 150, 60, "Cost sheet per product");
+      const supp = task(s, 330, 151, 140, 60, "Waiting on supplier");
+      const appr = task(s, 510, 151, 140, 60, "Approve or reject costing");
+      const recost = task(s, 690, 151, 130, 60, "Re-Cost");
+      const quote = task(s, 140, 281, 150, 60, "Upload quote PDF (SOQ)");
+      const g2 = gateway(s, 380, 311, "Client wants changes?");
+      const another = task(s, 430, 281, 150, 60, "Issue another quote");
+      const fu = task(s, 140, 430, 160, 60, "Follow-up due after 7 days (max 3)");
+      const pop = task(s, 370, 430, 140, 60, "Record POP / outcome");
+      const draw = task(s, 560, 430, 140, 60, "Upload drawing if required");
+      const ord = task(s, 750, 430, 160, 60, "Create order from this enquiry", "sys");
+      const closed = end(s, 1080, 460);
+      const dead = task(s, 980, 281, 150, 60, "Not within scope / Not Interested / Rejected");
+      arrow(s, st.x, st.y, cap.l, cap.cy);
+      arrow(s, cap.x, cap.cy, g1.cx - 16, g1.cy);
+      arrow(s, g1.cx, g1.cy - 16, wait.cx, wait.t + wait.h, false, "no");
+      arrow(s, wait.l, wait.cy, cap.x, cap.cy);
+      arrow(s, g1.cy ? g1.cx : 0, g1.cy + 16, cost.cx, cost.t, false, "yes + Correspondance link");
+      arrow(s, cost.x, cost.cy, supp.l, supp.cy);
+      arrow(s, supp.x, supp.cy, appr.l, appr.cy);
+      arrow(s, appr.x, appr.cy, recost.l, recost.cy, false, "reject");
+      arrow(s, recost.cx, recost.t, cost.cx + 40, cost.t + cost.h);
+      arrow(s, appr.cx, appr.t + appr.h, quote.cx, quote.t, false, "approved or skip approval");
+      arrow(s, quote.x, quote.cy, g2.cx - 16, g2.cy);
+      arrow(s, g2.x, g2.cy, another.l, another.cy, false, "yes");
+      arrow(s, another.cx, another.t + another.h, fu.cx, fu.t);
+      arrow(s, g2.cx, g2.cy + 16, fu.cx, fu.t, false, "wait 7 days");
+      arrow(s, fu.x, fu.cy, pop.l, pop.cy);
+      arrow(s, pop.x, pop.cy, draw.l, draw.cy);
+      arrow(s, draw.x, draw.cy, ord.l, ord.cy);
+      arrow(s, ord.x, ord.cy, closed.cx - 12, closed.cy);
+      arrow(s, g2.cx, g2.cy - 16, dead.cx, dead.t + dead.h);
+    })();
+
+    (function clock() {
+      const s = svgRoot("svg-clock");
+      pool(s, 30, 16, 1230, 588, "Order onto the floor");
+      lane(s, 58, 16, 1202, 150, "Office — job card");
+      lane(s, 58, 166, 1202, 250, "Worker — one running clock");
+      lane(s, 58, 416, 1202, 188, "System — Task times");
+      const st = start(s, 100, 90);
+      const nys = task(s, 140, 60, 140, 60, "Order is Not Yet Started");
+      const gStd = gateway(s, 360, 90, "Type Standard?");
+      const dims = task(s, 400, 60, 170, 60, "Confirm sizes or type actual mm");
+      const gen = task(s, 620, 60, 160, 60, "Generate job card PDF");
+      const ready = task(s, 830, 60, 160, 60, "STATUS → Ready for Steelwork", "sys");
+      const pick = task(s, 140, 250, 150, 60, "Pick task and Available order");
+      const conf = task(s, 330, 250, 160, 60, "Confirm type, variation, dims, highlights");
+      const gDur = gateway(s, 580, 280, "Minutes on Task times?");
+      const say = task(s, 630, 220, 180, 58, "Your duration for this order is …");
+      const learn = task(s, 630, 300, 180, 58, "No time saved yet — learn on finish");
+      const run = task(s, 860, 250, 160, 60, "Countdown working time only");
+      const gMore = gateway(s, 1100, 280, "Another job?");
+      const tog = task(s, 980, 340, 160, 50, "Together or pause the rest");
+      const fin = task(s, 140, 470, 140, 56, "Finish & QC");
+      const gSave = gateway(s, 360, 498, "Had an estimate?");
+      const save = task(s, 410, 456, 170, 56, "Write net minutes to Task times", "sys");
+      const cmp = task(s, 640, 456, 180, 56, "Completed work: trophy or overtime alarm", "sys");
+      const z = end(s, 900, 484);
+      arrow(s, st.x, st.y, nys.l, nys.cy);
+      arrow(s, nys.x, nys.cy, gStd.cx - 16, gStd.cy);
+      arrow(s, gStd.x, gStd.cy, dims.l, dims.cy, false, "Custom / New Design");
+      arrow(s, dims.x, dims.cy, gen.l, gen.cy);
+      arrow(s, gStd.cx, gStd.cy - 16, gen.cx, gen.t, false, "Standard");
+      arrow(s, gen.x, gen.cy, ready.l, ready.cy);
+      arrow(s, ready.cx, ready.t + ready.h, pick.cx, pick.t, true);
+      arrow(s, pick.x, pick.cy, conf.l, conf.cy);
+      arrow(s, conf.x, conf.cy, gDur.cx - 16, gDur.cy);
+      arrow(s, gDur.cx, gDur.cy - 16, say.cx, say.t + say.h, false, "yes");
+      arrow(s, gDur.cx, gDur.cy + 16, learn.cx, learn.t, false, "no");
+      arrow(s, say.x, say.cy, run.l, run.cy - 10);
+      arrow(s, learn.x, learn.cy, run.l, run.cy + 10);
+      arrow(s, run.x, run.cy, gMore.cx - 16, gMore.cy);
+      arrow(s, gMore.cx, gMore.cy + 16, tog.cx, tog.t, false, "yes");
+      arrow(s, tog.l, tog.cy, run.x, run.cy + 20);
+      arrow(s, run.cx, run.t + run.h, fin.cx + 200, fin.t);
+      arrow(s, fin.x, fin.cy, gSave.cx - 16, gSave.cy);
+      arrow(s, gSave.x, gSave.cy, save.l, save.cy, false, "no — first finish");
+      arrow(s, save.x, save.cy, cmp.l, cmp.cy);
+      arrow(s, gSave.cx, gSave.cy - 16, cmp.cx, cmp.t, false, "yes — compare");
+      arrow(s, cmp.x, cmp.cy, z.cx - 12, z.cy);
+    })();
+
+    (function shop() {
+      const s = svgRoot("svg-shop");
+      pool(s, 24, 16, 1340, 448, "Shop production");
+      lane(s, 52, 16, 1312, 220, "Main line");
+      lane(s, 52, 236, 1312, 228, "Side work");
+      const st = start(s, 90, 120);
+      const steel = task(s, 120, 90, 110, 56, "Profile cutting");
+      const tag = task(s, 270, 90, 100, 56, "Tagging");
+      const weld = task(s, 410, 90, 100, 56, "Welding");
+      const grind = task(s, 550, 90, 100, 56, "Grinding");
+      const pqc = task(s, 690, 90, 120, 56, "Pre-powder QC");
+      const powder = task(s, 850, 90, 110, 56, "Powder coating");
+      const gAsm = gateway(s, 1040, 118, "Paint first?");
+      const asm = task(s, 1080, 50, 110, 50, "Assembly");
+      const prep = task(s, 1080, 150, 110, 50, "Paint prep");
+      const paint = task(s, 1220, 150, 90, 50, "Painting");
+      const fqc = task(s, 1220, 50, 100, 50, "Final QC");
+      const del = task(s, 1220, 360, 120, 50, "Out for delivery");
+      const z = end(s, 1280, 250);
+      const plate = task(s, 410, 300, 130, 56, "Plate cutting (parallel)");
+      const switchW = task(s, 590, 300, 160, 56, "Auto-switch welder back", "sys");
+      arrow(s, st.x, st.y, steel.l, steel.cy);
+      arrow(s, steel.x, steel.cy, tag.l, tag.cy);
+      arrow(s, tag.x, tag.cy, weld.l, weld.cy);
+      arrow(s, weld.x, weld.cy, grind.l, grind.cy);
+      arrow(s, grind.x, grind.cy, pqc.l, pqc.cy);
+      arrow(s, pqc.x, pqc.cy, powder.l, powder.cy);
+      arrow(s, powder.x, powder.cy, gAsm.cx - 16, gAsm.cy);
+      arrow(s, gAsm.cx, gAsm.cy - 16, asm.cx, asm.t + asm.h, false, "assemble");
+      arrow(s, gAsm.x, gAsm.cy, prep.l, prep.cy, false, "paint prep");
+      arrow(s, prep.x, prep.cy, paint.l, paint.cy);
+      arrow(s, paint.cx, paint.t, asm.cx, asm.t + asm.h, false, "back to assembly");
+      arrow(s, asm.x, asm.cy, fqc.l, fqc.cy);
+      arrow(s, fqc.cx, fqc.t + fqc.h, del.cx, del.t);
+      arrow(s, del.cx, del.t, z.cx, z.cy + 12);
+      arrow(s, steel.cx, steel.t + steel.h, plate.cx, plate.t, true, "same order");
+      arrow(s, plate.x, plate.cy, switchW.l, switchW.cy);
+      arrow(s, switchW.cx, switchW.t, weld.cx, weld.t + weld.h, true);
+    })();
+
+    (function shift() {
+      const s = svgRoot("svg-shift");
+      pool(s, 30, 20, 1130, 380, "Paid time");
+      lane(s, 58, 20, 1102, 190, "Clock");
+      lane(s, 58, 210, 1102, 190, "Admin");
+      const st = start(s, 100, 110);
+      const gLock = gateway(s, 180, 110, "In paid window?");
+      const work = task(s, 230, 80, 140, 60, "Work — countdown runs");
+      const lunch = task(s, 420, 80, 140, 60, "12:00 auto-pause Lunch", "sys");
+      const resumeL = task(s, 600, 80, 150, 60, "12:30 auto-resume Lunch only", "sys");
+      const endShift = task(s, 790, 80, 150, 60, "16:00 auto-pause End of shift", "sys");
+      const gOt = gateway(s, 180, 300, "Overtime granted?");
+      const grant = task(s, 230, 270, 150, 60, "Grant overtime for today");
+      const chase = task(s, 430, 270, 170, 60, "08:00: did not resume overnight");
+      const idle = task(s, 650, 270, 170, 60, "Idle ~10 min → assign other task");
+      const stop = end(s, 1020, 110);
+      arrow(s, st.x, st.y, gLock.cx - 16, gLock.cy);
+      arrow(s, gLock.x, gLock.cy, work.l, work.cy, false, "07:45–12:00 / 12:30–15:45");
+      arrow(s, work.x, work.cy, lunch.l, lunch.cy);
+      arrow(s, lunch.x, lunch.cy, resumeL.l, resumeL.cy);
+      arrow(s, resumeL.x, resumeL.cy, endShift.l, endShift.cy);
+      arrow(s, endShift.x, endShift.cy, stop.cx - 12, stop.cy);
+      arrow(s, gLock.cx, gLock.cy + 16, gOt.cx, gOt.t - 16, false, "after 16:00 / weekend / 8h");
+      arrow(s, gOt.x, gOt.cy, grant.l, grant.cy, false, "no");
+      arrow(s, grant.cx, grant.t, work.cx, work.t + work.h, false, "then start / resume");
+      arrow(s, chase.x, chase.cy, idle.l, idle.cy);
+      arrow(s, gOt.cx, gOt.cy - 16, work.cx, work.t + work.h, false, "yes");
+    })();
+  </script>
+</body>
+</html>
