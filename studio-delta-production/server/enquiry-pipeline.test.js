@@ -66,6 +66,7 @@ assert.ok(costing.actions.some((a) => a.id === "add_correspondence" && a.label =
 const myCost = pipeline.listMyTasks("Coster");
 assert.strictEqual(myCost.length, 1);
 assert.strictEqual(myCost[0].kind, "cost_sheet");
+assert.strictEqual(myCost[0].type_label, "Costing");
 assert.strictEqual(myCost[0].correspondence_mails, 1);
 assert.strictEqual(pipeline.listMyTasks("Quoter").length, 0);
 

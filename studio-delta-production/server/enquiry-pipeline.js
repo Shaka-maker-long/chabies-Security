@@ -34,6 +34,21 @@ const TASK_TITLES = {
   drawing: "Upload drawing"
 };
 
+const TASK_TYPE_LABELS = {
+  chase_info: "Chase",
+  cost_sheet: "Costing",
+  supplier: "Supplier",
+  approval: "Approval",
+  quote: "Quoting",
+  follow_up: "Follow-up",
+  pop: "Client outcome",
+  drawing: "Drawing"
+};
+
+function taskTypeLabel(kind) {
+  return TASK_TYPE_LABELS[kind] || TASK_TITLES[kind] || String(kind || "Task");
+}
+
 function officeAssignees() {
   return staff.listUsers()
     .filter((u) => u.canSeeOffice && u.name)
@@ -507,6 +522,7 @@ function decorateTask(row, task, dueAt) {
     client_name: row.client_name || "",
     product: row.product || "",
     enquiry_status: row.status || "",
+    type_label: taskTypeLabel(task.kind),
     date_quoted: row.date_quoted || "",
     correspondence_mails: correspondence.mails.length,
     deliverable_count: (row.deliverable_count != null ? row.deliverable_count : correspondence.mails.length),
@@ -1730,6 +1746,7 @@ module.exports = {
   FOLLOW_UP_DAYS,
   MAX_FOLLOW_UPS,
   COSTING_REJECT_REASONS,
+  TASK_TYPE_LABELS,
   currentQuoteFollowUps,
   followUpsExhausted,
   WAITING_STATUSES,
