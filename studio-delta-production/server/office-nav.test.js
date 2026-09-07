@@ -322,6 +322,8 @@ assert.ok(deliveryHtml.indexOf("/api/office/schedule/delivery") !== -1);
 assert.ok(deliveryHtml.indexOf("Filter by Week") !== -1);
 assert.ok(deliveryHtml.indexOf("Latest Delivery") !== -1);
 assert.ok(deliveryHtml.indexOf("Latest Courier") !== -1);
+assert.ok(deliveryHtml.indexOf("it.status") !== -1, "status column is the order sheet status");
+assert.ok(deliveryHtml.indexOf("it.codeLabel") === -1);
 assert.ok(officeJs.indexOf("/api/office/schedule/delivery") !== -1);
 assert.ok(floor.indexOf("Office schedule") === -1);
 assert.ok(floor.indexOf("id=\"link-office-schedule\"") === -1);

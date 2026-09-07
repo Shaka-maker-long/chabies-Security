@@ -84,6 +84,8 @@ const delivery = db.listDeliveryItems();
 assert.strictEqual(delivery.items.length, 2);
 assert.ok(delivery.items.some((i) => i.order_number === "S260186" && i.code === "LD" && i.week === 39));
 assert.ok(delivery.items.some((i) => i.order_number === "S260207" && i.code === "LC" && i.weekday === "Tuesday"));
+assert.strictEqual(delivery.items.find((i) => i.order_number === "S260186").status, "Not Yet Started");
+assert.strictEqual(delivery.items.find((i) => i.order_number === "S260207").status, "At Couriers");
 assert.ok(!delivery.items.some((i) => i.code === "QC"));
 assert.ok(delivery.categories.indexOf("Cabinet") !== -1);
 
@@ -107,6 +109,7 @@ const refreshed = db.listSchedule("2026-09-21", "2026-09-25").find((r) => r.orde
 assert.strictEqual(refreshed.product, "Vivienne Arched Cabinet — oak");
 assert.strictEqual(refreshed.status, "In production");
 assert.strictEqual(refreshed.courier, "CAMPOS");
+assert.strictEqual(db.listDeliveryItems().items.find((i) => i.order_number === "S260186").status, "In production");
 assert.strictEqual(refreshed.cells["2026-09-21"], "LD");
 
 db.deleteOrder("S260207");

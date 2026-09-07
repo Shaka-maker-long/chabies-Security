@@ -35,9 +35,7 @@
     .when { display:block; font-size:15px; font-weight:700; color:var(--ink); }
     .oid { font-weight:700; font-size:15px; }
     .prod { font-size:14px; color:#344054; overflow:hidden; text-overflow:ellipsis; max-width:42vw; }
-    .pill { display:inline-flex; align-items:center; border-radius:999px; padding:4px 10px; font-size:12px; font-weight:700; color:#fff; background:#3b82f6; }
-    .pill.LD { background:#ff0000; }
-    .pill.LC { background:#ff9900; color:#1d2939; }
+    .ord-status { font-size:14px; font-weight:600; color:#344054; }
     .empty, .load, .err { padding:40px 16px; text-align:center; color:var(--muted); font-size:14px; }
     .err { color:#b42318; }
     @media (max-width: 800px) {
@@ -126,7 +124,7 @@
         html += "<td class=\"rail\"><span class=\"week\">" + esc(it.weekLabel) + "</span><span class=\"when\">" + esc(it.dateLabel) + "</span></td>";
         html += "<td class=\"oid\">" + esc(it.order_number) + "</td>";
         html += "<td><span class=\"prod\" title=\"" + esc(it.product) + "\">" + esc(it.product) + "</span></td>";
-        html += "<td><span class=\"pill " + esc(it.code) + "\">" + esc(it.codeLabel) + "</span></td>";
+        html += "<td><span class=\"ord-status\">" + esc(it.status || "—") + "</span></td>";
         html += "</tr>";
       });
       html += "</tbody></table>";
