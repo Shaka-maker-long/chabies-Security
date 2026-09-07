@@ -42,6 +42,7 @@ const fs = require("fs");
 const sqlite = require("./sqlite-store");
 const {
   SCHEDULE_CODES,
+  SCHEDULE_WORKDAYS,
   mondayOf,
   workdays,
   isoWeekInfo,
@@ -564,7 +565,7 @@ function mountOffice(app) {
 
   app.get("/api/office/schedule", requireOffice, (req, res) => {
     const start = mondayOf(req.query.start);
-    const days = workdays(start, 60);
+    const days = workdays(start, SCHEDULE_WORKDAYS);
     const fromDay = days[0];
     const toDay = days[days.length - 1];
     res.json({
