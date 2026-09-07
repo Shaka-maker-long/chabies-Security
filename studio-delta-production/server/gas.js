@@ -264,7 +264,7 @@ const ALLOWED = new Set([
   "generatePowderCoatingList", "getQCReportsFast", "processPdfQueue",
   "undoAutoSwitch", "leaveBatchForOrder", "getIdleWorkers", "pollIdleAlerts", "assignIndirectTask",
   "getActivityReport", "getScheduleBoard", "generateWorkerSchedule", "insertScheduleTask", "clearWorkerScheduleFrom",
-  "checkIdleWorkers", "lazySetup", "getTaskDuration"
+  "checkIdleWorkers", "enforceShiftHours", "lazySetup", "getTaskDuration"
 ]);
 
 let scriptSource = null;

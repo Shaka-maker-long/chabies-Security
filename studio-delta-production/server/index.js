@@ -279,6 +279,9 @@ const FIVE_MIN = 5 * 60 * 1000;
 setInterval(() => {
   if (!callShopFunction) return;
   serialize(() =>
+    callShopFunction("enforceShiftHours", []).catch((e) => console.error("[enforceShiftHours]", e.message || e))
+  );
+  serialize(() =>
     callShopFunction("checkIdleWorkers", []).catch((e) => console.error("[checkIdleWorkers]", e.message || e))
   );
   if (hasGoogleAuth()) {

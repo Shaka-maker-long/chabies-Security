@@ -751,6 +751,7 @@ function getTaskDuration(product, process) {
 }
 
 function pollFloor(role, workerName) {
+  try { enforceShiftHours(); } catch (ignoreShift) {}
   return {
     orders: getOrdersForRole(role, workerName),
     notice: workerName ? popWorkerNotice(workerName) : null
@@ -1072,6 +1073,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       meta.batchId = batchId;
       meta.batchShare = batchShare;
       meta.entryType = "production";
+      meta = applyShiftWindowToMeta(meta);
 
       if (role !== 'Plate Cutting') {
         sheet.getRange(thisRow, 3, 1, 2).setValues([[nextStatus, workerName]]);
@@ -1602,7 +1604,7 @@ function calculateWorkMinutesServer(start, end, taskName, pausedMins, pauseStart
   return finalMins > 0 ? finalMins : 0;
 }
 
-function calcRawServerMins(start, end, taskName) {
+function calcRawServerMins(start, end, taskName, allowAfterShift) {
   if (!start || !end) return 0;
   if (taskName && String(taskName).trim() === 'Powder Coating') {
     return (end.getTime() - start.getTime()) / 1000 / 60;
@@ -1611,9 +1613,10 @@ function calcRawServerMins(start, end, taskName) {
   function getWorkingMins(startDate, endDate) {
      var sMins = sastMinsOfDay(startDate);
      var eMins = sastMinsOfDay(endDate);
+     var endCap = allowAfterShift ? 24 * 60 : SHIFT_END_MINS;
      
-     sMins = Math.max(SHIFT_START_MINS, Math.min(sMins, SHIFT_END_MINS));
-     eMins = Math.max(SHIFT_START_MINS, Math.min(eMins, SHIFT_END_MINS));
+     sMins = Math.max(SHIFT_START_MINS, Math.min(sMins, endCap));
+     eMins = Math.max(SHIFT_START_MINS, Math.min(eMins, endCap));
      
      if (sMins >= eMins) return 0;
      
@@ -2660,7 +2663,8 @@ function defaultLogMeta() {
     batchId: "",
     batchShare: 1,
     batchSplitAt: null,
-    entryType: "production"
+    entryType: "production",
+    overtimeContinue: false
   };
 }
 
@@ -2677,6 +2681,7 @@ function parseLogMeta(cell) {
     meta.batchShare = parsed.batchShare || 1;
     meta.batchSplitAt = parsed.batchSplitAt || null;
     meta.entryType = parsed.entryType || "production";
+    meta.overtimeContinue = !!parsed.overtimeContinue;
     return meta;
   } catch (e) {
     return meta;
@@ -2729,11 +2734,36 @@ function addSastDays(date, days) {
 }
 
 function isWithinShiftNow() {
-  var now = new Date();
+  return paidWindowState().inPaid;
+}
+
+function paidWindowState(now) {
+  now = now ? new Date(now) : new Date();
   var dow = sastDayOfWeek(now);
-  if (dow === 0 || dow === 6) return false;
   var mins = sastMinsOfDay(now);
-  return mins >= SHIFT_START_MINS && mins < SHIFT_END_MINS;
+  if (dow === 0 || dow === 6) return { inPaid: false, reason: "Outside shift", kind: "weekend" };
+  if (mins < SHIFT_START_MINS) return { inPaid: false, reason: "Outside shift", kind: "before" };
+  if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) return { inPaid: false, reason: "Lunch", kind: "lunch" };
+  if (mins >= SHIFT_END_MINS) return { inPaid: false, reason: "End of shift", kind: "end" };
+  return { inPaid: true, reason: "", kind: "paid" };
+}
+
+function isOvertimeStartAllowed(now) {
+  var kind = paidWindowState(now).kind;
+  return kind === "end" || kind === "weekend";
+}
+
+function applyShiftWindowToMeta(meta, now) {
+  meta = meta || defaultLogMeta();
+  var state = paidWindowState(now);
+  if (state.kind === "end" || state.kind === "weekend") {
+    meta.overtimeContinue = true;
+    return meta;
+  }
+  if (!state.inPaid && !hasOpenPause(meta.pauses)) {
+    meta = addPauseToMeta(meta, state.reason, now);
+  }
+  return meta;
 }
 
 function getPauseIntervalsForRow(row) {
@@ -2772,20 +2802,22 @@ function calculateWorkMinutesMeta(start, end, taskName, meta, legacyPausedMins) 
   var share = Math.max(1, parseFloat(meta.batchShare) || 1);
   var splitAt = meta.batchSplitAt ? new Date(meta.batchSplitAt) : null;
 
+  var allowAfterShift = !!meta.overtimeContinue;
+
   if (pauses.length === 0 && legacyPausedMins && !meta.batchId) {
-    var rawLegacy = calcRawServerMins(start, actualEnd, taskName);
+    var rawLegacy = calcRawServerMins(start, actualEnd, taskName, allowAfterShift);
     return Math.max(0, rawLegacy - (parseFloat(legacyPausedMins) || 0));
   }
 
   if (splitAt && splitAt.getTime() > start.getTime() && splitAt.getTime() < actualEnd.getTime()) {
-    var beforeRaw = calcRawServerMins(start, splitAt, taskName);
-    var afterRaw = calcRawServerMins(splitAt, actualEnd, taskName);
+    var beforeRaw = calcRawServerMins(start, splitAt, taskName, allowAfterShift);
+    var afterRaw = calcRawServerMins(splitAt, actualEnd, taskName, allowAfterShift);
     var beforePause = sumPauseMinutesInWindow(pauses, start, splitAt, taskName);
     var afterPause = sumPauseMinutesInWindow(pauses, splitAt, actualEnd, taskName);
     return Math.max(0, beforeRaw - beforePause) / share + Math.max(0, afterRaw - afterPause);
   }
 
-  var raw = calcRawServerMins(start, actualEnd, taskName);
+  var raw = calcRawServerMins(start, actualEnd, taskName, allowAfterShift);
   var pauseMins = sumPauseMinutesInWindow(pauses, start, actualEnd, taskName);
   var net = Math.max(0, raw - pauseMins);
   if (!splitAt && share > 1 && meta.batchId) return net / share;
@@ -2849,6 +2881,7 @@ function getWorkBoutsFromLog(row) {
 function splitWorkByDay(row, rangeFrom, rangeTo) {
   var task = row[4];
   var emptyMeta = defaultLogMeta();
+  emptyMeta.overtimeContinue = !!parseLogMeta(row.length > 12 ? row[12] : "").overtimeContinue;
   var slices = [];
   var rangeFromMs = rangeFrom ? rangeFrom.getTime() : 0;
   var rangeToMs = rangeTo ? rangeTo.getTime() : 0;
@@ -2936,11 +2969,11 @@ function getOpenPauseStart(meta) {
   return null;
 }
 
-function addPauseToMeta(meta, reason) {
+function addPauseToMeta(meta, reason, atTime) {
   meta = meta || defaultLogMeta();
   if (hasOpenPause(meta.pauses)) return meta;
   meta.pauses.push({
-    start: new Date().getTime(),
+    start: (atTime ? new Date(atTime) : new Date()).getTime(),
     end: null,
     reason: reason || ""
   });
@@ -3109,6 +3142,7 @@ function resumeWorkerLog(ss, workerName, orderNum, pack) {
       var sheetRow = packSheetRow(pack, i);
       var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
       meta = closeOpenPauseInMeta(meta, new Date());
+      if (isOvertimeStartAllowed()) meta.overtimeContinue = true;
       writeLogPauseState(logSheet, sheetRow, meta, logs[i][4]);
       return true;
     }
@@ -3279,7 +3313,44 @@ function alreadyAlertedToday(idleSheet, workerName) {
   return false;
 }
 
+function enforceShiftHours(now) {
+  var at = now ? new Date(now) : new Date();
+  var state = paidWindowState(at);
+  var ss = getSpreadsheet();
+  var pack = getLogPack(ss);
+  var logSheet = getSheetOrDie(ss, TAB_LOGS);
+  var logs = pack.values;
+  var paused = 0;
+  var resumed = 0;
+  for (var i = 1; i < logs.length; i++) {
+    if (logs[i][6]) continue;
+    var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
+    var sheetRow = packSheetRow(pack, i);
+    var taskName = logs[i][4];
+    var isPaused = hasOpenPause(meta.pauses) || !!logs[i][9];
+    if (state.inPaid) {
+      if (!isPaused) continue;
+      var last = meta.pauses && meta.pauses.length ? meta.pauses[meta.pauses.length - 1] : null;
+      if (!last || last.end || last.reason !== "Lunch") continue;
+      meta = closeOpenPauseInMeta(meta, at);
+      writeLogPauseState(logSheet, sheetRow, meta, taskName);
+      resumed++;
+      continue;
+    }
+    if (isPaused) continue;
+    if (meta.overtimeContinue && (state.kind === "end" || state.kind === "weekend")) continue;
+    meta = addPauseToMeta(meta, state.reason, at);
+    writeLogPauseState(logSheet, sheetRow, meta, taskName);
+    paused++;
+  }
+  if (paused || resumed) {
+    try { bumpFloorCache(); } catch (ignoreBump) {}
+  }
+  return { success: true, paused: paused, resumed: resumed, reason: state.reason, kind: state.kind };
+}
+
 function checkIdleWorkers() {
+  try { enforceShiftHours(); } catch (ignoreShift) {}
   if (!isWithinShiftNow()) return;
   var ss = getSpreadsheet();
   var logs = getLogPack(ss).values;
