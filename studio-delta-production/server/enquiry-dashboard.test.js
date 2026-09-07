@@ -211,6 +211,32 @@ try {
   assert.ok(!drillWorkPat.rows.some((r) => r.enquiry_no === "#1997"));
   const drillWorkQuoter = dash.buildDrill({ grain: "month", range: "6m", kind: "workload", value: "Quoter" });
   assert.ok(drillWorkQuoter.rows.some((r) => r.enquiry_no === "#1997"));
+
+  rows.push({
+    enquiry_no: "#2003",
+    status: "Quoted",
+    created_at: daysAgo(18),
+    date_quoted: "15/08/2026",
+    date_enquired: "15/08/2026",
+    enquiry_source: "Website",
+    enquiry_type: "Catologue",
+    category: "Chair",
+    product: "Air Chair",
+    province: "Gauteng",
+    events: [
+      { kind: "created", at: daysAgo(18) },
+      { kind: "complete_quote", at: daysAgo(18) }
+    ],
+    tasks: [],
+    follow_ups: [],
+    follow_up_assignee: "Lesedi",
+    correspondence: { mails: [] }
+  });
+  const withDue = dash.buildDashboard({ grain: "month", range: "6m" });
+  assert.ok(withDue.workload.some((w) => w.name === "Lesedi" && w.count >= 1), "due follow-up with no stored task is still work to do");
+  const drillLesedi = dash.buildDrill({ grain: "month", range: "6m", kind: "workload", value: "Lesedi" });
+  assert.ok(drillLesedi.rows.some((r) => r.enquiry_no === "#2003"));
+  rows.pop();
   assert.ok(month.timeToOrder.buckets.some((b) => b.count === 1));
   assert.ok(month.stageTime.some((s) => s.n >= 1));
 
