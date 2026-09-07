@@ -205,7 +205,7 @@
           </label>
         </div>
         <div class="form-foot">
-          <p class="hint" id="formFootHint"></p>
+          <p class="hint" id="formFootHint">Progress stays on this device if you close this form. Save to clear it.</p>
           <button type="submit">Save order</button>
         </div>
       </form>
@@ -419,6 +419,35 @@
       }
     }
 
+    function orderDraftId() {
+      if (editingIndex >= 0 && rows[editingIndex] && rows[editingIndex].order_number) return rows[editingIndex].order_number;
+      return "new";
+    }
+    function orderDraftHasWork(d) {
+      if (!d) return false;
+      return ["client_name", "client_number", "email", "address", "city", "quote_number", "detailed_description", "dimensions", "product", "type"]
+        .some((k) => String(d[k] || "").trim());
+    }
+    function persistOrderDraft() {
+      if (!document.getElementById("formMask").classList.contains("open")) return;
+      sdWriteFormDraft("order", orderDraftId(), formPayload());
+    }
+    function applyOrderDraft(id) {
+      const draft = typeof sdReadFormDraft === "function" ? sdReadFormDraft("order", id) : null;
+      if (!orderDraftHasWork(draft)) return false;
+      const skip = { status: true };
+      if (id !== "new") skip.order_number = true;
+      Object.keys(draft).forEach((k) => {
+        if (skip[k]) return;
+        const el = document.getElementById("f_" + k);
+        if (!el) return;
+        if (el.tagName === "SELECT") fillSelect("f_" + k, k, draft[k]);
+        else if (k === "payment_date") el.value = toIsoDate(draft[k]);
+        else el.value = draft[k] == null ? "" : draft[k];
+      });
+      updateMoneyFields();
+      return true;
+    }
     function openForm(index) {
       const existing = Number.isInteger(index) ? rows[index] : null;
       editingIndex = existing ? index : -1;
@@ -447,11 +476,16 @@
       document.getElementById("f_amount_paid").value = (existing && existing.amount_paid) || "";
       document.getElementById("f_status").value = existing ? (existing.status || "Not Yet Started") : "Not Yet Started";
       DROP_FIELDS.forEach((k) => fillSelect("f_" + k, k, existing ? existing[k] : ""));
+      const restored = applyOrderDraft(orderDraftId());
+      document.getElementById("formFootHint").textContent = restored
+        ? "Unsaved progress from last time is filled in. Save to clear it."
+        : "Progress stays on this device if you close this form. Save to clear it.";
       updateMoneyFields();
       document.getElementById("formMask").classList.add("open");
       document.getElementById(existing ? "f_client_name" : "f_order_number").focus();
     }
     function closeForm() {
+      persistOrderDraft();
       document.getElementById("formMask").classList.remove("open");
       editingIndex = -1;
     }
@@ -502,7 +536,9 @@
         const r = await sdOfficeFetch("/api/office/orders", { method: "PUT", body: JSON.stringify(payload) });
         const j = await r.json();
         if (!j.ok) { setFormErr(j.error || "Save failed"); return; }
-        closeForm();
+        sdDropFormDraft("order", orderDraftId());
+        document.getElementById("formMask").classList.remove("open");
+        editingIndex = -1;
         await load();
         document.getElementById("status").textContent = "Saved " + ((j.row && j.row.order_number) || payload.order_number);
       } catch (e) {
@@ -629,6 +665,9 @@
     };
     document.getElementById("f_price_excl_vat").oninput = updateMoneyFields;
     document.getElementById("f_amount_paid").oninput = updateMoneyFields;
+    document.getElementById("form").addEventListener("input", persistOrderDraft);
+    document.getElementById("form").addEventListener("change", persistOrderDraft);
+    window.addEventListener("pagehide", persistOrderDraft);
     document.getElementById("formMask").addEventListener("click", (e) => {
       if (e.target.id === "formMask") closeForm();
     });
