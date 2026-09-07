@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Standard email replies</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --card:#fff; --bad:#b42318; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:560px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#fff; color:var(--bad); border-color:#fda29b; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .wrap { padding:16px; display:grid; grid-template-columns: minmax(240px, 320px) 1fr; gap:14px; align-items:start; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; min-width:0; }
+    .list { display:flex; flex-direction:column; gap:8px; max-height:calc(100vh - 170px); overflow:auto; }
+    .item { text-align:left; width:100%; background:#fff; color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:10px 12px; }
+    .item.on { border-color:#1d2939; box-shadow:0 0 0 1px #1d2939; }
+    .item b { display:block; font-size:14px; }
+    .item span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+    .hint { margin:0 0 10px; color:var(--muted); font-size:12px; }
+    .seg { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 10px; }
+    .seg button { border-color:var(--line); background:#fff; color:var(--muted); padding:6px 10px; font-size:12px; }
+    .seg button.on { background:#1d2939; color:#fff; border-color:#1d2939; }
+    label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; margin:0 0 10px; }
+    input, select, textarea { width:100%; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; font-weight:400; }
+    textarea { min-height:220px; resize:vertical; }
+    .preview { white-space:pre-wrap; background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:12px; font-size:13px; min-height:120px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+    .empty, .err, .load { padding:36px 16px; text-align:center; color:var(--muted); }
+    .err { color:var(--bad); }
+    .chips { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
+    .chips button { font-size:11px; padding:4px 8px; }
+    .msg { font-size:12px; color:var(--muted); }
+    @media (max-width: 860px) {
+      .wrap { grid-template-columns: 1fr; }
+      .list { max-height:none; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Enquiries views">
+        <a href="/enquiries">Sheet</a>
+        <a href="/enquiries/dashboard">Dashboard</a>
+        <a class="on" href="/enquiries/replies">Email replies</a>
+        <a href="/enquiries/bookings">Showroom bookings</a>
+      </nav>
+      <h1>Standard email replies</h1>
+      <p class="lede">Copy a reply into Outlook. {{client_name}}, {{enquiry_no}}, {{quote_no}} and {{product}} fill from the enquiry you pick.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <button type="button" class="ghost" id="newBtn">New reply</button>
+      <button type="button" class="ghost" id="restoreBtn">Restore defaults</button>
+    </div>
+  </header>
+  <div id="load" class="load">Loading replies…</div>
+  <div id="err" class="err" hidden></div>
+  <div class="wrap" id="app" hidden>
+    <section class="card">
+      <div class="seg" id="topics"></div>
+      <div class="list" id="list"></div>
+    </section>
+    <section class="card" id="editor">
+      <p class="empty" id="emptyPick">Pick a reply, or add a new one.</p>
+      <form id="form" hidden>
+        <label>Name <input name="title" required></label>
+        <label>Topic
+          <select name="topic"></select>
+        </label>
+        <label>Subject <input name="subject" required></label>
+        <p class="hint">Placeholders</p>
+        <div class="chips" id="chips"></div>
+        <label>Body <textarea name="body" required></textarea></label>
+        <label>Fill from enquiry
+          <select name="enquiry_no"><option value="">Leave placeholders</option></select>
+        </label>
+        <p class="hint">Preview</p>
+        <div class="preview" id="preview"></div>
+        <div class="row">
+          <button type="submit">Save</button>
+          <button type="button" class="ghost" id="copySubject">Copy subject</button>
+          <button type="button" class="ghost" id="copyBody">Copy body</button>
+          <button type="button" class="ghost" id="copyBoth">Copy both</button>
+          <button type="button" class="danger" id="deleteBtn">Delete</button>
+        </div>
+      </form>
+    </section>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    let replies = [];
+    let topics = [];
+    let placeholders = [];
+    let enquiries = [];
+    let topicFilter = "";
+    let currentId = "";
+
+    function esc(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+    function setStatus(t) { document.getElementById("status").textContent = t || ""; }
+    function fillText(text, row) {
+      const map = {
+        "{{client_name}}": (row && row.client_name) || "there",
+        "{{enquiry_no}}": (row && row.enquiry_no) || "the enquiry",
+        "{{quote_no}}": (row && row.quote_no) || "the quotation",
+        "{{product}}": (row && row.product) || "your request"
+      };
+      return String(text || "").replace(/\{\{(client_name|enquiry_no|quote_no|product)\}\}/g, (m) => map[m] || m);
+    }
+    function enquiryOf() {
+      const no = document.querySelector("[name=enquiry_no]").value;
+      return enquiries.find((e) => e.enquiry_no === no) || null;
+    }
+    function shown() {
+      return topicFilter ? replies.filter((r) => r.topic === topicFilter) : replies;
+    }
+    function renderList() {
+      const box = document.getElementById("list");
+      const rows = shown();
+      if (!rows.length) {
+        box.innerHTML = "<p class=\"empty\">No replies in this topic.</p>";
+        return;
+      }
+      box.innerHTML = rows.map((r) =>
+        "<button type=\"button\" class=\"item" + (r.id === currentId ? " on" : "") + "\" data-id=\"" + esc(r.id) + "\">" +
+        "<b>" + esc(r.title) + "</b><span>" + esc(r.topic) + " · " + esc(r.subject) + "</span></button>"
+      ).join("");
+      box.onclick = (e) => {
+        const btn = e.target.closest("[data-id]");
+        if (btn) openReply(btn.getAttribute("data-id"));
+      };
+    }
+    function preview() {
+      const form = document.getElementById("form");
+      const row = enquiryOf();
+      const sub = fillText(form.subject.value, row);
+      const body = fillText(form.body.value, row);
+      document.getElementById("preview").textContent = sub + "\n\n" + body;
+      return { subject: sub, body: body };
+    }
+    function openReply(id) {
+      const row = replies.find((r) => r.id === id) || { id: "", title: "", topic: "Enquiry", subject: "", body: "" };
+      currentId = row.id;
+      const form = document.getElementById("form");
+      form.hidden = false;
+      document.getElementById("emptyPick").hidden = true;
+      form.title.value = row.title || "";
+      form.topic.value = row.topic || "Enquiry";
+      form.subject.value = row.subject || "";
+      form.body.value = row.body || "";
+      renderList();
+      preview();
+    }
+    async function copy(text, label) {
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus(label + " copied");
+      } catch (e) {
+        setStatus("Could not copy — select the preview and copy it yourself.");
+      }
+    }
+    async function load() {
+      document.getElementById("load").hidden = false;
+      document.getElementById("err").hidden = true;
+      document.getElementById("app").hidden = true;
+      try {
+        const [r, e] = await Promise.all([
+          sdOfficeFetch("/api/office/enquiries/replies"),
+          sdOfficeFetch("/api/office/enquiries")
+        ]);
+        const j = await r.json();
+        const enq = await e.json();
+        if (!r.ok || !j.ok) throw new Error(j.error || r.statusText);
+        replies = j.replies || [];
+        topics = j.topics || [];
+        placeholders = j.placeholders || [];
+        enquiries = (enq.ok && enq.rows) ? enq.rows.map((row) => ({
+          enquiry_no: row.enquiry_no,
+          client_name: row.client_name || "",
+          quote_no: row.quote_no || "",
+          product: (row.products && row.products.map((p) => p.product).filter(Boolean).join(", ")) || row.product || ""
+        })) : [];
+        document.getElementById("load").hidden = true;
+        document.getElementById("app").hidden = false;
+        const topicBox = document.getElementById("topics");
+        topicBox.innerHTML = "<button type=\"button\" data-t=\"\" class=\"" + (topicFilter ? "" : "on") + "\">All</button>" +
+          topics.map((t) => "<button type=\"button\" data-t=\"" + esc(t) + "\"" + (topicFilter === t ? " class=\"on\"" : "") + ">" + esc(t) + "</button>").join("");
+        topicBox.onclick = (ev) => {
+          const btn = ev.target.closest("[data-t]");
+          if (!btn) return;
+          topicFilter = btn.getAttribute("data-t") || "";
+          Array.from(topicBox.querySelectorAll("button")).forEach((b) => b.classList.toggle("on", b === btn));
+          renderList();
+        };
+        const sel = document.querySelector("[name=topic]");
+        sel.innerHTML = topics.map((t) => "<option>" + esc(t) + "</option>").join("");
+        const enqSel = document.querySelector("[name=enquiry_no]");
+        enqSel.innerHTML = "<option value=\"\">Leave placeholders</option>" +
+          enquiries.map((row) => "<option value=\"" + esc(row.enquiry_no) + "\">" + esc(row.enquiry_no + " · " + (row.client_name || "No name")) + "</option>").join("");
+        document.getElementById("chips").innerHTML = placeholders.map((p) =>
+          "<button type=\"button\" class=\"ghost\" data-ph=\"" + esc(p.key) + "\">" + esc(p.key) + "</button>"
+        ).join("");
+        renderList();
+        if (currentId && replies.some((r) => r.id === currentId)) openReply(currentId);
+        else if (replies[0]) openReply(replies[0].id);
+      } catch (err) {
+        document.getElementById("load").hidden = true;
+        document.getElementById("err").hidden = false;
+        document.getElementById("err").textContent = "Could not load replies. " + (err.message || err);
+      }
+    }
+
+    document.getElementById("form").onsubmit = async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const r = await sdOfficeFetch("/api/office/enquiries/replies", {
+        method: "PUT",
+        body: JSON.stringify({
+          id: currentId || undefined,
+          title: form.title.value,
+          topic: form.topic.value,
+          subject: form.subject.value,
+          body: form.body.value
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { setStatus(j.error || "Save failed"); return; }
+      replies = j.replies;
+      currentId = j.reply.id;
+      setStatus("Saved");
+      renderList();
+      openReply(currentId);
+    };
+    document.getElementById("form").oninput = preview;
+    document.querySelector("[name=enquiry_no]").onchange = preview;
+    document.getElementById("chips").onclick = (e) => {
+      const btn = e.target.closest("[data-ph]");
+      if (!btn) return;
+      const ta = document.querySelector("[name=body]");
+      const ph = btn.getAttribute("data-ph");
+      const start = ta.selectionStart || ta.value.length;
+      ta.value = ta.value.slice(0, start) + ph + ta.value.slice(ta.selectionEnd || start);
+      ta.focus();
+      preview();
+    };
+    document.getElementById("copySubject").onclick = () => copy(preview().subject, "Subject");
+    document.getElementById("copyBody").onclick = () => copy(preview().body, "Body");
+    document.getElementById("copyBoth").onclick = () => {
+      const p = preview();
+      copy(p.subject + "\n\n" + p.body, "Reply");
+    };
+    document.getElementById("newBtn").onclick = () => {
+      currentId = "";
+      openReply("");
+      document.querySelector("[name=title]").focus();
+      setStatus("New reply");
+    };
+    document.getElementById("deleteBtn").onclick = async () => {
+      if (!currentId) { openReply(""); return; }
+      if (!confirm("Delete this reply?")) return;
+      const r = await sdOfficeFetch("/api/office/enquiries/replies/" + encodeURIComponent(currentId), { method: "DELETE" });
+      const j = await r.json();
+      if (!j.ok) { setStatus(j.error || "Delete failed"); return; }
+      replies = j.replies;
+      currentId = "";
+      setStatus("Deleted");
+      renderList();
+      if (replies[0]) openReply(replies[0].id);
+      else {
+        document.getElementById("form").hidden = true;
+        document.getElementById("emptyPick").hidden = false;
+      }
+    };
+    document.getElementById("restoreBtn").onclick = async () => {
+      if (!confirm("Replace all replies with the Studio Delta defaults? Your edited replies will be overwritten.")) return;
+      const r = await sdOfficeFetch("/api/office/enquiries/replies/restore", { method: "POST", body: "{}" });
+      const j = await r.json();
+      if (!j.ok) { setStatus(j.error || "Restore failed"); return; }
+      replies = j.replies;
+      currentId = replies[0] && replies[0].id;
+      setStatus("Defaults restored");
+      renderList();
+      if (currentId) openReply(currentId);
+    };
+
+    sdRequireOffice("enquiries").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

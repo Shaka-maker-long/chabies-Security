@@ -50,7 +50,7 @@
     .freeze-end { box-shadow:4px 0 8px rgba(16,24,40,.12); }
     .wrap-text { white-space:normal; }
     .msg { font-size:12px; color:var(--muted); }
-    .tabs { display:flex; gap:4px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
     .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
     .tabs a.on { background:#1d2939; color:#fff; }
     .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
@@ -130,6 +130,8 @@
     <nav class="tabs" aria-label="Enquiries">
       <a class="on" href="/enquiries">Sheet</a>
       <a href="/enquiries/dashboard">Dashboard</a>
+      <a href="/enquiries/replies">Email replies</a>
+      <a href="/enquiries/bookings">Showroom bookings</a>
     </nav>
     <div class="tools">
       <span class="msg" id="status"></span>

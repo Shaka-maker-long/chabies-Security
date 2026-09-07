@@ -14,7 +14,7 @@
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
     header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
     .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:520px; }
-    .tabs { display:flex; gap:4px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
     .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
     .tabs a.on { background:#1d2939; color:#fff; }
     .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
@@ -88,6 +88,8 @@
       <nav class="tabs" aria-label="Enquiries views">
         <a href="/enquiries">Sheet</a>
         <a class="on" href="/enquiries/dashboard">Dashboard</a>
+        <a href="/enquiries/replies">Email replies</a>
+        <a href="/enquiries/bookings">Showroom bookings</a>
       </nav>
       <h1>Enquiries dashboard</h1>
       <p class="window-chip" id="windowChip"></p>

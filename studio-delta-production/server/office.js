@@ -35,6 +35,7 @@ const {
 const { importGoogleWorkbook, tabCounts, googleMigrateEnabled, dataDir } = require("./workbook-store");
 const staff = require("./staff");
 const pipeline = require("./enquiry-pipeline");
+const desk = require("./enquiry-desk");
 const fs = require("fs");
 const sqlite = require("./sqlite-store");
 
@@ -311,6 +312,71 @@ function mountOffice(app) {
   app.get("/api/office/enquiries/dashboard/drill", requireOffice, (req, res) => {
     try {
       res.json({ ok: true, ...require("./enquiry-dashboard").buildDrill(req.query || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/enquiries/replies", requireOffice, (_req, res) => {
+    try {
+      res.json({
+        ok: true,
+        replies: desk.loadReplies(),
+        topics: desk.TOPICS,
+        placeholders: desk.PLACEHOLDERS
+      });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.put("/api/office/enquiries/replies", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...desk.upsertReply(req.body || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/enquiries/replies/restore", requireOffice, (_req, res) => {
+    try {
+      res.json({ ok: true, replies: desk.restoreReplies() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.delete("/api/office/enquiries/replies/:id", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, replies: desk.deleteReply(req.params.id) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/enquiries/bookings", requireOffice, (_req, res) => {
+    try {
+      res.json({
+        ok: true,
+        bookings: desk.loadBookings(),
+        statuses: desk.BOOKING_STATUSES
+      });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.put("/api/office/enquiries/bookings", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...desk.upsertBooking(req.body || {}, req.office && req.office.name) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.delete("/api/office/enquiries/bookings/:id", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, bookings: desk.deleteBooking(req.params.id) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
