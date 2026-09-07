@@ -2484,7 +2484,7 @@
 
     const QC_PHASE_GROUPS = {
       'pre-powder': ['ready for pre-powder coating', 'pre-powder coating'],
-      'powder': ['ready for powder coating', 'powder coating'],
+      'powder': ['ready for powder coating', 'sent to paint shop', 'powder coating'],
       'final-qc': ['ready for final qc', 'final qc'],
       'delivery': ['ready for delivery', 'out for delivery']
     };
@@ -2528,9 +2528,9 @@
       { id: 'Plate Cutting', role: 'Plate Cutting', label: 'Plate cutting' },
       { id: 'Pre-Powder Coating QC', role: 'Quality Control', qcFilter: 'pre-powder', label: 'Pre-powder QC' },
       { id: 'Powder Coating', role: 'Quality Control', qcFilter: 'powder', label: 'Powder coating' },
+      { id: 'Assembly', role: 'Assembly', label: 'Assembly' },
       { id: 'Paint Preparation', role: 'Paint Preparation', label: 'Paint prep' },
       { id: 'Painting', role: 'Painting', label: 'Painting' },
-      { id: 'Assembly', role: 'Assembly', label: 'Assembly' },
       { id: 'Final QC', role: 'Quality Control', qcFilter: 'final-qc', label: 'Final QC' }
     ];
     const TASK_ICONS = {
@@ -4292,15 +4292,28 @@
       return session.role;
     }
 
+    function hasFloorTask(name) {
+      if (session.isAdmin || session.role === 'Admin') return true;
+      const tasks = session.tasks || [];
+      if (tasks.indexOf(name) !== -1) return true;
+      return session.role === name;
+    }
+
     function availableStartButtons(o) {
       const st = String(o.status || '').toLowerCase();
       const start = (label, task, extraClass) =>
         `<button class="btn ${extraClass || 'btn-primary'} flex-grow-1 position-relative" style="z-index: 10; flex-basis: 0;" onclick="event.stopPropagation(); event.preventDefault(); preStart(${o.rowIndex}, '${o.order}', '${task}')">${label}</button>`;
-      if (st === 'ready for assembly' && session.role === 'Assembly') {
-        return `<div class="d-flex gap-2 position-relative w-100 flex-wrap" style="z-index: 10;">${start('ASSEMBLE', 'Assembly', 'btn-primary')}${start('PAINT PREP', 'Paint Preparation', 'btn-outline-dark')}</div>`;
+      if (st === 'ready for assembly') {
+        const buttons = [];
+        if (hasFloorTask('Assembly')) buttons.push(start('ASSEMBLE', 'Assembly', 'btn-primary'));
+        if (hasFloorTask('Paint Preparation')) buttons.push(start('PAINT PREP', 'Paint Preparation', 'btn-outline-dark'));
+        if (buttons.length > 1) {
+          return `<div class="d-flex gap-2 position-relative w-100 flex-wrap" style="z-index: 10;">${buttons.join('')}</div>`;
+        }
+        if (buttons.length === 1) return buttons[0];
       }
-      if (st === 'ready for assembly' && (session.role === 'Paint Preparation' || session.role === 'Painting')) {
-        return start('START PAINT PREP', 'Paint Preparation');
+      if (st === 'sent to paint shop') {
+        return `<button class="btn btn-secondary w-100 position-relative" style="z-index: 10;" disabled>AT THE PAINT SHOP</button>`;
       }
       return start('START', startTaskForOrder(o));
     }

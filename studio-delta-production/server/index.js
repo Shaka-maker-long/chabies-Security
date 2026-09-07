@@ -91,6 +91,10 @@ app.get("/orders/to-order", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "orders-to-order.html"));
 });
+app.get("/orders/paint-shop", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "orders-paint-shop.html"));
+});
 app.get("/enquiries", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "enquiries.html"));
