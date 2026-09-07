@@ -343,6 +343,8 @@ assert.ok(officeJs.indexOf("/api/office/materials-to-order") !== -1);
 assert.ok(floor.indexOf("glassOrderSection") !== -1);
 assert.ok(floor.indexOf("Add another glass") !== -1);
 assert.ok(floor.indexOf("woodRequired") !== -1);
+assert.ok(floor.indexOf("openStationWork") !== -1, "tapping your station opens that task board");
+assert.ok(floor.indexOf("Tap your station to open your jobs") !== -1);
 assert.ok(floor.indexOf("WORK_LOCKS_DISABLED") !== -1, "work lock can be turned off for testing");
 assert.ok(floor.indexOf("Work lock is off for testing") !== -1);
 const codeGs = fs.readFileSync(path.join(__dirname, "../Code.gs"), "utf8");
