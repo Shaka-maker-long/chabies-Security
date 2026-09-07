@@ -561,8 +561,16 @@ function listSchedule(fromDay, toDay) {
   const live = new Set(orders.map((o) => formatOrderId(o.order_number)).filter(Boolean));
   const withCells = new Set();
   const cellsByRow = new Map();
+  const deliveryDays = new Map();
+  const { formatOrderDate } = require("./office-schedule");
   for (const c of state.schedule_cells) {
     withCells.add(c.row_id);
+    const code = String(c.value || "").trim().toUpperCase();
+    if (code === "LD" || code === "LC") {
+      const list = deliveryDays.get(c.row_id) || [];
+      list.push(c.day);
+      deliveryDays.set(c.row_id, list);
+    }
     if (c.day < fromDay || c.day > toDay) continue;
     let bag = cellsByRow.get(c.row_id);
     if (!bag) {
@@ -572,10 +580,16 @@ function listSchedule(fromDay, toDay) {
     bag[c.day] = c.value;
   }
   const rows = state.schedule_rows.slice().sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
-  return rows.filter((r) => live.has(formatOrderId(r.order_number)) || withCells.has(r.id)).map((r) => ({
-    ...r,
-    cells: cellsByRow.get(r.id) || {}
-  }));
+  return rows.filter((r) => live.has(formatOrderId(r.order_number)) || withCells.has(r.id)).map((r) => {
+    const ddays = (deliveryDays.get(r.id) || []).slice().sort();
+    return {
+      ...r,
+      order_date_label: formatOrderDate(r.order_date),
+      cells: cellsByRow.get(r.id) || {},
+      delivery_planned: ddays.length > 0,
+      delivery_days: ddays
+    };
+  });
 }
 
 function listDeliveryItems() {

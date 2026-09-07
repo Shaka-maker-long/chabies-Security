@@ -564,7 +564,7 @@ function mountOffice(app) {
 
   app.get("/api/office/schedule", requireOffice, (req, res) => {
     const start = mondayOf(req.query.start);
-    const days = workdays(start, 15);
+    const days = workdays(start, 60);
     const fromDay = days[0];
     const toDay = days[days.length - 1];
     res.json({
