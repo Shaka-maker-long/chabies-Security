@@ -19,7 +19,7 @@
     th, td { border:1px solid var(--line); padding:6px; }
     th { background:var(--head); position:sticky; top:0; }
     th.prod { min-width:160px; text-align:left; }
-    input { width:64px; border:1px solid var(--line); border-radius:4px; padding:4px; text-align:right; }
+    input { width:72px; border:1px solid var(--line); border-radius:4px; padding:4px; text-align:right; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
     .msg { font-size:12px; color:#667085; margin-left:auto; }
     p.help { color:#667085; font-size:13px; }
@@ -32,7 +32,7 @@
     <button onclick="save()">Save times</button>
   </header>
   <div class="wrap">
-    <p class="help">Minutes per product and process. The floor uses these to count down working time (pauses do not count). If a cell is empty, the first finished job writes that time here so the next one can count down.</p>
+    <p class="help">Hours per product and process (1.5 is one hour thirty minutes). The floor counts down that time (pauses do not count). If a cell is empty, the first finished job writes that time here so the next one can count down.</p>
     <table id="grid"></table>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
@@ -41,6 +41,17 @@
     let products = [];
     let mins = {};
     function key(p, t) { return p + "||" + t; }
+    function hoursFromMinutes(mins) {
+      const n = Number(mins) || 0;
+      if (!(n > 0)) return "";
+      const h = Math.round((n / 60) * 100) / 100;
+      return String(h);
+    }
+    function minutesFromHours(hours) {
+      const n = Number(hours);
+      if (!(n > 0)) return 0;
+      return Math.max(1, Math.round(n * 60));
+    }
     function render() {
       let html = "<thead><tr><th class='prod'>PRODUCT</th>";
       TASKS.forEach((t) => { html += "<th>" + t + "</th>"; });
@@ -48,8 +59,8 @@
       products.forEach((p) => {
         html += "<tr><td class='prod'><b>" + p + "</b></td>";
         TASKS.forEach((t) => {
-          const v = mins[key(p, t)] || "";
-          html += "<td><input data-p=\"" + p.replace(/"/g,"&quot;") + "\" data-t=\"" + t + "\" value=\"" + v + "\"></td>";
+          const v = hoursFromMinutes(mins[key(p, t)]);
+          html += "<td><input data-p=\"" + p.replace(/"/g,"&quot;") + "\" data-t=\"" + t + "\" inputmode=\"decimal\" step=\"0.25\" min=\"0\" placeholder=\"h\" value=\"" + v + "\"></td>";
         });
         html += "</tr>";
       });
@@ -76,8 +87,8 @@
     async function save() {
       const rows = [];
       document.querySelectorAll("#grid input").forEach((inp) => {
-        const n = Number(inp.value);
-        if (n > 0) rows.push({ product: inp.getAttribute("data-p"), process: inp.getAttribute("data-t"), minutes: n });
+        const minutes = minutesFromHours(inp.value);
+        if (minutes > 0) rows.push({ product: inp.getAttribute("data-p"), process: inp.getAttribute("data-t"), minutes: minutes });
       });
       const r = await sdOfficeFetch("/api/office/durations", { method: "PUT", body: JSON.stringify({ rows }) });
       const j = await r.json();

@@ -148,7 +148,7 @@ function seedDuration(product, process, minutes) {
   });
   const start3 = await callShopFunction("startOrder", [late.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
   assert.strictEqual(start3.targetMinutes, 30, JSON.stringify(start3));
-  assert.strictEqual(start3.durationLabel, "30 minutes");
+  assert.strictEqual(start3.durationLabel, "0.5 hours");
   writeOpenLog("S-DUR-3", new Date(Date.now() - 80 * 60 * 1000), {
     pauses: [],
     batchId: "",

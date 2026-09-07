@@ -1021,16 +1021,13 @@ function getTaskDurationMinutes(product, process) {
 }
 
 function formatSpokenDuration(totalMins) {
-  var mins = Math.max(0, Math.round(Number(totalMins) || 0));
+  var mins = Math.max(0, Number(totalMins) || 0);
   if (mins <= 0) return "";
-  var h = Math.floor(mins / 60);
-  var m = mins % 60;
-  var parts = [];
-  if (h === 1) parts.push("1 hour");
-  else if (h > 1) parts.push(h + " hours");
-  if (m === 1) parts.push("1 minute");
-  else if (m > 0) parts.push(m + " minutes");
-  return parts.join(" ");
+  var hours = Math.round((mins / 60) * 100) / 100;
+  if (hours === 1) return "1 hour";
+  var text = String(hours);
+  if (text.indexOf(".") !== -1) text = text.replace(/0+$/, "").replace(/\.$/, "");
+  return text + " hours";
 }
 
 function taskDurationSheet() {
