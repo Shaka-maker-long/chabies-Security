@@ -22,10 +22,14 @@
     .seg button { border:0; background:transparent; padding:7px 10px; font:inherit; font-size:12px; font-weight:600; cursor:pointer; color:var(--muted); }
     .seg button.on { background:#1d2939; color:#fff; }
     .wrap { padding:16px; }
-    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:10px; }
+    .money-kpis { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin-bottom:14px; }
     .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    button.kpi { font: inherit; text-align:left; width:100%; cursor:pointer; }
+    button.kpi:hover { border-color:#1d2939; }
     .kpi span { display:block; color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
     .kpi b { display:block; margin-top:4px; font-family: Outfit, Inter, sans-serif; font-size:22px; }
+    .kpi.rand b { font-size:18px; }
     .kpi.alert b { color:var(--bad); }
     .grid { display:grid; grid-template-columns:1.35fr 1fr; gap:12px; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px 16px; min-width:0; }
@@ -114,6 +118,7 @@
     <div id="err" class="err" hidden></div>
     <div id="app" hidden>
       <div class="kpis" id="kpis"></div>
+      <div class="kpis money-kpis" id="moneyKpis"></div>
       <div class="grid">
         <section class="card span2">
           <h2 id="trendTitle">Enquiries and quotes</h2>
@@ -174,6 +179,7 @@
         </section>
         <section class="card">
           <h2>Money (excl VAT)</h2>
+          <p class="hint">Quoted and ordered are quote totals. Delivery is the delivery line on quotes in this period.</p>
           <canvas id="money"></canvas>
         </section>
         <section class="card">
@@ -610,6 +616,18 @@
       ].map(([label, val, alert]) =>
         "<div class=\"kpi" + (alert ? " alert" : "") + "\"><span>" + label + "</span><b>" + val + "</b></div>"
       ).join("");
+      const money = d.money || {};
+      document.getElementById("moneyKpis").innerHTML = [
+        ["Quoted excl VAT", money.quotedExclVat, "quotes"],
+        ["Ordered excl VAT", money.orderedExclVat, "ordered"],
+        ["Delivery excl VAT", money.deliveryExclVat, "quotes"]
+      ].map(([label, val, kind]) =>
+        "<button type=\"button\" class=\"kpi rand\" data-kind=\"" + kind + "\"><span>" + label + "</span><b>" + formatR(val) + "</b></button>"
+      ).join("");
+      document.getElementById("moneyKpis").onclick = (e) => {
+        const btn = e.target.closest("[data-kind]");
+        if (btn) openDrill({ kind: btn.getAttribute("data-kind") });
+      };
 
       drawTrend();
       bar("funnel", d.funnel.map((x) => x.label), d.funnel.map((x) => x.count), PAL[0], true, (i) => {
@@ -672,13 +690,13 @@
       mk("money", {
         type: "bar",
         data: {
-          labels: ["Quoted", "Ordered"],
-          datasets: [{ data: [d.money.quotedExclVat, d.money.orderedExclVat], backgroundColor: [PAL[2], PAL[1]] }]
+          labels: ["Quoted", "Ordered", "Delivery"],
+          datasets: [{ data: [d.money.quotedExclVat, d.money.orderedExclVat, d.money.deliveryExclVat], backgroundColor: [PAL[2], PAL[1], PAL[3]] }]
         },
         options: Object.assign({
           plugins: { legend: { display: false } },
           scales: { y: { beginAtZero: true, ticks: { callback: randTick } } }
-        }, clickOpt((el) => openDrill({ kind: el.index === 0 ? "quotes" : "ordered" })))
+        }, clickOpt((el) => openDrill({ kind: el.index === 1 ? "ordered" : "quotes" })))
       });
       bar("cat", d.categories.map((x) => x.label), d.categories.map((x) => x.count), PAL[3], false, (_i, label) => openDrill({ kind: "category", value: label }));
       renderProducts(document.getElementById("prodSearch").value);

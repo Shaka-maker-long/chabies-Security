@@ -174,6 +174,10 @@ try {
   assert.strictEqual(quoted, 2);
   assert.strictEqual(month.money.quotedExclVat, 16650.5);
   assert.strictEqual(month.money.orderedExclVat, 12000);
+  assert.strictEqual(month.money.deliveryExclVat, 1350.5);
+  assert.strictEqual(month.kpis.quotedExclVat, 16650.5);
+  assert.strictEqual(month.kpis.orderedExclVat, 12000);
+  assert.strictEqual(month.kpis.deliveryExclVat, 1350.5);
   const captured = month.funnel.find((x) => x.label === "Captured");
   assert.strictEqual(captured.count, 7);
   const orderedFunnel = month.funnel.find((x) => x.label === "Ordered");
@@ -258,6 +262,10 @@ try {
   assert.strictEqual(none.enquiryCount, 0);
   assert.strictEqual(none.kpis.openNow, 0);
   assert.strictEqual(none.kpis.medianDaysToOrder, null);
+  assert.strictEqual(none.kpis.quotedExclVat, 0);
+  assert.strictEqual(none.kpis.orderedExclVat, 0);
+  assert.strictEqual(none.kpis.deliveryExclVat, 0);
+  assert.strictEqual(none.money.deliveryExclVat, 0);
   assert.ok(none.series.length > 0);
   db.listEnquiries = () => rows;
   assert.ok(empty.enquiryCount === 7);

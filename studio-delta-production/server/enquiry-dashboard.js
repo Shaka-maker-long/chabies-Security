@@ -533,6 +533,8 @@ function buildDashboard(query) {
   let oldestOpenDays = null;
   let quotedExclVat = 0;
   let orderedExclVat = 0;
+  let quotedDeliveryExclVat = 0;
+  let orderedDeliveryExclVat = 0;
   let winRejected = 0;
   let winNotInterested = 0;
   let winNotInScope = 0;
@@ -618,6 +620,7 @@ function buildDashboard(query) {
     }
     if (quotedIn) {
       quotedExclVat += rev;
+      quotedDeliveryExclVat += deliveryExclOf(row);
       const bucket = seriesMap[keyOf(new Date(quoted))];
       if (bucket) {
         bucket.quotes += 1;
@@ -631,6 +634,7 @@ function buildDashboard(query) {
     if (orderedIn) {
       orderedInRange += 1;
       orderedExclVat += rev;
+      orderedDeliveryExclVat += deliveryExclOf(row);
       const bucket = seriesMap[keyOf(new Date(ordered))];
       if (bucket) {
         bucket.ordered += 1;
@@ -723,7 +727,10 @@ function buildDashboard(query) {
       overdueFollowUps,
       orderedInPeriod: orderedInRange,
       medianDaysToOrder: round1(median(timeToOrderDays)),
-      p80DaysToOrder: round1(percentile(timeToOrderDays, 0.8))
+      p80DaysToOrder: round1(percentile(timeToOrderDays, 0.8)),
+      quotedExclVat: Math.round(quotedExclVat * 100) / 100,
+      orderedExclVat: Math.round(orderedExclVat * 100) / 100,
+      deliveryExclVat: Math.round(quotedDeliveryExclVat * 100) / 100
     },
     funnel: [
       { label: "Captured", count: funnelCaptured },
@@ -772,7 +779,9 @@ function buildDashboard(query) {
     workload: countPairs(assignee, 20).map((row) => ({ name: row.label, count: row.count })),
     money: {
       quotedExclVat: Math.round(quotedExclVat * 100) / 100,
-      orderedExclVat: Math.round(orderedExclVat * 100) / 100
+      orderedExclVat: Math.round(orderedExclVat * 100) / 100,
+      deliveryExclVat: Math.round(quotedDeliveryExclVat * 100) / 100,
+      orderedDeliveryExclVat: Math.round(orderedDeliveryExclVat * 100) / 100
     },
     categories: countPairs(category, 12),
     products: productRows,
