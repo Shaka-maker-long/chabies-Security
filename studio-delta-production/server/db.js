@@ -595,8 +595,13 @@ function listSchedule(fromDay, toDay) {
 
 function listDeliveryItems() {
   const { orders } = syncScheduleFromOrders();
+  const byOrder = new Map(orders.map((o) => [formatOrderId(o.order_number), o]));
+  const items = require("./office-schedule").collectDeliveryItems(state.schedule_rows, state.schedule_cells).map((it) => {
+    const order = byOrder.get(formatOrderId(it.order_number));
+    return Object.assign({}, it, { status: (order && order.status) || it.status || "" });
+  });
   return {
-    items: require("./office-schedule").collectDeliveryItems(state.schedule_rows, state.schedule_cells),
+    items,
     categories: Array.from(new Set(orders.map((o) => o.category).filter(Boolean))).sort()
   };
 }
