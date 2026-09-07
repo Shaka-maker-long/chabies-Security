@@ -20,7 +20,14 @@
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
     button:disabled { opacity:.55; cursor:not-allowed; }
-    .page { max-width:980px; margin:0 auto; padding:18px 16px 48px; display:flex; flex-direction:column; gap:16px; }
+    .page { max-width:1100px; margin:0 auto; padding:18px 16px 48px; display:flex; flex-direction:column; gap:16px; }
+    .list-tools { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .list-tools input[type=search] { max-width:280px; }
+    .row-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .row-actions a { font-size:12px; font-weight:600; color:#1d2939; text-decoration:none; border:1px solid #1d2939; border-radius:6px; padding:5px 8px; background:#fff; }
+    .row-actions a.primary { background:#1d2939; color:#fff; }
+    #printedTable td { white-space:nowrap; }
+    #printedTable td.prod { white-space:normal; max-width:220px; }
     .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; }
     .card h2 { margin:0 0 12px; font-size:15px; }
     .hint { font-size:12px; color:var(--muted); margin:0 0 10px; }
@@ -56,8 +63,8 @@
         <a href="/orders/delivery">Delivery summary</a>
         <a class="on" href="/orders/job-card">Job card</a>
       </nav>
-      <h1>Generate job card</h1>
-      <p class="lede">Pick an order that has not started, paste the cutting list, then generate the PDF. Date start is the day you generate. After that the order is Ready for Steelwork. You can regenerate only while it is Ready for Steelwork or Profile Cutting.</p>
+      <h1>Job cards</h1>
+      <p class="lede">Every generated card stays here so you can open and print it. Use the form below to make a first card or fix one that is still Ready for Steelwork or Profile Cutting.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -65,7 +72,16 @@
   </header>
   <div class="page">
     <div class="card">
-      <h2>Order</h2>
+      <h2>Printed job cards</h2>
+      <p class="hint">Open the PDF to print. Search by order number, customer, or product.</p>
+      <div class="list-tools">
+        <input type="search" id="printedQ" placeholder="Search printed cards">
+        <span class="hint" id="printedCount" style="margin:0"></span>
+      </div>
+      <div id="printedWrap"></div>
+    </div>
+    <div class="card">
+      <h2>Generate a job card</h2>
       <p class="hint" id="emptyHint">Only Not Yet Started orders appear for a first card. Ready for Steelwork and Profile Cutting stay on this list so you can fix a mistake.</p>
       <div class="hero">
         <img id="productImage" class="product-image" alt="Product">
@@ -123,6 +139,7 @@
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
     let eligible = [];
+    let printed = [];
     let current = null;
     let cutting = { bars: [], plates: [], tubes: [], wood: [] };
 
@@ -229,12 +246,13 @@
         });
         const j = await r.json();
         if (!j.ok) { setErr(j.error || "Could not generate"); return; }
-        setOk("Job card saved. Status is now " + (j.status || "") + ".");
+        setOk("Job card saved. Status is now " + (j.status || "") + ". It is on the printed list above.");
         const link = document.getElementById("pdfLink");
         link.href = j.pdf_url;
         link.hidden = false;
         window.open(j.pdf_url, "_blank");
         await load();
+        await loadPrinted();
         document.getElementById("orderNumber").value = row.order_number;
         fillOrder(selected());
       } catch (e) {
@@ -243,6 +261,50 @@
         btn.disabled = false;
         btn.textContent = "Generate job card";
       }
+    }
+
+    function renderPrinted() {
+      const q = document.getElementById("printedQ").value.toLowerCase().trim();
+      const rows = printed.filter((row) => {
+        if (!q) return true;
+        return [row.order_number, row.customer, row.product, row.status, row.province, row.colour, row.created_date]
+          .join(" ").toLowerCase().indexOf(q) !== -1;
+      });
+      document.getElementById("printedCount").textContent = rows.length
+        ? rows.length + " of " + printed.length + " cards"
+        : (printed.length ? "No cards match that search." : "No job cards generated yet.");
+      if (!rows.length) {
+        document.getElementById("printedWrap").innerHTML = "<p class=\"hint empty\">" +
+          (printed.length ? "No cards match that search." : "No printed job cards yet. Generate one below.") + "</p>";
+        return;
+      }
+      let html = "<table id=\"printedTable\"><thead><tr>" +
+        "<th>Order</th><th>Customer</th><th>Product</th><th>Generated</th><th>Status</th><th></th>" +
+        "</tr></thead><tbody>";
+      rows.forEach((row) => {
+        html += "<tr>" +
+          "<td>" + esc(row.order_number) + "</td>" +
+          "<td>" + esc(row.customer) + "</td>" +
+          "<td class=\"prod\">" + esc(row.product) + "</td>" +
+          "<td>" + esc(row.created_date) + "</td>" +
+          "<td>" + esc(row.status) + "</td>" +
+          "<td><div class=\"row-actions\">" +
+          (row.has_pdf ? "<a class=\"primary\" href=\"" + esc(row.pdf_url) + "\" target=\"_blank\" rel=\"noopener\">Open / print</a>" : "") +
+          (row.has_pdf ? "<a href=\"" + esc(row.download_url) + "\">Download</a>" : "") +
+          "</div></td></tr>";
+      });
+      document.getElementById("printedWrap").innerHTML = html + "</tbody></table>";
+    }
+
+    async function loadPrinted() {
+      const r = await sdOfficeFetch("/api/office/job-cards");
+      const j = await r.json();
+      if (!j.ok) {
+        document.getElementById("printedWrap").innerHTML = "<p class=\"err\">" + esc(j.error || "Could not load printed cards") + "</p>";
+        return;
+      }
+      printed = j.rows || [];
+      renderPrinted();
     }
 
     async function load() {
@@ -273,8 +335,9 @@
     };
     document.getElementById("parseBtn").onclick = parseList;
     document.getElementById("generateBtn").onclick = generate;
+    document.getElementById("printedQ").oninput = renderPrinted;
 
-    sdRequireOffice("orders").then(load);
+    sdRequireOffice("orders").then(() => Promise.all([load(), loadPrinted()]));
   </script>
 </body>
 </html>

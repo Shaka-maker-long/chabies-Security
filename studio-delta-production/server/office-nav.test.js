@@ -288,6 +288,8 @@ assert.ok(ordersHtml.indexOf("Delivery summary") !== -1);
 assert.ok(ordersHtml.indexOf("/orders/job-card") !== -1);
 assert.ok(ordersHtml.indexOf("Generate job card") !== -1);
 assert.ok(ordersHtml.indexOf("data-job-card") !== -1);
+assert.ok(ordersHtml.indexOf("data-open-job-card") !== -1);
+assert.ok(ordersHtml.indexOf("Open / print job card") !== -1);
 assert.ok(ordersHtml.indexOf("<select id=\"f_status\">") === -1, "status is not a manual dropdown");
 assert.ok(ordersHtml.indexOf("id=\"f_status\" readonly") !== -1);
 const scheduleHtml = fs.readFileSync(path.join(__dirname, "../public/orders-schedule.html"), "utf8");

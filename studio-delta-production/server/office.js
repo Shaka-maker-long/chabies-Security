@@ -268,6 +268,10 @@ function mountOffice(app) {
     }
   });
 
+  app.get("/api/office/job-cards", requireOffice, (_req, res) => {
+    res.json({ ok: true, rows: jobCard.listGeneratedJobCards() });
+  });
+
   app.get("/api/office/job-cards/eligible", requireOffice, (_req, res) => {
     res.json({ ok: true, rows: jobCard.listEligibleOrders() });
   });
@@ -297,8 +301,9 @@ function mountOffice(app) {
       res.status(404).json({ ok: false, error: "No job card PDF for this order." });
       return;
     }
+    const download = String((req.query && req.query.download) || "") === "1";
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "inline; filename=\"" + file.filename + "\"");
+    res.setHeader("Content-Disposition", (download ? "attachment" : "inline") + "; filename=\"" + file.filename + "\"");
     res.send(file.buffer);
   });
 
