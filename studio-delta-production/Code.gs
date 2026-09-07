@@ -682,6 +682,7 @@ function getOrdersForRole(role, workerName, skipCache) {
       var isNotFinished = plateInfo.status !== 'Finished';
 
       if ((isStageValid || isAlreadyActive) && isNotFinished) {
+        var plateMins = getTaskDurationMinutes(productName, "Plate Cutting");
         relevantOrders.push({
           rowIndex: i + 1,
           order: orderNum,
@@ -695,7 +696,8 @@ function getOrdersForRole(role, workerName, skipCache) {
           batchId: plateInfo.batchId || "",
           isBatched: !!plateInfo.isBatched,
           startedAt: plateInfo.startTime || "",
-          targetMinutes: getTaskDurationMinutes(productName, "Plate Cutting"),
+          targetMinutes: plateMins,
+          durationLabel: formatSpokenDuration(plateMins),
           pauseMs: plateInfo.pauseMs || 0,
           pausedAt: plateInfo.pausedAt || "",
           batchShare: plateInfo.batchShare || 1,
@@ -712,6 +714,7 @@ function getOrdersForRole(role, workerName, skipCache) {
     var allowedStatuses = mainVisibilityMap[role] ||[];
     
     if (role === 'Admin' || includesStatusCaseInsensitive(allowedStatuses, mainStatus)) {
+      var roleMins = getTaskDurationMinutes(productName, role);
       relevantOrders.push({
         rowIndex: i + 1,
         order: orderNum,
@@ -725,7 +728,8 @@ function getOrdersForRole(role, workerName, skipCache) {
         batchId: batchId || "",
         isBatched: !!isBatched,
         startedAt: assignment && assignment.startTime ? assignment.startTime : "",
-        targetMinutes: getTaskDurationMinutes(productName, role),
+        targetMinutes: roleMins,
+        durationLabel: formatSpokenDuration(roleMins),
         pauseMs: assignment ? (assignment.pauseMs || 0) : 0,
         pausedAt: assignment ? (assignment.pausedAt || "") : "",
         batchShare: assignment ? (assignment.batchShare || 1) : 1,
@@ -762,8 +766,100 @@ function getTaskDurationMinutes(product, process) {
   return 0;
 }
 
+function formatSpokenDuration(totalMins) {
+  var mins = Math.max(0, Math.round(Number(totalMins) || 0));
+  if (mins <= 0) return "";
+  var h = Math.floor(mins / 60);
+  var m = mins % 60;
+  var parts = [];
+  if (h === 1) parts.push("1 hour");
+  else if (h > 1) parts.push(h + " hours");
+  if (m === 1) parts.push("1 minute");
+  else if (m > 0) parts.push(m + " minutes");
+  return parts.join(" ");
+}
+
+function taskDurationSheet() {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName("Task_Durations");
+  if (!sheet) {
+    sheet = ss.insertSheet("Task_Durations");
+    sheet.appendRow(["Product", "Process", "Minutes"]);
+  } else if (sheet.getLastRow() < 1) {
+    sheet.appendRow(["Product", "Process", "Minutes"]);
+  }
+  return sheet;
+}
+
+function saveTaskDurationIfEmpty(product, process, minutes) {
+  var p = String(product || "").trim();
+  var t = String(process || "").trim();
+  var mins = Math.round(Number(minutes) || 0);
+  if (!p || !t || mins <= 0) return false;
+  if (getTaskDurationMinutes(p, t) > 0) return false;
+  taskDurationSheet().appendRow([p, t, mins]);
+  return true;
+}
+
 function getTaskDuration(product, process) {
-  return { minutes: getTaskDurationMinutes(product, process) };
+  var minutes = getTaskDurationMinutes(product, process);
+  return { minutes: minutes, durationLabel: formatSpokenDuration(minutes) };
+}
+
+function orderProductMap(ss) {
+  var map = {};
+  var sheet = ss.getSheetByName(TAB_ORDERS);
+  if (!sheet || sheet.getLastRow() < 2) return map;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
+  for (var i = 0; i < data.length; i++) {
+    var num = String(data[i][1] || "").trim();
+    if (num) map[num] = String(data[i][6] || "").trim();
+  }
+  return map;
+}
+
+function getMyCompletedWork(workerName) {
+  var want = String(workerName || "").trim();
+  var items = [];
+  if (!want) return { worker: want, items: items };
+  var ss = getSpreadsheet();
+  var pack = getLogPack(ss);
+  var products = orderProductMap(ss);
+  for (var i = 1; i < pack.values.length; i++) {
+    var row = pack.values[i];
+    if (!row[6]) continue;
+    if (String(row[2] || "").trim() !== want) continue;
+    var meta = parseLogMeta(row.length > 12 ? row[12] : "");
+    if (meta.entryType === "indirect") continue;
+    var role = String(row[3] || "").trim();
+    if (role === "Indirect") continue;
+    var orderNum = String(row[1] || "").trim();
+    var product = products[orderNum] || "";
+    var actual = calculateWorkMinutesFromLog(row);
+    var target = Number(meta.targetMinutes) || getTaskDurationMinutes(product, role);
+    var onTime = target > 0 && actual <= target + 0.5;
+    var overtime = target > 0 && actual > target + 0.5;
+    items.push({
+      logId: String(row[0] || ""),
+      order: orderNum,
+      product: product,
+      process: role,
+      status: String(row[4] || ""),
+      start: row[5] ? new Date(row[5]).toISOString() : "",
+      end: row[6] ? new Date(row[6]).toISOString() : "",
+      actualMinutes: Math.round(actual * 10) / 10,
+      targetMinutes: target,
+      onTime: onTime,
+      overtime: overtime,
+      durationSaved: !!meta.durationSaved,
+      durationLabel: formatSpokenDuration(target),
+      actualLabel: formatSpokenDuration(actual) || formatDurationServer(actual)
+    });
+  }
+  items.sort(function (a, b) {
+    return String(b.end || "").localeCompare(String(a.end || ""));
+  });
+  return { worker: want, items: items };
 }
 
 function pollFloor(role, workerName) {
@@ -1111,6 +1207,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       meta.batchId = batchId;
       meta.batchShare = batchShare;
       meta.entryType = "production";
+      meta.targetMinutes = getTaskDurationMinutes(String(orderRow[6] || "").trim(), role);
       meta = applyShiftWindowToMeta(meta, null, workerName);
 
       if (role !== 'Plate Cutting') {
@@ -1129,12 +1226,17 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       started.push({ order: orderNum, rowIndex: thisRow, logId: uniqueId, newStatus: nextStatus });
     }
     
+    var firstProduct = orderData[parseInt(rowIndex, 10) - 1] ? String(orderData[parseInt(rowIndex, 10) - 1][6] || "").trim() : "";
+    var targetMinutes = getTaskDurationMinutes(firstProduct, role);
     return {
       success: true,
       newStatus: started[0] ? started[0].newStatus : "",
       logId: started[0] ? started[0].logId : "",
       started: started,
-      batchId: batchId
+      batchId: batchId,
+      targetMinutes: targetMinutes,
+      durationLabel: formatSpokenDuration(targetMinutes),
+      product: firstProduct
     };
     
   } finally {
@@ -1260,6 +1362,22 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
     logSheet.getRange(rowToUpdate, 7).setValue(endTime);
     logSheet.getRange(rowToUpdate, 8).setValue(resultStr);
     if(signatureUrl) logSheet.getRange(rowToUpdate, 9).setValue(signatureUrl);
+
+    var finishedRow = logSheet.getRange(rowToUpdate, 1, 1, 13).getValues()[0];
+    var durationMins = calculateWorkMinutesFromLog(finishedRow);
+    var productName = String(sheet.getRange(rowIndex, 7).getValue() || "").trim();
+    var targetMinutes = Number(meta.targetMinutes) || getTaskDurationMinutes(productName, role);
+    var share = Number(meta.batchShare) || 1;
+    var savedDuration = false;
+    if (targetMinutes <= 0 && durationMins > 0 && share <= 1) {
+      savedDuration = saveTaskDurationIfEmpty(productName, role, durationMins);
+      if (savedDuration) {
+        targetMinutes = Math.max(1, Math.round(durationMins));
+        meta.targetMinutes = targetMinutes;
+        meta.durationSaved = true;
+      }
+    }
+
     writeLogPauseState(logSheet, rowToUpdate, meta, processName);
 
     SpreadsheetApp.flush();
@@ -1304,15 +1422,23 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
       }
 
       if (ovRow > 0) {
-        var finishedRow = logSheet.getRange(rowToUpdate, 1, 1, 13).getValues()[0];
-        var durationMins = calculateWorkMinutesFromLog(finishedRow);
         var durationStr = formatDurationServer(durationMins);
         overviewSheet.getRange(ovRow, 6).setValue(endTime); 
         overviewSheet.getRange(ovRow, 7).setValue(durationStr);
       }
     }
     
-    return { success: true, switched: switched };
+    return {
+      success: true,
+      switched: switched,
+      durationMins: Math.round(durationMins * 10) / 10,
+      targetMinutes: targetMinutes,
+      savedDuration: savedDuration,
+      onTime: targetMinutes > 0 && durationMins <= targetMinutes + 0.5,
+      overtime: targetMinutes > 0 && durationMins > targetMinutes + 0.5,
+      durationLabel: formatSpokenDuration(targetMinutes),
+      actualLabel: formatSpokenDuration(durationMins) || formatDurationServer(durationMins)
+    };
     
   } catch(e) {
     return { success: false, error: e.toString() };
@@ -2717,7 +2843,9 @@ function defaultLogMeta() {
     batchShare: 1,
     batchSplitAt: null,
     entryType: "production",
-    overtimeContinue: false
+    overtimeContinue: false,
+    targetMinutes: 0,
+    durationSaved: false
   };
 }
 
@@ -2735,6 +2863,8 @@ function parseLogMeta(cell) {
     meta.batchSplitAt = parsed.batchSplitAt || null;
     meta.entryType = parsed.entryType || "production";
     meta.overtimeContinue = !!parsed.overtimeContinue;
+    meta.targetMinutes = Number(parsed.targetMinutes) || 0;
+    meta.durationSaved = !!parsed.durationSaved;
     return meta;
   } catch (e) {
     return meta;
@@ -2948,28 +3078,49 @@ function descriptionPlain(text) {
   return String(text || "").replace(/⟦/g, "").replace(/⟧/g, "").replace(/\[\[/g, "").replace(/\]\]/g, "");
 }
 
-function getOrderJobBrief(orderNumber) {
+function emptyJobBrief(orderNumber, process) {
+  return {
+    order: String(orderNumber || "").trim(),
+    type: "",
+    product: "",
+    variation: "",
+    description: "",
+    description_plain: "",
+    dimensions: "",
+    highlights: [],
+    process: String(process || ""),
+    targetMinutes: 0,
+    durationLabel: ""
+  };
+}
+
+function getOrderJobBrief(orderNumber, process) {
   var want = String(orderNumber || "").trim();
   var ss = getSpreadsheet();
   var sheet = getSheetOrDie(ss, TAB_ORDERS);
   var last = sheet.getLastRow();
-  if (last < 2) return { order: want, type: "", variation: "", description: "", dimensions: "", highlights: [] };
+  if (last < 2) return emptyJobBrief(want, process);
   var data = sheet.getRange(2, 1, last - 1, 11).getValues();
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][1] || "").trim() !== want) continue;
     var description = String(data[i][9] || "");
+    var product = String(data[i][6] || "");
+    var minutes = getTaskDurationMinutes(product, process);
     return {
       order: want,
       type: String(data[i][4] || ""),
-      product: String(data[i][6] || ""),
+      product: product,
       variation: String(data[i][7] || ""),
       description: description,
       description_plain: descriptionPlain(description),
       dimensions: String(data[i][10] || ""),
-      highlights: parseDescriptionHighlights(description)
+      highlights: parseDescriptionHighlights(description),
+      process: String(process || ""),
+      targetMinutes: minutes,
+      durationLabel: formatSpokenDuration(minutes)
     };
   }
-  return { order: want, type: "", variation: "", description: "", dimensions: "", highlights: [] };
+  return emptyJobBrief(want, process);
 }
 
 function assertJobConfirm(brief, jobConfirm) {
@@ -3002,7 +3153,7 @@ function getPauseIntervalsForRow(row) {
   return pauses;
 }
 
-function sumPauseMinutesInWindow(pauses, wStart, wEnd, taskName) {
+function sumPauseMinutesInWindow(pauses, wStart, wEnd, taskName, allowAfterShift) {
   if (!pauses || !wStart || !wEnd) return 0;
   var total = 0;
   var w0 = wStart.getTime();
@@ -3012,7 +3163,7 @@ function sumPauseMinutesInWindow(pauses, wStart, wEnd, taskName) {
     var pe = pauses[i].end ? new Date(pauses[i].end).getTime() : w1;
     var a = Math.max(ps, w0);
     var b = Math.min(pe, w1);
-    if (b > a) total += calcRawServerMins(new Date(a), new Date(b), taskName);
+    if (b > a) total += calcRawServerMins(new Date(a), new Date(b), taskName, allowAfterShift);
   }
   return total;
 }
@@ -3035,13 +3186,13 @@ function calculateWorkMinutesMeta(start, end, taskName, meta, legacyPausedMins) 
   if (splitAt && splitAt.getTime() > start.getTime() && splitAt.getTime() < actualEnd.getTime()) {
     var beforeRaw = calcRawServerMins(start, splitAt, taskName, allowAfterShift);
     var afterRaw = calcRawServerMins(splitAt, actualEnd, taskName, allowAfterShift);
-    var beforePause = sumPauseMinutesInWindow(pauses, start, splitAt, taskName);
-    var afterPause = sumPauseMinutesInWindow(pauses, splitAt, actualEnd, taskName);
+    var beforePause = sumPauseMinutesInWindow(pauses, start, splitAt, taskName, allowAfterShift);
+    var afterPause = sumPauseMinutesInWindow(pauses, splitAt, actualEnd, taskName, allowAfterShift);
     return Math.max(0, beforeRaw - beforePause) / share + Math.max(0, afterRaw - afterPause);
   }
 
   var raw = calcRawServerMins(start, actualEnd, taskName, allowAfterShift);
-  var pauseMins = sumPauseMinutesInWindow(pauses, start, actualEnd, taskName);
+  var pauseMins = sumPauseMinutesInWindow(pauses, start, actualEnd, taskName, allowAfterShift);
   var net = Math.max(0, raw - pauseMins);
   if (!splitAt && share > 1 && meta.batchId) return net / share;
   return net;
@@ -3245,10 +3396,10 @@ function closeOpenPauseInMeta(meta, atTime) {
 function cumulativePauseMinsFromMeta(meta, taskName) {
   var pauses = (meta && meta.pauses) || [];
   var total = 0;
-  var now = new Date();
+  var allowAfterShift = !!(meta && meta.overtimeContinue);
   for (var i = 0; i < pauses.length; i++) {
     if (!pauses[i].end) continue;
-    total += calcRawServerMins(new Date(pauses[i].start), new Date(pauses[i].end), taskName);
+    total += calcRawServerMins(new Date(pauses[i].start), new Date(pauses[i].end), taskName, allowAfterShift);
   }
   return total;
 }

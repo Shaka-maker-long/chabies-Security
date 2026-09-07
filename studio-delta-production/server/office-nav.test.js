@@ -83,6 +83,14 @@ assert.ok(/canSeeOffice[\s\S]{0,80}showTaskPicker/.test(floor), "Admin Home must
 assert.ok(floor.indexOf("safeNextPath") === -1 || floor.indexOf("if (next && session.canSeeOffice)") === -1, "office login must not skip Home via next=");
 assert.ok(floor.indexOf('id="homeScore"') !== -1);
 assert.ok(floor.indexOf("loadHomeScore") !== -1);
+assert.ok(floor.indexOf("Your duration for this order is") !== -1);
+assert.ok(floor.indexOf("getMyCompletedWork") !== -1);
+assert.ok(floor.indexOf('id="view-completed"') !== -1);
+assert.ok(floor.indexOf('id="completedWorkBtn"') !== -1);
+assert.ok(floor.indexOf('pane-completed') !== -1);
+assert.ok(floor.indexOf("bi-trophy-fill") !== -1);
+assert.ok(floor.indexOf("bi-alarm-fill") !== -1);
+assert.ok(floor.indexOf("pauses do not count") !== -1 || floor.indexOf("Pauses do not count") !== -1);
 assert.ok(floor.indexOf("/api/office/enquiries/dashboard") !== -1);
 assert.ok(floor.indexOf("Quoted waiting") !== -1);
 assert.ok(floor.indexOf("Quotes this month") !== -1);
