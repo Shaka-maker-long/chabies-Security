@@ -1172,6 +1172,27 @@ function attachTaskEstimate(order, startDate) {
   return decorateOrderTiming(order, startDate ? coerceEstimateDate(startDate) : new Date());
 }
 
+function resumeCountdownResult(orderNum, row) {
+  var meta = row ? parseLogMeta(row.length > 12 ? row[12] : "") : defaultLogMeta();
+  var acc = row ? pauseAccounting(meta, row[9]) : { pauseMs: 0, pausedAt: "" };
+  var target = Number(meta.targetMinutes) || 0;
+  if (!target) {
+    var brief = getOrderJobBrief(String(orderNum || ""), row ? row[3] : "");
+    target = Number(brief && brief.targetMinutes) || 0;
+  }
+  var remMs = remainingMsFromState(row ? row[5] : null, target, acc.pauseMs, "", false, new Date(), meta.priorWorkMs);
+  var remMin = remMs == null ? 0 : Math.max(0, remMs / 60000);
+  var eta = estimateCompletionPack(new Date(), remMin);
+  return {
+    remainingMinutes: Math.round(remMin * 10) / 10,
+    remainingLabel: formatSpokenDuration(remMin),
+    targetMinutes: target,
+    durationLabel: formatSpokenDuration(target),
+    etaAt: eta.etaAt,
+    etaLabel: eta.etaLabel
+  };
+}
+
 function taskDurationSheet() {
   var ss = getSpreadsheet();
   var sheet = ss.getSheetByName("Task_Durations");
@@ -2997,22 +3018,10 @@ function workerResumeOrder(rowIndex, orderNum, workerName, switchReason, workTog
           break;
         }
       }
-      var togetherMeta = togetherRow ? parseLogMeta(togetherRow.length > 12 ? togetherRow[12] : "") : defaultLogMeta();
-      var togetherAcc = togetherRow ? pauseAccounting(togetherMeta, togetherRow[9]) : { pauseMs: 0, pausedAt: "" };
-      var togetherTarget = Number(togetherMeta.targetMinutes) || 0;
-      var togetherRem = remainingMsFromState(togetherRow ? togetherRow[5] : null, togetherTarget, togetherAcc.pauseMs, "", false, new Date(), togetherMeta.priorWorkMs);
-      var togetherMin = togetherRem == null ? 0 : Math.max(0, togetherRem / 60000);
-      var togetherEta = estimateCompletionPack(new Date(), togetherMin);
-      return {
-        success: true,
-        batchId: join.batchId || "",
-        remainingMinutes: Math.round(togetherMin * 10) / 10,
-        remainingLabel: formatSpokenDuration(togetherMin),
-        targetMinutes: togetherTarget,
-        durationLabel: formatSpokenDuration(togetherTarget),
-        etaAt: togetherEta.etaAt,
-        etaLabel: togetherEta.etaLabel
-      };
+      var togetherPack = resumeCountdownResult(orderNum, togetherRow);
+      togetherPack.success = true;
+      togetherPack.batchId = join.batchId || "";
+      return togetherPack;
     }
     if (runningOthers.length && !isUserPauseReason(switchReason)) {
       return { success: false, needsSwitchReason: true, runningOrders: runningOthers, message: "Choose why you are leaving the current order." };
@@ -3032,21 +3041,9 @@ function workerResumeOrder(rowIndex, orderNum, workerName, switchReason, workTog
         break;
       }
     }
-    var resumedMeta = resumedRow ? parseLogMeta(resumedRow.length > 12 ? resumedRow[12] : "") : defaultLogMeta();
-    var resumedAcc = resumedRow ? pauseAccounting(resumedMeta, resumedRow[9]) : { pauseMs: 0, pausedAt: "" };
-    var resumedTarget = Number(resumedMeta.targetMinutes) || 0;
-    var remMs = remainingMsFromState(resumedRow ? resumedRow[5] : null, resumedTarget, resumedAcc.pauseMs, "", false, new Date());
-    var remMin = remMs == null ? 0 : Math.max(0, remMs / 60000);
-    var remEta = estimateCompletionPack(new Date(), remMin);
-    return {
-      success: true,
-      remainingMinutes: Math.round(remMin * 10) / 10,
-      remainingLabel: formatSpokenDuration(remMin),
-      targetMinutes: resumedTarget,
-      durationLabel: formatSpokenDuration(resumedTarget),
-      etaAt: remEta.etaAt,
-      etaLabel: remEta.etaLabel
-    };
+    var resumedPack = resumeCountdownResult(orderNum, resumedRow);
+    resumedPack.success = true;
+    return resumedPack;
   } catch(e) {
     return {success: false, message: e.toString()};
   } finally {
