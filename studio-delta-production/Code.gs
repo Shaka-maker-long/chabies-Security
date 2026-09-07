@@ -559,7 +559,7 @@ function listMaterialsToOrder() {
 function markMaterialOrdered(kind, id, status) {
   var want = String(id || "").trim();
   var next = String(status || "Ordered").trim() || "Ordered";
-  if (next !== "To order" && next !== "Ordered") next = "Ordered";
+  if (next !== "To order" && next !== "Ordered" && next !== "On PO" && next !== "Received") next = "Ordered";
   var tab = String(kind || "").toLowerCase() === "wood" ? TAB_WOOD_TO_ORDER : TAB_GLASS_TO_ORDER;
   var headers = tab === TAB_WOOD_TO_ORDER ? woodOrderHeaders() : glassOrderHeaders();
   var sheet = ensureMaterialsOrderSheet(tab, headers);
