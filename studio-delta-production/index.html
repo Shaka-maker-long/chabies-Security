@@ -4571,6 +4571,11 @@
         document.getElementById('qcChecklistContainer').innerHTML += backboardHtml;
       }
 
+      if (qcKey === 'Quality Control') {
+        document.getElementById('qcChecklistContainer').innerHTML += glassWoodOrderHtml();
+        loadGlassWoodLookups();
+      }
+
       document.getElementById('qcOrderNum').innerText = ord;
       const qcOrder = (appData.currentOrders || []).find(o => o.rowIndex === row) || {};
       const varBox = document.getElementById('qcVariationBox');
@@ -4708,6 +4713,173 @@ function openSteelModal() {
       if (steelSelectionModal) steelSelectionModal.hide();
     }
 
+    function glassWoodSelect(id, options, first) {
+      return '<select id="' + id + '" class="form-select form-select-sm border-dark">' +
+        '<option value="">' + first + '</option>' +
+        options.map((o) => '<option value="' + String(o).replace(/"/g, '&quot;') + '">' + o + '</option>').join('') +
+        '</select>';
+    }
+    function glassWoodOrderHtml() {
+      return `
+        <div id="glassOrderSection" class="mt-4 pt-3 border-top">
+          <label class="fw-bold">Glass to order <span class="text-danger">*</span></label>
+          <p class="small text-muted mb-2">After this QC, add every glass piece. It goes to <b>To order</b> so office can raise a purchase order.</p>
+          <div class="row g-2 align-items-end mb-2">
+            <div class="col-6 col-md-3">${glassWoodSelect('glassComponent', ['Door','Side','Shelf','backboard'], 'Component')}</div>
+            <div class="col-6 col-md-3"><select id="glassType" class="form-select form-select-sm border-dark"><option value="">Glass type</option><option value="Reeded">Reeded</option><option value="Clear">Clear</option><option value="Ocean view">Ocean view</option><option value="__custom__">+ Add another glass</option></select></div>
+            <div class="col-12 col-md-3 d-none" id="glassTypeCustomWrap"><input id="glassTypeCustom" class="form-control form-control-sm" placeholder="New glass type"></div>
+            <div class="col-6 col-md-2">${glassWoodSelect('glassThickness', ['4mm','6mm','8mm','10mm'], 'Thickness')}</div>
+            <div class="col-6 col-md-2"><input id="glassHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm"></div>
+            <div class="col-6 col-md-2"><input id="glassWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm"></div>
+            <div class="col-6 col-md-1"><input id="glassQty" class="form-control form-control-sm" type="number" min="1" step="1" value="1" placeholder="Qty"></div>
+            <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-dark w-100" onclick="addGlassOrderLine()">Add glass</button></div>
+          </div>
+          <div id="glassRowsContainer"></div>
+        </div>
+        <div id="woodOrderSection" class="mt-4 pt-3 border-top">
+          <label class="d-flex gap-2 align-items-center fw-bold mb-2">
+            <input type="checkbox" id="woodRequired" onchange="syncWoodRequired()">
+            <span>Wood is required</span>
+          </label>
+          <div id="woodFormWrap" class="d-none">
+            <p class="small text-muted mb-2">Type a wood name the first time — it is saved for the next dropdown.</p>
+            <div class="row g-2 align-items-end mb-2">
+              <div class="col-6 col-md-3">${glassWoodSelect('woodComponent', ['Door','Side','Shelf','backboard'], 'Component')}</div>
+              <div class="col-6 col-md-3"><select id="woodTypeSaved" class="form-select form-select-sm border-dark" onchange="onWoodTypeSaved()"><option value="">Wood type</option></select></div>
+              <div class="col-12 col-md-3"><input id="woodTypeInput" class="form-control form-control-sm" placeholder="Wood type"></div>
+              <div class="col-6 col-md-2">${glassWoodSelect('woodThickness', ['16mm','20mm','25mm'], 'Thickness')}</div>
+              <div class="col-6 col-md-2"><input id="woodHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm"></div>
+              <div class="col-6 col-md-2"><input id="woodWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm"></div>
+              <div class="col-6 col-md-1"><input id="woodQty" class="form-control form-control-sm" type="number" min="1" step="1" value="1" placeholder="Qty"></div>
+              <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-dark w-100" onclick="addWoodOrderLine()">Add wood</button></div>
+            </div>
+            <div id="woodRowsContainer"></div>
+          </div>
+        </div>`;
+    }
+    function fillSelect(id, values, first, extra) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      let html = '<option value="">' + first + '</option>';
+      (values || []).forEach((v) => { html += '<option value="' + String(v).replace(/"/g, '&quot;') + '">' + v + '</option>'; });
+      if (extra) html += extra;
+      el.innerHTML = html;
+    }
+    function loadGlassWoodLookups() {
+      const typeSel = document.getElementById('glassType');
+      if (typeSel) {
+        typeSel.addEventListener('change', function () {
+          const wrap = document.getElementById('glassTypeCustomWrap');
+          if (wrap) wrap.classList.toggle('d-none', typeSel.value !== '__custom__');
+        });
+      }
+      google.script.run.withSuccessHandler((res) => {
+        fillSelect('glassType', (res && res.types) || ['Reeded','Clear','Ocean view'], 'Glass type', '<option value="__custom__">+ Add another glass</option>');
+        fillSelect('glassComponent', (res && res.components) || ['Door','Side','Shelf','backboard'], 'Component');
+        fillSelect('glassThickness', (res && res.thickness) || ['4mm','6mm','8mm','10mm'], 'Thickness');
+      }).getGlassTypes();
+      google.script.run.withSuccessHandler((res) => {
+        fillSelect('woodTypeSaved', (res && res.types) || [], 'Saved wood types');
+        fillSelect('woodComponent', (res && res.components) || ['Door','Side','Shelf','backboard'], 'Component');
+        fillSelect('woodThickness', (res && res.thickness) || ['16mm','20mm','25mm'], 'Thickness');
+      }).getWoodTypes();
+    }
+    function syncWoodRequired() {
+      const on = !!(document.getElementById('woodRequired') && document.getElementById('woodRequired').checked);
+      const wrap = document.getElementById('woodFormWrap');
+      if (wrap) wrap.classList.toggle('d-none', !on);
+    }
+    function onWoodTypeSaved() {
+      const sel = document.getElementById('woodTypeSaved');
+      const inp = document.getElementById('woodTypeInput');
+      if (sel && inp && sel.value) inp.value = sel.value;
+    }
+    function pushMaterialRow(containerId, cls, line, kind) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      const rowId = kind + '-row-' + Date.now() + '-' + Math.floor(Math.random() * 99);
+      const row = document.createElement('div');
+      row.className = cls + ' d-flex justify-content-between align-items-center mb-2 p-2 border rounded bg-light';
+      row.id = rowId;
+      row.dataset.component = line.component;
+      row.dataset.type = line.type;
+      row.dataset.thickness = line.thickness;
+      row.dataset.height = String(line.height);
+      row.dataset.width = String(line.width);
+      row.dataset.quantity = String(line.quantity);
+      row.innerHTML = '<div><div class="fw-bold">' + line.type + ' · ' + line.thickness + '</div>' +
+        '<div class="small text-muted">' + line.component + ' · ' + line.height + ' × ' + line.width + ' mm · qty ' + line.quantity + '</div></div>' +
+        '<button type="button" class="btn btn-sm btn-outline-danger" onclick="document.getElementById(\'' + rowId + '\').remove()"><i class="bi bi-trash"></i></button>';
+      container.appendChild(row);
+    }
+    function addGlassOrderLine() {
+      const typeSel = document.getElementById('glassType');
+      const custom = (document.getElementById('glassTypeCustom') && document.getElementById('glassTypeCustom').value || '').trim();
+      const type = typeSel && typeSel.value === '__custom__' ? custom : (typeSel && typeSel.value) || '';
+      const line = {
+        component: (document.getElementById('glassComponent') || {}).value || '',
+        type: type,
+        thickness: (document.getElementById('glassThickness') || {}).value || '',
+        height: Number((document.getElementById('glassHeight') || {}).value),
+        width: Number((document.getElementById('glassWidth') || {}).value),
+        quantity: Number((document.getElementById('glassQty') || {}).value)
+      };
+      if (!line.component || !line.type || !line.thickness || !(line.height > 0) || !(line.width > 0) || !(line.quantity > 0)) {
+        showAlert('Choose component, glass type, thickness, height, width, and quantity.');
+        return;
+      }
+      pushMaterialRow('glassRowsContainer', 'glass-order-row', line, 'glass');
+      if (typeSel && typeSel.value === '__custom__' && custom) {
+        const opt = document.createElement('option');
+        opt.value = custom;
+        opt.textContent = custom;
+        typeSel.insertBefore(opt, typeSel.querySelector('option[value="__custom__"]'));
+        typeSel.value = custom;
+        document.getElementById('glassTypeCustomWrap').classList.add('d-none');
+      }
+    }
+    function addWoodOrderLine() {
+      const saved = (document.getElementById('woodTypeSaved') || {}).value || '';
+      const typed = (document.getElementById('woodTypeInput') || {}).value || '';
+      const line = {
+        component: (document.getElementById('woodComponent') || {}).value || '',
+        type: (typed || saved).trim(),
+        thickness: (document.getElementById('woodThickness') || {}).value || '',
+        height: Number((document.getElementById('woodHeight') || {}).value),
+        width: Number((document.getElementById('woodWidth') || {}).value),
+        quantity: Number((document.getElementById('woodQty') || {}).value)
+      };
+      if (!line.component || !line.type || !line.thickness || !(line.height > 0) || !(line.width > 0) || !(line.quantity > 0)) {
+        showAlert('Choose component, wood type, thickness, height, width, and quantity.');
+        return;
+      }
+      pushMaterialRow('woodRowsContainer', 'wood-order-row', line, 'wood');
+      const sel = document.getElementById('woodTypeSaved');
+      if (sel && ![...sel.options].some((o) => o.value === line.type)) {
+        const opt = document.createElement('option');
+        opt.value = line.type;
+        opt.textContent = line.type;
+        sel.appendChild(opt);
+        sel.value = line.type;
+      }
+    }
+    function collectGlassWoodRows(sel, kind) {
+      const rows = [];
+      document.querySelectorAll(sel).forEach((el) => {
+        const line = {
+          component: el.dataset.component,
+          type: el.dataset.type,
+          thickness: el.dataset.thickness,
+          height: Number(el.dataset.height),
+          width: Number(el.dataset.width),
+          quantity: Number(el.dataset.quantity)
+        };
+        if (kind === 'glass') line.glassType = line.type;
+        else line.woodType = line.type;
+        rows.push(line);
+      });
+      return rows;
+    }
     function openBackboardModal() {
       ensureBackboards(() => openBackboardModalReady());
     }
@@ -5046,6 +5218,27 @@ function openSteelModal() {
               }
             }
 
+            const glassSection = document.getElementById('glassOrderSection');
+            if (glassSection) {
+              const glassRows = collectGlassWoodRows('#glassRowsContainer .glass-order-row', 'glass');
+              if (!glassRows.length) {
+                showAlert("Add the glass for this order. It goes to To order so office can buy it."); return;
+              }
+              session.pendingGlassOrder = glassRows;
+            } else {
+              session.pendingGlassOrder = [];
+            }
+            const woodSection = document.getElementById('woodOrderSection');
+            if (woodSection && document.getElementById('woodRequired') && document.getElementById('woodRequired').checked) {
+              const woodRows = collectGlassWoodRows('#woodRowsContainer .wood-order-row', 'wood');
+              if (!woodRows.length) {
+                showAlert("Wood is required — add at least one wood line."); return;
+              }
+              session.pendingWoodOrder = woodRows;
+            } else {
+              session.pendingWoodOrder = collectGlassWoodRows('#woodRowsContainer .wood-order-row', 'wood');
+            }
+
             const backboardSection = document.getElementById('backboardLoggingSection');
             if (backboardSection) {
               const backboardRows = document.querySelectorAll('#backboardRowsContainer .backboard-row');
@@ -5143,7 +5336,7 @@ function openSteelModal() {
               }
               loadDashboard(true);
             })
-            .finishOrder(session.pendingRow, (session.logIds && session.logIds[session.activeOrder]) || session.logId, d, sig, fileData, session.name, dSteel, session.activeOrder, dBackboard);
+            .finishOrder(session.pendingRow, (session.logIds && session.logIds[session.activeOrder]) || session.logId, d, sig, fileData, session.name, dSteel, session.activeOrder, dBackboard, session.pendingGlassOrder || [], session.pendingWoodOrder || []);
 
       } catch (err) {
           isSubmitting = false;
