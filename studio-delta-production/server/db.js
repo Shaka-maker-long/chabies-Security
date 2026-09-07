@@ -646,7 +646,10 @@ function normalizeQuoteNo(raw, opts) {
     throw new Error("Enter a quotation number");
   }
   const n = quoteNumberValue(s);
-  if (!n) throw new Error("Quotation number must look like SOQ2361");
+  if (!n) {
+    if (opts && opts.allowEmpty) return "";
+    throw new Error("Quotation number must look like SOQ2361");
+  }
   return "SOQ" + n;
 }
 
