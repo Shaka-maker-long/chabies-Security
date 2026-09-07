@@ -830,12 +830,24 @@ function monthFromEnquiryDate(v) {
   return MONTH_SHORT[sastParts(d).m];
 }
 
+const ENQUIRY_DROPDOWN_SHEET = {
+  category: "category",
+  product: "product",
+  province: "province",
+  source: "source",
+  enquiry_source: "source",
+  enquiry_type: "type"
+};
+
 function listEnquiryDropdowns() {
   const saved = state.enquiry_dropdowns && typeof state.enquiry_dropdowns === "object" ? state.enquiry_dropdowns : {};
+  const sheet = listDropdowns();
   const out = {};
   for (const key of ENQUIRY_DROPDOWN_KEYS) {
+    const sheetKey = ENQUIRY_DROPDOWN_SHEET[key];
     out[key] = unique([
       ...(DEFAULT_ENQUIRY_DROPDOWNS[key] || []),
+      ...(sheetKey && Array.isArray(sheet[sheetKey]) ? sheet[sheetKey] : []),
       ...(Array.isArray(saved[key]) ? saved[key] : [])
     ]);
   }
@@ -846,6 +858,9 @@ function addEnquiryDropdownItem(field, value) {
   if (ENQUIRY_DROPDOWN_KEYS.indexOf(field) === -1) throw new Error("Unknown enquiry dropdown");
   const item = String(value || "").trim();
   if (!item) throw new Error("Value is required");
+  if (["product", "category", "province", "source"].indexOf(field) !== -1) {
+    addDropdownItem(field, item);
+  }
   if (!state.enquiry_dropdowns || typeof state.enquiry_dropdowns !== "object") state.enquiry_dropdowns = {};
   if (!Array.isArray(state.enquiry_dropdowns[field])) state.enquiry_dropdowns[field] = [];
   const all = listEnquiryDropdowns()[field] || [];
