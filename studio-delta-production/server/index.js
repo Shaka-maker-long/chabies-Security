@@ -75,6 +75,10 @@ const indexHtml = path.join(__dirname, "..", "index.html");
 app.get("/orders", (_req, res) => {
   res.sendFile(path.join(publicDir, "orders.html"));
 });
+app.get("/orders/schedule", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "orders-schedule.html"));
+});
 app.get("/enquiries", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "enquiries.html"));
@@ -101,7 +105,7 @@ app.get("/tasks/completed", (_req, res) => {
   res.sendFile(path.join(publicDir, "tasks.html"));
 });
 app.get("/schedule", (_req, res) => {
-  res.sendFile(path.join(publicDir, "schedule.html"));
+  res.redirect(302, "/orders/schedule");
 });
 app.get("/dropdowns", (_req, res) => {
   res.sendFile(path.join(publicDir, "dropdowns.html"));
