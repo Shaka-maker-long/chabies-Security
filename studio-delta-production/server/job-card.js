@@ -247,6 +247,34 @@ function dimensionsLabel(dims, fallback) {
   return rows.map((r) => r.name + ": " + r.value + "mm").join(", ");
 }
 
+function isStandardType(type) {
+  return String(type || "").trim().toLowerCase() === "standard";
+}
+
+function hasUsableDimensions(dims) {
+  const values = [dims && dims.height, dims && dims.width, dims && dims.depth, dims && dims.diameter]
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value > 1);
+  return values.length > 0;
+}
+
+function assertNonStandardDimensions(order, body, dims) {
+  if (isStandardType(order && order.type)) return "standard";
+  const check = String(body && body.dimension_check || "").trim().toLowerCase();
+  if (check !== "unchanged" && check !== "updated") {
+    throw new Error(
+      "This order is not Standard. Confirm that dimensions did not change, or type the actual Height, Width, Depth, or Diameter in millimetres before generating the job card."
+    );
+  }
+  if (!hasUsableDimensions(dims)) {
+    throw new Error(
+      "Actual dimensions are required for " + String((order && order.type) || "this type") +
+      ". Enter Height, Width, Depth, or Diameter in millimetres — catalog placeholders such as 1 × 1 × 1 are not accepted."
+    );
+  }
+  return check;
+}
+
 function guessExt(url, contentType) {
   const type = String(contentType || "").toLowerCase();
   if (type.indexOf("png") !== -1) return ".png";
@@ -536,6 +564,7 @@ async function generateJobCard(input) {
     : parsePastedCuttingList(body.cutting_text || body.pastedCuttingList || "");
 
   const dims = normalizeDimensions(body.dimensions, order.product);
+  const dimensionCheck = assertNonStandardDimensions(order, body, dims);
   const created = todayIso();
   const found = catalog.lookupProduct(order.product);
   const record = {
@@ -555,7 +584,8 @@ async function generateJobCard(input) {
     dimensions_string: dimensionsLabel(dims, order.dimensions || "Standard"),
     image_url: (found && found.imageUrl) || body.image_url || "",
     cutting,
-    regenerated: elig.mode === "regenerate"
+    regenerated: elig.mode === "regenerate",
+    dimension_check: dimensionCheck
   };
 
   const dest = path.join(jobCardsDir(), safeOrderFile(orderNumber) + ".pdf");
@@ -565,9 +595,12 @@ async function generateJobCard(input) {
   map[orderNumber] = record;
   saveRecords(map);
 
+  const patch = {};
+  if (elig.mode === "create") patch.status = AFTER_GENERATE_STATUS;
+  if (!isStandardType(order.type)) patch.dimensions = dimensionsLabel(dims);
   let savedOrder = order;
-  if (elig.mode === "create") {
-    savedOrder = upsertOrder(Object.assign({}, order, { status: AFTER_GENERATE_STATUS }));
+  if (Object.keys(patch).length) {
+    savedOrder = upsertOrder(Object.assign({}, order, patch));
   }
 
   return {
@@ -602,5 +635,9 @@ module.exports = {
   generateJobCard,
   readJobCardPdf,
   normalizeDimensions,
-  emptyCutting
+  emptyCutting,
+  isStandardType,
+  hasUsableDimensions,
+  assertNonStandardDimensions,
+  dimensionsLabel
 };
