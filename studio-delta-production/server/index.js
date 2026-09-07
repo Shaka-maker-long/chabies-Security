@@ -80,7 +80,16 @@ app.get("/enquiries", (_req, res) => {
   res.sendFile(path.join(publicDir, "enquiries.html"));
 });
 app.get("/enquiries/dashboard", (_req, res) => {
+  noStore(res);
   res.sendFile(path.join(publicDir, "enquiries-dashboard.html"));
+});
+app.get("/enquiries/replies", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "enquiries-replies.html"));
+});
+app.get("/enquiries/bookings", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "enquiries-bookings.html"));
 });
 app.get("/tasks", (_req, res) => {
   res.sendFile(path.join(publicDir, "tasks.html"));

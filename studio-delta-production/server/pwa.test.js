@@ -53,6 +53,8 @@ const pages = [
   "index.html",
   "public/enquiries.html",
   "public/enquiries-dashboard.html",
+  "public/enquiries-replies.html",
+  "public/enquiries-bookings.html",
   "public/tasks.html",
   "public/orders.html",
   "public/schedule.html",
