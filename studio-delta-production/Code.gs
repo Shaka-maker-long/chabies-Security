@@ -33,6 +33,14 @@ var RESUME_CHASE_MINS = 8 * 60;
 var IDLE_GRACE_MINS = 10;
 var TAB_OVERTIME = "Overtime_Grants";
 var TAB_RESUME_CHASE = "Resume_Chase";
+var TAB_GLASS_TYPES = "Glass_Types";
+var TAB_WOOD_TYPES = "Wood_Types";
+var TAB_GLASS_TO_ORDER = "Glass_To_Order";
+var TAB_WOOD_TO_ORDER = "Wood_To_Order";
+var GLASS_COMPONENTS = ["Door", "Side", "Shelf", "backboard"];
+var GLASS_THICKNESS = ["4mm", "6mm", "8mm", "10mm"];
+var WOOD_THICKNESS = ["16mm", "20mm", "25mm"];
+var DEFAULT_GLASS_TYPES = ["Reeded", "Clear", "Ocean view"];
 var SYSTEM_PAUSE_NOT_SELECTED = "Not working this order now";
 var INDIRECT_TASKS = ["Cleaning", "Maintenance", "Material handling", "Waiting for materials", "Waiting for plate", "Meeting", "Training", "Other"];
 
@@ -318,6 +326,247 @@ function writeBackboardUsage(ss, orderNum, workerName, processName, backboardUsa
       }
     }
   });
+}
+
+function processNeedsGlass(role, processName) {
+  var p = String(processName || "").trim().toLowerCase();
+  return p === "pre-powder coating";
+}
+
+function ensureNameListSheet(tab, header, seeds) {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(tab);
+  if (!sheet) {
+    sheet = ss.insertSheet(tab);
+    sheet.appendRow([header]);
+    (seeds || []).forEach(function (name) { sheet.appendRow([name]); });
+  } else if (sheet.getLastRow() < 1) {
+    sheet.appendRow([header]);
+    (seeds || []).forEach(function (name) { sheet.appendRow([name]); });
+  } else if (sheet.getLastRow() === 1 && seeds && seeds.length) {
+    var have = {};
+    if (sheet.getLastRow() >= 2) {
+      sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().forEach(function (r) {
+        have[String(r[0] || "").trim().toLowerCase()] = true;
+      });
+    }
+    seeds.forEach(function (name) {
+      if (!have[String(name).toLowerCase()]) sheet.appendRow([name]);
+    });
+  }
+  return sheet;
+}
+
+function listNameSheet(tab, header, seeds) {
+  var sheet = ensureNameListSheet(tab, header, seeds);
+  var names = [];
+  if (sheet.getLastRow() >= 2) {
+    var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < grid.length; i++) {
+      var n = String(grid[i][0] || "").trim();
+      if (n && names.indexOf(n) === -1) names.push(n);
+    }
+  }
+  names.sort(function (a, b) { return a.localeCompare(b); });
+  return names;
+}
+
+function saveNameIfNew(tab, header, seeds, name) {
+  var n = String(name || "").trim();
+  if (!n) return false;
+  var sheet = ensureNameListSheet(tab, header, seeds);
+  var have = {};
+  if (sheet.getLastRow() >= 2) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues().forEach(function (r) {
+      have[String(r[0] || "").trim().toLowerCase()] = true;
+    });
+  }
+  if (have[n.toLowerCase()]) return false;
+  sheet.appendRow([n]);
+  return true;
+}
+
+function getGlassTypes() {
+  var names = listNameSheet(TAB_GLASS_TYPES, "Name", DEFAULT_GLASS_TYPES);
+  DEFAULT_GLASS_TYPES.forEach(function (n) {
+    if (names.indexOf(n) === -1) names.unshift(n);
+  });
+  return { types: names, components: GLASS_COMPONENTS.slice(), thickness: GLASS_THICKNESS.slice() };
+}
+
+function getWoodTypes() {
+  return {
+    types: listNameSheet(TAB_WOOD_TYPES, "Name", []),
+    components: GLASS_COMPONENTS.slice(),
+    thickness: WOOD_THICKNESS.slice()
+  };
+}
+
+function ensureMaterialsOrderSheet(tab, headers) {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(tab);
+  if (!sheet) {
+    sheet = ss.insertSheet(tab);
+    sheet.appendRow(headers);
+  } else if (sheet.getLastRow() < 1) {
+    sheet.appendRow(headers);
+  }
+  return sheet;
+}
+
+function glassOrderHeaders() {
+  return ["ID", "Timestamp", "Order #", "Worker", "Component", "Glass type", "Thickness", "Height", "Width", "Quantity", "Status"];
+}
+
+function woodOrderHeaders() {
+  return ["ID", "Timestamp", "Order #", "Worker", "Component", "Wood type", "Thickness", "Height", "Width", "Quantity", "Status"];
+}
+
+function normalizeMmChoice(value, allowed) {
+  var raw = String(value || "").trim().toLowerCase().replace(/\s+/g, "");
+  if (!raw) return "";
+  if (/^\d+$/.test(raw)) raw = raw + "mm";
+  for (var i = 0; i < allowed.length; i++) {
+    if (String(allowed[i]).toLowerCase() === raw) return allowed[i];
+  }
+  return "";
+}
+
+function normalizeMaterialLine(item, kind) {
+  item = item || {};
+  var component = String(item.component || "").trim();
+  var typeName = String(item.type || item.glassType || item.woodType || "").trim();
+  var allowedT = kind === "wood" ? WOOD_THICKNESS : GLASS_THICKNESS;
+  var thickness = normalizeMmChoice(item.thickness, allowedT);
+  var height = Number(item.height);
+  var width = Number(item.width);
+  var qty = Math.round(Number(item.quantity));
+  var okComp = false;
+  for (var i = 0; i < GLASS_COMPONENTS.length; i++) {
+    if (GLASS_COMPONENTS[i].toLowerCase() === component.toLowerCase()) {
+      component = GLASS_COMPONENTS[i];
+      okComp = true;
+      break;
+    }
+  }
+  if (!okComp || !typeName || !thickness || !(height > 0) || !(width > 0) || !(qty > 0)) return null;
+  return {
+    component: component,
+    type: typeName,
+    thickness: thickness,
+    height: height,
+    width: width,
+    quantity: qty
+  };
+}
+
+function writeGlassToOrder(ss, orderNum, workerName, lines) {
+  if (!lines || !lines.length) return 0;
+  var sheet = ensureMaterialsOrderSheet(TAB_GLASS_TO_ORDER, glassOrderHeaders());
+  var wrote = 0;
+  lines.forEach(function (raw) {
+    var line = normalizeMaterialLine(raw, "glass");
+    if (!line) return;
+    saveNameIfNew(TAB_GLASS_TYPES, "Name", DEFAULT_GLASS_TYPES, line.type);
+    sheet.appendRow([
+      Utilities.getUuid(),
+      new Date(),
+      orderNum,
+      workerName,
+      line.component,
+      line.type,
+      line.thickness,
+      line.height,
+      line.width,
+      line.quantity,
+      "To order"
+    ]);
+    wrote++;
+  });
+  return wrote;
+}
+
+function writeWoodToOrder(ss, orderNum, workerName, lines) {
+  if (!lines || !lines.length) return 0;
+  var sheet = ensureMaterialsOrderSheet(TAB_WOOD_TO_ORDER, woodOrderHeaders());
+  var wrote = 0;
+  lines.forEach(function (raw) {
+    var line = normalizeMaterialLine(raw, "wood");
+    if (!line) return;
+    saveNameIfNew(TAB_WOOD_TYPES, "Name", [], line.type);
+    sheet.appendRow([
+      Utilities.getUuid(),
+      new Date(),
+      orderNum,
+      workerName,
+      line.component,
+      line.type,
+      line.thickness,
+      line.height,
+      line.width,
+      line.quantity,
+      "To order"
+    ]);
+    wrote++;
+  });
+  return wrote;
+}
+
+function readMaterialsSheet(tab, headers, kind) {
+  var sheet = ensureMaterialsOrderSheet(tab, headers);
+  var items = [];
+  if (sheet.getLastRow() < 2) return items;
+  var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 11).getValues();
+  for (var i = 0; i < grid.length; i++) {
+    var typeName = String(grid[i][5] || "").trim();
+    if (!String(grid[i][0] || "").trim() && !typeName) continue;
+    items.push({
+      id: String(grid[i][0] || ""),
+      timestamp: grid[i][1] ? new Date(grid[i][1]).toISOString() : "",
+      order: String(grid[i][2] || ""),
+      worker: String(grid[i][3] || ""),
+      component: String(grid[i][4] || ""),
+      type: typeName,
+      thickness: String(grid[i][6] || ""),
+      height: Number(grid[i][7]) || 0,
+      width: Number(grid[i][8]) || 0,
+      quantity: Number(grid[i][9]) || 0,
+      status: String(grid[i][10] || "To order"),
+      kind: kind,
+      row: i + 2
+    });
+  }
+  items.sort(function (a, b) {
+    return String(b.timestamp || "").localeCompare(String(a.timestamp || ""));
+  });
+  return items;
+}
+
+function listMaterialsToOrder() {
+  return {
+    glass: readMaterialsSheet(TAB_GLASS_TO_ORDER, glassOrderHeaders(), "glass"),
+    wood: readMaterialsSheet(TAB_WOOD_TO_ORDER, woodOrderHeaders(), "wood"),
+    glassTypes: getGlassTypes(),
+    woodTypes: getWoodTypes()
+  };
+}
+
+function markMaterialOrdered(kind, id, status) {
+  var want = String(id || "").trim();
+  var next = String(status || "Ordered").trim() || "Ordered";
+  if (next !== "To order" && next !== "Ordered") next = "Ordered";
+  var tab = String(kind || "").toLowerCase() === "wood" ? TAB_WOOD_TO_ORDER : TAB_GLASS_TO_ORDER;
+  var headers = tab === TAB_WOOD_TO_ORDER ? woodOrderHeaders() : glassOrderHeaders();
+  var sheet = ensureMaterialsOrderSheet(tab, headers);
+  if (sheet.getLastRow() < 2) return { success: false, message: "Line not found." };
+  var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < grid.length; i++) {
+    if (String(grid[i][0] || "").trim() === want) {
+      sheet.getRange(i + 2, 11).setValue(next);
+      return { success: true, id: want, status: next };
+    }
+  }
+  return { success: false, message: "Line not found." };
 }
 
 function doGet() {
@@ -1245,7 +1494,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
 }
 
 // STEP 2: Added steelUsageData as the 7th parameter. orderNumHint is 8th (optional).
-function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerName, steelUsageData, orderNumHint, backboardUsageData) {
+function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerName, steelUsageData, orderNumHint, backboardUsageData, glassOrderData, woodOrderData) {
   var lock = LockService.getScriptLock();
   lock.waitLock(120000); 
   
@@ -1299,6 +1548,21 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
     if (processNeedsBackboard(role, processName)) {
       if (!backboardUsageData || backboardUsageData.length === 0) {
         throw new Error("Server rejected: Backboard used must be logged before finishing " + (processName || role) + ".");
+      }
+    }
+    var glassLines = [];
+    (glassOrderData || []).forEach(function (raw) {
+      var line = normalizeMaterialLine(raw, "glass");
+      if (line) glassLines.push(line);
+    });
+    var woodLines = [];
+    (woodOrderData || []).forEach(function (raw) {
+      var line = normalizeMaterialLine(raw, "wood");
+      if (line) woodLines.push(line);
+    });
+    if (processNeedsGlass(role, processName)) {
+      if (!glassLines.length) {
+        throw new Error("Server rejected: Add the glass for this order before finishing Pre-Powder Coating QC.");
       }
     }
 
@@ -1357,6 +1621,8 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
     }
 
     writeBackboardUsage(ss, orderNum, workerName, processName, backboardUsageData);
+    writeGlassToOrder(ss, orderNum, workerName, glassLines);
+    writeWoodToOrder(ss, orderNum, workerName, woodLines);
 
     var resultStr = qcData ? qcData.map(function(i){return i.q+": "+i.a}).join("\n") : "Complete";
     logSheet.getRange(rowToUpdate, 7).setValue(endTime);

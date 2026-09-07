@@ -230,6 +230,32 @@ function mountOffice(app) {
     }
   });
 
+  app.get("/api/office/materials-to-order", requireOffice, async (_req, res) => {
+    try {
+      const { callShopFunction } = require("./gas");
+      const data = await callShopFunction("listMaterialsToOrder", []);
+      res.json({ ok: true, glass: (data && data.glass) || [], wood: (data && data.wood) || [] });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.put("/api/office/materials-to-order", requireOffice, async (req, res) => {
+    try {
+      const { callShopFunction } = require("./gas");
+      const result = await callShopFunction("markMaterialOrdered", [
+        req.body && req.body.kind,
+        req.body && req.body.id,
+        req.body && req.body.status
+      ]);
+      if (!result || result.success === false) {
+        return res.status(400).json({ ok: false, error: (result && result.message) || "Could not update" });
+      }
+      res.json({ ok: true, result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.get("/api/office/durations", requireOffice, (_req, res) => {
     res.json({ ok: true, rows: staff.listDurations(), tasks: staff.FLOOR_TASKS });
   });
