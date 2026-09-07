@@ -2,128 +2,14 @@ const fs = require("fs");
 const nodePath = require("path");
 const { dataDir } = require("./workbook-store");
 const db = require("./db");
+const { TOPICS, REPLIES_VERSION, DEFAULT_REPLIES } = require("./enquiry-replies-default");
 
-const TOPICS = ["Enquiry", "Quote", "Follow-up", "Showroom", "Order", "Close"];
 const BOOKING_STATUSES = ["Booked", "Done", "No-show", "Cancelled"];
 const PLACEHOLDERS = [
   { key: "{{client_name}}", label: "Client name" },
   { key: "{{enquiry_no}}", label: "Enquiry number" },
   { key: "{{quote_no}}", label: "Quote number" },
   { key: "{{product}}", label: "Product" }
-];
-
-const DEFAULT_REPLIES = [
-  {
-    id: "thank-you",
-    topic: "Enquiry",
-    title: "Thank you for the enquiry",
-    subject: "Studio Delta — we have your enquiry {{enquiry_no}}",
-    body:
-      "Good day {{client_name}}\n\n" +
-      "Thank you for getting in touch with Studio Delta. We have logged enquiry {{enquiry_no}} for {{product}}.\n\n" +
-      "Someone from the office will come back to you as soon as we have checked the request. If we still need sizes, finish, or contact details, we will ask in a separate mail.\n\n" +
-      "Kind regards\nStudio Delta"
-  },
-  {
-    id: "waiting-details",
-    topic: "Enquiry",
-    title: "Waiting on personal details",
-    subject: "Studio Delta {{enquiry_no}} — details we still need",
-    body:
-      "Good day {{client_name}}\n\n" +
-      "We have enquiry {{enquiry_no}} on the system, but we cannot start costing until we have your name, email or cell number, and province.\n\n" +
-      "Please reply with those details so we can continue.\n\n" +
-      "Kind regards\nStudio Delta"
-  },
-  {
-    id: "waiting-specs",
-    topic: "Enquiry",
-    title: "Waiting on specifications",
-    subject: "Studio Delta {{enquiry_no}} — specifications for {{product}}",
-    body:
-      "Good day {{client_name}}\n\n" +
-      "Thank you — enquiry {{enquiry_no}} is with us. To cost {{product}} we still need the missing specifications (sizes, finish / colour, or a clear description of the change).\n\n" +
-      "Please reply with those details, or say if you would rather visit the showroom to go through them.\n\n" +
-      "Kind regards\nStudio Delta"
-  },
-  {
-    id: "quote-sent",
-    topic: "Quote",
-    title: "Quote attached",
-    subject: "Studio Delta quotation {{quote_no}} — {{enquiry_no}}",
-    body:
-      "Good day {{client_name}}\n\n" +
-      "Please find our quotation {{quote_no}} for enquiry {{enquiry_no}} ({{product}}).\n\n" +
-      "Figures on the quote exclude VAT unless the line says otherwise. Delivery is shown separately.\n\n" +
-      "We will follow up if we have not heard from you. You are welcome to reply with questions, or to book a showroom visit.\n\n" +
-      "Kind regards\nStudio Delta"
-  },
-  {
-    id: "follow-up",
-    topic: "Follow-up",
-    title: "Follow-up on the quote",
-    subject: "Studio Delta {{quote_no}} — following up on {{enquiry_no}}",
-    body:
-      "Good day {{client_name}}\n\n" +
-      "I am following up on quotation {{quote_no}} for enquiry {{enquiry_no}} ({{product}}).\n\n" +
-      "Have you had a chance to go through it? If you would like a change, another quote, or a showroom visit, reply to this mail and we will arrange it.\n\n" +
-      "Kind regards\nStudio Delta"
-  },
-  {
-    id: "showroom-invite",
-    topic: "Showroom",
-    title: "Invite to the showroom",
-    subject: "Studio Delta showroom — {{enquiry_no}}",
-    body:
-      "Good day {{client_name}}\n\n" +
-      "You are welcome to visit the Studio Delta showroom to look at {{product}} for enquiry {{enquiry_no}}.\n\n" +
-      "Please reply with a day and time that suits you (weekday mornings work best) and we will book you in. Bring sizes and any pictures if you have them.\n\n" +
-      "Kind regards\nStudio Delta"
-  },
-  {
-    id: "showroom-confirm",
-    topic: "Showroom",
-    title: "Showroom booking confirmed",
-    subject: "Studio Delta showroom booking — {{enquiry_no}}",
-    body:
-      "Good day {{client_name}}\n\n" +
-      "Your showroom visit for enquiry {{enquiry_no}} ({{product}}) is booked. We look forward to seeing you.\n\n" +
-      "If you need to move the time, reply to this mail and we will change the diary.\n\n" +
-      "Kind regards\nStudio Delta"
-  },
-  {
-    id: "pop-thanks",
-    topic: "Order",
-    title: "Proof of payment received",
-    subject: "Studio Delta {{enquiry_no}} — thank you, we have your payment",
-    body:
-      "Good day {{client_name}}\n\n" +
-      "Thank you. We have the proof of payment for enquiry {{enquiry_no}} ({{product}}). The job now moves onto Orders and into production.\n\n" +
-      "We will be in touch if we need anything further.\n\n" +
-      "Kind regards\nStudio Delta"
-  },
-  {
-    id: "not-in-scope",
-    topic: "Close",
-    title: "Not within scope",
-    subject: "Studio Delta {{enquiry_no}} — not a product we make",
-    body:
-      "Good day {{client_name}}\n\n" +
-      "Thank you for enquiry {{enquiry_no}}. After reviewing {{product}}, this is not a job we can take on — it falls outside what Studio Delta manufactures.\n\n" +
-      "We are sorry we cannot help on this one. You are welcome to send a different request.\n\n" +
-      "Kind regards\nStudio Delta"
-  },
-  {
-    id: "not-interested",
-    topic: "Close",
-    title: "Client not going ahead",
-    subject: "Studio Delta {{enquiry_no}} — closing the enquiry",
-    body:
-      "Good day {{client_name}}\n\n" +
-      "Thank you for letting us know you will not go ahead with enquiry {{enquiry_no}} ({{product}}).\n\n" +
-      "We have closed it on our side. If you come back to it later, reply to this mail and we will reopen it.\n\n" +
-      "Kind regards\nStudio Delta"
-  }
 ];
 
 function repliesPath() {
@@ -158,7 +44,7 @@ function normalizeReply(row, fallbackId) {
   const subject = String((row && row.subject) || "").trim();
   const body = String((row && row.body) || "").replace(/\r\n/g, "\n").trim();
   let topic = String((row && row.topic) || "Enquiry").trim();
-  if (TOPICS.indexOf(topic) < 0) topic = "Enquiry";
+  if (TOPICS.indexOf(topic) < 0) topic = "Other";
   if (!id) throw new Error("A reply id is required");
   if (!title) throw new Error("Give the reply a name");
   if (!subject) throw new Error("Subject is required");
@@ -168,9 +54,9 @@ function normalizeReply(row, fallbackId) {
 
 function loadReplies() {
   const raw = readJson(repliesPath(), null);
-  if (!raw || !Array.isArray(raw.replies) || !raw.replies.length) {
+  if (!raw || raw.version !== REPLIES_VERSION || !Array.isArray(raw.replies) || !raw.replies.length) {
     const replies = cloneDefaults();
-    writeJson(repliesPath(), { replies });
+    writeJson(repliesPath(), { version: REPLIES_VERSION, replies });
     return replies;
   }
   return raw.replies.map((row, i) => normalizeReply(row, "er-" + (i + 1)));
@@ -178,7 +64,7 @@ function loadReplies() {
 
 function saveReplies(list) {
   const replies = (Array.isArray(list) ? list : []).map((row, i) => normalizeReply(row, "er-" + (i + 1)));
-  writeJson(repliesPath(), { replies });
+  writeJson(repliesPath(), { version: REPLIES_VERSION, replies });
   return replies;
 }
 
@@ -219,7 +105,9 @@ function fillText(text, enquiry) {
     "{{quote_no}}": String(row.quote_no || "").trim() || "the quotation",
     "{{product}}": productLine(row) || "your request"
   };
-  return String(text || "").replace(/\{\{(client_name|enquiry_no|quote_no|product)\}\}/g, (m) => map[m] || m);
+  return String(text || "")
+    .replace(/\[Client['’]s Name\]/gi, map["{{client_name}}"])
+    .replace(/\{\{(client_name|enquiry_no|quote_no|product)\}\}/g, (m) => map[m] || m);
 }
 
 function fillReply(reply, enquiryNo) {
@@ -354,6 +242,7 @@ function enquiryOptions() {
 
 module.exports = {
   TOPICS,
+  REPLIES_VERSION,
   BOOKING_STATUSES,
   PLACEHOLDERS,
   DEFAULT_REPLIES,

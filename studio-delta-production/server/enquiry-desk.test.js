@@ -26,13 +26,17 @@ db.getEnquiry = (no) => (no === "#2604" ? db.listEnquiries()[0] : null);
 
 try {
   const replies = desk.loadReplies();
-  assert.ok(replies.length >= 8);
-  assert.ok(replies.some((r) => r.id === "quote-sent" && /quotation/.test(r.subject)));
+  assert.ok(replies.length >= 25);
+  assert.ok(replies.some((r) => r.id === "costing-in-progress"));
+  assert.ok(replies.some((r) => r.id === "standard-quotes" && /quotation/.test(r.subject)));
+  assert.ok(replies.some((r) => r.id === "inquiry-with-wood" && /rubiomonocoat/.test(r.body)));
+  assert.ok(replies.some((r) => r.id === "request-float-link" && /float\.co\.za/.test(r.body)));
+  assert.ok(replies.some((r) => r.id === "delivery-gauteng" && /Silverton/.test(r.body)));
   assert.ok(replies.every((r) => r.subject && r.body && r.title));
-  const filled = desk.fillReply(replies.find((r) => r.id === "quote-sent"), "#2604");
+  const filled = desk.fillReply(replies.find((r) => r.id === "standard-quotes"), "#2604");
   assert.ok(filled.subject.indexOf("SOQ2604") !== -1);
   assert.ok(filled.body.indexOf("Blaire Bedroom Client") !== -1);
-  assert.ok(filled.body.indexOf("Blaire Dressing Table") !== -1);
+  assert.ok(desk.fillText("Good day [Client's Name],", { client_name: "Pat" }).indexOf("Pat") !== -1);
   assert.ok(desk.fillText("Hi {{client_name}}", null).indexOf("there") !== -1);
 
   const added = desk.upsertReply({
@@ -49,7 +53,8 @@ try {
   assert.ok(!desk.loadReplies().some((r) => r.id === added.reply.id));
 
   const restored = desk.restoreReplies();
-  assert.ok(restored.some((r) => r.id === "thank-you"));
+  assert.ok(restored.some((r) => r.id === "costing-in-progress"));
+  assert.ok(restored.some((r) => r.topic === "December" && r.id === "december-mds"));
 
   assert.throws(() => desk.upsertReply({ title: "x", subject: "", body: "b" }), /Subject/);
 
