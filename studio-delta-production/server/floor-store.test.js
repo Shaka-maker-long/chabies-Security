@@ -50,12 +50,15 @@ function orderRow(orderNumber) {
   return sheet.grid.findIndex((row, i) => i > 0 && String(row[col]) === orderNumber) + 1;
 }
 
+const CONFIRM = { understood: true, highlights: [] };
+
 async function main() {
+  await callShopFunction("grantOvertime", ["Sipho", "", "Admin", "test"]);
   const login = await callShopFunction("verifyGlobalLogin", ["Sipho", "1234"]);
   assert.strictEqual(login.success, true, JSON.stringify(login));
 
   const weldRow = orderRow("SD-WELD");
-  const started = await callShopFunction("startOrder", [weldRow, "Sipho", "Welding"]);
+  const started = await callShopFunction("startOrder", [weldRow, "Sipho", "Welding", [], "", false, null, CONFIRM]);
   assert.strictEqual(started.success, true, JSON.stringify(started));
   assert.ok(started.logId);
 
@@ -71,7 +74,7 @@ async function main() {
   assert.ok(finished && (finished.success !== false), JSON.stringify(finished));
 
   const cutRow = orderRow("SD-CUT");
-  const cutStart = await callShopFunction("startOrder", [cutRow, "Sipho", "Profile Cutting"]);
+  const cutStart = await callShopFunction("startOrder", [cutRow, "Sipho", "Profile Cutting", [], "", false, null, CONFIRM]);
   assert.strictEqual(cutStart.success, true, JSON.stringify(cutStart));
   const cutFinish = await callShopFunction("finishOrder", [
     cutRow,
@@ -87,7 +90,7 @@ async function main() {
   assert.ok(cutFinish && cutFinish.success !== false, JSON.stringify(cutFinish));
 
   const asmRow = orderRow("SD-ASM");
-  const asmStart = await callShopFunction("startOrder", [asmRow, "Sipho", "Assembly"]);
+  const asmStart = await callShopFunction("startOrder", [asmRow, "Sipho", "Assembly", [], "", false, null, CONFIRM]);
   assert.strictEqual(asmStart.success, true, JSON.stringify(asmStart));
   const asmFinish = await callShopFunction("finishOrder", [
     asmRow,

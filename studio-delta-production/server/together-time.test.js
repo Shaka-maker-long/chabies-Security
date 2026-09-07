@@ -40,7 +40,10 @@ function openLogs(orderNum) {
     .filter((x) => x.i > 0 && String(x.row[1]) === orderNum && !x.row[6]);
 }
 
+const CONFIRM = { understood: true, highlights: [] };
+
 (async function main() {
+  await callShopFunction("grantOvertime", ["Thabo", "", "Admin", "test"]);
   db.upsertOrder({
     order_number: "S-HOPPER-1",
     status: "Not Yet Started",
@@ -87,7 +90,7 @@ function openLogs(orderNum) {
   const c = order("S-2003");
   const d = order("S-2004");
 
-  const first = await callShopFunction("startOrder", [a.id, "Thabo", "Welding", [], "", false]);
+  const first = await callShopFunction("startOrder", [a.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
     assert.strictEqual(first.success, true, JSON.stringify(first));
 
   const countsAfterStart = await callShopFunction("getFloorTaskCounts", []);
@@ -111,11 +114,11 @@ function openLogs(orderNum) {
   assert.ok(!layout.piles.delivery.some((o) => o.order === "S-QC-LIVE"), "in-process Final QC is not in finished goods");
   assert.ok(layout.piles.prepowder && layout.piles.prepowder.some((o) => o.order === "S-PRE-1"), "pre-powder QC waits at the right door");
 
-  const blocked = await callShopFunction("startOrder", [b.id, "Thabo", "Welding", [], "", false]);
+  const blocked = await callShopFunction("startOrder", [b.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
   assert.ok(blocked.needsSwitchReason, "must ask work-together or switch: " + JSON.stringify(blocked));
   assert.ok(blocked.runningOrders && blocked.runningOrders.length, "running orders listed");
 
-  const together = await callShopFunction("startOrder", [b.id, "Thabo", "Welding", [], "", true]);
+  const together = await callShopFunction("startOrder", [b.id, "Thabo", "Welding", [], "", true, null, CONFIRM]);
   assert.strictEqual(together.success, true, JSON.stringify(together));
 
   const logsA = openLogs("S-2001");
@@ -153,9 +156,9 @@ function openLogs(orderNum) {
   assert.ok(Number(JSON.parse(String(doneA[12] || "{}")).batchShare) >= 2, "finished S-2001 keeps split share");
   assert.ok(Number(JSON.parse(String(doneB[12] || "{}")).batchShare) >= 2, "finished S-2002 keeps split share");
 
-  const startC = await callShopFunction("startOrder", [c.id, "Thabo", "Welding", [], "", false]);
+  const startC = await callShopFunction("startOrder", [c.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
   assert.strictEqual(startC.success, true, JSON.stringify(startC));
-  const switchToD = await callShopFunction("startOrder", [d.id, "Thabo", "Welding", [], "No materials", false]);
+  const switchToD = await callShopFunction("startOrder", [d.id, "Thabo", "Welding", [], "No materials", false, null, CONFIRM]);
   assert.strictEqual(switchToD.success, true, JSON.stringify(switchToD));
 
   const pollSwitch = await callShopFunction("pollFloor", ["Welding", "Thabo"]);

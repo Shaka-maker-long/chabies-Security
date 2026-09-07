@@ -47,12 +47,16 @@ const assemblyOrder = db.upsertOrder({
   price_excl_vat: "500.00"
 });
 
+const CONFIRM = { understood: true, highlights: [] };
+
 (async function main() {
+  await callShopFunction("grantOvertime", ["Sipho", "", "Admin", "test"]);
+  await callShopFunction("grantOvertime", ["Lerato", "", "Admin", "test"]);
   const login = await callShopFunction("verifyGlobalLogin", ["Sipho", "1234"]);
   assert.strictEqual(login.success, true, JSON.stringify(login));
   assert.ok(login.tasks.indexOf("Profile Cutting") !== -1);
 
-  const start = await callShopFunction("startOrder", [saved.id, "Sipho", "Profile Cutting", [], "", false]);
+  const start = await callShopFunction("startOrder", [saved.id, "Sipho", "Profile Cutting", [], "", false, null, CONFIRM]);
   assert.strictEqual(start.success, true, JSON.stringify(start));
   assert.strictEqual(start.newStatus, "Profile Cutting");
   assert.ok(start.logId);
@@ -98,7 +102,7 @@ const assemblyOrder = db.upsertOrder({
   assert.strictEqual(afterFinish.status, "Ready for Tagging");
   assert.strictEqual(afterFinish.assigned_operator, "");
 
-  const asmStart = await callShopFunction("startOrder", [assemblyOrder.id, "Lerato", "Assembly", [], "", false]);
+  const asmStart = await callShopFunction("startOrder", [assemblyOrder.id, "Lerato", "Assembly", [], "", false, null, CONFIRM]);
   assert.strictEqual(asmStart.success, true, JSON.stringify(asmStart));
   const asmFinish = await callShopFunction("finishOrder", [
     assemblyOrder.id,

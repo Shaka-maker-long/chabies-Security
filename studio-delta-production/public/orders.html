@@ -158,6 +158,8 @@
         </div>
         <label>Detailed description
           <textarea id="f_detailed_description" placeholder="Finish, glass, extras"></textarea>
+          <span class="hint">Select the words production must not miss (for example additional shelf), then mark them as important.</span>
+          <button type="button" class="ghost" id="markImportantBtn" style="margin-top:6px;width:auto">Mark selected as important</button>
         </label>
         <label>Client name *
           <input id="f_client_name">
@@ -544,7 +546,9 @@
       html += viewItem("Amount paid", row.amount_paid);
       html += viewItem("Owing", owingOf(row));
       html += "</div>";
-      html += "<div class=\"view-grid\" style=\"margin-top:8px\">" + viewItem("Detailed description", row.detailed_description, true) + "</div>";
+      html += "<div class=\"view-grid\" style=\"margin-top:8px\"><div class=\"view-item wide\"><div class=\"view-label\">Detailed description</div><div class=\"view-value\">" +
+        String(row.detailed_description || "—").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/⟦([^⟧]+)⟧/g, "<mark>$1</mark>").replace(/\[\[([^\]]+)\]\]/g, "<mark>$1</mark>") +
+        "</div></div></div>";
       document.getElementById("viewBody").innerHTML = html;
       const enqBtn = document.getElementById("viewEnquiryBtn");
       enqBtn.hidden = !row.enquiry_no;
@@ -640,6 +644,23 @@
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(render, 120);
     });
+    document.getElementById("markImportantBtn").onclick = () => {
+      const box = document.getElementById("f_detailed_description");
+      const start = box.selectionStart;
+      const end = box.selectionEnd;
+      if (start == null || end == null || end <= start) {
+        setFormErr("Select the words in the description first, then mark them as important.");
+        return;
+      }
+      const val = box.value;
+      const picked = val.slice(start, end);
+      if (picked.indexOf("⟦") !== -1 || picked.indexOf("[[") !== -1) return;
+      box.value = val.slice(0, start) + "⟦" + picked + "⟧" + val.slice(end);
+      setFormErr("");
+      box.focus();
+      box.selectionStart = start;
+      box.selectionEnd = end + 2;
+    };
     sdRequireOffice("orders").then((p) => { if (p) load(); });
   </script>
   <script src="/enquiry-process.js?v=reject-costing"></script>

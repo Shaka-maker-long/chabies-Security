@@ -24,6 +24,8 @@ const SEED_TABS = {
   Backboards: [["Category", "Profile Name"]],
   Backboard_Usage: [["Timestamp", "Order", "Worker", "Process", "Type", "Size"]],
   Idle_Alerts: [["Date", "Worker", "Idle Since", "Minutes", "Noted", "Status", "Task"]],
+  Overtime_Grants: [["Date", "Worker", "Granted By", "Note", "Created"]],
+  Resume_Chase: [["Date", "Worker", "Orders", "Status", "Actual Start", "Note", "Noted By"]],
   Schedule: [["Worker", "Block Start", "Block End", "Process", "Order", "Notes"]],
   Task_Durations: [["Product", "Process", "Minutes"]]
 };

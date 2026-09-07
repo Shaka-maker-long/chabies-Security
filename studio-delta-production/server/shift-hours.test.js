@@ -54,8 +54,11 @@ function readMeta() {
   return JSON.parse(String(hit.values[12] || "{}"));
 }
 
+const CONFIRM = { understood: true, highlights: [] };
+
 (async function main() {
-  const started = await callShopFunction("startOrder", [order.id, "Thabo", "Welding", [], "", false]);
+  await callShopFunction("grantOvertime", ["Thabo", "", "Admin", "test"]);
+  const started = await callShopFunction("startOrder", [order.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
   assert.strictEqual(started.success, true, JSON.stringify(started));
 
   writeMeta({
@@ -77,11 +80,21 @@ function readMeta() {
   assert.strictEqual(afterLunch.resumed, 1, JSON.stringify(afterLunch));
   assert.ok(readMeta().pauses[0].end, "lunch pause closed");
 
+  const otSheet = book.getSheetByName("Overtime_Grants");
+  if (otSheet && otSheet.getLastRow() > 1) {
+    const n = otSheet.getLastRow() - 1;
+    const blank = [];
+    for (let i = 0; i < n; i++) blank.push(["", "", "", "", ""]);
+    otSheet.getRange(2, 1, n, 5).setValues(blank);
+    persistWorkbook();
+  }
+
   const endShift = await callShopFunction("enforceShiftHours", [new Date("2026-09-07T16:00:00+02:00")]);
   assert.strictEqual(endShift.kind, "end");
   assert.strictEqual(endShift.paused, 1, JSON.stringify(endShift));
   assert.strictEqual(readMeta().pauses[readMeta().pauses.length - 1].reason, "End of shift");
 
+  await callShopFunction("grantOvertime", ["Thabo", "", "Admin", "test"]);
   const resumed = await callShopFunction("workerResumeOrder", [order.id, "S-SHIFT-1", "Thabo", "", false]);
   assert.strictEqual(resumed.success, true, JSON.stringify(resumed));
   const afterResume = readMeta();
@@ -93,6 +106,28 @@ function readMeta() {
   assert.strictEqual(stillOt.paused, 0, "overtime stays running: " + JSON.stringify(stillOt));
   const last = readMeta().pauses[readMeta().pauses.length - 1];
   assert.ok(last.end, "end-of-shift pause stayed closed");
+
+  const highlighted = db.upsertOrder({
+    order_number: "S-HIGH-1",
+    status: "Ready for Welding",
+    type: "Custom",
+    variation: "Extra shelf",
+    detailed_description: "Unit with ⟦additional shelf⟧ on the right",
+    dimensions: "Height: 1500mm",
+    product: "Slider",
+    client_name: "Highlight Client",
+    price_excl_vat: "100.00"
+  });
+  const brief = await callShopFunction("getOrderJobBrief", ["S-HIGH-1"]);
+  assert.ok(brief.highlights && brief.highlights.indexOf("additional shelf") !== -1, JSON.stringify(brief));
+  const missingMark = await callShopFunction("startOrder", [
+    highlighted.id, "Thabo", "Welding", [], "", false, null, { understood: true, highlights: [] }
+  ]);
+  assert.ok(/important|additional shelf/i.test(missingMark.message || ""), JSON.stringify(missingMark));
+  const noUnderstand = await callShopFunction("startOrder", [
+    highlighted.id, "Thabo", "Welding", [], "", false, null, { understood: false, highlights: ["additional shelf"] }
+  ]);
+  assert.ok(noUnderstand.needsJobConfirm, JSON.stringify(noUnderstand));
 
   console.log("shift-hours.test.js ok");
 })().catch((e) => {
