@@ -59,7 +59,7 @@
         <a href="/enquiries/bookings">Showroom bookings</a>
       </nav>
       <h1>Standard email replies</h1>
-      <p class="lede">Copy a reply into Outlook. {{client_name}}, {{enquiry_no}}, {{quote_no}} and {{product}} fill from the enquiry you pick.</p>
+      <p class="lede">Studio Delta’s standard Outlook replies. Pick a type, fill from an enquiry, then copy into the mail. {{client_name}} and [Client's Name] become the client; {{quote_no}} is the quotation number.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -120,7 +120,9 @@
         "{{quote_no}}": (row && row.quote_no) || "the quotation",
         "{{product}}": (row && row.product) || "your request"
       };
-      return String(text || "").replace(/\{\{(client_name|enquiry_no|quote_no|product)\}\}/g, (m) => map[m] || m);
+      return String(text || "")
+        .replace(/\[Client['’]s Name\]/gi, map["{{client_name}}"])
+        .replace(/\{\{(client_name|enquiry_no|quote_no|product)\}\}/g, (m) => map[m] || m);
     }
     function enquiryOf() {
       const no = document.querySelector("[name=enquiry_no]").value;
