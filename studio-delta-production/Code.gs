@@ -897,13 +897,13 @@ function getOrdersForRole(role, workerName, skipCache) {
     'Grinding': ['Ready for Grinding', 'Grinding'],
     'Quality Control': [
       'Ready for Pre-Powder Coating', 'Pre-Powder Coating', 
-      'Ready for Powder Coating', 'Powder Coating', 
+      'Ready for Powder Coating', 'Sent to Paint Shop', 'Powder Coating', 
       'Ready for Final QC', 'Final QC',
       'Ready for Delivery', 'Out for Delivery'
     ],
-    'Assembly': ['Ready for Assembly', 'Assembly', 'Paint Preparation'],
+    'Assembly': ['Ready for Assembly', 'Assembly'],
     'Paint Preparation': ['Ready for Assembly', 'Paint Preparation'],
-    'Painting': ['Ready for Assembly', 'Paint Preparation', 'Ready for Painting', 'Painting']
+    'Painting': ['Ready for Painting', 'Painting']
   };
 
   var plateCuttingStages = [
@@ -1333,7 +1333,7 @@ function getFloorTaskCounts() {
     "Ready for Pre-Powder Coating", "Pre-Powder Coating"
   ]);
   out["Powder Coating"] = tallyFloorCounts(qc, [
-    "Ready for Powder Coating", "Powder Coating"
+    "Ready for Powder Coating", "Sent to Paint Shop", "Powder Coating"
   ]);
   out["Final QC"] = tallyFloorCounts(qc, [
     "Ready for Final QC", "Final QC"
@@ -1356,7 +1356,7 @@ function floorReadyPileId(status) {
   if (s === "ready for welding" || s === "welding") return "welding";
   if (s === "ready for grinding" || s === "grinding") return "grinding";
   if (s === "ready for pre-powder coating" || s === "pre-powder coating") return "prepowder";
-  if (s === "ready for powder coating" || s === "powder coating") return "powder";
+  if (s === "ready for powder coating" || s === "powder coating" || s === "sent to paint shop") return "powder";
   if (s === "paint preparation" || s === "ready for painting") return "prep";
   if (s === "painting") return "painting";
   if (s === "ready for assembly" || s === "assembly") return "assembly";
@@ -1590,6 +1590,10 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       var orderRow = orderData[thisRow - 1] || [];
       var orderNum = orderRow[1];
       var currentStatus = orderRow[2];
+
+      if (String(currentStatus || "").trim().toLowerCase() === "sent to paint shop") {
+        return { success: false, message: "This order is at the paint shop. Receive it on Paint shop before shop-floor work." };
+      }
 
       var nextStatus = getStartStatusForRole(currentStatus, role);
 
@@ -2411,7 +2415,7 @@ function getStartStatusForRole(currentStatus, role) {
   var currentLower = String(currentStatus || "").trim().toLowerCase();
   var roleLower = String(role || "").trim().toLowerCase();
   if (roleLower === "plate cutting") return "Plate Cutting";
-  if (currentLower === "ready for assembly" && (roleLower === "paint preparation" || roleLower === "painting" || roleLower === "painter")) {
+  if (currentLower === "ready for assembly" && (roleLower === "paint preparation" || roleLower === "paint prep")) {
     return "Paint Preparation";
   }
   if (currentLower === "ready for painting" && (roleLower === "painting" || roleLower === "painter")) {
@@ -2484,9 +2488,9 @@ function isAllowedStatus(status) {
     "ready for grinding", "grinding", 
     // Powder Coating
     "ready for pre-powder coating", "pre-powder coating",
-    "ready for powder coating", "powder coating", 
+    "ready for powder coating", "sent to paint shop", "powder coating", 
     // Assembly, painting & QC
-    "ready for assembly", "paint preparation", "ready for painting", "painting", "assembly", 
+    "ready for assembly", "assembly", "paint preparation", "ready for painting", "painting", 
     "ready for final qc", "final qc",
     // Delivery
     "ready for delivery", "out for delivery"

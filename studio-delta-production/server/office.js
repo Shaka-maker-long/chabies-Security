@@ -40,6 +40,7 @@ const { importGoogleWorkbook, tabCounts, googleMigrateEnabled, dataDir } = requi
 const staff = require("./staff");
 const pipeline = require("./enquiry-pipeline");
 const desk = require("./enquiry-desk");
+const paintShop = require("./powder-shop");
 const fs = require("fs");
 const sqlite = require("./sqlite-store");
 const {
@@ -794,6 +795,50 @@ function mountOffice(app) {
 
   app.get("/api/office/debtors", requireOffice, requireDebtors, (_req, res) => {
     res.json({ ok: true, rows: listDebtors(), vatRate: VAT_RATE });
+  });
+
+  app.get("/api/office/paint-shop", requireOffice, (_req, res) => {
+    try {
+      res.json({ ok: true, ...paintShop.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/paint-shop/send", requireOffice, (req, res) => {
+    try {
+      const result = paintShop.sendToPaintShop(
+        (req.body && (req.body.orderNumbers || req.body.orders)) || [],
+        req.office && req.office.name
+      );
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/paint-shop/receive", requireOffice, (req, res) => {
+    try {
+      const result = paintShop.receiveFromPaintShop(req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/paint-shop/invoices/:invoiceId", requireOffice, (req, res) => {
+    const file = paintShop.readInvoiceFile(req.params.invoiceId);
+    if (!file) {
+      res.status(404).json({ ok: false, error: "Invoice not found." });
+      return;
+    }
+    const download = String((req.query && req.query.download) || "") === "1";
+    res.setHeader("Content-Type", file.mime || "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "invoice").replace(/"/g, "") + "\""
+    );
+    res.send(file.buffer);
   });
 
   app.post("/api/office/orders/:orderNumber/payments", requireOffice, requireDebtors, (req, res) => {
