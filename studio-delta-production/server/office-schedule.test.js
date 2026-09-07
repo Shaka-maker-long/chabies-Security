@@ -26,6 +26,8 @@ assert.strictEqual(sched.gridWeekLabel("2026-09-21"), "Week39");
 assert.strictEqual(sched.formatOrderDate("07/01/2026"), "07-Jan");
 assert.strictEqual(sched.formatOrderDate("28/07/2026"), "28-Jul");
 assert.strictEqual(sched.formatOrderDate("2026-09-21"), "21-Sep");
+assert.strictEqual(sched.formatOrderDate("07-Jan"), "07-Jan");
+assert.strictEqual(sched.formatOrderDate("7 Jan 2026"), "07-Jan");
 assert.deepStrictEqual(sched.workdays("2026-09-21", 5), [
   "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25"
 ]);

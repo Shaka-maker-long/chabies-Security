@@ -67,6 +67,8 @@ function formatDayLabel(iso) {
   return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" });
 }
 
+const MONTH_IX = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+
 function formatOrderDate(v) {
   const s = String(v || "").trim();
   if (!s) return "";
@@ -74,6 +76,16 @@ function formatOrderDate(v) {
   if (!d) {
     const dmy = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
     if (dmy) d = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]), 12, 0, 0);
+  }
+  if (!d) {
+    const named = s.match(/^(\d{1,2})[-\s]+([A-Za-z]{3,})(?:[-\s,]+(\d{4}))?$/);
+    if (named) {
+      const m = MONTH_IX[named[2].slice(0, 3).toLowerCase()];
+      if (m != null) {
+        const y = named[3] ? Number(named[3]) : new Date().getFullYear();
+        d = new Date(y, m, Number(named[1]), 12, 0, 0);
+      }
+    }
   }
   if (!d || Number.isNaN(d.getTime())) return s;
   const mon = d.toLocaleString("en-GB", { month: "short" }).replace(/\./g, "").slice(0, 3);
