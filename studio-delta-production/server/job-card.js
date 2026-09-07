@@ -145,6 +145,42 @@ function getJobCard(orderNumber) {
   return loadRecords()[key] || null;
 }
 
+function pdfUrlFor(orderNumber, download) {
+  const base = "/api/office/job-cards/" + encodeURIComponent(orderNumber) + "/pdf";
+  return download ? base + "?download=1" : base;
+}
+
+function listGeneratedJobCards() {
+  const map = loadRecords();
+  const byNumber = {};
+  listOrders().forEach((o) => {
+    if (o && o.order_number) byNumber[o.order_number] = o;
+  });
+  return Object.keys(map).map((key) => {
+    const rec = map[key] || {};
+    const order = byNumber[key] || {};
+    const orderNumber = rec.order_number || key;
+    const hasPdf = !!(rec.pdf_path && fs.existsSync(rec.pdf_path));
+    return {
+      order_number: orderNumber,
+      customer: rec.customer || order.client_name || "",
+      product: rec.product || order.product || "",
+      created_date: rec.created_date || "",
+      created_at: rec.created_at || "",
+      status: order.status || "",
+      province: rec.province || order.province || "",
+      colour: rec.colour || order.powder_coating || "",
+      has_pdf: hasPdf,
+      pdf_url: pdfUrlFor(orderNumber),
+      download_url: pdfUrlFor(orderNumber, true)
+    };
+  }).sort((a, b) => {
+    const at = String(b.created_at || "").localeCompare(String(a.created_at || ""));
+    if (at) return at;
+    return String(b.order_number || "").localeCompare(String(a.order_number || ""));
+  });
+}
+
 function listEligibleOrders() {
   return listOrders()
     .filter((o) => jobCardEligibility(o.status).ok)
@@ -538,7 +574,7 @@ async function generateJobCard(input) {
     record,
     order: savedOrder,
     status: savedOrder.status,
-    pdf_url: "/api/office/job-cards/" + encodeURIComponent(orderNumber) + "/pdf"
+    pdf_url: pdfUrlFor(orderNumber)
   };
 }
 
@@ -561,6 +597,7 @@ module.exports = {
   jobCardEligibility,
   applyOfficeOrderStatusLock,
   listEligibleOrders,
+  listGeneratedJobCards,
   getJobCard,
   generateJobCard,
   readJobCardPdf,

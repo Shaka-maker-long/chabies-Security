@@ -215,7 +215,8 @@
         <h1 id="viewTitle">Order</h1>
         <div class="tools">
           <button class="ghost" type="button" id="viewEnquiryBtn" hidden>Open enquiry</button>
-          <button class="ghost" type="button" id="viewJobCardBtn" hidden>Job card</button>
+          <button class="ghost" type="button" id="viewPrintCardBtn" hidden>Open / print job card</button>
+          <button class="ghost" type="button" id="viewJobCardBtn" hidden>Generate job card</button>
           <button class="ghost" type="button" id="viewEditBtn">Edit</button>
           <button class="ghost" type="button" onclick="closeView()">Close</button>
         </div>
@@ -263,6 +264,7 @@
     let operators = [];
     let nextOrderNumber = "S1";
     let editingIndex = -1;
+    let printedByOrder = {};
 
     function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
     function parseMoney(s) {
@@ -386,11 +388,14 @@
         HEADERS.forEach(([k, , , freeze], c) => {
           const extra = k === "status" ? statusClass(row[k]) : "";
           if (k === "_edit") {
+            const printed = printedByOrder[row.order_number];
             const canCard = canGenerateJobCard(row.status);
             html += "<td class=\"" + colClass(k, freeze, "") + "\" style=\"" + colStyle(k, colWidths[c], freeze) + "\">" +
               "<div class=\"row-actions-cell\">" +
               "<button type=\"button\" class=\"ghost icon-btn\" title=\"Edit order\" aria-label=\"Edit order\" data-edit-order=\"" + i + "\"><i class=\"bi bi-pencil\"></i></button>" +
-              (canCard ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Generate job card\" aria-label=\"Generate job card\" data-job-card=\"" + esc(row.order_number) + "\"><i class=\"bi bi-file-earmark-pdf\"></i></button>" : "") +
+              (printed && printed.has_pdf
+                ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Open / print job card\" aria-label=\"Open / print job card\" data-open-job-card=\"" + esc(printed.pdf_url) + "\"><i class=\"bi bi-printer\"></i></button>"
+                : (canCard ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Generate job card\" aria-label=\"Generate job card\" data-job-card=\"" + esc(row.order_number) + "\"><i class=\"bi bi-file-earmark-pdf\"></i></button>" : "")) +
               "</div></td>";
             return;
           }
@@ -547,6 +552,12 @@
         if (row.enquiry_no && typeof sdOpenEnquiryProcess === "function") sdOpenEnquiryProcess(row.enquiry_no);
         else if (row.enquiry_no) location.href = "/enquiries";
       };
+      const printed = printedByOrder[row.order_number];
+      const printBtn = document.getElementById("viewPrintCardBtn");
+      printBtn.hidden = !(printed && printed.has_pdf);
+      printBtn.onclick = () => {
+        if (printed && printed.pdf_url) window.open(printed.pdf_url, "_blank", "noopener");
+      };
       const cardBtn = document.getElementById("viewJobCardBtn");
       cardBtn.hidden = !canGenerateJobCard(row.status);
       cardBtn.onclick = () => {
@@ -563,12 +574,14 @@
     }
 
     async function load() {
-      const [ordersRes, dropRes] = await Promise.all([
+      const [ordersRes, dropRes, cardsRes] = await Promise.all([
         sdOfficeFetch("/api/office/orders"),
-        sdOfficeFetch("/api/office/dropdowns")
+        sdOfficeFetch("/api/office/dropdowns"),
+        sdOfficeFetch("/api/office/job-cards")
       ]);
       const j = await ordersRes.json();
       const d = await dropRes.json();
+      const cards = await cardsRes.json().catch(function () { return {}; });
       if (!j.ok) {
         document.getElementById("status").textContent = j.error || "Could not load orders";
         return;
@@ -577,11 +590,20 @@
       dropdowns = d.dropdowns || {};
       operators = j.operators || [];
       nextOrderNumber = j.nextOrderNumber || "S1";
+      printedByOrder = {};
+      (cards.ok && cards.rows ? cards.rows : []).forEach((card) => {
+        if (card && card.order_number) printedByOrder[card.order_number] = card;
+      });
       document.getElementById("status").textContent = rows.length + " orders";
       render();
     }
 
     document.getElementById("grid").onclick = (e) => {
+      const printed = e.target.closest("[data-open-job-card]");
+      if (printed) {
+        window.open(printed.getAttribute("data-open-job-card"), "_blank", "noopener");
+        return;
+      }
       const card = e.target.closest("[data-job-card]");
       if (card) {
         location.href = "/orders/job-card?order=" + encodeURIComponent(card.getAttribute("data-job-card"));

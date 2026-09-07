@@ -76,6 +76,10 @@ assert.ok(page.indexOf("Add All Cutting List Items to BOM") === -1);
 assert.ok(page.indexOf("Paste cutting list") !== -1);
 assert.ok(page.indexOf("Generate job card") !== -1);
 assert.ok(page.indexOf("Ready for Steelwork") !== -1);
+assert.ok(page.indexOf("Printed job cards") !== -1);
+assert.ok(page.indexOf("Open / print") !== -1);
+assert.ok(page.indexOf("/api/office/job-cards") !== -1);
+assert.ok(officeJs.indexOf("listGeneratedJobCards") !== -1);
 
 db.upsertOrder({
   order_number: "S260193",
@@ -118,6 +122,11 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
   assert.ok(pdf.toString("latin1").indexOf("BUILDER") === -1);
   assert.ok(pdf.toString("latin1").indexOf("S260193") !== -1);
   assert.ok(pdf.toString("latin1").indexOf("BOM") === -1);
+
+  const listed = jobCard.listGeneratedJobCards();
+  assert.ok(listed.some((r) => r.order_number === "S260193" && r.has_pdf && r.pdf_url));
+  assert.ok(listed[0].order_number === "S260193");
+  assert.ok(listed[0].download_url.indexOf("download=1") !== -1);
 
   const after = db.listOrders().find((o) => o.order_number === "S260193");
   assert.strictEqual(after.status, "Ready for Steelwork");
