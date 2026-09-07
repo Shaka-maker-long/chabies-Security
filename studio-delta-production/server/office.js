@@ -30,7 +30,8 @@ const {
   copyEnquiriesFromWorkbook,
   persistenceInfo,
   findOpenEnquiryDuplicates,
-  createOrderFromEnquiry
+  createOrderFromEnquiry,
+  nextStudioOrderNumber
 } = require("./db");
 const { importGoogleWorkbook, tabCounts, googleMigrateEnabled, dataDir } = require("./workbook-store");
 const staff = require("./staff");
@@ -254,7 +255,14 @@ function mountOffice(app) {
       delete copy.payments;
       return copy;
     });
-    res.json({ ok: true, rows, fields: ORDER_FIELDS, vatRate: VAT_RATE });
+    res.json({
+      ok: true,
+      rows,
+      fields: ORDER_FIELDS,
+      vatRate: VAT_RATE,
+      nextOrderNumber: nextStudioOrderNumber(),
+      operators: staff.listUsers().map((u) => u.name).filter(Boolean)
+    });
   });
 
   app.put("/api/office/orders", requireOffice, (req, res) => {
