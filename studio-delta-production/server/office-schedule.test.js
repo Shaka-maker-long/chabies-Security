@@ -23,6 +23,9 @@ assert.strictEqual(sched.mondayOf("2026-09-23"), "2026-09-21");
 assert.strictEqual(sched.weekdayLong("2026-09-21"), "Monday");
 assert.ok(sched.formatDayLabel("2026-09-21").indexOf("Monday") !== -1);
 assert.strictEqual(sched.gridWeekLabel("2026-09-21"), "Week39");
+assert.strictEqual(sched.formatOrderDate("07/01/2026"), "07-Jan");
+assert.strictEqual(sched.formatOrderDate("28/07/2026"), "28-Jul");
+assert.strictEqual(sched.formatOrderDate("2026-09-21"), "21-Sep");
 assert.deepStrictEqual(sched.workdays("2026-09-21", 5), [
   "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25"
 ]);
@@ -59,8 +62,13 @@ assert.strictEqual(cabinet.item_type, "Standard");
 assert.strictEqual(cabinet.product, "Vivienne Arched Cabinet");
 assert.strictEqual(cabinet.category, "Cabinet");
 
+assert.strictEqual(cabinet.delivery_planned, false);
 db.setScheduleCell(cabinet.id, "2026-09-21", "LD");
-const side = rows.find((r) => r.order_number === "S260207");
+const planned = db.listSchedule("2026-09-21", "2026-09-25").find((r) => r.order_number === "S260186");
+assert.strictEqual(planned.delivery_planned, true);
+assert.ok(planned.delivery_days.indexOf("2026-09-21") !== -1);
+assert.strictEqual(planned.order_date_label, "01-Sep");
+const side = db.listSchedule("2026-09-21", "2026-09-25").find((r) => r.order_number === "S260207");
 db.setScheduleCell(side.id, "2026-09-22", "LC");
 db.setScheduleCell(side.id, "2026-09-22", "LC");
 db.setScheduleCell(cabinet.id, "2026-09-24", "QC");

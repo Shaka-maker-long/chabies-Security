@@ -7,7 +7,7 @@
   <script src="/sd-pwa.js?v=pwa"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <style>
-    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; }
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --warn:#fff4e0; --lock:88px; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
@@ -17,18 +17,30 @@
     .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
     .tabs a.on { background:#1d2939; color:#fff; }
     .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .tools input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:220px; font:inherit; font-size:13px; }
+    .tools input[type=search]:focus { outline:none; border-color:#2f6fed; box-shadow:0 0 0 3px rgba(47,111,237,.15); }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
     .wrap { overflow:auto; height:calc(100vh - 118px); }
-    table { border-collapse:collapse; min-width:1600px; background:#fff; font-size:12px; }
-    th, td { border:1px solid var(--line); padding:4px 6px; height:34px; white-space:nowrap; }
-    th { background:var(--head); position:sticky; top:0; z-index:2; font-size:11px; }
+    table { border-collapse:separate; border-spacing:0; min-width:2200px; background:#fff; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:4px 6px; height:34px; white-space:nowrap; background:#fff; }
+    thead th { background:var(--head); font-size:11px; }
+    thead tr:nth-child(1) th { position:sticky; top:0; z-index:5; }
+    thead tr:nth-child(2) th { position:sticky; top:34px; z-index:5; }
+    thead tr:nth-child(3) th { position:sticky; top:68px; z-index:5; }
     .day { min-width:58px; text-align:center; }
     .left { min-width:110px; max-width:160px; }
     .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; max-width:150px; }
     td input { width:100%; border:0; font:inherit; background:transparent; }
     .code-cell { text-align:center; font-weight:700; cursor:pointer; user-select:none; }
     .code-cell:focus { outline:2px solid #2f6fed; outline-offset:-2px; }
+    .freeze { position:sticky; left:0; z-index:3; box-shadow:2px 0 0 var(--line); min-width:var(--lock); max-width:var(--lock); }
+    thead th.freeze { z-index:7; background:var(--head); }
+    td.freeze { background:#fff; }
+    .week-lock { font-weight:700; letter-spacing:.02em; }
+    tr.unplanned td { background:var(--warn); }
+    tr.unplanned td.freeze { background:var(--warn); }
+    tr.unplanned td input { background:transparent; }
     #picker {
       position:fixed; z-index:30; display:none; width:240px; background:#fff;
       border:1px solid var(--line); border-radius:10px; padding:8px;
@@ -40,11 +52,15 @@
     #picker button { border:0; border-radius:6px; padding:6px 8px; font:inherit; font-size:11px; font-weight:700; cursor:pointer; }
     #picker .clear { width:100%; margin-top:6px; background:#fff; color:#1d2939; border:1px solid var(--line); }
     .msg { font-size:12px; color:var(--muted); }
-    .legend { display:flex; flex-wrap:wrap; gap:6px; padding:8px 16px; background:#fff; border-bottom:1px solid var(--line); }
+    .legend { display:flex; flex-wrap:wrap; gap:6px; padding:8px 16px; background:#fff; border-bottom:1px solid var(--line); align-items:center; }
     .legend span { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#344054; font-weight:600; }
     .swatch { min-width:28px; padding:2px 6px; border-radius:4px; text-align:center; font-size:11px; font-weight:700; }
+    .hint { color:var(--muted); font-weight:500; margin-left:4px; }
     .empty { padding:36px 16px; color:var(--muted); font-size:13px; text-align:center; }
-    @media (max-width: 720px) { .tools { width:100%; margin-left:0; } }
+    @media (max-width: 720px) {
+      .tools { width:100%; margin-left:0; }
+      .tools input[type=search] { width:100%; min-width:0; }
+    }
   </style>
 </head>
 <body>
@@ -56,16 +72,17 @@
         <a href="/orders/delivery">Delivery summary</a>
       </nav>
       <h1>Production schedule</h1>
-      <p class="lede">Every order from the sheet is listed here. Mark Latest Delivery (LD) or Latest Courier (LC) on a weekday so it appears on Delivery summary.</p>
+      <p class="lede">Search any column, jump a week or scroll the dates. Amber rows still need Latest Delivery (LD) or Latest Courier (LC).</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
+      <input type="search" id="q" placeholder="Search order, product, province…">
       <button class="ghost" type="button" onclick="shift(-7)">← Week</button>
       <button class="ghost" type="button" onclick="shift(7)">Week →</button>
     </div>
   </header>
   <div class="legend" id="legend"></div>
-  <div class="wrap"><table id="grid"></table></div>
+  <div class="wrap" id="scroller"><table id="grid"></table></div>
   <div id="picker" role="listbox" aria-label="Schedule code"></div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
@@ -85,22 +102,32 @@
     let rows = [];
     let codes = [];
     let pickCell = null;
+    let query = "";
 
+    function mondayOf(iso) {
+      const d = new Date((iso || "") + "T12:00:00");
+      if (Number.isNaN(d.getTime())) return "";
+      const day = d.getDay() || 7;
+      d.setDate(d.getDate() - day + 1);
+      return d.toISOString().slice(0, 10);
+    }
     function dow(iso) {
       return ["S","M","T","W","T","F","S"][new Date(iso + "T12:00:00").getDay()];
     }
-    function weekLabel(iso) {
+    function weekNum(iso) {
       const d = new Date(iso + "T12:00:00");
       const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
       const dayNum = utc.getUTCDay() || 7;
       utc.setUTCDate(utc.getUTCDate() + 4 - dayNum);
       const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
-      const w = Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
-      return "Week" + String(w).padStart(2, "0");
+      return Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
+    }
+    function weekLabel(iso) {
+      return "Week" + String(weekNum(iso)).padStart(2, "0");
     }
     function pretty(iso) {
       const d = new Date(iso + "T12:00:00");
-      return d.getDate() + " " + d.toLocaleString("en-GB", { month: "short" });
+      return String(d.getDate()).padStart(2, "0") + "-" + d.toLocaleString("en-GB", { month: "short" }).replace(/\./g, "").slice(0, 3);
     }
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
     function codeStyle(code) {
@@ -108,11 +135,27 @@
       if (!hit) return "";
       return "background:" + hit.bg + ";color:" + hit.fg;
     }
+    function displayValue(row, key) {
+      if (key === "order_date") return row.order_date_label || row.order_date || "";
+      return row[key];
+    }
+    function isPlanned(row) {
+      if (row.delivery_planned) return true;
+      return Object.values(row.cells || {}).some((v) => {
+        const c = String(v || "").toUpperCase();
+        return c === "LD" || c === "LC";
+      });
+    }
+    function matches(row) {
+      if (!query) return true;
+      const bits = LEFT.map(([k]) => displayValue(row, k)).concat([row.order_number, row.product, row.province, row.status]);
+      return bits.join(" ").toLowerCase().indexOf(query) !== -1;
+    }
 
     function renderLegend() {
       document.getElementById("legend").innerHTML = codes.map((c) => {
         return "<span><b class=\"swatch\" style=\"" + codeStyle(c.code) + "\">" + esc(c.code) + "</b>" + esc(c.label) + "</span>";
-      }).join("");
+      }).join("") + "<span class=\"hint\">Amber rows are not planned for delivery yet (no LD or LC).</span>";
     }
 
     function paintCell(td, value) {
@@ -151,22 +194,33 @@
       box.style.top = top + "px";
     }
 
+    function paintStatus() {
+      const shown = rows.filter(matches);
+      const open = shown.filter((r) => !isPlanned(r)).length;
+      const week = start ? pretty(start) : "";
+      document.getElementById("status").textContent =
+        shown.length + " of " + rows.length + " orders · " + open + " not planned · week of " + week;
+    }
+
     function render() {
       const table = document.getElementById("grid");
-      if (!rows.length) {
+      const shown = rows.filter(matches);
+      const wrap = table.parentElement;
+      let empty = wrap.querySelector(".empty");
+      if (!rows.length || !shown.length) {
         table.innerHTML = "";
-        const wrap = table.parentElement;
-        let empty = wrap.querySelector(".empty");
         if (!empty) {
           empty = document.createElement("div");
           empty.className = "empty";
           wrap.appendChild(empty);
         }
-        empty.textContent = "No orders yet. New orders from the sheet appear here automatically so you can mark LD or LC.";
+        empty.textContent = rows.length
+          ? "No orders match that search."
+          : "No orders yet. New orders from the sheet appear here automatically so you can mark LD or LC.";
         empty.hidden = false;
+        paintStatus();
         return;
       }
-      const empty = table.parentElement.querySelector(".empty");
       if (empty) empty.hidden = true;
       let weeks = "";
       let drow = "";
@@ -174,28 +228,32 @@
       let cursor = 0;
       while (cursor < days.length) {
         const w = weekLabel(days[cursor]);
+        const monday = mondayOf(days[cursor]);
         let n = 0;
         while (cursor + n < days.length && weekLabel(days[cursor + n]) === w) n++;
-        weeks += "<th colspan=\"" + n + "\">" + w + "</th>";
+        weeks += "<th class=\"day\" colspan=\"" + n + "\" data-week-start=\"" + monday + "\">" + w + "</th>";
         cursor += n;
       }
       days.forEach((d) => {
-        drow += "<th class=\"day\">" + dow(d) + "</th>";
-        dates += "<th class=\"day\">" + pretty(d) + "</th>";
+        drow += "<th class=\"day\" data-day=\"" + d + "\">" + dow(d) + "</th>";
+        dates += "<th class=\"day\" data-day=\"" + d + "\">" + pretty(d) + "</th>";
       });
-      let html = "<thead><tr><th colspan=\"" + LEFT.length + "\"></th>" + weeks + "</tr>";
-      html += "<tr>";
-      LEFT.forEach(([, l]) => html += "<th class=\"left\">" + l + "</th>");
+      const frozen = weekLabel(start || days[0]);
+      let html = "<thead><tr><th class=\"left freeze week-lock\" id=\"frozenWeek\">" + frozen + "</th>";
+      html += "<th colspan=\"" + (LEFT.length - 1) + "\"></th>" + weeks + "</tr><tr>";
+      LEFT.forEach(([k, l], i) => html += "<th class=\"left" + (i === 0 ? " freeze" : "") + "\">" + l + "</th>");
       html += drow + "</tr><tr>";
-      LEFT.forEach(() => html += "<th></th>");
+      LEFT.forEach((item, i) => html += "<th class=\"left" + (i === 0 ? " freeze" : "") + "\"></th>");
       html += dates + "</tr></thead><tbody>";
-      rows.forEach((row) => {
-        html += "<tr data-id=\"" + row.id + "\">";
-        LEFT.forEach(([k,, locked]) => {
+      shown.forEach((row) => {
+        html += "<tr data-id=\"" + row.id + "\"" + (isPlanned(row) ? "" : " class=\"unplanned\"") + ">";
+        LEFT.forEach(([k,, locked], i) => {
+          const v = displayValue(row, k);
+          const freeze = i === 0 ? " freeze" : "";
           if (locked) {
-            html += "<td class=\"left\"><span class=\"cell-text\" title=\"" + esc(row[k]) + "\">" + esc(row[k]) + "</span></td>";
+            html += "<td class=\"left" + freeze + "\"><span class=\"cell-text\" title=\"" + esc(v) + "\">" + esc(v) + "</span></td>";
           } else {
-            html += "<td class=\"left\"><input data-k=\"" + k + "\" value=\"" + esc(row[k]) + "\"></td>";
+            html += "<td class=\"left" + freeze + "\"><input data-k=\"" + k + "\" value=\"" + esc(v) + "\"></td>";
           }
         });
         days.forEach((d) => {
@@ -209,6 +267,34 @@
       table.onchange = onChange;
       table.onclick = onGridClick;
       table.onkeydown = onGridKey;
+      paintStatus();
+      syncFrozenWeek();
+    }
+
+    function scrollToWeek(monday) {
+      const wrap = document.getElementById("scroller");
+      const th = wrap.querySelector('th[data-week-start="' + monday + '"]');
+      if (!th) return false;
+      const lock = wrap.querySelector("th.freeze");
+      const left = th.offsetLeft - (lock ? lock.offsetWidth : 0);
+      wrap.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+      const frozen = document.getElementById("frozenWeek");
+      if (frozen) frozen.textContent = weekLabel(monday);
+      return true;
+    }
+
+    function syncFrozenWeek() {
+      const wrap = document.getElementById("scroller");
+      const frozen = document.getElementById("frozenWeek");
+      if (!wrap || !frozen || !days.length) return;
+      const lock = wrap.querySelector("th.freeze");
+      const edge = wrap.getBoundingClientRect().left + (lock ? lock.getBoundingClientRect().width : 88) + 4;
+      let pick = days[0];
+      for (let i = 0; i < days.length; i++) {
+        const th = wrap.querySelector('thead tr:nth-child(3) th.day[data-day="' + days[i] + '"]');
+        if (th && th.getBoundingClientRect().right > edge) { pick = days[i]; break; }
+      }
+      frozen.textContent = weekLabel(pick);
     }
 
     function onGridClick(e) {
@@ -223,6 +309,19 @@
       }
     }
 
+    function refreshPlanned(row, tr) {
+      const daysSet = new Set(row.delivery_days || []);
+      Object.keys(row.cells || {}).forEach((day) => {
+        const c = String(row.cells[day] || "").toUpperCase();
+        if (c === "LD" || c === "LC") daysSet.add(day);
+        else daysSet.delete(day);
+      });
+      row.delivery_days = Array.from(daysSet);
+      row.delivery_planned = daysSet.size > 0;
+      if (tr) tr.classList.toggle("unplanned", !row.delivery_planned);
+      paintStatus();
+    }
+
     async function applyCode(value) {
       if (!pickCell) return;
       const td = pickCell;
@@ -234,6 +333,7 @@
       if (!row.cells) row.cells = {};
       row.cells[day] = value;
       paintCell(td, value);
+      refreshPlanned(row, tr);
       closePicker();
       await sdOfficeFetch("/api/office/schedule/cell", {
         method: "PUT",
@@ -263,21 +363,32 @@
       days = j.days;
       rows = j.rows;
       codes = j.codes || [];
-      document.getElementById("status").textContent = rows.length + " orders · week of " + pretty(start);
       renderLegend();
       renderPicker();
       render();
+      scrollToWeek(start);
     }
     function shift(n) {
-      const d = new Date(start + "T12:00:00");
+      const base = start || days[0];
+      const d = new Date(base + "T12:00:00");
       d.setDate(d.getDate() + n);
-      start = d.toISOString().slice(0, 10);
+      const monday = mondayOf(d.toISOString().slice(0, 10));
+      start = monday;
+      if (scrollToWeek(monday)) {
+        paintStatus();
+        return;
+      }
       load();
     }
     document.getElementById("picker").onclick = (e) => {
       const btn = e.target.closest("button[data-code]");
       if (btn) applyCode(btn.getAttribute("data-code"));
     };
+    document.getElementById("q").addEventListener("input", (e) => {
+      query = e.target.value.trim().toLowerCase();
+      render();
+    });
+    document.getElementById("scroller").addEventListener("scroll", syncFrozenWeek, { passive: true });
     document.addEventListener("click", (e) => {
       if (e.target.closest("#picker") || e.target.closest(".code-cell")) return;
       closePicker();

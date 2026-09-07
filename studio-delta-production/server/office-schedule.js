@@ -67,6 +67,19 @@ function formatDayLabel(iso) {
   return d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" });
 }
 
+function formatOrderDate(v) {
+  const s = String(v || "").trim();
+  if (!s) return "";
+  let d = parseDay(s);
+  if (!d) {
+    const dmy = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+    if (dmy) d = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]), 12, 0, 0);
+  }
+  if (!d || Number.isNaN(d.getTime())) return s;
+  const mon = d.toLocaleString("en-GB", { month: "short" }).replace(/\./g, "").slice(0, 3);
+  return String(d.getDate()).padStart(2, "0") + "-" + mon;
+}
+
 function gridWeekLabel(iso) {
   return "Week" + String(isoWeekInfo(iso).week).padStart(2, "0");
 }
@@ -136,6 +149,7 @@ module.exports = {
   weekKey,
   weekdayLong,
   formatDayLabel,
+  formatOrderDate,
   gridWeekLabel,
   collectDeliveryItems,
   weekOptions
