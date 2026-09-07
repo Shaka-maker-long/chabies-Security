@@ -22,11 +22,11 @@
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
     .board { display:flex; height:calc(100vh - 118px); min-width:0; overflow:hidden; background:#fff; }
-    .meta-pane { flex:0 1 auto; width:max-content; max-width:min(var(--lock), 50%); overflow-x:hidden; overflow-y:auto; box-shadow:4px 0 10px rgba(16,24,40,.12); z-index:2; scrollbar-width:none; }
+    .meta-pane { flex:0 0 auto; width:var(--lock); overflow-x:hidden; overflow-y:auto; box-shadow:4px 0 10px rgba(16,24,40,.12); z-index:2; scrollbar-width:none; }
     .meta-pane::-webkit-scrollbar { display:none; }
     .cal-pane { flex:1 1 auto; overflow-x:auto; overflow-y:auto; min-width:0; }
     table { border-collapse:separate; border-spacing:0; background:#fff; font-size:12px; }
-    #meta { table-layout:fixed; width:var(--lock); max-width:100%; }
+    #meta { table-layout:fixed; width:var(--lock); }
     #grid { table-layout:fixed; }
     th, td { border:1px solid var(--line); padding:4px 6px; height:34px; white-space:nowrap; background:#fff; }
     thead th { background:var(--head); font-size:11px; position:sticky; z-index:5; }

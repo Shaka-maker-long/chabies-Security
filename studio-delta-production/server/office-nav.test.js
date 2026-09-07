@@ -307,6 +307,7 @@ assert.ok(scheduleHtml.indexOf("id=\"meta\"") !== -1, "order columns sit in a fr
 assert.ok(scheduleHtml.indexOf("meta-pane") !== -1);
 assert.ok(scheduleHtml.indexOf("overflow:auto hidden") === -1, "left pane must not steal horizontal scroll");
 assert.ok(scheduleHtml.indexOf("overflow-x:hidden") !== -1);
+assert.ok(scheduleHtml.indexOf("max-width:min(var(--lock), 50%)") === -1, "do not crush order headers");
 assert.ok(scheduleHtml.indexOf("overflow-x:auto") !== -1, "calendar pane keeps horizontal scroll");
 assert.ok(officeJs.indexOf("SCHEDULE_WORKDAYS") !== -1);
 assert.ok(officeJs.indexOf("workdays(start, 60)") === -1);
