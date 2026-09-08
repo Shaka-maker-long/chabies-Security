@@ -5308,3 +5308,36 @@ function clearWorkerScheduleFrom(workerName, fromDateMs) {
     try { lock.releaseLock(); } catch (e2) {}
   }
 }
+
+function listCostingLogs() {
+  var ss = getSpreadsheet();
+  var logSheet = getSheetOrDie(ss, TAB_LOGS);
+  var last = logSheet.getLastRow();
+  if (last < 2) return [];
+  var lastCol = Math.max(logSheet.getLastColumn(), 13);
+  var logData = logSheet.getRange(2, 1, last - 1, lastCol).getValues();
+  var out = [];
+  for (var i = 0; i < logData.length; i++) {
+    var row = logData[i];
+    var orderNum = String(row[1] || "").trim();
+    var task = String(row[4] || "").trim();
+    if (!orderNum || !task) continue;
+    var low = task.toLowerCase();
+    if (low === "pre-powder coating" || low === "final qc") continue;
+    var start = row[5] ? new Date(row[5]) : null;
+    if (start && isNaN(start.getTime())) start = null;
+    var end = row[6] ? new Date(row[6]) : null;
+    if (end && isNaN(end.getTime())) end = null;
+    var mins = calculateWorkMinutesFromLog(row);
+    out.push({
+      orderNum: orderNum,
+      worker: String(row[2] || "").trim(),
+      role: String(row[3] || "").trim(),
+      task: task,
+      start: start ? start.toISOString() : "",
+      end: end ? end.toISOString() : "",
+      minutes: mins
+    });
+  }
+  return out;
+}

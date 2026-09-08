@@ -267,7 +267,8 @@ const ALLOWED = new Set([
   "grantOvertime", "listOvertimeGrants", "getOrderJobBrief", "noteMissedResume", "getFloorAdminDesk", "checkMissedResumes",
   "getActivityReport", "getScheduleBoard", "generateWorkerSchedule", "insertScheduleTask", "clearWorkerScheduleFrom",
   "checkIdleWorkers", "enforceShiftHours", "lazySetup", "getTaskDuration", "getTaskTimeEstimate", "getMyCompletedWork", "updateCompletedSteelUsage",
-  "getGlassTypes", "getWoodTypes", "listMaterialsToOrder", "markMaterialOrdered"
+  "getGlassTypes", "getWoodTypes", "listMaterialsToOrder", "markMaterialOrdered",
+  "listCostingLogs"
 ]);
 
 let scriptSource = null;
