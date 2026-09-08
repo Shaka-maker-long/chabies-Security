@@ -8,7 +8,7 @@ const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 
 const labels = [
   "Home", "Orders", "Enquiries", "My tasks", "Dropdowns", "Users",
-  "Task times", "Planning", "Debtors", "Production", "Workers", "Metrics",
+  "Task times", "Planning", "Debtors", "Production Tasks", "Production", "Workers", "Metrics",
   "QC Reports", "Activity", "Schedule", "Log Out", "Change access code"
 ];
 labels.forEach((label) => {
@@ -49,7 +49,13 @@ assert.ok(tasksHtml.indexOf("Assigned to <b>") !== -1);
 assert.ok(tasksHtml.indexOf("typeHeading") !== -1);
 assert.ok(officeJs.indexOf("canViewAll") !== -1);
 assert.ok(js.indexOf("/?view=production") !== -1);
-assert.ok(js.indexOf("/?view=floor") === -1, "Floor is Home, not a second menu item");
+assert.ok(js.indexOf("/?view=production-tasks") !== -1);
+assert.ok(js.indexOf('"Production Tasks"') !== -1);
+assert.ok(js.indexOf("productiontasks") !== -1);
+assert.ok(floor.indexOf('id="link-production-tasks"') !== -1);
+assert.ok(floor.indexOf("function showProductionTasks") !== -1);
+assert.ok(floor.indexOf('id="rolesPageTitle"') !== -1);
+assert.ok(floor.indexOf("/?view=floor") === -1, "Floor is Home, not a second menu item");
 assert.ok(js.indexOf('id="link-floor"') === -1);
 assert.ok(floor.indexOf('id="link-floor"') === -1, "floor sidebar link must be gone");
 assert.ok(floor.indexOf("getFloorLayout") !== -1);

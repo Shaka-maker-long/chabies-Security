@@ -1363,6 +1363,10 @@
         <span class="link-text">Debtors</span>
       </a>
       <div class="sd-nav-label">Shop</div>
+      <a id="link-production-tasks" class="sidebar-link" onclick="showProductionTasks()">
+        <i class="bi bi-grid-3x3-gap"></i>
+        <span class="link-text">Production Tasks</span>
+      </a>
       <a id="link-prod" class="sidebar-link" onclick="loadProductionOverview()">
         <i class="bi bi-clipboard-data"></i>
         <span class="link-text">Production</span>
@@ -1436,7 +1440,7 @@
     <div id="view-roles" class="view-section container d-none-view">
       <div class="home-head mb-3 mt-2">
         <div>
-          <h1 class="h2 fw-bold mb-1">Home</h1>
+          <h1 class="h2 fw-bold mb-1" id="rolesPageTitle">Home</h1>
           <p class="text-muted mb-0" id="taskPickSubtitle">Select the task you will do now.</p>
         </div>
         <div class="home-head-tools">
@@ -1471,7 +1475,7 @@
           <h4 class="m-0" id="dashUser">User</h4>
           <small class="text-muted text-uppercase" id="dashRole">Role</small>
         </div>
-        <button id="btnSwitchTask" class="btn btn-outline-dark btn-sm d-none" onclick="showTaskPicker()">Switch task</button>
+        <button id="btnSwitchTask" class="btn btn-outline-dark btn-sm d-none" onclick="showProductionTasks()">Switch task</button>
       </div>
       <p id="workLockOffNote" class="small text-muted mb-3">Work lock is off for testing. Start and finish stay available after 16:00, and a job already on someone else can still be opened.</p>
       
@@ -2269,6 +2273,7 @@
   <script>
     let appData = { users:[], workerStats: {}, currentOrders:[], steelProfiles:[], backboards:[] };
     let session = { role: null, name: null, pendingRow: null, activeOrder: null, logId: null, logIds: {}, isAdmin: false, isQcOnly: false, canSeeOffice: false, canSeeDebtors: false, access: '', tasks: [], jobTitle: '', overtimeWarned: {}, pendingBatchRows: null, pendingBatchMates: [], pendingStartTask: null, pendingSwitchReason: null, pendingWorkTogether: false, pendingStartMode: null, skipRunningChoice: false, startConfirmed: false, pendingRunningOrders: [], pendingKeepOrders: [], pendingBrief: null, pauseModalMode: 'pause' };
+    let rolesPageMode = 'home';
     let idleAlertModal = null;
     let backboardSelectionModal = null;
     let idlePollTimer = null;
@@ -2571,7 +2576,7 @@
       document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
       let linkId = '';
       if(viewId === 'view-global-login' || viewId === 'view-users' || viewId === 'view-dashboard' || viewId === 'view-completed') linkId = 'link-roles';
-      if(viewId === 'view-roles') linkId = 'link-roles';
+      if(viewId === 'view-roles') linkId = (rolesPageMode === 'tasks' && session.canSeeOffice) ? 'link-production-tasks' : 'link-roles';
       if(viewId === 'view-admin-prod') linkId = 'link-prod';
       if(viewId === 'view-admin-workers') linkId = 'link-work';
       if(viewId === 'view-admin-metrics') linkId = 'link-metrics';
@@ -2686,6 +2691,10 @@
     function applyAdminLinks() {
       const links = document.getElementById('adminLinks');
       if (links) links.classList.toggle('d-none-view', !session.canSeeOffice);
+      const homeText = document.querySelector('#link-roles .link-text');
+      const homeIcon = document.querySelector('#link-roles i');
+      if (homeText) homeText.textContent = session.canSeeOffice ? 'Home' : 'Production Tasks';
+      if (homeIcon) homeIcon.className = session.canSeeOffice ? 'bi bi-house-door' : 'bi bi-grid-3x3-gap';
       const debtors = document.getElementById('link-debtors');
       if (debtors) debtors.style.display = session.canSeeDebtors ? '' : 'none';
       const users = document.getElementById('link-users');
@@ -3059,6 +3068,7 @@
     function routeAfterLogin() {
       const view = requestedView();
       if (session.canSeeOffice && view) {
+        if (view === 'production-tasks') { showProductionTasks(); return; }
         if (view === 'production') { loadProductionOverview(); loadIdleWorkers(); return; }
         if (view === 'workers') { loadWorkerStats(); return; }
         if (view === 'metrics') { loadMetricsDashboard(); return; }
@@ -3070,18 +3080,15 @@
         showTaskPicker();
         return;
       }
-      if (!(session.tasks && session.tasks.length)) {
-        showTaskPicker();
-        return;
-      }
-      showTaskPicker();
+      showProductionTasks();
     }
     function goHome() {
       if (!session.name) {
         navTo('view-global-login');
         return;
       }
-      showTaskPicker();
+      if (session.canSeeOffice) showTaskPicker();
+      else showProductionTasks();
     }
     function taskCountPills(task, counts) {
       const waiting = !counts;
@@ -3193,7 +3200,9 @@
       if (!box) return;
       const stops = myTaskStops();
       if (!stops.length) {
-        box.innerHTML = '';
+        box.innerHTML = session.canSeeOffice
+          ? ''
+          : '<div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to tick the tasks you do on Users.</div>';
         return;
       }
       box.innerHTML = '<h2 class="h5 fw-bold mb-1">What are you doing now?</h2>' +
@@ -3607,33 +3616,66 @@
         floorTwinInterval = setInterval(function () { refreshFloorTwin(false); }, 8000);
       });
     }
-    function showTaskPicker() {
+    function setFloorView(view) {
+      try {
+        const url = new URL(location.href);
+        if (view) url.searchParams.set('view', view);
+        else url.searchParams.delete('view');
+        history.replaceState({}, '', url.pathname + url.search);
+      } catch (e) {}
+    }
+    function paintRolesPage(mode) {
+      rolesPageMode = mode === 'tasks' ? 'tasks' : 'home';
+      const tasksOnly = rolesPageMode === 'tasks';
+      setFloorView(tasksOnly ? 'production-tasks' : '');
       navTo('view-roles');
+      const title = document.getElementById('rolesPageTitle');
+      if (title) title.textContent = tasksOnly ? 'Production Tasks' : 'Home';
       const grid = document.getElementById('roleGrid');
       const sub = document.getElementById('taskPickSubtitle');
       if (sub) {
-        sub.innerText = session.canSeeOffice
-          ? 'Pick a task to open that order list, or use the floor map. Tick tasks on Users for each person.'
-          : ('Hi ' + session.name + '. Choose the task you are doing now. You will see every order ready for that task.');
+        if (tasksOnly) {
+          sub.innerText = session.canSeeOffice
+            ? 'Select the task. The next screen lists every order ready for that work.'
+            : ('Hi ' + session.name + '. Choose the task you are doing now. You will see every order ready for that task.');
+        } else {
+          sub.innerText = 'Pick a task to open that order list, or use the floor map. Tick tasks on Users for each person.';
+        }
       }
       const reset = document.getElementById('floorResetBtn');
-      if (reset) reset.classList.toggle('d-none-view', !(session.canSeeOffice || (session.tasks && session.tasks.length)));
-      loadHomeScore();
+      const showMap = !tasksOnly && session.canSeeOffice;
+      if (reset) reset.classList.toggle('d-none-view', !showMap);
+      if (tasksOnly) {
+        const score = document.getElementById('homeScore');
+        if (score) {
+          score.className = 'home-score d-none-view mb-4';
+          score.innerHTML = '';
+        }
+      } else {
+        loadHomeScore();
+      }
       loadMyTaskCounts();
       try {
-        if (!(session.canSeeOffice || (session.tasks && session.tasks.length))) {
+        if (!showMap) {
           stopFloorTwin();
           if (grid) {
-            grid.className = 'road-map';
-            grid.innerHTML = '<div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to add you on the Users page and tick the tasks you do.</div>';
+            grid.className = 'road-map d-none-view';
+            grid.innerHTML = '';
           }
         } else {
+          if (grid) grid.className = 'road-map';
           renderFloorPlan({ office: [], piles: {}, workers: {} });
           startFloorTwin();
         }
       } catch (e) {
         console.warn('Floor twin error:', e);
       }
+    }
+    function showTaskPicker() {
+      paintRolesPage(session.canSeeOffice ? 'home' : 'tasks');
+    }
+    function showProductionTasks() {
+      paintRolesPage('tasks');
     }
     function selectRoadStep(id) {
       const step = ROAD_STOPS.filter((s) => s.id === id)[0];

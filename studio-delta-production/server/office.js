@@ -74,7 +74,7 @@ function requireOffice(req, res, next) {
     return;
   }
   if (!profile.canSeeOffice) {
-    res.status(403).json({ ok: false, error: "Production users can only use the floor." });
+    res.status(403).json({ ok: false, error: "Production users can only use Production Tasks." });
     return;
   }
   req.office = profile;
@@ -160,7 +160,7 @@ function mountOffice(app) {
       return;
     }
     if (!profile.canSeeOffice) {
-      res.status(403).json({ ok: false, error: "Production users can only use the floor." });
+      res.status(403).json({ ok: false, error: "Production users can only use Production Tasks." });
       return;
     }
     const session = staff.createSession(profile);
