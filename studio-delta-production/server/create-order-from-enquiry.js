@@ -1,4 +1,5 @@
 const { isoWeekInfo } = require("./office-schedule");
+const quoteOptions = require("./quote-options");
 
 const ORDER_TYPES = ["Standard", "Custom", "New Design"];
 
@@ -174,6 +175,10 @@ function estimateDelivery(opts) {
 }
 
 function namedEnquiryLines(enquiry) {
+  const chosen = quoteOptions.chosenQuote(enquiry);
+  if (chosen && Array.isArray(chosen.products) && chosen.products.some((p) => String((p && p.product) || "").trim())) {
+    return chosen.products.filter((p) => String((p && p.product) || "").trim());
+  }
   const products = Array.isArray(enquiry && enquiry.products) ? enquiry.products : [];
   const named = products.filter((p) => String((p && p.product) || "").trim());
   if (named.length) return named;
@@ -182,6 +187,7 @@ function namedEnquiryLines(enquiry) {
   return [{
     product,
     category: String((enquiry && enquiry.category) || "").trim(),
+    variation: "",
     value_incl_vat: (enquiry && (enquiry.quote_total_incl_vat || enquiry.value_incl_vat)) || ""
   }];
 }
@@ -189,11 +195,12 @@ function namedEnquiryLines(enquiry) {
 function buildDraft(enquiry, nextOrderNumber, now) {
   const typeDefault = orderTypeFromEnquiryType(enquiry && enquiry.enquiry_type);
   const detail = [enquiry && enquiry.request, enquiry && enquiry.design_description].filter(Boolean).join("\n");
+  const chosen = quoteOptions.chosenQuote(enquiry);
   const products = namedEnquiryLines(enquiry).map((p) => ({
     category: String(p.category || (enquiry && enquiry.category) || "").trim(),
     product: String(p.product || "").trim(),
     type: typeDefault,
-    variation: "",
+    variation: String(p.variation || "").trim(),
     doors: "",
     detailed_description: detail,
     dimensions: "",
@@ -204,7 +211,8 @@ function buildDraft(enquiry, nextOrderNumber, now) {
   }));
   return {
     enquiry_no: enquiry && enquiry.enquiry_no || "",
-    quote_number: (enquiry && enquiry.quote_no) || "",
+    quote_number: (chosen && chosen.quote_no) || (enquiry && enquiry.quote_no) || "",
+    chosen_option: (enquiry && enquiry.chosen_option) || (chosen && chosen.option) || "",
     order_number: nextOrderNumber,
     shared: {
       client_name: (enquiry && enquiry.client_name) || "",
