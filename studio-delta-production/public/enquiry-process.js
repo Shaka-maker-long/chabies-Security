@@ -180,7 +180,10 @@
         ".sd-option-line label{margin:0}" +
         ".sd-option-line select,.sd-option-line input{display:block;width:100%;min-width:0;border:1px solid #d0d5dd;border-radius:6px;padding:8px;font:inherit;font-weight:400;background:#fff}" +
         ".sd-option-line [data-remove-option-line]{justify-self:start;margin-top:4px}" +
-        "@media (max-width:640px){.sd-option-line{grid-template-columns:1fr}}";
+        "@media (max-width:640px){.sd-option-line{grid-template-columns:1fr}}" +
+        ".sd-corr-links{display:flex;flex-direction:column;gap:8px;margin:8px 0}" +
+        ".sd-corr-row textarea{width:100%;min-height:56px}" +
+        ".sd-corr-links:has([data-corr-row]:only-child) [data-remove-corr]{display:none}";
       document.head.appendChild(css);
     }
     document.getElementById("sdProcessClose").onclick = closeProcess;
@@ -663,9 +666,39 @@
   async function openSavedOutlookMail(kind, filename) {
     return openSavedFile(kind, filename, true);
   }
+  function correspondenceLinkRow() {
+    return "<div class=\"sd-corr-row\" data-corr-row>" +
+      "<label>Correspondance link *<textarea class=\"sd-path\" data-correspondence-link rows=\"2\" placeholder=\"Paste the file link or path\" autocomplete=\"off\"></textarea></label>" +
+      "<button type=\"button\" class=\"ghost\" data-remove-corr>Remove</button>" +
+      "</div>";
+  }
   function correspondenceFields() {
-    return "<label>Correspondance link *<textarea class=\"sd-path\" name=\"correspondence_links\" rows=\"3\" placeholder=\"Paste the file link or path\" autocomplete=\"off\"></textarea></label>" +
-      "<p class=\"sd-process-sub\">Required before Costing.</p>";
+    return "<div class=\"sd-corr-links\" data-corr-links>" + correspondenceLinkRow() + "</div>" +
+      "<button type=\"button\" class=\"ghost\" data-add-corr>Add another Correspondance link</button>" +
+      "<p class=\"sd-process-sub\">Required before Costing. You can save more than one — each link stays on this enquiry.</p>";
+  }
+  function correspondenceLinksValue(form) {
+    const boxes = form.querySelectorAll("[data-correspondence-link]");
+    if (!boxes.length) return field(form, "correspondence_links");
+    return Array.from(boxes).map((el) => String(el.value || "").trim()).filter(Boolean).join("\n");
+  }
+  function bindCorrespondenceLinks(form) {
+    const wrap = form && form.querySelector("[data-corr-links]");
+    if (!wrap) return;
+    const add = form.querySelector("[data-add-corr]");
+    if (add) {
+      add.onclick = (e) => {
+        e.preventDefault();
+        wrap.insertAdjacentHTML("beforeend", correspondenceLinkRow());
+      };
+    }
+    form.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-remove-corr]");
+      if (!btn || !form.contains(btn)) return;
+      e.preventDefault();
+      const row = btn.closest("[data-corr-row]");
+      if (row && wrap.querySelectorAll("[data-corr-row]").length > 1) row.remove();
+    });
   }
   function fileHref(kind) {
     return "/api/office/enquiries/" + encodeURIComponent(state.enquiryNo) + "/files/" + encodeURIComponent(kind);
@@ -685,10 +718,13 @@
       return html + "<p class=\"sd-process-sub\">No files on this enquiry yet.</p></div>";
     }
     html += "<div class=\"sd-file-list\">";
+    const corrTotal = items.filter((f) => f.group === "correspondence").length;
+    let corrN = 0;
     html += items.map((f) => {
       const server = f.kind ? absoluteHref(fileHref(f.kind)) : "";
       const href = (f.kind && (f.open || f.stored_as) && server) ? server : (f.href || "");
       const correspondence = f.group === "correspondence";
+      if (correspondence) corrN += 1;
       let actions = "";
       if (correspondence) {
         actions = href
@@ -704,7 +740,9 @@
         : "";
       return "<div class=\"sd-file-row\">" +
         "<div class=\"sd-file-meta\"><div class=\"sd-file-type\">" + esc(f.label || "File") + "</div>" +
-        "<div class=\"sd-file-name\">" + esc(correspondence ? "Correspondance link" : (f.title || f.filename || "File")) + "</div>" +
+        "<div class=\"sd-file-name\">" + esc(correspondence
+          ? (corrTotal > 1 ? "Correspondance link " + corrN : "Correspondance link")
+          : (f.title || f.filename || "File")) + "</div>" +
         (f.from ? "<div class=\"sd-process-sub\">" + esc(f.from) + "</div>" : "") +
         pathLine +
         "</div><div class=\"row-actions\">" + actions + "</div></div>";
@@ -918,7 +956,7 @@
       Object.assign(body, readOptionValues(form));
     }
     if (action.id === "assign_costing" || action.id === "complete_chase" || action.id === "add_correspondence") {
-      body.correspondence_links = field(form, "correspondence_links");
+      body.correspondence_links = correspondenceLinksValue(form);
     }
     if (action.id === "complete_order") {
       body.drawing_required = field(form, "drawing_required");
@@ -1059,6 +1097,7 @@
       bindCostSheets(form);
       bindQuoteTotals(form);
       bindOptionLines(form);
+      bindCorrespondenceLinks(form);
       const card = form.closest("[data-action-i]");
       const i = Number((card || form).getAttribute("data-action-i"));
       const preview = form.querySelector("[data-preview]");
