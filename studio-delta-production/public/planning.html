@@ -93,12 +93,25 @@
     .hour-line { position:absolute; left:0; right:0; border-top:1px solid #eef0f4; pointer-events:none; }
     .band { position:absolute; left:0; right:0; pointer-events:none; z-index:0; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; opacity:.92; }
     .lane-name { position:sticky; top:0; z-index:2; font-size:10px; font-weight:700; padding:3px 6px; background:rgba(255,255,255,.92); border-bottom:1px solid #e4e7ec; }
-    .event { position:absolute; left:4px; right:4px; border-radius:6px; padding:4px 6px; font-size:11px; line-height:1.25; overflow:hidden; border:1px solid transparent; z-index:1; }
+    .event { position:absolute; left:4px; right:4px; border-radius:6px; padding:4px 6px; font-size:11px; line-height:1.25; overflow:hidden; border:1px solid transparent; z-index:1; cursor:grab; touch-action:none; user-select:none; }
     .event b { display:block; }
     .event small { display:block; opacity:.9; }
+    .event.paint { cursor:default; }
+    .event.other { font-style:normal; }
+    .event .kill { position:absolute; top:2px; right:4px; border:0; background:transparent; color:inherit; padding:0 2px; font-size:14px; line-height:1; cursor:pointer; }
+    .event.dragging, .event.ghost { opacity:.55; cursor:grabbing; }
+    .ghost { position:fixed; z-index:50; pointer-events:none; min-width:120px; box-shadow:0 8px 24px rgba(16,24,40,.18); }
     .compare-a { box-shadow: inset 3px 0 0 #2563eb; }
     .compare-b { box-shadow: inset 3px 0 0 #c2410c; }
     .board h2 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
+    .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
+    .mask.open { display:flex; }
+    .mask .sheet { width:min(420px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:48px auto; padding:16px; }
+    .mask h2 { margin:0 0 12px; font-size:16px; }
+    .mask label { display:block; font-size:12px; font-weight:600; margin:0 0 8px; }
+    .mask input, .mask select { width:100%; margin-top:4px; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
+    .mask .row { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    .mask .actions { margin-top:14px; }
     @media (max-width: 900px) {
       .week-list button.row, .week-list .head { grid-template-columns: 1fr 1fr; }
       .tools { width:100%; margin-left:0; }
@@ -124,7 +137,8 @@
       <div class="people-tools">
         <label>Person <select id="personA" aria-label="Person"></select></label>
         <label>Compare with <select id="personB" aria-label="Compare with"><option value="">None</option></select></label>
-        <span class="msg">Shaded: Production Meeting, Lunch, Cleaning</span>
+        <button class="ghost" type="button" id="addOther">Add other task</button>
+        <span class="msg">Drag to shift or swap. Shaded: Production Meeting, Lunch, Cleaning</span>
       </div>
     </div>
   </header>
@@ -142,6 +156,28 @@
       <div class="legend" id="legend"></div>
       <div id="calendars"></div>
     </main>
+  </div>
+  <div class="mask" id="otherMask">
+    <form class="sheet" id="otherForm">
+      <h2>Other task</h2>
+      <p class="help">Not an order — cleaning, a meeting, material, or any other job. It takes that person’s time and pushes shop work.</p>
+      <label>Person <select id="otherWho" required></select></label>
+      <label>Task
+        <select id="otherPreset">
+          <option value="">Choose a task…</option>
+        </select>
+      </label>
+      <label>Name <input id="otherTitle" autocomplete="off" placeholder="e.g. Collect steel"></label>
+      <div class="row">
+        <label>Hours <input id="otherHours" type="number" min="0.25" step="0.25" value="0.5"></label>
+        <label>Date <input id="otherDate" type="date"></label>
+      </div>
+      <label>Starts <input id="otherTime" type="time" value="07:45"></label>
+      <div class="actions">
+        <button type="submit">Add to calendar</button>
+        <button class="ghost" type="button" id="otherCancel">Cancel</button>
+      </div>
+    </form>
   </div>
   <script src="/office-auth.js?v=planning-tabs"></script>
   <script>
@@ -173,7 +209,8 @@
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
       }[c]));
     }
-    function color(process) {
+    function color(process, kind) {
+      if (kind === "other") return (board && board.colors && board.colors.Other) || { bg: "#ffedd5", fg: "#9a3412", border: "#f97316" };
       return (board && board.colors && board.colors[process]) || { bg: "#eef2f6", fg: "#344054", border: "#98a2b3" };
     }
     function dateOf(iso) {
@@ -238,7 +275,7 @@
         return "<span><i style='background:" + c.bg + ";border-color:" + c.border + "'></i>" + esc(p) + "</span>";
       }).concat(view === "people" ? bands.map((b) => {
         return "<span><i style='background:" + b.bg + "'></i>" + esc(b.label) + "</span>";
-      }) : []).join("");
+      }).concat(["<span><i style='background:" + color("", "other").bg + ";border-color:" + color("", "other").border + "'></i>Other task</span>"]) : []).join("");
     }
     function renderQueue() {
       const q = String(document.getElementById("q").value || "").trim().toLowerCase();
@@ -365,10 +402,17 @@
     function eventHtml(block, dayIso, who) {
       const clip = clipToDay(block, dayIso);
       if (!clip) return "";
-      const c = color(block.process);
-      const klass = "event" + (who === "b" ? " compare-b" : (who === "a" ? " compare-a" : ""));
-      return "<div class='" + klass + "' style='top:" + topPct(clip.startMin) + "%;height:" + heightPct(clip.startMin, clip.endMin) + "%;background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" +
-        "<b>" + esc(block.studioNo) + "</b><small>" + esc(block.process) + " · " + esc(hhmm(block.start)) + "–" + esc(hhmm(block.end)) + "</small></div>";
+      const c = color(block.process, block.kind);
+      const paint = block.kind === "paint";
+      const other = block.kind === "other";
+      const klass = "event" + (who === "b" ? " compare-b" : (who === "a" ? " compare-a" : "")) + (paint ? " paint" : "") + (other ? " other" : "");
+      const title = other ? (block.title || block.process) : block.studioNo;
+      const sub = other
+        ? (hhmm(block.start) + "–" + hhmm(block.end))
+        : (esc(block.process) + " · " + esc(hhmm(block.start)) + "–" + esc(hhmm(block.end)));
+      const kill = other ? "<button type='button' class='kill' data-remove-block=\"" + esc(block.id) + "\" aria-label='Remove'>×</button>" : "";
+      return "<div class='" + klass + "' data-block=\"" + esc(block.id) + "\" data-kind=\"" + esc(block.kind || "work") + "\" style='top:" + topPct(clip.startMin) + "%;height:" + heightPct(clip.startMin, clip.endMin) + "%;background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" +
+        kill + "<b>" + esc(title) + "</b><small>" + sub + "</small></div>";
     }
     function fillPeopleSelects() {
       const people = peopleList();
@@ -407,12 +451,12 @@
       const daysHtml = days.map((d) => {
         const eventsA = mineA.map((b) => eventHtml(b, d.iso, compare ? "a" : "")).join("");
         if (!compare) {
-          return "<div class='ol-day'>" + hourLinesHtml() + bandHtml() + eventsA + "</div>";
+          return "<div class='ol-day' data-day=\"" + esc(d.iso) + "\" data-worker=\"" + esc(personA) + "\">" + hourLinesHtml() + bandHtml() + eventsA + "</div>";
         }
         const eventsB = mineB.map((b) => eventHtml(b, d.iso, "b")).join("");
-        return "<div class='ol-day split'>" +
-          "<div class='lane'>" + hourLinesHtml() + bandHtml() + "<div class='lane-name'>" + esc(nameOf(personA)) + "</div>" + eventsA + "</div>" +
-          "<div class='lane'>" + hourLinesHtml() + bandHtml() + "<div class='lane-name'>" + esc(nameOf(personB)) + "</div>" + eventsB + "</div>" +
+        return "<div class='ol-day split' data-day=\"" + esc(d.iso) + "\">" +
+          "<div class='lane' data-worker=\"" + esc(personA) + "\">" + hourLinesHtml() + bandHtml() + "<div class='lane-name'>" + esc(nameOf(personA)) + "</div>" + eventsA + "</div>" +
+          "<div class='lane' data-worker=\"" + esc(personB) + "\">" + hourLinesHtml() + bandHtml() + "<div class='lane-name'>" + esc(nameOf(personB)) + "</div>" + eventsB + "</div>" +
           "</div>";
       }).join("");
       box.innerHTML = "<div class='outlook'>" + head + "<div class='ol-body' style='grid-template-columns: var(--gutter) repeat(" + cols + ", 1fr)'><div class='time-col'>" + ticks + "</div>" + daysHtml + "</div></div>";
@@ -491,6 +535,112 @@
       await load(week);
       setStatus("Removed " + id + " from the calendars.");
     }
+    function pad2(n) { return String(n).padStart(2, "0"); }
+    function snapMin(min) {
+      let m = Math.round(Number(min) / 15) * 15;
+      if (m < DAY_START) m = DAY_START;
+      if (m >= 12 * 60 && m < 12 * 60 + 30) m = 12 * 60 + 30;
+      if (m > 15 * 60 + 45) m = 15 * 60 + 45;
+      return m;
+    }
+    function isoAt(dayIso, min) {
+      const h = Math.floor(min / 60);
+      const mm = min % 60;
+      return dayIso + "T" + pad2(h) + ":" + pad2(mm) + ":00+02:00";
+    }
+    function minFromPoint(el, clientY) {
+      const r = el.getBoundingClientRect();
+      const pct = (clientY - r.top) / Math.max(1, r.height);
+      return snapMin(DAY_START + pct * DAY_SPAN);
+    }
+    function fillOtherForm(who, dayIso, min) {
+      const people = peopleList().filter((w) => w && w.id !== (board && board.paintShop && board.paintShop.id));
+      const whoSel = document.getElementById("otherWho");
+      whoSel.innerHTML = people.map((w) => "<option value=\"" + esc(w.id) + "\">" + esc(w.name) + "</option>").join("");
+      whoSel.value = who || personA || (people[0] && people[0].id) || "";
+      const presets = ((board && board.otherTasks) || ["Cleaning", "Production Meeting", "Maintenance", "Material", "Setup"]);
+      const pre = document.getElementById("otherPreset");
+      pre.innerHTML = "<option value=''>Choose a task…</option>" + presets.map((t) => "<option value=\"" + esc(t) + "\">" + esc(t) + "</option>").join("") + "<option value='__other'>Other</option>";
+      document.getElementById("otherTitle").value = "";
+      document.getElementById("otherHours").value = "0.5";
+      document.getElementById("otherDate").value = dayIso || (((board && board.weekDays) || [])[0] || {}).iso || "";
+      const m = min == null ? DAY_START : min;
+      document.getElementById("otherTime").value = pad2(Math.floor(m / 60)) + ":" + pad2(m % 60);
+    }
+    function openOther(who, dayIso, min) {
+      fillOtherForm(who, dayIso, min);
+      document.getElementById("otherMask").classList.add("open");
+    }
+    function closeOther() {
+      document.getElementById("otherMask").classList.remove("open");
+    }
+    async function moveTo(blockId, startIso) {
+      setStatus("Updating the plan…");
+      const r = await sdOfficeFetch("/api/office/planning/move", {
+        method: "POST",
+        body: JSON.stringify({ blockId: blockId, start: startIso })
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "Could not move that job.", true);
+        return;
+      }
+      await load(week);
+      setView("people", false);
+      setStatus("Plan updated. Downstream work on other people moved with it.");
+    }
+    async function addOtherTask() {
+      const titlePreset = document.getElementById("otherPreset").value;
+      const title = String(document.getElementById("otherTitle").value || "").trim() || (titlePreset !== "__other" ? titlePreset : "");
+      const hours = Number(document.getElementById("otherHours").value || 0);
+      const day = document.getElementById("otherDate").value;
+      const time = document.getElementById("otherTime").value || "07:45";
+      const workerId = document.getElementById("otherWho").value;
+      if (!title) {
+        setStatus("Name the other task.", true);
+        return;
+      }
+      const start = isoAt(day, Number(time.split(":")[0]) * 60 + Number(time.split(":")[1] || 0));
+      const r = await sdOfficeFetch("/api/office/planning/other", {
+        method: "POST",
+        body: JSON.stringify({ workerId: workerId, title: title, minutes: Math.round(hours * 60), start: start })
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "Could not add that task.", true);
+        return;
+      }
+      closeOther();
+      await load(week);
+      setView("people", false);
+      setStatus("Added " + title + " and shifted later work.");
+    }
+    async function removeOther(id) {
+      const r = await sdOfficeFetch("/api/office/planning/blocks/" + encodeURIComponent(id), { method: "DELETE" });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "Could not remove that task.", true);
+        return;
+      }
+      await load(week);
+      setView("people", false);
+      setStatus("Removed the other task.");
+    }
+    let drag = null;
+    let justDragged = false;
+    function dropTarget(clientX, clientY) {
+      const el = document.elementFromPoint(clientX, clientY);
+      if (!el) return null;
+      const lane = el.closest("[data-worker]");
+      const day = el.closest("[data-day]");
+      const host = lane || day;
+      if (!host) return null;
+      return {
+        day: (day && day.getAttribute("data-day")) || "",
+        worker: (lane && lane.getAttribute("data-worker")) || (day && day.getAttribute("data-worker")) || "",
+        min: minFromPoint(host, clientY)
+      };
+    }
     window.addEventListener("hashchange", () => setView(viewFromHash(), false));
     document.querySelector(".tabs").addEventListener("click", (e) => {
       const tab = e.target.closest("[data-tab]");
@@ -515,11 +665,73 @@
       personB = document.getElementById("personB").value;
       renderOutlook();
     };
+    document.getElementById("addOther").onclick = () => openOther(personA, ((board && board.weekDays) || [])[0] && board.weekDays[0].iso, DAY_START);
+    document.getElementById("otherCancel").onclick = closeOther;
+    document.getElementById("otherMask").addEventListener("click", (e) => {
+      if (e.target.id === "otherMask") closeOther();
+    });
+    document.getElementById("otherPreset").onchange = () => {
+      const v = document.getElementById("otherPreset").value;
+      if (v && v !== "__other") document.getElementById("otherTitle").value = v;
+    };
+    document.getElementById("otherForm").onsubmit = (e) => {
+      e.preventDefault();
+      addOtherTask();
+    };
+    document.getElementById("calendars").addEventListener("pointerdown", (e) => {
+      if (view !== "people") return;
+      const kill = e.target.closest("[data-remove-block]");
+      if (kill) return;
+      const ev = e.target.closest("[data-block]");
+      if (!ev || ev.getAttribute("data-kind") === "paint") return;
+      drag = {
+        id: ev.getAttribute("data-block"),
+        x: e.clientX,
+        y: e.clientY,
+        moved: false,
+        el: ev
+      };
+    });
+    document.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) drag.moved = true;
+      if (drag.moved && drag.el) drag.el.classList.add("dragging");
+    });
+    document.addEventListener("pointerup", (e) => {
+      if (!drag) return;
+      const cur = drag;
+      drag = null;
+      if (cur.el) cur.el.classList.remove("dragging");
+      if (!cur.moved) return;
+      justDragged = true;
+      setTimeout(() => { justDragged = false; }, 50);
+      const hit = dropTarget(e.clientX, e.clientY);
+      if (!hit || !hit.day) {
+        setStatus("Drop the job on a day in this week.", true);
+        return;
+      }
+      moveTo(cur.id, isoAt(hit.day, hit.min));
+    });
     document.getElementById("calendars").addEventListener("click", (e) => {
       const open = e.target.closest("[data-open-journey]");
-      if (!open) return;
-      openJourneyId = open.getAttribute("data-open-journey");
-      renderBoard();
+      if (open) {
+        openJourneyId = open.getAttribute("data-open-journey");
+        renderBoard();
+        return;
+      }
+      const kill = e.target.closest("[data-remove-block]");
+      if (kill) {
+        removeOther(kill.getAttribute("data-remove-block"));
+        return;
+      }
+      if (view !== "people" || justDragged) return;
+      if (e.target.closest("[data-block]")) return;
+      const host = e.target.closest("[data-worker], [data-day]");
+      if (!host) return;
+      const dayEl = e.target.closest("[data-day]");
+      const day = (dayEl && dayEl.getAttribute("data-day")) || "";
+      const who = host.getAttribute("data-worker") || personA;
+      openOther(who, day, minFromPoint(host, e.clientY));
     });
     document.getElementById("queue").addEventListener("change", (e) => {
       const pick = e.target.getAttribute("data-pick");

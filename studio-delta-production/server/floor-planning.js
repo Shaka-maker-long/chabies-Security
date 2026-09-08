@@ -29,8 +29,11 @@ const PROCESS_COLORS = {
   "Welding": { bg: "#fee2e2", fg: "#991b1b", border: "#dc2626" },
   "Grinding": { bg: "#dcfce7", fg: "#166534", border: "#16a34a" },
   "Powder coating": { bg: "#e5e7eb", fg: "#374151", border: "#6b7280" },
-  "Assembly": { bg: "#fae8ff", fg: "#86198f", border: "#c026d3" }
+  "Assembly": { bg: "#fae8ff", fg: "#86198f", border: "#c026d3" },
+  Other: { bg: "#ffedd5", fg: "#9a3412", border: "#f97316" }
 };
+
+const OTHER_TASKS = ["Cleaning", "Production Meeting", "Maintenance", "Material", "Setup"];
 
 const DAY_BANDS = [
   { id: "meeting", label: "Production Meeting", startMin: 7 * 60 + 45, endMin: 8 * 60, bg: "#fde68a", fg: "#92400e" },
@@ -383,7 +386,7 @@ function occupiedWorkdays(block) {
 function buildJourney(blocks) {
   const groups = {};
   (blocks || []).forEach((b) => {
-    if (!b || !b.orderId) return;
+    if (!b || !b.orderId || b.kind === "other") return;
     const orderId = formatOrderId(b.orderId);
     const key = orderId + "||" + String(b.process || "");
     if (!groups[key]) {
@@ -805,6 +808,306 @@ function unscheduleOrder(orderNumber) {
   return { removed: before - store.blocks.length };
 }
 
+function jobKeyFor(block) {
+  if (!block) return "";
+  if (block.kind === "other") return "other:" + (block.jobId || block.id);
+  if (block.kind === "paint") return "paint:" + formatOrderId(block.orderId);
+  return "work:" + formatOrderId(block.orderId) + "||" + String(block.process || "");
+}
+
+function collectJobs(blocks) {
+  const map = {};
+  (blocks || []).forEach((b) => {
+    if (!b) return;
+    const key = jobKeyFor(b);
+    if (!key) return;
+    if (!map[key]) {
+      map[key] = {
+        key,
+        kind: b.kind || "work",
+        orderId: b.orderId ? formatOrderId(b.orderId) : "",
+        process: String(b.process || b.title || ""),
+        title: String(b.title || b.process || ""),
+        product: String(b.product || ""),
+        studioNo: String(b.studioNo || b.orderId || b.title || ""),
+        workerId: b.workerId,
+        workerName: b.workerName || b.workerId,
+        jobId: b.jobId || b.id,
+        minutes: Number(b.durationMinutes) > 0 ? Number(b.durationMinutes) : 0,
+        start: b.start,
+        end: b.end,
+        counted: Number(b.durationMinutes) > 0
+      };
+    }
+    const job = map[key];
+    if (!job.counted) job.minutes += minutesBetween(toMs(b.start), toMs(b.end));
+    if (String(b.start || "") < String(job.start || "")) job.start = b.start;
+    if (String(b.end || "") > String(job.end || "")) job.end = b.end;
+  });
+  return Object.keys(map).map((k) => map[k]).filter((j) => j.kind === "paint" || j.minutes > 0);
+}
+
+function chainPreds(process, present) {
+  const has = (p) => (present || []).indexOf(p) !== -1;
+  if (process === "Profile Cutting") return [];
+  if (process === "Tagging") return has("Profile Cutting") ? ["Profile Cutting"] : [];
+  if (process === "Plate Cutting" || process === "Welding") {
+    if (has("Tagging")) return ["Tagging"];
+    if (has("Profile Cutting")) return ["Profile Cutting"];
+    return [];
+  }
+  if (process === "Grinding") {
+    if (has("Welding")) return ["Welding"];
+    if (has("Tagging")) return ["Tagging"];
+    return has("Profile Cutting") ? ["Profile Cutting"] : [];
+  }
+  if (process === "Powder coating") {
+    if (has("Grinding")) return ["Grinding"];
+    if (has("Welding")) return ["Welding"];
+    if (has("Tagging")) return ["Tagging"];
+    return has("Profile Cutting") ? ["Profile Cutting"] : [];
+  }
+  if (process === "Assembly") {
+    if (has("Powder coating")) return ["Powder coating"];
+    if (has("Grinding")) return ["Grinding"];
+    if (has("Welding")) return ["Welding"];
+    return has("Tagging") ? ["Tagging"] : (has("Profile Cutting") ? ["Profile Cutting"] : []);
+  }
+  return [];
+}
+
+function attachPreds(jobs) {
+  const byOrder = {};
+  (jobs || []).forEach((j) => {
+    if (!j.orderId || j.kind === "other") return;
+    byOrder[j.orderId] = byOrder[j.orderId] || [];
+    if (byOrder[j.orderId].indexOf(j.process) === -1) byOrder[j.orderId].push(j.process);
+  });
+  (jobs || []).forEach((j) => {
+    j.predKeys = [];
+    if (j.kind === "other" || !j.orderId) return;
+    chainPreds(j.process, byOrder[j.orderId]).forEach((p) => {
+      const key = p === "Powder coating" ? "paint:" + j.orderId : "work:" + j.orderId + "||" + p;
+      if ((jobs || []).some((x) => x.key === key)) j.predKeys.push(key);
+    });
+  });
+  return jobs;
+}
+
+function defaultSequences(jobs) {
+  const seq = {};
+  (jobs || []).forEach((j) => {
+    if (j.kind === "paint") return;
+    const w = String(j.workerId || "");
+    seq[w] = seq[w] || [];
+    seq[w].push(j);
+  });
+  Object.keys(seq).forEach((w) => {
+    seq[w].sort((a, b) => String(a.start).localeCompare(String(b.start)) || String(a.key).localeCompare(String(b.key)));
+    seq[w] = seq[w].map((j) => j.key);
+  });
+  return seq;
+}
+
+function packPlan(blocks, sequences, notBefore) {
+  const jobs = attachPreds(collectJobs(blocks));
+  const byKey = {};
+  jobs.forEach((j) => { byKey[j.key] = j; });
+  const seq = sequences || defaultSequences(jobs);
+  const held = notBefore || {};
+  const placed = {};
+  const busy = {};
+
+  function predEnd(job) {
+    let ms = Number(held[job.key]) || 0;
+    (job.predKeys || []).forEach((k) => {
+      if (placed[k]) ms = Math.max(ms, toMs(placed[k].end));
+    });
+    return ms;
+  }
+  function workerPrevEnd(job) {
+    const list = seq[job.workerId] || [];
+    const i = list.indexOf(job.key);
+    if (i <= 0) return 0;
+    const prev = list[i - 1];
+    if (placed[prev]) return toMs(placed[prev].end);
+    return null;
+  }
+
+  let guard = 0;
+  while (Object.keys(placed).length < jobs.length && guard++ < 8000) {
+    const left = jobs.filter((j) => !placed[j.key]);
+    const cand = left.filter((j) => (j.predKeys || []).every((k) => placed[k] || !byKey[k]));
+    if (!cand.length) throw new Error("Could not reflow the plan.");
+    let pick = cand.filter((j) => {
+      if (j.kind === "paint") return true;
+      if ((j.predKeys || []).length) return true;
+      return workerPrevEnd(j) !== null;
+    });
+    if (!pick.length) pick = cand;
+    pick.sort((a, b) => {
+      const ae = predEnd(a);
+      const be = predEnd(b);
+      if (ae !== be) return ae - be;
+      return String(a.start).localeCompare(String(b.start)) || String(a.key).localeCompare(String(b.key));
+    });
+    const job = pick[0];
+    let from = predEnd(job);
+    const prevEnd = workerPrevEnd(job);
+    if (prevEnd != null) from = Math.max(from, prevEnd);
+    if (job.kind === "paint") {
+      const drop = earliestPaintMonday(from);
+      const paintEnd = drop + PAINT_WAIT_DAYS * 86400000;
+      placed[job.key] = {
+        start: isoFromMs(drop),
+        end: isoFromMs(paintEnd),
+        segments: [{ start: isoFromMs(drop), end: isoFromMs(paintEnd) }]
+      };
+      continue;
+    }
+    const wBusy = busy[job.workerId] || [];
+    const result = placeTask(from, job.minutes, wBusy);
+    if (!result.segments.length) {
+      throw new Error("Could not place " + (job.studioNo || job.process) + ".");
+    }
+    placed[job.key] = result;
+    busy[job.workerId] = wBusy.concat(result.segments);
+  }
+
+  const out = [];
+  jobs.forEach((job) => {
+    const hit = placed[job.key];
+    (hit.segments || []).forEach((seg, i) => {
+      out.push({
+        id: i === 0 ? (job.jobId || newId()) : newId(),
+        jobId: job.jobId || job.key,
+        orderId: job.orderId,
+        studioNo: job.kind === "other" ? job.title : job.studioNo,
+        product: job.product,
+        process: job.process,
+        title: job.title,
+        workerId: job.workerId,
+        workerName: job.workerName,
+        start: seg.start,
+        end: seg.end,
+        kind: job.kind === "paint" ? "paint" : (job.kind === "other" ? "other" : "work"),
+        durationMinutes: job.kind === "other" ? job.minutes : undefined
+      });
+    });
+  });
+  return out;
+}
+
+function jobContainingBlock(blocks, blockId) {
+  const raw = (blocks || []).find((b) => b && String(b.id) === String(blockId));
+  if (!raw) return { raw: null, jobs: [], job: null };
+  const jobs = collectJobs(blocks);
+  const job = jobs.find((j) => j.key === jobKeyFor(raw)) || null;
+  return { raw, jobs, job };
+}
+
+function moveBlock(blockId, toStart) {
+  const store = load();
+  const { raw, jobs, job } = jobContainingBlock(store.blocks, blockId);
+  if (!raw || !job) throw new Error("That calendar block was not found.");
+  if (job.kind === "paint") throw new Error("Paint shop wait cannot be dragged. Move grinding instead.");
+  const dropMs = nextWorkInstant(toMs(toStart));
+  if (!Number.isFinite(dropMs)) throw new Error("Drop time is not valid.");
+  const oldStart = toMs(job.start);
+  const seq = defaultSequences(jobs);
+  const notBefore = {};
+  if (dropMs >= oldStart - 60000) {
+    notBefore[job.key] = dropMs;
+  } else {
+    const list = seq[job.workerId] || [];
+    const fromIdx = list.indexOf(job.key);
+    let targetKey = list[0] || job.key;
+    list.forEach((key) => {
+      const other = jobs.find((j) => j.key === key);
+      if (other && toMs(other.start) <= dropMs) targetKey = key;
+    });
+    const toIdx = list.indexOf(targetKey);
+    if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
+      list[fromIdx] = targetKey;
+      list[toIdx] = job.key;
+      seq[job.workerId] = list;
+    } else if (fromIdx > 0) {
+      list.splice(fromIdx, 1);
+      list.unshift(job.key);
+      seq[job.workerId] = list;
+      notBefore[job.key] = dropMs;
+    } else {
+      notBefore[job.key] = dropMs;
+    }
+  }
+  store.blocks = packPlan(store.blocks, seq, notBefore);
+  save(store);
+  return { blocks: store.blocks, job: job.key };
+}
+
+function insertOtherTask(body) {
+  const title = String((body && (body.title || body.process)) || "").trim();
+  const workerId = String((body && (body.workerId || body.worker)) || "").trim();
+  const minutes = Math.max(15, Math.round(Number(body && body.minutes) || 0));
+  if (!title) throw new Error("Name the other task.");
+  if (!workerId) throw new Error("Pick a person for the other task.");
+  if (namesEqual(workerId, PAINT_WORKER_ID) || namesEqual(workerId, PAINT_WORKER_NAME)) {
+    throw new Error("Other tasks go on a person, not the paint shop.");
+  }
+  const startMs = nextWorkInstant(body && body.start ? toMs(body.start) : Date.now());
+  if (!Number.isFinite(startMs)) throw new Error("Start time is not valid.");
+  const user = findUser(workerId);
+  const who = user ? user.name : workerId;
+  const jobId = newId();
+  const store = load();
+  store.blocks.push({
+    id: jobId,
+    jobId,
+    kind: "other",
+    title,
+    process: title,
+    studioNo: title,
+    orderId: "",
+    product: "",
+    workerId: who,
+    workerName: who,
+    start: isoFromMs(startMs),
+    end: isoFromMs(startMs + minutes * 60000),
+    durationMinutes: minutes
+  });
+  const jobs = collectJobs(store.blocks);
+  const seq = defaultSequences(jobs);
+  const otherKey = "other:" + jobId;
+  const list = (seq[who] || []).filter((k) => k !== otherKey);
+  let idx = list.length;
+  for (let i = 0; i < list.length; i++) {
+    const j = jobs.find((x) => x.key === list[i]);
+    if (!j) continue;
+    if (toMs(j.start) >= startMs || toMs(j.end) > startMs) {
+      idx = i;
+      break;
+    }
+  }
+  list.splice(idx, 0, otherKey);
+  seq[who] = list;
+  const notBefore = {};
+  notBefore[otherKey] = startMs;
+  store.blocks = packPlan(store.blocks, seq, notBefore);
+  save(store);
+  return { blocks: store.blocks, jobId };
+}
+
+function removeBlock(blockId) {
+  const store = load();
+  const { raw, job } = jobContainingBlock(store.blocks, blockId);
+  if (!raw || !job) throw new Error("That calendar block was not found.");
+  if (job.kind !== "other") throw new Error("Unschedule the order to remove shop work.");
+  store.blocks = store.blocks.filter((b) => jobKeyFor(b) !== job.key);
+  store.blocks = packPlan(store.blocks, defaultSequences(collectJobs(store.blocks)), {});
+  save(store);
+  return { removed: true };
+}
+
 function plannedWorkers() {
   const users = staff.listUsers();
   const fromTasks = users
@@ -901,6 +1204,7 @@ function getBoard(week) {
       lunch: "12:00–12:30"
     },
     bands: DAY_BANDS.slice(),
+    otherTasks: OTHER_TASKS.slice(),
     now: isoFromMs(Date.now()),
     journey,
     weekStarting: weekStartingOrders(journey, days)
@@ -914,6 +1218,7 @@ module.exports = {
   PAINT_WAIT_DAYS,
   PLANNED_PROCESSES,
   PROCESS_COLORS,
+  OTHER_TASKS,
   WINDOWS,
   DAY_BANDS,
   WEEKDAYS,
@@ -934,6 +1239,10 @@ module.exports = {
   scheduleOrder,
   scheduleSelected,
   unscheduleOrder,
+  moveBlock,
+  insertOtherTask,
+  removeBlock,
+  packPlan,
   getBoard,
   load,
   save,
