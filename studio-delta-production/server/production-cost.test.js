@@ -23,9 +23,10 @@ initWorkbook();
 staff.upsertUser({
   name: "Office Boss",
   access: "Admin",
-  role: "Admin",
+  role: "Manager",
   password: "admin",
-  seeDebtors: "Yes"
+  seeDebtors: "Yes",
+  canManageUsers: true
 });
 
 db.upsertOrder({
@@ -105,6 +106,49 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   });
   const steelJson = await steel.json();
   assert.ok(steelJson.ok, JSON.stringify(steelJson));
+
+  const runningStart = new Date("2026-09-09T09:00:00.000Z");
+  book.getSheetByName("Production_Log").appendRow([
+    "log_open_1", "S-COST-1", "Willard", "Welding", "Welding", runningStart, "", "", "", "", 0, "", ""
+  ]);
+  persistWorkbook();
+
+  const refuseSteel = await fetch(base + "/api/office/steel-usage/clear", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": session.token },
+    body: JSON.stringify({ confirm: "no" })
+  });
+  assert.strictEqual(refuseSteel.status, 400);
+
+  const wipeSteel = await fetch(base + "/api/office/steel-usage/clear", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": session.token },
+    body: JSON.stringify({ confirm: "CLEAR" })
+  });
+  const wipeSteelJson = await wipeSteel.json();
+  assert.ok(wipeSteelJson.ok, JSON.stringify(wipeSteelJson));
+  assert.ok(wipeSteelJson.removed >= 1);
+  assert.strictEqual(book.getSheetByName("Steel_Usage").getLastRow(), 1);
+
+  const wipeLogs = await fetch(base + "/api/office/production-log/clear", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": session.token },
+    body: JSON.stringify({ confirm: "CLEAR" })
+  });
+  const wipeLogsJson = await wipeLogs.json();
+  assert.ok(wipeLogsJson.ok, JSON.stringify(wipeLogsJson));
+  assert.ok(wipeLogsJson.removed >= 1);
+  const left = book.getSheetByName("Production_Log").getRange(2, 1, 1, 7).getValues()[0];
+  assert.strictEqual(String(left[0]), "log_open_1", "running log must stay");
+
+  const after = await fetch(base + "/api/office/production-cost?mode=all", {
+    headers: { "x-sd-token": session.token }
+  });
+  const afterJson = await after.json();
+  assert.ok(afterJson.ok);
+  const leftover = (afterJson.orders || []).find((o) => o.orderNum === "S-COST-1");
+  assert.ok(!leftover || leftover.materialCost === 0, "steel usage should be gone");
+
   server.close();
   console.log("production-cost.test.js ok");
 })().catch((err) => {
