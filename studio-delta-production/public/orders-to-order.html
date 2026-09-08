@@ -28,7 +28,8 @@
     .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
     .card h2 { margin:0; padding:14px 16px 0; font-size:16px; }
     .card .hint { margin:6px 16px 12px; color:var(--muted); font-size:13px; }
-    table { width:100%; border-collapse:collapse; background:#fff; }
+    table { width:100%; border-collapse:collapse; background:#fff; min-width:720px; }
+    .table-wrap { overflow:auto; }
     th, td { border-top:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; vertical-align:top; }
     th { background:var(--head); font-size:11px; letter-spacing:.03em; text-transform:uppercase; }
     .empty, .load, .err { background:#fff; border:1px solid var(--line); border-radius:12px; padding:28px 16px; text-align:center; color:var(--muted); }
@@ -64,10 +65,11 @@
         <a href="/orders/delivery">Delivery summary</a>
         <a href="/orders/job-card">Job card</a>
         <a class="on" href="/orders/to-order">To order</a>
+        <a href="/orders/glass-rates">Glass rates</a>
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>To order</h1>
-      <p class="lede">Glass logged at Pre-Powder Coating QC. Generate a purchase order, then when glass arrives tick only what you received, put a cost on each line, and attach one invoice for that received batch. Glass still outstanding stays on the PO. Wood is still marked ordered after you buy it.</p>
+      <p class="lede">Glass logged at Pre-Powder Coating QC. Generate a purchase order PDF for the supplier. Estimated cost is square metres × the rate for that glass type and thickness on <a href="/orders/glass-rates">Glass rates</a>. When glass arrives, tick only what you received, put the invoice cost on each line, and attach one invoice for that batch.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -84,10 +86,11 @@
       <div class="cols">
         <section class="card">
           <h2>To put on a PO</h2>
-          <p class="hint">These lines are not on a purchase order yet.</p>
+          <p class="hint">These lines are not on a purchase order yet. Estimated cost uses Glass rates (R per m²).</p>
           <div id="toOrderBox"><div class="load">Loading…</div></div>
           <div class="foot">
-            <button type="button" id="poBtn" onclick="makePo()" disabled>Generate PO</button>
+            <button type="button" id="poBtn" onclick="makePo()" disabled>Generate purchase order PDF</button>
+            <span class="msg" id="estMsg"></span>
             <span class="msg" id="poMsg"></span>
           </div>
         </section>
@@ -127,8 +130,14 @@
       if (isNaN(d.getTime())) return "";
       return d.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", dateStyle: "medium", timeStyle: "short" });
     }
-    function spec(r) {
-      return esc(r.component) + " · " + esc(r.type) + " · " + esc(r.thickness) + " · " + esc(r.height) + "×" + esc(r.width) + " · qty " + esc(r.quantity);
+    function glassHead(extra) {
+      return "<th></th><th>Order Number</th><th>Glass type</th><th>Thickness</th><th>Height</th><th>Width</th><th>Quantity</th><th>Area</th><th>Est. cost</th>" + (extra || "");
+    }
+    function glassCells(r) {
+      const miss = r.rateMissing ? " <span class='msg bad'>No rate</span>" : "";
+      return "<td><b>" + esc(r.order) + "</b></td><td>" + esc(r.type) + "</td><td>" + esc(r.thickness) +
+        "</td><td>" + esc(r.height) + "</td><td>" + esc(r.width) + "</td><td>" + esc(r.quantity) +
+        "</td><td>" + esc(r.areaLabel || "—") + "</td><td>" + esc(r.estimatedCostLabel || "—") + miss + "</td>";
     }
     function setMsg(id, text, bad) {
       const el = document.getElementById(id);
@@ -155,10 +164,10 @@
         toBox.innerHTML = '<div class="empty">No glass waiting for a purchase order. Pre-Powder Coating QC adds lines here.</div>';
         document.getElementById("poBtn").disabled = true;
       } else {
-        toBox.innerHTML = "<table><thead><tr><th></th><th>Order</th><th>Glass</th><th>Logged</th></tr></thead><tbody>" +
+        toBox.innerHTML = "<div class='table-wrap'><table><thead><tr>" + glassHead() + "</tr></thead><tbody>" +
           data.toOrder.map((r) => "<tr><td><input class='to-chk' type='checkbox' value=\"" + esc(r.id) + "\"></td>" +
-            "<td><b>" + esc(r.order) + "</b></td><td>" + spec(r) + "</td><td>" + esc(when(r.timestamp)) + "</td></tr>").join("") +
-          "</tbody></table>";
+            glassCells(r) + "</tr>").join("") +
+          "</tbody></table></div>";
         toBox.querySelectorAll(".to-chk").forEach((el) => { el.onchange = syncButtons; });
       }
       const outBox = document.getElementById("outBox");
@@ -166,11 +175,12 @@
         outBox.innerHTML = '<div class="empty">No glass is outstanding on a PO.</div>';
         document.getElementById("recvBtn").disabled = true;
       } else {
-        outBox.innerHTML = "<table><thead><tr><th></th><th>PO</th><th>Order</th><th>Glass</th><th>Cost (R)</th></tr></thead><tbody>" +
+        outBox.innerHTML = "<div class='table-wrap'><table><thead><tr>" + glassHead("<th>PO</th><th>Cost (R)</th>") + "</tr></thead><tbody>" +
           data.outstanding.map((r) => "<tr><td><input class='out-chk' type='checkbox' value=\"" + esc(r.id) + "\"></td>" +
-            "<td><b>" + esc(r.poNumber) + "</b></td><td>" + esc(r.order) + "</td><td>" + spec(r) +
+            glassCells(r) + "<td><b>" + esc(r.poNumber) + "</b>" +
+            (r.poId ? " <a href=\"/api/office/glass-po/" + encodeURIComponent(r.poId) + "/pdf\" target=\"_blank\" rel=\"noopener\">PDF</a>" : "") +
             "</td><td><input class='cost' data-id=\"" + esc(r.id) + "\" inputmode='decimal' placeholder='Required' disabled></td></tr>").join("") +
-          "</tbody></table>";
+          "</tbody></table></div>";
         outBox.querySelectorAll(".out-chk").forEach((el) => { el.onchange = syncButtons; });
       }
       const recvBox = document.getElementById("recvBox");
@@ -178,10 +188,13 @@
         recvBox.innerHTML = '<div class="empty">No glass invoices received yet.</div>';
       } else {
         recvBox.innerHTML = data.received.map((batch) => {
-          const rows = (batch.lines || []).map((r) => "<tr><td>" + esc(r.order) + "</td><td>" + spec(r) + "</td><td>" + esc(r.costLabel || r.cost) + "</td><td><span class='pill ok'>Received</span></td></tr>").join("");
+          const rows = (batch.lines || []).map((r) => "<tr><td>" + esc(r.order) + "</td><td>" + esc(r.type) + "</td><td>" + esc(r.thickness) +
+            "</td><td>" + esc(r.height) + "</td><td>" + esc(r.width) + "</td><td>" + esc(r.quantity) +
+            "</td><td>" + esc(r.costLabel || r.cost) + "</td><td><span class='pill ok'>Received</span></td></tr>").join("");
           return "<div class='batch'><h3>" + esc(batch.poNumber || "PO") + " · " + esc(when(batch.receivedAt)) + " · " + esc(batch.receivedBy) + " · " + esc(batch.totalLabel) + "</h3>" +
+            (batch.poId ? "<a href=\"/api/office/glass-po/" + encodeURIComponent(batch.poId) + "/pdf\" target=\"_blank\" rel=\"noopener\">Purchase order PDF</a> · " : "") +
             "<a href=\"/api/office/glass-po/invoices/" + encodeURIComponent(batch.invoiceId) + "\" target=\"_blank\" rel=\"noopener\">" + esc(batch.invoiceFilename || "Open invoice") + "</a>" +
-            "<table><thead><tr><th>Order</th><th>Glass</th><th>Cost</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
+            "<div class='table-wrap'><table><thead><tr><th>Order Number</th><th>Glass type</th><th>Thickness</th><th>Height</th><th>Width</th><th>Quantity</th><th>Cost</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table></div></div>";
         }).join("");
       }
       syncButtons();
@@ -213,8 +226,22 @@
       if (kind === "wood") renderWood();
       else renderGlass();
     }
+    function selectedEstimate() {
+      const ids = selectedToOrder();
+      let sum = 0;
+      let missing = 0;
+      (data.toOrder || []).forEach((r) => {
+        if (ids.indexOf(r.id) === -1) return;
+        if (r.rateMissing) missing += 1;
+        else sum += Number(r.estimatedCost) || 0;
+      });
+      const el = document.getElementById("estMsg");
+      if (!ids.length) { el.textContent = ""; return; }
+      el.textContent = "Est. " + "R " + sum.toFixed(2) + (missing ? " · " + missing + " missing a rate" : "");
+    }
     function syncButtons() {
       document.getElementById("poBtn").disabled = !selectedToOrder().length;
+      selectedEstimate();
       const picked = selectedOut();
       document.querySelectorAll(".cost").forEach((input) => {
         const on = picked.indexOf(input.getAttribute("data-id")) !== -1;
@@ -235,7 +262,7 @@
     async function makePo() {
       const lineIds = selectedToOrder();
       if (!lineIds.length) return;
-      if (!confirm("Generate a purchase order for " + lineIds.length + " glass line" + (lineIds.length === 1 ? "" : "s") + "?")) return;
+      if (!confirm("Generate a purchase order PDF for " + lineIds.length + " glass line" + (lineIds.length === 1 ? "" : "s") + "?")) return;
       document.getElementById("poBtn").disabled = true;
       setMsg("poMsg", "Saving…");
       const r = await sdOfficeFetch("/api/office/glass-po", { method: "POST", body: JSON.stringify({ lineIds }) });
@@ -244,6 +271,12 @@
       data = j;
       render();
       setMsg("poMsg", "Generated " + (j.poNumber || "PO") + ".");
+      if (j.poId) {
+        const el = document.getElementById("poMsg");
+        el.innerHTML = "Generated " + esc(j.poNumber || "PO") +
+          ". <a href=\"/api/office/glass-po/" + encodeURIComponent(j.poId) + "/pdf\" target=\"_blank\" rel=\"noopener\">Open PDF</a>";
+        window.open("/api/office/glass-po/" + encodeURIComponent(j.poId) + "/pdf", "_blank", "noopener");
+      }
       setMsg("status", (j.toOrderCount || 0) + " to put on a PO · " + (j.outstandingCount || 0) + " outstanding");
     }
     function readInvoice() {

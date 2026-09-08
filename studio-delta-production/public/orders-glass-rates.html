@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Glass rates</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:780px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#fff; color:var(--bad); border-color:#fecdca; }
+    .page { padding:18px 16px 40px; max-width:960px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:16px; }
+    .card h2 { margin:0; padding:14px 16px 0; font-size:16px; }
+    .hint { margin:6px 16px 12px; color:var(--muted); font-size:13px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-top:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; }
+    th { background:var(--head); font-size:11px; letter-spacing:.03em; text-transform:uppercase; }
+    .add { display:flex; gap:8px; flex-wrap:wrap; align-items:end; padding:12px 16px; border-top:1px solid var(--line); background:#f8fafc; }
+    .add label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+    .add input, .add select { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; min-width:140px; }
+    .empty { padding:28px 16px; text-align:center; color:var(--muted); }
+    .msg { font-size:12px; color:var(--muted); }
+    .msg.bad { color:var(--bad); }
+    .custom { margin-top:4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a class="on" href="/orders/glass-rates">Glass rates</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Glass rates</h1>
+      <p class="lede">Each glass type and thickness has its own rate per square metre. Purchase orders use height × width × quantity (millimetres) to estimate cost for that order.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <button class="ghost" type="button" onclick="load()">Refresh</button>
+    </div>
+  </header>
+  <div class="page">
+    <section class="card">
+      <h2>Rates per m²</h2>
+      <p class="hint">Add or change a rate. The same type and thickness overwrites the previous amount. To order then shows the estimated cost on each glass line.</p>
+      <div id="list"><div class="empty">Loading…</div></div>
+      <form class="add" id="addForm">
+        <label>Glass type
+          <select id="typeSelect"></select>
+          <input class="custom" id="typeCustom" placeholder="Or type another glass" autocomplete="off">
+        </label>
+        <label>Thickness
+          <select id="thickSelect"></select>
+          <input class="custom" id="thickCustom" placeholder="Or type e.g. 12mm" autocomplete="off">
+        </label>
+        <label>Rate per m² (R)
+          <input id="rateInput" inputmode="decimal" placeholder="e.g. 450" required>
+        </label>
+        <button type="submit">Save rate</button>
+        <span class="msg" id="formMsg"></span>
+      </form>
+    </section>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    let data = { rates: [], types: [], thickness: [] };
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+    }
+    function setMsg(id, text, bad) {
+      const el = document.getElementById(id);
+      el.textContent = text || "";
+      el.classList.toggle("bad", !!bad);
+    }
+    function fillSelect(id, values, first) {
+      const el = document.getElementById(id);
+      el.innerHTML = "<option value=\"\">" + first + "</option>" +
+        values.map((v) => "<option value=\"" + esc(v) + "\">" + esc(v) + "</option>").join("");
+    }
+    function render() {
+      fillSelect("typeSelect", data.types || [], "Choose type");
+      fillSelect("thickSelect", data.thickness || [], "Choose thickness");
+      const box = document.getElementById("list");
+      if (!(data.rates || []).length) {
+        box.innerHTML = '<div class="empty">No rates yet. Add the first glass type and thickness below.</div>';
+        return;
+      }
+      box.innerHTML = "<table><thead><tr><th>Glass type</th><th>Thickness</th><th>Rate per m²</th><th></th></tr></thead><tbody>" +
+        data.rates.map((r) => "<tr><td>" + esc(r.type) + "</td><td>" + esc(r.thickness) + "</td><td>" + esc(r.rateLabel) +
+          "</td><td><button class='danger' type='button' data-id=\"" + esc(r.id) + "\">Delete</button></td></tr>").join("") +
+        "</tbody></table>";
+      box.querySelectorAll("button[data-id]").forEach((btn) => {
+        btn.onclick = () => removeRate(btn.getAttribute("data-id"));
+      });
+    }
+    async function load() {
+      setMsg("status", "Loading…");
+      const r = await sdOfficeFetch("/api/office/glass-rates");
+      const j = await r.json();
+      if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
+      data = j;
+      render();
+      setMsg("status", (j.rates || []).length + " rate" + ((j.rates || []).length === 1 ? "" : "s"));
+    }
+    async function removeRate(id) {
+      if (!confirm("Delete this glass rate?")) return;
+      const r = await sdOfficeFetch("/api/office/glass-rates/" + encodeURIComponent(id), { method: "DELETE" });
+      const j = await r.json();
+      if (!j.ok) { setMsg("status", j.error || "Could not delete", true); return; }
+      data = j;
+      render();
+      setMsg("status", "Deleted.");
+    }
+    document.getElementById("addForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const type = String(document.getElementById("typeCustom").value || "").trim() || document.getElementById("typeSelect").value;
+      const thickness = String(document.getElementById("thickCustom").value || "").trim() || document.getElementById("thickSelect").value;
+      const ratePerM2 = document.getElementById("rateInput").value;
+      setMsg("formMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/glass-rates", {
+        method: "POST",
+        body: JSON.stringify({ type, thickness, ratePerM2 })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("formMsg", j.error || "Could not save", true); return; }
+      data = j;
+      document.getElementById("typeCustom").value = "";
+      document.getElementById("thickCustom").value = "";
+      document.getElementById("rateInput").value = "";
+      render();
+      setMsg("formMsg", "Saved " + (j.rate && j.rate.type ? j.rate.type : "") + " " + (j.rate && j.rate.thickness ? j.rate.thickness : "") + ".");
+      setMsg("status", (j.rates || []).length + " rates");
+    };
+    sdRequireOffice("orders").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

@@ -5,6 +5,8 @@ const path = require("path");
 const crypto = require("crypto");
 const { dataDir, getBook, persistWorkbook } = require("./workbook-store");
 const { parseMoney, money, formatRand } = require("./db");
+const catalog = require("./product-catalog");
+const glassRates = require("./glass-rates");
 
 const TO_ORDER = "To order";
 const ON_PO = "On PO";
@@ -146,6 +148,7 @@ function setGlassStatus(id, status) {
 }
 
 function decorateLine(line, extra) {
+  const costs = glassRates.costLine(line);
   return Object.assign({
     id: line.id,
     order: line.order,
@@ -159,7 +162,7 @@ function decorateLine(line, extra) {
     status: line.status,
     timestamp: line.timestamp,
     kind: "glass"
-  }, extra || {});
+  }, costs, extra || {});
 }
 
 function safeFilename(name, fallback) {
@@ -258,10 +261,39 @@ function snapshot() {
       totalLabel: formatRand((batch.lines || []).reduce((sum, entry) => sum + parseMoney(entry.cost), 0))
     };
   });
+  const pos = (store.pos || []).slice().reverse().map((po) => {
+    const poLines = (po.lineIds || []).map((id) => {
+      const live = byId[id];
+      const meta = store.lines[id] || {};
+      return live ? decorateLine(live, { poId: po.id, poNumber: po.number }) : decorateLine({
+        id,
+        order: "",
+        type: "",
+        thickness: "",
+        height: 0,
+        width: 0,
+        quantity: 0,
+        status: ""
+      }, { poId: po.id, poNumber: po.number, ...meta });
+    });
+    const estimatedTotal = poLines.reduce((sum, line) => sum + parseMoney(line.estimatedCost), 0);
+    return {
+      id: po.id,
+      number: po.number,
+      createdAt: po.createdAt,
+      createdBy: po.createdBy,
+      lineIds: po.lineIds || [],
+      lines: poLines,
+      estimatedTotal: money(estimatedTotal),
+      estimatedTotalLabel: formatRand(estimatedTotal),
+      pdfUrl: "/api/office/glass-po/" + encodeURIComponent(po.id) + "/pdf"
+    };
+  });
   return {
     toOrder,
     outstanding,
     received,
+    pos,
     toOrderCount: toOrder.length,
     outstandingCount: outstanding.length,
     glass: lines.map((line) => {
@@ -404,6 +436,195 @@ function receiveGlass(payload, actor) {
   };
 }
 
+function findPo(poId) {
+  const store = loadStore();
+  const want = String(poId || "").trim();
+  return (store.pos || []).find((row) => row && (row.id === want || row.number === want)) || null;
+}
+
+function poLines(po) {
+  const live = readGlassLines();
+  const byId = {};
+  live.forEach((line) => { byId[line.id] = line; });
+  return (po.lineIds || []).map((id) => {
+    const line = byId[id];
+    if (!line) {
+      return decorateLine({ id, order: "", type: "", thickness: "", height: 0, width: 0, quantity: 0, status: "" });
+    }
+    return decorateLine(line, { poId: po.id, poNumber: po.number });
+  });
+}
+
+function formatPoDate(iso) {
+  const d = iso ? new Date(iso) : new Date();
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-ZA", { timeZone: "Africa/Johannesburg", day: "2-digit", month: "short", year: "numeric" });
+}
+
+async function logoPathForPdf() {
+  const url = catalog.COMPANY_LOGO_URL;
+  if (!url) return null;
+  const dir = path.join(dataDir(), "pdf-images");
+  fs.mkdirSync(dir, { recursive: true });
+  const dest = path.join(dir, "studio-delta-logo.jpg");
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 400) return dest;
+  try {
+    const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return fs.existsSync(dest) ? dest : null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length) fs.writeFileSync(dest, buf);
+    return dest;
+  } catch (e) {
+    return fs.existsSync(dest) ? dest : null;
+  }
+}
+
+function drawPdfBox(doc, x, y, w, h) {
+  doc.save().lineWidth(0.7).strokeColor("#1c1917").rect(x, y, w, h).stroke().restore();
+}
+
+async function buildPurchaseOrderPdf(poId) {
+  const po = findPo(poId);
+  if (!po) throw new Error("Purchase order not found.");
+  const lines = poLines(po);
+  const PDFDocument = require("pdfkit");
+  const logoPath = await logoPathForPdf();
+  const chunks = [];
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: 36,
+    compress: false,
+    info: { Title: "Purchase Order " + po.number, Author: "Studio Delta" }
+  });
+  doc.on("data", (c) => chunks.push(c));
+  const done = new Promise((resolve, reject) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+  });
+
+  const pageW = 595.28;
+  const margin = 36;
+  const inner = pageW - margin * 2;
+  const ink = "#1c1917";
+  const brass = "#b08948";
+  const muted = "#6b645b";
+
+  drawPdfBox(doc, margin, margin, 72, 72);
+  if (logoPath) {
+    try { doc.image(logoPath, margin + 4, margin + 4, { fit: [64, 64] }); } catch (e) {
+      doc.fillColor(ink).font("Helvetica-Bold").fontSize(9).text("STUDIO\nDELTA", margin, margin + 26, { width: 72, align: "center" });
+    }
+  } else {
+    doc.fillColor(ink).font("Helvetica-Bold").fontSize(9).text("STUDIO\nDELTA", margin, margin + 26, { width: 72, align: "center" });
+  }
+
+  doc.fillColor(ink).font("Helvetica-Bold").fontSize(16).text("STUDIO DELTA", margin + 88, margin + 8);
+  doc.fillColor(muted).font("Helvetica").fontSize(9).text("Furniture  ·  Steel  ·  Glass", margin + 88, margin + 28);
+  doc.fillColor(muted).font("Helvetica").fontSize(8).text("studiodelta.co.za", margin + 88, margin + 42);
+  doc.fillColor(ink).font("Helvetica-Bold").fontSize(20).text("PURCHASE ORDER", margin, margin + 8, { width: inner, align: "right" });
+  doc.fillColor(brass).font("Helvetica-Bold").fontSize(12).text(po.number, margin, margin + 34, { width: inner, align: "right" });
+
+  doc.save().strokeColor(brass).lineWidth(2).moveTo(margin, margin + 84).lineTo(margin + inner, margin + 84).stroke().restore();
+
+  let y = margin + 96;
+  drawPdfBox(doc, margin, y, inner * 0.48, 54);
+  drawPdfBox(doc, margin + inner * 0.52, y, inner * 0.48, 54);
+  doc.fillColor(muted).font("Helvetica-Bold").fontSize(8).text("SUPPLIER", margin + 8, y + 8);
+  doc.fillColor(ink).font("Helvetica").fontSize(10).text("Glass supplier", margin + 8, y + 22);
+  doc.fillColor(muted).font("Helvetica").fontSize(8).text("Name / company to be completed when sending", margin + 8, y + 36, { width: inner * 0.48 - 16 });
+  doc.fillColor(muted).font("Helvetica-Bold").fontSize(8).text("ORDER DETAILS", margin + inner * 0.52 + 8, y + 8);
+  doc.fillColor(ink).font("Helvetica").fontSize(10)
+    .text("Date  " + formatPoDate(po.createdAt), margin + inner * 0.52 + 8, y + 22)
+    .text("Prepared by  " + (po.createdBy || "Studio Delta"), margin + inner * 0.52 + 8, y + 36);
+
+  y += 70;
+  doc.fillColor(ink).font("Helvetica").fontSize(9).text(
+    "Please supply the glass listed below. Sizes are millimetres. Estimated cost uses Studio Delta rates per square metre for that glass type and thickness.",
+    margin, y, { width: inner }
+  );
+  y += 28;
+
+  const headers = ["Order Number", "Glass type", "Thickness", "Height", "Width", "Quantity", "Area m²", "Est. cost"];
+  const widths = [74, 74, 54, 46, 46, 50, 52, inner - 74 - 74 - 54 - 46 - 46 - 50 - 52];
+  const headerH = 22;
+  doc.save().fillColor("#1c1917").rect(margin, y, inner, headerH).fill().restore();
+  let x = margin;
+  headers.forEach((h, i) => {
+    doc.fillColor("#fcfbf8").font("Helvetica-Bold").fontSize(7).text(h, x + 3, y + 7, { width: widths[i] - 6, lineBreak: false });
+    x += widths[i];
+  });
+  y += headerH;
+
+  let totalArea = 0;
+  let totalCost = 0;
+  let missing = 0;
+  lines.forEach((line, idx) => {
+    const rowH = 18;
+    if (y + rowH > 760) {
+      doc.addPage();
+      y = margin;
+    }
+    if (idx % 2 === 1) {
+      doc.save().fillColor("#f3efe6").rect(margin, y, inner, rowH).fill().restore();
+    }
+    doc.save().strokeColor("#d7d1c6").lineWidth(0.4).rect(margin, y, inner, rowH).stroke().restore();
+    const area = Number(line.areaM2) || 0;
+    totalArea += area;
+    const cost = parseMoney(line.estimatedCost);
+    if (line.rateMissing) missing += 1;
+    else totalCost += cost;
+    const cells = [
+      line.order || "",
+      line.type || "",
+      line.thickness || "",
+      line.height == null ? "" : String(line.height),
+      line.width == null ? "" : String(line.width),
+      line.quantity == null ? "" : String(line.quantity),
+      area > 0 ? formatArea(area) : "—",
+      line.estimatedCostLabel || "—"
+    ];
+    x = margin;
+    cells.forEach((cell, i) => {
+      doc.fillColor(ink).font("Helvetica").fontSize(8).text(String(cell), x + 3, y + 5, { width: widths[i] - 6, lineBreak: false });
+      x += widths[i];
+    });
+    y += rowH;
+  });
+
+  y += 8;
+  drawPdfBox(doc, margin + inner - 220, y, 220, 48);
+  doc.fillColor(muted).font("Helvetica-Bold").fontSize(8).text("ESTIMATED TOTAL", margin + inner - 212, y + 8);
+  doc.fillColor(ink).font("Helvetica-Bold").fontSize(14).text(formatRand(totalCost), margin + inner - 212, y + 22, { width: 204 });
+  doc.fillColor(muted).font("Helvetica").fontSize(8).text(
+    "Area " + formatArea(totalArea) + " m²" + (missing ? "  ·  " + missing + " line" + (missing === 1 ? "" : "s") + " missing a rate" : ""),
+    margin, y + 8, { width: inner - 236 }
+  );
+
+  y += 64;
+  doc.fillColor(muted).font("Helvetica").fontSize(8).text(
+    "This estimated cost is for Studio Delta planning. The supplier invoice is the amount payable. Rates are set on Glass rates (R per m² by glass type and thickness).",
+    margin, y, { width: inner }
+  );
+  y += 28;
+  doc.fillColor(ink).font("Helvetica").fontSize(9)
+    .text("Authorised ________________________________", margin, y)
+    .text("Date ________________________________", margin + inner / 2, y);
+
+  doc.end();
+  const buffer = await done;
+  return {
+    buffer,
+    filename: po.number + ".pdf",
+    mime: "application/pdf",
+    poNumber: po.number
+  };
+}
+
+function formatArea(area) {
+  if (!(Number(area) > 0)) return "0";
+  return (Math.round(Number(area) * 10000) / 10000).toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+}
+
 module.exports = {
   TO_ORDER,
   ON_PO,
@@ -412,5 +633,7 @@ module.exports = {
   createPurchaseOrder,
   receiveGlass,
   readInvoiceFile,
-  readGlassLines
+  readGlassLines,
+  findPo,
+  buildPurchaseOrderPdf
 };
