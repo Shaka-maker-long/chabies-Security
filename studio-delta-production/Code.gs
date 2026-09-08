@@ -40,6 +40,7 @@ function workLocksDisabled() {
 }
 var TAB_GLASS_TYPES = "Glass_Types";
 var TAB_WOOD_TYPES = "Wood_Types";
+var TAB_STANDARD_GLASS = "Standard_Glass";
 var TAB_GLASS_TO_ORDER = "Glass_To_Order";
 var TAB_WOOD_TO_ORDER = "Wood_To_Order";
 var GLASS_COMPONENTS = ["Door", "Side", "Shelf", "backboard"];
@@ -336,6 +337,79 @@ function writeBackboardUsage(ss, orderNum, workerName, processName, backboardUsa
 function processNeedsGlass(role, processName) {
   var p = String(processName || "").trim().toLowerCase();
   return p === "pre-powder coating";
+}
+
+function isStandardOrderType_(type) {
+  return String(type || "").trim().toLowerCase() === "standard";
+}
+
+function productGlassKey_(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
+function standardGlassHeaders_() {
+  return ["Product", "No Glass", "Spec JSON", "From Order", "Updated"];
+}
+
+function parseGlassOrderPayload_(glassOrderData) {
+  if (glassOrderData && !Array.isArray(glassOrderData) && glassOrderData.noGlass) {
+    return { noGlass: true, lines: [] };
+  }
+  var list = Array.isArray(glassOrderData) ? glassOrderData : [];
+  return { noGlass: false, lines: list };
+}
+
+function loadStandardGlassSpec(product) {
+  var key = productGlassKey_(product);
+  if (!key) return null;
+  var sheet = ensureMaterialsOrderSheet(TAB_STANDARD_GLASS, standardGlassHeaders_());
+  if (sheet.getLastRow() < 2) return null;
+  var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+  for (var i = 0; i < grid.length; i++) {
+    if (productGlassKey_(grid[i][0]) !== key) continue;
+    var noGlass = String(grid[i][1] || "").trim().toLowerCase() === "yes";
+    var lines = [];
+    try { lines = JSON.parse(String(grid[i][2] || "[]")); } catch (e) { lines = []; }
+    if (!Array.isArray(lines)) lines = [];
+    return {
+      product: String(grid[i][0] || product).trim(),
+      noGlass: noGlass,
+      lines: lines,
+      from_order_number: String(grid[i][3] || "").trim(),
+      updated_at: grid[i][4] ? String(grid[i][4]) : ""
+    };
+  }
+  return null;
+}
+
+function rememberStandardGlass(product, type, noGlass, lines, orderNum) {
+  if (!isStandardOrderType_(type)) return null;
+  var key = productGlassKey_(product);
+  if (!key) return null;
+  var clean = [];
+  (lines || []).forEach(function (raw) {
+    var line = normalizeMaterialLine(raw, "glass");
+    if (line) clean.push(line);
+  });
+  if (!noGlass && !clean.length) return null;
+  var sheet = ensureMaterialsOrderSheet(TAB_STANDARD_GLASS, standardGlassHeaders_());
+  var rowNum = 0;
+  if (sheet.getLastRow() >= 2) {
+    var names = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < names.length; i++) {
+      if (productGlassKey_(names[i][0]) === key) { rowNum = i + 2; break; }
+    }
+  }
+  var values = [
+    String(product || "").trim(),
+    noGlass ? "Yes" : "No",
+    JSON.stringify(noGlass ? [] : clean),
+    String(orderNum || "").trim(),
+    new Date()
+  ];
+  if (rowNum) sheet.getRange(rowNum, 1, 1, 5).setValues([values]);
+  else sheet.appendRow(values);
+  return loadStandardGlassSpec(product);
 }
 
 function ensureNameListSheet(tab, header, seeds) {
@@ -1925,8 +1999,10 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
         throw new Error("Server rejected: Backboard used must be logged before finishing " + (processName || role) + ".");
       }
     }
+    var glassPayload = parseGlassOrderPayload_(glassOrderData);
+    var noGlass = !!glassPayload.noGlass;
     var glassLines = [];
-    (glassOrderData || []).forEach(function (raw) {
+    (glassPayload.lines || []).forEach(function (raw) {
       var line = normalizeMaterialLine(raw, "glass");
       if (line) glassLines.push(line);
     });
@@ -1936,8 +2012,8 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
       if (line) woodLines.push(line);
     });
     if (processNeedsGlass(role, processName)) {
-      if (!glassLines.length) {
-        throw new Error("Server rejected: Add the glass for this order before finishing Pre-Powder Coating QC.");
+      if (!noGlass && !glassLines.length) {
+        throw new Error("Server rejected: Add the glass for this order, or mark that this order has no glass.");
       }
     }
 
@@ -1959,7 +2035,7 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
     }
 
     writeBackboardUsage(ss, orderNum, workerName, processName, backboardUsageData);
-    writeGlassToOrder(ss, orderNum, workerName, glassLines);
+    writeGlassToOrder(ss, orderNum, workerName, noGlass ? [] : glassLines);
     writeWoodToOrder(ss, orderNum, workerName, woodLines);
 
     var resultStr = qcData ? qcData.map(function(i){return i.q+": "+i.a}).join("\n") : "Complete";
@@ -1970,6 +2046,9 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
     var finishedRow = logSheet.getRange(rowToUpdate, 1, 1, 13).getValues()[0];
     var durationMins = calculateWorkMinutesFromLog(finishedRow);
     var productName = String(sheet.getRange(rowIndex, 7).getValue() || "").trim();
+    if (processNeedsGlass(role, processName)) {
+      rememberStandardGlass(productName, sheet.getRange(rowIndex, 5).getValue(), noGlass, glassLines, orderNum);
+    }
     var targetMinutes = Number(meta.targetMinutes) || getTaskDurationMinutes(productName, role);
     var share = Number(meta.batchShare) || 1;
     var savedDuration = false;
@@ -3737,7 +3816,8 @@ function emptyJobBrief(orderNumber, process) {
     durationLabel: "",
     etaAt: "",
     etaLabel: "",
-    imageUrl: ""
+    imageUrl: "",
+    standardGlass: null
   };
 }
 
@@ -3768,7 +3848,8 @@ function getOrderJobBrief(orderNumber, process) {
       durationLabel: formatSpokenDuration(minutes),
       etaAt: eta.etaAt,
       etaLabel: eta.etaLabel,
-      imageUrl: productImageUrl(product)
+      imageUrl: productImageUrl(product),
+      standardGlass: loadStandardGlassSpec(product)
     };
   }
   return emptyJobBrief(want, process);

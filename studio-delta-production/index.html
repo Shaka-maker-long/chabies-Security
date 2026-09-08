@@ -5074,6 +5074,7 @@
         glassRows: collectGlassWoodRows("#glassRowsContainer .glass-order-row", "glass"),
         woodRows: collectGlassWoodRows("#woodRowsContainer .wood-order-row", "wood"),
         woodRequired: !!(document.getElementById("woodRequired") && document.getElementById("woodRequired").checked),
+        noGlass: !!(document.getElementById("noGlass") && document.getElementById("noGlass").checked),
         glassFields: {
           component: qcFieldVal("glassComponent"),
           type: qcFieldVal("glassType"),
@@ -5102,7 +5103,7 @@
       if ((draft.answers || []).some((a) => a === "Y" || a === "N")) return true;
       if ((draft.steel || []).length || (draft.backboard || []).length) return true;
       if ((draft.glassRows || []).length || (draft.woodRows || []).length) return true;
-      if (draft.woodRequired) return true;
+      if (draft.woodRequired || draft.noGlass) return true;
       if (draft.hasSigned || draft.signature) return true;
       if (draft.photos && Object.keys(draft.photos).length) return true;
       const g = draft.glassFields || {};
@@ -5127,7 +5128,7 @@
       modal.addEventListener("input", scheduleQcDraft);
       modal.addEventListener("change", persistQcDraft);
       modal.addEventListener("click", function (e) {
-        if (e.target.closest(".btn-outline-danger, .btn-check, label, #woodRequired")) {
+        if (e.target.closest(".btn-outline-danger, .btn-check, label, #woodRequired, #noGlass, #useSavedGlassBtn")) {
           setTimeout(persistQcDraft, 40);
         }
       });
@@ -5253,6 +5254,9 @@
       const woodBox = document.getElementById("woodRequired");
       if (woodBox) woodBox.checked = woodOn;
       syncWoodRequired();
+      const noGlassBox = document.getElementById("noGlass");
+      if (noGlassBox) noGlassBox.checked = !!draft.noGlass && !(draft.glassRows || []).length;
+      syncNoGlass();
       const g = draft.glassFields || {};
       setQcFieldVal("glassComponent", g.component);
       setQcFieldVal("glassType", g.type);
@@ -5386,6 +5390,7 @@
           applyQcDraftGlassWood(draft);
           session.qcApplyingDraft = false;
           setQcDraftNote(restored || qcDraftHasWork(draft));
+          loadSavedGlassSpec(ord);
         });
       } else {
         session.qcApplyingDraft = false;
@@ -5503,19 +5508,29 @@
     function glassWoodOrderHtml() {
       return `
         <div id="glassOrderSection" class="mt-4 pt-3 border-top">
-          <label class="fw-bold">Glass to order <span class="text-danger">*</span></label>
-          <p class="small text-muted mb-2">After this QC, add every glass piece. It goes to <b>To order</b> so office can raise a purchase order.</p>
-          <div class="row g-2 align-items-end mb-2">
-            <div class="col-6 col-md-3">${glassWoodSelect('glassComponent', ['Door','Side','Shelf','backboard'], 'Component')}</div>
-            <div class="col-6 col-md-3"><select id="glassType" class="form-select form-select-sm border-dark"><option value="">Glass type</option><option value="Reeded">Reeded</option><option value="Clear">Clear</option><option value="Ocean view">Ocean view</option><option value="__custom__">+ Add another glass</option></select></div>
-            <div class="col-12 col-md-3 d-none" id="glassTypeCustomWrap"><input id="glassTypeCustom" class="form-control form-control-sm" placeholder="New glass type"></div>
-            <div class="col-6 col-md-2">${glassWoodSelect('glassThickness', ['4mm','6mm','8mm','10mm'], 'Thickness')}</div>
-            <div class="col-6 col-md-2"><input id="glassHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm"></div>
-            <div class="col-6 col-md-2"><input id="glassWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm"></div>
-            <div class="col-6 col-md-1"><input id="glassQty" class="form-control form-control-sm" type="number" min="1" step="1" value="1" placeholder="Qty"></div>
-            <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-dark w-100" onclick="addGlassOrderLine()">Add glass</button></div>
+          <label class="d-flex gap-2 align-items-center fw-bold mb-2">
+            <input type="checkbox" id="noGlass" onchange="syncNoGlass()">
+            <span>This order has no glass</span>
+          </label>
+          <div id="glassFormWrap">
+            <label class="fw-bold">Glass to order</label>
+            <p class="small text-muted mb-2">Add every glass piece, or use the saved specification for this Standard item. It goes to <b>To order</b> so office can raise a purchase order.</p>
+            <div id="savedGlassWrap" class="border rounded p-2 mb-2 bg-light d-none">
+              <p class="small mb-2" id="savedGlassText"></p>
+              <button type="button" class="btn btn-sm btn-outline-dark" id="useSavedGlassBtn" onclick="useSavedGlassSpec()">Use existing glass specification</button>
+            </div>
+            <div class="row g-2 align-items-end mb-2">
+              <div class="col-6 col-md-3">${glassWoodSelect('glassComponent', ['Door','Side','Shelf','backboard'], 'Component')}</div>
+              <div class="col-6 col-md-3"><select id="glassType" class="form-select form-select-sm border-dark"><option value="">Glass type</option><option value="Reeded">Reeded</option><option value="Clear">Clear</option><option value="Ocean view">Ocean view</option><option value="__custom__">+ Add another glass</option></select></div>
+              <div class="col-12 col-md-3 d-none" id="glassTypeCustomWrap"><input id="glassTypeCustom" class="form-control form-control-sm" placeholder="New glass type"></div>
+              <div class="col-6 col-md-2">${glassWoodSelect('glassThickness', ['4mm','6mm','8mm','10mm'], 'Thickness')}</div>
+              <div class="col-6 col-md-2"><input id="glassHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm"></div>
+              <div class="col-6 col-md-2"><input id="glassWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm"></div>
+              <div class="col-6 col-md-1"><input id="glassQty" class="form-control form-control-sm" type="number" min="1" step="1" value="1" placeholder="Qty"></div>
+              <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-dark w-100" onclick="addGlassOrderLine()">Add glass</button></div>
+            </div>
+            <div id="glassRowsContainer"></div>
           </div>
-          <div id="glassRowsContainer"></div>
         </div>
         <div id="woodOrderSection" class="mt-4 pt-3 border-top">
           <label class="d-flex gap-2 align-items-center fw-bold mb-2">
@@ -5578,6 +5593,62 @@
       const wrap = document.getElementById('woodFormWrap');
       if (wrap) wrap.classList.toggle('d-none', !on);
     }
+    function syncNoGlass() {
+      const on = !!(document.getElementById('noGlass') && document.getElementById('noGlass').checked);
+      const wrap = document.getElementById('glassFormWrap');
+      if (wrap) wrap.classList.toggle('d-none', on);
+      if (!on) paintSavedGlassOffer();
+    }
+    function paintSavedGlassOffer() {
+      const wrap = document.getElementById('savedGlassWrap');
+      const text = document.getElementById('savedGlassText');
+      const btn = document.getElementById('useSavedGlassBtn');
+      const spec = session.savedGlassSpec;
+      if (!wrap || !text || !btn) return;
+      const noGlassOn = !!(document.getElementById('noGlass') && document.getElementById('noGlass').checked);
+      const haveRows = collectGlassWoodRows('#glassRowsContainer .glass-order-row', 'glass').length > 0;
+      if (!spec || noGlassOn || haveRows) {
+        wrap.classList.add('d-none');
+        return;
+      }
+      const name = spec.product || 'this Standard item';
+      const from = spec.from_order_number ? ' from ' + spec.from_order_number : '';
+      if (spec.noGlass) {
+        text.textContent = 'The last Standard ' + name + ' was marked no glass' + from + '. Use that?';
+        btn.textContent = 'Use no glass';
+      } else {
+        text.textContent = 'Saved glass specification for ' + name + from + '. Use the existing specification?';
+        btn.textContent = 'Use existing glass specification';
+      }
+      wrap.classList.remove('d-none');
+    }
+    function useSavedGlassSpec() {
+      const spec = session.savedGlassSpec;
+      if (!spec) return;
+      const box = document.getElementById('noGlass');
+      if (spec.noGlass) {
+        if (box) box.checked = true;
+        const container = document.getElementById('glassRowsContainer');
+        if (container) container.innerHTML = '';
+        syncNoGlass();
+      } else {
+        if (box) box.checked = false;
+        syncNoGlass();
+        (spec.lines || []).forEach((line) => pushMaterialRow('glassRowsContainer', 'glass-order-row', line, 'glass'));
+        paintSavedGlassOffer();
+      }
+      persistQcDraft();
+    }
+    function loadSavedGlassSpec(orderNum) {
+      session.savedGlassSpec = null;
+      google.script.run.withSuccessHandler((brief) => {
+        session.savedGlassSpec = (brief && brief.standardGlass) || null;
+        paintSavedGlassOffer();
+      }).withFailureHandler(() => {
+        session.savedGlassSpec = null;
+        paintSavedGlassOffer();
+      }).getOrderJobBrief(orderNum, 'Pre-Powder Coating');
+    }
     function onWoodTypeSaved() {
       const sel = document.getElementById('woodTypeSaved');
       const inp = document.getElementById('woodTypeInput');
@@ -5617,7 +5688,11 @@
         showAlert('Choose component, glass type, thickness, height, width, and quantity.');
         return;
       }
+      const noGlassBox = document.getElementById('noGlass');
+      if (noGlassBox) noGlassBox.checked = false;
+      syncNoGlass();
       pushMaterialRow('glassRowsContainer', 'glass-order-row', line, 'glass');
+      paintSavedGlassOffer();
       if (typeSel && typeSel.value === '__custom__' && custom) {
         const opt = document.createElement('option');
         opt.value = custom;
@@ -6002,11 +6077,15 @@
 
             const glassSection = document.getElementById('glassOrderSection');
             if (glassSection) {
+              const noGlass = !!(document.getElementById('noGlass') && document.getElementById('noGlass').checked);
               const glassRows = collectGlassWoodRows('#glassRowsContainer .glass-order-row', 'glass');
-              if (!glassRows.length) {
-                showAlert("Add the glass for this order. It goes to To order so office can buy it."); return;
+              if (noGlass) {
+                session.pendingGlassOrder = { noGlass: true };
+              } else if (!glassRows.length) {
+                showAlert("Add the glass for this order, or tick This order has no glass."); return;
+              } else {
+                session.pendingGlassOrder = glassRows;
               }
-              session.pendingGlassOrder = glassRows;
             } else {
               session.pendingGlassOrder = [];
             }

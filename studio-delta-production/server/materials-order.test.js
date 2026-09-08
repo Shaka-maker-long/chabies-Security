@@ -85,6 +85,34 @@ const SIG = "data:image/png;base64,aaa";
   const after = await callShopFunction("listMaterialsToOrder", []);
   assert.strictEqual(after.glass[0].status, "Ordered");
 
+  const briefAfter = await callShopFunction("getOrderJobBrief", ["S-PRE-GLASS", "Pre-Powder Coating"]);
+  assert.ok(briefAfter.standardGlass, JSON.stringify(briefAfter));
+  assert.strictEqual(briefAfter.standardGlass.noGlass, false);
+  assert.strictEqual(briefAfter.standardGlass.lines.length, 1);
+  assert.strictEqual(briefAfter.standardGlass.lines[0].type, "Frosted ripple");
+  assert.strictEqual(briefAfter.standardGlass.from_order_number, "S-PRE-GLASS");
+
+  const noneOrder = db.upsertOrder({
+    order_number: "S-PRE-NONE",
+    status: "Ready for Pre-Powder Coating",
+    type: "Standard",
+    product: "Steel bench",
+    price_excl_vat: "80.00"
+  });
+  const startedNone = await callShopFunction("startOrder", [
+    noneOrder.id, "Nomsa", "Quality Control", [], "", false, null, CONFIRM
+  ]);
+  assert.strictEqual(startedNone.success, true, JSON.stringify(startedNone));
+  const finishedNone = await callShopFunction("finishOrder", [
+    noneOrder.id, startedNone.logId, QC, SIG, [], "Nomsa", [], "S-PRE-NONE", [], { noGlass: true }, []
+  ]);
+  assert.strictEqual(finishedNone.success, true, JSON.stringify(finishedNone));
+  const listedNone = await callShopFunction("listMaterialsToOrder", []);
+  assert.ok(!(listedNone.glass || []).some((g) => g.order === "S-PRE-NONE"));
+  const noneBrief = await callShopFunction("getOrderJobBrief", ["S-PRE-NONE", "Pre-Powder Coating"]);
+  assert.ok(noneBrief.standardGlass);
+  assert.strictEqual(noneBrief.standardGlass.noGlass, true);
+
   console.log("materials-order.test.js ok");
 })().catch((e) => {
   console.error(e && e.stack ? e.stack : e);
