@@ -1,6 +1,7 @@
 const db = require("./db");
 const staff = require("./staff");
 const access = require("./enquiry-access");
+const quoteOptions = require("./quote-options");
 const { NEW_DESIGN_MIN_CHARS } = require("./enquiries-default");
 
 const FOLLOW_UP_DAYS = 7;
@@ -326,6 +327,7 @@ const DELIVERABLE_ACTIONS = {
   complete_approval: "approval",
   reject_costing: "quote",
   complete_quote: "quote",
+  complete_quote_option: "quote",
   complete_followup: "follow_up",
   complete_reject: "pop",
   complete_order: "pop",
@@ -437,6 +439,14 @@ function availableActions(row) {
   }
   if (statusAllows(row, ["Quoted", "Followed Up"])) {
     actions.push({ id: "complete_quote", label: "Issue another quote" });
+    const nextOpt = quoteOptions.nextOptionLetter(row.quotes);
+    if (nextOpt) {
+      actions.push({
+        id: "complete_quote_option",
+        label: "Add quote option " + nextOpt,
+        next_option: nextOpt
+      });
+    }
     actions.push({ id: "assign_costing", label: "Client wants changes — recost" });
     if (!followUpsExhausted(row)) {
       const n = currentQuoteFollowUps(row).length;
@@ -565,6 +575,8 @@ function processSnapshot(enquiryNo, actorName) {
     followUpMax: MAX_FOLLOW_UPS,
     followUpPeople: staff.enquiryRoleHolders("Follow-up"),
     quoteNo: db.quoteNoHint(),
+    nextQuoteOption: quoteOptions.nextOptionLetter(row.quotes),
+    dropdowns: db.listDropdowns(),
     costingRejectReasons: COSTING_REJECT_REASONS.slice()
   };
 }
@@ -627,6 +639,7 @@ function applyAction(enquiryNo, actorName, body) {
     complete_approval: completeApproval,
     reject_costing: rejectCosting,
     complete_quote: completeQuote,
+    complete_quote_option: completeQuoteOption,
     complete_followup: completeFollowup,
     complete_reject: completeReject,
     complete_order: completeOrder,
@@ -691,7 +704,14 @@ function eventLabel(action, row, fromStatus, body) {
   if (action === "reject_costing") return costingRejectedLabel(row, body);
   if (action === "complete_quote") {
     const n = Array.isArray(row.quotes) ? row.quotes.length : 0;
-    return (n > 1 ? "Quote " + n + " issued" : "Quote PDF issued") + (row.quote_no ? " " + row.quote_no : "");
+    const opt = quoteOptions.currentOptionLetter(row);
+    return (n > 1 ? "Quote " + n + " issued" : "Quote PDF issued") +
+      (row.quote_no ? " " + row.quote_no : "") +
+      (opt ? " (option " + opt + ")" : "");
+  }
+  if (action === "complete_quote_option") {
+    const opt = quoteOptions.currentOptionLetter(row);
+    return "Quote option " + (opt || "") + " issued" + (row.quote_no ? " " + row.quote_no : "");
   }
   if (action === "complete_followup") return "Follow-up logged";
   if (action === "complete_reject") {
@@ -1171,6 +1191,7 @@ function snapshotQuoteLines(row) {
   return namedProducts(row).map((p) => ({
     product: p.product || "",
     category: p.category || "",
+    variation: p.variation || "",
     value_excl_vat: p.value_excl_vat || "",
     value_incl_vat: p.value_incl_vat || ""
   }));
@@ -1183,8 +1204,9 @@ function archiveLegacyQuote(row) {
   recordIssuedQuote(row, "");
 }
 
-function recordIssuedQuote(row, actor) {
+function recordIssuedQuote(row, actor, extra) {
   if (!Array.isArray(row.quotes)) row.quotes = [];
+  row.quotes = quoteOptions.normalizeQuotes(row.quotes);
   const quoteNo = String(row.quote_no || "").trim();
   const existing = quoteNo ? row.quotes.find((q) => String(q.quote_no || "") === quoteNo) : null;
   const pdf = db.readEnquiryQuotePdf(row.enquiry_no);
@@ -1198,14 +1220,23 @@ function recordIssuedQuote(row, actor) {
       row.quote_pdf_name || pdf.filename || "quote.pdf"
     );
   }
+  const option = String((extra && extra.option) || (existing && existing.option) || quoteOptions.currentOptionLetter(row) || "A").toUpperCase();
+  const kind = (extra && extra.kind) || (existing && existing.kind) || "option";
   if (existing) {
     if (file) existing.file = file;
     if (actor && !existing.by) existing.by = actor;
-    return;
+    existing.option = option;
+    existing.kind = kind;
+    existing.products = snapshotQuoteLines(row);
+    existing.delivery_excl_vat = row.delivery_excl_vat || existing.delivery_excl_vat || "";
+    existing.delivery_incl_vat = row.delivery_incl_vat || existing.delivery_incl_vat || "";
+    return existing;
   }
-  row.quotes.push({
+  const saved = {
     n: row.quotes.length + 1,
     quote_no: quoteNo,
+    option,
+    kind,
     date_quoted: row.date_quoted || db.todayEnquiryDate(),
     uploaded_at: row.quote_pdf_uploaded_at || db.nowIso(),
     by: actor || "",
@@ -1213,18 +1244,40 @@ function recordIssuedQuote(row, actor) {
     delivery_excl_vat: row.delivery_excl_vat || "",
     delivery_incl_vat: row.delivery_incl_vat || "",
     file
-  });
+  };
+  row.quotes.push(saved);
+  return saved;
+}
+
+function completeQuoteOption(row, actor, body) {
+  completeQuote(row, actor, Object.assign({}, body || {}, { quote_mode: "option" }));
 }
 
 function completeQuote(row, actor, body) {
   const revision = statusAllows(row, ["Quoted", "Followed Up"]);
+  const asOption = String((body && body.quote_mode) || "").toLowerCase() === "option";
   if (!revision && (row.status !== "Costed" || !row.approval || row.approval.status !== "approved")) {
     throw new Error("The cost sheet must be approved before a quote PDF is issued");
+  }
+  if (asOption && !revision) {
+    throw new Error("Issue the first quote before adding another option");
   }
   applyPricedBody(row, body);
   requirePricedProducts(row);
   archiveLegacyQuote(row);
   const quoteNo = db.requireUniqueQuoteNo(body.quote_no, revision ? "" : row.enquiry_no);
+  let option = "A";
+  let kind = "option";
+  if (!revision) {
+    option = "A";
+    kind = "option";
+  } else if (asOption) {
+    option = quoteOptions.nextOptionLetter(row.quotes);
+    kind = "option";
+  } else {
+    option = quoteOptions.currentOptionLetter(row);
+    kind = "revision";
+  }
   const payload = {
     ...row,
     quote_no: quoteNo,
@@ -1237,10 +1290,12 @@ function completeQuote(row, actor, body) {
   db.upsertEnquiry(payload, { fromPipeline: true });
   const saved = db.getEnquiryRaw(row.enquiry_no);
   Object.assign(row, saved);
-  recordIssuedQuote(row, actor);
+  recordIssuedQuote(row, actor, { option, kind });
   closeOpenKind(row, "quote", actor);
-  const dueAt = addDaysIso(row.date_quoted || db.todayEnquiryDate(), FOLLOW_UP_DAYS);
-  assignFollowUpPool(row, dueAt, "Follow up", body);
+  if (!asOption) {
+    const dueAt = addDaysIso(row.date_quoted || db.todayEnquiryDate(), FOLLOW_UP_DAYS);
+    assignFollowUpPool(row, dueAt, "Follow up", body);
+  }
   const popOwner = row.quote_assignee || actor;
   if (!openOfKind(row, "pop")) {
     addTask(row, "pop", popOwner, { title: "Record client outcome" });
@@ -1292,6 +1347,17 @@ function completeReject(row, actor, body) {
 
 function completeOrder(row, actor, body) {
   if (!statusAllows(row, ["Quoted", "Followed Up"])) throw new Error("Attach proof of payment after the client approves the quote");
+  const live = quoteOptions.liveQuoteOptions(row.quotes);
+  if (live.length > 1) {
+    const pick = quoteOptions.findLiveOption(row.quotes, (body && (body.quote_option || body.chosen_quote_no)) || "");
+    if (!pick) throw new Error("Choose which quote option the client accepted (A, B, or C)");
+    quoteOptions.applyQuoteSnapshot(row, pick);
+    row.chosen_option = pick.option;
+    row.chosen_quote_no = pick.quote_no;
+  } else if (live.length === 1) {
+    row.chosen_option = live[0].option;
+    row.chosen_quote_no = live[0].quote_no;
+  }
   const filename = body.file_name || "pop.pdf";
   const raw = requireFile(body, "Upload proof of payment (screenshot or PDF)");
   if (!isImage(filename, "") && !isPdf(filename, "", null)) {

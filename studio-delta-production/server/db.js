@@ -9,6 +9,7 @@ const {
 } = require("./enquiries-default");
 const { getBook, persistWorkbook, ORDER_HEADERS, dataDir } = require("./workbook-store");
 const fromEnquiry = require("./create-order-from-enquiry");
+const quoteOptions = require("./quote-options");
 
 const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
@@ -1178,7 +1179,7 @@ function enquiryLifespan(row, events) {
 }
 
 function emptyEnquiryLine() {
-  return { product: "", category: "", value_excl_vat: "", value_incl_vat: "" };
+  return { product: "", category: "", variation: "", value_excl_vat: "", value_incl_vat: "" };
 }
 
 function normalizeEnquiryLines(row, existing) {
@@ -1201,6 +1202,7 @@ function normalizeEnquiryLines(row, existing) {
     cleaned.push({
       product,
       category,
+      variation: String((line && line.variation) || "").trim(),
       value_excl_vat: pair.excl,
       value_incl_vat: pair.incl
     });
@@ -1696,6 +1698,8 @@ function copyPipeline(from, to) {
   to.client_outcome = cloneJson(from && from.client_outcome, null);
   to.drawing = cloneJson(from && from.drawing, null);
   to.ready_for_orders = !!(from && from.ready_for_orders);
+  to.chosen_option = String((from && from.chosen_option) || "").trim().toUpperCase();
+  to.chosen_quote_no = String((from && from.chosen_quote_no) || "").trim();
   to.custom_specs = normalizeCustomSpecs(from, null);
   to.design_description = String((from && from.design_description) || "").trim();
   to.created_at = String((from && from.created_at) || "").trim();
@@ -1883,9 +1887,11 @@ function listEnquiryDeliverables(row) {
       const kind = (file && file.kind) || (n === quotes.length && enquiryHasQuotePdf(src.enquiry_no) ? "quote" : ("quote_" + n));
       items.push({
         group: "quote",
-        label: quotes.length === 1
-          ? ("Quote PDF" + (quoteNo ? " · " + quoteNo : ""))
-          : ("Quote " + n + (quoteNo ? " · " + quoteNo : "")),
+        label: (item && item.option)
+          ? ("Quote option " + item.option + (quoteNo ? " · " + quoteNo : ""))
+          : (quotes.length === 1
+            ? ("Quote PDF" + (quoteNo ? " · " + quoteNo : ""))
+            : ("Quote " + n + (quoteNo ? " · " + quoteNo : ""))),
         title: (file && (file.filename || file.title)) || item.quote_pdf_name || src.quote_pdf_name || "quote.pdf",
         filename: (file && file.filename) || src.quote_pdf_name || "quote.pdf",
         kind,
@@ -2008,6 +2014,8 @@ function decorateEnquiry(row) {
   const events = storedEvents.length ? storedEvents : synthesizeEnquiryEvents(row);
   const life = enquiryLifespan(row, events);
   const quoteSheet = sheetQuoteFields(row);
+  const quotes = quoteOptions.normalizeQuotes(row.quotes);
+  const liveOptions = quoteOptions.liveQuoteOptions(quotes);
   return {
     ...row,
     products,
@@ -2020,8 +2028,12 @@ function decorateEnquiry(row) {
     products_total_incl_vat: money(productsTotalIncl),
     quote_total_excl_vat: money(productsTotal + delivery),
     quote_total_incl_vat: money(productsTotalIncl + deliveryIncl),
-    quotes: Array.isArray(row.quotes) ? row.quotes : [],
-    quote_count: Array.isArray(row.quotes) ? row.quotes.length : (hasPdf ? 1 : 0),
+    quotes,
+    quote_count: quotes.length ? quotes.length : (hasPdf ? 1 : 0),
+    quote_options: liveOptions,
+    quote_options_label: quoteOptions.quoteOptionsLabel(quotes),
+    chosen_option: String(row.chosen_option || "").trim().toUpperCase(),
+    chosen_quote_no: String(row.chosen_quote_no || "").trim(),
     quote_no: quoteSheet.quote_no,
     date_quoted: quoteSheet.date_quoted,
     has_quote_pdf: hasPdf,

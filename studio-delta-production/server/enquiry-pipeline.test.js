@@ -14,6 +14,7 @@ const { initWorkbook } = require("./workbook-store");
 const staff = require("./staff");
 const db = require("./db");
 const pipeline = require("./enquiry-pipeline");
+const quoteOptions = require("./quote-options");
 
 initWorkbook();
 staff.upsertUser({ name: "Coster", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes" });
@@ -308,6 +309,9 @@ assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up"));
 assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "pop"));
 assert.strictEqual(quoted.row.quotes.length, 1);
 assert.strictEqual(quoted.row.quotes[0].quote_no, "SOQ2361");
+assert.strictEqual(quoted.row.quotes[0].option, "A");
+assert.strictEqual(quoted.row.quotes[0].kind, "option");
+assert.ok(quoted.actions.some((a) => a.id === "complete_quote_option" && /option B/i.test(a.label)));
 assert.ok(quoted.row.quotes[0].file && quoted.row.quotes[0].file.stored_as);
 assert.ok(quoted.row.deliverables.some((d) => d.group === "quote"));
 assert.ok(db.readEnquiryAttachment("#1996", "quote_1"));
@@ -348,6 +352,10 @@ assert.strictEqual(requoted.row.quote_no, "SOQ2362");
 assert.strictEqual(requoted.row.quotes.length, 2);
 assert.strictEqual(requoted.row.quotes[0].quote_no, "SOQ2361");
 assert.strictEqual(requoted.row.quotes[1].quote_no, "SOQ2362");
+assert.strictEqual(requoted.row.quotes[1].option, "A");
+assert.strictEqual(requoted.row.quotes[1].kind, "revision");
+assert.strictEqual(quoteOptions.liveQuoteOptions(requoted.row.quotes).length, 1);
+assert.strictEqual(quoteOptions.liveQuoteOptions(requoted.row.quotes)[0].quote_no, "SOQ2362");
 assert.strictEqual(requoted.row.quote_total_excl_vat, "4950.50");
 assert.ok(db.readEnquiryAttachment("#1996", "quote_1"));
 assert.ok(db.readEnquiryAttachment("#1996", "quote_2"));
@@ -1221,6 +1229,71 @@ assert.strictEqual(twoCost.row.status, "Costed");
 assert.strictEqual((twoCost.row.cost_sheets || []).length, 2);
 assert.ok(twoCost.row.cost_sheets.some((s) => s.product === "Air Chair"));
 assert.ok(twoCost.row.cost_sheets.some((s) => s.product === "Eve Patio Table"));
+
+const optionJob = db.upsertEnquiry({
+  enquiry_no: "#4100",
+  date_enquired: "08/09/2026",
+  client_name: "Option Client",
+  province: "Gauteng",
+  enquiry_type: "Catologue",
+  status: "Quoted",
+  quote_no: "SOQ4100",
+  quote_assignee: "Quoter",
+  products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "23000.00" }],
+  delivery_incl_vat: "1150.00",
+  quotes: [{
+    n: 1,
+    quote_no: "SOQ4100",
+    option: "A",
+    kind: "option",
+    products: [{ product: "Air Chair", category: "Chair", variation: "", value_incl_vat: "23000.00" }],
+    delivery_incl_vat: "1150.00"
+  }]
+}, { fromPipeline: true, fromMigrate: true });
+assert.strictEqual(optionJob.status, "Quoted");
+const optionB = pipeline.applyAction("#4100", "Quoter", {
+  action: "complete_quote_option",
+  quote_mode: "option",
+  quote_no: "SOQ4101",
+  products: [{ product: "Air Chair", category: "Chair", variation: "With extra shelf", value_incl_vat: "27600.00" }],
+  delivery_incl_vat: "1150.00",
+  file_base64: pdfB64,
+  file_name: "quote-b.pdf",
+  file_confirmed: true
+});
+assert.strictEqual(optionB.row.quotes.length, 2);
+assert.strictEqual(optionB.row.quotes[1].option, "B");
+assert.strictEqual(optionB.row.quotes[1].kind, "option");
+assert.strictEqual(optionB.row.quote_options.length, 2);
+assert.ok(/SOQ4100 A/.test(optionB.row.quote_options_label));
+assert.ok(/SOQ4101 B/.test(optionB.row.quote_options_label));
+assert.throws(
+  () => pipeline.applyAction("#4100", "Quoter", {
+    action: "complete_order",
+    file_base64: pdfB64,
+    file_name: "pop.pdf",
+    file_confirmed: true,
+    drawing_required: "no"
+  }),
+  /which quote option/i
+);
+const picked = pipeline.applyAction("#4100", "Quoter", {
+  action: "complete_order",
+  quote_option: "B",
+  file_base64: pdfB64,
+  file_name: "pop.pdf",
+  file_confirmed: true,
+  drawing_required: "no"
+});
+assert.strictEqual(picked.row.chosen_option, "B");
+assert.strictEqual(picked.row.chosen_quote_no, "SOQ4101");
+assert.strictEqual(picked.row.quote_no, "SOQ4101");
+assert.strictEqual(picked.row.products[0].variation, "With extra shelf");
+assert.strictEqual(picked.row.ready_for_orders, true);
+const optionDraft = db.createOrderDraftFromEnquiry("#4100");
+assert.strictEqual(optionDraft.quote_number, "SOQ4101");
+assert.strictEqual(optionDraft.products[0].variation, "With extra shelf");
+assert.strictEqual(optionDraft.chosen_option, "B");
 
 const keptOrder = db.upsertOrder({
   order_number: "9001",

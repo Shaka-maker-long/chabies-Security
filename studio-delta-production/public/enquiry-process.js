@@ -172,7 +172,9 @@
         ".sd-cost-slot:last-child{border-bottom:0;margin-bottom:0;padding-bottom:0}" +
         ".sd-locked{background:#fff7ed;border-color:#fdc5a3}" +
         ".sd-grant-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:8px 10px;margin:6px 0}" +
-        ".sd-create-order{margin-top:10px}";
+        ".sd-create-order{margin-top:10px}" +
+        ".sd-option-table select,.sd-option-table input{width:100%;min-width:0}" +
+        ".sd-option-table td:last-child{width:72px}";
       document.head.appendChild(css);
     }
     document.getElementById("sdProcessClose").onclick = closeProcess;
@@ -457,12 +459,102 @@
         : "");
   }
 
+  function dropSelect(field, selected) {
+    const list = ((state.snap && state.snap.dropdowns) || {})[field] || [];
+    return "<select data-opt=\"" + field + "\">" + optionList(list, selected) + "</select>";
+  }
+  function optionLineRow(line) {
+    line = line || {};
+    const incl = displayIncl(line) || line.value_incl_vat || "";
+    return "<tr data-option-line>" +
+      "<td>" + dropSelect("category", line.category) + "</td>" +
+      "<td>" + dropSelect("product", line.product) + "</td>" +
+      "<td>" + dropSelect("variation", line.variation) + "</td>" +
+      "<td><input data-opt=\"value\" value=\"" + esc(incl) + "\" inputmode=\"decimal\" placeholder=\"0.00\"></td>" +
+      "<td><button type=\"button\" class=\"ghost\" data-remove-option-line>Remove</button></td>" +
+      "</tr>";
+  }
+  function optionLinesTable(row) {
+    const lines = namedLines(row).slice();
+    if (!lines.length) lines.push({ product: "", category: "", variation: "", value_incl_vat: "" });
+    return "<p class=\"sd-process-sub\">Add the products, variation, and prices for this option. The client will pick this option or another — not both.</p>" +
+      "<table class=\"sd-lines sd-option-table\" data-option-table><thead><tr>" +
+      "<th>CATERGORY</th><th>Product</th><th>Variation</th><th>Value incl VAT</th><th></th>" +
+      "</tr></thead><tbody>" + lines.map(optionLineRow).join("") + "</tbody></table>" +
+      "<button type=\"button\" class=\"ghost\" data-add-option-line>Add product</button>" +
+      "<label>Delivery incl VAT *" +
+      "<input name=\"delivery_incl_vat\" value=\"" + esc(displayDeliveryIncl(row) || "") + "\" inputmode=\"decimal\" placeholder=\"0.00\"></label>" +
+      "<div class=\"sd-quote-totals\" data-quote-totals>" +
+        "<div>Products incl VAT <b data-tot=\"products\">R 0.00</b></div>" +
+        "<div>Delivery incl VAT <b data-tot=\"delivery\">R 0.00</b></div>" +
+        "<div class=\"sd-quote-total\">Total incl VAT <b data-tot=\"incl\">R 0.00</b></div>" +
+        "<div>VAT 15% <b data-tot=\"vat\">R 0.00</b></div>" +
+        "<div>Total excl VAT <b data-tot=\"excl\">R 0.00</b></div>" +
+      "</div>";
+  }
+  function bindOptionLines(form) {
+    if (!form || !form.querySelector("[data-option-table]")) return;
+    const add = form.querySelector("[data-add-option-line]");
+    if (add) {
+      add.onclick = (e) => {
+        e.preventDefault();
+        const tb = form.querySelector("[data-option-table] tbody");
+        if (tb) tb.insertAdjacentHTML("beforeend", optionLineRow({}));
+      };
+    }
+    form.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-remove-option-line]");
+      if (!btn || !form.contains(btn)) return;
+      e.preventDefault();
+      const tr = btn.closest("[data-option-line]");
+      const tb = form.querySelector("[data-option-table] tbody");
+      if (tr && tb && tb.querySelectorAll("[data-option-line]").length > 1) tr.remove();
+      paintQuoteTotals(form);
+    });
+  }
+  function readOptionValues(form) {
+    const lines = Array.from(form.querySelectorAll("[data-option-line]")).map((tr) => {
+      const incl = tr.querySelector("[data-opt=value]") ? tr.querySelector("[data-opt=value]").value : "";
+      return {
+        category: tr.querySelector("[data-opt=category]") ? tr.querySelector("[data-opt=category]").value : "",
+        product: tr.querySelector("[data-opt=product]") ? tr.querySelector("[data-opt=product]").value : "",
+        variation: tr.querySelector("[data-opt=variation]") ? tr.querySelector("[data-opt=variation]").value : "",
+        value_incl_vat: incl,
+        value_excl_vat: exclFromIncl(incl)
+      };
+    }).filter((l) => String(l.product || "").trim());
+    const delivery = form.querySelector('[name="delivery_incl_vat"]');
+    const deliveryIncl = delivery ? delivery.value : "";
+    return {
+      products: lines,
+      delivery_incl_vat: deliveryIncl,
+      delivery_excl_vat: exclFromIncl(deliveryIncl)
+    };
+  }
+  function quoteOptionSelect(row) {
+    const live = row.quote_options || [];
+    if (live.length < 2) return "";
+    return "<label>Which option did the client accept? *" +
+      "<select name=\"quote_option\"><option value=\"\"></option>" +
+      live.map((q) => {
+        const names = (q.products || []).map((p) => {
+          const product = p.product || "";
+          const variation = p.variation || "";
+          return variation ? product + " · " + variation : product;
+        }).filter(Boolean).join(", ");
+        return "<option value=\"" + esc(q.option) + "\">Option " + esc(q.option) + " · " + esc(q.quote_no || "") +
+          (names ? " — " + esc(names) : "") + "</option>";
+      }).join("") +
+      "</select></label>" +
+      "<p class=\"sd-process-sub\">Only this option becomes the order. The other options stay on the enquiry.</p>";
+  }
+
   function paintQuoteTotals(form) {
     const box = form && form.querySelector("[data-quote-totals]");
     if (!box) return;
     let productsIncl = 0;
     let productsExcl = 0;
-    form.querySelectorAll("input[data-val]").forEach((input) => {
+    form.querySelectorAll("input[data-val], input[data-opt=value]").forEach((input) => {
       productsIncl += parseMoney(input.value);
       productsExcl += parseMoney(exclFromIncl(input.value) || 0);
     });
@@ -707,6 +799,22 @@
         fileBlock("application/pdf,.pdf", "") +
         followUpPeopleNote();
     }
+    if (action.id === "complete_quote_option") {
+      const hint = (state.snap && state.snap.quoteNo) || {};
+      const nextLetter = action.next_option || (state.snap && state.snap.nextQuoteOption) || "B";
+      const recent = (hint.recent || []).slice();
+      const recentLine = recent.length
+        ? "Last quotation numbers: " + recent.join(", ") + "."
+        : "No quotation numbers yet.";
+      const live = (row.quote_options || []).map((q) => "Option " + q.option + " " + (q.quote_no || "")).join(", ");
+      return "<p class=\"sd-process-sub\">This is option <b>" + esc(nextLetter) + "</b> on the same enquiry" +
+        (live ? " (already issued: " + esc(live) + ")" : "") +
+        ". The client chooses A or B or C — not all of them.</p>" +
+        optionLinesTable(row) +
+        "<label>Quotation number *<input class=\"sd-quote-no\" name=\"quote_no\" value=\"" + esc(hint.next || "") + "\" autocomplete=\"off\"></label>" +
+        "<p class=\"sd-process-sub\">" + esc(recentLine) + "</p>" +
+        fileBlock("application/pdf,.pdf", "");
+    }
     if (action.id === "complete_followup") {
       const n = followUpsThisQuote(row);
       const max = (state.snap && state.snap.followUpMax) || 3;
@@ -717,7 +825,8 @@
       return "<label>Rejection reason *<textarea name=\"comments\"></textarea></label>";
     }
     if (action.id === "complete_order") {
-      return fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "") +
+      return quoteOptionSelect(row) +
+        fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "") +
         "<label>Requires drawing?<select name=\"drawing_required\"><option value=\"\"></option><option value=\"no\">No — ready for Orders</option><option value=\"yes\">Yes — assign drawing</option></select></label>" +
         "<label>Drawing assigned to</label>" + assigneeSelect();
     }
@@ -800,10 +909,18 @@
     if (action.id === "complete_approval") body.decision = field(form, "decision");
     if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
     if (action.id === "complete_quote") body.quote_no = field(form, "quote_no");
+    if (action.id === "complete_quote_option") {
+      body.quote_no = field(form, "quote_no");
+      body.quote_mode = "option";
+      Object.assign(body, readOptionValues(form));
+    }
     if (action.id === "assign_costing" || action.id === "complete_chase" || action.id === "add_correspondence") {
       body.correspondence_links = field(form, "correspondence_links");
     }
-    if (action.id === "complete_order") body.drawing_required = field(form, "drawing_required");
+    if (action.id === "complete_order") {
+      body.drawing_required = field(form, "drawing_required");
+      body.quote_option = field(form, "quote_option");
+    }
     if (action.id === "close") body.status = field(form, "status");
     if (action.id === "complete_quote") Object.assign(body, readValues(form, row));
     if (action.id === "complete_cost_sheet") {
@@ -824,7 +941,7 @@
           }).filter((f) => f.file_base64)
         };
       });
-    } else if (/complete_quote|complete_followup|complete_order|complete_drawing|complete_supplier/.test(action.id)) {
+    } else if (/complete_quote_option|complete_quote|complete_followup|complete_order|complete_drawing|complete_supplier/.test(action.id)) {
       Object.assign(body, filePayload(form));
     }
     return body;
@@ -879,7 +996,7 @@
       "<span>Status <b>" + esc(row.status || "New") + "</b></span>" +
       (closeReason ? "<span>" + (row.status === "Rejected" ? "Rejection reason" : "Close reason") + " <b>" + esc(closeReason) + "</b></span>" : "") +
       (costingReject ? "<span>Costing rejected <b>" + esc(costingReject) + "</b></span>" : "") +
-      (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_no ? " · " + esc(row.quote_no) : "") +
+      (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_options_label ? " · " + esc(row.quote_options_label) : (row.quote_no ? " · " + esc(row.quote_no) : "")) +
         ((row.quotes || []).length > 1 ? " · " + (row.quotes.length) + " quotes" : "") + "</span>" : "") +
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +
       (row.lifespan_label ? "<span class=\"sd-life\">Lifespan <b>" + esc(row.lifespan_label) + "</b></span>" : "") +
@@ -938,6 +1055,7 @@
       bindFile(form);
       bindCostSheets(form);
       bindQuoteTotals(form);
+      bindOptionLines(form);
       const card = form.closest("[data-action-i]");
       const i = Number((card || form).getAttribute("data-action-i"));
       const preview = form.querySelector("[data-preview]");
