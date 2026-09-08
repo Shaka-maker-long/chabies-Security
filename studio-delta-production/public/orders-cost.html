@@ -17,6 +17,7 @@
       --totals-bg: #F3F4F6;
       --accent-blue: #2563EB;
       --bad: #DC2626;
+      --lock: 340px;
     }
     body { margin: 0; font-family: Inter, "Segoe UI", system-ui, sans-serif; background: var(--bg-color); color: var(--text-main); }
     header { display: flex; gap: 16px; align-items: flex-end; padding: 12px 16px; background: #fff; border-bottom: 1px solid var(--border-color); flex-wrap: wrap; }
@@ -35,23 +36,36 @@
     .subtabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
     .subtabs button { border: 1px solid #1d2939; background: #fff; color: #1d2939; border-radius: 999px; padding: 8px 14px; font-weight: 600; cursor: pointer; font: inherit; font-size: 13px; }
     .subtabs button.on { background: #1d2939; color: #fff; }
-    .table-wrapper { background: #fff; border: 1px solid var(--border-color); overflow: auto; max-height: 72vh; }
+    .board { display: flex; height: 72vh; min-height: 240px; min-width: 0; overflow: hidden; background: #fff; border: 1px solid var(--border-color); }
+    .meta-pane {
+      flex: 0 0 auto;
+      width: var(--lock);
+      overflow-x:hidden;
+      overflow-y:auto;
+      box-shadow: 4px 0 10px rgba(16,24,40,.12);
+      z-index: 2;
+      scrollbar-width: none;
+    }
+    .meta-pane::-webkit-scrollbar { display: none; }
+    .cal-pane { flex: 1 1 auto; overflow-x:auto; overflow-y:auto; min-width: 0; }
     table.cost-matrix {
       table-layout: fixed;
-      width: max-content;
-      min-width: 100%;
       border-collapse: separate;
       border-spacing: 0;
       font-size: 13px;
+      background: #fff;
     }
+    #logsMeta, #monthlyMeta { width: var(--lock); }
+    #logsGrid, #monthlyGrid { width: max-content; min-width: 100%; }
     table.cost-matrix th,
     table.cost-matrix td {
       box-sizing: border-box;
-      padding: 8px 8px;
-      border-bottom: 1px solid var(--border-color);
-      border-right: 1px solid var(--border-color);
+      padding: 4px 8px;
+      height: 36px;
+      border: 1px solid var(--border-color);
       white-space: nowrap;
       vertical-align: middle;
+      background: #fff;
     }
     table.cost-matrix thead th {
       position: sticky;
@@ -63,29 +77,15 @@
       text-align: center;
     }
     table.cost-matrix thead tr:nth-child(2) th { top: 36px; z-index: 3; }
-    table.cost-matrix td { text-align: center; background: #fff; }
+    .meta-pane thead th { text-align: left; }
+    table.cost-matrix td { text-align: center; }
     .col-order, .col-product {
-      position: sticky;
       text-align: left !important;
       font-weight: 600;
       overflow: hidden;
     }
-    .col-order {
-      left: 0;
-      z-index: 5;
-      width: 120px;
-      min-width: 120px;
-      max-width: 120px;
-    }
-    .col-product {
-      left: 120px;
-      z-index: 5;
-      width: 220px;
-      min-width: 220px;
-      max-width: 220px;
-      border-right: 2px solid #9CA3AF !important;
-    }
-    thead .col-order, thead .col-product { z-index: 8; background: var(--header-bg) !important; }
+    .col-order { width: 120px; min-width: 120px; max-width: 120px; }
+    .col-product { width: 220px; min-width: 220px; max-width: 220px; }
     .product-clip {
       display: block;
       overflow: hidden;
@@ -96,7 +96,6 @@
     .col-h { width: 46px; min-width: 46px; max-width: 46px; }
     .col-c, .col-hrs, .col-money { width: 84px; min-width: 84px; max-width: 84px; }
     .total-row td { background: var(--totals-bg) !important; font-weight: 700; border-top: 2px solid #9CA3AF; }
-    .total-row .col-order, .total-row .col-product { background: var(--totals-bg) !important; }
     .card table { width: 100%; border-collapse: collapse; font-size: 13px; }
     .card th, .card td { border-top: 1px solid var(--border-color); padding: 8px 10px; text-align: left; }
     .tooltip { position: relative; cursor: pointer; border-bottom: 1px dotted #9CA3AF; }
@@ -134,6 +133,10 @@
     @media (max-width: 900px) {
       .rates { grid-template-columns: 1fr; }
       .nav-controls { width: 100%; margin-left: 0; }
+      :root { --lock: 228px; }
+      .col-order { width: 88px; min-width: 88px; max-width: 88px; }
+      .col-product { width: 140px; min-width: 140px; max-width: 140px; }
+      .product-clip { max-width: 124px; }
     }
   </style>
 </head>
@@ -186,35 +189,58 @@
         <button type="button" id="tabBtnRates" onclick="switchTab('rates')">Rates</button>
       </div>
       <div id="tab-logs">
-        <div class="table-wrapper">
-          <table class="cost-matrix">
-            <thead>
-              <tr>
-                <th rowspan="2" class="col-order">Order #</th>
-                <th rowspan="2" class="col-product">Product</th>
-                <th colspan="2">Profile</th><th colspan="2">Plate</th><th colspan="2">Tagging</th>
-                <th colspan="2">Welding</th><th colspan="2">Grinding</th><th colspan="2">Assembly</th>
-                <th colspan="2" style="background:#D1D5DB">Totals</th>
-                <th id="finHeader" colspan="4">Financials</th>
-              </tr>
-              <tr>
-                <th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th>
-                <th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th>
-                <th class="col-hrs">Hrs</th><th class="col-c">Cost</th>
-                <th class="col-money">Steel</th><th id="ohHeader" class="col-money">Overhead</th>
-                <th class="col-money">Sale</th><th id="profitHeader" class="col-money">PROFIT</th>
-              </tr>
-            </thead>
-            <tbody id="logBody"></tbody>
-          </table>
+        <div class="board" id="logsBoard">
+          <div class="meta-pane" id="logsMetaPane">
+            <table class="cost-matrix" id="logsMeta">
+              <thead>
+                <tr>
+                  <th class="col-order">Order #</th>
+                  <th class="col-product">Product</th>
+                </tr>
+                <tr>
+                  <th class="col-order"></th>
+                  <th class="col-product"></th>
+                </tr>
+              </thead>
+              <tbody id="logMetaBody"></tbody>
+            </table>
+          </div>
+          <div class="cal-pane" id="logsScroller">
+            <table class="cost-matrix" id="logsGrid">
+              <thead>
+                <tr>
+                  <th colspan="2">Profile</th><th colspan="2">Plate</th><th colspan="2">Tagging</th>
+                  <th colspan="2">Welding</th><th colspan="2">Grinding</th><th colspan="2">Assembly</th>
+                  <th colspan="2" style="background:#D1D5DB">Totals</th>
+                  <th id="finHeader" colspan="4">Financials</th>
+                </tr>
+                <tr>
+                  <th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th>
+                  <th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th>
+                  <th class="col-hrs">Hrs</th><th class="col-c">Cost</th>
+                  <th class="col-money">Steel</th><th id="ohHeader" class="col-money">Overhead</th>
+                  <th class="col-money">Sale</th><th id="profitHeader" class="col-money">PROFIT</th>
+                </tr>
+              </thead>
+              <tbody id="logBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
       <div id="tab-monthly" style="display:none">
-        <div class="table-wrapper">
-          <table class="cost-matrix">
-            <thead id="monthlyHead"></thead>
-            <tbody id="monthlyBody"></tbody>
-          </table>
+        <div class="board" id="monthlyBoard">
+          <div class="meta-pane" id="monthlyMetaPane">
+            <table class="cost-matrix" id="monthlyMeta">
+              <thead id="monthlyMetaHead"></thead>
+              <tbody id="monthlyMetaBody"></tbody>
+            </table>
+          </div>
+          <div class="cal-pane" id="monthlyScroller">
+            <table class="cost-matrix" id="monthlyGrid">
+              <thead id="monthlyHead"></thead>
+              <tbody id="monthlyBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
       <div id="tab-steel" style="display:none">
@@ -316,6 +342,39 @@
       });
       document.getElementById("mainSummaryCards").style.display = tab === "steel" || tab === "rates" ? "none" : "grid";
       if (tab === "steel") setTimeout(renderSteelChart, 80);
+      if (tab === "logs") requestAnimationFrame(() => alignFreezeRows("logsMeta", "logsGrid"));
+      if (tab === "monthly") requestAnimationFrame(() => alignFreezeRows("monthlyMeta", "monthlyGrid"));
+    }
+    function syncScrollY(from, to) {
+      if (syncScrollY.lock) return;
+      syncScrollY.lock = true;
+      to.scrollTop = from.scrollTop;
+      syncScrollY.lock = false;
+    }
+    function bindPaneScroll(metaId, scrollerId) {
+      const meta = document.getElementById(metaId);
+      const scroller = document.getElementById(scrollerId);
+      if (!meta || !scroller || meta.dataset.bound) return;
+      meta.dataset.bound = "1";
+      scroller.addEventListener("scroll", () => syncScrollY(scroller, meta), { passive: true });
+      meta.addEventListener("scroll", () => syncScrollY(meta, scroller), { passive: true });
+    }
+    function alignFreezeRows(metaId, gridId) {
+      const meta = document.getElementById(metaId);
+      const grid = document.getElementById(gridId);
+      if (!meta || !grid || !meta.offsetHeight) return;
+      const mRows = meta.querySelectorAll("tr");
+      const gRows = grid.querySelectorAll("tr");
+      const n = Math.min(mRows.length, gRows.length);
+      for (let i = 0; i < n; i++) {
+        mRows[i].style.height = "";
+        gRows[i].style.height = "";
+      }
+      for (let i = 0; i < n; i++) {
+        const h = Math.max(mRows[i].getBoundingClientRect().height, gRows[i].getBoundingClientRect().height);
+        mRows[i].style.height = h + "px";
+        gRows[i].style.height = h + "px";
+      }
     }
     function orderHeader(o) {
       return "<div style='font-size:10px;color:#9CA3AF;text-align:center;margin-bottom:10px'>Click the cell to keep this open</div>" +
@@ -349,10 +408,12 @@
       document.getElementById("stat-profit-label").textContent = includeOH ? "Net profit" : "Gross margin";
       document.getElementById("ohHeader").style.display = includeOH ? "" : "none";
       document.getElementById("finHeader").setAttribute("colspan", includeOH ? "4" : "3");
+      const metaBody = document.getElementById("logMetaBody");
       const body = document.getElementById("logBody");
       const orders = appData.orders || [];
       if (!orders.length) {
-        body.innerHTML = "<tr><td colspan='20' class='empty'>No labour or steel in this period. Floor time and steel usage appear here once they are logged.</td></tr>";
+        metaBody.innerHTML = "";
+        body.innerHTML = "<tr><td colspan='18' class='empty'>No labour or steel in this period. Floor time and steel usage appear here once they are logged.</td></tr>";
         document.getElementById("stat-labor").textContent = "R0";
         document.getElementById("stat-profit").textContent = "R0";
         document.getElementById("stat-steel").textContent = "R0";
@@ -360,15 +421,18 @@
         return;
       }
       const grand = { h: 0, c: 0, m: 0, oh: 0, s: 0, p: 0 };
+      metaBody.innerHTML = orders.map((o) => {
+        return "<tr><td class='col-order'><b>" + esc(o.orderNum) + "</b></td>" +
+          "<td class='col-product tooltip'><span class='product-clip'>" + esc(o.product || "—") + "</span>" +
+          "<div class='tooltiptext'>" + (o.img ? "<img src=\"" + esc(o.img) + "\" style='width:100%;border-radius:4px;margin-bottom:8px'>" : "") + "<b>" + esc(o.product) + "</b></div></td></tr>";
+      }).join("");
       body.innerHTML = orders.map((o) => {
         const ohCost = includeOH ? (o.overheadCost || 0) : 0;
         const sale = o.displaySale != null ? o.displaySale : o.sellingPrice;
         const margin = sale - (o.laborCost || 0) - (o.materialCost || 0) - ohCost;
         grand.h += o.totalHours || 0; grand.c += o.laborCost || 0; grand.m += o.materialCost || 0;
         grand.oh += ohCost; grand.s += sale || 0; grand.p += margin;
-        let row = "<tr><td class='col-order'><b>" + esc(o.orderNum) + "</b></td>" +
-          "<td class='col-product tooltip'><span class='product-clip'>" + esc(o.product || "—") + "</span>" +
-          "<div class='tooltiptext'>" + (o.img ? "<img src=\"" + esc(o.img) + "\" style='width:100%;border-radius:4px;margin-bottom:8px'>" : "") + "<b>" + esc(o.product) + "</b></div></td>";
+        let row = "<tr>";
         TASKS.forEach((t) => {
           const cell = (o.tasks && o.tasks[t]) || { h: 0, c: 0 };
           const warn = cell.h > 8 ? "font-weight:700;background:#FEE2E2" : "";
@@ -391,11 +455,15 @@
       document.getElementById("stat-warnings").textContent = warns + (warns === 1 ? " long task" : " long tasks");
     }
     function renderMonthly() {
+      const metaHead = document.getElementById("monthlyMetaHead");
+      const metaBody = document.getElementById("monthlyMetaBody");
       const thead = document.getElementById("monthlyHead");
       const tbody = document.getElementById("monthlyBody");
       const includeOH = includeOverheads();
       const orders = appData.orders || [];
       if (!orders.length) {
+        metaHead.innerHTML = "<tr><th class='col-order'>Order #</th><th class='col-product'>Product</th></tr><tr><th class='col-order'></th><th class='col-product'></th></tr>";
+        metaBody.innerHTML = "";
         thead.innerHTML = "";
         tbody.innerHTML = "<tr><td class='empty'>No monthly labour or steel in this period.</td></tr>";
         return;
@@ -407,7 +475,8 @@
       });
       months.sort();
       const colSpan = includeOH ? 4 : 3;
-      let tr1 = "<tr><th rowspan='2' class='col-order'>Order #</th><th rowspan='2' class='col-product'>Product</th>";
+      metaHead.innerHTML = "<tr><th class='col-order'>Order #</th><th class='col-product'>Product</th></tr><tr><th class='col-order'></th><th class='col-product'></th></tr>";
+      let tr1 = "<tr>";
       let tr2 = "<tr>";
       months.forEach((m) => {
         const label = new Date(m + "-01T12:00:00").toLocaleString("en-ZA", { month: "short", year: "numeric" });
@@ -423,6 +492,10 @@
       const grand = { hrs: 0, cost: 0, mat: 0, oh: 0, sale: 0, profit: 0 };
       const monthGrand = {};
       months.forEach((m) => { monthGrand[m] = { hrs: 0, cost: 0, mat: 0, oh: 0 }; });
+      metaBody.innerHTML = orders.map((o) => {
+        return "<tr><td class='col-order'><b>" + esc(o.orderNum) + "</b></td>" +
+          "<td class='col-product'><span class='product-clip'>" + esc(o.product) + "</span></td></tr>";
+      }).join("");
       tbody.innerHTML = orders.map((o) => {
         let rowH = 0, rowC = 0, rowM = 0, rowOH = 0;
         const absH = Object.values(o.monthHours || {}).reduce((s, v) => s + v, 0);
@@ -444,8 +517,7 @@
         const profit = sale - rowC - rowM - rowOH;
         const test = sale > 0 ? ((rowC + rowM) / sale) * 100 : 0;
         grand.hrs += rowH; grand.cost += rowC; grand.mat += rowM; grand.oh += rowOH; grand.sale += sale; grand.profit += profit;
-        return "<tr><td class='col-order'><b>" + esc(o.orderNum) + "</b></td>" +
-          "<td class='col-product'><span class='product-clip'>" + esc(o.product) + "</span></td>" + cells +
+        return "<tr>" + cells +
           "<td style='background:#F9FAFB;font-weight:700'>" + rowH.toFixed(1) + "h</td>" +
           "<td class='tooltip' style='background:#F9FAFB;font-weight:700'>" + formatMoney(rowC) + "<div class='tooltiptext'>" + staffTip(o) + "</div></td>" +
           "<td class='tooltip' style='background:#F9FAFB;font-weight:700'>" + formatMoney(rowM) + "<div class='tooltiptext'>" + steelTip(o) + "</div></td>" +
@@ -455,7 +527,8 @@
           "<td style='font-weight:700;color:" + (test > 40 ? "#DC2626" : "#059669") + "'>" + test.toFixed(1) + "%</td></tr>";
       }).join("");
       const grandTest = grand.sale > 0 ? ((grand.cost + grand.mat) / grand.sale) * 100 : 0;
-      let totals = "<tr class='total-row'><td class='col-order'>TOTALS</td><td class='col-product'>" + orders.length + " orders</td>";
+      metaBody.innerHTML += "<tr class='total-row'><td class='col-order'>TOTALS</td><td class='col-product'>" + orders.length + " orders</td></tr>";
+      let totals = "<tr class='total-row'>";
       months.forEach((m) => {
         totals += "<td>" + monthGrand[m].hrs.toFixed(1) + "h</td><td>" + formatMoney(monthGrand[m].cost) + "</td><td>" + formatMoney(monthGrand[m].mat) + "</td>";
         if (includeOH) totals += "<td>" + formatMoney(monthGrand[m].oh) + "</td>";
@@ -523,6 +596,14 @@
       renderMatrix();
       renderMonthly();
       renderRates();
+      requestAnimationFrame(() => {
+        if (document.getElementById("tab-logs").style.display !== "none") {
+          alignFreezeRows("logsMeta", "logsGrid");
+        }
+        if (document.getElementById("tab-monthly").style.display !== "none") {
+          alignFreezeRows("monthlyMeta", "monthlyGrid");
+        }
+      });
     }
     async function load() {
       const mode = document.getElementById("filterMode").value;
@@ -603,6 +684,8 @@
         document.body.classList.add("tooltip-locked");
       }
     });
+    bindPaneScroll("logsMetaPane", "logsScroller");
+    bindPaneScroll("monthlyMetaPane", "monthlyScroller");
     sdRequireOffice("orders").then((p) => { if (p) load(); });
   </script>
 </body>
