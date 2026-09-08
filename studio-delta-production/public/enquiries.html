@@ -550,7 +550,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
-  <script src="/enquiry-process.js?v=quote-options"></script>
+  <script src="/enquiry-process.js?v=quote-options-form"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 108, true],
@@ -1173,7 +1173,7 @@
       }
       html += "<div class=\"view-grid\" style=\"margin-top:8px\">" + viewItem("Comment", row.comment, true) + "</div>";
       if (quotes.length) {
-        html += "<div class=\"view-item wide\" style=\"margin-top:8px\"><div class=\"view-label\">Quotes</div><table class=\"lines\"><thead><tr><th>OPTION</th><th>QUOTE NO.</th><th>DATE QUOTED</th></tr></thead><tbody>";
+        html += "<div class=\"view-item wide\" style=\"margin-top:8px\"><div class=\"view-label\">Quotes</div><table class=\"lines\"><thead><tr><th style=\"width:72px\">OPTION</th><th>QUOTE NO.</th><th>DATE QUOTED</th></tr></thead><tbody>";
         quotes.forEach((q) => {
           html += "<tr><td>" + esc(q.option || (q.kind === "revision" ? "Rev" : "A")) + "</td><td>" + esc(q.quote_no || "") + "</td><td>" + esc(isoToDmy(q.date_quoted || q.uploaded_at || "")) + "</td></tr>";
         });
