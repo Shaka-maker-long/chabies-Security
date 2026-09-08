@@ -471,11 +471,11 @@ function unscheduleOrder(orderNumber) {
 function plannedWorkers() {
   const users = staff.listUsers();
   const fromTasks = users
-    .filter((u) => (u.tasks || []).some((t) => PLANNED_PROCESSES.indexOf(t) !== -1))
+    .filter((u) => (u.tasks || []).length)
     .map((u) => ({
       id: u.name,
       name: u.name,
-      tasks: (u.tasks || []).filter((t) => PLANNED_PROCESSES.indexOf(t) !== -1)
+      tasks: (u.tasks || []).slice()
     }));
   const seen = {};
   fromTasks.forEach((w) => { seen[w.id.toLowerCase()] = w; });
