@@ -75,6 +75,8 @@ assert.ok(page.indexOf("materialsTable") === -1);
 assert.ok(page.indexOf("Add All Cutting List Items to BOM") === -1);
 assert.ok(page.indexOf("Paste cutting list") !== -1);
 assert.ok(page.indexOf("Generate job card") !== -1);
+assert.ok(page.indexOf("Mark selected as important") !== -1);
+assert.ok(page.indexOf("textarea id=\"description\" readonly") === -1, "shop description is typed on the job card");
 assert.ok(page.indexOf("Ready for Steelwork") !== -1);
 assert.ok(page.indexOf("Printed job cards") !== -1);
 assert.ok(page.indexOf("Open / print") !== -1);
@@ -87,6 +89,19 @@ assert.ok(page.indexOf("persistJobCardDraft") !== -1, "job card form keeps unsav
 assert.ok(officeJs.indexOf("listGeneratedJobCards") !== -1);
 assert.strictEqual(jobCard.isStandardType("Standard"), true);
 assert.strictEqual(jobCard.isStandardType("Custom"), false);
+assert.strictEqual(jobCard.isTypeOnlyDescription("Standard"), true);
+assert.strictEqual(jobCard.isTypeOnlyDescription("New Design"), true);
+assert.strictEqual(jobCard.isTypeOnlyDescription("Unit with extra shelf"), false);
+assert.strictEqual(jobCard.shopDescription({ type: "New Design", detailed_description: "Standard" }), "");
+assert.strictEqual(jobCard.shopDescription({ detailed_description: "Talitha Bookshelf" }), "Talitha Bookshelf");
+assert.strictEqual(
+  jobCard.shopDescription({ detailed_description: "Standard" }, "Extra hanging rail"),
+  "Extra hanging rail"
+);
+assert.deepStrictEqual(
+  jobCard.descriptionSegments("Unit with ⟦additional shelf⟧ on the right").map((s) => s.important),
+  [false, true, false]
+);
 assert.strictEqual(jobCard.hasUsableDimensions({ height: 1, width: 1, depth: 1 }), false);
 assert.strictEqual(jobCard.hasUsableDimensions({ height: 1460, width: 560, depth: 560 }), true);
 
@@ -130,6 +145,7 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
   assert.ok(pdf.slice(0, 4).toString() === "%PDF");
   assert.ok(pdf.toString("latin1").indexOf("BUILDER") === -1);
   assert.ok(pdf.toString("latin1").indexOf("S260193") !== -1);
+  assert.strictEqual(created.record.description, "Talitha Bookshelf");
   assert.ok(pdf.toString("latin1").indexOf("BOM") === -1);
 
   const listed = jobCard.listGeneratedJobCards();
@@ -241,6 +257,46 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
   const newDesignOrder = db.listOrders().find((o) => o.order_number === "S260211");
   assert.ok(/Height:\s*1500mm/.test(newDesignOrder.dimensions));
   assert.ok(/Width:\s*600mm/.test(newDesignOrder.dimensions));
+
+  db.upsertOrder({
+    order_number: "S260212",
+    status: "Not Yet Started",
+    type: "New Design",
+    product: "Thandi Display Cabinet",
+    client_name: "Winelands Design Studio",
+    doors: "Clear glass",
+    powder_coating: "As per website",
+    variation: "Top & bottom shelves steel, Middles shelves: Glass",
+    detailed_description: "Standard",
+    dimensions: "",
+    province: "Gauteng"
+  });
+  let typeInDescription = null;
+  try {
+    await jobCard.generateJobCard({
+      order_number: "S260212",
+      cutting_text: samplePaste,
+      dimension_check: "unchanged"
+    });
+  } catch (e) {
+    typeInDescription = e.message;
+  }
+  assert.ok(typeInDescription && /detailed description|Design type/i.test(typeInDescription));
+
+  const typedDesc = await jobCard.generateJobCard({
+    order_number: "S260212",
+    cutting_text: samplePaste,
+    dimension_check: "unchanged",
+    description: "Unit with ⟦additional shelf⟧ on the right"
+  });
+  assert.strictEqual(typedDesc.record.design_type, "New Design");
+  assert.strictEqual(typedDesc.record.description, "Unit with ⟦additional shelf⟧ on the right");
+  assert.ok(typedDesc.record.description.indexOf("Standard") === -1);
+  assert.ok(String(typedDesc.order.detailed_description).indexOf("additional") !== -1);
+  const savedDesc = db.listOrders().find((o) => o.order_number === "S260212");
+  assert.ok(savedDesc);
+  assert.strictEqual(savedDesc.detailed_description, typedDesc.order.detailed_description);
+  assert.ok(savedDesc.detailed_description !== "Standard");
 
   const beforeClear = db.listOrders().length;
   assert.ok(beforeClear >= 1);

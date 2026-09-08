@@ -432,6 +432,7 @@ assert.ok(officeJs.indexOf("/api/office/job-cards") !== -1);
 const jobCardHtml = fs.readFileSync(path.join(__dirname, "../public/job-card.html"), "utf8");
 assert.ok(jobCardHtml.indexOf("/orders/paint-shop") !== -1);
 assert.ok(jobCardHtml.indexOf("persistJobCardDraft") !== -1);
+assert.ok(jobCardHtml.indexOf("Mark selected as important") !== -1);
 assert.ok(jobCardHtml.indexOf("name=\"dimCheck\"") !== -1);
 assert.ok(jobCardHtml.indexOf("Dimensions did not change") !== -1);
 assert.ok(jobCardHtml.indexOf("Update to the actual dimensions") !== -1);
