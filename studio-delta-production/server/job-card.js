@@ -156,6 +156,103 @@ function formatCuttingPaste(cutting) {
   return lines.join("\n");
 }
 
+function standardCuttingPath() {
+  return path.join(dataDir(), "standard-cutting-lists.json");
+}
+
+function loadStandardCuttingMap() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(standardCuttingPath(), "utf8"));
+    return raw && typeof raw === "object" ? raw : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveStandardCuttingMap(map) {
+  const tmp = standardCuttingPath() + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify(map));
+  fs.renameSync(tmp, standardCuttingPath());
+}
+
+function productCuttingKey(product) {
+  const found = catalog.lookupProduct(product);
+  const name = (found && found.name) || String(product || "").trim();
+  return catalog.normalizeName(name);
+}
+
+function makeStandardCuttingEntry(product, cutting, fromOrderNumber) {
+  const found = catalog.lookupProduct(product);
+  const name = (found && found.name) || String(product || "").trim();
+  return {
+    product: name,
+    cutting: cloneCutting(cutting),
+    paste_text: formatCuttingPaste(cutting),
+    item_count: cuttingCount(cutting),
+    from_order_number: fromOrderNumber || "",
+    updated_at: new Date().toISOString()
+  };
+}
+
+function rememberStandardCutting(order, cutting) {
+  if (!order || !isStandardType(order.type)) return null;
+  if (cuttingCount(cutting) <= 0) return null;
+  const key = productCuttingKey(order.product);
+  if (!key) return null;
+  const map = loadStandardCuttingMap();
+  map[key] = makeStandardCuttingEntry(order.product, cutting, order.order_number);
+  saveStandardCuttingMap(map);
+  return map[key];
+}
+
+function getStandardCutting(product) {
+  const key = productCuttingKey(product);
+  if (!key) return null;
+  const entry = loadStandardCuttingMap()[key];
+  if (!entry || cuttingCount(entry.cutting) <= 0) return null;
+  return entry;
+}
+
+function backfillStandardCutting(records, orders) {
+  const map = loadStandardCuttingMap();
+  const newest = {};
+  Object.keys(records || {}).forEach((key) => {
+    const card = records[key];
+    if (!card || cuttingCount(card.cutting) <= 0) return;
+    const order = (orders || []).find((o) => formatOrderId(o.order_number) === formatOrderId(card.order_number || key));
+    if (!order || !isStandardType(order.type)) return;
+    const pkey = productCuttingKey(order.product || card.product);
+    if (!pkey) return;
+    const ts = String(card.created_at || "");
+    if (!newest[pkey] || ts > newest[pkey].ts) newest[pkey] = { order, card, ts };
+  });
+  let dirty = false;
+  Object.keys(newest).forEach((pkey) => {
+    if (map[pkey]) return;
+    const hit = newest[pkey];
+    map[pkey] = makeStandardCuttingEntry(hit.order.product, hit.card.cutting, hit.order.order_number);
+    dirty = true;
+  });
+  if (dirty) saveStandardCuttingMap(map);
+  return map;
+}
+
+function standardCuttingFor(order, library) {
+  if (!order || !isStandardType(order.type)) return null;
+  const key = productCuttingKey(order.product);
+  if (!key) return null;
+  const entry = (library || loadStandardCuttingMap())[key];
+  if (!entry || cuttingCount(entry.cutting) <= 0) return null;
+  return {
+    product: entry.product,
+    from_order_number: entry.from_order_number || "",
+    item_count: entry.item_count || cuttingCount(entry.cutting),
+    cutting: cloneCutting(entry.cutting),
+    paste_text: entry.paste_text || formatCuttingPaste(entry.cutting),
+    updated_at: entry.updated_at || ""
+  };
+}
+
 function suggestedCuttingFor(target, allOrders, records) {
   if (!target || !shopNorm(target.product)) return null;
   const recs = records || loadRecords();
@@ -302,6 +399,7 @@ function listGeneratedJobCards() {
 function listEligibleOrders() {
   const all = listOrders();
   const records = loadRecords();
+  const library = backfillStandardCutting(records, all);
   return all
     .filter((o) => jobCardEligibility(o.status).ok)
     .map((o) => {
@@ -331,7 +429,8 @@ function listEligibleOrders() {
             diameter: found.diameter
           }
           : null,
-        suggested_cutting: suggestedCuttingFor(o, all, records)
+        suggested_cutting: suggestedCuttingFor(o, all, records),
+        standard_cutting: standardCuttingFor(o, library)
       };
     });
 }
@@ -822,6 +921,7 @@ async function generateJobCard(input) {
   const map = loadRecords();
   map[orderNumber] = record;
   saveRecords(map);
+  rememberStandardCutting(order, cutting);
 
   const patch = { detailed_description: description };
   if (elig.mode === "create") patch.status = AFTER_GENERATE_STATUS;
@@ -859,6 +959,10 @@ module.exports = {
   sameShopProduct,
   formatCuttingPaste,
   suggestedCuttingFor,
+  rememberStandardCutting,
+  getStandardCutting,
+  standardCuttingFor,
+  productCuttingKey,
   jobCardEligibility,
   applyOfficeOrderStatusLock,
   listEligibleOrders,
