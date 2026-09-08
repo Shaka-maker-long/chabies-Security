@@ -138,7 +138,7 @@
         <label>Person <select id="personA" aria-label="Person"></select></label>
         <label>Compare with <select id="personB" aria-label="Compare with"><option value="">None</option></select></label>
         <button class="ghost" type="button" id="addOther">Add other task</button>
-        <span class="msg">Drag to shift or swap. Shaded: Production Meeting, Lunch, Cleaning</span>
+        <span class="msg">Drag to shift or swap. Double-click an empty slot for an other task. Shaded: Production Meeting, Lunch, Cleaning</span>
       </div>
     </div>
   </header>
@@ -724,8 +724,10 @@
         removeOther(kill.getAttribute("data-remove-block"));
         return;
       }
-      if (view !== "people" || justDragged) return;
-      if (e.target.closest("[data-block]")) return;
+    });
+    document.getElementById("calendars").addEventListener("dblclick", (e) => {
+      if (view !== "people") return;
+      if (e.target.closest("[data-block], [data-remove-block], [data-open-journey]")) return;
       const host = e.target.closest("[data-worker], [data-day]");
       if (!host) return;
       const dayEl = e.target.closest("[data-day]");
