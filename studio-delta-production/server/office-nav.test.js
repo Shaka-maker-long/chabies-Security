@@ -426,6 +426,7 @@ assert.ok(durationsHtml.indexOf("hours: Math.round") !== -1);
 assert.ok(durationsHtml.indexOf("minutesFromHours") === -1);
 assert.ok(durationsHtml.indexOf("Minutes per product") === -1);
 const planningHtml = fs.readFileSync(path.join(__dirname, "../public/planning.html"), "utf8");
+assert.ok(planningHtml.indexOf("localeCompare") !== -1);
 assert.ok(planningHtml.indexOf("Auto - next open slot") !== -1);
 assert.ok(planningHtml.indexOf("Journey") !== -1);
 assert.ok(planningHtml.indexOf("Monday to Friday") !== -1 || planningHtml.indexOf("work days") !== -1);
