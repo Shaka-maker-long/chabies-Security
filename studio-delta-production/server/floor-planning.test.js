@@ -299,6 +299,11 @@ journey.days.forEach((d) => {
 assert.strictEqual(plan.formatDayHeader("2026-09-08"), "08-Sep");
 const trip = journey.orders.find((o) => o.orderId === "S260100 A");
 assert.ok(trip, "scheduled order has a journey");
+assert.ok(trip.start && trip.start.indexOf("2026-09-08") === 0);
+assert.ok(board.weekStarting.some((o) => o.orderId === "S260100 A"));
+assert.ok(board.bands.some((b) => b.label === "Production Meeting"));
+assert.ok(board.bands.some((b) => b.label === "Lunch"));
+assert.ok(board.bands.some((b) => b.label === "Cleaning"));
 assert.strictEqual(trip.rows.find((r) => r.process === "Profile Cutting").workerName, "Willard");
 assert.strictEqual(trip.rows.find((r) => r.process === "Tagging").workerName, "Sipho");
 assert.strictEqual(trip.rows.find((r) => r.process === "Welding").workerName, "Thabo");
