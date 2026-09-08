@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Existing job cards</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:720px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    .page { padding:16px; display:flex; flex-direction:column; gap:12px; min-height:calc(100vh - 130px); }
+    .list-tools { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .list-tools input[type=search] { flex:1; min-width:220px; max-width:420px; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; flex:1; display:flex; flex-direction:column; min-height:0; }
+    .hint { font-size:12px; color:var(--muted); margin:0 0 10px; }
+    .err { color:var(--bad); font-size:13px; font-weight:600; }
+    .empty { color:var(--muted); text-align:center; padding:36px 16px; }
+    .table-wrap { overflow:auto; flex:1; min-height:280px; border:1px solid var(--line); border-radius:8px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { border-bottom:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:middle; }
+    th { background:#1d2939; color:#fff; position:sticky; top:0; font-size:11px; letter-spacing:.03em; text-transform:uppercase; }
+    td.prod { white-space:normal; min-width:160px; }
+    td.nowrap { white-space:nowrap; }
+    tbody tr:hover td { background:#f8fafc; }
+    .row-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .row-actions a { font-size:12px; font-weight:600; color:#1d2939; text-decoration:none; border:1px solid #1d2939; border-radius:6px; padding:6px 10px; background:#fff; }
+    .row-actions a.primary { background:#1d2939; color:#fff; }
+    @media (max-width: 720px) {
+      .tools { width:100%; margin-left:0; }
+      td, th { padding:8px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a class="on" href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <nav class="tabs" aria-label="Job card" style="margin-top:8px">
+        <a href="/orders/job-card">Generate job card</a>
+        <a class="on" href="/orders/job-card/existing">Existing job cards</a>
+      </nav>
+      <h1>Existing job cards</h1>
+      <p class="lede">Every generated PDF stays here so you can search, open, and print it — including cards that have already moved past Profile Cutting.</p>
+    </div>
+    <div class="tools">
+      <a class="tabs" href="/orders/job-card" style="padding:8px 12px; border:1px solid #1d2939; background:#1d2939; color:#fff">Generate job card</a>
+      <span class="hint" id="status" style="margin:0"></span>
+    </div>
+  </header>
+  <div class="page">
+    <div class="card">
+      <div class="list-tools">
+        <input type="search" id="printedQ" placeholder="Search by order number, customer, product, status, province, or colour">
+        <span class="hint" id="printedCount" style="margin:0"></span>
+      </div>
+      <div class="table-wrap" id="printedWrap"></div>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    let printed = [];
+
+    function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+
+    function renderPrinted() {
+      const q = document.getElementById("printedQ").value.toLowerCase().trim();
+      const rows = printed.filter((row) => {
+        if (!q) return true;
+        return [row.order_number, row.customer, row.product, row.status, row.province, row.colour, row.created_date]
+          .join(" ").toLowerCase().indexOf(q) !== -1;
+      });
+      document.getElementById("printedCount").textContent = rows.length
+        ? rows.length + " of " + printed.length + " cards"
+        : (printed.length ? "No cards match that search." : "No job cards generated yet.");
+      if (!rows.length) {
+        document.getElementById("printedWrap").innerHTML = "<p class=\"empty\">" +
+          (printed.length
+            ? "No cards match that search."
+            : "No existing job cards yet. Generate one, then it will appear here.") +
+          (printed.length ? "" : " <a href=\"/orders/job-card\">Generate job card</a>") +
+          "</p>";
+        return;
+      }
+      let html = "<table id=\"printedTable\"><thead><tr>" +
+        "<th>Order</th><th>Customer</th><th>Product</th><th>Generated</th><th>Status</th><th>Province</th><th>Colour</th><th></th>" +
+        "</tr></thead><tbody>";
+      rows.forEach((row) => {
+        html += "<tr>" +
+          "<td class=\"nowrap\">" + esc(row.order_number) + "</td>" +
+          "<td>" + esc(row.customer) + "</td>" +
+          "<td class=\"prod\">" + esc(row.product) + "</td>" +
+          "<td class=\"nowrap\">" + esc(row.created_date) + "</td>" +
+          "<td>" + esc(row.status) + "</td>" +
+          "<td>" + esc(row.province) + "</td>" +
+          "<td>" + esc(row.colour) + "</td>" +
+          "<td><div class=\"row-actions\">" +
+          (row.has_pdf ? "<a class=\"primary\" href=\"" + esc(row.pdf_url) + "\" target=\"_blank\" rel=\"noopener\">Open / print</a>" : "") +
+          (row.has_pdf ? "<a href=\"" + esc(row.download_url) + "\">Download</a>" : "") +
+          "<a href=\"/orders/job-card?order=" + encodeURIComponent(row.order_number) + "\">Generate again</a>" +
+          "</div></td></tr>";
+      });
+      document.getElementById("printedWrap").innerHTML = html + "</tbody></table>";
+    }
+
+    async function loadPrinted() {
+      const r = await sdOfficeFetch("/api/office/job-cards");
+      const j = await r.json();
+      if (!j.ok) {
+        document.getElementById("printedWrap").innerHTML = "<p class=\"err\">" + esc(j.error || "Could not load existing cards") + "</p>";
+        return;
+      }
+      printed = j.rows || [];
+      document.getElementById("status").textContent = printed.length ? printed.length + " job cards" : "";
+      renderPrinted();
+    }
+
+    document.getElementById("printedQ").oninput = renderPrinted;
+    sdRequireOffice("orders").then(() => loadPrinted());
+  </script>
+</body>
+</html>
