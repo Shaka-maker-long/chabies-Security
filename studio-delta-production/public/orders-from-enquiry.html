@@ -38,7 +38,10 @@
     .msg.bad { color:var(--bad); }
     .msg.ok { color:var(--ok); }
     .delivery { background:#fff7ed; border-color:#fdc5a3; }
-    .delivery p { margin:0 0 12px; font-size:14px; }
+    .delivery p { margin:0 0 10px; font-size:14px; line-height:1.45; }
+    .confirm { flex-direction:row; align-items:flex-start; gap:8px; margin-top:12px; font-weight:600; }
+    .confirm input { width:auto; margin-top:3px; }
+    .confirm .hint { display:block; font-weight:400; }
     .split { font-size:13px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
     .split ol { margin:8px 0 0; padding-left:20px; }
     .product { border:1px solid var(--line); border-radius:10px; padding:14px; margin:0 0 12px; }
@@ -64,7 +67,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Create orders from enquiry</h1>
-      <p class="lede">One enquiry form. Quantity splits into A, B, C across the whole order. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
+      <p class="lede">One enquiry form. Quantity splits into A, B, C across the whole order. Address, city, shop details, and a confirmed quantity and exclusive VAT are required. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
     </div>
     <div class="tools">
       <a href="/enquiries"><button class="ghost" type="button">Back to Enquiries</button></a>
@@ -93,7 +96,11 @@
     function money(n) { return (Math.round(Number(n) * 100) / 100).toFixed(2); }
     function exclFromIncl(incl) {
       const n = parseMoney(incl);
-      return n ? money(n / (1 + VAT)) : "";
+      return String(incl || "").trim() === "" ? "" : money(n / (1 + VAT));
+    }
+    function inclFromExcl(excl) {
+      const n = parseMoney(excl);
+      return String(excl || "").trim() === "" ? "" : money(n * (1 + VAT));
     }
     function ymd(d) {
       return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -116,6 +123,60 @@
         cur = addDays(cur, 1);
       }
       return iso;
+    }
+    function mondayOfWeek(iso) {
+      const d = dateAtNoon(iso);
+      if (!d) return "";
+      const dow = d.getDay();
+      return addDays(iso, dow === 0 ? -6 : 1 - dow);
+    }
+    function isNextWeek(fromIso, dateIso) {
+      const fromMon = mondayOfWeek(fromIso);
+      const dateMon = mondayOfWeek(dateIso);
+      return fromMon && dateMon && dateMon === addDays(fromMon, 7);
+    }
+    function snapDelivery(iso, province) {
+      const today = ymd(new Date());
+      if (!isGauteng(province) && isNextWeek(today, iso)) return mondayOfWeek(iso);
+      const snapped = nextTueThu(iso);
+      if (!isGauteng(province) && isNextWeek(today, snapped)) return mondayOfWeek(snapped);
+      return snapped;
+    }
+    function typeLeadLabel(typeUsed) {
+      if (typeUsed === "New Design") return "New Design";
+      if (typeUsed === "Custom") return "Custom";
+      return "Standard";
+    }
+    function deliveryExplanation(opts) {
+      const today = opts.today;
+      const date = opts.date;
+      const weeks = opts.weeks;
+      const typeUsed = typeLeadLabel(opts.typeUsed);
+      const province = String(opts.province || "").trim();
+      const gauteng = isGauteng(province);
+      const provinceBit = gauteng
+        ? "the province is Gauteng, so this is Latest Delivery (LD) on the production schedule"
+        : (province
+          ? "the province is " + province + " (not Gauteng), so this is Latest Courier (LC) on the production schedule"
+          : "the province is not Gauteng, so this is Latest Courier (LC) on the production schedule");
+      const pretty = prettyDate(date);
+      const todayPretty = prettyDate(today);
+      const week = isoWeek(date);
+      const weekBit = pretty + " in week " + week;
+      const nextWeekLc = !gauteng && isNextWeek(today, date);
+      const weekWord = weeks === 1 ? "week" : "weeks";
+      if (opts.dateTouched) {
+        let why = "You chose " + weekBit + " because " + provinceBit + ".";
+        if (nextWeekLc) why += " That week is next week, so LC is Monday — not Tuesday or Thursday.";
+        else why += " Deliveries leave on Tuesday and Thursday only. Change this date if you need a different week — the date you save is the one that goes on the schedule.";
+        return why;
+      }
+      let why = "Based on today (" + todayPretty + "), lead time is " + weeks + " " + weekWord +
+        " because the strictest item is " + typeUsed + ", and " + provinceBit + ".";
+      if (nextWeekLc) why += " The calculated date falls in next week, so LC is Monday " + weekBit + " — not Tuesday or Thursday.";
+      else why += " That lands on " + weekBit + ". Deliveries leave on Tuesday and Thursday only.";
+      why += " Change this date if you need a different week — the date you save is the one that goes on the schedule.";
+      return why;
     }
     function isoWeek(iso) {
       const d = dateAtNoon(iso);
@@ -171,8 +232,10 @@
         dimensions: el.querySelector("[data-f=dimensions]").value,
         powder_coating: el.querySelector("[data-f=powder_coating]").value,
         price_incl_vat: el.querySelector("[data-f=price_incl_vat]").value,
+        price_excl_vat: el.querySelector("[data-f=price_excl_vat]").value,
         amount_paid: el.querySelector("[data-f=amount_paid]").value,
-        quantity: el.querySelector("[data-f=quantity]").value
+        quantity: el.querySelector("[data-f=quantity]").value,
+        qty_price_confirmed: !!(el.querySelector("[data-f=qty_price_confirmed]") && el.querySelector("[data-f=qty_price_confirmed]").checked)
       }));
       return {
         order_number: document.getElementById("f_order_number").value,
@@ -186,7 +249,8 @@
           source: document.getElementById("f_source").value
         },
         products,
-        delivery_date: document.getElementById("f_delivery").value
+        delivery_date: document.getElementById("f_delivery").value,
+        dateTouched
       };
     }
     function persist() {
@@ -215,21 +279,33 @@
       const province = document.getElementById("f_province").value;
       const used = strictType(types);
       const weeks = isGauteng(province) ? LEAD[used].g : LEAD[used].o;
+      const today = ymd(new Date());
       if (!dateTouched) {
-        const today = ymd(new Date());
-        dateEl.value = nextTueThu(addDays(today, weeks * 7));
+        dateEl.value = snapDelivery(addDays(today, weeks * 7), province);
+      } else if (!isGauteng(province) && isNextWeek(today, dateEl.value)) {
+        const mon = mondayOfWeek(dateEl.value);
+        if (dateEl.value !== mon) dateEl.value = mon;
       }
       const date = dateEl.value;
-      const week = isoWeek(date);
-      const pretty = prettyDate(date);
       const dow = (dateAtNoon(date) || new Date()).getDay();
+      const nextWeekLc = !isGauteng(province) && isNextWeek(today, date);
       const tueThu = dow === 2 || dow === 4;
-      copy.textContent = date
-        ? (dateTouched
-          ? "Delivery is " + pretty + " in week " + week + "."
-          : "Based on today's date the estimated delivery date is " + pretty + " in week " + week + ".")
-        : "Choose a Tuesday or Thursday.";
-      if (!tueThu && date) copy.textContent = "Deliveries are Tuesday and Thursday only.";
+      const mondayOk = nextWeekLc && dow === 1;
+      if (!date) copy.textContent = "Choose a delivery date.";
+      else if (!tueThu && !mondayOk) {
+        copy.textContent = nextWeekLc
+          ? "If Latest Courier falls in next week, put LC on Monday — not Tuesday or Thursday."
+          : "Deliveries are Tuesday and Thursday only.";
+      } else {
+        copy.textContent = deliveryExplanation({
+          today,
+          date,
+          weeks,
+          typeUsed: used,
+          province,
+          dateTouched
+        });
+      }
       const code = isGauteng(province) ? "LD" : "LC";
       codeEl.textContent = isGauteng(province)
         ? "Gauteng — Latest Delivery (LD) on the production schedule."
@@ -256,8 +332,18 @@
     }
     function refreshExcl(input) {
       const card = input.closest("[data-product]");
-      const out = card && card.querySelector("[data-excl]");
+      const out = card && card.querySelector("[data-f=price_excl_vat]");
       if (out) out.value = exclFromIncl(input.value);
+    }
+    function refreshIncl(input) {
+      const card = input.closest("[data-product]");
+      const out = card && card.querySelector("[data-f=price_incl_vat]");
+      if (out) out.value = inclFromExcl(input.value);
+    }
+    function clearQtyPriceConfirm(el) {
+      const card = el && el.closest("[data-product]");
+      const box = card && card.querySelector("[data-f=qty_price_confirmed]");
+      if (box) box.checked = false;
     }
     function renderExisting(rows) {
       const page = document.getElementById("page");
@@ -300,9 +386,9 @@
             "<label>Source<select id=\"f_source\">" + options(dropdowns.source, shared.source) + "</select></label>" +
           "</div>" +
           "<div class=\"grid\" style=\"margin-top:12px\">" +
-            "<label>Address<input id=\"f_address\" value=\"" + esc(shared.address) + "\"></label>" +
+            "<label>Address *<input id=\"f_address\" value=\"" + esc(shared.address) + "\" required></label>" +
             "<label>Province<select id=\"f_province\">" + options(dropdowns.province, shared.province) + "</select></label>" +
-            "<label>City<input id=\"f_city\" value=\"" + esc(shared.city) + "\" placeholder=\"Type the city\"></label>" +
+            "<label>City *<input id=\"f_city\" value=\"" + esc(shared.city) + "\" placeholder=\"Type the city\" required></label>" +
           "</div>" +
         "</div>" +
         "<div class=\"card delivery\">" +
@@ -311,12 +397,12 @@
           "<p class=\"hint\" id=\"deliveryCode\"></p>" +
           "<label>Delivery date" +
             "<input id=\"f_delivery\" type=\"date\" value=\"" + esc(deliveryDate) + "\">" +
-            "<span class=\"hint\">Deliveries leave on Tuesday and Thursday only. Change this date if you need a different week — the date you save is the one that goes on the schedule.</span>" +
+            "<span class=\"hint\">Gauteng deliveries leave on Tuesday and Thursday only. Outside Gauteng, if the calculated date falls in next week, Latest Courier (LC) is Monday; later weeks are still Tuesday or Thursday. Change this date if you need a different week — the date you save is the one that goes on the schedule.</span>" +
           "</label>" +
         "</div>" +
         "<div class=\"card\">" +
           "<h2>Products</h2>" +
-          "<p class=\"hint\">Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Price is including VAT; exclusive VAT is calculated.</p>" +
+          "<p class=\"hint\">Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Amount paid, variation, doors, powder coating, dimensions, and detailed description are required. Check quantity and exclusive VAT, change them if they are wrong, then confirm.</p>" +
           "<div id=\"products\"></div>" +
           "<div class=\"split\" id=\"splitBox\"></div>" +
         "</div>" +
@@ -331,27 +417,38 @@
           "<h3>" + esc(d.category ? d.category + " · " + d.product : d.product) + "</h3>" +
           "<div class=\"grid four\">" +
             "<label>Type<select data-f=\"type\">" + typeOptions(p.type || d.type) + "</select></label>" +
-            "<label>Quantity<input data-f=\"quantity\" type=\"number\" min=\"1\" step=\"1\" value=\"" + esc(p.quantity || 1) + "\"></label>" +
+            "<label>Quantity *<input data-f=\"quantity\" type=\"number\" min=\"1\" step=\"1\" value=\"" + esc(p.quantity || 1) + "\" required></label>" +
             "<label>Price incl VAT<input data-f=\"price_incl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_incl_vat || "") + "\"></label>" +
-            "<label>Price excl VAT<input data-excl readonly value=\"" + esc(exclFromIncl(p.price_incl_vat)) + "\"></label>" +
+            "<label>Price excl VAT *<input data-f=\"price_excl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_excl_vat || exclFromIncl(p.price_incl_vat)) + "\" required></label>" +
           "</div>" +
+          "<label class=\"confirm\"><input data-f=\"qty_price_confirmed\" type=\"checkbox\"" + (p.qty_price_confirmed ? " checked" : "") + ">" +
+            "<span>Quantity and price excl VAT are correct<span class=\"hint\">Tick this after you check both. If either needs to change, change it first, then tick.</span></span></label>" +
           "<div class=\"grid four\" style=\"margin-top:12px\">" +
-            "<label>Amount paid<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "0.00") + "\"></label>" +
-            "<label>Variation<select data-f=\"variation\">" + options(dropdowns.variation, p.variation) + "</select></label>" +
-            "<label>Doors<select data-f=\"doors\">" + options(dropdowns.doors, p.doors) + "</select></label>" +
-            "<label>Powder coating<select data-f=\"powder_coating\">" + options(dropdowns.powder_coating, p.powder_coating) + "</select></label>" +
+            "<label>Amount paid *<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "") + "\" required></label>" +
+            "<label>Variation *<select data-f=\"variation\" required>" + options(dropdowns.variation, p.variation) + "</select></label>" +
+            "<label>Doors *<select data-f=\"doors\" required>" + options(dropdowns.doors, p.doors) + "</select></label>" +
+            "<label>Powder coating *<select data-f=\"powder_coating\" required>" + options(dropdowns.powder_coating, p.powder_coating) + "</select></label>" +
           "</div>" +
           "<div class=\"grid\" style=\"margin-top:12px\">" +
-            "<label>Dimensions<input data-f=\"dimensions\" value=\"" + esc(p.dimensions || "") + "\"></label>" +
-            "<label>Detailed description<textarea data-f=\"detailed_description\">" + esc(p.detailed_description || "") + "</textarea></label>" +
+            "<label>Dimensions *<input data-f=\"dimensions\" value=\"" + esc(p.dimensions || "") + "\" required></label>" +
+            "<label>Detailed description *<textarea data-f=\"detailed_description\" required>" + esc(p.detailed_description || "") + "</textarea></label>" +
           "</div>" +
         "</article>";
       }).join("") || "<p class=\"msg\">This enquiry has no products to turn into orders.</p>";
       const formRoot = document.getElementById("page");
       formRoot.addEventListener("input", (e) => {
         if (e.target && e.target.id === "f_delivery") dateTouched = true;
-        if (e.target && e.target.getAttribute("data-f") === "price_incl_vat") refreshExcl(e.target);
-        if (e.target && (e.target.id === "f_province" || e.target.getAttribute("data-f") === "type") && !dateTouched) {
+        const field = e.target && e.target.getAttribute("data-f");
+        if (field === "price_incl_vat") {
+          refreshExcl(e.target);
+          clearQtyPriceConfirm(e.target);
+        }
+        if (field === "price_excl_vat") {
+          refreshIncl(e.target);
+          clearQtyPriceConfirm(e.target);
+        }
+        if (field === "quantity") clearQtyPriceConfirm(e.target);
+        if (e.target && (e.target.id === "f_province" || field === "type") && !dateTouched) {
           refreshDeliveryCopy();
           return;
         }
@@ -371,9 +468,21 @@
       const msg = document.getElementById("formMsg");
       const btn = document.getElementById("saveBtn");
       const data = collect();
+      const today = ymd(new Date());
       const dow = (dateAtNoon(data.delivery_date) || new Date(0)).getDay();
+      const nextWeekLc = !isGauteng(data.shared.province) && isNextWeek(today, data.delivery_date);
       if (!data.shared.client_name.trim()) {
         msg.textContent = "Client name is required.";
+        msg.className = "msg bad";
+        return;
+      }
+      if (!data.shared.address.trim()) {
+        msg.textContent = "Address is required.";
+        msg.className = "msg bad";
+        return;
+      }
+      if (!data.shared.city.trim()) {
+        msg.textContent = "City is required.";
         msg.className = "msg bad";
         return;
       }
@@ -382,7 +491,65 @@
         msg.className = "msg bad";
         return;
       }
-      if (!data.delivery_date || (dow !== 2 && dow !== 4)) {
+      for (const p of data.products) {
+        const label = p.product || "this product";
+        if (Math.floor(Number(p.quantity) || 0) < 1) {
+          msg.textContent = "Quantity is required for " + label + ".";
+          msg.className = "msg bad";
+          return;
+        }
+        if (!String(p.price_excl_vat || "").trim() && !String(p.price_incl_vat || "").trim()) {
+          msg.textContent = "Price excl VAT is required for " + label + ".";
+          msg.className = "msg bad";
+          return;
+        }
+        if (!p.qty_price_confirmed) {
+          msg.textContent = "Confirm quantity and price excl VAT for " + label + ".";
+          msg.className = "msg bad";
+          return;
+        }
+        if (String(p.amount_paid == null ? "" : p.amount_paid).trim() === "") {
+          msg.textContent = "Amount paid is required for " + label + ".";
+          msg.className = "msg bad";
+          return;
+        }
+        if (!String(p.variation || "").trim()) {
+          msg.textContent = "Variation is required for " + label + ".";
+          msg.className = "msg bad";
+          return;
+        }
+        if (!String(p.doors || "").trim()) {
+          msg.textContent = "Doors is required for " + label + ".";
+          msg.className = "msg bad";
+          return;
+        }
+        if (!String(p.powder_coating || "").trim()) {
+          msg.textContent = "Powder coating is required for " + label + ".";
+          msg.className = "msg bad";
+          return;
+        }
+        if (!String(p.dimensions || "").trim()) {
+          msg.textContent = "Dimensions are required for " + label + ".";
+          msg.className = "msg bad";
+          return;
+        }
+        if (!String(p.detailed_description || "").trim()) {
+          msg.textContent = "Detailed description is required for " + label + ".";
+          msg.className = "msg bad";
+          return;
+        }
+      }
+      if (!data.delivery_date) {
+        msg.textContent = "Choose a delivery date.";
+        msg.className = "msg bad";
+        return;
+      }
+      if (nextWeekLc && dow !== 1) {
+        msg.textContent = "If Latest Courier falls in next week, put LC on Monday — not Tuesday or Thursday.";
+        msg.className = "msg bad";
+        return;
+      }
+      if (!nextWeekLc && dow !== 2 && dow !== 4) {
         msg.textContent = "Deliveries are Tuesday and Thursday only.";
         msg.className = "msg bad";
         return;

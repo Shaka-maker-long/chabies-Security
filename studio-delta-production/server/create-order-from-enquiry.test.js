@@ -47,7 +47,43 @@ assert.strictEqual(gautengStandard.date, "2026-10-13");
 assert.strictEqual(gautengStandard.scheduleCode, "LD");
 assert.ok(/Tuesday 13 October 2026/.test(gautengStandard.label));
 assert.ok(/week 42/.test(gautengStandard.label));
+assert.ok(/lead time is 5 weeks/.test(gautengStandard.label));
+assert.ok(/strictest item is Standard/.test(gautengStandard.label));
+assert.ok(/province is Gauteng/.test(gautengStandard.label));
+assert.ok(/Latest Delivery/.test(gautengStandard.label));
 assert.ok(fromEnquiry.isTueOrThu(gautengStandard.date));
+
+assert.strictEqual(fromEnquiry.snapToScheduleDay("2026-09-11", "Western Cape", "2026-09-11"), "2026-09-14");
+assert.strictEqual(fromEnquiry.snapToScheduleDay("2026-09-11", "Gauteng", "2026-09-11"), "2026-09-15");
+assert.ok(fromEnquiry.isMonday(fromEnquiry.snapToScheduleDay("2026-09-16", "KwaZulu-Natal", "2026-09-07")));
+assert.strictEqual(fromEnquiry.snapToScheduleDay("2026-09-16", "KwaZulu-Natal", "2026-09-07"), "2026-09-14");
+assert.ok(fromEnquiry.isNextIsoWeek("2026-09-07", "2026-09-16"));
+assert.ok(!fromEnquiry.isNextIsoWeek("2026-09-07", "2026-09-10"));
+
+const nextWeekLc = fromEnquiry.estimateDelivery({
+  types: ["Standard"],
+  province: "Western Cape",
+  now: "2026-09-07T10:00:00+02:00",
+  date: "2026-09-14"
+});
+assert.strictEqual(nextWeekLc.date, "2026-09-14");
+assert.strictEqual(nextWeekLc.scheduleCode, "LC");
+assert.ok(nextWeekLc.nextWeekLc);
+assert.ok(/Monday 14 September 2026/.test(nextWeekLc.label));
+assert.ok(/next week/.test(nextWeekLc.label));
+assert.ok(/not Gauteng/.test(nextWeekLc.label));
+assert.ok(/Latest Courier/.test(nextWeekLc.label));
+
+assert.throws(
+  () => fromEnquiry.assertDeliveryDay("2026-09-15", "Western Cape", "2026-09-07"),
+  /Monday/
+);
+assert.strictEqual(fromEnquiry.assertDeliveryDay("2026-09-14", "Western Cape", "2026-09-07"), "2026-09-14");
+assert.strictEqual(fromEnquiry.assertDeliveryDay("2026-09-15", "Gauteng", "2026-09-07"), "2026-09-15");
+assert.throws(
+  () => fromEnquiry.assertDeliveryDay("2026-09-14", "Gauteng", "2026-09-07"),
+  /Tuesday and Thursday/
+);
 
 const capeCustom = fromEnquiry.estimateDelivery({
   types: ["Custom"],
@@ -57,6 +93,9 @@ const capeCustom = fromEnquiry.estimateDelivery({
 assert.strictEqual(capeCustom.weeks, 8);
 assert.strictEqual(capeCustom.scheduleCode, "LC");
 assert.ok(fromEnquiry.isTueOrThu(capeCustom.date));
+assert.ok(/strictest item is Custom/.test(capeCustom.label));
+assert.ok(/not Gauteng/.test(capeCustom.label));
+assert.ok(/lead time is 8 weeks/.test(capeCustom.label));
 
 const mixed = fromEnquiry.estimateDelivery({
   types: ["Standard", "New Design"],
@@ -65,9 +104,23 @@ const mixed = fromEnquiry.estimateDelivery({
 });
 assert.strictEqual(mixed.typeUsed, "New Design");
 assert.strictEqual(mixed.weeks, 8);
+assert.ok(/lead time is 8 weeks/.test(mixed.label));
+assert.ok(/strictest item is New Design/.test(mixed.label));
 
 assert.throws(() => fromEnquiry.assertTueThu("2026-10-14"), /Tuesday and Thursday/);
 assert.strictEqual(fromEnquiry.assertTueThu("2026-10-15"), "2026-10-15");
+
+function shopFields(extra) {
+  return Object.assign({
+    variation: "Black",
+    doors: "None",
+    powder_coating: "Matt Black",
+    dimensions: "800x400x400",
+    detailed_description: "Shop notes",
+    amount_paid: "0",
+    qty_price_confirmed: true
+  }, extra || {});
+}
 
 const planned = fromEnquiry.planCreate(
   { enquiry_no: "#5001", quote_no: "SOQ88" },
@@ -77,12 +130,13 @@ const planned = fromEnquiry.planCreate(
     shared: {
       client_name: "Split Client",
       province: "Gauteng",
+      address: "12 Main Road",
       city: "Sandton",
       email: "split@example.com"
     },
     products: [
-      { product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "2000" },
-      { product: "Air Bar Stool", category: "Chair", type: "Custom", quantity: 1, price_incl_vat: "5000", amount_paid: "0" }
+      shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "2000" }),
+      shopFields({ product: "Air Bar Stool", category: "Chair", type: "Custom", quantity: 1, price_incl_vat: "5000", amount_paid: "0" })
     ]
   },
   []
@@ -105,14 +159,82 @@ const single = fromEnquiry.planCreate(
   {
     order_number: "S260200",
     delivery_date: "2026-10-13",
-    shared: { client_name: "One Chair", province: "Western Cape" },
-    products: [{ product: "Air Chair", type: "Standard", quantity: 1, price_incl_vat: "28750" }]
+    shared: { client_name: "One Chair", province: "Western Cape", address: "1 Beach Road", city: "Stellenbosch" },
+    products: [shopFields({ product: "Air Chair", type: "Standard", quantity: 1, price_incl_vat: "28750" })]
   },
   []
 );
 assert.strictEqual(single.units.length, 1);
 assert.strictEqual(single.units[0].order_number, "S260200");
 assert.strictEqual(single.delivery.scheduleCode, "LC");
+
+assert.throws(
+  () => fromEnquiry.planCreate(
+    { enquiry_no: "#5003" },
+    {
+      order_number: "S260300",
+      delivery_date: "2026-10-15",
+      shared: { client_name: "No Address", province: "Gauteng", city: "Sandton" },
+      products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000" })]
+    },
+    []
+  ),
+  /Address/
+);
+assert.throws(
+  () => fromEnquiry.planCreate(
+    { enquiry_no: "#5003" },
+    {
+      order_number: "S260300",
+      delivery_date: "2026-10-15",
+      shared: { client_name: "No City", province: "Gauteng", address: "12 Main Road" },
+      products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000" })]
+    },
+    []
+  ),
+  /City/
+);
+assert.throws(
+  () => fromEnquiry.planCreate(
+    { enquiry_no: "#5003" },
+    {
+      order_number: "S260300",
+      delivery_date: "2026-10-15",
+      shared: { client_name: "No Confirm", province: "Gauteng", address: "12 Main Road", city: "Sandton" },
+      products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000", qty_price_confirmed: false })]
+    },
+    []
+  ),
+  /Confirm quantity and price excl VAT/
+);
+assert.throws(
+  () => fromEnquiry.planCreate(
+    { enquiry_no: "#5003" },
+    {
+      order_number: "S260300",
+      delivery_date: "2026-10-15",
+      shared: { client_name: "No Doors", province: "Gauteng", address: "12 Main Road", city: "Sandton" },
+      products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000", doors: "" })]
+    },
+    []
+  ),
+  /Doors/
+);
+
+const mondayLcPlan = fromEnquiry.planCreate(
+  { enquiry_no: "#5004", quote_no: "SOQ91" },
+  {
+    order_number: "S260400",
+    delivery_date: "2026-09-14",
+    now: "2026-09-07T10:00:00+02:00",
+    shared: { client_name: "Cape Rush", province: "Western Cape", address: "1 Beach Road", city: "Stellenbosch" },
+    products: [shopFields({ product: "Air Chair", type: "Standard", quantity: 1, price_incl_vat: "1000" })]
+  },
+  []
+);
+assert.strictEqual(mondayLcPlan.delivery.date, "2026-09-14");
+assert.strictEqual(mondayLcPlan.delivery.scheduleCode, "LC");
+assert.ok(mondayLcPlan.delivery.nextWeekLc);
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sd-from-enq-"));
 process.env.DATA_DIR = dir;
@@ -162,11 +284,12 @@ const created = db.createOrdersFromEnquiryForm("#5001", {
     email: "split@example.com",
     province: "Gauteng",
     city: "Sandton",
+    address: "12 Main Road",
     source: "Website"
   },
   products: [
-    { product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "2000", variation: "Black", doors: "", detailed_description: "Pair", dimensions: "800x400x400", powder_coating: "Matt Black" },
-    { product: "Air Bar Stool", category: "Chair", type: "Custom", quantity: 1, price_incl_vat: "5000", amount_paid: "0", detailed_description: "Stool" }
+    shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "2000", detailed_description: "Pair" }),
+    shopFields({ product: "Air Bar Stool", category: "Chair", type: "Custom", quantity: 1, price_incl_vat: "5000", amount_paid: "0", detailed_description: "Stool" })
   ]
 });
 assert.strictEqual(created.existing, false);
@@ -214,8 +337,8 @@ db.upsertEnquiry({
 const one = db.createOrdersFromEnquiryForm("#5002", {
   order_number: "S260200",
   delivery_date: "2026-11-05",
-  shared: { client_name: "Cape Client", province: "Western Cape", city: "Stellenbosch" },
-  products: [{ product: "Custom Table", category: "Table", type: "New Design", quantity: 1, price_incl_vat: "11500" }]
+  shared: { client_name: "Cape Client", province: "Western Cape", address: "1 Beach Road", city: "Stellenbosch" },
+  products: [shopFields({ product: "Custom Table", category: "Table", type: "New Design", quantity: 1, price_incl_vat: "11500" })]
 });
 assert.strictEqual(one.rows.length, 1);
 assert.strictEqual(one.rows[0].order_number, "S260200");
@@ -238,6 +361,11 @@ assert.ok(page.indexOf("Latest Courier") !== -1);
 assert.ok(page.indexOf("/api/office/enquiries/") !== -1);
 assert.ok(page.indexOf("create-orders") !== -1);
 assert.ok(page.indexOf("data-f=\\\"quantity\\\"") !== -1);
+assert.ok(page.indexOf("Address *") !== -1);
+assert.ok(page.indexOf("City *") !== -1);
+assert.ok(page.indexOf("qty_price_confirmed") !== -1);
+assert.ok(page.indexOf("strictest item") !== -1);
+assert.ok(page.indexOf("put LC on Monday") !== -1);
 assert.ok(page.indexOf("Office schedule") === -1);
 
 const officeJs = fs.readFileSync(path.join(__dirname, "office.js"), "utf8");

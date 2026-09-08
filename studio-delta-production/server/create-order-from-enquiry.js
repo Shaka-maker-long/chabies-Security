@@ -43,6 +43,28 @@ function isTueOrThu(iso) {
   return dow === 2 || dow === 4;
 }
 
+function isMonday(iso) {
+  return weekdayNum(iso) === 1;
+}
+
+function mondayOfIsoWeek(iso) {
+  const dow = weekdayNum(iso);
+  if (dow < 0) return "";
+  const back = dow === 0 ? -6 : 1 - dow;
+  return addDaysIso(iso, back);
+}
+
+function isNextIsoWeek(fromIso, dateIso) {
+  const fromMon = mondayOfIsoWeek(fromIso);
+  const dateMon = mondayOfIsoWeek(dateIso);
+  if (!fromMon || !dateMon) return false;
+  return dateMon === addDaysIso(fromMon, 7);
+}
+
+function isNonGautengNextWeek(iso, province, today) {
+  return !isGauteng(province) && isNextIsoWeek(today, iso);
+}
+
 function nextTueOrThu(iso) {
   let cur = String(iso || "").slice(0, 10);
   if (!dateAtNoon(cur)) return "";
@@ -51,6 +73,16 @@ function nextTueOrThu(iso) {
     cur = addDaysIso(cur, 1);
   }
   return "";
+}
+
+function snapToScheduleDay(iso, province, today) {
+  const day = String(iso || "").slice(0, 10);
+  const from = todayIso(today);
+  if (!dateAtNoon(day)) return "";
+  if (isNonGautengNextWeek(day, province, from)) return mondayOfIsoWeek(day);
+  const snapped = nextTueOrThu(day);
+  if (isNonGautengNextWeek(snapped, province, from)) return mondayOfIsoWeek(snapped);
+  return snapped;
 }
 
 function prettyDate(iso) {
@@ -150,6 +182,63 @@ function assertTueThu(iso) {
   return day;
 }
 
+function assertDeliveryDay(iso, province, now) {
+  const day = String(iso || "").trim().slice(0, 10);
+  const today = todayIso(now);
+  if (!dateAtNoon(day)) throw new Error("Choose a delivery date");
+  if (isNonGautengNextWeek(day, province, today)) {
+    if (!isMonday(day)) {
+      throw new Error("If Latest Courier falls in next week, put LC on Monday — not Tuesday or Thursday.");
+    }
+    return day;
+  }
+  return assertTueThu(day);
+}
+
+function typeLeadLabel(typeUsed) {
+  if (typeUsed === "New Design") return "New Design";
+  if (typeUsed === "Custom") return "Custom";
+  return "Standard";
+}
+
+function deliveryExplanation(opts) {
+  const today = todayIso(opts && opts.now);
+  const date = String((opts && opts.date) || "").slice(0, 10);
+  const weeks = Number((opts && opts.weeks) || 0);
+  const typeUsed = typeLeadLabel(opts && opts.typeUsed);
+  const province = String((opts && opts.province) || "").trim();
+  const gauteng = isGauteng(province);
+  const provinceBit = gauteng
+    ? "the province is Gauteng, so this is Latest Delivery (LD) on the production schedule"
+    : (province
+      ? "the province is " + province + " (not Gauteng), so this is Latest Courier (LC) on the production schedule"
+      : "the province is not Gauteng, so this is Latest Courier (LC) on the production schedule");
+  const pretty = prettyDate(date);
+  const todayPretty = prettyDate(today);
+  const info = dateAtNoon(date) ? isoWeekInfo(date) : { week: "" };
+  const weekBit = pretty + " in week " + info.week;
+  const nextWeekLc = isNonGautengNextWeek(date, province, today);
+  const weekWord = weeks === 1 ? "week" : "weeks";
+  if (opts && opts.dateTouched) {
+    let why = "You chose " + weekBit + " because " + provinceBit + ".";
+    if (nextWeekLc) {
+      why += " That week is next week, so LC is Monday — not Tuesday or Thursday.";
+    } else {
+      why += " Deliveries leave on Tuesday and Thursday only. Change this date if you need a different week — the date you save is the one that goes on the schedule.";
+    }
+    return why;
+  }
+  let why = "Based on today (" + todayPretty + "), lead time is " + weeks + " " + weekWord +
+    " because the strictest item is " + typeUsed + ", and " + provinceBit + ".";
+  if (nextWeekLc) {
+    why += " The calculated date falls in next week, so LC is Monday " + weekBit + " — not Tuesday or Thursday.";
+  } else {
+    why += " That lands on " + weekBit + ". Deliveries leave on Tuesday and Thursday only.";
+  }
+  why += " Change this date if you need a different week — the date you save is the one that goes on the schedule.";
+  return why;
+}
+
 function estimateDelivery(opts) {
   const types = (opts && opts.types) || [];
   const province = (opts && opts.province) || "";
@@ -157,10 +246,18 @@ function estimateDelivery(opts) {
   const weeks = leadWeeksFor(used, province);
   const today = todayIso(opts && opts.now);
   const chosen = opts && opts.date
-    ? assertTueThu(opts.date)
-    : nextTueOrThu(addDaysIso(today, weeks * 7));
+    ? assertDeliveryDay(opts.date, province, today)
+    : snapToScheduleDay(addDaysIso(today, weeks * 7), province, today);
   const info = isoWeekInfo(chosen);
   const pretty = prettyDate(chosen);
+  const explanation = deliveryExplanation({
+    now: today,
+    date: chosen,
+    weeks,
+    typeUsed: used,
+    province,
+    dateTouched: !!(opts && opts.dateTouched)
+  });
   return {
     date: chosen,
     week: info.week,
@@ -170,7 +267,9 @@ function estimateDelivery(opts) {
     typeUsed: used,
     scheduleCode: scheduleCodeForProvince(province),
     pretty,
-    label: "Based on today's date the estimated delivery date is " + pretty + " in week " + info.week + "."
+    nextWeekLc: isNonGautengNextWeek(chosen, province, today),
+    explanation,
+    label: explanation
   };
 }
 
@@ -206,7 +305,7 @@ function buildDraft(enquiry, nextOrderNumber, now) {
     dimensions: "",
     powder_coating: "",
     price_incl_vat: p.value_incl_vat || "",
-    amount_paid: "0.00",
+    amount_paid: "",
     quantity: 1
   }));
   return {
@@ -239,6 +338,11 @@ function planUnits(products) {
     if (qty < 1) return;
     const product = String((p && p.product) || "").trim();
     if (!product) return;
+    let incl = p && p.price_incl_vat;
+    if (String(incl == null ? "" : incl).trim() === "" && String((p && p.price_excl_vat) || "").trim() !== "") {
+      const excl = Number(String(p.price_excl_vat).replace(/,/g, "").replace(/[^0-9.-]/g, ""));
+      incl = Number.isFinite(excl) ? (excl * 1.15).toFixed(2) : "";
+    }
     for (let i = 0; i < qty; i++) {
       units.push({
         product,
@@ -249,7 +353,7 @@ function planUnits(products) {
         detailed_description: String((p && p.detailed_description) || "").trim(),
         dimensions: String((p && p.dimensions) || "").trim(),
         powder_coating: String((p && p.powder_coating) || "").trim(),
-        price_incl_vat: splitCents(p && p.price_incl_vat, qty, i),
+        price_incl_vat: splitCents(incl, qty, i),
         amount_paid: splitCents(p && p.amount_paid, qty, i)
       });
     }
@@ -257,16 +361,49 @@ function planUnits(products) {
   return units;
 }
 
+function requireText(value, message) {
+  const s = String(value == null ? "" : value).trim();
+  if (!s) throw new Error(message);
+  return s;
+}
+
+function isQtyPriceConfirmed(value) {
+  return value === true || value === "true" || value === 1 || value === "1" || value === "on";
+}
+
+function assertProductReady(product, index) {
+  const qty = Math.floor(Number(product && product.quantity) || 0);
+  if (qty < 1) return;
+  const label = String((product && product.product) || "").trim() || ("product " + (index + 1));
+  if (String(product && product.amount_paid == null ? "" : product.amount_paid).trim() === "") {
+    throw new Error("Amount paid is required for " + label);
+  }
+  requireText(product && product.variation, "Variation is required for " + label);
+  requireText(product && product.doors, "Doors is required for " + label);
+  requireText(product && product.powder_coating, "Powder coating is required for " + label);
+  requireText(product && product.dimensions, "Dimensions are required for " + label);
+  requireText(product && product.detailed_description, "Detailed description is required for " + label);
+  const incl = String((product && product.price_incl_vat) || "").trim();
+  const excl = String((product && product.price_excl_vat) || "").trim();
+  if (!incl && !excl) throw new Error("Price excl VAT is required for " + label);
+  if (!isQtyPriceConfirmed(product && product.qty_price_confirmed)) {
+    throw new Error("Confirm quantity and price excl VAT for " + label);
+  }
+}
+
 function planCreate(enquiry, body, existingOrders) {
   const sharedIn = (body && body.shared) || {};
   const client = String(sharedIn.client_name || "").trim();
   if (!client) throw new Error("Client name is required");
+  requireText(sharedIn.address, "Address is required");
+  requireText(sharedIn.city, "City is required");
   const base = normalizeBaseOrderNumber(body && body.order_number);
   if (!base) throw new Error("Order number must look like S260100");
   if (orderBaseTaken(base, existingOrders)) {
     throw new Error("Order number " + base + " is already used");
   }
   const products = Array.isArray(body && body.products) ? body.products : [];
+  products.forEach(assertProductReady);
   const units = planUnits(products);
   if (!units.length) throw new Error("Add a quantity of at least 1 for a product");
   const province = String(sharedIn.province || "").trim();
@@ -274,7 +411,8 @@ function planCreate(enquiry, body, existingOrders) {
     types: products.map((p) => p.type),
     province,
     now: body && body.now,
-    date: body && body.delivery_date
+    date: body && body.delivery_date,
+    dateTouched: !!(body && body.dateTouched)
   });
   const total = units.length;
   return {
@@ -303,6 +441,10 @@ module.exports = {
   todayIso,
   addDaysIso,
   isTueOrThu,
+  isMonday,
+  mondayOfIsoWeek,
+  isNextIsoWeek,
+  snapToScheduleDay,
   nextTueOrThu,
   prettyDate,
   studioOrderSeq,
@@ -317,6 +459,8 @@ module.exports = {
   leadWeeksFor,
   splitCents,
   assertTueThu,
+  assertDeliveryDay,
+  deliveryExplanation,
   estimateDelivery,
   buildDraft,
   planUnits,
