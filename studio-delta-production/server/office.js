@@ -342,6 +342,28 @@ function mountOffice(app) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
   });
+  app.post("/api/office/planning/move", requireOffice, (req, res) => {
+    try {
+      const body = req.body || {};
+      res.json({ ok: true, result: floorPlanning.moveBlock(body.blockId || body.id, body.start) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.post("/api/office/planning/other", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, result: floorPlanning.insertOtherTask(req.body || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.delete("/api/office/planning/blocks/:id", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, result: floorPlanning.removeBlock(req.params.id) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
 
   app.get("/api/office/orders", requireOffice, (_req, res) => {
     const rows = listOrders().map((o) => {

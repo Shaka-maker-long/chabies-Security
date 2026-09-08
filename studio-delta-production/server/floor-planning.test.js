@@ -313,9 +313,66 @@ assert.ok(trip.rows.find((r) => r.process === "Assembly").days.indexOf("2026-09-
 assert.ok(journey.days.some((d) => d.iso === "2026-09-21"));
 assert.ok(!journey.days.some((d) => d.iso === "2026-09-12" || d.iso === "2026-09-13"), "weekends stay off the journey");
 
+const profileA = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Profile Cutting");
+assert.ok(profileA);
+const delayed = plan.moveBlock(profileA.id, "2026-09-08T09:00:00+02:00");
+assert.ok(delayed.blocks.length);
+const profileLater = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Profile Cutting");
+const tagLater = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Tagging");
+const weldLater = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Welding");
+assert.ok(profileLater.start >= "2026-09-08T09:00:00+02:00", "drag later delays that job");
+assert.ok(tagLater.start >= profileLater.end, "tagging follows the new profile end");
+assert.ok(weldLater.start >= tagLater.end, "welding follows tagging after the shift");
+
 const removed = plan.unscheduleOrder("S260100 A");
 assert.ok(removed.removed > 0);
 assert.ok(!plan.load().blocks.some((b) => b.orderId === "S260100 A"));
+
+plan.save({ blocks: [] });
+plan.scheduleSelected({
+  orderIds: ["S260100 A"],
+  assignments: { "S260100 A": assignA },
+  from: plan.isoFromMs(fromTue)
+});
+const other = plan.insertOtherTask({
+  workerId: "Willard",
+  title: "Material",
+  minutes: 60,
+  start: "2026-09-08T07:45:00+02:00"
+});
+assert.ok(other.jobId);
+const otherBlock = plan.load().blocks.find((b) => b.kind === "other" && b.title === "Material");
+assert.ok(otherBlock);
+assert.strictEqual(otherBlock.start, "2026-09-08T07:45:00+02:00");
+const profileAfterOther = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Profile Cutting");
+assert.ok(profileAfterOther.start >= otherBlock.end, "other tasks push shop work down");
+const tagAfterOther = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Tagging");
+assert.ok(tagAfterOther.start >= profileAfterOther.end, "downstream people move with the other task");
+assert.ok(plan.getBoard("2026-09-08").otherTasks.indexOf("Material") !== -1);
+
+plan.removeBlock(otherBlock.id);
+assert.ok(!plan.load().blocks.some((b) => b.kind === "other"));
+
+plan.save({ blocks: [] });
+plan.scheduleSelected({
+  orderIds: ["S260100 A"],
+  assignments: { "S260100 A": assignA },
+  from: plan.isoFromMs(fromTue)
+});
+plan.scheduleSelected({
+  orderIds: ["S260100 B"],
+  assignments: { "S260100 B": assignA },
+  from: plan.isoFromMs(fromTue)
+});
+const profileB = plan.load().blocks.find((b) => b.orderId === "S260100 B" && b.process === "Profile Cutting");
+assert.ok(profileB);
+plan.moveBlock(profileB.id, "2026-09-08T07:45:00+02:00");
+const swappedB = plan.load().blocks.find((b) => b.orderId === "S260100 B" && b.process === "Profile Cutting");
+const swappedA = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Profile Cutting");
+assert.ok(swappedB.start < swappedA.start, "drag earlier swaps with the job at the top");
+const tagB = plan.load().blocks.find((b) => b.orderId === "S260100 B" && b.process === "Tagging");
+const tagA = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Tagging");
+assert.ok(tagB.start < tagA.start, "the rest of both orders follow the swap");
 
 staff.upsertUser({
   name: "Sipho",
