@@ -101,7 +101,7 @@
       css.textContent =
         ".sd-process-mask{position:fixed;inset:0;background:rgba(16,24,40,.45);z-index:50;display:none;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto}" +
         ".sd-process-mask.open{display:flex}" +
-        ".sd-process-sheet{width:min(860px,96vw);max-width:100%;background:#fff;border-radius:12px;border:1px solid #d0d5dd;margin:12px auto;font-family:Inter,system-ui,sans-serif;color:#1d2939;overflow:hidden}" +
+        ".sd-process-sheet{width:min(860px,96vw);max-width:100%;background:#fff;border-radius:12px;border:1px solid #d0d5dd;margin:12px auto;font-family:Inter,system-ui,sans-serif;color:#1d2939;overflow:auto}" +
         ".sd-process-sheet header{display:flex;gap:12px;align-items:flex-start;padding:16px;border-bottom:1px solid #d0d5dd}" +
         ".sd-process-sheet h1{font-size:18px;margin:0;font-family:Outfit,Inter,sans-serif}" +
         ".sd-process-sub{margin:4px 0 0;color:#667085;font-size:13px}" +
@@ -144,6 +144,8 @@
         ".sd-process-card summary h2{margin:0}" +
         ".sd-process-card summary::-webkit-details-marker{display:none}" +
         ".sd-process-card:not([open]) .sd-process-form{display:none}" +
+        ".sd-process-card[open] .sd-process-form{display:block}" +
+        ".sd-process-fields{display:block;min-width:0}" +
         ".sd-process-sheet button{border:1px solid #1d2939;background:#1d2939;color:#fff;border-radius:6px;padding:8px 12px;font-weight:600;cursor:pointer}" +
         ".sd-process-sheet button.ghost{background:#fff;color:#1d2939}" +
         ".sd-task-pill{display:inline-block;background:#fff;border:1px solid #d0d5dd;border-radius:999px;padding:2px 8px;font-size:12px;margin:0 6px 6px 0}" +
@@ -173,8 +175,12 @@
         ".sd-locked{background:#fff7ed;border-color:#fdc5a3}" +
         ".sd-grant-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:8px 10px;margin:6px 0}" +
         ".sd-create-order{margin-top:10px}" +
-        ".sd-option-table select,.sd-option-table input{width:100%;min-width:0}" +
-        ".sd-option-table td:last-child{width:72px}";
+        ".sd-option-lines{display:flex;flex-direction:column;gap:10px;margin:8px 0}" +
+        ".sd-option-line{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:10px 12px}" +
+        ".sd-option-line label{margin:0}" +
+        ".sd-option-line select,.sd-option-line input{display:block;width:100%;min-width:0;border:1px solid #d0d5dd;border-radius:6px;padding:8px;font:inherit;font-weight:400;background:#fff}" +
+        ".sd-option-line [data-remove-option-line]{justify-self:start;margin-top:4px}" +
+        "@media (max-width:640px){.sd-option-line{grid-template-columns:1fr}}";
       document.head.appendChild(css);
     }
     document.getElementById("sdProcessClose").onclick = closeProcess;
@@ -466,21 +472,19 @@
   function optionLineRow(line) {
     line = line || {};
     const incl = displayIncl(line) || line.value_incl_vat || "";
-    return "<tr data-option-line>" +
-      "<td>" + dropSelect("category", line.category) + "</td>" +
-      "<td>" + dropSelect("product", line.product) + "</td>" +
-      "<td>" + dropSelect("variation", line.variation) + "</td>" +
-      "<td><input data-opt=\"value\" value=\"" + esc(incl) + "\" inputmode=\"decimal\" placeholder=\"0.00\"></td>" +
-      "<td><button type=\"button\" class=\"ghost\" data-remove-option-line>Remove</button></td>" +
-      "</tr>";
+    return "<div class=\"sd-option-line\" data-option-line>" +
+      "<label>CATERGORY" + dropSelect("category", line.category) + "</label>" +
+      "<label>Product" + dropSelect("product", line.product) + "</label>" +
+      "<label>Variation" + dropSelect("variation", line.variation) + "</label>" +
+      "<label>Value incl VAT<input data-opt=\"value\" value=\"" + esc(incl) + "\" inputmode=\"decimal\" placeholder=\"0.00\"></label>" +
+      "<button type=\"button\" class=\"ghost\" data-remove-option-line>Remove</button>" +
+      "</div>";
   }
   function optionLinesTable(row) {
     const lines = namedLines(row).slice();
     if (!lines.length) lines.push({ product: "", category: "", variation: "", value_incl_vat: "" });
     return "<p class=\"sd-process-sub\">Add the products, variation, and prices for this option. The client will pick this option or another — not both.</p>" +
-      "<table class=\"sd-lines sd-option-table\" data-option-table><thead><tr>" +
-      "<th>CATERGORY</th><th>Product</th><th>Variation</th><th>Value incl VAT</th><th></th>" +
-      "</tr></thead><tbody>" + lines.map(optionLineRow).join("") + "</tbody></table>" +
+      "<div class=\"sd-option-lines\" data-option-lines>" + lines.map(optionLineRow).join("") + "</div>" +
       "<button type=\"button\" class=\"ghost\" data-add-option-line>Add product</button>" +
       "<label>Delivery incl VAT *" +
       "<input name=\"delivery_incl_vat\" value=\"" + esc(displayDeliveryIncl(row) || "") + "\" inputmode=\"decimal\" placeholder=\"0.00\"></label>" +
@@ -493,22 +497,21 @@
       "</div>";
   }
   function bindOptionLines(form) {
-    if (!form || !form.querySelector("[data-option-table]")) return;
+    const wrap = form && form.querySelector("[data-option-lines]");
+    if (!wrap) return;
     const add = form.querySelector("[data-add-option-line]");
     if (add) {
       add.onclick = (e) => {
         e.preventDefault();
-        const tb = form.querySelector("[data-option-table] tbody");
-        if (tb) tb.insertAdjacentHTML("beforeend", optionLineRow({}));
+        wrap.insertAdjacentHTML("beforeend", optionLineRow({}));
       };
     }
     form.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-remove-option-line]");
       if (!btn || !form.contains(btn)) return;
       e.preventDefault();
-      const tr = btn.closest("[data-option-line]");
-      const tb = form.querySelector("[data-option-table] tbody");
-      if (tr && tb && tb.querySelectorAll("[data-option-line]").length > 1) tr.remove();
+      const rowEl = btn.closest("[data-option-line]");
+      if (rowEl && wrap.querySelectorAll("[data-option-line]").length > 1) rowEl.remove();
       paintQuoteTotals(form);
     });
   }
@@ -810,9 +813,9 @@
       return "<p class=\"sd-process-sub\">This is option <b>" + esc(nextLetter) + "</b> on the same enquiry" +
         (live ? " (already issued: " + esc(live) + ")" : "") +
         ". The client chooses A or B or C — not all of them.</p>" +
-        optionLinesTable(row) +
-        "<label>Quotation number *<input class=\"sd-quote-no\" name=\"quote_no\" value=\"" + esc(hint.next || "") + "\" autocomplete=\"off\"></label>" +
+        "<label>Quotation number *<input class=\"sd-quote-no\" name=\"quote_no\" value=\"" + esc(hint.next || "") + "\" autocomplete=\"off\" required></label>" +
         "<p class=\"sd-process-sub\">" + esc(recentLine) + "</p>" +
+        optionLinesTable(row) +
         fileBlock("application/pdf,.pdf", "");
     }
     if (action.id === "complete_followup") {
@@ -1042,8 +1045,8 @@
         if (locked) {
           html += "<div class=\"sd-process-form\">" + lockedActionHtml(action) + "</div>";
         } else {
-          html += "<form class=\"sd-process-form\">" + formFor(action, row) +
-            "<div class=\"sd-process-err\" data-err></div>" +
+          html += "<form class=\"sd-process-form\"><div class=\"sd-process-fields\">" + formFor(action, row) +
+            "</div><div class=\"sd-process-err\" data-err></div>" +
             "<button type=\"submit\">Save update</button></form>";
         }
         html += "</details>";
@@ -1073,7 +1076,6 @@
           const j = await postProcess(collect(form, action, row));
           if (!j.ok) {
             err.textContent = j.error || "Could not save";
-            if (err.scrollIntoView) err.scrollIntoView({ block: "nearest" });
             return;
           }
           state.snap = j;
