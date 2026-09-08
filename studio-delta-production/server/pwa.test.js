@@ -65,7 +65,9 @@ const pages = [
   "public/debtors.html",
   "public/users.html",
   "public/durations.html",
-  "public/planning.html"
+  "public/planning.html",
+  "public/orders-to-order.html",
+  "public/orders-glass-rates.html"
 ];
 pages.forEach((rel) => {
   const html = fs.readFileSync(path.join(root, rel), "utf8");

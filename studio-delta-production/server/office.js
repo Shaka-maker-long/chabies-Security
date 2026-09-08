@@ -46,6 +46,7 @@ const pipeline = require("./enquiry-pipeline");
 const desk = require("./enquiry-desk");
 const paintShop = require("./powder-shop");
 const glassPo = require("./glass-po");
+const glassRates = require("./glass-rates");
 const floorPlanning = require("./floor-planning");
 const fs = require("fs");
 const sqlite = require("./sqlite-store");
@@ -249,6 +250,7 @@ function mountOffice(app) {
         toOrder: glass.toOrder,
         outstanding: glass.outstanding,
         received: glass.received,
+        pos: glass.pos,
         toOrderCount: glass.toOrderCount,
         outstandingCount: glass.outstandingCount
       });
@@ -291,6 +293,42 @@ function mountOffice(app) {
       (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "invoice").replace(/"/g, "") + "\""
     );
     res.send(file.buffer);
+  });
+
+  app.get("/api/office/glass-po/:poId/pdf", requireOffice, async (req, res) => {
+    try {
+      const file = await glassPo.buildPurchaseOrderPdf(req.params.poId);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        "inline; filename=\"" + String(file.filename || "purchase-order.pdf").replace(/"/g, "") + "\""
+      );
+      res.send(file.buffer);
+    } catch (e) {
+      res.status(404).json({ ok: false, error: e.message || "Purchase order not found." });
+    }
+  });
+
+  app.get("/api/office/glass-rates", requireOffice, (_req, res) => {
+    res.json({ ok: true, ...glassRates.snapshotRates() });
+  });
+
+  app.post("/api/office/glass-rates", requireOffice, (req, res) => {
+    try {
+      const row = glassRates.upsertRate(req.body || {});
+      res.json({ ok: true, rate: row, ...glassRates.snapshotRates() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.delete("/api/office/glass-rates/:id", requireOffice, (req, res) => {
+    try {
+      glassRates.deleteRate(req.params.id);
+      res.json({ ok: true, ...glassRates.snapshotRates() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.put("/api/office/materials-to-order", requireOffice, async (req, res) => {

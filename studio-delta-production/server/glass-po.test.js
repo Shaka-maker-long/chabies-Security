@@ -44,6 +44,16 @@ addGlass("g3", "SD-G3");
 addGlass("g4", "SD-G4");
 addGlass("g5", "SD-G5");
 
+const rates = require("./glass-rates");
+rates.upsertRate({ type: "Reeded", thickness: "6mm", ratePerM2: "450" });
+assert.strictEqual(rates.lineAreaM2({ height: 1800, width: 500, quantity: 2 }), 1.8);
+assert.strictEqual(rates.costLine({ type: "Reeded", thickness: "6 mm", height: 1800, width: 500, quantity: 2 }).estimatedCost, "810.00");
+
+const priced = glassPo.snapshot().toOrder.find((l) => l.id === "g1");
+assert.ok(priced);
+assert.strictEqual(priced.areaM2, 1.8);
+assert.strictEqual(priced.estimatedCost, "810.00");
+
 const po = glassPo.createPurchaseOrder(["g1", "g2", "g3", "g4", "g5"], "Office Boss");
 assert.strictEqual(po.poNumber, "GPO-0001");
 assert.strictEqual(po.toOrderCount, 0);
@@ -114,6 +124,21 @@ assert.strictEqual(later.outstandingCount, 0);
 assert.notStrictEqual(later.invoiceId, recv.invoiceId);
 
 (async function main() {
+  const pdf = await glassPo.buildPurchaseOrderPdf(po.poId);
+  assert.ok(pdf.buffer.slice(0, 4).toString() === "%PDF");
+  const latin = pdf.buffer.toString("latin1");
+  const decoded = [];
+  latin.replace(/<([0-9A-Fa-f]+)>/g, (_, hex) => {
+    try { decoded.push(Buffer.from(hex, "hex").toString("latin1")); } catch (e) {}
+    return "";
+  });
+  const text = latin + "\n" + decoded.join("");
+  assert.ok(text.indexOf("PURCHASE ORDER") !== -1);
+  assert.ok(text.indexOf("GPO-0001") !== -1);
+  assert.ok(text.indexOf("Order Number") !== -1);
+  assert.ok(text.indexOf("Quantity") !== -1);
+  assert.ok(text.indexOf("SD-G1") !== -1);
+  assert.ok(text.indexOf("Reeded") !== -1);
   addGlass("g-api-1", "SD-API-G1");
   addGlass("g-api-2", "SD-API-G2");
   const app = express();
@@ -152,6 +177,19 @@ assert.notStrictEqual(later.invoiceId, recv.invoiceId);
     headers: { "x-sd-token": session.token }
   });
   assert.strictEqual(file.status, 200);
+  const pdfRes = await fetch(base + "/api/office/glass-po/" + encodeURIComponent(madeJson.poId) + "/pdf", {
+    headers: { "x-sd-token": session.token }
+  });
+  assert.strictEqual(pdfRes.status, 200);
+  assert.ok(String(pdfRes.headers.get("content-type") || "").indexOf("pdf") !== -1);
+  const savedRate = await fetch(base + "/api/office/glass-rates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": session.token },
+    body: JSON.stringify({ type: "Clear", thickness: "8mm", ratePerM2: "320" })
+  });
+  const savedJson = await savedRate.json();
+  assert.ok(savedJson.ok, JSON.stringify(savedJson));
+  assert.ok((savedJson.rates || []).some((r) => r.type === "Clear" && r.thickness === "8mm"));
   server.close();
   console.log("glass-po.test.js ok");
 })().catch((err) => {
