@@ -1241,6 +1241,149 @@ function orderProductMap(ss) {
   return map;
 }
 
+function canonicalCuttingProcess_(process) {
+  var p = String(process || "").trim();
+  var lower = p.toLowerCase();
+  if (lower === "profile cutting" || lower === "profile cutter") return "Profile Cutting";
+  if (lower === "plate cutting" || lower === "plate cutter") return "Plate Cutting";
+  return p;
+}
+
+function isCuttingSteelProcess_(process) {
+  var c = canonicalCuttingProcess_(process);
+  return c === "Profile Cutting" || c === "Plate Cutting";
+}
+
+function steelUsageProcessAliases_(process) {
+  var c = canonicalCuttingProcess_(process);
+  if (c === "Profile Cutting") return ["Profile Cutting", "Profile Cutter"];
+  if (c === "Plate Cutting") return ["Plate Cutting", "Plate Cutter"];
+  var p = String(process || "").trim();
+  return p ? [p] : [];
+}
+
+function steelUsageRowToItem_(profileType, size) {
+  var s = String(profileType || "").trim();
+  var sep = " - ";
+  var idx = s.indexOf(sep);
+  var category = "";
+  var type = s;
+  if (idx >= 0) {
+    category = s.substring(0, idx).trim();
+    type = s.substring(idx + sep.length).trim();
+  }
+  return {
+    category: category,
+    type: type,
+    size: String(size || "").trim(),
+    label: s,
+    isCustom: false
+  };
+}
+
+function steelUsageIndexKey_(workerName, orderNum, process) {
+  return String(workerName || "").trim().toLowerCase() + "|" +
+    String(orderNum || "").trim() + "|" +
+    canonicalCuttingProcess_(process);
+}
+
+function loadSteelUsageIndex_(ss) {
+  var index = {};
+  var sheet = ss.getSheetByName(TAB_STEEL_USAGE);
+  if (!sheet || sheet.getLastRow() < 2) return index;
+  var data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    var worker = String(data[i][2] || "").trim();
+    var orderNum = String(data[i][1] || "").trim();
+    var process = String(data[i][3] || "").trim();
+    if (!worker || !orderNum || !isCuttingSteelProcess_(process)) continue;
+    var key = steelUsageIndexKey_(worker, orderNum, process);
+    if (!index[key]) index[key] = [];
+    index[key].push(steelUsageRowToItem_(data[i][4], data[i][5]));
+  }
+  return index;
+}
+
+function normalizeSteelUsageItems_(steelUsageData) {
+  var raw = steelUsageData;
+  if (typeof raw === "string") {
+    try { raw = JSON.parse(raw); } catch (e) { return []; }
+  }
+  if (!raw || !raw.length) return [];
+  var out = [];
+  for (var i = 0; i < raw.length; i++) {
+    var item = raw[i] || {};
+    var type = String(item.type || item.name || "").trim();
+    var size = String(item.size || "").trim();
+    if (!type || !size) continue;
+    out.push({
+      category: String(item.category || "").trim(),
+      type: type,
+      size: size,
+      isCustom: !!(item.isCustom || item.custom)
+    });
+  }
+  return out;
+}
+
+function ensureSteelUsageSheet_(ss) {
+  var usageSheet = ss.getSheetByName(TAB_STEEL_USAGE);
+  if (!usageSheet) {
+    usageSheet = ss.insertSheet(TAB_STEEL_USAGE);
+    usageSheet.hideSheet();
+    usageSheet.appendRow(["Timestamp", "Order #", "Worker", "Process", "Profile Type", "Size / Length"]);
+  }
+  return usageSheet;
+}
+
+function appendSteelUsageItems_(ss, usageSheet, orderNum, workerName, processLabel, items) {
+  var profilesSheet = ss.getSheetByName(TAB_STEEL_PROFILES);
+  if (!profilesSheet) {
+    getSteelProfiles();
+    profilesSheet = ss.getSheetByName(TAB_STEEL_PROFILES);
+  }
+  var existingProfileData = profilesSheet ? profilesSheet.getDataRange().getValues() : [];
+  var existingProfileNames = [];
+  for (var p = 1; p < existingProfileData.length; p++) {
+    var pv = String(existingProfileData[p][1] || existingProfileData[p][0]).trim().toLowerCase();
+    if (pv) existingProfileNames.push(pv);
+  }
+  (items || []).forEach(function (item) {
+    var usageName = item.category && item.category !== "Uncategorized" ? (item.category + " - " + item.type) : item.type;
+    usageSheet.appendRow([
+      new Date(),
+      orderNum,
+      workerName,
+      processLabel,
+      usageName,
+      item.size
+    ]);
+    if (item.isCustom && profilesSheet) {
+      var newProfileLower = String(item.type).trim().toLowerCase();
+      if (newProfileLower && existingProfileNames.indexOf(newProfileLower) === -1) {
+        profilesSheet.appendRow([item.category || "Custom", String(item.type).trim()]);
+        existingProfileNames.push(newProfileLower);
+      }
+    }
+  });
+}
+
+function replaceSteelUsageForJob_(ss, orderNum, workerName, process, processLabel, items) {
+  var usageSheet = ensureSteelUsageSheet_(ss);
+  var aliases = steelUsageProcessAliases_(process);
+  var last = usageSheet.getLastRow();
+  if (last >= 2) {
+    var grid = usageSheet.getRange(2, 1, last - 1, 6).getValues();
+    for (var i = grid.length - 1; i >= 0; i--) {
+      if (String(grid[i][1] || "").trim() !== String(orderNum).trim()) continue;
+      if (String(grid[i][2] || "").trim() !== String(workerName).trim()) continue;
+      if (aliases.indexOf(String(grid[i][3] || "").trim()) === -1) continue;
+      usageSheet.deleteRow(i + 2);
+    }
+  }
+  appendSteelUsageItems_(ss, usageSheet, orderNum, workerName, processLabel, items);
+}
+
 function getMyCompletedWork(workerName) {
   var want = String(workerName || "").trim();
   var items = [];
@@ -1248,6 +1391,7 @@ function getMyCompletedWork(workerName) {
   var ss = getSpreadsheet();
   var pack = getLogPack(ss);
   var products = orderProductMap(ss);
+  var steelIndex = loadSteelUsageIndex_(ss);
   for (var i = 1; i < pack.values.length; i++) {
     var row = pack.values[i];
     if (!row[6]) continue;
@@ -1262,7 +1406,7 @@ function getMyCompletedWork(workerName) {
     var target = Number(meta.targetMinutes) || getTaskDurationMinutes(product, role);
     var onTime = target > 0 && actual <= target + 0.5;
     var overtime = target > 0 && actual > target + 0.5;
-    items.push({
+    var item = {
       logId: String(row[0] || ""),
       order: orderNum,
       product: product,
@@ -1277,12 +1421,66 @@ function getMyCompletedWork(workerName) {
       durationSaved: !!meta.durationSaved,
       durationLabel: formatSpokenDuration(target),
       actualLabel: formatSpokenDuration(actual) || formatDurationServer(actual)
-    });
+    };
+    if (isCuttingSteelProcess_(role) || isCuttingSteelProcess_(item.status)) {
+      var steelKey = steelUsageIndexKey_(want, orderNum, isCuttingSteelProcess_(role) ? role : item.status);
+      item.steelUsage = steelIndex[steelKey] ? steelIndex[steelKey].slice() : [];
+      item.canEditSteel = true;
+    }
+    items.push(item);
   }
   items.sort(function (a, b) {
     return String(b.end || "").localeCompare(String(a.end || ""));
   });
   return { worker: want, items: items };
+}
+
+function updateCompletedSteelUsage(workerName, orderNum, process, steelUsageData) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    workerName = String(workerName || "").trim();
+    orderNum = String(orderNum || "").trim();
+    process = String(process || "").trim();
+    if (!workerName || !orderNum) {
+      return { success: false, error: "Missing worker or order." };
+    }
+    if (!isCuttingSteelProcess_(process)) {
+      return { success: false, error: "Steel usage can only be edited for Profile Cutting or Plate Cutting." };
+    }
+    var items = normalizeSteelUsageItems_(steelUsageData);
+    if (!items.length) {
+      return { success: false, error: "Add at least one steel profile or sheet used." };
+    }
+    var ss = getSpreadsheet();
+    var pack = getLogPack(ss);
+    var foundLog = false;
+    var processLabel = canonicalCuttingProcess_(process);
+    var wantProcess = canonicalCuttingProcess_(process);
+    for (var i = 1; i < pack.values.length; i++) {
+      var row = pack.values[i];
+      if (!row[6]) continue;
+      if (String(row[2] || "").trim() !== workerName) continue;
+      if (String(row[1] || "").trim() !== orderNum) continue;
+      var role = String(row[3] || "").trim();
+      var status = String(row[4] || "").trim();
+      if (canonicalCuttingProcess_(role) === wantProcess || canonicalCuttingProcess_(status) === wantProcess) {
+        foundLog = true;
+        processLabel = status || role || processLabel;
+      }
+    }
+    if (!foundLog) {
+      return { success: false, error: "No completed " + processLabel + " job found for you on this order." };
+    }
+    replaceSteelUsageForJob_(ss, orderNum, workerName, process, processLabel, items);
+    SpreadsheetApp.flush();
+    return { success: true, steelUsage: items };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  } finally {
+    try { bumpFloorCache(); } catch (ignoreSteel) {}
+    lock.releaseLock();
+  }
 }
 
 function pollFloor(role, workerName) {
@@ -1757,44 +1955,7 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
     }
 
     if (steelUsageData && steelUsageData.length > 0) {
-      var usageSheet = ss.getSheetByName(TAB_STEEL_USAGE);
-      if (!usageSheet) {
-        usageSheet = ss.insertSheet(TAB_STEEL_USAGE);
-        usageSheet.hideSheet();
-        usageSheet.appendRow(["Timestamp", "Order #", "Worker", "Process", "Profile Type", "Size / Length"]);
-      }
-
-      var profilesSheet = ss.getSheetByName(TAB_STEEL_PROFILES);
-      if (!profilesSheet) {
-        getSteelProfiles();
-        profilesSheet = ss.getSheetByName(TAB_STEEL_PROFILES);
-      }
-      var existingProfileData = profilesSheet ? profilesSheet.getDataRange().getValues() : [];
-      var existingProfileNames =[];
-      for (var p = 1; p < existingProfileData.length; p++) {
-        var pv = String(existingProfileData[p][1] || existingProfileData[p][0]).trim().toLowerCase();
-        if (pv) existingProfileNames.push(pv);
-      }
-
-      steelUsageData.forEach(function(item) {
-        var usageName = item.category && item.category !== 'Uncategorized' ? (item.category + " - " + item.type) : item.type;
-        usageSheet.appendRow([
-          new Date(),
-          orderNum,
-          workerName,
-          processName,
-          usageName,
-          item.size
-        ]);
-
-        if (item.isCustom && profilesSheet) {
-          var newProfileLower = String(item.type).trim().toLowerCase();
-          if (newProfileLower && existingProfileNames.indexOf(newProfileLower) === -1) {
-            profilesSheet.appendRow([item.category || "Custom", String(item.type).trim()]);
-            existingProfileNames.push(newProfileLower);
-          }
-        }
-      });
+      appendSteelUsageItems_(ss, ensureSteelUsageSheet_(ss), orderNum, workerName, processName, steelUsageData);
     }
 
     writeBackboardUsage(ss, orderNum, workerName, processName, backboardUsageData);

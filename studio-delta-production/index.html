@@ -333,6 +333,31 @@
     .completed-icon.is-plain { background: #f2f4f7; color: #667085; }
     .completed-card h3 { margin: 0 0 4px; font-size: 1.05rem; }
     .completed-card p { margin: 0; font-size: 0.86rem; color: #667085; }
+    .completed-card .completed-body { flex: 1; min-width: 0; }
+    .completed-steel {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border, #d7d1c6);
+    }
+    .completed-steel-label {
+      margin: 0 0 4px !important;
+      font-size: 0.78rem !important;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--text-muted, #8a8278) !important;
+    }
+    .completed-steel-list {
+      margin: 0 0 8px;
+      padding-left: 1.15rem;
+      color: var(--text-primary, #1c1917);
+      font-size: 0.86rem;
+    }
+    .completed-steel-list li { margin: 0 0 2px; }
+    .completed-steel-empty {
+      margin: 0 0 8px !important;
+      font-style: italic;
+    }
     .completed-empty, .completed-error {
       background: #fff;
       border: 1px solid #d0d5dd;
@@ -2048,6 +2073,33 @@
     </div>
   </div>
 
+  <!-- Edit steel usage on a completed Profile / Plate Cutting job -->
+  <div class="modal fade" id="editSteelModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title brand-font">Edit steel usage</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-3">
+          <p class="small text-muted mb-2" id="editSteelOrderLabel"></p>
+          <p class="small text-muted">Fix a mistake from when this job was finished. This does not re-open the job.</p>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <label class="fw-bold mb-0">Steel logged <span class="text-danger">*</span></label>
+            <button type="button" class="btn btn-sm btn-outline-dark" onclick="openSteelModal()">
+              <i class="bi bi-plus"></i> Select Steel
+            </button>
+          </div>
+          <div id="editSteelRowsContainer"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">CANCEL</button>
+          <button type="button" class="btn btn-dark" id="saveCompletedSteelBtn" onclick="saveCompletedSteelUsage()">Save steel usage</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Backboard Selection Modal (Assembly / Final QC) -->
   <div class="modal fade" id="backboardModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -2319,7 +2371,7 @@
       'Final QC': ['Front', 'Level 1', 'Back', 'Left Side', 'Right Side', 'Job Card', 'Open', 'Top (Optional)', 'Level 2 (Optional)']
     };
 
-    let passModal, changePassModal, startModal, pauseModal, qcModal, alertModal, confirmModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, welderSteelModal, canvas, ctx, isDrawing = false;
+    let passModal, changePassModal, startModal, pauseModal, qcModal, alertModal, confirmModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, editSteelModal, welderSteelModal, canvas, ctx, isDrawing = false;
 
     // =====================================================
     // THEME MANAGEMENT
@@ -2382,6 +2434,7 @@
         floorListModal = bindModal('#floorListModal');
         weeklyDetailsModal = bindModal('#weeklyDetailsModal');
         steelSelectionModal = bindModal('#steelModal');
+        editSteelModal = bindModal('#editSteelModal');
         backboardSelectionModal = bindModal('#backboardModal');
         idleAlertModal = bindModal('#idleAlertModal');
         welderSteelModal = bindModal('#welderSteelModal');
@@ -2412,6 +2465,12 @@
         const completedTab = document.querySelector('#dashTabs button[data-bs-target="#pane-completed"]');
         if (completedTab) {
           completedTab.addEventListener('shown.bs.tab', function () { loadCompletedWork(); });
+        }
+        const editSteelEl = document.getElementById('editSteelModal');
+        if (editSteelEl) {
+          editSteelEl.addEventListener('hidden.bs.modal', function () {
+            session.editingCompletedSteel = null;
+          });
         }
       } catch (e) {}
       try { initSigPad(); } catch (e) { console.warn('Signature pad init error:', e); }
@@ -4018,6 +4077,7 @@
       if (!res.items.length) {
         return '<div class="completed-empty">No completed work yet. Finish an order and it will show here. Pauses do not count toward the time.</div>';
       }
+      window._completedSteelByKey = {};
       return res.items.map((item) => {
         let icon = '<div class="completed-icon is-plain" title="No estimate"><i class="bi bi-dash-circle"></i></div>';
         let verdict = 'No estimate was saved for this product when you finished.';
@@ -4030,11 +4090,31 @@
         }
         const est = item.durationLabel ? ('Estimate ' + item.durationLabel) : 'No estimate';
         const took = item.actualLabel ? ('took ' + item.actualLabel) : '';
+        const canEditSteel = item.canEditSteel || item.process === 'Profile Cutting' || item.process === 'Plate Cutting';
+        let steelHtml = '';
+        if (canEditSteel) {
+          const key = String(item.order || '') + '\t' + String(item.process || '');
+          window._completedSteelByKey[key] = item.steelUsage || [];
+          const lines = item.steelUsage || [];
+          steelHtml = '<div class="completed-steel"><p class="completed-steel-label">Steel logged</p>';
+          if (lines.length) {
+            steelHtml += '<ul class="completed-steel-list">';
+            lines.forEach((line) => {
+              const name = line.label || ((line.category ? line.category + ' - ' : '') + (line.type || line.name || ''));
+              steelHtml += '<li>' + floorEsc(name) + (line.size ? ' · ' + floorEsc(line.size) : '') + '</li>';
+            });
+            steelHtml += '</ul>';
+          } else {
+            steelHtml += '<p class="completed-steel-empty">No steel usage was found for this job.</p>';
+          }
+          steelHtml += '<button type="button" class="btn btn-sm btn-outline-dark" onclick=\'openEditCompletedSteel(' +
+            JSON.stringify(item.order || '') + ',' + JSON.stringify(item.process || '') + ')\'>Edit steel usage</button></div>';
+        }
         return '<article class="completed-card">' + icon +
-          '<div><h3>' + (item.order || '') + (item.product ? ' · ' + item.product : '') + '</h3>' +
-          '<p>' + (item.process || '') + (item.end ? ' · ' + formatCompletedWhen(item.end) : '') + '</p>' +
+          '<div class="completed-body"><h3>' + floorEsc(item.order || '') + (item.product ? ' · ' + floorEsc(item.product) : '') + '</h3>' +
+          '<p>' + floorEsc(item.process || '') + (item.end ? ' · ' + formatCompletedWhen(item.end) : '') + '</p>' +
           '<p>' + est + (took ? ' · ' + took : '') + '</p>' +
-          '<p>' + verdict + '</p></div></article>';
+          '<p>' + verdict + '</p>' + steelHtml + '</div></article>';
       }).join('');
     }
     function paintCompletedWork(res) {
@@ -4063,6 +4143,70 @@
     function openCompletedWork() {
       navTo('view-completed');
       loadCompletedWork();
+    }
+    function openEditCompletedSteel(orderNum, process) {
+      session.editingCompletedSteel = { order: orderNum, process: process };
+      const key = String(orderNum || '') + '\t' + String(process || '');
+      const usage = (window._completedSteelByKey && window._completedSteelByKey[key]) || [];
+      const container = document.getElementById('editSteelRowsContainer');
+      if (container) container.innerHTML = '';
+      const label = document.getElementById('editSteelOrderLabel');
+      if (label) label.textContent = (orderNum || '') + (process ? ' · ' + process : '');
+      usage.forEach((row) => appendSteelRow(steelRowFromUsage(row)));
+      if (editSteelModal) editSteelModal.show();
+    }
+    function saveCompletedSteelUsage() {
+      const ctx = session.editingCompletedSteel;
+      if (!ctx) return;
+      const container = document.getElementById('editSteelRowsContainer');
+      const rows = container ? container.querySelectorAll('.material-row') : [];
+      if (!rows.length) {
+        showAlert('Please add at least one steel profile or sheet used.');
+        return;
+      }
+      const collected = [];
+      let valid = true;
+      rows.forEach((rowEl) => {
+        const type = rowEl.dataset.name;
+        const category = rowEl.dataset.category;
+        const size = rowEl.dataset.size;
+        const isCustom = rowEl.dataset.custom === 'true';
+        if (!type || !size) valid = false;
+        else collected.push({ category: category, type: type, size: size, isCustom: isCustom });
+      });
+      if (!valid) {
+        showAlert('Invalid material row detected. Please check your entries.');
+        return;
+      }
+      const btn = document.getElementById('saveCompletedSteelBtn');
+      const orig = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = 'SAVING…';
+      }
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = orig || 'Save steel usage';
+          }
+          if (res && res.success === false) {
+            showAlert(res.error || 'Could not save steel usage.');
+            return;
+          }
+          if (editSteelModal) editSteelModal.hide();
+          session.editingCompletedSteel = null;
+          showAlert('Steel usage updated.');
+          loadCompletedWork(true);
+        })
+        .withFailureHandler((err) => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = orig || 'Save steel usage';
+          }
+          showAlert('Error: ' + err);
+        })
+        .updateCompletedSteelUsage(session.name, ctx.order, ctx.process, collected);
     }
     function enterDashboard() {
       navTo('view-dashboard');
@@ -4956,6 +5100,7 @@
       return !!(g.component || g.type || g.height || g.width || w.component || w.typeInput || w.height || w.width);
     }
     function persistQcDraft() {
+      if (session.editingCompletedSteel) return;
       if (session.qcApplyingDraft || isSubmitting) return;
       if (!session.activeOrder || !session.currentQcKey) return;
       if (session.role === "Grinding") return;
@@ -4977,8 +5122,23 @@
         }
       });
     }
+    function steelRowsContainer() {
+      if (session.editingCompletedSteel) {
+        return document.getElementById("editSteelRowsContainer");
+      }
+      return document.getElementById("materialRowsContainer");
+    }
+    function steelRowFromUsage(item) {
+      if (!item) return null;
+      return {
+        category: item.category || "",
+        name: item.type || item.name || "",
+        size: item.size || "",
+        custom: !!(item.isCustom || item.custom)
+      };
+    }
     function appendSteelRow(item) {
-      const container = document.getElementById("materialRowsContainer");
+      const container = steelRowsContainer();
       if (!container || !item || !item.name) return;
       const rowId = "mrow-" + Date.now() + "-" + Math.floor(Math.random() * 99);
       const row = document.createElement("div");
@@ -5303,7 +5463,7 @@ function openSteelModal() {
       }
 
       appendSteelRow({ category: cat, name: finalName, size: size + ' ' + unit, custom: isCustom });
-      persistQcDraft();
+      if (!session.editingCompletedSteel) persistQcDraft();
 
       if (steelSelectionModal) steelSelectionModal.hide();
     }
