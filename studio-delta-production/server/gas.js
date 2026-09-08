@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const { google } = require("googleapis");
 const { createSpreadsheetApp } = require("./sheets");
 const { getBook } = require("./workbook-store");
+const catalog = require("./product-catalog");
 
 const TZ = process.env.TZ || "Africa/Johannesburg";
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
@@ -357,7 +358,11 @@ async function callShopFunction(fnName, args) {
     encodeURIComponent,
     decodeURIComponent,
     Error,
-    Buffer
+    Buffer,
+    lookupProductImage: function (name) {
+      const found = catalog.lookupProduct(name);
+      return (found && found.imageUrl) || "";
+    }
   };
 
   const ctx = vm.createContext(sandbox);

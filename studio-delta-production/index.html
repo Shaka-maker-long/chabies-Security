@@ -277,6 +277,36 @@
       background: #fffaeb;
       border-color: #fedf89;
     }
+    .start-product-shot {
+      text-align: center;
+      margin: 0 0 12px;
+    }
+    .start-product-shot img {
+      max-width: 100%;
+      max-height: 220px;
+      width: auto;
+      height: auto;
+      border: 1px solid #d0d5dd;
+      border-radius: 10px;
+      background: #f2f4f7;
+      object-fit: contain;
+    }
+    .start-product-name {
+      text-align: center;
+      font-weight: 700;
+      margin: 0 0 12px;
+    }
+    .product-shot {
+      margin: 0 0 10px;
+    }
+    .product-shot img {
+      width: 100%;
+      max-height: 140px;
+      object-fit: contain;
+      border-radius: 8px;
+      background: #f2f4f7;
+      border: 1px solid #d0d5dd;
+    }
     .home-head-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     .completed-card {
       background: var(--bg-surface, #fff);
@@ -4153,6 +4183,7 @@
           const cardId = `card-${o.rowIndex}`;
           const existingCard = document.getElementById(cardId);
           const productLine = o.productName ? `<div class="product-sub">${o.productName}</div>` : '';
+          const productShot = productShotHtml(o);
 
           let innerBtn = '';
           if (session.isAdmin && !WORK_LOCKS_DISABLED) {
@@ -4222,6 +4253,7 @@
               if (oldBtn) oldBtn.outerHTML = btn;
             }
             syncCardCountdown(liveCard, o);
+            syncCardProductShot(liveCard, o);
             // Move card to correct container if assignment changed
             const showInProgress = isMine || (o.status === 'In Progress' && !isLocked);
             const targetContainer = showInProgress ? pr : av;
@@ -4249,6 +4281,7 @@
                       ${productLine}
                       <div>${statusBadge}<span class="badge bg-dark">${o.status}</span></div>
                     </div>
+                    ${productShot}
                     ${countdownHtml(o)}
                     ${btn}
                   </div>
@@ -4264,6 +4297,7 @@
                     ${productLine}
                     <div>${statusBadge}<span class="badge bg-dark">${o.status}</span></div>
                   </div>
+                    ${productShot}
                     ${countdownHtml(o)}
                     ${btn}
                 </div>
@@ -4324,13 +4358,50 @@
       return esc.replace(/⟦([^⟧]+)⟧/g, '<mark>$1</mark>').replace(/\[\[([^\]]+)\]\]/g, '<mark>$1</mark>');
     }
 
+    function productShotHtml(o) {
+      const url = String((o && o.imageUrl) || '').trim();
+      if (!url) return '';
+      const alt = String((o && (o.productName || o.product)) || 'Product').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+      return '<div class="product-shot"><img src="' + url.replace(/"/g, '&quot;') + '" alt="' + alt + '"></div>';
+    }
+
+    function syncCardProductShot(card, o) {
+      if (!card) return;
+      const body = card.querySelector('.card-body');
+      if (!body) return;
+      const html = productShotHtml(o);
+      let shot = body.querySelector('.product-shot');
+      if (!html) {
+        if (shot) shot.remove();
+        return;
+      }
+      if (shot) {
+        shot.outerHTML = html;
+        return;
+      }
+      const wrap = document.createElement('div');
+      wrap.innerHTML = html;
+      const el = wrap.firstElementChild;
+      const header = body.querySelector('.d-flex');
+      if (header && header.nextSibling) body.insertBefore(el, header.nextSibling);
+      else body.insertBefore(el, body.firstChild);
+    }
+
     function fillStartConfirm(brief) {
       session.pendingBrief = brief || {};
       document.getElementById('startModalOrder').innerText = (brief && brief.order) || session.activeOrder || '';
       const highlights = (brief && brief.highlights) || [];
       const mins = Number(brief && brief.targetMinutes) || 0;
       const spoken = (brief && brief.durationLabel) || formatSpokenDuration(mins);
+      const imgUrl = String((brief && brief.imageUrl) || '').trim();
       let html = '';
+      if (imgUrl) {
+        const alt = String((brief && brief.product) || 'Product').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        html += '<div class="start-product-shot"><img src="' + imgUrl.replace(/"/g, '&quot;') + '" alt="' + alt + '"></div>';
+      }
+      if (brief && brief.product) {
+        html += '<div class="start-product-name">' + String(brief.product).replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>';
+      }
       if (mins > 0 && spoken) {
         const eta = (brief && brief.etaLabel) || formatEstimateClock(estimateCompletionAt(new Date(), mins));
         html += '<div class="start-duration"><strong>Your duration for this order is ' + spoken + '</strong>';

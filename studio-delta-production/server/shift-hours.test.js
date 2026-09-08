@@ -120,6 +120,21 @@ const CONFIRM = { understood: true, highlights: [] };
   });
   const brief = await callShopFunction("getOrderJobBrief", ["S-HIGH-1"]);
   assert.ok(brief.highlights && brief.highlights.indexOf("additional shelf") !== -1, JSON.stringify(brief));
+
+  const pictured = db.upsertOrder({
+    order_number: "S-IMG-1",
+    status: "Ready for Welding",
+    type: "Standard",
+    product: "Talitha Bookshelf",
+    client_name: "Image Client",
+    price_excl_vat: "100.00"
+  });
+  const imgBrief = await callShopFunction("getOrderJobBrief", ["S-IMG-1"]);
+  assert.ok(imgBrief.imageUrl, JSON.stringify(imgBrief));
+  assert.ok(/studiodelta|TALITHA|talitha/i.test(imgBrief.imageUrl), JSON.stringify(imgBrief));
+  const floorImg = await callShopFunction("pollFloor", ["Welding", "Thabo"]);
+  const imgRow = (floorImg.orders || []).find((o) => o.order === "S-IMG-1");
+  assert.ok(imgRow && imgRow.imageUrl, JSON.stringify(imgRow));
   const missingMark = await callShopFunction("startOrder", [
     highlighted.id, "Thabo", "Welding", [], "", false, null, { understood: true, highlights: [] }
   ]);

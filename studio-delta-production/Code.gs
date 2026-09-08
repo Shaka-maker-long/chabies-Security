@@ -1156,6 +1156,7 @@ function remainingMsFromState(startedAt, targetMinutes, pauseMs, pausedAt, isPau
 function decorateOrderTiming(order, now) {
   order = order || {};
   now = now || new Date();
+  if (!order.imageUrl) order.imageUrl = productImageUrl(order.productName || order.product);
   var rem = remainingMsFromState(order.startedAt, order.targetMinutes, order.pauseMs, order.pausedAt, order.isPaused, now, order.priorWorkMs);
   if (rem == null) {
     var fresh = estimateCompletionPack(now, order.targetMinutes);
@@ -3551,6 +3552,15 @@ function descriptionPlain(text) {
   return String(text || "").replace(/⟦/g, "").replace(/⟧/g, "").replace(/\[\[/g, "").replace(/\]\]/g, "");
 }
 
+function productImageUrl(product) {
+  try {
+    if (typeof lookupProductImage === "function") {
+      return String(lookupProductImage(product) || "");
+    }
+  } catch (e) {}
+  return "";
+}
+
 function emptyJobBrief(orderNumber, process) {
   return {
     order: String(orderNumber || "").trim(),
@@ -3565,7 +3575,8 @@ function emptyJobBrief(orderNumber, process) {
     targetMinutes: 0,
     durationLabel: "",
     etaAt: "",
-    etaLabel: ""
+    etaLabel: "",
+    imageUrl: ""
   };
 }
 
@@ -3595,7 +3606,8 @@ function getOrderJobBrief(orderNumber, process) {
       targetMinutes: minutes,
       durationLabel: formatSpokenDuration(minutes),
       etaAt: eta.etaAt,
-      etaLabel: eta.etaLabel
+      etaLabel: eta.etaLabel,
+      imageUrl: productImageUrl(product)
     };
   }
   return emptyJobBrief(want, process);
