@@ -53,12 +53,8 @@
     .tooltip:hover .tooltiptext, .tooltip.locked .tooltiptext { visibility: visible; opacity: 1; }
     #modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.2); z-index: 99998; display: none; }
     body.tooltip-locked #modal-backdrop { display: block; }
-    .switch { position: relative; display: inline-block; width: 42px; height: 24px; vertical-align: middle; }
-    .switch input { opacity: 0; width: 0; height: 0; }
-    .slider { position: absolute; inset: 0; background: #D1D5DB; border-radius: 34px; cursor: pointer; }
-    .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: .2s; }
-    input:checked + .slider { background: var(--accent-blue); }
-    input:checked + .slider:before { transform: translateX(18px); }
+    #overheadToggle { border: 1px solid #1d2939; background: #fff; color: #1d2939; border-radius: 6px; padding: 7px 12px; font-weight: 600; cursor: pointer; font: inherit; font-size: 13px; }
+    #overheadToggle.on { background: #1d2939; color: #fff; }
     .loader, .empty, .err { text-align: center; padding: 48px 16px; color: #6B7280; font-weight: 600; }
     .err { color: var(--bad); }
     .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px; }
@@ -104,13 +100,7 @@
     </div>
     <div class="nav-controls">
       <span class="msg" id="status"></span>
-      <div style="display:flex;align-items:center;gap:8px">
-        Include overheads
-        <label class="switch">
-          <input type="checkbox" id="overheadToggle" checked onchange="renderAll()">
-          <span class="slider"></span>
-        </label>
-      </div>
+      <button type="button" class="on" id="overheadToggle" data-on="1" onclick="toggleOverheads()">Overheads on</button>
       <select id="filterMode" onchange="changeFilterType()">
         <option value="month">Monthly</option>
         <option value="custom">Custom date range</option>
@@ -251,6 +241,17 @@
       }
       load();
     }
+    function includeOverheads() {
+      return document.getElementById("overheadToggle").getAttribute("data-on") === "1";
+    }
+    function toggleOverheads() {
+      const btn = document.getElementById("overheadToggle");
+      const on = btn.getAttribute("data-on") !== "1";
+      btn.setAttribute("data-on", on ? "1" : "0");
+      btn.classList.toggle("on", on);
+      btn.textContent = on ? "Overheads on" : "Overheads off";
+      renderAll();
+    }
     function switchTab(tab) {
       ["logs","monthly","steel","rates"].forEach((id) => {
         document.getElementById("tab-" + (id === "steel" ? "steel" : id)).style.display = tab === id ? "block" : "none";
@@ -287,7 +288,7 @@
       return html;
     }
     function renderMatrix() {
-      const includeOH = document.getElementById("overheadToggle").checked;
+      const includeOH = includeOverheads();
       document.getElementById("profitHeader").textContent = includeOH ? "PROFIT" : "GROSS MARGIN";
       document.getElementById("stat-profit-label").textContent = includeOH ? "Net profit" : "Gross margin";
       document.getElementById("ohHeader").style.display = includeOH ? "" : "none";
@@ -336,7 +337,7 @@
     function renderMonthly() {
       const thead = document.getElementById("monthlyHead");
       const tbody = document.getElementById("monthlyBody");
-      const includeOH = document.getElementById("overheadToggle").checked;
+      const includeOH = includeOverheads();
       const orders = appData.orders || [];
       if (!orders.length) {
         thead.innerHTML = "";
