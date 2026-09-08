@@ -3936,7 +3936,9 @@
       updateFloorLink();
       document.getElementById('globalLoginName').value = '';
       document.getElementById('globalLoginPass').value = '';
-      navTo('view-global-login'); 
+      rolesPageMode = 'home';
+      setFloorView('');
+      navTo('view-global-login');
     }
 
     function filterDashboard() {

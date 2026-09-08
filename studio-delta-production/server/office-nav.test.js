@@ -54,6 +54,7 @@ assert.ok(js.indexOf('"Production Tasks"') !== -1);
 assert.ok(js.indexOf("productiontasks") !== -1);
 assert.ok(floor.indexOf('id="link-production-tasks"') !== -1);
 assert.ok(floor.indexOf("function showProductionTasks") !== -1);
+assert.ok(/function logout\([\s\S]*setFloorView\(''\)/.test(floor), "logout must leave Production Tasks view so Admin opens Home");
 assert.ok(floor.indexOf('id="rolesPageTitle"') !== -1);
 assert.ok(floor.indexOf("/?view=floor") === -1, "Floor is Home, not a second menu item");
 assert.ok(js.indexOf('id="link-floor"') === -1);
