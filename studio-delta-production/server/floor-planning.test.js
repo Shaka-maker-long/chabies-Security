@@ -52,6 +52,13 @@ staff.upsertUser({
   password: "office",
   tasks: []
 });
+staff.upsertUser({
+  name: "QC Pat",
+  access: "Production",
+  role: "Quality Control",
+  password: "1234",
+  tasks: ["Quality Control"]
+});
 
 staff.setDurations([
   { product: "Product A", process: "Profile Cutting", hours: 1 },
@@ -265,6 +272,7 @@ assert.ok(board.workers.some((w) => w.name === "Willard"));
 assert.ok(board.workers.some((w) => w.name === "Sipho"));
 assert.ok(board.workers.some((w) => w.name === "Thabo"));
 assert.ok(board.workers.some((w) => w.name === "Nomsa"));
+assert.ok(board.workers.some((w) => w.name === "QC Pat"), "every shop worker has a calendar");
 assert.ok(!board.workers.some((w) => w.name === "Office Only"), "people without floor tasks are not calendars");
 assert.strictEqual(board.paintShop.id, plan.PAINT_WORKER_ID);
 assert.ok(board.queue.some((q) => q.order_number === "S260100 A" && q.scheduled));
