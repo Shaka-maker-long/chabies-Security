@@ -432,6 +432,9 @@ assert.ok(planningHtml.indexOf("Monday to Friday") !== -1 || planningHtml.indexO
 assert.ok(planningHtml.indexOf("Schedule selected") !== -1);
 assert.ok(planningHtml.indexOf(">Order<") !== -1 || planningHtml.indexOf("Order") !== -1);
 assert.ok(planningHtml.indexOf("Worker") !== -1);
+assert.ok(planningHtml.indexOf("href=\"#people\"") !== -1, "People is a planning subpage");
+assert.ok(planningHtml.indexOf("href=\"#journey\"") !== -1, "Journey is a planning subpage");
+assert.ok(planningHtml.indexOf("href=\"#planning\"") !== -1, "Planning is a planning subpage");
 assert.ok(planningHtml.indexOf("data-tab=\"planning\"") !== -1, "planning.html must have a Planning tab");
 assert.ok(planningHtml.indexOf("data-tab=\"people\"") !== -1, "planning.html must have a People tab");
 assert.ok(planningHtml.indexOf("data-tab=\"journey\"") !== -1, "planning.html must have a Journey tab");

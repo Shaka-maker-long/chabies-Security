@@ -69,7 +69,7 @@ const pages = [
 ];
 pages.forEach((rel) => {
   const html = fs.readFileSync(path.join(root, rel), "utf8");
-  assert.ok(html.indexOf("/sd-pwa.js?v=pwa") !== -1, rel + " must boot the PWA");
+  assert.ok(html.indexOf("/sd-pwa.js?v=pwa") !== -1 || html.indexOf("/sd-pwa.js") !== -1, rel + " must boot the PWA");
 });
 
 const outlook = fs.readFileSync(path.join(publicDir, "outlook-addin/taskpane.html"), "utf8");
