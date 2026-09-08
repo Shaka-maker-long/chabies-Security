@@ -191,6 +191,7 @@ function sdMountOfficeShell(active) {
     ["/durations", "durations", "bi-hourglass-split", "Task times"],
     ["/planning", "planning", "bi-calendar-range", "Planning"],
     ["/debtors", "debtors", "bi-cash-coin", "Debtors"],
+    ["/?view=production-tasks", "productiontasks", "bi-grid-3x3-gap", "Production Tasks"],
     ["/?view=production", "production", "bi-clipboard-data", "Production"],
     ["/?view=workers", "workers", "bi-people", "Workers"],
     ["/?view=metrics", "metrics", "bi-bar-chart", "Metrics"],
@@ -209,7 +210,7 @@ function sdMountOfficeShell(active) {
     items.map(([href, id, icon, label, nav]) => {
       const on = id === active ? " active" : "";
       const extra = nav ? " data-nav=\"" + nav + "\"" : (id === "debtors" ? " data-nav=\"debtors\"" : "");
-      const section = id === "orders" ? '<div class="sd-nav-label">Office</div>' : (id === "production" ? '<div class="sd-nav-label">Shop</div>' : "");
+      const section = id === "orders" ? '<div class="sd-nav-label">Office</div>' : (id === "productiontasks" ? '<div class="sd-nav-label">Shop</div>' : "");
       return section + '<a class="sd-link' + on + '" href="' + href + '"' + extra + '><i class="bi ' + icon + '"></i><span class="sd-link-text">' + label + "</span></a>";
     }).join("") +
     "</div>" +
