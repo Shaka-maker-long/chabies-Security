@@ -256,6 +256,32 @@ function isStandardType(type) {
   return String(type || "").trim().toLowerCase() === "standard";
 }
 
+function isTypeOnlyDescription(text) {
+  return /^(standard|custom|new\s*design)$/i.test(String(text || "").trim());
+}
+
+function shopDescription(order, override) {
+  const typed = override != null ? override : (order && order.detailed_description);
+  const raw = String(typed == null ? "" : typed).trim();
+  if (!raw || isTypeOnlyDescription(raw)) return "";
+  return raw;
+}
+
+function descriptionSegments(text) {
+  const src = String(text || "");
+  const out = [];
+  const re = /⟦([^⟧]+)⟧|\[\[([^\]]+)\]\]/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(src))) {
+    if (m.index > last) out.push({ text: src.slice(last, m.index), important: false });
+    out.push({ text: String(m[1] || m[2] || ""), important: true });
+    last = m.index + m[0].length;
+  }
+  if (last < src.length) out.push({ text: src.slice(last), important: false });
+  return out;
+}
+
 function hasUsableDimensions(dims) {
   const values = [dims && dims.height, dims && dims.width, dims && dims.depth, dims && dims.diameter]
     .map((value) => Number(value))
@@ -349,6 +375,40 @@ function drawLabeled(doc, x, y, w, h, label, value, opts) {
       width: w - 8,
       height: h - 20
     });
+  doc.restore();
+}
+
+function drawDescription(doc, x, y, w, h, value) {
+  drawBox(doc, x, y, w, h);
+  doc.save();
+  doc.font("Helvetica-Bold").fontSize(8).fillColor("#111").text("DESCRIPTION:", x + 4, y + 4, {
+    width: w - 8,
+    lineBreak: false
+  });
+  const segments = descriptionSegments(value);
+  let cursorX = x + 4;
+  let cursorY = y + 16;
+  const maxX = x + w - 4;
+  const lineH = 12;
+  const maxY = y + h - 4;
+  segments.forEach((seg) => {
+    const parts = String(seg.text || "").split(/(\s+)/);
+    parts.forEach((part) => {
+      if (!part) return;
+      doc.font(seg.important ? "Helvetica-Bold" : "Helvetica").fontSize(10);
+      let width = doc.widthOfString(part);
+      if (cursorX + width > maxX && cursorX > x + 4) {
+        cursorX = x + 4;
+        cursorY += lineH;
+      }
+      if (cursorY + lineH > maxY) return;
+      if (seg.important && part.trim()) {
+        doc.save().fillColor("#fff3b0").rect(cursorX - 1, cursorY - 1, width + 2, lineH).fill().restore();
+      }
+      doc.fillColor("#111").text(part, cursorX, cursorY, { lineBreak: false, continued: false });
+      cursorX += width;
+    });
+  });
   doc.restore();
 }
 
@@ -459,10 +519,10 @@ async function writeJobCardPdf(record, dest) {
     drawLabeled(doc, margin, y, col1, rowH, "Time finished:", "");
     drawLabeled(doc, margin + col1, y, col2 + col3, rowH, "Glass type:", record.glass_type);
     y += rowH;
-    drawLabeled(doc, margin, y, inner, 40, "Variations:", record.variation);
-    y += 40;
-    drawLabeled(doc, margin, y, inner, 40, "Description:", record.description);
-    y += 40;
+    drawLabeled(doc, margin, y, inner, 36, "Variations:", record.variation);
+    y += 36;
+    drawDescription(doc, margin, y, inner, 64, record.description);
+    y += 64;
     const dimW = inner * 0.62;
     drawLabeled(doc, margin, y, dimW, rowH, "Dimensions:", record.dimensions_string);
     drawLabeled(doc, margin + dimW, y, inner - dimW, rowH, "Province:", record.province);
@@ -570,6 +630,10 @@ async function generateJobCard(input) {
 
   const dims = normalizeDimensions(body.dimensions, order.product);
   const dimensionCheck = assertNonStandardDimensions(order, body, dims);
+  const description = shopDescription(order, body.description);
+  if (!description) {
+    throw new Error("Type the detailed description before generating the job card. Do not use Standard, Custom, or New Design in that box — those belong in Design type.");
+  }
   const created = todayIso();
   const found = catalog.lookupProduct(order.product);
   const record = {
@@ -583,10 +647,10 @@ async function generateJobCard(input) {
     colour: order.powder_coating || "",
     glass_type: order.doors || "N/A",
     variation: order.variation || "",
-    description: order.detailed_description || order.product || "",
+    description,
     province: order.province || "",
     dimensions: dims,
-    dimensions_string: dimensionsLabel(dims, order.dimensions || "Standard"),
+    dimensions_string: dimensionsLabel(dims, order.dimensions),
     image_url: (found && found.imageUrl) || body.image_url || "",
     cutting,
     regenerated: elig.mode === "regenerate",
@@ -600,7 +664,7 @@ async function generateJobCard(input) {
   map[orderNumber] = record;
   saveRecords(map);
 
-  const patch = {};
+  const patch = { detailed_description: description };
   if (elig.mode === "create") patch.status = AFTER_GENERATE_STATUS;
   if (!isStandardType(order.type)) patch.dimensions = dimensionsLabel(dims);
   let savedOrder = order;
@@ -643,6 +707,9 @@ module.exports = {
   normalizeDimensions,
   emptyCutting,
   isStandardType,
+  isTypeOnlyDescription,
+  shopDescription,
+  descriptionSegments,
   hasUsableDimensions,
   assertNonStandardDimensions,
   dimensionsLabel

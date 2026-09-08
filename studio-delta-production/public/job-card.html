@@ -108,7 +108,11 @@
         <label>Powder coating<input id="colour" readonly></label>
         <label>Province<input id="province" readonly></label>
         <label>Variation<textarea id="variation" readonly style="min-height:72px"></textarea></label>
-        <label>Description<textarea id="description" readonly style="min-height:72px"></textarea></label>
+        <label>Description
+          <textarea id="description" placeholder="Finish, glass, extras — what the shop must build" style="min-height:72px"></textarea>
+          <span class="hint">This is the shop description, not Standard / Custom / New Design. Select words production must not miss, then mark them as important.</span>
+          <button type="button" class="ghost" id="markImportantBtn" style="margin-top:6px;width:auto">Mark selected as important</button>
+        </label>
       </div>
     </div>
 
@@ -200,6 +204,33 @@
     function isStandardType(type) {
       return String(type || "").trim().toLowerCase() === "standard";
     }
+    function isTypeOnlyDescription(text) {
+      return /^(standard|custom|new\s*design)$/i.test(String(text || "").trim());
+    }
+    function shopDescriptionFromRow(row) {
+      const raw = String((row && row.detailed_description) || "").trim();
+      if (!raw || isTypeOnlyDescription(raw)) return "";
+      return raw;
+    }
+    function markSelectedImportant() {
+      const box = document.getElementById("description");
+      const start = box.selectionStart;
+      const end = box.selectionEnd;
+      if (start == null || end == null || end <= start) {
+        setErr("Select the words in the description first, then mark them as important.");
+        return;
+      }
+      const val = box.value;
+      const picked = val.slice(start, end);
+      if (picked.indexOf("⟦") !== -1 || picked.indexOf("[[") !== -1) return;
+      box.value = val.slice(0, start) + "⟦" + picked + "⟧" + val.slice(end);
+      setErr("");
+      box.focus();
+      box.selectionStart = start;
+      box.selectionEnd = end + 2;
+      persistJobCardDraft();
+      syncGenerateReady();
+    }
     function dimNumber(id) {
       const n = Number(document.getElementById(id).value);
       return Number.isFinite(n) && n > 1;
@@ -233,6 +264,11 @@
         btn.disabled = true;
         return;
       }
+      const desc = String(document.getElementById("description").value || "").trim();
+      if (!desc || isTypeOnlyDescription(desc)) {
+        btn.disabled = true;
+        return;
+      }
       btn.disabled = false;
     }
     function syncDimCheck() {
@@ -260,7 +296,8 @@
         dimWidth: document.getElementById("dimWidth").value,
         dimDepth: document.getElementById("dimDepth").value,
         dimDiameter: document.getElementById("dimDiameter").value,
-        dimCheck: chosenCheck()
+        dimCheck: chosenCheck(),
+        description: document.getElementById("description").value
       });
     }
     function applyJobCardDraft(order) {
@@ -290,6 +327,9 @@
         const el = document.querySelector('input[name="dimCheck"][value="' + draft.dimCheck + '"]');
         if (el) el.checked = true;
       }
+      if (draft.description != null && String(draft.description).trim() && !isTypeOnlyDescription(draft.description)) {
+        document.getElementById("description").value = draft.description;
+      }
       const cut = draft.cutting || {};
       const cutCount = (cut.bars || []).length + (cut.plates || []).length + (cut.tubes || []).length + (cut.wood || []).length;
       const meaningful = !!(String(draft.pasted || "").trim() || draft.dimCheck || cutCount);
@@ -310,7 +350,7 @@
       document.getElementById("colour").value = (row && row.powder_coating) || "";
       document.getElementById("province").value = (row && row.province) || "";
       document.getElementById("variation").value = (row && row.variation) || "";
-      document.getElementById("description").value = (row && row.detailed_description) || (row && row.product) || "";
+      document.getElementById("description").value = shopDescriptionFromRow(row);
       const dims = (row && row.catalog_dimensions) || {};
       const blankPlaceholder = !!(row && !isStandardType(row.type));
       setDimField("dimHeight", dims.height, blankPlaceholder);
@@ -370,6 +410,11 @@
         setErr("Enter the actual Height, Width, Depth, or Diameter in millimetres. Catalog placeholders such as 1 × 1 × 1 are not accepted.");
         return;
       }
+      const description = String(document.getElementById("description").value || "").trim();
+      if (!description || isTypeOnlyDescription(description)) {
+        setErr("Type the detailed description. Do not put Standard, Custom, or New Design in that box — those belong in Design type.");
+        return;
+      }
       const btn = document.getElementById("generateBtn");
       btn.disabled = true;
       btn.textContent = "Generating…";
@@ -382,7 +427,8 @@
             width: document.getElementById("dimWidth").value,
             depth: document.getElementById("dimDepth").value,
             diameter: document.getElementById("dimDiameter").value
-          }
+          },
+          description: description
         };
         if (!isStandardType(row.type)) payload.dimension_check = check;
         const r = await sdOfficeFetch("/api/office/job-cards", {
@@ -484,6 +530,8 @@
       renderCutting();
       fillOrder(selected());
     };
+    document.getElementById("markImportantBtn").onclick = markSelectedImportant;
+    document.getElementById("description").oninput = () => { syncGenerateReady(); persistJobCardDraft(); };
     document.getElementById("parseBtn").onclick = parseList;
     document.getElementById("generateBtn").onclick = generate;
     document.getElementById("printedQ").oninput = renderPrinted;
