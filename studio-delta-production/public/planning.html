@@ -99,7 +99,7 @@
   <div class="layout">
     <aside class="queue">
       <h2>Orders to schedule</h2>
-      <p class="help">Not Yet Started and Ready for Steelwork. Assign people for each task except grinding. Hours come from Task times. After the selected orders’ other work is placed, grinding is given to whoever has an open slot among people ticked for grinding plus profile cutting, tagging, or welding on Users.</p>
+      <p class="help">Not Yet Started and Ready for Steelwork. Assign people for each task except grinding. After those jobs are placed, grinding goes to the eligible person with the most open time — someone who would otherwise sit idle. It does not squeeze between their other tasks. Eligible people are ticked for grinding plus profile cutting, tagging, or welding on Users.</p>
       <input type="search" id="q" placeholder="Search order, product, status">
       <div class="actions" style="margin:0 0 12px">
         <button type="button" id="scheduleSelected">Schedule selected</button>
@@ -249,7 +249,7 @@
             const end = dateOf(b.end);
             if (b.kind === "paint") return start <= d.iso && end > d.iso;
             return start <= d.iso && end >= d.iso && !(end === d.iso && hhmm(b.end) === "00:00");
-          }).map((b) => {
+          }).sort((a, b) => String(a.start).localeCompare(String(b.start))).map((b) => {
             const c = color(b.process);
             return "<div class='chip' style='background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" +
               "<b>" + esc(b.studioNo) + "</b><small>" + esc(b.process) + " · " + esc(hhmm(b.start)) + "–" + esc(hhmm(b.end)) + "</small></div>";

@@ -106,9 +106,11 @@ assert.strictEqual(weekend.segments[1].end, "2026-09-14T09:00:00+02:00");
 const busy = [{ start: "2026-09-08T08:00:00+02:00", end: "2026-09-08T10:00:00+02:00" }];
 const queued = plan.placeTask(plan.sastMs(2026, 9, 8, 7, 45), 60, busy);
 assert.strictEqual(queued.segments[0].start, "2026-09-08T07:45:00+02:00");
-assert.strictEqual(queued.segments[0].end, "2026-09-08T08:00:00+02:00");
 assert.strictEqual(queued.segments[1].start, "2026-09-08T10:00:00+02:00");
-assert.strictEqual(queued.segments[1].end, "2026-09-08T10:45:00+02:00");
+const hole = plan.placeContiguousTask(plan.sastMs(2026, 9, 8, 7, 45), 60, busy);
+assert.strictEqual(hole.segments.length, 1, "grinding waits for a real idle hole, not 15 minutes before the next job");
+assert.strictEqual(hole.segments[0].start, "2026-09-08T10:00:00+02:00");
+assert.strictEqual(hole.segments[0].end, "2026-09-08T11:00:00+02:00");
 
 const sat = plan.nextWorkInstant(plan.sastMs(2026, 9, 12, 10, 0));
 assert.strictEqual(plan.isoFromMs(sat), "2026-09-14T07:45:00+02:00");
@@ -311,6 +313,13 @@ assert.ok(removed.removed > 0);
 assert.ok(!plan.load().blocks.some((b) => b.orderId === "S260100 A"));
 
 staff.upsertUser({
+  name: "Sipho",
+  access: "Production",
+  role: "Tagger",
+  password: "1234",
+  tasks: ["Tagging", "Grinding"]
+});
+staff.upsertUser({
   name: "Sam",
   access: "Production",
   role: "Metal",
@@ -332,7 +341,8 @@ const weldAEnd = batch.blocks.filter((b) => b.orderId === "S260100 A" && b.proce
 const weldB = batch.blocks.filter((b) => b.orderId === "S260100 B" && b.process === "Welding");
 assert.ok(grindA.length, "batch still auto-places grinding");
 assert.ok(grindA[0].start >= weldAEnd, "grind waits for that order's welding");
-assert.strictEqual(grindA[0].workerName, "Sam", "grinding fills Sam's open slot while Thabo is still welding the next order");
+assert.strictEqual(grindA[0].workerName, "Sam", "idle Sam gets grinding, not the tagger who already has work");
+assert.ok(!batch.blocks.some((b) => b.process === "Grinding" && b.workerName === "Sipho"), "do not pile grinding onto a busy tagger");
 assert.ok(grindB.length);
 assert.ok(["Sam", "Thabo"].indexOf(grindB[0].workerName) !== -1);
 assert.ok(!batch.blocks.some((b) => b.process === "Grinding" && b.workerName === "Nomsa"));

@@ -501,6 +501,96 @@ function placeProcess(order, process, fromMs, workerName, busyBlocks) {
   return { endMs: toMs(placed.end), blocks };
 }
 
+function workerBusyMinutes(blocks, workerId) {
+  return busyForWorker(blocks, workerId).reduce((n, b) => {
+    return n + minutesBetween(toMs(b.start), toMs(b.end));
+  }, 0);
+}
+
+function fillContiguous(startMs, minutes, busyList) {
+  let cursor = startMs;
+  let left = minutes;
+  const segments = [];
+  let guard = 0;
+  while (left > 0 && guard++ < 5000) {
+    const win = currentOrNextWindow(cursor);
+    if (!win) return null;
+    if (cursor < win.start) cursor = win.start;
+    if (cursor >= win.end) {
+      cursor = nextWorkInstant(win.end);
+      continue;
+    }
+    let availEnd = win.end;
+    for (let i = 0; i < busyList.length; i++) {
+      const b = busyList[i];
+      if (b.end <= cursor) continue;
+      if (b.start >= win.end) break;
+      if (b.start <= cursor && b.end > cursor) return null;
+      if (b.start > cursor && b.start < availEnd) {
+        availEnd = b.start;
+        break;
+      }
+    }
+    const availMin = minutesBetween(cursor, availEnd);
+    if (availMin <= 0) return null;
+    if (availEnd < win.end && availMin < left) return null;
+    const take = Math.min(left, availMin);
+    const end = cursor + take * 60000;
+    segments.push({ start: isoFromMs(cursor), end: isoFromMs(end) });
+    left -= take;
+    cursor = end;
+  }
+  if (left > 0 || !segments.length) return null;
+  return {
+    segments,
+    start: segments[0].start,
+    end: segments[segments.length - 1].end
+  };
+}
+
+function placeContiguousTask(fromMs, durationMinutes, busy) {
+  const minutes = Math.max(0, Math.round(Number(durationMinutes) || 0));
+  if (!(minutes > 0)) return { segments: [], start: null, end: null };
+  const busyList = normalizeBusy(busy);
+  let cursor = ceilToMinute(nextWorkInstant(fromMs));
+  let guard = 0;
+  while (guard++ < 5000) {
+    const win = currentOrNextWindow(cursor);
+    if (!win) break;
+    if (cursor < win.start) cursor = win.start;
+    if (cursor >= win.end) {
+      cursor = nextWorkInstant(win.end);
+      continue;
+    }
+    let skipTo = null;
+    for (let i = 0; i < busyList.length; i++) {
+      const b = busyList[i];
+      if (b.end <= cursor) continue;
+      if (b.start >= win.end) break;
+      if (b.start <= cursor && b.end > cursor) {
+        skipTo = b.end;
+        break;
+      }
+    }
+    if (skipTo != null) {
+      cursor = ceilToMinute(nextWorkInstant(skipTo));
+      continue;
+    }
+    const attempt = fillContiguous(cursor, minutes, busyList);
+    if (attempt) return attempt;
+    let blocker = null;
+    for (let i = 0; i < busyList.length; i++) {
+      const b = busyList[i];
+      if (b.end <= cursor) continue;
+      blocker = b;
+      break;
+    }
+    if (!blocker) break;
+    cursor = ceilToMinute(nextWorkInstant(blocker.end));
+  }
+  return { segments: [], start: null, end: null };
+}
+
 function grindingPool(users) {
   return (users || staff.listUsers())
     .filter((u) => {
@@ -520,18 +610,30 @@ function placeGrindingOnOpenSlot(order, minutes, fromMs, busy, users) {
   }
   let best = null;
   pool.forEach((user) => {
-    const placed = placeTask(fromMs, minutes, busyForWorker(busy, user.name));
+    const theirs = busyForWorker(busy, user.name);
+    const contiguous = placeContiguousTask(fromMs, minutes, theirs);
+    const placed = contiguous.segments.length ? contiguous : placeTask(fromMs, minutes, theirs);
     if (!placed.segments.length || !placed.start) return;
-    if (
-      !best
-      || placed.start < best.placed.start
-      || (placed.start === best.placed.start && (
-        placed.end < best.placed.end
-        || (placed.end === best.placed.end && String(user.name) < String(best.user.name))
-      ))
-    ) {
-      best = { user, placed };
+    const load = workerBusyMinutes(busy, user.name);
+    const split = !contiguous.segments.length;
+    const candidate = { user, placed, load, split };
+    if (!best) {
+      best = candidate;
+      return;
     }
+    if (candidate.split !== best.split) {
+      if (!candidate.split) best = candidate;
+      return;
+    }
+    if (candidate.load !== best.load) {
+      if (candidate.load < best.load) best = candidate;
+      return;
+    }
+    if (candidate.placed.start !== best.placed.start) {
+      if (candidate.placed.start < best.placed.start) best = candidate;
+      return;
+    }
+    if (String(user.name) < String(best.user.name)) best = candidate;
   });
   if (!best) throw new Error("Could not place Grinding for " + order.order_number + ".");
   const blocks = best.placed.segments.map((seg) => ({
@@ -795,6 +897,7 @@ module.exports = {
   nextWorkInstant,
   ceilToMinute,
   placeTask,
+  placeContiguousTask,
   addWorkMinutes,
   earliestPaintMonday,
   weekMondayIso,
