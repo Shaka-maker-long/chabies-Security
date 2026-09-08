@@ -60,6 +60,7 @@ const pages = [
   "public/orders-schedule.html",
   "public/orders-delivery.html",
   "public/job-card.html",
+  "public/job-card-existing.html",
   "public/dropdowns.html",
   "public/debtors.html",
   "public/users.html",

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Studio Delta — Job card</title>
+  <title>Studio Delta — Generate job card</title>
   <script src="/sd-pwa.js?v=pwa"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <style>
@@ -73,8 +73,12 @@
         <a href="/orders/to-order">To order</a>
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
-      <h1>Job cards</h1>
-      <p class="lede">Every generated card stays here so you can open and print it. Use the form below to make a first card or fix one that is still Ready for Steelwork or Profile Cutting.</p>
+      <nav class="tabs" aria-label="Job card" style="margin-top:8px">
+        <a class="on" href="/orders/job-card">Generate job card</a>
+        <a href="/orders/job-card/existing">Existing job cards</a>
+      </nav>
+      <h1>Generate job card</h1>
+      <p class="lede">Make a first card, or fix one that is still Ready for Steelwork or Profile Cutting. Existing PDFs are on the other tab so this form has the full page.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -82,16 +86,7 @@
   </header>
   <div class="page">
     <div class="card">
-      <h2>Printed job cards</h2>
-      <p class="hint">Open the PDF to print. Search by order number, customer, or product.</p>
-      <div class="list-tools">
-        <input type="search" id="printedQ" placeholder="Search printed cards">
-        <span class="hint" id="printedCount" style="margin:0"></span>
-      </div>
-      <div id="printedWrap"></div>
-    </div>
-    <div class="card">
-      <h2>Generate a job card</h2>
+      <h2>Order and shop details</h2>
       <p class="hint" id="emptyHint">Only Not Yet Started orders appear for a first card. Ready for Steelwork and Profile Cutting stay on this list so you can fix a mistake.</p>
       <p class="hint" id="jobCardDraftHint">Cutting list and dimension answers stay on this device if you leave this page. Generate clears them.</p>
       <div class="hero">
@@ -165,13 +160,13 @@
       <div class="tools" style="margin:0; justify-content:flex-start">
         <button type="button" id="generateBtn" disabled>Generate job card</button>
         <a id="pdfLink" class="tabs" href="#" hidden style="padding:8px 12px; border:1px solid #1d2939">Open PDF</a>
+        <a id="existingLink" href="/orders/job-card/existing" hidden style="padding:8px 12px; border:1px solid #1d2939; border-radius:6px; font-size:13px; font-weight:600; color:#1d2939; text-decoration:none">Existing job cards</a>
       </div>
     </div>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
     let eligible = [];
-    let printed = [];
     let current = null;
     let cutting = { bars: [], plates: [], tubes: [], wood: [] };
 
@@ -520,13 +515,13 @@
         if (!j.ok) { setErr(j.error || "Could not generate"); return; }
         if (typeof sdDropFormDraft === "function") sdDropFormDraft("job-card", row.order_number);
         jobCardDraftOrder = "";
-        setOk("Job card saved. Status is now " + (j.status || "") + ". It is on the printed list above.");
+        setOk("Job card saved. Status is now " + (j.status || "") + ". Open the PDF, or find it on Existing job cards.");
         const link = document.getElementById("pdfLink");
         link.href = j.pdf_url;
         link.hidden = false;
+        document.getElementById("existingLink").hidden = false;
         window.open(j.pdf_url, "_blank");
         await load();
-        await loadPrinted();
         document.getElementById("orderNumber").value = row.order_number;
         fillOrder(selected());
       } catch (e) {
@@ -535,50 +530,6 @@
         btn.textContent = "Generate job card";
         syncGenerateReady();
       }
-    }
-
-    function renderPrinted() {
-      const q = document.getElementById("printedQ").value.toLowerCase().trim();
-      const rows = printed.filter((row) => {
-        if (!q) return true;
-        return [row.order_number, row.customer, row.product, row.status, row.province, row.colour, row.created_date]
-          .join(" ").toLowerCase().indexOf(q) !== -1;
-      });
-      document.getElementById("printedCount").textContent = rows.length
-        ? rows.length + " of " + printed.length + " cards"
-        : (printed.length ? "No cards match that search." : "No job cards generated yet.");
-      if (!rows.length) {
-        document.getElementById("printedWrap").innerHTML = "<p class=\"hint empty\">" +
-          (printed.length ? "No cards match that search." : "No printed job cards yet. Generate one below.") + "</p>";
-        return;
-      }
-      let html = "<table id=\"printedTable\"><thead><tr>" +
-        "<th>Order</th><th>Customer</th><th>Product</th><th>Generated</th><th>Status</th><th></th>" +
-        "</tr></thead><tbody>";
-      rows.forEach((row) => {
-        html += "<tr>" +
-          "<td>" + esc(row.order_number) + "</td>" +
-          "<td>" + esc(row.customer) + "</td>" +
-          "<td class=\"prod\">" + esc(row.product) + "</td>" +
-          "<td>" + esc(row.created_date) + "</td>" +
-          "<td>" + esc(row.status) + "</td>" +
-          "<td><div class=\"row-actions\">" +
-          (row.has_pdf ? "<a class=\"primary\" href=\"" + esc(row.pdf_url) + "\" target=\"_blank\" rel=\"noopener\">Open / print</a>" : "") +
-          (row.has_pdf ? "<a href=\"" + esc(row.download_url) + "\">Download</a>" : "") +
-          "</div></td></tr>";
-      });
-      document.getElementById("printedWrap").innerHTML = html + "</tbody></table>";
-    }
-
-    async function loadPrinted() {
-      const r = await sdOfficeFetch("/api/office/job-cards");
-      const j = await r.json();
-      if (!j.ok) {
-        document.getElementById("printedWrap").innerHTML = "<p class=\"err\">" + esc(j.error || "Could not load printed cards") + "</p>";
-        return;
-      }
-      printed = j.rows || [];
-      renderPrinted();
     }
 
     async function load() {
@@ -606,6 +557,7 @@
       setErr("");
       setOk("");
       document.getElementById("pdfLink").hidden = true;
+      document.getElementById("existingLink").hidden = true;
       document.getElementById("pasted").value = "";
       cutting = { bars: [], plates: [], tubes: [], wood: [] };
       renderCutting();
@@ -615,7 +567,6 @@
     document.getElementById("description").oninput = () => { syncGenerateReady(); persistJobCardDraft(); };
     document.getElementById("parseBtn").onclick = parseList;
     document.getElementById("generateBtn").onclick = generate;
-    document.getElementById("printedQ").oninput = renderPrinted;
     document.getElementById("pasted").oninput = () => { persistJobCardDraft(); syncSuggestedCutting(); };
     ["dimHeight", "dimWidth", "dimDepth", "dimDiameter"].forEach((id) => {
       document.getElementById(id).oninput = () => { syncGenerateReady(); persistJobCardDraft(); };
@@ -625,7 +576,7 @@
     });
     window.addEventListener("pagehide", persistJobCardDraft);
 
-    sdRequireOffice("orders").then(() => Promise.all([load(), loadPrinted()]));
+    sdRequireOffice("orders").then(() => load());
   </script>
 </body>
 </html>
