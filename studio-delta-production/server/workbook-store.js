@@ -31,7 +31,8 @@ const SEED_TABS = {
   Glass_Types: [["Name"], ["Reeded"], ["Clear"], ["Ocean view"]],
   Wood_Types: [["Name"]],
   Glass_To_Order: [["ID", "Timestamp", "Order #", "Worker", "Component", "Glass type", "Thickness", "Height", "Width", "Quantity", "Status"]],
-  Wood_To_Order: [["ID", "Timestamp", "Order #", "Worker", "Component", "Wood type", "Thickness", "Height", "Width", "Quantity", "Status"]]
+  Wood_To_Order: [["ID", "Timestamp", "Order #", "Worker", "Component", "Wood type", "Thickness", "Height", "Width", "Quantity", "Status"]],
+  Standard_Glass: [["Product", "No Glass", "Spec JSON", "From Order", "Updated"]]
 };
 
 function onRailway() {

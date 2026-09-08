@@ -445,6 +445,8 @@ assert.ok(paintShopHtml.indexOf("Put the paint shop cost") !== -1);
 assert.ok(paintShopHtml.indexOf("invoice") !== -1);
 assert.ok(floor.indexOf("glassOrderSection") !== -1);
 assert.ok(floor.indexOf("Add another glass") !== -1);
+assert.ok(floor.indexOf("This order has no glass") !== -1);
+assert.ok(floor.indexOf("Use existing glass specification") !== -1);
 assert.ok(floor.indexOf("woodRequired") !== -1);
 assert.ok(floor.indexOf("openStationWork") !== -1, "tapping your station opens that task board");
 assert.ok(floor.indexOf("myTaskStops") !== -1, "workers pick the task they are doing");
