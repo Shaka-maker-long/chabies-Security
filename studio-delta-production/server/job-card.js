@@ -140,6 +140,11 @@ function saveRecords(map) {
   fs.renameSync(tmp, recordsPath());
 }
 
+function deleteAllJobCards() {
+  saveRecords({});
+  try { fs.rmSync(path.join(dataDir(), "job-cards"), { recursive: true, force: true }); } catch (e) {}
+}
+
 function getJobCard(orderNumber) {
   const key = formatOrderId(orderNumber);
   return loadRecords()[key] || null;
@@ -632,6 +637,7 @@ module.exports = {
   listEligibleOrders,
   listGeneratedJobCards,
   getJobCard,
+  deleteAllJobCards,
   generateJobCard,
   readJobCardPdf,
   normalizeDimensions,

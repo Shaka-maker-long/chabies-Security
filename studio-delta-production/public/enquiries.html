@@ -139,7 +139,6 @@
       <input type="search" id="q" placeholder="Search enquiries">
       <button class="ghost" onclick="openCapture()">New enquiry</button>
       <button class="ghost" type="button" onclick="openOnboard()">Add existing enquiry</button>
-      <button class="danger" type="button" id="clearAllBtn" style="display:none" onclick="openClearAll()">Clear all enquiries</button>
       <button class="ghost" type="button" onclick="downloadCsv()">Download CSV</button>
     </div>
   </header>
@@ -521,24 +520,6 @@
       </div>
     </div>
   </div>
-  <div class="mask" id="clearMask">
-    <div class="sheet" role="dialog" aria-modal="true" style="width:min(480px,96vw)">
-      <header>
-        <h1>Clear all enquiries</h1>
-        <div class="tools">
-          <button class="ghost" type="button" onclick="closeClearAll()">Cancel</button>
-          <button class="danger" type="button" onclick="confirmClearAll()">Delete every enquiry</button>
-        </div>
-      </header>
-      <div class="body stack-form">
-        <p class="hint">This removes every enquiry and its files from this system. Orders are not deleted. Type <b>CLEAR</b> to confirm.</p>
-        <label>Type CLEAR
-          <input id="clearConfirm" autocomplete="off">
-        </label>
-        <div class="err" id="clearErr"></div>
-      </div>
-    </div>
-  </div>
   <div class="mask" id="viewMask">
     <div class="sheet view-sheet" role="dialog" aria-modal="true" aria-labelledby="viewTitle">
       <header>
@@ -590,7 +571,6 @@
     let nextNo = "#1996";
     let vatRate = 0.15;
     let me = "";
-    let canManage = false;
     let assignees = [];
     let enquiryRoles = {};
     const ONBOARD_STATUSES = [
@@ -2677,28 +2657,6 @@
         setSaveBusy("onboard", false);
       }
     }
-    function openClearAll() {
-      document.getElementById("clearConfirm").value = "";
-      document.getElementById("clearErr").textContent = "";
-      document.getElementById("clearMask").classList.add("open");
-      document.getElementById("clearConfirm").focus();
-    }
-    function closeClearAll() {
-      document.getElementById("clearMask").classList.remove("open");
-    }
-    async function confirmClearAll() {
-      const err = document.getElementById("clearErr");
-      err.textContent = "";
-      const r = await sdOfficeFetch("/api/office/enquiries/clear-all", {
-        method: "POST",
-        body: JSON.stringify({ confirm: document.getElementById("clearConfirm").value })
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!j.ok) { err.textContent = j.error || "Could not clear enquiries"; return; }
-      closeClearAll();
-      await load();
-      document.getElementById("status").textContent = "Cleared " + (j.removed || 0) + " enquiries. Orders were not deleted.";
-    }
     window.openOnboard = openOnboard;
     window.closeOnboard = closeOnboard;
     window.saveOnboard = saveOnboard;
@@ -2724,9 +2682,6 @@
       showTakenEnquiry(normalizeTypedEnquiryNo(document.getElementById("ob_enquiry_no").value));
     };
     window.addOnboardLine = addOnboardLine;
-    window.openClearAll = openClearAll;
-    window.closeClearAll = closeClearAll;
-    window.confirmClearAll = confirmClearAll;
     async function load() {
       const r = await sdOfficeFetch("/api/office/enquiries");
       const j = await r.json();
@@ -2744,9 +2699,6 @@
       nextNo = j.nextEnquiryNo || "#1996";
       assignees = j.assignees || [];
       enquiryRoles = j.enquiryRoles || {};
-      if (j.canManageUsers != null) canManage = !!j.canManageUsers;
-      const clearBtn = document.getElementById("clearAllBtn");
-      if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       document.getElementById("status").textContent = rows.length + " enquiries · next " + nextNo;
       fillSheetFilters();
       render();
@@ -2767,9 +2719,6 @@
     sdRequireOffice("enquiries").then((p) => {
       if (!p) return;
       me = p.name || "";
-      canManage = !!p.canManageUsers;
-      const clearBtn = document.getElementById("clearAllBtn");
-      if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       load();
     });
   </script>

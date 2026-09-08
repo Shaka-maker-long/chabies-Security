@@ -242,6 +242,15 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
   assert.ok(/Height:\s*1500mm/.test(newDesignOrder.dimensions));
   assert.ok(/Width:\s*600mm/.test(newDesignOrder.dimensions));
 
+  const beforeClear = db.listOrders().length;
+  assert.ok(beforeClear >= 1);
+  assert.ok(jobCard.getJobCard("S260211"));
+  const wipedOrders = db.deleteAllOrders();
+  assert.ok(wipedOrders >= 1);
+  assert.strictEqual(db.listOrders().length, 0);
+  jobCard.deleteAllJobCards();
+  assert.ok(!jobCard.getJobCard("S260211"));
+
   console.log("job-card.test.js ok");
 })().catch((e) => {
   console.error(e);
