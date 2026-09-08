@@ -50,6 +50,8 @@
     .mode.regen { background:#ecfdf3; color:#067647; }
     .card.needs-confirm { border-color:#f79009; box-shadow:0 0 0 3px rgba(247,144,9,.15); }
     .confirm { background:#fff7ed; border:1px solid #f79009; }
+    .suggest { background:#ecfdf3; border:1px solid #abefc6; border-radius:8px; padding:12px; margin:0 0 12px; }
+    .suggest p { margin:0 0 10px; color:#067647; font-size:13px; font-weight:600; }
     .choices { display:flex; flex-direction:column; gap:8px; }
     .choices label { flex-direction:row; align-items:flex-start; gap:10px; font-weight:500; font-size:13px; }
     .choices input { width:auto; margin-top:3px; }
@@ -146,6 +148,10 @@
     <div class="card">
       <h2>Paste cutting list from Excel</h2>
       <p class="hint">First column is the material name (for example 13mm SQ Square Tube), second is the description (Width). Then length or height, width, quantity, and cut angle.</p>
+      <div id="suggestWrap" class="suggest" hidden>
+        <p id="suggestCopy"></p>
+        <button type="button" class="ghost" id="useSuggestedCutting">Use this cutting list</button>
+      </div>
       <textarea id="pasted" placeholder="13mm SQ Square Tube	Width	600		2	2
 13mm SQ Square Tube	Height	600		4	2
 1.6mm Plate	Top (Bend)	587	401	1	0"></textarea>
@@ -199,6 +205,37 @@
         tableHtml("Tubes", cutting.tubes, [["description","Description"],["name","Name"],["length","Length (mm)"],["quantity","Qty"],["cutAngle45","Cut angle 45"]]) +
         tableHtml("Plates", cutting.plates, [["description","Description"],["name","Name"],["height","Height (mm)"],["width","Width (mm)"],["quantity","Qty"]]) +
         tableHtml("Wood", cutting.wood, [["description","Description"],["name","Name"],["height","Height (mm)"],["width","Width (mm)"],["quantity","Qty"]]);
+    }
+
+    function cuttingIsEmpty() {
+      const total = (cutting.bars.length + cutting.plates.length + cutting.tubes.length + cutting.wood.length);
+      return !total && !String(document.getElementById("pasted").value || "").trim();
+    }
+    function syncSuggestedCutting() {
+      const wrap = document.getElementById("suggestWrap");
+      const copy = document.getElementById("suggestCopy");
+      const row = current;
+      const s = row && row.suggested_cutting;
+      if (!wrap) return;
+      if (!s || !s.paste_text || !cuttingIsEmpty()) {
+        wrap.hidden = true;
+        return;
+      }
+      copy.textContent = s.same_split
+        ? s.from_order_number + " is the same product and description. Use that cutting list?"
+        : "Order " + s.from_order_number + " is the same product and description. Use that cutting list?";
+      wrap.hidden = false;
+    }
+    function useSuggestedCutting() {
+      const s = current && current.suggested_cutting;
+      if (!s) return;
+      document.getElementById("pasted").value = s.paste_text || "";
+      cutting = JSON.parse(JSON.stringify(s.cutting || { bars: [], plates: [], tubes: [], wood: [] }));
+      renderCutting();
+      persistJobCardDraft();
+      syncSuggestedCutting();
+      setErr("");
+      setOk("Copied the cutting list from " + s.from_order_number + ". Generate when you are ready — this does not change that order.");
     }
 
     function isStandardType(type) {
@@ -370,6 +407,7 @@
         hint.textContent = "";
         jobCardDraftOrder = "";
         syncDimCheck();
+        syncSuggestedCutting();
         return;
       }
       hint.innerHTML = row.mode === "regenerate"
@@ -377,6 +415,7 @@
         : "<span class=\"mode\">First card</span> Generating will move this order to Ready for Steelwork.";
       syncDimCheck();
       applyJobCardDraft(row.order_number);
+      syncSuggestedCutting();
     }
 
     function selected() {
@@ -393,6 +432,7 @@
       cutting = j.cutting || { bars: [], plates: [], tubes: [], wood: [] };
       renderCutting();
       persistJobCardDraft();
+      syncSuggestedCutting();
       if (!j.count) setErr("No valid cutting-list rows. Check tabs and quantities.");
     }
 
@@ -533,9 +573,10 @@
     document.getElementById("markImportantBtn").onclick = markSelectedImportant;
     document.getElementById("description").oninput = () => { syncGenerateReady(); persistJobCardDraft(); };
     document.getElementById("parseBtn").onclick = parseList;
+    document.getElementById("useSuggestedCutting").onclick = useSuggestedCutting;
     document.getElementById("generateBtn").onclick = generate;
     document.getElementById("printedQ").oninput = renderPrinted;
-    document.getElementById("pasted").oninput = persistJobCardDraft;
+    document.getElementById("pasted").oninput = () => { persistJobCardDraft(); syncSuggestedCutting(); };
     ["dimHeight", "dimWidth", "dimDepth", "dimDiameter"].forEach((id) => {
       document.getElementById(id).oninput = () => { syncGenerateReady(); persistJobCardDraft(); };
     });
