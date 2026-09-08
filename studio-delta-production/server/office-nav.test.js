@@ -397,6 +397,8 @@ assert.ok(floor.indexOf("woodRequired") !== -1);
 assert.ok(floor.indexOf("openStationWork") !== -1, "tapping your station opens that task board");
 assert.ok(floor.indexOf("myTaskStops") !== -1, "workers pick the task they are doing");
 assert.ok(floor.indexOf("What are you doing now?") !== -1);
+assert.ok(floor.indexOf("start-product-shot") !== -1, "start confirm shows the product image");
+assert.ok(floor.indexOf("productShotHtml") !== -1, "floor cards show the product image");
 assert.ok(floor.indexOf("hasFloorTask('Paint Preparation')") !== -1, "Ready for Assembly can go to paint prep");
 assert.ok(floor.indexOf("hasFloorTask('Assembly')") !== -1, "Ready for Assembly can go to assembly");
 assert.ok(floor.indexOf("START PAINT PREP") === -1, "painting is not a start choice on Ready for Assembly");
