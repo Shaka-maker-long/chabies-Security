@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Planning</title>
-  <script src="/sd-pwa.js?v=pwa"></script>
+  <script src="/sd-pwa.js?v=pwa2"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <style>
     :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --hour:52px; --gutter:56px; }
@@ -19,19 +20,21 @@
     button.ghost { background:#fff; color:#1d2939; }
     button:disabled { opacity:.45; cursor:not-allowed; }
     .tabs { display:flex; gap:4px; }
-    .tabs button { padding:7px 12px; font-size:13px; }
-    .tabs button.on { background:#1d2939; color:#fff; }
+    .tabs a { padding:7px 12px; font-size:13px; font-weight:600; color:#344054; text-decoration:none; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
     .week-tools, .people-tools { display:none; align-items:center; gap:8px; flex-wrap:wrap; }
     body[data-view="journey"] .week-tools,
     body[data-view="people"] .week-tools,
     body[data-view="people"] .people-tools { display:flex; }
+    body.office-app .people-tools label,
+    body.office-app .week-tools strong { color:#c4bdb3; }
     select { border:1px solid var(--line); border-radius:6px; padding:7px 10px; font:inherit; background:#fff; }
-    .layout { min-height:calc(100vh - 58px); }
-    .queue { display:none; padding:16px; max-width:820px; }
-    body[data-view="planning"] .queue { display:block; }
-    .board { display:none; padding:14px 16px 40px; overflow:auto; min-width:0; }
+    .layout { min-height:calc(100vh - 58px); display:block; }
+    .queue { display:none !important; padding:16px; max-width:820px; }
+    body[data-view="planning"] .queue { display:block !important; }
+    .board { display:none !important; padding:14px 16px 40px; overflow:auto; min-width:0; }
     body[data-view="journey"] .board,
-    body[data-view="people"] .board { display:block; }
+    body[data-view="people"] .board { display:block !important; }
     .queue h2 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
     .help { font-size:13px; color:var(--muted); margin:0 0 12px; line-height:1.45; }
     input[type=search] { width:100%; max-width:420px; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; margin:0 0 12px; }
@@ -106,9 +109,9 @@
   <header>
     <h1>Planning</h1>
     <nav class="tabs" aria-label="Planning views">
-      <button type="button" class="ghost on" id="tabPlanning" data-tab="planning">Planning</button>
-      <button type="button" class="ghost" id="tabJourney" data-tab="journey">Journey</button>
-      <button type="button" class="ghost" id="tabPeople" data-tab="people">People</button>
+      <a href="#planning" class="on" id="tabPlanning" data-tab="planning">Planning</a>
+      <a href="#journey" id="tabJourney" data-tab="journey">Journey</a>
+      <a href="#people" id="tabPeople" data-tab="people">People</a>
     </nav>
     <span class="msg" id="status">Assign work, then open Journey or People.</span>
     <div class="tools">
@@ -140,7 +143,7 @@
       <div id="calendars"></div>
     </main>
   </div>
-  <script src="/office-auth.js?v=plain-copy"></script>
+  <script src="/office-auth.js?v=planning-tabs"></script>
   <script>
     const DAY_START = 7 * 60 + 45;
     const DAY_SPAN = 8 * 60;
@@ -205,13 +208,21 @@
     function peopleList() {
       return ((board && board.workers) || []).concat([board && board.paintShop].filter(Boolean));
     }
-    function setView(next) {
+    function viewFromHash() {
+      const h = String(location.hash || "").replace(/^#/, "");
+      if (h === "people" || h === "journey" || h === "planning") return h;
+      return "planning";
+    }
+    function setView(next, syncHash) {
       view = next === "people" || next === "journey" ? next : "planning";
       if (view !== "journey") openJourneyId = "";
       document.body.setAttribute("data-view", view);
       document.getElementById("tabPlanning").classList.toggle("on", view === "planning");
       document.getElementById("tabJourney").classList.toggle("on", view === "journey");
       document.getElementById("tabPeople").classList.toggle("on", view === "people");
+      if (syncHash !== false && location.hash !== "#" + view) {
+        location.hash = view;
+      }
       renderBoard();
     }
     function renderLegend() {
@@ -480,9 +491,13 @@
       await load(week);
       setStatus("Removed " + id + " from the calendars.");
     }
-    document.getElementById("tabPlanning").onclick = () => setView("planning");
-    document.getElementById("tabJourney").onclick = () => setView("journey");
-    document.getElementById("tabPeople").onclick = () => setView("people");
+    window.addEventListener("hashchange", () => setView(viewFromHash(), false));
+    document.querySelector(".tabs").addEventListener("click", (e) => {
+      const tab = e.target.closest("[data-tab]");
+      if (!tab) return;
+      e.preventDefault();
+      setView(tab.getAttribute("data-tab"));
+    });
     document.getElementById("scheduleSelected").onclick = () => {
       const ids = Object.keys(picked).filter((id) => picked[id]);
       scheduleIds(ids);
@@ -536,7 +551,7 @@
         art.classList.toggle("open");
       }
     });
-    sdRequireOffice("planning").then((p) => { if (p) load(); });
+    sdRequireOffice("planning").then((p) => { if (p) load().then(() => setView(viewFromHash(), false)); });
   </script>
 </body>
 </html>

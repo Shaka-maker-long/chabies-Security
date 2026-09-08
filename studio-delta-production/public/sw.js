@@ -1,5 +1,5 @@
 /* Studio Delta PWA — live office/floor data is never cached. */
-const CACHE = "sd-pwa-v1";
+const CACHE = "sd-pwa-v2";
 const PRECACHE = [
   "/",
   "/offline.html",
