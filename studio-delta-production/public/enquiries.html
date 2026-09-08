@@ -100,6 +100,9 @@
     .onboard-file iframe { width:100%; height:220px; border:1px solid var(--line); border-radius:6px; background:#fff; }
     .capture-correspondence { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#f8fafc; }
     .capture-correspondence .hint { margin:6px 0 0; }
+    .corr-links { display:flex; flex-direction:column; gap:10px; }
+    .corr-link-row textarea.corr-link { min-height:56px; }
+    .corr-links:has([data-corr-row]:only-child) [data-remove-corr] { display:none; }
     #cap_enquiry_no, #ob_enquiry_no { background:#fff; cursor:text; }
     #cap_enquiry_no.enq-no-locked { background:#f2f4f7; color:#475467; cursor:default; }
     #capEnquiryNoHint { display:block; font-weight:400; color:#344054; }
@@ -340,10 +343,9 @@
           <textarea id="cap_comment" placeholder="Anything costing should know"></textarea>
         </label>
         <div id="captureCorrespondence" class="capture-correspondence">
-          <label>Correspondance link *
-            <textarea id="cap_correspondence" rows="3" placeholder="Paste the file link or path" autocomplete="off"></textarea>
-          </label>
-          <p class="hint">Required before Costing.</p>
+          <div class="corr-links" data-corr-links="capture"></div>
+          <button type="button" class="ghost" data-add-corr="capture">Add another Correspondance link</button>
+          <p class="hint">Required before Costing. You can save more than one.</p>
         </div>
         <div class="enq-dup" id="captureDup" hidden></div>
         <div class="form-foot">
@@ -439,9 +441,9 @@
           <textarea id="ob_comment"></textarea>
         </label>
         <div id="obPaneCorrespondence" class="onboard-pane capture-correspondence">
-          <label>Correspondance link *
-            <textarea id="ob_correspondence" rows="3" placeholder="Paste the file link or path" autocomplete="off"></textarea>
-          </label>
+          <div class="corr-links" data-corr-links="onboard"></div>
+          <button type="button" class="ghost" data-add-corr="onboard">Add another Correspondance link</button>
+          <p class="hint">Required before Costing. You can save more than one.</p>
         </div>
         <div id="obPaneChase" class="onboard-pane">
           <label>Who is chasing this?
@@ -550,7 +552,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
-  <script src="/enquiry-process.js?v=quote-options-form"></script>
+  <script src="/enquiry-process.js?v=corr-links"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 108, true],
@@ -1724,6 +1726,57 @@
       document.getElementById("captureDesignBlock").style.display = type === "New Design" ? "" : "none";
       if (type === "Custom") renderCaptureSpecs();
     }
+    function correspondenceBox(which) {
+      return document.querySelector('[data-corr-links="' + which + '"]');
+    }
+    function correspondenceLinkRowHtml(value, id) {
+      return "<div class=\"corr-link-row\" data-corr-row>" +
+        "<label>Correspondance link *" +
+        "<textarea" + (id ? " id=\"" + id + "\"" : "") + " class=\"corr-link\" rows=\"2\" placeholder=\"Paste the file link or path\" autocomplete=\"off\">" +
+        escAttr(value || "") + "</textarea></label>" +
+        "<button type=\"button\" class=\"ghost\" data-remove-corr>Remove</button>" +
+        "</div>";
+    }
+    function splitCorrespondenceValues(raw) {
+      return String(raw || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    }
+    function setCorrespondenceValues(which, values, firstId) {
+      const box = correspondenceBox(which);
+      if (!box) return;
+      const list = Array.isArray(values) ? values.map((v) => String(v || "").trim()).filter(Boolean) : splitCorrespondenceValues(values);
+      if (!list.length) list.push("");
+      box.innerHTML = list.map((v, i) => correspondenceLinkRowHtml(v, i === 0 ? firstId : "")).join("");
+    }
+    function readCorrespondenceLinks(which) {
+      const box = correspondenceBox(which);
+      if (!box) return "";
+      return Array.from(box.querySelectorAll("[data-corr-row] textarea")).map((el) => String(el.value || "").trim()).filter(Boolean).join("\n");
+    }
+    function bindCorrespondenceBox(which, firstId) {
+      const box = correspondenceBox(which);
+      if (!box || box.dataset.bound) return;
+      box.dataset.bound = "1";
+      const host = box.closest(".capture-correspondence") || box.parentElement;
+      if (!host) return;
+      host.addEventListener("click", (e) => {
+        if (e.target.closest('[data-add-corr="' + which + '"]')) {
+          e.preventDefault();
+          box.insertAdjacentHTML("beforeend", correspondenceLinkRowHtml(""));
+          return;
+        }
+        const rm = e.target.closest("[data-remove-corr]");
+        if (!rm || !box.contains(rm)) return;
+        e.preventDefault();
+        const row = rm.closest("[data-corr-row]");
+        if (row && box.querySelectorAll("[data-corr-row]").length > 1) {
+          row.remove();
+          const first = box.querySelector("[data-corr-row] textarea");
+          if (first && firstId) first.id = firstId;
+        }
+      });
+    }
+    bindCorrespondenceBox("capture", "cap_correspondence");
+    bindCorrespondenceBox("onboard", "ob_correspondence");
     function existingCorrespondenceCount(row) {
       if (!row) return 0;
       const mails = row.correspondence && Array.isArray(row.correspondence.mails) ? row.correspondence.mails : [];
@@ -1803,7 +1856,7 @@
         fillCaptureSelect("cap_source", "source", "");
         fillCaptureSelect("cap_province", "province", "");
       }
-      document.getElementById("cap_correspondence").value = "";
+      setCorrespondenceValues("capture", [""], "cap_correspondence");
     }
     function applyCaptureDraft(d) {
       if (!d) return false;
@@ -1816,7 +1869,7 @@
       document.getElementById("cap_client_number").value = d.client_number || "";
       document.getElementById("cap_comment").value = d.comment || "";
       document.getElementById("captureDesignDesc").value = d.design_description || "";
-      document.getElementById("cap_correspondence").value = d.correspondence || "";
+      setCorrespondenceValues("capture", d.correspondence || "", "cap_correspondence");
       fillCaptureSelect("cap_enquiry_source", "enquiry_source", d.enquiry_source || "");
       fillCaptureSelect("cap_enquiry_type", "enquiry_type", d.enquiry_type || "");
       fillCaptureSelect("cap_source", "source", d.source || "");
@@ -2012,7 +2065,7 @@
         payload.design_description = "";
       }
       if (captureWouldCost(payload, existing) && !existingCorrespondenceCount(existing)) {
-        const link = String(document.getElementById("cap_correspondence").value || "").trim();
+        const link = readCorrespondenceLinks("capture");
         if (!link) {
           promptCaptureCorrespondence("Enter a Correspondance link.");
           return;
@@ -2245,7 +2298,7 @@
         client_number: document.getElementById("cap_client_number").value,
         province: document.getElementById("cap_province").value,
         comment: document.getElementById("cap_comment").value,
-        correspondence: document.getElementById("cap_correspondence").value,
+        correspondence: readCorrespondenceLinks("capture"),
         design_description: document.getElementById("captureDesignDesc").value,
         products: (capture.products || []).map((l) => Object.assign({}, l)),
         specs: (capture.specs || []).map((s) => Object.assign({}, s))
@@ -2265,7 +2318,7 @@
         client_email: document.getElementById("ob_client_email").value,
         client_number: document.getElementById("ob_client_number").value,
         comment: document.getElementById("ob_comment").value,
-        correspondence: document.getElementById("ob_correspondence").value,
+        correspondence: readCorrespondenceLinks("onboard"),
         design_description: document.getElementById("ob_design_desc").value,
         delivery: document.getElementById("ob_delivery").value,
         quote_no: document.getElementById("ob_quote_no").value,
@@ -2392,7 +2445,7 @@
       document.getElementById("ob_client_email").value = "";
       document.getElementById("ob_client_number").value = "";
       document.getElementById("ob_comment").value = "";
-      document.getElementById("ob_correspondence").value = "";
+      setCorrespondenceValues("onboard", [""], "ob_correspondence");
       document.getElementById("ob_design_desc").value = "";
       document.getElementById("ob_delivery").value = "";
       document.getElementById("ob_quote_no").value = "";
@@ -2432,7 +2485,7 @@
       document.getElementById("ob_client_email").value = d.client_email || "";
       document.getElementById("ob_client_number").value = d.client_number || "";
       document.getElementById("ob_comment").value = d.comment || "";
-      document.getElementById("ob_correspondence").value = d.correspondence || "";
+      setCorrespondenceValues("onboard", d.correspondence || "", "ob_correspondence");
       document.getElementById("ob_design_desc").value = d.design_description || "";
       document.getElementById("ob_delivery").value = d.delivery || "";
       document.getElementById("ob_quote_no").value = d.quote_no || "";
@@ -2502,7 +2555,7 @@
         client_number: document.getElementById("ob_client_number").value,
         province: document.getElementById("ob_province").value,
         comment: document.getElementById("ob_comment").value,
-        correspondence_links: document.getElementById("ob_correspondence").value,
+        correspondence_links: readCorrespondenceLinks("onboard"),
         chase_assignee: document.getElementById("ob_chase").value,
         costing_assignee: document.getElementById("ob_coster").value,
         quote_assignee: document.getElementById("ob_quoter").value,
