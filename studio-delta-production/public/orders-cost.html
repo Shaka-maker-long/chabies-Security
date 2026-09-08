@@ -723,7 +723,7 @@
       document.getElementById("clearTitle").textContent = kind === "steel" ? "Clear steel usage" : "Clear production log";
       document.getElementById("clearHint").textContent = kind === "steel"
         ? "This deletes every logged steel metre. Labour time stays. Type CLEAR to confirm."
-        : "This deletes finished shop-time rows from the production log. Jobs still running stay. Steel usage stays. Type CLEAR to confirm.";
+        : "This deletes every production log row, including jobs still running. Steel usage stays. Type CLEAR to confirm.";
       document.getElementById("clearConfirm").value = "";
       document.getElementById("clearErr").textContent = "";
       document.getElementById("clearMask").classList.add("open");
@@ -748,7 +748,7 @@
       await load();
       setMsg("status", kind === "steel"
         ? "Cleared " + (j.removed || 0) + " steel usage rows."
-        : "Cleared " + (j.removed || 0) + " finished production log rows.");
+        : "Cleared " + (j.removed || 0) + " production log rows.");
     }
     window.openClear = openClear;
     window.closeClear = closeClear;

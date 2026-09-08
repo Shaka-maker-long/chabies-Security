@@ -138,8 +138,7 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const wipeLogsJson = await wipeLogs.json();
   assert.ok(wipeLogsJson.ok, JSON.stringify(wipeLogsJson));
   assert.ok(wipeLogsJson.removed >= 1);
-  const left = book.getSheetByName("Production_Log").getRange(2, 1, 1, 7).getValues()[0];
-  assert.strictEqual(String(left[0]), "log_open_1", "running log must stay");
+  assert.strictEqual(book.getSheetByName("Production_Log").getLastRow(), 1, "every production log row must go");
 
   const after = await fetch(base + "/api/office/production-cost?mode=all", {
     headers: { "x-sd-token": session.token }
@@ -147,7 +146,7 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const afterJson = await after.json();
   assert.ok(afterJson.ok);
   const leftover = (afterJson.orders || []).find((o) => o.orderNum === "S-COST-1");
-  assert.ok(!leftover || leftover.materialCost === 0, "steel usage should be gone");
+  assert.ok(!leftover, "cleared labour and steel must leave the cost matrix");
 
   server.close();
   console.log("production-cost.test.js ok");

@@ -410,11 +410,11 @@ function mountOffice(app) {
     }
     const confirm = String((req.body && (req.body.confirm || req.body.confirmation)) || "").trim();
     if (confirm.toUpperCase() !== "CLEAR") {
-      res.status(400).json({ ok: false, error: "Type CLEAR to delete finished production log rows." });
+      res.status(400).json({ ok: false, error: "Type CLEAR to delete every production log row." });
       return;
     }
     try {
-      res.json({ ok: true, ...productionCost.clearFinishedProductionLogs() });
+      res.json({ ok: true, ...productionCost.clearProductionLogs() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

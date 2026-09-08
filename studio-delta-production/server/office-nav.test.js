@@ -426,7 +426,7 @@ assert.ok(costHtml.indexOf("/api/office/production-log/clear") !== -1);
 assert.ok(officeJs.indexOf("/api/office/steel-usage/clear") !== -1);
 assert.ok(officeJs.indexOf("/api/office/production-log/clear") !== -1);
 assert.ok(officeJs.indexOf("clearSteelUsage") !== -1);
-assert.ok(officeJs.indexOf("clearFinishedProductionLogs") !== -1);
+assert.ok(officeJs.indexOf("clearProductionLogs") !== -1);
 assert.ok(costHtml.indexOf("Monthly order matrix") !== -1);
 assert.ok(costHtml.indexOf("Steel cost") !== -1);
 assert.ok(costHtml.indexOf("Labour rates") !== -1);

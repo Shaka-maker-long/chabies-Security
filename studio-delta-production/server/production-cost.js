@@ -160,12 +160,6 @@ function deleteLabourRate(process) {
   throw new Error("Rate not found.");
 }
 
-function hasEnded(value) {
-  if (value == null || value === "") return false;
-  if (value instanceof Date) return !isNaN(value.getTime());
-  return String(value).trim() !== "";
-}
-
 function deleteSheetRowsFromBottom(sheet, shouldDelete) {
   if (!sheet || sheet.getLastRow() < 2) return 0;
   let removed = 0;
@@ -185,15 +179,17 @@ function clearSteelUsage() {
   return { removed };
 }
 
-function clearFinishedProductionLogs() {
+function clearProductionLogs() {
   const book = getBook();
-  const logs = book.getSheetByName("Production_Log");
-  const overview = book.getSheetByName("Overview");
-  const removed = deleteSheetRowsFromBottom(logs, (r) => hasEnded(logs.getRange(r, 7).getValue()));
-  const overviewRemoved = deleteSheetRowsFromBottom(overview, (r) => hasEnded(overview.getRange(r, 6).getValue()));
+  const removed = deleteSheetRowsFromBottom(book.getSheetByName("Production_Log"));
+  const overviewRemoved = deleteSheetRowsFromBottom(book.getSheetByName("Overview"));
   persistWorkbook();
   try { require("./gas").clearShopCache(); } catch (e) {}
   return { removed, overviewRemoved };
+}
+
+function clearFinishedProductionLogs() {
+  return clearProductionLogs();
 }
 
 function hourlyRate(byProcess, role, task) {
@@ -428,7 +424,7 @@ async function getAppData(query) {
       monthMaterials: prunedMonthMaterials,
       monthlyBreakdown
     };
-  }).filter((o) => o.laborCost > 0 || o.materialCost > 0);
+  }).filter((o) => Math.round(o.laborCost || 0) !== 0 || Math.round(o.materialCost || 0) !== 0 || (o.totalHours || 0) >= 0.05);
 
   const staffHours = {};
   orders.forEach((o) => {
@@ -457,6 +453,7 @@ module.exports = {
   upsertLabourRate,
   deleteLabourRate,
   clearSteelUsage,
+  clearProductionLogs,
   clearFinishedProductionLogs,
   getAppData
 };
