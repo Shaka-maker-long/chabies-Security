@@ -47,6 +47,8 @@ const desk = require("./enquiry-desk");
 const paintShop = require("./powder-shop");
 const glassPo = require("./glass-po");
 const glassRates = require("./glass-rates");
+const steelRates = require("./steel-rates");
+const productionCost = require("./production-cost");
 const floorPlanning = require("./floor-planning");
 const fs = require("fs");
 const sqlite = require("./sqlite-store");
@@ -326,6 +328,59 @@ function mountOffice(app) {
     try {
       glassRates.deleteRate(req.params.id);
       res.json({ ok: true, ...glassRates.snapshotRates() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/production-cost", requireOffice, async (req, res) => {
+    try {
+      const data = await productionCost.getAppData(req.query || {});
+      res.json({ ok: true, ...data });
+    } catch (e) {
+      res.status(500).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/labour-rates", requireOffice, (_req, res) => {
+    res.json({ ok: true, ...productionCost.snapshotLabourRates() });
+  });
+
+  app.post("/api/office/labour-rates", requireOffice, (req, res) => {
+    try {
+      const row = productionCost.upsertLabourRate(req.body || {});
+      res.json({ ok: true, rate: row, ...productionCost.snapshotLabourRates() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.delete("/api/office/labour-rates/:process", requireOffice, (req, res) => {
+    try {
+      productionCost.deleteLabourRate(req.params.process);
+      res.json({ ok: true, ...productionCost.snapshotLabourRates() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/steel-rates", requireOffice, (_req, res) => {
+    res.json({ ok: true, ...steelRates.snapshotRates() });
+  });
+
+  app.post("/api/office/steel-rates", requireOffice, (req, res) => {
+    try {
+      const row = steelRates.upsertRate(req.body || {});
+      res.json({ ok: true, rate: row, ...steelRates.snapshotRates() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.delete("/api/office/steel-rates/:id", requireOffice, (req, res) => {
+    try {
+      steelRates.deleteRate(req.params.id);
+      res.json({ ok: true, ...steelRates.snapshotRates() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
