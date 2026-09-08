@@ -5409,6 +5409,7 @@ function listCostingLogs() {
     if (start && isNaN(start.getTime())) start = null;
     var end = row[6] ? new Date(row[6]) : null;
     if (end && isNaN(end.getTime())) end = null;
+    if (!start || !end) continue;
     var mins = calculateWorkMinutesFromLog(row);
     out.push({
       orderNum: orderNum,

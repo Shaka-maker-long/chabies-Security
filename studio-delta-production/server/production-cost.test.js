@@ -109,9 +109,15 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
 
   const runningStart = new Date("2026-09-09T09:00:00.000Z");
   book.getSheetByName("Production_Log").appendRow([
-    "log_open_1", "S-COST-1", "Willard", "Welding", "Welding", runningStart, "", "", "", "", 0, "", ""
+    "log_open_1", "S-COST-OPEN", "Willard", "Plate Cutting", "Plate Cutting", runningStart, "", "", "", "", 0, "", ""
+  ]);
+  book.getSheetByName("Production_Log").appendRow([
+    "log_zero_1", "S-COST-ZERO", "Willard", "Profile Cutting", "Profile Cutting", runningStart, runningStart, "", "", "", 0, "", ""
   ]);
   persistWorkbook();
+  const openSnap = await cost.getAppData({ mode: "all" });
+  assert.ok(!(openSnap.orders || []).some((o) => o.orderNum === "S-COST-OPEN"), "open jobs must not stay on the cost matrix");
+  assert.ok(!(openSnap.orders || []).some((o) => o.orderNum === "S-COST-ZERO"), "zero-minute starts must not stay on the cost matrix");
 
   const refuseSteel = await fetch(base + "/api/office/steel-usage/clear", {
     method: "POST",

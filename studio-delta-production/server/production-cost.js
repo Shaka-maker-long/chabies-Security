@@ -281,7 +281,8 @@ async function getAppData(query) {
   const logs = await loadLogs();
   logs.forEach((log) => {
     const start = log.start ? new Date(log.start) : null;
-    if (!start || isNaN(start.getTime())) return;
+    const end = log.end ? new Date(log.end) : null;
+    if (!start || isNaN(start.getTime()) || !end || isNaN(end.getTime())) return;
     const hours = (Number(log.minutes) || 0) / 60;
     if (!(hours > 0)) return;
     const month = monthKey(start);
