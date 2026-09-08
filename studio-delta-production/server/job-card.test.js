@@ -39,6 +39,51 @@ assert.ok(jobCard.cuttingCount(parsed) === 4);
 const skipped = jobCard.parsePastedCuttingList("13mm SQ Square Tube\tWidth\t0\t\t2\t2");
 assert.strictEqual(skipped.tubes.length, 0, "skip zero length");
 
+assert.strictEqual(
+  jobCard.sameShopProduct(
+    {
+      product: "Thandi Display Cabinet",
+      type: "New Design",
+      variation: "Top & bottom shelves steel",
+      doors: "Clear glass",
+      powder_coating: "As per website",
+      detailed_description: "Unit with ⟦additional shelf⟧ on the right"
+    },
+    {
+      product: "Thandi Display Cabinet",
+      type: "New Design",
+      variation: "Top & bottom shelves steel",
+      doors: "Clear glass",
+      powder_coating: "As per website",
+      detailed_description: "Unit with additional shelf on the right"
+    }
+  ),
+  true,
+  "important marks do not split a match"
+);
+assert.strictEqual(
+  jobCard.sameShopProduct(
+    { product: "Thandi Display Cabinet", type: "New Design", variation: "x", doors: "Clear glass", powder_coating: "Black", detailed_description: "Same" },
+    { product: "Thandi Display Cabinet", type: "Custom", variation: "x", doors: "Clear glass", powder_coating: "Black", detailed_description: "Same" }
+  ),
+  false,
+  "different type is not the same product"
+);
+assert.strictEqual(
+  jobCard.sameShopProduct(
+    { product: "Thandi Display Cabinet", type: "Standard", variation: "", doors: "N/A", powder_coating: "Black", detailed_description: "Same", dimensions: "Height: 1800mm" },
+    { product: "Thandi Display Cabinet", type: "Standard", variation: "", doors: "N/A", powder_coating: "Black", detailed_description: "Same", dimensions: "" }
+  ),
+  true,
+  "blank dimensions on one unit still match"
+);
+
+const roundTripPaste = jobCard.formatCuttingPaste(parsed);
+const reparsed = jobCard.parsePastedCuttingList(roundTripPaste);
+assert.strictEqual(reparsed.tubes.length, parsed.tubes.length);
+assert.strictEqual(reparsed.plates.length, parsed.plates.length);
+assert.strictEqual(reparsed.wood.length, parsed.wood.length);
+
 assert.strictEqual(jobCard.jobCardEligibility("Not Yet Started").mode, "create");
 assert.strictEqual(jobCard.jobCardEligibility("").mode, "create");
 assert.strictEqual(jobCard.jobCardEligibility("Ready for Steelwork").mode, "regenerate");
@@ -307,6 +352,56 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
   assert.ok(savedDesc);
   assert.strictEqual(savedDesc.detailed_description, typedDesc.order.detailed_description);
   assert.ok(savedDesc.detailed_description !== "Standard");
+
+  const twin = {
+    status: "Not Yet Started",
+    type: "Standard",
+    product: "Thandi Display Cabinet",
+    client_name: "Split Client",
+    doors: "Clear glass",
+    powder_coating: "As per website",
+    variation: "Top & bottom shelves steel, Middles shelves: Glass",
+    detailed_description: "Winelands cabinet with extra shelf",
+    dimensions: "Height: 1800mm, Width: 900mm",
+    province: "Western Cape"
+  };
+  db.upsertOrder(Object.assign({}, twin, { order_number: "S260001 A" }));
+  db.upsertOrder(Object.assign({}, twin, { order_number: "S260001 B" }));
+  db.upsertOrder(Object.assign({}, twin, {
+    order_number: "S260001 C",
+    product: "Talitha Bookshelf",
+    detailed_description: "Different product in the same split"
+  }));
+
+  const generatedA = await jobCard.generateJobCard({
+    order_number: "S260001 A",
+    cutting_text: samplePaste
+  });
+  assert.ok(jobCard.cuttingCount(generatedA.record.cutting) > 0);
+
+  const eligibleAfterA = jobCard.listEligibleOrders();
+  const rowA = eligibleAfterA.find((r) => r.order_number === "S260001 A");
+  const rowB = eligibleAfterA.find((r) => r.order_number === "S260001 B");
+  const rowC = eligibleAfterA.find((r) => r.order_number === "S260001 C");
+  assert.ok(rowB && rowB.suggested_cutting, "B should be offered A's cutting list");
+  assert.strictEqual(rowB.suggested_cutting.from_order_number, "S260001 A");
+  assert.strictEqual(rowB.suggested_cutting.same_split, true);
+  assert.ok(rowB.suggested_cutting.paste_text);
+  assert.strictEqual(rowB.suggested_cutting.cutting.tubes.length, generatedA.record.cutting.tubes.length);
+  assert.ok(!rowA || !rowA.suggested_cutting, "do not suggest a card its own cutting list");
+  assert.ok(!rowC || !rowC.suggested_cutting, "different product in the same split is not a match");
+
+  const suggestedParse = jobCard.parsePastedCuttingList(rowB.suggested_cutting.paste_text);
+  assert.strictEqual(suggestedParse.tubes.length, generatedA.record.cutting.tubes.length);
+  assert.strictEqual(suggestedParse.plates.length, generatedA.record.cutting.plates.length);
+
+  await jobCard.generateJobCard({
+    order_number: "S260001 B",
+    cutting: rowB.suggested_cutting.cutting
+  });
+  const afterB = jobCard.listEligibleOrders().find((r) => r.order_number === "S260001 B");
+  assert.ok(!afterB || !afterB.suggested_cutting, "B with its own cutting is not offered a suggestion");
+  assert.strictEqual(jobCard.getJobCard("S260001 A").cutting.tubes[0].length, generatedA.record.cutting.tubes[0].length);
 
   const beforeClear = db.listOrders().length;
   assert.ok(beforeClear >= 1);

@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const { dataDir } = require("./workbook-store");
 const { listOrders, upsertOrder, formatOrderId } = require("./db");
 const catalog = require("./product-catalog");
+const { normalizeBaseOrderNumber } = require("./create-order-from-enquiry");
 
 const FIRST_STATUSES = new Set(["Not Yet Started", ""]);
 const REGENERATE_STATUSES = new Set(["Ready for Steelwork", "Profile Cutting"]);
@@ -82,6 +83,118 @@ function parsePastedCuttingList(text) {
 function cuttingCount(cutting) {
   const c = cutting || emptyCutting();
   return (c.bars || []).length + (c.plates || []).length + (c.tubes || []).length + (c.wood || []).length;
+}
+
+function cloneCutting(cutting) {
+  return JSON.parse(JSON.stringify(cutting || emptyCutting()));
+}
+
+function shopNorm(value) {
+  return String(value || "")
+    .replace(/[⟦⟧]/g, "")
+    .replace(/\[\[|\]\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function shopFingerprint(order) {
+  const dims = shopNorm(order && order.dimensions);
+  const parts = [
+    shopNorm(order && order.product),
+    shopNorm(order && order.type),
+    shopNorm(order && order.variation),
+    shopNorm(order && order.doors),
+    shopNorm(order && order.powder_coating),
+    shopNorm(order && order.detailed_description)
+  ];
+  if (dims) parts.push(dims);
+  return parts.join("|");
+}
+
+function sameShopProduct(a, b) {
+  if (!a || !b) return false;
+  if (!shopNorm(a.product) || shopNorm(a.product) !== shopNorm(b.product)) return false;
+  if (shopNorm(a.type) !== shopNorm(b.type)) return false;
+  if (shopNorm(a.variation) !== shopNorm(b.variation)) return false;
+  if (shopNorm(a.doors) !== shopNorm(b.doors)) return false;
+  if (shopNorm(a.powder_coating) !== shopNorm(b.powder_coating)) return false;
+  if (shopNorm(a.detailed_description) !== shopNorm(b.detailed_description)) return false;
+  const leftDims = shopNorm(a.dimensions);
+  const rightDims = shopNorm(b.dimensions);
+  if (leftDims && rightDims && leftDims !== rightDims) return false;
+  return true;
+}
+
+function formatCuttingPaste(cutting) {
+  const lines = [];
+  const c = cutting || emptyCutting();
+  function pushBar(row) {
+    lines.push([
+      row.name || "",
+      row.description || "",
+      row.length != null ? row.length : "",
+      "",
+      row.quantity != null ? row.quantity : "",
+      row.cutAngle45 != null ? row.cutAngle45 : 0
+    ].join("\t"));
+  }
+  function pushPlate(row) {
+    lines.push([
+      row.name || "",
+      row.description || "",
+      row.height != null ? row.height : "",
+      row.width != null ? row.width : "",
+      row.quantity != null ? row.quantity : "",
+      0
+    ].join("\t"));
+  }
+  (c.bars || []).forEach(pushBar);
+  (c.tubes || []).forEach(pushBar);
+  (c.plates || []).forEach(pushPlate);
+  (c.wood || []).forEach(pushPlate);
+  return lines.join("\n");
+}
+
+function suggestedCuttingFor(target, allOrders, records) {
+  if (!target || !shopNorm(target.product)) return null;
+  const recs = records || loadRecords();
+  const own = recs[formatOrderId(target.order_number)];
+  if (own && cuttingCount(own.cutting) > 0) return null;
+
+  const orders = allOrders || listOrders();
+  const base = normalizeBaseOrderNumber(target.order_number);
+  const matches = orders.filter((o) => {
+    return o && o.order_number && o.order_number !== target.order_number && sameShopProduct(target, o);
+  });
+  const siblings = matches
+    .filter((o) => base && normalizeBaseOrderNumber(o.order_number) === base)
+    .sort((a, b) => String(a.order_number).localeCompare(String(b.order_number)));
+  const others = matches
+    .filter((o) => !base || normalizeBaseOrderNumber(o.order_number) !== base)
+    .sort((a, b) => String(a.order_number).localeCompare(String(b.order_number)));
+
+  function fromOrder(order) {
+    const card = recs[formatOrderId(order.order_number)];
+    if (!card || cuttingCount(card.cutting) <= 0) return null;
+    return {
+      from_order_number: order.order_number,
+      from_card_id: card.id || "",
+      same_split: !!(base && normalizeBaseOrderNumber(order.order_number) === base),
+      cutting: cloneCutting(card.cutting),
+      paste_text: formatCuttingPaste(card.cutting)
+    };
+  }
+
+  for (const order of siblings) {
+    const hit = fromOrder(order);
+    if (hit) return hit;
+  }
+  for (const order of others) {
+    const hit = fromOrder(order);
+    if (hit) return hit;
+  }
+  return null;
 }
 
 function jobCardEligibility(status) {
@@ -187,12 +300,14 @@ function listGeneratedJobCards() {
 }
 
 function listEligibleOrders() {
-  return listOrders()
+  const all = listOrders();
+  const records = loadRecords();
+  return all
     .filter((o) => jobCardEligibility(o.status).ok)
     .map((o) => {
       const elig = jobCardEligibility(o.status);
       const found = catalog.lookupProduct(o.product);
-      const saved = getJobCard(o.order_number);
+      const saved = records[formatOrderId(o.order_number)] || null;
       return {
         order_number: o.order_number,
         status: o.status || "Not Yet Started",
@@ -215,7 +330,8 @@ function listEligibleOrders() {
             depth: found.depth,
             diameter: found.diameter
           }
-          : null
+          : null,
+        suggested_cutting: suggestedCuttingFor(o, all, records)
       };
     });
 }
@@ -739,6 +855,10 @@ module.exports = {
   todayIso,
   parsePastedCuttingList,
   cuttingCount,
+  shopFingerprint,
+  sameShopProduct,
+  formatCuttingPaste,
+  suggestedCuttingFor,
   jobCardEligibility,
   applyOfficeOrderStatusLock,
   listEligibleOrders,
