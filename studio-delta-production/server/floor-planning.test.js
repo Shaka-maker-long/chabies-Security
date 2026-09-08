@@ -283,6 +283,25 @@ assert.ok(!productA.processes.some((p) => p.process === "Quality Control"));
 assert.ok(productA.processes.find((p) => p.process === "Welding").hours === 3);
 assert.ok(productA.processes.find((p) => p.process === "Welding").workers.some((w) => w.name === "Thabo"));
 
+const journey = board.journey;
+assert.ok(journey);
+assert.ok(journey.days.length > 0, "journey has work-day columns");
+journey.days.forEach((d) => {
+  assert.ok(["Saturday", "Sunday"].indexOf(d.weekday) === -1, "journey dates are work days");
+  assert.ok(/^\d{2}-[A-Z][a-z]{2}$/.test(d.label), "date header like 08-Sep");
+});
+assert.strictEqual(plan.formatDayHeader("2026-09-08"), "08-Sep");
+const trip = journey.orders.find((o) => o.orderId === "S260100 A");
+assert.ok(trip, "scheduled order has a journey");
+assert.strictEqual(trip.rows.find((r) => r.process === "Profile Cutting").workerName, "Willard");
+assert.strictEqual(trip.rows.find((r) => r.process === "Tagging").workerName, "Sipho");
+assert.strictEqual(trip.rows.find((r) => r.process === "Welding").workerName, "Thabo");
+assert.ok(trip.rows.find((r) => r.process === "Tagging").days.indexOf("2026-09-08") !== -1);
+assert.ok(trip.rows.find((r) => r.process === "Powder coating").days.indexOf("2026-09-14") !== -1);
+assert.ok(trip.rows.find((r) => r.process === "Assembly").days.indexOf("2026-09-21") !== -1);
+assert.ok(journey.days.some((d) => d.iso === "2026-09-21"));
+assert.ok(!journey.days.some((d) => d.iso === "2026-09-12" || d.iso === "2026-09-13"), "weekends stay off the journey");
+
 const removed = plan.unscheduleOrder("S260100 A");
 assert.ok(removed.removed > 0);
 assert.ok(!plan.load().blocks.some((b) => b.orderId === "S260100 A"));

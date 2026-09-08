@@ -312,6 +312,128 @@ function monthShort(month) {
   return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][month - 1] || "";
 }
 
+const JOURNEY_PROCESS_ORDER = {
+  "Profile Cutting": 1,
+  "Tagging": 2,
+  "Plate Cutting": 3,
+  "Welding": 4,
+  "Grinding": 5,
+  "Powder coating": 6,
+  "Assembly": 7
+};
+
+function isWorkIso(iso) {
+  const parts = String(iso || "").split("-").map(Number);
+  if (parts.length < 3 || !parts[0]) return false;
+  const p = partsFromMs(sastMs(parts[0], parts[1], parts[2], 12, 0));
+  return !isWeekend(p);
+}
+
+function formatDayHeader(iso) {
+  const parts = String(iso || "").split("-").map(Number);
+  if (parts.length < 3 || !parts[0]) return "";
+  const p = partsFromMs(sastMs(parts[0], parts[1], parts[2], 12, 0));
+  return pad(p.day) + "-" + monthShort(p.month);
+}
+
+function workdaysFromTo(fromIso, toIso) {
+  const out = [];
+  let iso = String(fromIso || "").slice(0, 10);
+  const last = String(toIso || "").slice(0, 10);
+  if (!iso || !last || iso > last) return out;
+  let guard = 0;
+  while (iso <= last && guard++ < 400) {
+    const parts = iso.split("-").map(Number);
+    const p = partsFromMs(sastMs(parts[0], parts[1], parts[2], 12, 0));
+    if (!isWeekend(p)) {
+      out.push({
+        iso,
+        weekday: p.weekdayLong,
+        weekdayShort: p.weekday,
+        label: pad(p.day) + "-" + monthShort(p.month)
+      });
+    }
+    const next = addCalendarDays(parts[0], parts[1], parts[2], 1);
+    iso = next.year + "-" + pad(next.month) + "-" + pad(next.day);
+  }
+  return out;
+}
+
+function occupiedWorkdays(block) {
+  const startMs = toMs(block && block.start);
+  const endMs = toMs(block && block.end);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return [];
+  const startIso = isoDateFromMs(startMs);
+  const endParts = partsFromMs(endMs);
+  let endIso = isoDateFromMs(endMs);
+  if (endParts.hour === 7 && endParts.minute === 45) {
+    const prev = addCalendarDays(endParts.year, endParts.month, endParts.day, -1);
+    endIso = prev.year + "-" + pad(prev.month) + "-" + pad(prev.day);
+  }
+  if (endIso < startIso) endIso = startIso;
+  return workdaysFromTo(startIso, endIso).map((d) => d.iso);
+}
+
+function buildJourney(blocks) {
+  const groups = {};
+  (blocks || []).forEach((b) => {
+    if (!b || !b.orderId) return;
+    const orderId = formatOrderId(b.orderId);
+    const key = orderId + "||" + String(b.process || "");
+    if (!groups[key]) {
+      groups[key] = {
+        orderId,
+        product: String(b.product || ""),
+        process: String(b.process || ""),
+        workerId: b.workerId,
+        workerName: b.workerName || b.workerId,
+        start: b.start,
+        end: b.end,
+        daySet: {}
+      };
+    }
+    const g = groups[key];
+    if (String(b.start || "") < String(g.start || "")) g.start = b.start;
+    if (String(b.end || "") > String(g.end || "")) g.end = b.end;
+    occupiedWorkdays(b).forEach((iso) => { g.daySet[iso] = true; });
+  });
+  const byOrder = {};
+  Object.keys(groups).forEach((k) => {
+    const g = groups[k];
+    if (!byOrder[g.orderId]) byOrder[g.orderId] = [];
+    byOrder[g.orderId].push({
+      orderId: g.orderId,
+      product: g.product,
+      process: g.process,
+      workerId: g.workerId,
+      workerName: g.workerName,
+      start: g.start,
+      end: g.end,
+      days: Object.keys(g.daySet).sort()
+    });
+  });
+  const orderIds = Object.keys(byOrder).sort();
+  let minIso = "";
+  let maxIso = "";
+  orderIds.forEach((id) => {
+    byOrder[id].sort((a, b) => (JOURNEY_PROCESS_ORDER[a.process] || 99) - (JOURNEY_PROCESS_ORDER[b.process] || 99));
+    byOrder[id].forEach((row) => {
+      row.days.forEach((iso) => {
+        if (!minIso || iso < minIso) minIso = iso;
+        if (!maxIso || iso > maxIso) maxIso = iso;
+      });
+    });
+  });
+  return {
+    days: minIso && maxIso ? workdaysFromTo(minIso, maxIso) : [],
+    orders: orderIds.map((id) => ({
+      orderId: id,
+      product: byOrder[id][0] ? byOrder[id][0].product : "",
+      rows: byOrder[id]
+    }))
+  };
+}
+
 function namesEqual(a, b) {
   return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
 }
@@ -553,7 +675,8 @@ function getBoard(week) {
       afternoon: "12:30–15:45",
       lunch: "12:00–12:30"
     },
-    now: isoFromMs(Date.now())
+    now: isoFromMs(Date.now()),
+    journey: buildJourney(store.blocks)
   };
 }
 
@@ -585,5 +708,10 @@ module.exports = {
   getBoard,
   load,
   save,
-  queueOrders
+  queueOrders,
+  buildJourney,
+  workdaysFromTo,
+  occupiedWorkdays,
+  formatDayHeader,
+  JOURNEY_PROCESS_ORDER
 };

@@ -7,10 +7,7 @@
   <script src="/sd-pwa.js?v=pwa"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <style>
-    :root {
-      --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085;
-      --hour:72px; --gutter:52px;
-    }
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:12px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
@@ -21,9 +18,14 @@
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
     button.ghost { background:#fff; color:#1d2939; }
     button:disabled { opacity:.45; cursor:not-allowed; }
-    .layout { display:grid; grid-template-columns: minmax(280px, 360px) 1fr; min-height:calc(100vh - 58px); }
+    .tabs { display:flex; gap:4px; }
+    .tabs button { padding:7px 12px; font-size:13px; }
+    .tabs button.on { background:#1d2939; color:#fff; }
+    .week-tools { display:none; align-items:center; gap:8px; }
+    body[data-view="people"] .week-tools { display:flex; }
+    .layout { display:grid; grid-template-columns: minmax(260px, 320px) 1fr; min-height:calc(100vh - 58px); }
     .queue { border-right:1px solid var(--line); background:#fff; padding:14px; overflow:auto; }
-    .queue h2, .cals h2 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
+    .queue h2 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
     .help { font-size:13px; color:var(--muted); margin:0 0 12px; line-height:1.45; }
     input[type=search] { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; margin:0 0 12px; }
     .order { border:1px solid var(--line); border-radius:10px; padding:10px 10px 8px; margin:0 0 8px; background:#fff; }
@@ -43,83 +45,77 @@
     .actions { display:flex; gap:6px; margin-top:10px; }
     .actions button { flex:1; font-size:12px; padding:7px 8px; }
     .empty, .loading { background:#fff; border:1px solid var(--line); border-radius:12px; padding:22px 16px; color:var(--muted); }
-    .cals { padding:14px 16px 40px; overflow:auto; }
-    .weekbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
-    .weekbar strong { font-family: Outfit, Inter, sans-serif; font-size:16px; }
-    .legend { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 16px; }
+    .board { padding:14px 16px 40px; overflow:auto; min-width:0; }
+    .legend { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
     .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; border:1px solid transparent; }
     .legend span { font-size:11px; font-weight:600; color:#344054; display:inline-flex; align-items:center; margin-right:8px; }
-    .worker { margin:0 0 28px; }
-    .worker h3 { margin:0 0 8px; font-size:15px; font-family: Outfit, Inter, sans-serif; }
-    .worker h3 small { font-weight:500; color:var(--muted); font-family: Inter, sans-serif; font-size:12px; margin-left:8px; }
-    .cal { min-width:640px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff; }
-    .cal-head, .cal-body { display:grid; grid-template-columns: var(--gutter) repeat(5, 1fr); }
-    .cal-head { background:var(--head); border-bottom:1px solid var(--line); }
-    .cal-head div, .time-col { font-size:11px; font-weight:700; color:#344054; padding:8px 6px; }
-    .day { position:relative; height:calc(var(--hour) * 8); border-left:1px solid #e4e7ec; background:
-      linear-gradient(#f2f4f7, #f2f4f7) 0 calc(var(--hour) * 4.25) / 100% calc(var(--hour) * 0.5) no-repeat,
-      repeating-linear-gradient(to bottom, transparent, transparent calc(var(--hour) - 1px), #eef2f6 calc(var(--hour) - 1px), #eef2f6 var(--hour));
-    }
-    .time-col { position:relative; height:calc(var(--hour) * 8); color:var(--muted); font-weight:600; }
-    .time-col span { position:absolute; left:4px; transform:translateY(-50%); white-space:nowrap; }
-    .block {
-      position:absolute; left:3px; right:3px; border-radius:6px; padding:3px 5px;
-      font-size:11px; line-height:1.25; overflow:hidden; border:1px solid transparent;
-      box-shadow:0 1px 2px rgba(16,24,40,.08); cursor:pointer;
-    }
-    .block b { display:block; font-size:11px; }
-    .block small { display:block; color:inherit; opacity:.85; }
-    .lunch-note { position:absolute; left:0; right:0; top:calc(var(--hour) * 4.25); height:calc(var(--hour) * 0.5);
-      display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; color:#98a2b3; pointer-events:none; }
+    .sheet-wrap { overflow:auto; border:1px solid var(--line); border-radius:10px; background:#fff; max-height:calc(100vh - 160px); }
+    table.sheet { border-collapse:separate; border-spacing:0; min-width:100%; font-size:13px; }
+    table.sheet th, table.sheet td { border-bottom:1px solid #e4e7ec; border-right:1px solid #e4e7ec; padding:0; vertical-align:middle; }
+    table.sheet thead th { position:sticky; top:0; z-index:3; background:var(--head); font-size:11px; font-weight:700; color:#344054; padding:8px 8px; white-space:nowrap; text-align:center; }
+    table.sheet .sticky { position:sticky; z-index:2; background:#fff; text-align:left; padding:8px 10px; white-space:nowrap; font-weight:600; }
+    table.sheet thead .sticky { z-index:4; background:var(--head); }
+    table.sheet .c-order { left:0; min-width:108px; box-shadow:1px 0 0 #e4e7ec; }
+    table.sheet .c-worker { left:108px; min-width:110px; box-shadow:1px 0 0 #e4e7ec; }
+    table.sheet .c-task { left:218px; min-width:130px; box-shadow:2px 0 6px rgba(16,24,40,.06); }
+    table.sheet td.c-order { font-family: Outfit, Inter, sans-serif; font-size:14px; }
+    table.sheet td.day { min-width:76px; height:36px; padding:4px; }
+    table.sheet td.day .bar { display:block; height:26px; border-radius:4px; border:1px solid transparent; }
+    table.sheet td.day .bar.start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
+    table.sheet td.day .bar.end { border-top-right-radius:8px; border-bottom-right-radius:8px; }
+    table.sheet tr.group-start td { border-top:2px solid #d0d5dd; }
+    table.sheet .people-day { min-width:120px; height:auto; padding:6px; vertical-align:top; }
+    .chip { display:block; border-radius:8px; border:1px solid transparent; padding:6px 8px; margin:0 0 6px; font-size:12px; line-height:1.3; }
+    .chip:last-child { margin-bottom:0; }
+    .chip b { display:block; font-size:13px; }
+    .chip small { display:block; opacity:.9; }
+    table.sheet .c-person { left:0; min-width:140px; box-shadow:2px 0 6px rgba(16,24,40,.06); }
+    table.sheet td.c-person { font-family: Outfit, Inter, sans-serif; font-size:15px; }
+    table.sheet td.c-person small { display:block; font-family: Inter, sans-serif; font-size:11px; font-weight:500; color:var(--muted); }
     @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
-      .queue { border-right:0; border-bottom:1px solid var(--line); max-height:46vh; }
+      .queue { border-right:0; border-bottom:1px solid var(--line); max-height:40vh; }
       .tools { width:100%; margin-left:0; }
     }
   </style>
 </head>
-<body>
+<body data-view="journey">
   <header>
     <h1>Planning</h1>
-    <span class="msg" id="status">Weekly work calendars — Monday to Friday only.</span>
+    <nav class="tabs" aria-label="Planning views">
+      <button type="button" class="ghost on" id="tabJourney">Journey</button>
+      <button type="button" class="ghost" id="tabPeople">People</button>
+    </nav>
+    <span class="msg" id="status">Work days only. Each order shows who does each task and on which date.</span>
     <div class="tools">
-      <button class="ghost" type="button" id="prevWeek">← Week</button>
-      <strong id="weekLabel"></strong>
-      <button class="ghost" type="button" id="nextWeek">Week →</button>
-      <button class="ghost" type="button" id="thisWeek">This week</button>
+      <div class="week-tools">
+        <button class="ghost" type="button" id="prevWeek">← Week</button>
+        <strong id="weekLabel"></strong>
+        <button class="ghost" type="button" id="nextWeek">Week →</button>
+        <button class="ghost" type="button" id="thisWeek">This week</button>
+      </div>
     </div>
   </header>
   <div class="layout">
     <aside class="queue">
       <h2>Orders to schedule</h2>
-      <p class="help">Not Yet Started and Ready for Steelwork. Hours come from Task times for that product. Skip a process when hours are 0. Assign the people ticked for each task, then place the next free paid slot on their calendar.</p>
+      <p class="help">Not Yet Started and Ready for Steelwork. Hours come from Task times for that product. Skip a process when hours are 0. Assign the people ticked for each task, then place the next free paid slot.</p>
       <input type="search" id="q" placeholder="Search order, product, status">
       <div class="actions" style="margin:0 0 12px">
         <button type="button" id="scheduleSelected">Schedule selected</button>
       </div>
       <div id="queue"></div>
     </aside>
-    <main class="cals">
+    <main class="board">
       <div class="legend" id="legend"></div>
       <div id="calendars"></div>
     </main>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
-    const DAY_START = 7 * 60 + 45;
-    const DAY_SPAN = 8 * 60;
-    const TICKS = [
-      { label: "07:45", min: 7 * 60 + 45 },
-      { label: "09:00", min: 9 * 60 },
-      { label: "10:00", min: 10 * 60 },
-      { label: "11:00", min: 11 * 60 },
-      { label: "12:00", min: 12 * 60 },
-      { label: "12:30", min: 12 * 60 + 30 },
-      { label: "14:00", min: 14 * 60 },
-      { label: "15:45", min: 15 * 60 + 45 }
-    ];
     let board = null;
     let week = "";
+    let view = "journey";
     const openOrders = {};
     const picked = {};
     const assigns = {};
@@ -132,50 +128,24 @@
     function color(process) {
       return (board && board.colors && board.colors[process]) || { bg: "#eef2f6", fg: "#344054", border: "#98a2b3" };
     }
-    function minutesOf(iso) {
-      const m = String(iso || "").match(/T(\d{2}):(\d{2})/);
-      return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
-    }
     function dateOf(iso) {
       return String(iso || "").slice(0, 10);
-    }
-    function addDays(iso, n) {
-      const p = iso.split("-").map(Number);
-      const d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + n));
-      return d.toISOString().slice(0, 10);
     }
     function hhmm(iso) {
       const m = String(iso || "").match(/T(\d{2}):(\d{2})/);
       return m ? m[1] + ":" + m[2] : "";
-    }
-    function topPx(min) {
-      return ((min - DAY_START) / DAY_SPAN) * 100;
-    }
-    function heightPx(startMin, endMin) {
-      return Math.max(3.2, ((endMin - startMin) / DAY_SPAN) * 100);
     }
     function setStatus(text, isError) {
       const el = document.getElementById("status");
       el.textContent = text;
       el.className = "msg" + (isError ? " error" : "");
     }
-    function clipToDay(block, dayIso) {
-      const start = dateOf(block.start);
-      const end = dateOf(block.end);
-      if (end < dayIso || start > dayIso) return null;
-      if (block.kind === "paint") {
-        if (start <= dayIso && end > dayIso) {
-          return { startMin: DAY_START, endMin: 15 * 60 + 45 };
-        }
-        return null;
-      }
-      let startMin = start === dayIso ? minutesOf(block.start) : DAY_START;
-      let endMin = end === dayIso ? minutesOf(block.end) : 15 * 60 + 45;
-      if (end === dayIso && minutesOf(block.end) === 0) return null;
-      startMin = Math.max(DAY_START, startMin);
-      endMin = Math.min(15 * 60 + 45, endMin);
-      if (endMin <= startMin) return null;
-      return { startMin, endMin };
+    function setView(next) {
+      view = next === "people" ? "people" : "journey";
+      document.body.setAttribute("data-view", view);
+      document.getElementById("tabJourney").classList.toggle("on", view === "journey");
+      document.getElementById("tabPeople").classList.toggle("on", view === "people");
+      renderBoard();
     }
     function renderLegend() {
       const processes = (board && board.processes ? board.processes.slice() : []).concat(["Powder coating"]);
@@ -220,45 +190,87 @@
           "</div></div></article>";
       }).join("");
     }
-    function renderCalendars() {
+    function barClass(days, iso) {
+      const i = days.indexOf(iso);
+      if (i < 0) return "";
+      const bits = ["bar"];
+      if (i === 0) bits.push("start");
+      if (i === days.length - 1) bits.push("end");
+      return bits.join(" ");
+    }
+    function renderJourney() {
       const box = document.getElementById("calendars");
-      if (!board) {
-        box.innerHTML = "<div class='loading'>Loading calendars…</div>";
+      const journey = board && board.journey;
+      const days = (journey && journey.days) || [];
+      const orders = (journey && journey.orders) || [];
+      if (!orders.length) {
+        box.innerHTML = "<div class='empty'>Schedule an order to see its journey. Each row is a worker and task; the date columns are the work days that job sits on.</div>";
         return;
       }
-      const days = board.weekDays || [];
-      document.getElementById("weekLabel").textContent = days.length
-        ? days[0].label + " – " + days[4].label
-        : "";
-      const workers = (board.workers || []).concat([board.paintShop]);
+      const head = "<th class='sticky c-order'>Order</th><th class='sticky c-worker'>Worker</th><th class='sticky c-task'>Task</th>" +
+        days.map((d) => "<th>" + esc(d.label) + "</th>").join("");
+      const body = orders.map((order) => {
+        return order.rows.map((row, i) => {
+          const c = color(row.process);
+          const cells = days.map((d) => {
+            const on = row.days.indexOf(d.iso) !== -1;
+            if (!on) return "<td class='day'></td>";
+            const title = esc(row.process + " · " + row.workerName + " · " + hhmm(row.start) + "–" + hhmm(row.end));
+            return "<td class='day'><span class='" + barClass(row.days, d.iso) + "' title=\"" + title + "\" style='background:" + c.bg + ";border-color:" + c.border + "'></span></td>";
+          }).join("");
+          const orderCell = i === 0
+            ? "<td class='sticky c-order' rowspan=\"" + order.rows.length + "\">" + esc(order.orderId) + "</td>"
+            : "";
+          return "<tr class='" + (i === 0 ? "group-start" : "") + "'>" + orderCell +
+            "<td class='sticky c-worker'>" + esc(row.workerName) + "</td>" +
+            "<td class='sticky c-task'>" + esc(row.process) + "</td>" + cells + "</tr>";
+        }).join("");
+      }).join("");
+      box.innerHTML = "<div class='sheet-wrap'><table class='sheet'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+    }
+    function renderPeople() {
+      const box = document.getElementById("calendars");
+      const days = (board && board.weekDays) || [];
+      document.getElementById("weekLabel").textContent = days.length ? days[0].label + " – " + days[4].label : "";
+      const workers = ((board && board.workers) || []).concat([board && board.paintShop].filter(Boolean));
       if (!workers.length) {
         box.innerHTML = "<div class='empty'>Add people on Users and tick the shop tasks they do. Each of those people gets a week calendar here.</div>";
         return;
       }
-      const head = "<div class='cal-head'><div></div>" + days.map((d) => "<div>" + esc(d.label) + "</div>").join("") + "</div>";
-      const ticks = TICKS.map((t) => "<span style='top:" + topPx(t.min) + "%'>" + t.label + "</span>").join("");
-      box.innerHTML = workers.map((w) => {
-        const mine = (board.blocks || []).filter((b) => String(b.workerId) === String(w.id));
-        const daysHtml = days.map((d) => {
-          const bits = mine.map((b) => {
-            const clip = clipToDay(b, d.iso);
-            if (!clip) return "";
+      const head = "<th class='sticky c-person'>Worker</th>" + days.map((d) => "<th>" + esc(d.label) + "</th>").join("");
+      const body = workers.map((w) => {
+        const mine = ((board && board.blocks) || []).filter((b) => String(b.workerId) === String(w.id));
+        const cells = days.map((d) => {
+          const chips = mine.filter((b) => {
+            const start = dateOf(b.start);
+            const end = dateOf(b.end);
+            if (b.kind === "paint") return start <= d.iso && end > d.iso;
+            return start <= d.iso && end >= d.iso && !(end === d.iso && hhmm(b.end) === "00:00");
+          }).map((b) => {
             const c = color(b.process);
-            return "<div class='block' style='top:" + topPx(clip.startMin) + "%;height:" + heightPx(clip.startMin, clip.endMin) + "%;background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "' title=\"" + esc(b.studioNo + " · " + b.process) + "\">" +
+            return "<div class='chip' style='background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" +
               "<b>" + esc(b.studioNo) + "</b><small>" + esc(b.process) + " · " + esc(hhmm(b.start)) + "–" + esc(hhmm(b.end)) + "</small></div>";
           }).join("");
-          return "<div class='day'>" + bits + "<div class='lunch-note'>Lunch</div></div>";
+          return "<td class='people-day'>" + (chips || "") + "</td>";
         }).join("");
         const tasks = (w.tasks && w.tasks.length) ? "<small>" + esc(w.tasks.join(" · ")) + "</small>" : "";
-        return "<section class='worker'><h3>" + esc(w.name) + tasks + "</h3><div class='cal'>" + head +
-          "<div class='cal-body'><div class='time-col'>" + ticks + "</div>" + daysHtml + "</div></div></section>";
+        return "<tr><td class='sticky c-person'>" + esc(w.name) + tasks + "</td>" + cells + "</tr>";
       }).join("");
-      if (!(board.blocks || []).length) {
-        box.insertAdjacentHTML("afterbegin", "<div class='empty' style='margin-bottom:14px'>Nobody is booked this week. Tick orders on the left, assign a person for each task, and schedule them. Later orders queue into the next free hours — the same person never overlaps.</div>");
+      const hint = ((board && board.blocks) || []).length
+        ? ""
+        : "<div class='empty' style='margin-bottom:14px'>Nobody is booked this week. Tick orders on the left and schedule them. Later orders queue into the next free hours.</div>";
+      box.innerHTML = hint + "<div class='sheet-wrap'><table class='sheet'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+    }
+    function renderBoard() {
+      if (!board) {
+        document.getElementById("calendars").innerHTML = "<div class='loading'>Loading calendars…</div>";
+        return;
       }
+      if (view === "people") renderPeople();
+      else renderJourney();
     }
     async function load(nextWeek) {
-      setStatus("Loading calendars…");
+      setStatus("Loading…");
       try {
         const url = "/api/office/planning" + (nextWeek ? "?week=" + encodeURIComponent(nextWeek) : "");
         const r = await sdOfficeFetch(url);
@@ -268,9 +280,9 @@
         week = board.weekStart;
         renderLegend();
         renderQueue();
-        renderCalendars();
-        const n = (board.workers || []).length;
-        setStatus("Work days only · 07:45–12:00 and 12:30–15:45 · " + n + " worker calendar" + (n === 1 ? "" : "s"));
+        renderBoard();
+        const n = ((board.journey && board.journey.orders) || []).length;
+        setStatus("Work days only · Monday to Friday · " + n + " order journey" + (n === 1 ? "" : "s"));
       } catch (e) {
         board = null;
         document.getElementById("queue").innerHTML = "<div class='empty'>Could not load the order list.</div>";
@@ -317,6 +329,8 @@
       await load(week);
       setStatus("Removed " + id + " from the calendars.");
     }
+    document.getElementById("tabJourney").onclick = () => setView("journey");
+    document.getElementById("tabPeople").onclick = () => setView("people");
     document.getElementById("scheduleSelected").onclick = () => {
       const ids = Object.keys(picked).filter((id) => picked[id]);
       scheduleIds(ids);
