@@ -358,6 +358,7 @@
       margin: 0 0 8px !important;
       font-style: italic;
     }
+    #steelModal.is-over-edit { z-index: 1085 !important; }
     .completed-empty, .completed-error {
       background: #fff;
       border: 1px solid #d0d5dd;
@@ -2468,8 +2469,15 @@
         }
         const editSteelEl = document.getElementById('editSteelModal');
         if (editSteelEl) {
+          editSteelEl.addEventListener('hide.bs.modal', function (e) {
+            const steelEl = document.getElementById('steelModal');
+            if (steelEl && steelEl.classList.contains('show')) e.preventDefault();
+          });
           editSteelEl.addEventListener('hidden.bs.modal', function () {
+            const steelEl = document.getElementById('steelModal');
+            if (steelEl && steelEl.classList.contains('show')) return;
             session.editingCompletedSteel = null;
+            session.steelRowTargetId = '';
           });
         }
       } catch (e) {}
@@ -4146,6 +4154,7 @@
     }
     function openEditCompletedSteel(orderNum, process) {
       session.editingCompletedSteel = { order: orderNum, process: process };
+      session.steelRowTargetId = 'editSteelRowsContainer';
       const key = String(orderNum || '') + '\t' + String(process || '');
       const usage = (window._completedSteelByKey && window._completedSteelByKey[key]) || [];
       const container = document.getElementById('editSteelRowsContainer');
@@ -4196,6 +4205,7 @@
           }
           if (editSteelModal) editSteelModal.hide();
           session.editingCompletedSteel = null;
+          session.steelRowTargetId = '';
           showAlert('Steel usage updated.');
           loadCompletedWork(true);
         })
@@ -5100,7 +5110,7 @@
       return !!(g.component || g.type || g.height || g.width || w.component || w.typeInput || w.height || w.width);
     }
     function persistQcDraft() {
-      if (session.editingCompletedSteel) return;
+      if (session.editingCompletedSteel || session.steelRowTargetId) return;
       if (session.qcApplyingDraft || isSubmitting) return;
       if (!session.activeOrder || !session.currentQcKey) return;
       if (session.role === "Grinding") return;
@@ -5123,6 +5133,9 @@
       });
     }
     function steelRowsContainer() {
+      if (session.steelRowTargetId) {
+        return document.getElementById(session.steelRowTargetId);
+      }
       if (session.editingCompletedSteel) {
         return document.getElementById("editSteelRowsContainer");
       }
@@ -5382,26 +5395,33 @@
       if (qcModal) qcModal.show();
     }
 
-function openSteelModal() {
-      ensureSteelProfiles(() => openSteelModalReady());
+    function openSteelModal() {
+      openSteelModalReady();
+      ensureSteelProfiles(() => refreshSteelCategoryOptions());
     }
-    function openSteelModalReady() {
-      // Reset inputs
-      document.getElementById('steelSizeInput').value = '';
-      const customInput = document.getElementById('steelCustomProfile');
-      customInput.value = '';
-      customInput.classList.add('d-none');
-
-      // Extract unique categories
-      const categories =[...new Set(appData.steelProfiles.map(p => p.category))];
-      if (!categories.includes("Custom")) categories.push("Custom"); // Always allow Custom category fallback
-
+    function refreshSteelCategoryOptions() {
       const catSelect = document.getElementById('steelCategorySelect');
+      if (!catSelect) return;
+      const current = catSelect.value;
+      const categories = [...new Set((appData.steelProfiles || []).map(p => p.category).filter(Boolean))];
+      if (!categories.includes("Custom")) categories.push("Custom");
       catSelect.innerHTML = '<option value="">-- Choose Category --</option>' +
         categories.map(c => `<option value="${c}">${c}</option>`).join('');
-
-      document.getElementById('steelProfileSelect').innerHTML = '<option value="">-- Select Category First --</option>';
-
+      if (current && [...catSelect.options].some((o) => o.value === current)) catSelect.value = current;
+    }
+    function openSteelModalReady() {
+      const sizeInput = document.getElementById('steelSizeInput');
+      if (sizeInput) sizeInput.value = '';
+      const customInput = document.getElementById('steelCustomProfile');
+      if (customInput) {
+        customInput.value = '';
+        customInput.classList.add('d-none');
+      }
+      refreshSteelCategoryOptions();
+      const profSelect = document.getElementById('steelProfileSelect');
+      if (profSelect) profSelect.innerHTML = '<option value="">-- Select Category First --</option>';
+      const steelEl = document.getElementById('steelModal');
+      if (steelEl) steelEl.classList.toggle('is-over-edit', !!session.steelRowTargetId);
       if (steelSelectionModal) steelSelectionModal.show();
     }
 
@@ -5463,9 +5483,15 @@ function openSteelModal() {
       }
 
       appendSteelRow({ category: cat, name: finalName, size: size + ' ' + unit, custom: isCustom });
-      if (!session.editingCompletedSteel) persistQcDraft();
+      if (!session.steelRowTargetId && !session.editingCompletedSteel) persistQcDraft();
 
       if (steelSelectionModal) steelSelectionModal.hide();
+      const steelEl = document.getElementById('steelModal');
+      if (steelEl) steelEl.classList.remove('is-over-edit');
+      if (session.steelRowTargetId && editSteelModal) {
+        const editEl = document.getElementById('editSteelModal');
+        if (editEl && !editEl.classList.contains('show')) editSteelModal.show();
+      }
     }
 
     function glassWoodSelect(id, options, first) {
