@@ -293,7 +293,6 @@ function namedEnquiryLines(enquiry) {
 
 function buildDraft(enquiry, nextOrderNumber, now) {
   const typeDefault = orderTypeFromEnquiryType(enquiry && enquiry.enquiry_type);
-  const detail = [enquiry && enquiry.request, enquiry && enquiry.design_description].filter(Boolean).join("\n");
   const chosen = quoteOptions.chosenQuote(enquiry);
   const products = namedEnquiryLines(enquiry).map((p) => ({
     category: String(p.category || (enquiry && enquiry.category) || "").trim(),
@@ -301,7 +300,7 @@ function buildDraft(enquiry, nextOrderNumber, now) {
     type: typeDefault,
     variation: String(p.variation || "").trim(),
     doors: "",
-    detailed_description: detail,
+    detailed_description: "",
     dimensions: "",
     powder_coating: "",
     price_incl_vat: p.value_incl_vat || "",

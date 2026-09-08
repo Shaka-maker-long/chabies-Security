@@ -345,6 +345,40 @@
       const box = card && card.querySelector("[data-f=qty_price_confirmed]");
       if (box) box.checked = false;
     }
+    function enquiryAutoDescription() {
+      const enquiry = (draft && draft.enquiry) || {};
+      return [enquiry.request, enquiry.design_description].filter(Boolean).join("\n");
+    }
+    function blankEnquiryPrefill(products) {
+      const auto = enquiryAutoDescription();
+      return (products || []).map((p) => {
+        const typed = String((p && p.detailed_description) || "").trim();
+        if (!typed || typed === auto) return Object.assign({}, p, { detailed_description: "" });
+        return p;
+      });
+    }
+    function markSelectedImportant(box) {
+      const msg = document.getElementById("formMsg");
+      if (!box) return;
+      const start = box.selectionStart;
+      const end = box.selectionEnd;
+      if (start == null || end == null || end <= start) {
+        if (msg) {
+          msg.textContent = "Select the words in the description first, then mark them as important.";
+          msg.className = "msg bad";
+        }
+        return;
+      }
+      const val = box.value;
+      const picked = val.slice(start, end);
+      if (picked.indexOf("⟦") !== -1 || picked.indexOf("[[") !== -1) return;
+      box.value = val.slice(0, start) + "⟦" + picked + "⟧" + val.slice(end);
+      if (msg) { msg.textContent = ""; msg.className = "msg"; }
+      box.focus();
+      box.selectionStart = start;
+      box.selectionEnd = end + 2;
+      persist();
+    }
     function renderExisting(rows) {
       const page = document.getElementById("page");
       const nos = rows.map((r) => r.order_number).filter(Boolean);
@@ -359,9 +393,11 @@
       const page = document.getElementById("page");
       const saved = sdReadFormDraft("from-enquiry", enquiryNo) || {};
       const shared = Object.assign({}, draft.shared, saved.shared || {});
-      const products = (saved.products && saved.products.length === (draft.products || []).length)
-        ? saved.products
-        : (draft.products || []);
+      const products = blankEnquiryPrefill(
+        (saved.products && saved.products.length === (draft.products || []).length)
+          ? saved.products
+          : (draft.products || [])
+      );
       const orderNo = saved.order_number || draft.order_number;
       dateTouched = !!saved.dateTouched;
       const deliveryDate = saved.delivery_date || (draft.delivery && draft.delivery.date) || "";
@@ -402,7 +438,7 @@
         "</div>" +
         "<div class=\"card\">" +
           "<h2>Products</h2>" +
-          "<p class=\"hint\">Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Amount paid, variation, doors, powder coating, dimensions, and detailed description are required. Check quantity and exclusive VAT, change them if they are wrong, then confirm.</p>" +
+          "<p class=\"hint\">Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Amount paid, variation, doors, powder coating, dimensions, and detailed description are required. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.</p>" +
           "<div id=\"products\"></div>" +
           "<div class=\"split\" id=\"splitBox\"></div>" +
         "</div>" +
@@ -431,7 +467,9 @@
           "</div>" +
           "<div class=\"grid\" style=\"margin-top:12px\">" +
             "<label>Dimensions *<input data-f=\"dimensions\" value=\"" + esc(p.dimensions || "") + "\" required></label>" +
-            "<label>Detailed description *<textarea data-f=\"detailed_description\" required>" + esc(p.detailed_description || "") + "</textarea></label>" +
+            "<label>Detailed description *<textarea data-f=\"detailed_description\" placeholder=\"Finish, glass, extras\" required>" + esc(p.detailed_description || "") + "</textarea>" +
+              "<span class=\"hint\">Type this for the shop. Select the words production must not miss (for example additional shelf), then mark them as important.</span>" +
+              "<button type=\"button\" class=\"ghost\" data-mark-important style=\"margin-top:6px;width:auto\">Mark selected as important</button></label>" +
           "</div>" +
         "</article>";
       }).join("") || "<p class=\"msg\">This enquiry has no products to turn into orders.</p>";
@@ -454,6 +492,14 @@
         }
         refreshSplit();
         persist();
+      });
+      formRoot.addEventListener("click", (e) => {
+        const btn = e.target && e.target.closest && e.target.closest("[data-mark-important]");
+        if (!btn) return;
+        e.preventDefault();
+        const card = btn.closest("[data-product]");
+        const box = card && card.querySelector("[data-f=detailed_description]");
+        markSelectedImportant(box);
       });
       formRoot.addEventListener("change", (e) => {
         if (e.target && e.target.id === "f_delivery") dateTouched = true;

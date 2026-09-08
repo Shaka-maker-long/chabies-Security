@@ -271,6 +271,7 @@ assert.ok(/^S\d+$/.test(draft.order_number));
 assert.strictEqual(draft.products.length, 2);
 assert.strictEqual(draft.products[0].type, "Standard");
 assert.strictEqual(draft.products[0].quantity, 1);
+assert.strictEqual(draft.products[0].detailed_description, "");
 assert.strictEqual(draft.shared.city, "");
 assert.strictEqual(draft.delivery.scheduleCode, "LD");
 assert.ok(draft.dropdowns.type.indexOf("Standard") !== -1);
@@ -366,6 +367,8 @@ assert.ok(page.indexOf("City *") !== -1);
 assert.ok(page.indexOf("qty_price_confirmed") !== -1);
 assert.ok(page.indexOf("strictest item") !== -1);
 assert.ok(page.indexOf("put LC on Monday") !== -1);
+assert.ok(page.indexOf("Mark selected as important") !== -1);
+assert.ok(page.indexOf("does not copy from the enquiry") !== -1);
 assert.ok(page.indexOf("Office schedule") === -1);
 
 const officeJs = fs.readFileSync(path.join(__dirname, "office.js"), "utf8");
