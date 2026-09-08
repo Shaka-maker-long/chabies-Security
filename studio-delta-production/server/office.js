@@ -22,6 +22,7 @@ const {
   upsertEnquiry,
   deleteEnquiry,
   deleteAllEnquiries,
+  deleteAllOrders,
   nextEnquiryNo,
   listEnquiryDropdowns,
   ENQUIRY_FIELDS,
@@ -331,7 +332,8 @@ function mountOffice(app) {
       fields: ORDER_FIELDS,
       vatRate: VAT_RATE,
       nextOrderNumber: nextStudioOrderNumber(),
-      operators: staff.listUsers().map((u) => u.name).filter(Boolean)
+      operators: staff.listUsers().map((u) => u.name).filter(Boolean),
+      canManageUsers: staff.canManageUsers(_req.office)
     });
   });
 
@@ -402,6 +404,25 @@ function mountOffice(app) {
   app.delete("/api/office/orders/:orderNumber", requireOffice, (req, res) => {
     deleteOrder(req.params.orderNumber);
     res.json({ ok: true });
+  });
+
+  app.post("/api/office/orders/clear-all", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can clear all orders." });
+      return;
+    }
+    const confirm = String((req.body && (req.body.confirm || req.body.confirmation)) || "").trim();
+    if (confirm.toUpperCase() !== "CLEAR") {
+      res.status(400).json({ ok: false, error: "Type CLEAR to delete every order. Enquiries stay." });
+      return;
+    }
+    try {
+      const removed = deleteAllOrders();
+      try { jobCard.deleteAllJobCards(); } catch (e) {}
+      res.json({ ok: true, removed, nextOrderNumber: nextStudioOrderNumber() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.get("/api/office/enquiries", requireOffice, (req, res) => {

@@ -2394,6 +2394,19 @@ function deleteAllEnquiries() {
   return removed;
 }
 
+function deleteAllOrders() {
+  const nos = listOrders().map((o) => o && o.order_number).filter(Boolean);
+  const sheet = ordersSheet();
+  const last = sheet.getLastRow();
+  for (let r = last; r >= 2; r--) sheet.deleteRow(r);
+  state.paymentsByOrder = {};
+  state.schedule_rows = [];
+  state.schedule_cells = [];
+  persistWorkbook();
+  save();
+  return nos.length;
+}
+
 function recordPayment(orderNumber, amount, note) {
   const num = String(orderNumber || "").trim();
   const existing = listOrders().find((o) => o.order_number === num);
@@ -2475,6 +2488,7 @@ module.exports = {
   renameEnquiryNumber,
   deleteEnquiry,
   deleteAllEnquiries,
+  deleteAllOrders,
   nextEnquiryNo,
   nextQuoteNo,
   recentQuoteNos,

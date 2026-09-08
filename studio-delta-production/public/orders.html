@@ -68,6 +68,7 @@
     .view-value { font-size:13px; margin:0; white-space:pre-wrap; word-break:break-word; }
     .view-value.empty { color:var(--muted); }
     .form-foot { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line); }
+    .err { color:var(--bad); font-size:12px; min-height:16px; }
     @media (max-width: 720px) {
       .stack-grid, .stack-grid.four, .view-grid { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
@@ -92,6 +93,7 @@
       <input type="search" id="q" placeholder="Search orders">
       <button class="ghost" type="button" onclick="location.href='/orders/job-card'">Generate job card</button>
       <button class="ghost" type="button" onclick="openForm()">New order</button>
+      <button class="danger" type="button" id="clearAllBtn" style="display:none" onclick="openClearAll()">Clear all orders</button>
     </div>
   </header>
   <div class="wrap">
@@ -228,6 +230,24 @@
       <div class="body" id="viewBody"></div>
     </div>
   </div>
+  <div class="mask" id="clearMask">
+    <div class="sheet" role="dialog" aria-modal="true" style="width:min(480px,96vw)">
+      <header>
+        <h1>Clear all orders</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeClearAll()">Cancel</button>
+          <button class="danger" type="button" onclick="confirmClearAll()">Delete every order</button>
+        </div>
+      </header>
+      <div class="body stack-form">
+        <p class="hint">This removes every order from the Orders sheet, the production schedule, and saved job cards. Enquiries are not deleted. Type <b>CLEAR</b> to confirm.</p>
+        <label>Type CLEAR
+          <input id="clearConfirm" autocomplete="off">
+        </label>
+        <div class="err" id="clearErr"></div>
+      </div>
+    </div>
+  </div>
 
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
@@ -267,6 +287,7 @@
     let dropdowns = {};
     let operators = [];
     let nextOrderNumber = "S1";
+    let canManage = false;
     let editingIndex = -1;
     let printedByOrder = {};
 
@@ -636,9 +657,37 @@
       (cards.ok && cards.rows ? cards.rows : []).forEach((card) => {
         if (card && card.order_number) printedByOrder[card.order_number] = card;
       });
+      if (j.canManageUsers != null) canManage = !!j.canManageUsers;
+      const clearBtn = document.getElementById("clearAllBtn");
+      if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       document.getElementById("status").textContent = rows.length + " orders";
       render();
     }
+    function openClearAll() {
+      document.getElementById("clearConfirm").value = "";
+      document.getElementById("clearErr").textContent = "";
+      document.getElementById("clearMask").classList.add("open");
+      document.getElementById("clearConfirm").focus();
+    }
+    function closeClearAll() {
+      document.getElementById("clearMask").classList.remove("open");
+    }
+    async function confirmClearAll() {
+      const err = document.getElementById("clearErr");
+      err.textContent = "";
+      const r = await sdOfficeFetch("/api/office/orders/clear-all", {
+        method: "POST",
+        body: JSON.stringify({ confirm: document.getElementById("clearConfirm").value })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { err.textContent = j.error || "Could not clear orders"; return; }
+      closeClearAll();
+      await load();
+      document.getElementById("status").textContent = "Cleared " + (j.removed || 0) + " orders. Enquiries were not deleted.";
+    }
+    window.openClearAll = openClearAll;
+    window.closeClearAll = closeClearAll;
+    window.confirmClearAll = confirmClearAll;
 
     document.getElementById("grid").onclick = (e) => {
       const printed = e.target.closest("[data-open-job-card]");
@@ -702,7 +751,13 @@
       box.selectionStart = start;
       box.selectionEnd = end + 2;
     };
-    sdRequireOffice("orders").then((p) => { if (p) load(); });
+    sdRequireOffice("orders").then((p) => {
+      if (!p) return;
+      canManage = !!p.canManageUsers;
+      const clearBtn = document.getElementById("clearAllBtn");
+      if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
+      load();
+    });
   </script>
   <script src="/enquiry-process.js?v=corr-links"></script>
 </body>
