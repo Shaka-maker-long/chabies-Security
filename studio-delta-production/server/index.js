@@ -143,6 +143,10 @@ app.get("/users", (_req, res) => {
 app.get("/durations", (_req, res) => {
   res.sendFile(path.join(publicDir, "durations.html"));
 });
+app.get("/planning", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "planning.html"));
+});
 app.get("/gas-client.js", (_req, res) => {
   res.type("application/javascript").sendFile(path.join(publicDir, "gas-client.js"));
 });

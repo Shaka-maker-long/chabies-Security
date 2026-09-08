@@ -8,7 +8,7 @@ const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 
 const labels = [
   "Home", "Orders", "Enquiries", "My tasks", "Dropdowns", "Users",
-  "Task times", "Debtors", "Production", "Workers", "Metrics",
+  "Task times", "Planning", "Debtors", "Production", "Workers", "Metrics",
   "QC Reports", "Activity", "Schedule", "Log Out", "Change access code"
 ];
 labels.forEach((label) => {
@@ -19,6 +19,8 @@ assert.ok(js.indexOf("/enquiries") !== -1);
 assert.ok(js.indexOf("/tasks") !== -1);
 assert.ok(js.indexOf("Office schedule") === -1, "office schedule is an Orders subpage");
 assert.ok(js.indexOf('"/schedule"') === -1);
+assert.ok(js.indexOf("/planning") !== -1, "planning is an office page");
+assert.ok(js.indexOf('"Planning"') !== -1);
 
 const officeJs = fs.readFileSync(path.join(__dirname, "office.js"), "utf8");
 assert.ok(officeJs.indexOf("listMyCompletedTasks") !== -1);
@@ -423,6 +425,18 @@ assert.ok(durationsHtml.indexOf("3.5 is 3 hours 30 minutes") !== -1);
 assert.ok(durationsHtml.indexOf("hours: Math.round") !== -1);
 assert.ok(durationsHtml.indexOf("minutesFromHours") === -1);
 assert.ok(durationsHtml.indexOf("Minutes per product") === -1);
+const planningHtml = fs.readFileSync(path.join(__dirname, "../public/planning.html"), "utf8");
+assert.ok(planningHtml.indexOf("Weekly work calendars") !== -1);
+assert.ok(planningHtml.indexOf("Monday to Friday") !== -1);
+assert.ok(planningHtml.indexOf("Schedule selected") !== -1);
+assert.ok(planningHtml.indexOf("Not Yet Started") !== -1);
+assert.ok(planningHtml.indexOf("Ready for Steelwork") !== -1);
+assert.ok(planningHtml.indexOf("Paint shop") !== -1 || planningHtml.indexOf("paintShop") !== -1);
+assert.ok(planningHtml.indexOf("Office schedule") === -1);
+assert.ok(indexJs.indexOf('"/planning"') !== -1 || indexJs.indexOf("/planning") !== -1);
+assert.ok(officeJs.indexOf("/api/office/planning") !== -1);
+assert.ok(floor.indexOf('href="/planning"') !== -1);
+assert.ok(floor.indexOf("Planning") !== -1);
 assert.ok(floor.indexOf("sd-qc-draft") !== -1, "QC forms keep a per-worker draft");
 assert.ok(floor.indexOf("persistQcDraft") !== -1);
 assert.ok(floor.indexOf("dropQcDraft") !== -1);

@@ -46,6 +46,7 @@ const pipeline = require("./enquiry-pipeline");
 const desk = require("./enquiry-desk");
 const paintShop = require("./powder-shop");
 const glassPo = require("./glass-po");
+const floorPlanning = require("./floor-planning");
 const fs = require("fs");
 const sqlite = require("./sqlite-store");
 const {
@@ -315,6 +316,28 @@ function mountOffice(app) {
   app.put("/api/office/durations", requireOffice, (req, res) => {
     try {
       res.json({ ok: true, rows: staff.setDurations((req.body && req.body.rows) || []) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/planning", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, board: floorPlanning.getBoard(req.query && req.query.week) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.post("/api/office/planning/schedule", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, result: floorPlanning.scheduleSelected(req.body || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.delete("/api/office/planning/orders/:orderNumber", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, result: floorPlanning.unscheduleOrder(req.params.orderNumber) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
