@@ -434,6 +434,15 @@ function buildJourney(blocks) {
   };
 }
 
+const USER_ASSIGNED_PROCESSES = [
+  "Profile Cutting",
+  "Tagging",
+  "Plate Cutting",
+  "Welding",
+  "Assembly"
+];
+const GRIND_POOL_TASKS = ["Profile Cutting", "Tagging", "Welding"];
+
 function namesEqual(a, b) {
   return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
 }
@@ -492,60 +501,152 @@ function placeProcess(order, process, fromMs, workerName, busyBlocks) {
   return { endMs: toMs(placed.end), blocks };
 }
 
+function grindingPool(users) {
+  return (users || staff.listUsers())
+    .filter((u) => {
+      const tasks = u.tasks || [];
+      if (tasks.indexOf("Grinding") === -1) return false;
+      return GRIND_POOL_TASKS.some((t) => tasks.indexOf(t) !== -1);
+    })
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+function placeGrindingOnOpenSlot(order, minutes, fromMs, busy, users) {
+  const pool = grindingPool(users);
+  if (!pool.length) {
+    throw new Error(
+      "Grinding is auto-assigned. On Users, tick Grinding plus Profile cutting, Tagging, or Welding for at least one person."
+    );
+  }
+  let best = null;
+  pool.forEach((user) => {
+    const placed = placeTask(fromMs, minutes, busyForWorker(busy, user.name));
+    if (!placed.segments.length || !placed.start) return;
+    if (
+      !best
+      || placed.start < best.placed.start
+      || (placed.start === best.placed.start && (
+        placed.end < best.placed.end
+        || (placed.end === best.placed.end && String(user.name) < String(best.user.name))
+      ))
+    ) {
+      best = { user, placed };
+    }
+  });
+  if (!best) throw new Error("Could not place Grinding for " + order.order_number + ".");
+  const blocks = best.placed.segments.map((seg) => ({
+    id: newId(),
+    orderId: formatOrderId(order.order_number),
+    studioNo: formatOrderId(order.order_number),
+    product: String(order.product || ""),
+    process: "Grinding",
+    workerId: best.user.name,
+    workerName: best.user.name,
+    start: seg.start,
+    end: seg.end,
+    kind: "work"
+  }));
+  return { endMs: toMs(best.placed.end), blocks };
+}
+
 function scheduleOrder({ order, assignments, existingBlocks, fromMs }) {
-  const minutes = minutesByProcessFor(order.product);
-  const hasWork = PLANNED_PROCESSES.some((p) => minutes[p] > 0);
-  if (!hasWork) {
-    throw new Error("No Task times for " + (order.product || order.order_number) + ". Add hours on Task times first.");
-  }
-  const assign = assignments || {};
+  return scheduleBatch({
+    jobs: [{ order, assignments }],
+    existingBlocks,
+    fromMs
+  }).blocks;
+}
+
+function scheduleBatch({ jobs, existingBlocks, fromMs }) {
+  const users = staff.listUsers();
   let busy = (existingBlocks || []).slice();
-  const out = [];
-
-  function run(process, from) {
-    if (!(minutes[process] > 0)) return from;
-    const placed = placeProcess(order, process, from, assign[process], busy);
-    out.push.apply(out, placed.blocks);
-    busy = busy.concat(placed.blocks);
-    return placed.endMs;
-  }
-
   const startMs = nextWorkInstant(fromMs != null ? fromMs : Date.now());
-  let afterProfile = startMs;
-  if (minutes["Profile Cutting"] > 0) afterProfile = run("Profile Cutting", startMs);
+  const drafts = [];
 
-  let afterTag = afterProfile;
-  if (minutes.Tagging > 0) afterTag = run("Tagging", afterProfile);
+  (jobs || []).forEach((job) => {
+    const order = job.order;
+    const minutes = minutesByProcessFor(order.product);
+    const hasWork = PLANNED_PROCESSES.some((p) => minutes[p] > 0);
+    if (!hasWork) {
+      throw new Error("No Task times for " + (order.product || order.order_number) + ". Add hours on Task times first.");
+    }
+    const assign = job.assignments || {};
+    const metal = [];
+    function run(process, from) {
+      if (!(minutes[process] > 0)) return from;
+      const placed = placeProcess(order, process, from, assign[process], busy);
+      metal.push.apply(metal, placed.blocks);
+      busy = busy.concat(placed.blocks);
+      return placed.endMs;
+    }
+    let afterProfile = startMs;
+    if (minutes["Profile Cutting"] > 0) afterProfile = run("Profile Cutting", startMs);
+    let afterTag = afterProfile;
+    if (minutes.Tagging > 0) afterTag = run("Tagging", afterProfile);
+    let afterWeld = afterTag;
+    if (minutes.Welding > 0) afterWeld = run("Welding", afterTag);
+    if (minutes["Plate Cutting"] > 0) run("Plate Cutting", afterTag);
+    drafts.push({ order, assign, minutes, afterWeld, metal, grind: [], rest: [] });
+  });
 
-  let afterWeld = afterTag;
-  if (minutes.Welding > 0) afterWeld = run("Welding", afterTag);
-  if (minutes["Plate Cutting"] > 0) run("Plate Cutting", afterTag);
+  drafts.forEach((draft) => {
+    draft.afterGrind = draft.afterWeld;
+    if (!(draft.minutes.Grinding > 0)) return;
+    const placed = placeGrindingOnOpenSlot(
+      draft.order,
+      draft.minutes.Grinding,
+      draft.afterWeld,
+      busy,
+      users
+    );
+    draft.grind = placed.blocks;
+    draft.afterGrind = placed.endMs;
+    busy = busy.concat(placed.blocks);
+  });
 
-  let afterGrind = afterWeld;
-  if (minutes.Grinding > 0) afterGrind = run("Grinding", afterWeld);
+  drafts.forEach((draft) => {
+    const hadMetal = ["Profile Cutting", "Tagging", "Plate Cutting", "Welding", "Grinding"]
+      .some((p) => draft.minutes[p] > 0);
+    let after = draft.afterGrind;
+    if (hadMetal) {
+      const drop = earliestPaintMonday(after);
+      const paintEnd = drop + PAINT_WAIT_DAYS * 86400000;
+      const paint = {
+        id: newId(),
+        orderId: formatOrderId(draft.order.order_number),
+        studioNo: formatOrderId(draft.order.order_number),
+        product: String(draft.order.product || ""),
+        process: "Powder coating",
+        workerId: PAINT_WORKER_ID,
+        workerName: PAINT_WORKER_NAME,
+        start: isoFromMs(drop),
+        end: isoFromMs(paintEnd),
+        kind: "paint"
+      };
+      draft.rest.push(paint);
+      busy = busy.concat([paint]);
+      after = paintEnd;
+    }
+    if (draft.minutes.Assembly > 0) {
+      const placed = placeProcess(
+        draft.order,
+        "Assembly",
+        nextWorkInstant(after),
+        draft.assign.Assembly,
+        busy
+      );
+      draft.rest.push.apply(draft.rest, placed.blocks);
+      busy = busy.concat(placed.blocks);
+    }
+  });
 
-  const hadMetal = ["Profile Cutting", "Tagging", "Plate Cutting", "Welding", "Grinding"]
-    .some((p) => minutes[p] > 0);
-  if (hadMetal) {
-    const drop = earliestPaintMonday(afterGrind);
-    const paintEnd = drop + PAINT_WAIT_DAYS * 86400000;
-    out.push({
-      id: newId(),
-      orderId: formatOrderId(order.order_number),
-      studioNo: formatOrderId(order.order_number),
-      product: String(order.product || ""),
-      process: "Powder coating",
-      workerId: PAINT_WORKER_ID,
-      workerName: PAINT_WORKER_NAME,
-      start: isoFromMs(drop),
-      end: isoFromMs(paintEnd),
-      kind: "paint"
-    });
-    afterGrind = paintEnd;
-  }
-
-  if (minutes.Assembly > 0) run("Assembly", nextWorkInstant(afterGrind));
-  return out;
+  const blocks = [];
+  drafts.forEach((draft) => {
+    blocks.push.apply(blocks, draft.metal);
+    blocks.push.apply(blocks, draft.grind);
+    blocks.push.apply(blocks, draft.rest);
+  });
+  return { blocks };
 }
 
 function findOrder(orderNumber) {
@@ -560,22 +661,17 @@ function scheduleSelected(body) {
   const fromMs = body && body.from ? toMs(body.from) : Date.now();
   if (body && body.from && !Number.isFinite(fromMs)) throw new Error("From date is not a valid time.");
   const store = load();
-  let busy = store.blocks.filter((b) => ids.indexOf(formatOrderId(b.orderId)) === -1);
-  const created = [];
-  ids.forEach((id) => {
+  const remaining = store.blocks.filter((b) => ids.indexOf(formatOrderId(b.orderId)) === -1);
+  const jobs = ids.map((id) => {
     const order = findOrder(id);
     if (!order) throw new Error("Order " + id + " was not found.");
-    const assign = assignments[id] || assignments[order.order_number] || {};
-    const blocks = scheduleOrder({
+    return {
       order,
-      assignments: assign,
-      existingBlocks: busy,
-      fromMs
-    });
-    created.push.apply(created, blocks);
-    busy = busy.concat(blocks);
+      assignments: assignments[id] || assignments[order.order_number] || {}
+    };
   });
-  store.blocks = busy;
+  const created = scheduleBatch({ jobs, existingBlocks: remaining, fromMs }).blocks;
+  store.blocks = remaining.concat(created);
   save(store);
   return { blocks: created, count: created.length };
 }
@@ -629,7 +725,8 @@ function queueOrders() {
           process,
           hours,
           minutes,
-          workers: workersForProcess(process, users)
+          auto: process === "Grinding",
+          workers: process === "Grinding" ? [] : workersForProcess(process, users)
         };
       }).filter((p) => p.minutes > 0);
       return {
@@ -670,6 +767,7 @@ function getBoard(week) {
     queue: queueOrders(),
     colors: PROCESS_COLORS,
     processes: PLANNED_PROCESSES.slice(),
+    autoProcesses: ["Grinding"],
     windows: {
       morning: "07:45–12:00",
       afternoon: "12:30–15:45",
@@ -713,5 +811,7 @@ module.exports = {
   workdaysFromTo,
   occupiedWorkdays,
   formatDayHeader,
-  JOURNEY_PROCESS_ORDER
+  JOURNEY_PROCESS_ORDER,
+  grindingPool,
+  USER_ASSIGNED_PROCESSES
 };

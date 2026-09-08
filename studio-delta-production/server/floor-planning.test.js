@@ -160,7 +160,6 @@ const assignA = {
   "Tagging": "Sipho",
   "Plate Cutting": "Willard",
   "Welding": "Thabo",
-  "Grinding": "Thabo",
   "Assembly": "Nomsa"
 };
 
@@ -192,6 +191,8 @@ assert.ok(byProcess.Welding.some((b) => b.start < byProcess["Plate Cutting"][0].
 const grindStart = byProcess.Grinding[0].start;
 const weldEnd = byProcess.Welding[byProcess.Welding.length - 1].end;
 assert.ok(grindStart >= weldEnd, "grinding after welding");
+assert.strictEqual(byProcess.Grinding[0].workerName, "Thabo", "only Thabo is in the grinding pool");
+assert.ok(!assignA.Grinding, "grinding is not assigned by the user");
 
 const paint = byProcess["Powder coating"][0];
 assert.strictEqual(paint.workerId, plan.PAINT_WORKER_ID);
@@ -282,6 +283,9 @@ const productA = board.queue.find((q) => q.order_number === "S260100 A");
 assert.ok(!productA.processes.some((p) => p.process === "Quality Control"));
 assert.ok(productA.processes.find((p) => p.process === "Welding").hours === 3);
 assert.ok(productA.processes.find((p) => p.process === "Welding").workers.some((w) => w.name === "Thabo"));
+const grindRow = productA.processes.find((p) => p.process === "Grinding");
+assert.ok(grindRow && grindRow.auto, "grinding is auto-assigned");
+assert.deepStrictEqual(grindRow.workers, []);
 
 const journey = board.journey;
 assert.ok(journey);
@@ -305,5 +309,33 @@ assert.ok(!journey.days.some((d) => d.iso === "2026-09-12" || d.iso === "2026-09
 const removed = plan.unscheduleOrder("S260100 A");
 assert.ok(removed.removed > 0);
 assert.ok(!plan.load().blocks.some((b) => b.orderId === "S260100 A"));
+
+staff.upsertUser({
+  name: "Sam",
+  access: "Production",
+  role: "Metal",
+  password: "1234",
+  tasks: ["Profile Cutting", "Tagging", "Welding", "Grinding"]
+});
+plan.save({ blocks: [] });
+const batch = plan.scheduleSelected({
+  orderIds: ["S260100 A", "S260100 B"],
+  assignments: {
+    "S260100 A": assignA,
+    "S260100 B": assignA
+  },
+  from: plan.isoFromMs(fromTue)
+});
+const grindA = batch.blocks.filter((b) => b.orderId === "S260100 A" && b.process === "Grinding");
+const grindB = batch.blocks.filter((b) => b.orderId === "S260100 B" && b.process === "Grinding");
+const weldAEnd = batch.blocks.filter((b) => b.orderId === "S260100 A" && b.process === "Welding").pop().end;
+const weldB = batch.blocks.filter((b) => b.orderId === "S260100 B" && b.process === "Welding");
+assert.ok(grindA.length, "batch still auto-places grinding");
+assert.ok(grindA[0].start >= weldAEnd, "grind waits for that order's welding");
+assert.strictEqual(grindA[0].workerName, "Sam", "grinding fills Sam's open slot while Thabo is still welding the next order");
+assert.ok(grindB.length);
+assert.ok(["Sam", "Thabo"].indexOf(grindB[0].workerName) !== -1);
+assert.ok(!batch.blocks.some((b) => b.process === "Grinding" && b.workerName === "Nomsa"));
+assert.ok(!batch.blocks.some((b) => b.process === "Grinding" && b.workerName === "Willard"));
 
 console.log("floor-planning.test.js ok");
