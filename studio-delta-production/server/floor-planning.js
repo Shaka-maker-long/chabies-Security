@@ -32,6 +32,12 @@ const PROCESS_COLORS = {
   "Assembly": { bg: "#fae8ff", fg: "#86198f", border: "#c026d3" }
 };
 
+const DAY_BANDS = [
+  { id: "meeting", label: "Production Meeting", startMin: 7 * 60 + 45, endMin: 8 * 60, bg: "#fde68a", fg: "#92400e" },
+  { id: "lunch", label: "Lunch", startMin: 12 * 60, endMin: 12 * 60 + 30, bg: "#e5e7eb", fg: "#374151" },
+  { id: "cleaning", label: "Cleaning", startMin: 15 * 60 + 15, endMin: 15 * 60 + 45, bg: "#a7f3d0", fg: "#065f46" }
+];
+
 const WINDOWS = [
   { startMin: 7 * 60 + 45, endMin: 12 * 60 },
   { startMin: 12 * 60 + 30, endMin: 15 * 60 + 45 }
@@ -426,11 +432,22 @@ function buildJourney(blocks) {
   });
   return {
     days: minIso && maxIso ? workdaysFromTo(minIso, maxIso) : [],
-    orders: orderIds.map((id) => ({
-      orderId: id,
-      product: byOrder[id][0] ? byOrder[id][0].product : "",
-      rows: byOrder[id]
-    }))
+    orders: orderIds.map((id) => {
+      const rows = byOrder[id];
+      let start = "";
+      let end = "";
+      (rows || []).forEach((row) => {
+        if (row.start && (!start || row.start < start)) start = row.start;
+        if (row.end && (!end || row.end > end)) end = row.end;
+      });
+      return {
+        orderId: id,
+        product: rows[0] ? rows[0].product : "",
+        start,
+        end,
+        rows
+      };
+    })
   };
 }
 
@@ -853,11 +870,19 @@ function blockOverlapsWeek(block, weekStartIso) {
   return Number.isFinite(start) && Number.isFinite(end) && start < weekEnd && end > weekStart;
 }
 
+function weekStartingOrders(journey, days) {
+  const isos = (days || []).map((d) => d.iso);
+  return ((journey && journey.orders) || [])
+    .filter((o) => isos.indexOf(String(o.start || "").slice(0, 10)) !== -1)
+    .sort((a, b) => String(a.start).localeCompare(String(b.start)) || String(a.orderId).localeCompare(String(b.orderId)));
+}
+
 function getBoard(week) {
   const weekStart = weekMondayIso(week);
   const days = weekDays(weekStart);
   const store = load();
   const workers = plannedWorkers();
+  const journey = buildJourney(store.blocks);
   return {
     weekStart,
     prevWeek: shiftWeek(weekStart, -1),
@@ -875,8 +900,10 @@ function getBoard(week) {
       afternoon: "12:30–15:45",
       lunch: "12:00–12:30"
     },
+    bands: DAY_BANDS.slice(),
     now: isoFromMs(Date.now()),
-    journey: buildJourney(store.blocks)
+    journey,
+    weekStarting: weekStartingOrders(journey, days)
   };
 }
 
@@ -888,6 +915,7 @@ module.exports = {
   PLANNED_PROCESSES,
   PROCESS_COLORS,
   WINDOWS,
+  DAY_BANDS,
   WEEKDAYS,
   sastMs,
   partsFromMs,
@@ -916,5 +944,6 @@ module.exports = {
   formatDayHeader,
   JOURNEY_PROCESS_ORDER,
   grindingPool,
-  USER_ASSIGNED_PROCESSES
+  USER_ASSIGNED_PROCESSES,
+  weekStartingOrders
 };
