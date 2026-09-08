@@ -370,10 +370,11 @@ function drawLabeled(doc, x, y, w, h, label, value, opts) {
     width: w - 8,
     lineBreak: false
   });
-  doc.font(opts.bold === false ? "Helvetica" : "Helvetica-Bold").fontSize(opts.size || 10)
-    .text(String(value == null || value === "" ? "" : value), x + 4, y + 16, {
+  const weight = opts.valueBold ? "Helvetica-Bold" : "Helvetica";
+  doc.font(weight).fontSize(opts.size || 10)
+    .text(String(value == null || value === "" ? "" : value), x + 4, y + 15, {
       width: w - 8,
-      height: h - 20
+      height: h - 19
     });
   doc.restore();
 }
@@ -413,18 +414,60 @@ function drawDescription(doc, x, y, w, h, value) {
 }
 
 function drawCheckRow(doc, x, y, w, h, label) {
-  drawBox(doc, x, y, w, h);
-  const yesW = 42;
-  const noW = 42;
-  const qW = w - yesW - noW;
+  const yesW = Math.round(w * 0.12);
+  const noW = yesW;
+  const noteW = Math.round(w * 0.14);
+  const qW = w - yesW - noW - noteW * 3;
+  drawBox(doc, x, y, qW, h);
   doc.save();
-  doc.font("Helvetica-Bold").fontSize(9).fillColor("#111")
-    .text(label, x + 6, y + (h - 10) / 2, { width: qW - 10, lineBreak: false });
+  doc.font("Helvetica-Bold").fontSize(8).fillColor("#111")
+    .text(String(label || "").toUpperCase(), x + 6, y + (h - 9) / 2, { width: qW - 10, lineBreak: false });
   drawBox(doc, x + qW, y, yesW, h);
   drawBox(doc, x + qW + yesW, y, noW, h);
-  doc.rect(x + qW + 14, y + 6, 12, 12).stroke();
-  doc.rect(x + qW + yesW + 14, y + 6, 12, 12).stroke();
+  doc.rect(x + qW + (yesW - 12) / 2, y + (h - 12) / 2, 12, 12).stroke();
+  doc.rect(x + qW + yesW + (noW - 12) / 2, y + (h - 12) / 2, 12, 12).stroke();
+  for (let i = 0; i < 3; i++) {
+    drawBox(doc, x + qW + yesW + noW + noteW * i, y, noteW, h);
+  }
   doc.restore();
+}
+
+function jobCardFrontRows(record) {
+  const rec = record || {};
+  return [
+    [
+      { label: "BUILDER:", value: rec.builder || "" },
+      { label: "DESIGN TYPE:", value: rec.design_type || "" },
+      { label: "COLOUR:", value: rec.colour || "" }
+    ],
+    [
+      { label: "ASSEMBLER:", value: "" },
+      { label: "ORDER NUMBER:", value: rec.order_number || "", span: 2 }
+    ],
+    [
+      { label: "DATE START:", value: rec.start_date || "" },
+      { label: "CUSTOMER NAME:", value: rec.customer || "", span: 2 }
+    ],
+    [
+      { label: "TIME STARTED:", value: "" },
+      { label: "PRODUCT:", value: rec.product || "", span: 2 }
+    ],
+    [
+      { label: "DATE FINISHED:", value: "" },
+      { label: "GLASS TYPE:", value: rec.glass_type || "", span: 2 }
+    ],
+    [
+      { label: "TIME FINISHED:", value: "" },
+      { label: "VARIATIONS:", value: rec.variation || "", span: 2 }
+    ],
+    [
+      { label: "DESCRIPTION:", value: rec.description || "", span: 3 }
+    ],
+    [
+      { label: "DIMENSIONS:", value: rec.dimensions_string || "", width: 0.62 },
+      { label: "PROVINCE:", value: rec.province || "", width: 0.38 }
+    ]
+  ];
 }
 
 function drawTable(doc, title, headers, rows, colWeights) {
@@ -498,54 +541,53 @@ async function writeJobCardPdf(record, dest) {
     let y = margin + logoSize + 10;
     const rowH = 28;
     const col1 = inner * 0.30;
-    const col2 = inner * 0.42;
+    const col2 = inner * 0.40;
     const col3 = inner - col1 - col2;
+    const widths3 = [col1, col2, col3];
+    jobCardFrontRows(record).forEach((cells) => {
+      const tall = cells.some((c) => c.label === "DESCRIPTION:" || c.label === "VARIATIONS:");
+      const h = cells[0].label === "DESCRIPTION:" ? 64 : (tall ? 36 : rowH);
+      let x = margin;
+      cells.forEach((cell, i) => {
+        let w;
+        if (cell.span === 3) w = inner;
+        else if (cell.span === 2) w = col2 + col3;
+        else if (cell.width) w = inner * cell.width;
+        else if (cells.length === 3) w = widths3[i];
+        else if (cells.length === 2 && i === 1) w = col2 + col3;
+        else w = col1;
+        if (cell.label === "DESCRIPTION:") drawDescription(doc, x, y, w, h, cell.value);
+        else drawLabeled(doc, x, y, w, h, cell.label, cell.value);
+        x += w;
+      });
+      y += h;
+    });
+    y += 10;
 
-    drawLabeled(doc, margin, y, col1, rowH, "Assembler:", "");
-    drawLabeled(doc, margin + col1, y, col2, rowH, "Design type:", record.design_type);
-    drawLabeled(doc, margin + col1 + col2, y, col3, rowH, "Colour:", record.colour);
-    y += rowH;
-    drawLabeled(doc, margin, y, col1, rowH, "Date start:", record.start_date);
-    drawLabeled(doc, margin + col1, y, col2, rowH, "Order number:", record.order_number);
-    drawLabeled(doc, margin + col1 + col2, y, col3, rowH, "", "");
-    y += rowH;
-    drawLabeled(doc, margin, y, col1, rowH, "Time started:", "");
-    drawLabeled(doc, margin + col1, y, col2, rowH, "Customer name:", record.customer);
-    drawLabeled(doc, margin + col1 + col2, y, col3, rowH, "", "");
-    y += rowH;
-    drawLabeled(doc, margin, y, col1, rowH, "Date finished:", "");
-    drawLabeled(doc, margin + col1, y, col2 + col3, rowH, "Product:", record.product);
-    y += rowH;
-    drawLabeled(doc, margin, y, col1, rowH, "Time finished:", "");
-    drawLabeled(doc, margin + col1, y, col2 + col3, rowH, "Glass type:", record.glass_type);
-    y += rowH;
-    drawLabeled(doc, margin, y, inner, 36, "Variations:", record.variation);
-    y += 36;
-    drawDescription(doc, margin, y, inner, 64, record.description);
-    y += 64;
-    const dimW = inner * 0.62;
-    drawLabeled(doc, margin, y, dimW, rowH, "Dimensions:", record.dimensions_string);
-    drawLabeled(doc, margin + dimW, y, inner - dimW, rowH, "Province:", record.province);
-    y += rowH + 12;
-
-    drawBox(doc, margin, y, inner * 0.62, 20);
-    drawBox(doc, margin + inner * 0.62, y, inner * 0.19, 20);
-    drawBox(doc, margin + inner * 0.81, y, inner * 0.19, 20);
-    doc.font("Helvetica-Bold").fontSize(9)
+    const yesW = Math.round(inner * 0.12);
+    const noW = yesW;
+    const noteW = Math.round(inner * 0.14);
+    const qW = inner - yesW - noW - noteW * 3;
+    drawBox(doc, margin, y, qW, 20);
+    drawBox(doc, margin + qW, y, yesW, 20);
+    drawBox(doc, margin + qW + yesW, y, noW, 20);
+    for (let i = 0; i < 3; i++) drawBox(doc, margin + qW + yesW + noW + noteW * i, y, noteW, 20);
+    doc.font("Helvetica-Bold").fontSize(8)
       .text("QC QUESTIONS:", margin + 6, y + 6)
-      .text("YES", margin + inner * 0.62, y + 6, { width: inner * 0.19, align: "center" })
-      .text("NO", margin + inner * 0.81, y + 6, { width: inner * 0.19, align: "center" });
+      .text("YES", margin + qW, y + 6, { width: yesW, align: "center" })
+      .text("NO", margin + qW + yesW, y + 6, { width: noW, align: "center" });
     y += 20;
-    ["DIMENSIONS", "OVERALL SQUARE", "GLASS SIZES", "ALL WELDS POLISHED", "HOLES DRILLED"].forEach((q) => {
+    ["DIMENSIONS:", "OVERALL SQUARE:", "GLASS SIZES:", "ALL WELDS POLISHED:", "HOLES DRILLED:"].forEach((q) => {
       drawCheckRow(doc, margin, y, inner, 22, q);
       y += 22;
     });
-    y += 16;
-    doc.font("Helvetica-Bold").fontSize(12).text("SIGNATURE", margin, y, { width: inner, align: "center" });
-    y += 20;
+    y += 12;
+    drawBox(doc, margin, y, inner, 22);
+    doc.font("Helvetica-Bold").fontSize(11).text("SIGNATURE", margin, y + 6, { width: inner, align: "center" });
+    y += 22;
     ["EMPLOYEE:", "SUPERVISOR:", "QC SIGNATURE:"].forEach((label) => {
-      drawLabeled(doc, margin, y, inner, 32, label, "", { bold: false });
-      y += 32;
+      drawLabeled(doc, margin, y, inner, 28, label, "");
+      y += 28;
     });
 
     doc.addPage();
@@ -647,6 +689,7 @@ async function generateJobCard(input) {
     colour: order.powder_coating || "",
     glass_type: order.doors || "N/A",
     variation: order.variation || "",
+    builder: order.assigned_operator || "",
     description,
     province: order.province || "",
     dimensions: dims,
@@ -704,6 +747,7 @@ module.exports = {
   deleteAllJobCards,
   generateJobCard,
   readJobCardPdf,
+  jobCardFrontRows,
   normalizeDimensions,
   emptyCutting,
   isStandardType,
