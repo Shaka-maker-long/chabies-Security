@@ -99,7 +99,7 @@
   <div class="layout">
     <aside class="queue">
       <h2>Orders to schedule</h2>
-      <p class="help">Not Yet Started and Ready for Steelwork. Hours come from Task times for that product. Skip a process when hours are 0. Assign the people ticked for each task, then place the next free paid slot.</p>
+      <p class="help">Not Yet Started and Ready for Steelwork. Assign people for each task except grinding. Hours come from Task times. After the selected orders’ other work is placed, grinding is given to whoever has an open slot among people ticked for grinding plus profile cutting, tagging, or welding on Users.</p>
       <input type="search" id="q" placeholder="Search order, product, status">
       <div class="actions" style="margin:0 0 12px">
         <button type="button" id="scheduleSelected">Schedule selected</button>
@@ -171,6 +171,9 @@
         const checked = picked[id] ? " checked" : "";
         const open = openOrders[id] || picked[id] ? " open" : "";
         const tasks = (o.processes || []).map((p) => {
+          if (p.auto || p.process === "Grinding") {
+            return "<div class='task-row'><span>" + esc(p.process) + " <em>" + p.hours + " h</em></span><span>Auto - next open slot</span></div>";
+          }
           const chosen = assigns[id][p.process] || (p.workers.length === 1 ? p.workers[0].id : "");
           if (p.workers.length === 1) assigns[id][p.process] = p.workers[0].id;
           const opts = ["<option value=''>Assign person</option>"].concat(
