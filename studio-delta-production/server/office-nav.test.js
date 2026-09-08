@@ -464,6 +464,7 @@ assert.ok(floor.indexOf("getFloorTaskCounts") !== -1);
 assert.ok(floor.indexOf("WORK_LOCKS_DISABLED") !== -1, "work lock can be turned off for testing");
 assert.ok(floor.indexOf("Work lock is off for testing") !== -1);
 const codeGs = fs.readFileSync(path.join(__dirname, "../Code.gs"), "utf8");
+assert.ok(codeGs.indexOf("if (!start || !end) continue;") !== -1, "costing skips unfinished production logs");
 assert.ok(codeGs.indexOf("var WORK_LOCKS_DISABLED = true") !== -1);
 assert.ok(codeGs.indexOf("function workLocksDisabled") !== -1);
 assert.ok(codeGs.indexOf("hourPart") !== -1 && codeGs.indexOf("minPart") !== -1, "task times speak hours and minutes");
