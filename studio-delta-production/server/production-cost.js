@@ -160,6 +160,42 @@ function deleteLabourRate(process) {
   throw new Error("Rate not found.");
 }
 
+function hasEnded(value) {
+  if (value == null || value === "") return false;
+  if (value instanceof Date) return !isNaN(value.getTime());
+  return String(value).trim() !== "";
+}
+
+function deleteSheetRowsFromBottom(sheet, shouldDelete) {
+  if (!sheet || sheet.getLastRow() < 2) return 0;
+  let removed = 0;
+  for (let r = sheet.getLastRow(); r >= 2; r--) {
+    if (!shouldDelete || shouldDelete(r)) {
+      sheet.deleteRow(r);
+      removed++;
+    }
+  }
+  return removed;
+}
+
+function clearSteelUsage() {
+  const removed = deleteSheetRowsFromBottom(getBook().getSheetByName("Steel_Usage"));
+  persistWorkbook();
+  try { require("./gas").clearShopCache(); } catch (e) {}
+  return { removed };
+}
+
+function clearFinishedProductionLogs() {
+  const book = getBook();
+  const logs = book.getSheetByName("Production_Log");
+  const overview = book.getSheetByName("Overview");
+  const removed = deleteSheetRowsFromBottom(logs, (r) => hasEnded(logs.getRange(r, 7).getValue()));
+  const overviewRemoved = deleteSheetRowsFromBottom(overview, (r) => hasEnded(overview.getRange(r, 6).getValue()));
+  persistWorkbook();
+  try { require("./gas").clearShopCache(); } catch (e) {}
+  return { removed, overviewRemoved };
+}
+
 function hourlyRate(byProcess, role, task) {
   const keys = [role, task, matchTask(task)].filter(Boolean).map((s) => String(s).toLowerCase());
   for (let i = 0; i < keys.length; i++) {
@@ -420,5 +456,7 @@ module.exports = {
   snapshotLabourRates,
   upsertLabourRate,
   deleteLabourRate,
+  clearSteelUsage,
+  clearFinishedProductionLogs,
   getAppData
 };

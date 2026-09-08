@@ -110,6 +110,17 @@
     body.tooltip-locked #modal-backdrop { display: block; }
     #overheadToggle { border: 1px solid #1d2939; background: #fff; color: #1d2939; border-radius: 6px; padding: 7px 12px; font-weight: 600; cursor: pointer; font: inherit; font-size: 13px; }
     #overheadToggle.on { background: #1d2939; color: #fff; }
+    .danger { background: #fff; color: var(--bad); border-color: #fecdca; }
+    .ghost { background: #fff; color: #1d2939; }
+    .mask { position: fixed; inset: 0; background: rgba(16,24,40,.45); z-index: 50; display: none; align-items: flex-start; justify-content: center; padding: 24px 12px; overflow: auto; }
+    .mask.open { display: flex; }
+    .sheet { width: min(480px, 96vw); background: #fff; border-radius: 12px; border: 1px solid var(--border-color); margin: 24px auto; }
+    .sheet header { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid var(--border-color); }
+    .sheet header h2 { margin: 0; font-size: 16px; }
+    .sheet .body { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .sheet label { font-size: 12px; font-weight: 600; display: flex; flex-direction: column; gap: 4px; }
+    .sheet input { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; font: inherit; }
+    .sheet .hint { margin: 0; color: #6B7280; font-size: 13px; }
     .loader, .empty, .err { text-align: center; padding: 48px 16px; color: #6B7280; font-weight: 600; }
     .err { color: var(--bad); }
     .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px; }
@@ -142,6 +153,24 @@
 </head>
 <body>
   <div id="modal-backdrop"></div>
+  <div class="mask" id="clearMask">
+    <div class="sheet" role="dialog" aria-modal="true">
+      <header>
+        <h2 id="clearTitle">Clear</h2>
+        <div>
+          <button class="ghost" type="button" onclick="closeClear()">Cancel</button>
+          <button class="danger" type="button" onclick="confirmClear()">Delete</button>
+        </div>
+      </header>
+      <div class="body">
+        <p class="hint" id="clearHint"></p>
+        <label>Type CLEAR
+          <input id="clearConfirm" autocomplete="off">
+        </label>
+        <div class="err" id="clearErr"></div>
+      </div>
+    </div>
+  </div>
   <header>
     <div>
       <nav class="tabs" aria-label="Orders views">
@@ -159,6 +188,8 @@
     </div>
     <div class="nav-controls">
       <span class="msg" id="status"></span>
+      <button type="button" class="danger" id="clearSteelBtn" style="display:none" onclick="openClear('steel')">Clear steel usage</button>
+      <button type="button" class="danger" id="clearLogBtn" style="display:none" onclick="openClear('log')">Clear production log</button>
       <button type="button" class="on" id="overheadToggle" data-on="1" onclick="toggleOverheads()">Overheads on</button>
       <select id="filterMode" onchange="changeFilterType()">
         <option value="month">Monthly</option>
@@ -686,7 +717,49 @@
     });
     bindPaneScroll("logsMetaPane", "logsScroller");
     bindPaneScroll("monthlyMetaPane", "monthlyScroller");
-    sdRequireOffice("orders").then((p) => { if (p) load(); });
+    let clearKind = "";
+    function openClear(kind) {
+      clearKind = kind;
+      document.getElementById("clearTitle").textContent = kind === "steel" ? "Clear steel usage" : "Clear production log";
+      document.getElementById("clearHint").textContent = kind === "steel"
+        ? "This deletes every logged steel metre. Labour time stays. Type CLEAR to confirm."
+        : "This deletes finished shop-time rows from the production log. Jobs still running stay. Steel usage stays. Type CLEAR to confirm.";
+      document.getElementById("clearConfirm").value = "";
+      document.getElementById("clearErr").textContent = "";
+      document.getElementById("clearMask").classList.add("open");
+      document.getElementById("clearConfirm").focus();
+    }
+    function closeClear() {
+      document.getElementById("clearMask").classList.remove("open");
+      clearKind = "";
+    }
+    async function confirmClear() {
+      const err = document.getElementById("clearErr");
+      err.textContent = "";
+      const url = clearKind === "steel" ? "/api/office/steel-usage/clear" : "/api/office/production-log/clear";
+      const r = await sdOfficeFetch(url, {
+        method: "POST",
+        body: JSON.stringify({ confirm: document.getElementById("clearConfirm").value })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { err.textContent = j.error || "Could not clear"; return; }
+      const kind = clearKind;
+      closeClear();
+      await load();
+      setMsg("status", kind === "steel"
+        ? "Cleared " + (j.removed || 0) + " steel usage rows."
+        : "Cleared " + (j.removed || 0) + " finished production log rows.");
+    }
+    window.openClear = openClear;
+    window.closeClear = closeClear;
+    window.confirmClear = confirmClear;
+    sdRequireOffice("orders").then((p) => {
+      if (!p) return;
+      const show = !!p.canManageUsers;
+      document.getElementById("clearSteelBtn").style.display = show ? "" : "none";
+      document.getElementById("clearLogBtn").style.display = show ? "" : "none";
+      load();
+    });
   </script>
 </body>
 </html>

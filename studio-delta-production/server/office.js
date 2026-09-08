@@ -386,6 +386,40 @@ function mountOffice(app) {
     }
   });
 
+  app.post("/api/office/steel-usage/clear", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can clear steel usage." });
+      return;
+    }
+    const confirm = String((req.body && (req.body.confirm || req.body.confirmation)) || "").trim();
+    if (confirm.toUpperCase() !== "CLEAR") {
+      res.status(400).json({ ok: false, error: "Type CLEAR to delete every steel usage row." });
+      return;
+    }
+    try {
+      res.json({ ok: true, ...productionCost.clearSteelUsage() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/production-log/clear", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can clear the production log." });
+      return;
+    }
+    const confirm = String((req.body && (req.body.confirm || req.body.confirmation)) || "").trim();
+    if (confirm.toUpperCase() !== "CLEAR") {
+      res.status(400).json({ ok: false, error: "Type CLEAR to delete finished production log rows." });
+      return;
+    }
+    try {
+      res.json({ ok: true, ...productionCost.clearFinishedProductionLogs() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.put("/api/office/materials-to-order", requireOffice, async (req, res) => {
     try {
       const { callShopFunction } = require("./gas");
