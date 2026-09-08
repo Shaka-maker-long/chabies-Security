@@ -374,6 +374,7 @@ assert.ok(fromEnquiryHtml.indexOf("Create orders from enquiry") !== -1);
 assert.ok(fromEnquiryHtml.indexOf("f_status") === -1);
 assert.ok(fromEnquiryHtml.indexOf("Tuesday and Thursday") !== -1);
 assert.ok(fromEnquiryHtml.indexOf("Office schedule") === -1);
+assert.ok(fromEnquiryHtml.indexOf("Mark selected as important") !== -1);
 assert.ok(officeJs.indexOf("/api/office/materials-to-order") !== -1);
 assert.ok(officeJs.indexOf("/api/office/glass-po") !== -1);
 assert.ok(officeJs.indexOf("/api/office/glass-po/receive") !== -1);
