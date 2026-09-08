@@ -118,7 +118,8 @@ assert.ok(page.indexOf("Builder") === -1, "job card UI must not ask for a builde
 assert.ok(page.indexOf("BOM") === -1);
 assert.ok(page.indexOf("materialsTable") === -1);
 assert.ok(page.indexOf("Add All Cutting List Items to BOM") === -1);
-assert.ok(page.indexOf("Paste cutting list") !== -1);
+assert.ok(page.indexOf("Use existing cutting list") !== -1);
+assert.ok(page.indexOf("saved Standard cutting list") !== -1);
 assert.ok(page.indexOf("Generate job card") !== -1);
 assert.ok(page.indexOf("Mark selected as important") !== -1);
 assert.ok(page.indexOf("textarea id=\"description\" readonly") === -1, "shop description is typed on the job card");
@@ -202,6 +203,11 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
   assert.ok(pdf.toString("latin1").indexOf("S260193") !== -1);
   assert.strictEqual(created.record.description, "Talitha Bookshelf");
   assert.ok(pdf.toString("latin1").indexOf("BOM") === -1);
+  const savedTalitha = jobCard.getStandardCutting("Talitha Bookshelf");
+  assert.ok(savedTalitha);
+  assert.strictEqual(savedTalitha.product, "Talitha Bookshelf");
+  assert.strictEqual(savedTalitha.from_order_number, "S260193");
+  assert.strictEqual(savedTalitha.cutting.tubes.length, 2);
 
   const listed = jobCard.listGeneratedJobCards();
   assert.ok(listed.some((r) => r.order_number === "S260193" && r.has_pdf && r.pdf_url));
@@ -217,6 +223,7 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
   });
   assert.strictEqual(again.status, "Ready for Steelwork", "regenerate must keep steelwork status");
   assert.strictEqual(again.record.cutting.tubes[0].length, 500);
+  assert.strictEqual(jobCard.getStandardCutting("Talitha Bookshelf").cutting.tubes[0].length, 500);
 
   db.upsertOrder(Object.assign({}, after, { status: "Profile Cutting" }));
   const fromProfile = await jobCard.generateJobCard({
@@ -287,6 +294,33 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
   const customOrder = db.listOrders().find((o) => o.order_number === "S260210");
   assert.ok(/Height:\s*1460mm/.test(customOrder.dimensions));
   assert.ok(/Width:\s*560mm/.test(customOrder.dimensions));
+  assert.strictEqual(
+    jobCard.getStandardCutting("Talitha Bookshelf").from_order_number,
+    "S260193",
+    "Custom Talitha must not overwrite the Standard cutting list"
+  );
+  const customEligible = jobCard.listEligibleOrders().find((r) => r.order_number === "S260210");
+  assert.ok(customEligible);
+  assert.ok(!customEligible.standard_cutting, "Custom jobs are not offered the Standard library list");
+
+  db.upsertOrder({
+    order_number: "S260301",
+    status: "Not Yet Started",
+    type: "Standard",
+    product: "Talitha Bookshelf",
+    client_name: "Next Standard",
+    doors: "N/A",
+    powder_coating: "Ferrograin Black",
+    variation: "Top & bottom shelves steel, Middles shelves: Steel",
+    detailed_description: "Talitha Bookshelf",
+    dimensions: "Standard",
+    province: "Gauteng"
+  });
+  const nextStandard = jobCard.listEligibleOrders().find((r) => r.order_number === "S260301");
+  assert.ok(nextStandard && nextStandard.standard_cutting, "next Standard Talitha can reuse the saved list");
+  assert.strictEqual(nextStandard.standard_cutting.product, "Talitha Bookshelf");
+  assert.strictEqual(nextStandard.standard_cutting.from_order_number, "S260193");
+  assert.strictEqual(nextStandard.standard_cutting.cutting.tubes[0].length, 500);
 
   let placeholder = null;
   try {
@@ -378,6 +412,7 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
     cutting_text: samplePaste
   });
   assert.ok(jobCard.cuttingCount(generatedA.record.cutting) > 0);
+  assert.strictEqual(jobCard.getStandardCutting("Thandi Display Cabinet").from_order_number, "S260001 A");
 
   const eligibleAfterA = jobCard.listEligibleOrders();
   const rowA = eligibleAfterA.find((r) => r.order_number === "S260001 A");
@@ -402,6 +437,7 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
   const afterB = jobCard.listEligibleOrders().find((r) => r.order_number === "S260001 B");
   assert.ok(!afterB || !afterB.suggested_cutting, "B with its own cutting is not offered a suggestion");
   assert.strictEqual(jobCard.getJobCard("S260001 A").cutting.tubes[0].length, generatedA.record.cutting.tubes[0].length);
+  assert.ok(jobCard.getStandardCutting("Thandi Display Cabinet"));
 
   const beforeClear = db.listOrders().length;
   assert.ok(beforeClear >= 1);
@@ -411,6 +447,8 @@ assert.ok(!eligible.some((r) => r.order_number === "S260200"));
   assert.strictEqual(db.listOrders().length, 0);
   jobCard.deleteAllJobCards();
   assert.ok(!jobCard.getJobCard("S260211"));
+  assert.ok(jobCard.getStandardCutting("Talitha Bookshelf"), "Standard cutting lists survive clearing job cards");
+  assert.ok(jobCard.getStandardCutting("Thandi Display Cabinet"));
 
   console.log("job-card.test.js ok");
 })().catch((e) => {

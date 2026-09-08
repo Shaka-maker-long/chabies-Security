@@ -50,8 +50,9 @@
     .mode.regen { background:#ecfdf3; color:#067647; }
     .card.needs-confirm { border-color:#f79009; box-shadow:0 0 0 3px rgba(247,144,9,.15); }
     .confirm { background:#fff7ed; border:1px solid #f79009; }
-    .suggest { background:#ecfdf3; border:1px solid #abefc6; border-radius:8px; padding:12px; margin:0 0 12px; }
-    .suggest p { margin:0 0 10px; color:#067647; font-size:13px; font-weight:600; }
+    .suggest { background:#ecfdf3; border:1px solid #abefc6; border-radius:8px; padding:12px; margin:0 0 12px; display:flex; flex-direction:column; gap:12px; }
+    .suggest .opt p { margin:0 0 8px; color:#067647; font-size:13px; font-weight:600; }
+    .suggest .opt button { width:auto; }
     .choices { display:flex; flex-direction:column; gap:8px; }
     .choices label { flex-direction:row; align-items:flex-start; gap:10px; font-weight:500; font-size:13px; }
     .choices input { width:auto; margin-top:3px; }
@@ -147,11 +148,8 @@
 
     <div class="card">
       <h2>Paste cutting list from Excel</h2>
-      <p class="hint">First column is the material name (for example 13mm SQ Square Tube), second is the description (Width). Then length or height, width, quantity, and cut angle.</p>
-      <div id="suggestWrap" class="suggest" hidden>
-        <p id="suggestCopy"></p>
-        <button type="button" class="ghost" id="useSuggestedCutting">Use this cutting list</button>
-      </div>
+      <p class="hint">First column is the material name (for example 13mm SQ Square Tube), second is the description (Width). Then length or height, width, quantity, and cut angle. Standard products keep a saved cutting list after you generate a card, so the next one can reuse it.</p>
+      <div id="suggestWrap" class="suggest" hidden></div>
       <textarea id="pasted" placeholder="13mm SQ Square Tube	Width	600		2	2
 13mm SQ Square Tube	Height	600		4	2
 1.6mm Plate	Top (Bend)	587	401	1	0"></textarea>
@@ -211,23 +209,66 @@
       const total = (cutting.bars.length + cutting.plates.length + cutting.tubes.length + cutting.wood.length);
       return !total && !String(document.getElementById("pasted").value || "").trim();
     }
+    function cuttingOptions() {
+      const row = current;
+      const options = [];
+      if (!row) return options;
+      const sibling = row.suggested_cutting;
+      if (sibling && sibling.paste_text) {
+        options.push({
+          id: "sibling",
+          title: sibling.same_split
+            ? sibling.from_order_number + " is the same product and description. Use that cutting list?"
+            : "Order " + sibling.from_order_number + " is the same product and description. Use that cutting list?",
+          button: "Use this cutting list",
+          ok: "Copied the cutting list from " + sibling.from_order_number + ". Generate when you are ready — this does not change that order.",
+          payload: sibling
+        });
+      }
+      const std = row.standard_cutting;
+      if (std && std.paste_text) {
+        const sameAsSibling = sibling && sibling.from_order_number && sibling.from_order_number === std.from_order_number;
+        if (!sameAsSibling) {
+          const name = std.product || row.product || "this Standard product";
+          options.push({
+            id: "standard",
+            title: "A saved Standard cutting list exists for " + name + ". Use the existing cutting list?",
+            button: "Use existing cutting list",
+            ok: "Copied the saved Standard cutting list for " + name + ".",
+            payload: std
+          });
+        }
+      }
+      return options;
+    }
     function syncSuggestedCutting() {
       const wrap = document.getElementById("suggestWrap");
-      const copy = document.getElementById("suggestCopy");
-      const row = current;
-      const s = row && row.suggested_cutting;
       if (!wrap) return;
-      if (!s || !s.paste_text || !cuttingIsEmpty()) {
+      if (!cuttingIsEmpty()) {
         wrap.hidden = true;
+        wrap.innerHTML = "";
         return;
       }
-      copy.textContent = s.same_split
-        ? s.from_order_number + " is the same product and description. Use that cutting list?"
-        : "Order " + s.from_order_number + " is the same product and description. Use that cutting list?";
+      const options = cuttingOptions();
+      if (!options.length) {
+        wrap.hidden = true;
+        wrap.innerHTML = "";
+        return;
+      }
+      wrap.innerHTML = options.map((opt) => (
+        "<div class=\"opt\">" +
+          "<p>" + esc(opt.title) + "</p>" +
+          "<button type=\"button\" class=\"ghost\" data-use-cutting=\"" + esc(opt.id) + "\">" + esc(opt.button) + "</button>" +
+        "</div>"
+      )).join("");
       wrap.hidden = false;
+      wrap.querySelectorAll("[data-use-cutting]").forEach((btn) => {
+        btn.onclick = () => useCuttingOption(btn.getAttribute("data-use-cutting"));
+      });
     }
-    function useSuggestedCutting() {
-      const s = current && current.suggested_cutting;
+    function useCuttingOption(id) {
+      const opt = cuttingOptions().find((row) => row.id === id);
+      const s = opt && opt.payload;
       if (!s) return;
       document.getElementById("pasted").value = s.paste_text || "";
       cutting = JSON.parse(JSON.stringify(s.cutting || { bars: [], plates: [], tubes: [], wood: [] }));
@@ -235,7 +276,7 @@
       persistJobCardDraft();
       syncSuggestedCutting();
       setErr("");
-      setOk("Copied the cutting list from " + s.from_order_number + ". Generate when you are ready — this does not change that order.");
+      setOk(opt.ok || "Copied that cutting list. Generate when you are ready.");
     }
 
     function isStandardType(type) {
@@ -573,7 +614,6 @@
     document.getElementById("markImportantBtn").onclick = markSelectedImportant;
     document.getElementById("description").oninput = () => { syncGenerateReady(); persistJobCardDraft(); };
     document.getElementById("parseBtn").onclick = parseList;
-    document.getElementById("useSuggestedCutting").onclick = useSuggestedCutting;
     document.getElementById("generateBtn").onclick = generate;
     document.getElementById("printedQ").oninput = renderPrinted;
     document.getElementById("pasted").oninput = () => { persistJobCardDraft(); syncSuggestedCutting(); };
