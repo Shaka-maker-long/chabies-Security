@@ -53,6 +53,7 @@ const steelRates = require("./steel-rates");
 const productionCost = require("./production-cost");
 const floorPlanning = require("./floor-planning");
 const fs = require("fs");
+const express = require("express");
 const sqlite = require("./sqlite-store");
 const {
   SCHEDULE_CODES,
@@ -1023,17 +1024,46 @@ function mountOffice(app) {
     fs.createReadStream(file).pipe(res);
   });
 
+  app.get("/api/office/backup.tgz", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can download a complete backup." });
+      return;
+    }
+    const backup = require("./backup");
+    let file = backup.latestCompletePath();
+    if (!file) {
+      const status = backup.runBackup("download");
+      if (!status.ok) {
+        res.status(500).json({ ok: false, error: status.error || "Could not make a complete backup." });
+        return;
+      }
+      file = backup.latestCompletePath();
+    }
+    if (!file) {
+      res.status(404).json({ ok: false, error: "No complete backup is on this volume yet." });
+      return;
+    }
+    res.setHeader("Content-Type", "application/gzip");
+    res.setHeader("Content-Disposition", "attachment; filename=\"" + require("path").basename(file) + "\"");
+    fs.createReadStream(file).pipe(res);
+  });
+
   app.get("/api/office/backups", requireOffice, (_req, res) => {
     const backup = require("./backup");
     res.json({
       ok: true,
       ...backup.info(),
       last: backup.loadStatus(),
+      lastRestore: backup.loadRestoreStatus(),
       snapshots: backup.listLocalSnapshots()
     });
   });
 
   app.post("/api/office/backups/run", requireOffice, (_req, res) => {
+    if (!staff.canManageUsers(_req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can run a backup." });
+      return;
+    }
     try {
       const status = require("./backup").runBackup("manual");
       res.json({ ok: !!status.ok, ...status });
@@ -1043,14 +1073,55 @@ function mountOffice(app) {
   });
 
   app.get("/api/office/backups/file/:name", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can download backups." });
+      return;
+    }
     const file = require("./backup").safeBackupName(req.params.name);
     if (!file) {
       res.status(404).json({ ok: false, error: "That backup file is not on this volume." });
       return;
     }
-    res.setHeader("Content-Type", file.endsWith(".json") ? "application/json" : "application/octet-stream");
-    res.setHeader("Content-Disposition", "attachment; filename=\"" + require("path").basename(file) + "\"");
+    const name = require("path").basename(file);
+    res.setHeader("Content-Type", name.endsWith(".json") ? "application/json" : "application/octet-stream");
+    res.setHeader("Content-Disposition", "attachment; filename=\"" + name + "\"");
     fs.createReadStream(file).pipe(res);
+  });
+
+  app.post("/api/office/backups/restore", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can restore a backup." });
+      return;
+    }
+    try {
+      const backup = require("./backup");
+      const kept = staff.keepRequestSession(req);
+      const result = backup.restoreNamed((req.body && req.body.name) || "", {
+        confirm: req.body && req.body.confirm,
+        keepSession: kept
+      });
+      res.json({ ok: !!result.ok, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/backups/restore-upload", requireOffice, express.raw({ type: () => true, limit: "1024mb" }), (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can restore a backup." });
+      return;
+    }
+    try {
+      const backup = require("./backup");
+      const confirm = req.query.confirm || req.headers["x-sd-restore-confirm"];
+      const filename = req.query.filename || req.headers["x-sd-filename"] || "upload.tgz";
+      const saved = backup.saveUploadedBackup(req.body, filename);
+      const kept = staff.keepRequestSession(req);
+      const result = backup.restoreFromPath(saved, { confirm, keepSession: kept });
+      res.json({ ok: !!result.ok, ...result, uploaded: require("path").basename(saved) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.get("/api/office/dropdowns", requireOffice, (_req, res) => {

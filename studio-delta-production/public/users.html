@@ -29,6 +29,13 @@
     .pass-card label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; margin:0 0 10px; }
     .pass-card input { font-weight:400; }
     .pass-err { color:#b42318; font-size:12px; min-height:16px; }
+    .backup-card { margin:0 0 18px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; }
+    .backup-card h2 { font-family: Outfit, Inter, sans-serif; font-size:16px; margin:0 0 6px; }
+    .backup-card .warn { color:#b42318; font-weight:600; }
+    .backup-card .ok { color:#067647; }
+    .backup-actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0; }
+    .backup-card table { margin-top:10px; }
+    .backup-card input[type=text] { width:160px; }
   </style>
 </head>
 <body>
@@ -36,14 +43,35 @@
     <h1>Users</h1>
     <span class="msg" id="status"></span>
     <span class="msg" id="backupLine"></span>
-    <button class="ghost" data-manage-only onclick="downloadBackup()">Download JSON backup</button>
-    <button class="ghost" data-manage-only onclick="downloadSqlite()">Download SQLite</button>
     <button class="ghost" data-manage-only onclick="runBackup()">Backup now</button>
     <button class="ghost" id="migrateWrap" type="button" onclick="migrateGoogle()" style="display:none">Copy old Google spreadsheet once</button>
     <button data-manage-only onclick="addRow()">Add user</button>
     <button data-manage-only onclick="saveAll()">Save</button>
   </header>
   <div class="wrap">
+    <section class="backup-card" id="backupCard" data-manage-only style="display:none">
+      <h2>Backup and restore</h2>
+      <p class="help">A complete copy is written every night at 02:00 Johannesburg and whenever you click <b>Backup now</b>. The copy is opened and integrity-checked before it is kept. Restore types <b>RESTORE</b>. The live shop is snapshotted first; a bad file is rolled back.</p>
+      <p class="help" id="volumeLine"></p>
+      <p class="help" id="backupDetail"></p>
+      <div class="backup-actions">
+        <button type="button" onclick="runBackup()">Backup now</button>
+        <button class="ghost" type="button" onclick="downloadComplete()">Download complete backup</button>
+        <button class="ghost" type="button" onclick="downloadSqlite()">Download SQLite only</button>
+        <button class="ghost" type="button" onclick="downloadBackup()">Download JSON</button>
+      </div>
+      <div class="backup-actions">
+        <input id="restoreConfirm" type="text" placeholder="Type RESTORE" autocomplete="off">
+        <label class="t">Restore a file from this computer <input id="restoreFile" type="file" accept=".tgz,.db,.gz"></label>
+        <button class="ghost" type="button" onclick="restoreUpload()">Restore uploaded file</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>When</th><th>File</th><th>Checked</th><th>Size</th><th></th></tr>
+        </thead>
+        <tbody id="backupBody"><tr><td colspan="5">No backups yet. Click Backup now.</td></tr></tbody>
+      </table>
+    </section>
     <div id="passOnly" class="pass-card" style="display:none">
       <h2 style="font-size:16px;margin:0 0 8px">Change access code</h2>
       <label>Name<input id="ownName" autocomplete="username"></label>
@@ -204,6 +232,62 @@
       const day = new Date().toISOString().slice(0, 10);
       await downloadBlob("/api/office/backup.db", "studio-delta-" + day + ".db", "Could not download SQLite");
     }
+    async function downloadComplete() {
+      await downloadBlob("/api/office/backup.tgz", "studio-delta-complete.tgz", "Could not download complete backup");
+    }
+    async function downloadNamed(name) {
+      await downloadBlob("/api/office/backups/file/" + encodeURIComponent(name), name, "Could not download that backup");
+    }
+    function restoreWord() {
+      return String(document.getElementById("restoreConfirm").value || "").trim();
+    }
+    async function restoreNamed(name) {
+      if (restoreWord() !== "RESTORE") {
+        document.getElementById("status").textContent = "Type RESTORE to restore.";
+        return;
+      }
+      if (!confirm("Restore " + name + "? The live shop is copied first. Type RESTORE was required.")) return;
+      document.getElementById("status").textContent = "Restoring…";
+      const r = await sdOfficeFetch("/api/office/backups/restore", {
+        method: "POST",
+        body: JSON.stringify({ name, confirm: restoreWord() })
+      });
+      const j = await r.json();
+      document.getElementById("status").textContent = j.ok
+        ? "Restored from " + name
+        : (j.error || "Restore failed");
+      loadBackup();
+      load();
+    }
+    async function restoreUpload() {
+      const input = document.getElementById("restoreFile");
+      const file = input && input.files && input.files[0];
+      if (!file) {
+        document.getElementById("status").textContent = "Choose a .tgz or .db backup first.";
+        return;
+      }
+      if (restoreWord() !== "RESTORE") {
+        document.getElementById("status").textContent = "Type RESTORE to restore.";
+        return;
+      }
+      if (!confirm("Restore " + file.name + "? The live shop is copied first.")) return;
+      document.getElementById("status").textContent = "Restoring…";
+      const profile = sdOfficeProfile() || {};
+      const r = await fetch("/api/office/backups/restore-upload?confirm=" + encodeURIComponent(restoreWord()) + "&filename=" + encodeURIComponent(file.name), {
+        method: "POST",
+        headers: {
+          "x-sd-token": profile.token || "",
+          "Content-Type": "application/gzip"
+        },
+        body: file
+      });
+      const j = await r.json();
+      document.getElementById("status").textContent = j.ok
+        ? "Restored from " + file.name
+        : (j.error || "Restore failed");
+      loadBackup();
+      load();
+    }
     async function runBackup() {
       document.getElementById("status").textContent = "Backing up…";
       const r = await sdOfficeFetch("/api/office/backups/run", { method: "POST" });
@@ -213,7 +297,7 @@
         loadBackup();
         return;
       }
-      document.getElementById("status").textContent = "Backup saved";
+      document.getElementById("status").textContent = "Backup saved and checked";
       loadBackup();
     }
     function backupWhen(iso) {
@@ -224,16 +308,62 @@
         return iso;
       }
     }
+    function bytesLabel(n) {
+      const b = Number(n) || 0;
+      if (b < 1024) return b + " B";
+      if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+      return (b / (1024 * 1024)).toFixed(1) + " MB";
+    }
     async function loadBackup() {
       const r = await sdOfficeFetch("/api/office/backups");
       const j = await r.json();
       if (!j.ok) return;
       const line = document.getElementById("backupLine");
-      if (!j.backupAt) {
-        line.textContent = "";
+      const detail = document.getElementById("backupDetail");
+      const volume = document.getElementById("volumeLine");
+      if (line) {
+        if (!j.backupAt) line.textContent = "No backup yet";
+        else line.textContent = (j.backupOk ? "Last backup " : "Last backup failed ") + backupWhen(j.backupAt);
+      }
+      if (volume) {
+        if (j.usingEphemeralDisk || j.volumeWarning) {
+          volume.className = "help warn";
+          volume.textContent = j.volumeWarning || "No Railway volume is attached. Data will be wiped on the next deploy.";
+        } else {
+          volume.className = "help ok";
+          volume.textContent = "Saving on this disk: " + (j.dataDir || "");
+        }
+      }
+      if (detail) {
+        const bits = [];
+        if (j.backupVerified) bits.push("Last copy passed SQLite integrity_check.");
+        if (j.backupCounts) bits.push("Users " + j.backupCounts.users + ", orders " + j.backupCounts.orders + ", enquiries " + j.backupCounts.enquiries + ".");
+        if (j.backupOffsite) bits.push("Off-site Drive copy was uploaded.");
+        else if (j.backupGoogleConfigured) bits.push("Drive is configured but the last off-site upload did not run.");
+        else bits.push("Off-site Drive is optional. Local copies on the volume are enough if the volume stays attached.");
+        if (j.restoreAt) bits.push((j.restoreOk ? "Last restore OK " : "Last restore failed ") + backupWhen(j.restoreAt) + ".");
+        detail.textContent = bits.join(" ");
+      }
+      const body = document.getElementById("backupBody");
+      if (!body) return;
+      const rows = j.snapshots || [];
+      if (!rows.length) {
+        body.innerHTML = "<tr><td colspan=\"5\">No backups yet. Click Backup now.</td></tr>";
         return;
       }
-      line.textContent = (j.backupOk ? "Last backup " : "Last backup failed ") + backupWhen(j.backupAt);
+      body.innerHTML = rows.map((s) => {
+        const file = s.complete || s.name;
+        const checked = s.verified ? "Yes" : (s.integrity || "—");
+        return "<tr><td>" + esc(backupWhen(s.at)) + "</td><td>" + esc(file) + "</td><td>" + esc(checked) + "</td><td>" + esc(bytesLabel(s.bytes)) + "</td><td>" +
+          "<button class='ghost' type='button' data-dl='"+esc(file)+"'>Download</button> " +
+          "<button type='button' data-rs='"+esc(file)+"'>Restore</button></td></tr>";
+      }).join("");
+      body.onclick = (e) => {
+        const dl = e.target.getAttribute("data-dl");
+        const rs = e.target.getAttribute("data-rs");
+        if (dl) downloadNamed(dl);
+        if (rs) restoreNamed(rs);
+      };
     }
     async function migrateGoogle() {
       if (!confirm("Replace Users, orders, and shop logs with the old Google spreadsheet? Existing enquiries stay. Continue?")) return;

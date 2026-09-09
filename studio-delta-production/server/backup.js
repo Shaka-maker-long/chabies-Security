@@ -8,12 +8,32 @@ const sqlite = require("./sqlite-store");
 const KEEP_LOCAL = 14;
 const KEEP_DRIVE = 14;
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
-const FILES_ARCHIVE_MAX = 250 * 1024 * 1024;
 const MAIL_ATTACH_MAX = 12 * 1024 * 1024;
 const FOLDER_NAME = "Studio Delta ERP backups";
 const SAFE_NAME = /^studio-delta-[A-Za-z0-9._-]+$/;
+const CONFIRM_WORD = "RESTORE";
+const FILE_DIRS = [
+  "enquiry-quotes",
+  "enquiry-files",
+  "debtor-payments",
+  "paint-shop-invoices",
+  "glass-po-invoices",
+  "job-cards"
+];
+const SIDECARS = [
+  "studio-delta.json",
+  "floor-workbook.json",
+  "paint-shop.json",
+  "glass-pos.json",
+  "glass-rates.json",
+  "steel-rates.json",
+  "floor-planning.json",
+  "job-cards.json",
+  "office-sessions.json"
+];
 
 let running = false;
+let restoring = false;
 
 function sastDate(d) {
   const sast = new Date((d || new Date()).getTime() + SAST_OFFSET_MS);
@@ -25,7 +45,7 @@ function sastDate(d) {
     h: sast.getUTCHours(),
     min: sast.getUTCMinutes(),
     date: sast.getUTCFullYear() + "-" + p(sast.getUTCMonth() + 1) + "-" + p(sast.getUTCDate()),
-    stamp: sast.getUTCFullYear() + p(sast.getUTCMonth() + 1) + p(sast.getUTCDate()) + "-" + p(sast.getUTCHours()) + p(sast.getUTCMinutes())
+    stamp: sast.getUTCFullYear() + p(sast.getUTCMonth() + 1) + p(sast.getUTCDate()) + "-" + p(sast.getUTCHours()) + p(sast.getUTCMinutes()) + p(sast.getUTCSeconds())
   };
 }
 
@@ -43,6 +63,10 @@ function folderStatePath() {
   return path.join(backupsDir(), "drive-folder.json");
 }
 
+function restoreLogPath() {
+  return path.join(backupsDir(), "last-restore.json");
+}
+
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch (e) { return fallback; }
 }
@@ -57,6 +81,10 @@ function loadStatus() {
   return readJson(statusPath(), null);
 }
 
+function loadRestoreStatus() {
+  return readJson(restoreLogPath(), null);
+}
+
 function sha256File(file) {
   const hash = crypto.createHash("sha256");
   hash.update(fs.readFileSync(file));
@@ -67,26 +95,140 @@ function fileSize(file) {
   try { return fs.statSync(file).size; } catch (e) { return 0; }
 }
 
+function copyDir(src, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  fs.readdirSync(src, { withFileTypes: true }).forEach((ent) => {
+    const from = path.join(src, ent.name);
+    const to = path.join(dest, ent.name);
+    if (ent.isDirectory()) copyDir(from, to);
+    else if (ent.isFile()) fs.copyFileSync(from, to);
+  });
+}
+
+function replaceDir(src, dest) {
+  if (fs.existsSync(dest)) fs.rmSync(dest, { recursive: true, force: true });
+  if (fs.existsSync(src)) copyDir(src, dest);
+}
+
+function replaceFile(src, dest) {
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const tmp = dest + ".new";
+  fs.copyFileSync(src, tmp);
+  fs.renameSync(tmp, dest);
+}
+
+function rmQuiet(file) {
+  try { fs.unlinkSync(file); } catch (e) {}
+}
+
+function uniqueStamp() {
+  const base = sastDate().stamp;
+  let stamp = base;
+  let n = 1;
+  while (
+    fs.existsSync(path.join(backupsDir(), "studio-delta-" + stamp + ".tgz")) ||
+    fs.existsSync(path.join(backupsDir(), "studio-delta-" + stamp + ".db"))
+  ) {
+    n += 1;
+    stamp = base + "-" + n;
+  }
+  return stamp;
+}
+
+function stampFromName(name) {
+  const m = String(name || "").match(/^studio-delta-(?:uploaded-)?(\d{8}-\d{4,6}(?:-\d+)?)/);
+  return m ? m[1] : "";
+}
+
+function snapshotFiles(stamp) {
+  const dir = backupsDir();
+  const base = "studio-delta-" + stamp;
+  return {
+    stamp,
+    complete: path.join(dir, base + ".tgz"),
+    db: path.join(dir, base + ".db"),
+    json: path.join(dir, base + ".json"),
+    files: path.join(dir, base + "-files.tgz"),
+    manifest: path.join(dir, base + "-manifest.json")
+  };
+}
+
+function verifySqliteFile(file) {
+  if (!file || !fs.existsSync(file) || fileSize(file) < 100) {
+    throw new Error("SQLite snapshot is missing or empty");
+  }
+  const { DatabaseSync } = require("node:sqlite");
+  let db;
+  try {
+    db = new DatabaseSync(file, { readOnly: true });
+  } catch (e) {
+    db = new DatabaseSync(file);
+  }
+  try {
+    const row = db.prepare("PRAGMA integrity_check").get();
+    const msg = String((row && (row.integrity_check != null ? row.integrity_check : Object.values(row)[0])) || "");
+    if (msg.toLowerCase() !== "ok") {
+      throw new Error("SQLite snapshot failed integrity_check: " + msg);
+    }
+    const one = (sql) => {
+      try {
+        const r = db.prepare(sql).get();
+        return Number(r && (r.n != null ? r.n : Object.values(r)[0])) || 0;
+      } catch (e) {
+        return 0;
+      }
+    };
+    return {
+      ok: true,
+      integrity: "ok",
+      counts: {
+        users: one("SELECT COUNT(*) AS n FROM users"),
+        orders: one("SELECT COUNT(*) AS n FROM orders"),
+        enquiries: one("SELECT COUNT(*) AS n FROM enquiries"),
+        payments: one("SELECT COUNT(*) AS n FROM payments")
+      }
+    };
+  } finally {
+    try { db.close(); } catch (e) {}
+  }
+}
+
 function listLocalSnapshots() {
   const dir = backupsDir();
-  return fs.readdirSync(dir)
-    .filter((name) => name.startsWith("studio-delta-") && name.endsWith(".db"))
-    .map((name) => {
-      const full = path.join(dir, name);
-      const st = fs.statSync(full);
-      return { name, bytes: st.size, at: st.mtime.toISOString() };
-    })
-    .sort((a, b) => b.at.localeCompare(a.at));
+  const stamps = new Set();
+  fs.readdirSync(dir).forEach((name) => {
+    const stamp = stampFromName(name);
+    if (stamp) stamps.add(stamp);
+  });
+  return Array.from(stamps).map((stamp) => {
+    const files = snapshotFiles(stamp);
+    const complete = fs.existsSync(files.complete);
+    const db = fs.existsSync(files.db);
+    const chosen = complete ? files.complete : (db ? files.db : files.json);
+    const st = chosen && fs.existsSync(chosen) ? fs.statSync(chosen) : null;
+    const manifest = readJson(files.manifest, null);
+    return {
+      stamp,
+      name: path.basename(chosen || files.db),
+      complete: complete ? path.basename(files.complete) : null,
+      db: db ? path.basename(files.db) : null,
+      json: fs.existsSync(files.json) ? path.basename(files.json) : null,
+      files: fs.existsSync(files.files) ? path.basename(files.files) : null,
+      bytes: st ? st.size : 0,
+      at: st ? st.mtime.toISOString() : null,
+      verified: !!(manifest && manifest.ok && manifest.integrity === "ok"),
+      integrity: manifest && manifest.integrity ? manifest.integrity : (db ? "unchecked" : null),
+      counts: manifest && manifest.counts ? manifest.counts : null,
+      reason: manifest && manifest.reason ? manifest.reason : null
+    };
+  }).filter((row) => row.bytes > 0).sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
 }
 
 function pruneLocal() {
   const keep = listLocalSnapshots().slice(KEEP_LOCAL);
   keep.forEach((row) => {
-    const stamp = row.name.replace(/^studio-delta-/, "").replace(/\.db$/, "");
-    ["studio-delta-" + stamp + ".db", "studio-delta-" + stamp + ".json", "studio-delta-" + stamp + "-files.tgz"].forEach((name) => {
-      const full = path.join(backupsDir(), name);
-      try { fs.unlinkSync(full); } catch (e) {}
-    });
+    const files = snapshotFiles(row.stamp);
+    [files.complete, files.db, files.json, files.files, files.manifest, files.db + "-wal", files.db + "-shm"].forEach(rmQuiet);
   });
 }
 
@@ -107,6 +249,7 @@ function snapshotSqlite(dest) {
     try { fs.copyFileSync(live + "-shm", dest + "-shm"); } catch (err) {}
   }
   if (!fs.existsSync(dest)) throw new Error("SQLite snapshot was not created");
+  return verifySqliteFile(dest);
 }
 
 function copyOfficeJson(dest) {
@@ -118,23 +261,64 @@ function copyOfficeJson(dest) {
   }
 }
 
-function archiveEnquiryFiles(dest) {
-  const quotes = path.join(dataDir(), "enquiry-quotes");
-  const files = path.join(dataDir(), "enquiry-files");
-  const proofs = path.join(dataDir(), "debtor-payments");
-  const parts = [];
-  if (fs.existsSync(quotes)) parts.push("enquiry-quotes");
-  if (fs.existsSync(files)) parts.push("enquiry-files");
-  if (fs.existsSync(proofs)) parts.push("debtor-payments");
-  if (!parts.length) return { path: null, bytes: 0, skipped: "no enquiry files" };
-  const r = spawnSync("tar", ["-czf", dest, "-C", dataDir()].concat(parts), { encoding: "utf8" });
-  if (r.status !== 0) throw new Error(r.stderr || "Could not archive enquiry files");
-  const bytes = fileSize(dest);
-  if (bytes > FILES_ARCHIVE_MAX) {
-    try { fs.unlinkSync(dest); } catch (e) {}
-    return { path: null, bytes, skipped: "enquiry files larger than 250 MB" };
+function tarCreate(dest, cwd, parts) {
+  const r = spawnSync("tar", ["-czf", dest, "-C", cwd].concat(parts), { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(r.stderr || "Could not write the backup archive");
+  return fileSize(dest);
+}
+
+function tarExtract(archive, dest) {
+  fs.mkdirSync(dest, { recursive: true });
+  const r = spawnSync("tar", ["-xzf", archive, "-C", dest], { encoding: "utf8" });
+  if (r.status !== 0) throw new Error(r.stderr || "Could not read the backup archive");
+}
+
+function buildCompleteBundle(stamp, localDb, localJson, verified) {
+  const staging = path.join(dataDir(), "backup-staging-" + stamp);
+  try {
+    if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true });
+    fs.mkdirSync(staging, { recursive: true });
+    fs.copyFileSync(localDb, path.join(staging, "studio-delta.db"));
+    if (fs.existsSync(localJson)) fs.copyFileSync(localJson, path.join(staging, "studio-delta.json"));
+    SIDECARS.forEach((name) => {
+      const src = path.join(dataDir(), name);
+      if (fs.existsSync(src) && name !== "studio-delta.json") fs.copyFileSync(src, path.join(staging, name));
+    });
+    FILE_DIRS.forEach((name) => {
+      const src = path.join(dataDir(), name);
+      if (fs.existsSync(src)) copyDir(src, path.join(staging, name));
+      else fs.mkdirSync(path.join(staging, name), { recursive: true });
+    });
+    const parts = fs.readdirSync(staging);
+    const manifest = {
+      version: 2,
+      kind: "studio-delta-complete",
+      at: new Date().toISOString(),
+      stamp,
+      ok: true,
+      integrity: verified.integrity,
+      counts: verified.counts,
+      sha256Db: sha256File(localDb),
+      files: parts.slice()
+    };
+    writeJson(path.join(staging, "manifest.json"), manifest);
+    const complete = snapshotFiles(stamp).complete;
+    tarCreate(complete, staging, fs.readdirSync(staging));
+    writeJson(snapshotFiles(stamp).manifest, Object.assign({}, manifest, {
+      bytes: fileSize(complete),
+      complete: path.basename(complete)
+    }));
+    const filesTar = snapshotFiles(stamp).files;
+    const fileParts = FILE_DIRS.filter((name) => fs.existsSync(path.join(staging, name)));
+    if (fileParts.length) tarCreate(filesTar, staging, fileParts);
+    return {
+      complete: path.basename(complete),
+      filesArchive: fs.existsSync(filesTar) ? path.basename(filesTar) : null,
+      manifest
+    };
+  } finally {
+    try { fs.rmSync(staging, { recursive: true, force: true }); } catch (e) {}
   }
-  return { path: dest, bytes, skipped: null };
 }
 
 function driveRpc(payload) {
@@ -190,7 +374,7 @@ function pruneDrive(folderId) {
   });
 }
 
-function uploadOffsite(localDb, localJson, archive) {
+function uploadOffsite(localDb, localJson, archivePath, completePath) {
   if (!hasGoogleAuth()) return { offsite: false, reason: "Google Drive is not configured on Railway" };
   const folder = ensureDriveFolder();
   const dbUp = driveRpc({
@@ -216,12 +400,13 @@ function uploadOffsite(localDb, localJson, archive) {
     }
   }
   let filesUrl = null;
-  if (archive && archive.path) {
+  const extra = completePath && fs.existsSync(completePath) ? completePath : archivePath;
+  if (extra && fs.existsSync(extra)) {
     try {
       const zipUp = driveRpc({
         op: "uploadFile",
-        path: archive.path,
-        name: path.basename(archive.path),
+        path: extra,
+        name: path.basename(extra),
         folderId: folder.id,
         mimeType: "application/gzip"
       });
@@ -249,9 +434,10 @@ function sendBackupMail(status, localDb) {
   const html = "<p>Studio Delta backup " + (status.ok ? "succeeded" : "failed") + ".</p>" +
     "<p>When: " + (status.at || "") + " (Africa/Johannesburg day " + (status.sastDate || "") + ")</p>" +
     "<p>SQLite: " + (status.bytes || 0) + " bytes, sha256 " + (status.sha256 || "") + "</p>" +
+    "<p>Integrity: " + (status.integrity || "n/a") + "</p>" +
     "<p>Off-site Drive: " + (status.offsite ? "yes" : "no") + (status.driveUrl ? " — " + status.driveUrl : "") + "</p>" +
     (status.error ? "<p>Error: " + String(status.error) + "</p>" : "") +
-    "<p>This is an automatic copy. Keep this email. Restore by replacing studio-delta.db on the Railway volume from a downloaded copy.</p>";
+    "<p>Restore from Users → Backup and restore. Type RESTORE. The app takes a safety copy of the live shop first.</p>";
   const attachments = [];
   if (status.ok && localDb && fileSize(localDb) <= MAIL_ATTACH_MAX) {
     attachments.push({
@@ -274,29 +460,34 @@ function runBackup(reason) {
   if (running) return loadStatus() || { ok: false, error: "A backup is already running" };
   running = true;
   const when = sastDate();
-  const base = "studio-delta-" + when.stamp;
-  const localDb = path.join(backupsDir(), base + ".db");
-  const localJson = path.join(backupsDir(), base + ".json");
-  const localTar = path.join(backupsDir(), base + "-files.tgz");
+  const stamp = uniqueStamp();
+  const base = "studio-delta-" + stamp;
+  const files = snapshotFiles(stamp);
+  const localDb = files.db;
+  const localJson = files.json;
   const status = {
     ok: false,
     at: new Date().toISOString(),
     sastDate: when.date,
     reason: reason || "scheduled",
-    offsite: false
+    offsite: false,
+    verified: false
   };
   try {
-    snapshotSqlite(localDb);
+    const verified = snapshotSqlite(localDb);
     copyOfficeJson(localJson);
-    const archive = archiveEnquiryFiles(localTar);
+    const bundle = buildCompleteBundle(stamp, localDb, localJson, Object.assign({ reason: status.reason }, verified));
     status.localDb = path.basename(localDb);
-    status.bytes = fileSize(localDb);
+    status.complete = bundle.complete;
+    status.filesArchive = bundle.filesArchive;
+    status.bytes = fileSize(files.complete) || fileSize(localDb);
     status.sha256 = sha256File(localDb);
-    status.filesArchive = archive.path ? path.basename(archive.path) : null;
-    status.filesSkipped = archive.skipped || null;
+    status.integrity = verified.integrity;
+    status.counts = verified.counts;
+    status.verified = true;
     let off = { offsite: false };
     try {
-      off = uploadOffsite(localDb, localJson, archive);
+      off = uploadOffsite(localDb, localJson, files.files, files.complete);
     } catch (e) {
       off = { offsite: false, offsiteError: e.message || String(e) };
       console.warn("[backup] off-site upload failed", off.offsiteError);
@@ -307,7 +498,7 @@ function runBackup(reason) {
     try { Object.assign(status, sendBackupMail(status, localDb)); } catch (e) {
       status.mailError = e.message || String(e);
     }
-    console.log("[backup] ok", status.localDb, "offsite", !!status.offsite);
+    console.log("[backup] ok", status.complete || status.localDb, "offsite", !!status.offsite);
   } catch (e) {
     status.ok = false;
     status.error = e.message || String(e);
@@ -336,7 +527,7 @@ function isDue(status) {
 }
 
 function tick() {
-  if (running) return null;
+  if (running || restoring) return null;
   try {
     if (!isDue(loadStatus())) return null;
     return runBackup("scheduled");
@@ -346,9 +537,18 @@ function tick() {
   }
 }
 
+function latestCompletePath() {
+  const row = listLocalSnapshots().find((s) => s.complete);
+  return row ? path.join(backupsDir(), row.complete) : null;
+}
+
 function info() {
   const last = loadStatus();
+  const restored = loadRestoreStatus();
   const stale = !last || !last.ok || isDue(last);
+  const persist = (() => {
+    try { return require("./workbook-store").storageInfo(); } catch (e) { return {}; }
+  })();
   return {
     backupAt: last && last.at ? last.at : null,
     backupOk: !!(last && last.ok),
@@ -359,7 +559,17 @@ function info() {
     backupLocalCount: listLocalSnapshots().length,
     backupKeepDays: KEEP_LOCAL,
     backupGoogleConfigured: hasGoogleAuth(),
-    backupEmail: mailTo() || null
+    backupEmail: mailTo() || null,
+    backupVerified: !!(last && last.ok && last.verified),
+    backupComplete: last && last.complete ? last.complete : null,
+    backupIntegrity: last && last.integrity ? last.integrity : null,
+    backupCounts: last && last.counts ? last.counts : null,
+    restoreAt: restored && restored.at ? restored.at : null,
+    restoreOk: restored ? !!restored.ok : null,
+    restoreError: restored && restored.error ? restored.error : null,
+    usingEphemeralDisk: !!persist.usingEphemeralDisk,
+    volumeWarning: persist.warning || null,
+    dataDir: persist.dataDir || dataDir()
   };
 }
 
@@ -371,6 +581,162 @@ function safeBackupName(name) {
   return full;
 }
 
+function requireConfirm(confirm) {
+  if (String(confirm || "").trim().toUpperCase() !== CONFIRM_WORD) {
+    throw new Error("Type RESTORE to restore this backup.");
+  }
+}
+
+function inspectSource(sourcePath) {
+  if (!sourcePath || !fs.existsSync(sourcePath)) throw new Error("That backup file is not on this volume.");
+  const lower = String(sourcePath).toLowerCase();
+  if (lower.endsWith(".db")) {
+    const verified = verifySqliteFile(sourcePath);
+    return { kind: "sqlite", verified, sourcePath };
+  }
+  if (lower.endsWith(".tgz") || lower.endsWith(".tar.gz") || lower.endsWith(".gz")) {
+    const staging = path.join(dataDir(), "restore-inspect-" + Date.now());
+    try {
+      tarExtract(sourcePath, staging);
+      const dbFile = fs.existsSync(path.join(staging, "studio-delta.db"))
+        ? path.join(staging, "studio-delta.db")
+        : null;
+      if (!dbFile) throw new Error("That archive has no studio-delta.db. It is not a Studio Delta backup.");
+      const verified = verifySqliteFile(dbFile);
+      const manifest = readJson(path.join(staging, "manifest.json"), null);
+      return { kind: "complete", verified, manifest, sourcePath };
+    } finally {
+      try { fs.rmSync(staging, { recursive: true, force: true }); } catch (e) {}
+    }
+  }
+  throw new Error("Restore a complete .tgz backup, or a .db snapshot.");
+}
+
+function applyExtracted(staging) {
+  const dbSrc = path.join(staging, "studio-delta.db");
+  if (!fs.existsSync(dbSrc)) throw new Error("The backup has no studio-delta.db");
+  verifySqliteFile(dbSrc);
+  sqlite.close();
+  const liveDb = sqlite.sqlitePath();
+  replaceFile(dbSrc, liveDb);
+  rmQuiet(liveDb + "-wal");
+  rmQuiet(liveDb + "-shm");
+  SIDECARS.forEach((name) => {
+    const src = path.join(staging, name);
+    if (fs.existsSync(src)) replaceFile(src, path.join(dataDir(), name));
+  });
+  FILE_DIRS.forEach((name) => {
+    const src = path.join(staging, name);
+    if (fs.existsSync(src)) replaceDir(src, path.join(dataDir(), name));
+  });
+  const liveCheck = verifySqliteFile(liveDb);
+  sqlite.reopen();
+  require("./workbook-store").reloadWorkbook();
+  require("./db").reloadOfficeState();
+  try { require("./gas").clearShopCache(); } catch (e) {}
+  return liveCheck;
+}
+
+function applySqliteOnly(dbFile) {
+  verifySqliteFile(dbFile);
+  sqlite.close();
+  const liveDb = sqlite.sqlitePath();
+  replaceFile(dbFile, liveDb);
+  rmQuiet(liveDb + "-wal");
+  rmQuiet(liveDb + "-shm");
+  const liveCheck = verifySqliteFile(liveDb);
+  sqlite.reopen();
+  require("./workbook-store").reloadWorkbook();
+  require("./db").reloadOfficeState();
+  try { require("./gas").clearShopCache(); } catch (e) {}
+  return liveCheck;
+}
+
+function reloadKeptSession(kept) {
+  try { require("./staff").reloadSessionsKeeping(kept || null); } catch (e) {}
+}
+
+function restoreFromPath(sourcePath, opts) {
+  opts = opts || {};
+  requireConfirm(opts.confirm);
+  if (restoring) throw new Error("A restore is already running");
+  if (running) throw new Error("Wait for the backup that is already running, then restore.");
+  const inspected = inspectSource(sourcePath);
+  let safety = null;
+  if (!opts.skipSafety) {
+    safety = runBackup("pre-restore");
+    if (!safety.ok) {
+      throw new Error("Could not snapshot the live shop before restore. Restore was not started. " + (safety.error || ""));
+    }
+  }
+  restoring = true;
+  const result = {
+    ok: false,
+    at: new Date().toISOString(),
+    source: path.basename(sourcePath),
+    safety: safety && (safety.complete || safety.localDb) ? (safety.complete || safety.localDb) : null,
+    rolledBack: false
+  };
+  const staging = path.join(dataDir(), "restore-apply-" + Date.now());
+  try {
+    let liveCheck;
+    if (inspected.kind === "sqlite") {
+      liveCheck = applySqliteOnly(sourcePath);
+    } else {
+      tarExtract(sourcePath, staging);
+      liveCheck = applyExtracted(staging);
+    }
+    reloadKeptSession(opts.keepSession);
+    result.ok = true;
+    result.integrity = liveCheck.integrity;
+    result.counts = liveCheck.counts;
+    console.log("[restore] ok from", result.source);
+  } catch (e) {
+    result.ok = false;
+    result.error = e.message || String(e);
+    console.error("[restore] failed", result.error);
+    if (safety && !opts.skipSafety) {
+      const safetyPath = safety.complete
+        ? path.join(backupsDir(), safety.complete)
+        : (safety.localDb ? path.join(backupsDir(), safety.localDb) : null);
+      if (safetyPath && fs.existsSync(safetyPath)) {
+        try {
+          restoring = false;
+          restoreFromPath(safetyPath, { confirm: CONFIRM_WORD, skipSafety: true, keepSession: opts.keepSession });
+          result.rolledBack = true;
+          result.error = (result.error || "Restore failed") + " Live shop was rolled back to the safety copy taken just before restore.";
+        } catch (err) {
+          result.rollbackError = err.message || String(err);
+        }
+      }
+    }
+    if (!result.ok) throw new Error(result.error);
+  } finally {
+    restoring = false;
+    try { fs.rmSync(staging, { recursive: true, force: true }); } catch (e) {}
+    writeJson(restoreLogPath(), result);
+  }
+  return result;
+}
+
+function restoreNamed(name, opts) {
+  const full = safeBackupName(name);
+  if (!full) throw new Error("That backup file is not on this volume.");
+  return restoreFromPath(full, opts);
+}
+
+function saveUploadedBackup(buffer, filename) {
+  const raw = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
+  if (!raw.length) throw new Error("No backup file was uploaded.");
+  const stamp = uniqueStamp();
+  const lower = String(filename || "").toLowerCase();
+  const ext = lower.endsWith(".db") ? ".db" : ".tgz";
+  const dest = path.join(backupsDir(), "studio-delta-uploaded-" + stamp + ext);
+  fs.writeFileSync(dest, raw);
+  inspectSource(dest);
+  return dest;
+}
+
 module.exports = {
   backupsDir,
   runBackup,
@@ -378,7 +744,15 @@ module.exports = {
   isDue,
   info,
   loadStatus,
+  loadRestoreStatus,
   listLocalSnapshots,
   safeBackupName,
-  sastDate
+  sastDate,
+  verifySqliteFile,
+  inspectSource,
+  restoreFromPath,
+  restoreNamed,
+  saveUploadedBackup,
+  latestCompletePath,
+  CONFIRM_WORD
 };
