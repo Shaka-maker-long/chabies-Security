@@ -361,6 +361,29 @@ function journeyWeeks(mondayIso, count) {
   return out;
 }
 
+function journeyWeeksFromPlan(journey, minCount) {
+  let min = "";
+  let max = "";
+  ((journey && journey.orders) || []).forEach((o) => {
+    (o.rows || []).forEach((row) => {
+      (row.days || []).forEach((iso) => {
+        if (!min || iso < min) min = iso;
+        if (!max || iso > max) max = iso;
+      });
+    });
+  });
+  if (!min) return journeyWeeks(undefined, minCount || 5);
+  const start = weekMondayIso(min);
+  const last = weekMondayIso(max);
+  let n = 1;
+  let iso = start;
+  while (iso < last && n < 20) {
+    iso = shiftWeek(iso, 1);
+    n += 1;
+  }
+  return journeyWeeks(start, Math.max(minCount || 5, n));
+}
+
 function isWorkIso(iso) {
   const parts = String(iso || "").split("-").map(Number);
   if (parts.length < 3 || !parts[0]) return false;
@@ -1276,7 +1299,7 @@ function getBoard(week) {
     colors: PROCESS_COLORS,
     processCodes: Object.assign({}, PROCESS_CODES),
     processes: PLANNED_PROCESSES.slice(),
-    journeyWeeks: journeyWeeks(weekStart, 5),
+    journeyWeeks: journeyWeeksFromPlan(journey, 5),
     autoProcesses: ["Grinding"],
     windows: {
       morning: "07:45–12:00",
@@ -1335,6 +1358,7 @@ module.exports = {
   PROCESS_CODES,
   processCode,
   journeyWeeks,
+  journeyWeeksFromPlan,
   grindingPool,
   USER_ASSIGNED_PROCESSES,
   weekStartingOrders

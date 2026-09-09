@@ -323,7 +323,8 @@ const weldLater = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.
 assert.ok(profileLater.start >= "2026-09-08T09:00:00+02:00", "drag later delays that job");
 assert.ok(tagLater.start >= profileLater.end, "tagging follows the new profile end");
 assert.ok(weldLater.start >= tagLater.end, "welding follows tagging after the shift");
-assert.ok(board.journeyWeeks && board.journeyWeeks.length === 5, "journey has five week columns");
+assert.ok(board.journeyWeeks && board.journeyWeeks.length >= 5, "journey has five week columns");
+assert.ok(board.journeyWeeks[0].days.some((d) => d.iso === "2026-09-08"), "week 1 starts at the first planned work");
 assert.strictEqual(plan.processCode("Profile Cutting"), "C");
 assert.strictEqual(plan.processCode("Powder coating"), "PC");
 assert.ok(trip.rows.find((r) => r.process === "Profile Cutting").code === "C");
