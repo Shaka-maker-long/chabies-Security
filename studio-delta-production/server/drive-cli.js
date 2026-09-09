@@ -8,18 +8,13 @@ const { google } = require("googleapis");
 const fs = require("fs");
 
 function credentialsFromEnv() {
-  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
-    return JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-  }
-  if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-    return JSON.parse(fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, "utf8"));
-  }
-  return null;
+  const parsed = require("./workbook-store").parseGoogleCredentials();
+  if (!parsed.ok) throw new Error(parsed.error || "Missing GOOGLE_SERVICE_ACCOUNT_JSON");
+  return parsed.credentials;
 }
 
 function getAuth(scopes) {
   const json = credentialsFromEnv();
-  if (!json) throw new Error("Missing GOOGLE_SERVICE_ACCOUNT_JSON");
   return new google.auth.GoogleAuth({ credentials: json, scopes });
 }
 
@@ -56,6 +51,21 @@ async function main() {
     const pdf = await drive.files.export({ fileId: input.fileId, mimeType: "application/pdf" }, { responseType: "arraybuffer" });
     const buf = Buffer.from(pdf.data);
     out = { ok: true, pdfBase64: buf.toString("base64") };
+  } else if (op === "getFile") {
+    if (!input.fileId) throw new Error("getFile needs a fileId");
+    const got = await drive.files.get({
+      fileId: input.fileId,
+      fields: "id, name, mimeType, parents, driveId, webViewLink",
+      supportsAllDrives: true
+    });
+    out = {
+      ok: true,
+      id: got.data.id,
+      name: got.data.name,
+      mimeType: got.data.mimeType,
+      url: got.data.webViewLink,
+      driveId: got.data.driveId || null
+    };
   } else if (op === "uploadFile") {
     if (!input.path) throw new Error("uploadFile needs a path");
     const mime = input.mimeType || "application/octet-stream";

@@ -215,6 +215,40 @@ function hasGoogleAuth() {
   return !!(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_APPLICATION_CREDENTIALS);
 }
 
+function parseGoogleCredentials() {
+  let raw = "";
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    raw = String(process.env.GOOGLE_SERVICE_ACCOUNT_JSON).trim();
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    try { raw = fs.readFileSync(process.env.GOOGLE_APPLICATION_CREDENTIALS, "utf8").trim(); } catch (e) {
+      return { ok: false, error: "Could not read GOOGLE_APPLICATION_CREDENTIALS" };
+    }
+  }
+  if (!raw) return { ok: false, error: "GOOGLE_SERVICE_ACCOUNT_JSON is empty" };
+  if (raw.charAt(0) === "'" && raw.slice(-1) === "'") raw = raw.slice(1, -1).trim();
+  try {
+    let parsed = JSON.parse(raw);
+    if (typeof parsed === "string") parsed = JSON.parse(parsed);
+    if (!parsed || typeof parsed !== "object") {
+      return { ok: false, error: "GOOGLE_SERVICE_ACCOUNT_JSON must be the service-account key object" };
+    }
+    if (!parsed.client_email) {
+      return { ok: false, error: "GOOGLE_SERVICE_ACCOUNT_JSON has no client_email. Paste the whole key file." };
+    }
+    return { ok: true, credentials: parsed, email: parsed.client_email };
+  } catch (e) {
+    return {
+      ok: false,
+      error: "GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON. Paste the whole key file as one Railway variable (" + (e.message || e) + ")."
+    };
+  }
+}
+
+function googleServiceAccountEmail() {
+  const parsed = parseGoogleCredentials();
+  return parsed.ok ? parsed.email : null;
+}
+
 function googleMigrateEnabled() {
   const flag = String(process.env.GOOGLE_MIGRATE || "").trim().toLowerCase();
   return (flag === "1" || flag === "true" || flag === "yes")
@@ -315,5 +349,7 @@ module.exports = {
   dataDir,
   storageInfo,
   onRailway,
-  hasGoogleAuth
+  hasGoogleAuth,
+  parseGoogleCredentials,
+  googleServiceAccountEmail
 };

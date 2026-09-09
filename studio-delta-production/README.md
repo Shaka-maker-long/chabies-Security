@@ -55,9 +55,9 @@ Those local copies are still on the same Railway disk. **Off-site** is Google Dr
 3. Share that folder with the service account `client_email` as **Editor** (not Viewer).
 4. Open the folder. The URL looks like `https://drive.google.com/drive/folders/THIS_PART`. Set `BACKUP_DRIVE_FOLDER_ID` to `THIS_PART`.
 5. Optional: `BACKUP_EMAIL` (or `GMAIL_SENDER`) so a “backup OK” mail goes out.
-6. After Railway picks up the variables, Users → **Backup** → **Backup now**. Success must say sent to Google Drive. `GET /health` should show `"backupOffsite": true`.
+6. After Railway picks up the variables, **share the folder** with `client_email` as Editor, then Users → **Backup** → **Send test file to Drive**. A `studio-delta-drive-check.txt` must appear in the folder. Then **Backup now**. Success must say sent to Google Drive. Setting the variables alone does not upload. `GET /health` should show `"backupOffsite": true`.
 
-If Drive is not set, nightly copies still run on the volume only, and the page says “Drive not uploaded”. `/health` shows `backupOk`, `backupVerified`, `backupOffsite`, and `backupAt`.
+If the folder stays empty, the Backup page shows the Drive error (usually the folder is not shared with the service-account email, or the Google Drive API is off on that Google Cloud project). The app no longer creates a hidden folder in the service account’s own Drive.
 
 **Restore** is on **Users → Backup** (Manager only) — not on the People list. Type **RESTORE** and enter the Manager access code **twice**. Then restore a listed snapshot or upload a complete `.tgz` (the same file Drive stores). The app always writes a safety copy of the live shop first. If the chosen file is not a valid Studio Delta backup, the live shop is left untouched (or rolled back to that safety copy).
 
