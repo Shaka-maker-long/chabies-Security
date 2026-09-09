@@ -88,6 +88,10 @@
     table.grid thead th.order { z-index:5; background:var(--head); }
     table.grid.freeze-names th.name, table.grid.freeze-names td.name { position:sticky; left:120px; z-index:2; min-width:110px; font-family: Inter, sans-serif; font-weight:600; box-shadow:2px 0 6px rgba(16,24,40,.06); }
     table.grid.freeze-names thead th.name { z-index:5; background:var(--head); }
+    table.grid.freeze-names.name-first th.name, table.grid.freeze-names.name-first td.name { left:0; z-index:2; min-width:110px; box-shadow:1px 0 0 #e4e7ec; }
+    table.grid.freeze-names.name-first thead th.name { z-index:5; background:var(--head); }
+    table.grid.freeze-names.name-first th.order, table.grid.freeze-names.name-first td.order { left:110px; z-index:2; min-width:120px; box-shadow:2px 0 6px rgba(16,24,40,.06); }
+    table.grid.freeze-names.name-first thead th.order { z-index:5; background:var(--head); }
     table.grid td.order { cursor:pointer; text-decoration:underline; text-underline-offset:3px; vertical-align:middle; }
     table.grid td.order:hover { background:#eef2f6; }
     table.grid td.name.pick { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
@@ -505,7 +509,22 @@
       if (namePick && journeyWorkerId) {
         nameSpan = index === 0 ? pairs.length : 0;
       }
-      return "<tr" + (span && index > 0 ? " class='order-start'" : "") + ">" + orderCell(pair.order, span) + nameCell(pair.person, namePick, nameSpan) + extraCells + "</tr>";
+      const orderHtml = orderCell(pair.order, span);
+      const nameHtml = nameCell(pair.person, namePick, nameSpan);
+      const leading = journeyWorkerId ? nameHtml + orderHtml : orderHtml + nameHtml;
+      return "<tr" + (span && index > 0 ? " class='order-start'" : "") + ">" + leading + extraCells + "</tr>";
+    }
+    function orderNameHeads() {
+      return journeyWorkerId
+        ? "<th class='name'>Name</th><th class='order'>Order</th>"
+        : "<th class='order'>Order</th><th class='name'>Name</th>";
+    }
+    function namesGridClass() {
+      return "grid freeze-names" + (journeyWorkerId ? " name-first" : "");
+    }
+    function filterPairs(pairs) {
+      if (!journeyWorkerId) return pairs;
+      return (pairs || []).filter((pair) => String(pair.person.id) === String(journeyWorkerId));
     }
     function weekHeadCells(weeks) {
       return (weeks || []).map((w) => {
@@ -535,11 +554,11 @@
       if (journeyLevel === "order" && journeyDay) {
         bits.push("<button class='ghost' type='button' data-journey-level='times'>← " + esc(prettyDate(journeyDay)) + "</button>");
       }
-      if (journeyLevel === "times" && journeyWorkerId) {
+      if ((journeyLevel === "times" || journeyLevel === "days") && journeyWorkerId) {
         bits.push("<button class='ghost' type='button' data-clear-worker>← Everyone</button>");
       }
       let here = "Week view";
-      if (journeyLevel === "days") here = (selectedWeek() && selectedWeek().label) || "Day view";
+      if (journeyLevel === "days") here = (journeyWorkerName ? journeyWorkerName + " · " : "") + ((selectedWeek() && selectedWeek().label) || "Day view");
       else if (journeyLevel === "times") here = (journeyWorkerName ? journeyWorkerName + " · " : "") + (prettyDate(journeyDay) || "Day");
       else if (journeyLevel === "order") here = openJourneyId || "Order";
       bits.push("<strong class='here'>" + esc(here) + "</strong>");
@@ -580,25 +599,26 @@
       }
       const days = week.days || [];
       const isos = weekIsos(week);
-      const pairs = orderNamePairs(visibleOrders(), (row) => (row.days || []).some((iso) => isos.indexOf(iso) !== -1));
+      let pairs = filterPairs(orderNamePairs(visibleOrders(), (row) => (row.days || []).some((iso) => isos.indexOf(iso) !== -1)));
       fillWeekLabel();
       if (!pairs.length) {
-        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is planned in this week. Order numbers and names stay on this view when work is booked.</div>";
+        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is planned in this week" +
+          (journeyWorkerId ? " for " + esc(journeyWorkerName || "that person") + ". <button class='ghost' type='button' data-clear-worker>Show everyone</button>" : ". Order numbers and names stay on this view when work is booked.") + "</div>";
         return;
       }
       const head = "<tr><th colspan=\"" + (days.length + 2) + "\">" + esc(week.label) + (openJourneyId ? " · " + esc(openJourneyId) : "") + "</th></tr>" +
-        "<tr><th class='order'>Order</th><th class='name'>Name</th>" +
+        "<tr>" + orderNameHeads() +
         days.map((d) => "<th class='day' data-day=\"" + esc(d.iso) + "\">" + esc(d.weekdayShort || d.weekday) + "</th>").join("") + "</tr>";
       const body = pairs.map((pair, i) => {
         const cells = days.map((d) => {
           const rows = (pair.order.rows || []).filter((row) => String(row.workerId) === String(pair.person.id) && rowOnDay(row, d.iso));
           return "<td data-day=\"" + esc(d.iso) + "\" data-worker=\"" + esc(pair.person.id) + "\">" + chipsForRows(rows) + "</td>";
         }).join("");
-        return pairRow(pairs, i, cells);
+        return pairRow(pairs, i, cells, true);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Orders are listed by who starts first, and names within an order follow who does the task first. Order and Name stay frozen on the left. Names only show on this day view and the 15-minute grid, not on the week view. Same order numbers are merged. ← Week view goes back. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a letter to another free day.</p>" +
-        "<div class='sheet-wrap'><table class='grid freeze-names'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
+        "<p class='help'>Click a name to see only that person’s orders this week. Name and Order swap while filtered. ← Everyone puts Order first again. Names within an order follow who does the task first. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a letter to another free day.</p>" +
+        "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
     }
     function timeSlots() {
       const out = [];
@@ -625,17 +645,14 @@
         return;
       }
       const slots = timeSlots();
-      let pairs = orderNamePairs(visibleOrders(), (row) => rowOnDay(row, dayIso));
-      if (journeyWorkerId) {
-        pairs = pairs.filter((pair) => String(pair.person.id) === String(journeyWorkerId));
-      }
+      const pairs = filterPairs(orderNamePairs(visibleOrders(), (row) => rowOnDay(row, dayIso)));
       fillWeekLabel();
       if (!pairs.length) {
         box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is planned on " + esc(prettyDate(dayIso)) +
           (journeyWorkerId ? " for " + esc(journeyWorkerName || "that person") + ". <button class='ghost' type='button' data-clear-worker>Show everyone</button>" : ".") + "</div>";
         return;
       }
-      const head = "<th class='order'>Order</th><th class='name'>Name</th>" +
+      const head = orderNameHeads() +
         slots.map((m) => "<th>" + esc(pad2(Math.floor(m / 60)) + ":" + pad2(m % 60)) + "</th>").join("");
       const body = pairs.map((pair, i) => {
         const cells = slots.map((m) => {
@@ -645,8 +662,8 @@
         return pairRow(pairs, i, cells, true);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Click a name to see only that person’s orders on this day. ← Everyone shows the full shop again. Orders are listed by who starts first, and names within an order follow who does the task first. Order and Name stay frozen on the left. ← Week view and ← Day view go back. Drag a letter to a free time. That person cannot overlap.</p>" +
-        "<div class='sheet-wrap'><table class='grid freeze-names'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+        "<p class='help'>Click a name to see only that person’s orders on this day. Name and Order swap while filtered. ← Everyone puts Order first again. ← Week view and ← Day view go back. Drag a letter to a free time. That person cannot overlap.</p>" +
+        "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function orderWorkDays(order) {
       const set = {};
@@ -1068,8 +1085,6 @@
         if (journeyLevel === "days") {
           journeyDay = "";
           openJourneyId = "";
-          journeyWorkerId = "";
-          journeyWorkerName = "";
         }
         if (journeyLevel === "times") {
           openJourneyId = "";
@@ -1086,7 +1101,7 @@
         return;
       }
       const who = e.target.closest("[data-filter-worker]");
-      if (who && view === "journey" && journeyLevel === "times" && !e.target.closest("[data-block]")) {
+      if (who && view === "journey" && (journeyLevel === "times" || journeyLevel === "days") && !e.target.closest("[data-block]")) {
         const id = who.getAttribute("data-filter-worker") || "";
         if (id && String(id) === String(journeyWorkerId)) {
           journeyWorkerId = "";
