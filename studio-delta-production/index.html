@@ -1444,12 +1444,12 @@
           <p class="text-muted mb-0" id="taskPickSubtitle">Select the task you will do now.</p>
         </div>
         <div class="home-head-tools">
-          <button type="button" id="completedWorkBtn" class="btn btn-outline-dark btn-sm" onclick="openCompletedWork()">Completed work</button>
+          <button type="button" id="completedWorkBtn" class="btn btn-outline-dark btn-sm d-none-view" onclick="openCompletedWork()">Completed work</button>
           <button type="button" id="floorResetBtn" class="btn btn-outline-dark btn-sm d-none-view" onclick="resetFloorLayout()">Reset layout</button>
         </div>
       </div>
       <div id="homeScore" class="home-score d-none-view mb-4"></div>
-      <div id="myTaskChooser" class="mb-4"></div>
+      <div id="myTaskChooser" class="mb-4 d-none-view"></div>
       <div class="road-map" id="roleGrid"></div>
     </div>
 
@@ -3168,8 +3168,7 @@
       const mine = session.name && String(session.name).toLowerCase() === String(workerName || '').toLowerCase();
       const stops = myTaskStops();
       if (mine && stops.length > 1) {
-        const chooser = document.getElementById('myTaskChooser');
-        if (chooser) chooser.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        showProductionTasks();
         return true;
       }
       if (mine && stops.length === 1) {
@@ -3633,15 +3632,22 @@
       if (title) title.textContent = tasksOnly ? 'Production Tasks' : 'Home';
       const grid = document.getElementById('roleGrid');
       const sub = document.getElementById('taskPickSubtitle');
+      const chooser = document.getElementById('myTaskChooser');
+      const completed = document.getElementById('completedWorkBtn');
       if (sub) {
         if (tasksOnly) {
           sub.innerText = session.canSeeOffice
             ? 'Select the task. The next screen lists every order ready for that work.'
             : ('Hi ' + session.name + '. Choose the task you are doing now. You will see every order ready for that task.');
         } else {
-          sub.innerText = 'Pick a task to open that order list, or use the floor map. Tick tasks on Users for each person.';
+          sub.innerText = 'Live shop floor. Click a count to open that order list.';
         }
       }
+      if (chooser) {
+        chooser.classList.toggle('d-none-view', !tasksOnly);
+        if (!tasksOnly) chooser.innerHTML = '';
+      }
+      if (completed) completed.classList.toggle('d-none-view', !tasksOnly);
       const reset = document.getElementById('floorResetBtn');
       const showMap = !tasksOnly && session.canSeeOffice;
       if (reset) reset.classList.toggle('d-none-view', !showMap);
@@ -3651,10 +3657,10 @@
           score.className = 'home-score d-none-view mb-4';
           score.innerHTML = '';
         }
+        loadMyTaskCounts();
       } else {
         loadHomeScore();
       }
-      loadMyTaskCounts();
       try {
         if (!showMap) {
           stopFloorTwin();
