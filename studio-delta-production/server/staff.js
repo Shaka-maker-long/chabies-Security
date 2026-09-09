@@ -454,6 +454,21 @@ function verifyUser(name, password) {
   return null;
 }
 
+function checkRestoreSecrets(actor, secrets) {
+  secrets = secrets || {};
+  const confirm = String(secrets.confirm || "").trim().toUpperCase();
+  const password = String(secrets.password || "");
+  const confirmPassword = String(secrets.confirmPassword || secrets.passwordConfirm || "");
+  if (confirm !== "RESTORE") throw new Error("Type RESTORE to restore this backup.");
+  if (!password || !confirmPassword) throw new Error("Enter your access code twice to restore.");
+  if (password !== confirmPassword) throw new Error("The two access codes do not match.");
+  if (!actor || !actor.name) throw new Error("Log in as Manager first.");
+  if (!canManageUsers(actor)) throw new Error("Only the Manager can restore a backup.");
+  const user = verifyUser(actor.name, password);
+  if (!user) throw new Error("Access code is wrong. Restore was not started.");
+  return true;
+}
+
 function createSession(profile) {
   const token = crypto.randomBytes(16).toString("hex");
   const safe = {
@@ -617,6 +632,7 @@ module.exports = {
   setUserPassword,
   canManageUsers,
   verifyUser,
+  checkRestoreSecrets,
   loginFailureMessage,
   createSession,
   readSession,

@@ -85,4 +85,12 @@ assert.ok(safe && fs.existsSync(safe));
 assert.strictEqual(backup.safeBackupName("../studio-delta.db"), null);
 assert.strictEqual(backup.safeBackupName("last.json"), null);
 
+const staff = require("./staff");
+const actor = { name: "Backup User" };
+assert.throws(() => staff.checkRestoreSecrets(actor, { confirm: "RESTORE", password: "x" }), /twice/);
+assert.throws(() => staff.checkRestoreSecrets(actor, { confirm: "RESTORE", password: "x", confirmPassword: "nope" }), /match/);
+assert.throws(() => staff.checkRestoreSecrets(actor, { confirm: "RESTORE", password: "wrong", confirmPassword: "wrong" }), /wrong/i);
+assert.throws(() => staff.checkRestoreSecrets(actor, { confirm: "yes", password: "x", confirmPassword: "x" }), /RESTORE/);
+staff.checkRestoreSecrets(actor, { confirm: "RESTORE", password: "x", confirmPassword: "x" });
+
 console.log("backup.test.js ok");
