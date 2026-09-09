@@ -73,7 +73,13 @@
     table.sheet td.day .bar.start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
     table.sheet td.day .bar.end { border-top-right-radius:8px; border-bottom-right-radius:8px; }
     table.sheet tr.group-start td { border-top:2px solid #d0d5dd; }
-    .crumb { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px; }
+    .crumb { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px; position:sticky; top:0; z-index:6; background:#f8f9fc; padding:6px 0 10px; }
+    .crumb button { font-size:13px; }
+    .crumb .here { font-size:13px; font-weight:700; color:var(--ink); }
+    body.office-app .crumb { background: var(--sd-linen, #f3efe8); }
+    body.office-app .crumb .here { color:#1d2939; }
+    table.grid td.order { vertical-align:middle; }
+    table.grid tr.order-start td { border-top:2px solid #d0d5dd; }
     table.grid { border-collapse:collapse; width:100%; background:#fff; font-size:13px; }
     table.grid th, table.grid td { border:1px solid var(--line); padding:8px 10px; text-align:center; vertical-align:middle; }
     table.grid th { background:var(--head); font-size:12px; }
@@ -426,11 +432,29 @@
         workerName: row.workerName
       })).join(" ");
     }
-    function orderCell(order) {
-      return "<td class='order' data-open-order=\"" + esc(order.orderId) + "\" title=\"" + esc((order.product ? order.product + " — " : "") + "Open timeline") + "\">" + esc(order.orderId) + "</td>";
+    function orderSpanAt(pairs, index) {
+      const id = pairs[index] && pairs[index].order && pairs[index].order.orderId;
+      if (!id) return 1;
+      if (index > 0 && pairs[index - 1].order.orderId === id) return 0;
+      let n = 1;
+      for (let i = index + 1; i < pairs.length; i++) {
+        if (pairs[i].order.orderId !== id) break;
+        n += 1;
+      }
+      return n;
+    }
+    function orderCell(order, span) {
+      if (!span) return "";
+      const rs = span > 1 ? " rowspan=\"" + span + "\"" : "";
+      return "<td class='order'" + rs + " data-open-order=\"" + esc(order.orderId) + "\" title=\"" + esc((order.product ? order.product + " — " : "") + "Open timeline") + "\">" + esc(order.orderId) + "</td>";
     }
     function nameCell(person) {
       return "<td class='name'>" + esc(person && person.name ? person.name : "—") + "</td>";
+    }
+    function pairRow(pairs, index, extraCells) {
+      const pair = pairs[index];
+      const span = orderSpanAt(pairs, index);
+      return "<tr" + (span && index > 0 ? " class='order-start'" : "") + ">" + orderCell(pair.order, span) + nameCell(pair.person) + extraCells + "</tr>";
     }
     function weekHeadCells(weeks) {
       return (weeks || []).map((w) => {
@@ -449,17 +473,22 @@
       return "<div class='empty'>No orders are planned in these weeks. Order number and name stay on every view once work lands here." + btn + "</div>";
     }
     function renderJourneyCrumb() {
-      const bits = ["<button class='ghost' type='button' data-journey-level='weeks'>Journey</button>"];
-      if (openJourneyId && journeyLevel !== "weeks") {
-        bits.push("<button class='ghost' type='button' data-journey-level='order'>" + esc(openJourneyId) + "</button>");
+      const bits = [];
+      if (journeyLevel !== "weeks") {
+        bits.push("<button type='button' data-journey-level='weeks'>← Week view</button>");
       }
-      if (journeyLevel === "days" || journeyLevel === "times") {
+      if (journeyLevel === "times" || journeyLevel === "order") {
         const w = selectedWeek();
-        bits.push("<button class='ghost' type='button' data-journey-level='days'>" + esc(w ? w.label : "Week") + "</button>");
+        bits.push("<button class='ghost' type='button' data-journey-level='days'>← Day view" + (w ? " · " + esc(w.label) : "") + "</button>");
       }
-      if (journeyLevel === "times" && journeyDay) {
-        bits.push("<strong>" + esc(prettyDate(journeyDay)) + "</strong>");
+      if (journeyLevel === "order" && journeyDay) {
+        bits.push("<button class='ghost' type='button' data-journey-level='times'>← " + esc(prettyDate(journeyDay)) + "</button>");
       }
+      let here = "Week view";
+      if (journeyLevel === "days") here = (selectedWeek() && selectedWeek().label) || "Day view";
+      else if (journeyLevel === "times") here = prettyDate(journeyDay) || "Day";
+      else if (journeyLevel === "order") here = openJourneyId || "Order";
+      bits.push("<strong class='here'>" + esc(here) + "</strong>");
       return "<div class='crumb'>" + bits.join(" ") + "</div>";
     }
     function renderJourneyWeeks() {
@@ -473,7 +502,7 @@
         return;
       }
       const head = "<th class='order'>Order</th><th class='name'>Name</th>" + weekHeadCells(weeks);
-      const body = pairs.map((pair) => {
+      const body = pairs.map((pair, i) => {
         const cells = weeks.map((w) => {
           const codes = codesOnDays(
             (pair.order.rows || []).filter((row) => String(row.workerId) === String(pair.person.id)),
@@ -481,10 +510,10 @@
           );
           return "<td class='codes'>" + (codes.length ? codes.map(chipHtml).join(" ") : "") + "</td>";
         }).join("");
-        return "<tr>" + orderCell(pair.order) + nameCell(pair.person) + cells + "</tr>";
+        return pairRow(pairs, i, cells);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. Week columns are the real shop weeks from This week, not Week 1 / 2 / 3. Order number and name stay on every view. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
+        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. Week columns are the real shop weeks from This week, not Week 1 / 2 / 3. Same order numbers are merged across the people on that job. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
         "<div class='sheet-wrap'><table class='grid'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function renderJourneyDays() {
@@ -506,15 +535,15 @@
       const head = "<tr><th class='order' colspan=\"" + (days.length + 2) + "\">" + esc(week.label) + (openJourneyId ? " · " + esc(openJourneyId) : "") + "</th></tr>" +
         "<tr><th class='order'>Order</th><th class='name'>Name</th>" +
         days.map((d) => "<th class='day' data-day=\"" + esc(d.iso) + "\">" + esc(d.weekdayShort || d.weekday) + "</th>").join("") + "</tr>";
-      const body = pairs.map((pair) => {
+      const body = pairs.map((pair, i) => {
         const cells = days.map((d) => {
           const rows = (pair.order.rows || []).filter((row) => String(row.workerId) === String(pair.person.id) && rowOnDay(row, d.iso));
           return "<td data-day=\"" + esc(d.iso) + "\" data-worker=\"" + esc(pair.person.id) + "\">" + chipsForRows(rows) + "</td>";
         }).join("");
-        return "<tr>" + orderCell(pair.order) + nameCell(pair.person) + cells + "</tr>";
+        return pairRow(pairs, i, cells);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Order number and name stay on the left so you can see who is working on which job. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a letter to another free day.</p>" +
+        "<p class='help'>Order number and name stay on the left so you can see who is working on which job. Same order numbers are merged. ← Week view goes back. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a letter to another free day.</p>" +
         "<div class='sheet-wrap'><table class='grid'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
     }
     function timeSlots() {
@@ -550,15 +579,15 @@
       }
       const head = "<th class='order'>Order</th><th class='name'>Name</th>" +
         slots.map((m) => "<th>" + esc(pad2(Math.floor(m / 60)) + ":" + pad2(m % 60)) + "</th>").join("");
-      const body = pairs.map((pair) => {
+      const body = pairs.map((pair, i) => {
         const cells = slots.map((m) => {
           const rows = (pair.order.rows || []).filter((row) => String(row.workerId) === String(pair.person.id) && rowCoversSlot(row, dayIso, m));
           return "<td class='slot' data-day=\"" + esc(dayIso) + "\" data-min=\"" + m + "\" data-worker=\"" + esc(pair.person.id) + "\" data-slot='1'>" + chipsForRows(rows) + "</td>";
         }).join("");
-        return "<tr>" + orderCell(pair.order) + nameCell(pair.person) + cells + "</tr>";
+        return pairRow(pairs, i, cells);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Order number and name stay on the left. 15-minute slots, paid hours only. Click an order number for its timeline. Drag a letter to a free time. That person cannot overlap.</p>" +
+        "<p class='help'>Order number and name stay on the left. Same order numbers are merged. ← Week view and ← Day view go back. 15-minute slots, paid hours only. Click an order number for its timeline. Drag a letter to a free time. That person cannot overlap.</p>" +
         "<div class='sheet-wrap'><table class='grid'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function orderWorkDays(order) {
@@ -593,12 +622,12 @@
       if (days.length && pairs.length) {
         const head = "<th class='order'>Order</th><th class='name'>Name</th>" +
           days.map((iso) => "<th class='day' data-day=\"" + esc(iso) + "\">" + esc(dayHeading(iso)) + "</th>").join("");
-        const body = pairs.map((pair) => {
+        const body = pairs.map((pair, i) => {
           const cells = days.map((iso) => {
             const rows = (pair.order.rows || []).filter((row) => String(row.workerId) === String(pair.person.id) && rowOnDay(row, iso));
             return "<td data-day=\"" + esc(iso) + "\" data-worker=\"" + esc(pair.person.id) + "\">" + chipsForRows(rows) + "</td>";
           }).join("");
-          return "<tr>" + orderCell(pair.order) + nameCell(pair.person) + cells + "</tr>";
+          return pairRow(pairs, i, cells);
         }).join("");
         table = "<div class='sheet-wrap'><table class='grid'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
       } else {
@@ -612,7 +641,7 @@
           "<span class='when'>" + esc(prettyDate(row.start) + " " + hhmm(row.start) + "–" + hhmm(row.end)) + "</span></li>";
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Timeline for " + title + ". Order number and name stay on the grid. Click a day for the 15-minute plan. Drag a letter to a free slot — only later tasks on this order move.</p>" +
+        "<p class='help'>Timeline for " + title + ". Same order number is merged across the people on this job. ← Week view and ← Day view go back. Click a day for the 15-minute plan. Drag a letter to a free slot — only later tasks on this order move.</p>" +
         table +
         "<div class='timeline'><h3>Planning</h3>" +
         (items ? "<ol>" + items + "</ol>" : "<p class='help'>No processes are booked on this order.</p>") +
@@ -976,8 +1005,14 @@
           openJourneyId = "";
           journeyDay = "";
         }
-        if (journeyLevel === "days") journeyDay = "";
-        if (journeyLevel === "order") journeyDay = "";
+        if (journeyLevel === "days") {
+          journeyDay = "";
+          openJourneyId = "";
+        }
+        if (journeyLevel === "times") {
+          openJourneyId = "";
+          if (!journeyDay) journeyLevel = "days";
+        }
         renderBoard();
         return;
       }
@@ -994,7 +1029,6 @@
       if (openOrder && view === "journey" && !e.target.closest("[data-block]")) {
         openJourneyId = openOrder.getAttribute("data-open-order") || "";
         journeyLevel = "order";
-        journeyDay = "";
         renderBoard();
         return;
       }
