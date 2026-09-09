@@ -48,16 +48,16 @@ On Railway, `DATA_DIR` is `/app/data`. **A Volume must be mounted at `/app/data`
 
 Every night at **02:00 Africa/Johannesburg** (and two minutes after boot if today’s copy is missing) the app writes a **complete, integrity-checked** snapshot into `/app/data/backups/` and keeps **14 days**. Each copy is a `.tgz` of the live database plus every other file the shop has written under `/app/data`. The SQLite file is opened with `integrity_check` before the copy is kept. Users → **Backup** → **Backup now** runs the same job immediately. **Download complete backup** saves that `.tgz` to your computer. That same `.tgz` is what you upload to restore **everything on the volume**.
 
-Those local copies are still on the same Railway disk. **Off-site** is Google Drive (a different company than Railway). There is no in-app “connect Drive” button — set it on the **Railway service → Variables**:
+Those local copies are still on the same Railway disk. **Off-site** is Google Drive. A service account has **no storage quota**, so a normal My Drive folder will fail even if it is shared as Editor. Use a **Shared drive** (or impersonate a Workspace user):
 
-1. Keep `GOOGLE_SERVICE_ACCOUNT_JSON` on the Railway service (the same key used for QC PDFs). Open the JSON and copy `client_email` (it ends in `.iam.gserviceaccount.com`).
-2. In Google Drive, create a folder e.g. **Studio Delta ERP backups**.
-3. Share that folder with the service account `client_email` as **Editor** (not Viewer).
-4. Open the folder. The URL looks like `https://drive.google.com/drive/folders/THIS_PART`. Set `BACKUP_DRIVE_FOLDER_ID` to `THIS_PART`.
-5. Optional: `BACKUP_EMAIL` (or `GMAIL_SENDER`) so a “backup OK” mail goes out.
-6. After Railway picks up the variables, **share the folder** with `client_email` as Editor, then Users → **Backup** → **Send test file to Drive**. A `studio-delta-drive-check.txt` must appear in the folder. Then **Backup now**. Success must say sent to Google Drive. Setting the variables alone does not upload. `GET /health` should show `"backupOffsite": true`.
+1. Keep `GOOGLE_SERVICE_ACCOUNT_JSON` on the Railway service. Copy `client_email` (ends in `.iam.gserviceaccount.com`).
+2. In Google Drive on a **Workspace** account: **Shared drives** → **New**.
+3. **Manage members** → add `client_email` as **Content manager**.
+4. Open the Shared drive (or a folder inside it). Set `BACKUP_DRIVE_FOLDER_ID` to the ID from `…/folders/THIS_PART`.
+5. Optional: `BACKUP_DRIVE_IMPERSONATE` or `GMAIL_SENDER` as a Workspace mailbox if domain-wide delegation is enabled — then My Drive of that user also works.
+6. Users → **Backup** → **Send test file to Drive**, then **Backup now**. `GET /health` should show `"backupOffsite": true`.
 
-If the folder stays empty, the Backup page shows the Drive error (usually the folder is not shared with the service-account email, or the Google Drive API is off on that Google Cloud project). The app no longer creates a hidden folder in the service account’s own Drive.
+If the folder stays empty, the Backup page shows the Drive error. The usual failure is “Service Accounts do not have storage quota” — move the folder into a Shared drive.
 
 **Restore** is on **Users → Backup** (Manager only) — not on the People list. Type **RESTORE** and enter the Manager access code **twice**. Then restore a listed snapshot or upload a complete `.tgz` (the same file Drive stores). The app always writes a safety copy of the live shop first. If the chosen file is not a valid Studio Delta backup, the live shop is left untouched (or rolled back to that safety copy).
 
@@ -88,7 +88,8 @@ The GitHub repo is a website plus this app. Railway should build from the **repo
    | `DATA_DIR` | `/app/data` (already set in Docker) |
    | `GOOGLE_SERVICE_ACCOUNT_JSON` | optional for QC PDFs. **Required for off-site Drive backups** |
    | `GMAIL_SENDER` | optional. Workspace mailbox for QC / powder / glass emails and backup notices |
-   | `BACKUP_DRIVE_FOLDER_ID` | optional. Google Drive folder ID for nightly off-site copies |
+   | `BACKUP_DRIVE_FOLDER_ID` | optional. Shared-drive folder ID for nightly off-site copies |
+   | `BACKUP_DRIVE_IMPERSONATE` | optional. Workspace user to upload as (needs domain-wide delegation) |
    | `BACKUP_EMAIL` | optional. Address that receives “backup OK / failed” mail |
 
 3. **Volume (required):** service → **Volumes** → mount path **`/app/data`**. Confirm `GET /health` shows `"usingEphemeralDisk": false`.

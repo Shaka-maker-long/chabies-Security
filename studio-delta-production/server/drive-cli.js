@@ -13,8 +13,17 @@ function credentialsFromEnv() {
   return parsed.credentials;
 }
 
-function getAuth(scopes) {
+function getAuth(scopes, subject) {
   const json = credentialsFromEnv();
+  const who = String(subject || "").trim();
+  if (who) {
+    return new google.auth.JWT({
+      email: json.client_email,
+      key: json.private_key,
+      scopes,
+      subject: who
+    });
+  }
   return new google.auth.GoogleAuth({ credentials: json, scopes });
 }
 
@@ -25,7 +34,7 @@ async function main() {
     "https://www.googleapis.com/auth/documents",
     "https://www.googleapis.com/auth/gmail.send"
   ];
-  const auth = getAuth(scopes);
+  const auth = getAuth(scopes, input.impersonate || process.env.BACKUP_DRIVE_IMPERSONATE);
   const drive = google.drive({ version: "v3", auth });
   const docs = google.docs({ version: "v1", auth });
   const driveOpts = { supportsAllDrives: true };

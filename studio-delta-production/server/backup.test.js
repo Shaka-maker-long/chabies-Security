@@ -127,6 +127,11 @@ staff.checkRestoreSecrets(actor, { confirm: "RESTORE", password: "x", confirmPas
 
 assert.strictEqual(backup.normalizeFolderId("https://drive.google.com/drive/folders/AbC123_xYz?usp=sharing"), "AbC123_xYz");
 assert.strictEqual(backup.normalizeFolderId("AbC123_xYz"), "AbC123_xYz");
+assert.ok(/Shared drive/.test(backup.explainDriveError("Service Accounts do not have storage quota.")));
+assert.strictEqual(backup.impersonateEmail(), "");
+process.env.BACKUP_DRIVE_IMPERSONATE = "willard@example.com";
+assert.strictEqual(backup.impersonateEmail(), "willard@example.com");
+delete process.env.BACKUP_DRIVE_IMPERSONATE;
 
 const { parseGoogleCredentials } = require("./workbook-store");
 process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify(JSON.stringify({

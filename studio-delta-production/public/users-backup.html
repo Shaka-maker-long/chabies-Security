@@ -67,14 +67,14 @@
     </section>
     <section class="card">
       <h2>Turn on Google Drive</h2>
-      <p class="help">Putting variables on Railway does <b>not</b> copy files into Drive by itself. After a deploy, click <b>Backup now</b> or <b>Send test file to Drive</b>. If the folder is still empty, the red error on this page is the reason (almost always: the folder is not shared with the service-account email as Editor).</p>
+      <p class="help">A service account has <b>no Drive storage</b>. Sharing an ordinary My Drive folder is not enough — Google will reject the upload with a storage quota error. The folder must live in a <b>Shared drive</b> (Google Workspace), or Railway must impersonate a real Workspace mailbox.</p>
       <ol class="steps">
-        <li>Keep <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> — the same service-account JSON used for QC PDFs. Open it and copy <code>client_email</code> (it ends in <code>.iam.gserviceaccount.com</code>).</li>
-        <li>In Google Drive, create a folder such as <b>Studio Delta ERP backups</b>.</li>
-        <li>Share that folder with the <code>client_email</code> as <b>Editor</b> (not Viewer).</li>
-        <li>Open the folder. The URL looks like <code>https://drive.google.com/drive/folders/THIS_PART</code>. Put <code>THIS_PART</code> on Railway as <code>BACKUP_DRIVE_FOLDER_ID</code>.</li>
-        <li>Optional: <code>BACKUP_EMAIL</code> or <code>GMAIL_SENDER</code> so a “backup OK” mail goes out.</li>
-        <li>Wait for Railway to pick up the variables, then click <b>Send test file to Drive</b>. A file named <code>studio-delta-drive-check.txt</code> must appear in the folder. Then click <b>Backup now</b>. Success must say sent to Google Drive.</li>
+        <li>Keep <code>GOOGLE_SERVICE_ACCOUNT_JSON</code>. Copy <code>client_email</code> (ends in <code>.iam.gserviceaccount.com</code>).</li>
+        <li>In Google Drive (a Workspace account, not a personal gmail.com): <b>Shared drives</b> → <b>New</b> → name it e.g. Studio Delta ERP backups.</li>
+        <li>Open that Shared drive → <b>Manage members</b> → add the <code>client_email</code> as <b>Content manager</b> (not Viewer).</li>
+        <li>Create a folder inside the Shared drive if you want. Open it. The URL looks like <code>https://drive.google.com/drive/folders/THIS_PART</code>. Put <code>THIS_PART</code> on Railway as <code>BACKUP_DRIVE_FOLDER_ID</code>.</li>
+        <li>Optional: <code>BACKUP_DRIVE_IMPERSONATE</code> or <code>GMAIL_SENDER</code> set to a Workspace user (e.g. willard@…) if an admin has enabled domain-wide delegation. Then a Shared drive is not required.</li>
+        <li>After Railway picks up the variables, click <b>Send test file to Drive</b>, then <b>Backup now</b>. Success must say sent to Google Drive.</li>
       </ol>
       <p class="help">QC photos taken on the tablet go into Google Docs. They are not files on this volume, so they are not inside the .tgz. Everything under <code>/app/data</code> is.</p>
     </section>
