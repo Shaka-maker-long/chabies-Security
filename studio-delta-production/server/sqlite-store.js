@@ -129,6 +129,7 @@ function open() {
       at TEXT,
       amount TEXT,
       note TEXT,
+      extra TEXT,
       PRIMARY KEY (order_number, seq)
     );
     CREATE TABLE IF NOT EXISTS office_schedule_rows (
@@ -151,6 +152,7 @@ function open() {
   try { db.exec("ALTER TABLE users ADD COLUMN enquiry_roles TEXT"); } catch (e) {}
   try { db.exec("ALTER TABLE users ADD COLUMN manage_users TEXT"); } catch (e) {}
   try { db.exec("ALTER TABLE orders ADD COLUMN enquiry_no TEXT"); } catch (e) {}
+  try { db.exec("ALTER TABLE payments ADD COLUMN extra TEXT"); } catch (e) {}
   return db;
 }
 
@@ -325,17 +327,25 @@ function saveOfficeExtras(db, state) {
     addGroups("enquiry:", state.enquiry_dropdowns);
 
     db.exec("DELETE FROM payments");
-    const insP = db.prepare("INSERT INTO payments (order_number, seq, at, amount, note) VALUES (?, ?, ?, ?, ?)");
+    const insP = db.prepare("INSERT INTO payments (order_number, seq, at, amount, note, extra) VALUES (?, ?, ?, ?, ?, ?)");
     const pay = state.paymentsByOrder || {};
     Object.keys(pay).forEach((order) => {
       (Array.isArray(pay[order]) ? pay[order] : []).forEach((p, i) => {
         const item = p && typeof p === "object" ? p : { amount: p };
+        const extra = JSON.stringify({
+          id: item.id || "",
+          filename: item.filename || "",
+          mime: item.mime || "",
+          storedAs: item.storedAs || "",
+          size: item.size || 0
+        });
         insP.run(
           String(order),
           i,
           item.at || item.date || "",
           item.amount == null ? "" : String(item.amount),
-          item.note || ""
+          item.note || "",
+          extra
         );
       });
     });
@@ -435,12 +445,20 @@ function loadDropdowns(db) {
 
 function loadPayments(db) {
   const paymentsByOrder = {};
-  db.prepare("SELECT order_number, seq, at, amount, note FROM payments ORDER BY order_number, seq").all().forEach((r) => {
+  db.prepare("SELECT order_number, seq, at, amount, note, extra FROM payments ORDER BY order_number, seq").all().forEach((r) => {
     paymentsByOrder[r.order_number] = paymentsByOrder[r.order_number] || [];
+    let extra = {};
+    try { extra = r.extra ? JSON.parse(r.extra) : {}; } catch (e) { extra = {}; }
+    if (!extra || typeof extra !== "object") extra = {};
     paymentsByOrder[r.order_number].push({
       at: r.at || "",
       amount: r.amount || "",
-      note: r.note || ""
+      note: r.note || "",
+      id: extra.id || "",
+      filename: extra.filename || "",
+      mime: extra.mime || "",
+      storedAs: extra.storedAs || "",
+      size: extra.size || 0
     });
   });
   return paymentsByOrder;

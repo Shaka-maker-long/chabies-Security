@@ -699,4 +699,22 @@ assert.ok(js.indexOf('credentials: "same-origin"') !== -1 || js.indexOf("credent
 assert.ok(js.indexOf("await sdForgetOffice()") === -1, "do not log out when switching office pages");
 assert.ok(js.indexOf("canSeeOffice") !== -1);
 
+const debtorsHtml = fs.readFileSync(path.join(__dirname, "../public/debtors.html"), "utf8");
+assert.ok(debtorsHtml.indexOf("PRODUCT") !== -1);
+assert.ok(debtorsHtml.indexOf("/debtors/history") !== -1);
+assert.ok(debtorsHtml.indexOf(">Owing<") !== -1);
+assert.ok(debtorsHtml.indexOf(">History<") !== -1);
+assert.ok(debtorsHtml.indexOf("type=\\\"file\\\"") !== -1);
+assert.ok(debtorsHtml.indexOf("name=\\\"proof\\\"") !== -1);
+assert.ok(debtorsHtml.indexOf("clientFilter") !== -1);
+assert.ok(debtorsHtml.indexOf("Total excl VAT") !== -1);
+assert.ok(debtorsHtml.indexOf("Total incl VAT") !== -1);
+assert.ok(debtorsHtml.indexOf("sdRequireOffice(\"debtors\")") !== -1);
+assert.ok(indexJs.indexOf("/debtors/history") !== -1);
+assert.ok(officeJs.indexOf("listDebtorHistory") !== -1);
+assert.ok(officeJs.indexOf("/api/office/debtors/history") !== -1);
+assert.ok(officeJs.indexOf("/api/office/debtors/payments/") !== -1);
+assert.ok(js.indexOf("/debtors/history") === -1, "history is a Debtors subpage, not a sidebar item");
+assert.ok((js.match(/"\/debtors"/g) || []).length === 1, "Debtors stays one sidebar item");
+
 console.log("office-nav.test.js ok");

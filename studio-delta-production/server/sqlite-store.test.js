@@ -49,7 +49,11 @@ const row = sqlite.open().prepare("SELECT client_name, status FROM enquiries WHE
 assert.ok(row);
 assert.strictEqual(row.status, "New");
 
-db.recordPayment("S-SQL1", "2.50", "deposit");
+db.recordPayment("S-SQL1", "2.50", "deposit", {
+  filename: "pop.png",
+  mime: "image/png",
+  data: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+});
 db.upsertScheduleRow({
   order_number: "S-SQL1",
   product: "Air Chair",
@@ -73,9 +77,13 @@ assert.ok(userRow);
 assert.ok(JSON.parse(userRow.json).indexOf("Shaka") !== -1);
 const drop = sqlite.open().prepare("SELECT value FROM dropdowns WHERE group_name = 'product' LIMIT 1").get();
 assert.ok(drop && drop.value);
-const pay = sqlite.open().prepare("SELECT amount, note FROM payments WHERE order_number = ?").get("S-SQL1");
+const pay = sqlite.open().prepare("SELECT amount, note, extra FROM payments WHERE order_number = ?").get("S-SQL1");
 assert.ok(pay);
 assert.strictEqual(pay.note, "deposit");
+const extra = JSON.parse(pay.extra || "{}");
+assert.ok(extra.id);
+assert.strictEqual(extra.filename, "pop.png");
+assert.ok(extra.storedAs);
 
 sqlite.saveSessions({ tok1: { name: "Shaka", access: "Admin", savedAt: Date.now() } });
 const sess = sqlite.loadSessions();
@@ -84,6 +92,8 @@ assert.ok(sess && sess.tok1 && sess.tok1.name === "Shaka");
 const loaded = sqlite.loadOffice();
 assert.ok(loaded.enquiries.some((e) => e.client_name === "SQL Client"));
 assert.ok(loaded.paymentsByOrder["S-SQL1"]);
+assert.strictEqual(loaded.paymentsByOrder["S-SQL1"][0].filename, "pop.png");
+assert.ok(loaded.paymentsByOrder["S-SQL1"][0].id);
 assert.ok(loaded.schedule_rows.some((r) => r.order_number === "S-SQL1"));
 assert.ok(Object.keys(loaded.dropdowns).length >= 1);
 
