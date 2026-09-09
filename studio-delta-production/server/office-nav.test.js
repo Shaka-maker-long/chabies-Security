@@ -518,8 +518,11 @@ assert.ok(planningHtml.indexOf("data-week") !== -1 && planningHtml.indexOf("data
 assert.ok(planningHtml.indexOf("15-minute") !== -1, "Journey day view opens a time grid");
 assert.ok(planningHtml.indexOf("data-open-order") !== -1, "click an order number for its timeline");
 assert.ok(planningHtml.indexOf('journeyLevel === "order"') !== -1, "Journey has an order timeline level");
-assert.ok(planningHtml.indexOf("Order number and name stay") !== -1, "order number and name stay on week, day, and time views");
-assert.ok(planningHtml.indexOf("<th class='order'>Order</th><th class='name'>Name</th>") !== -1, "week and day grids keep Order and Name columns");
+assert.ok(planningHtml.indexOf("Order and Name stay frozen") !== -1, "day and 15-minute views freeze Order and Name");
+assert.ok(planningHtml.indexOf("<th class='order'>Order</th><th class='name'>Name</th>") !== -1, "day and 15-minute grids keep Order and Name columns");
+assert.ok(planningHtml.indexOf("not on this view") !== -1 || planningHtml.indexOf("Names are not on this view") !== -1, "weekly Journey hides names");
+assert.ok(planningHtml.indexOf("freeze-names") !== -1 && planningHtml.indexOf("freeze-order") !== -1, "Order and Name columns freeze while the weeks scroll");
+assert.ok(planningHtml.indexOf("Twenty shop weeks") !== -1, "Journey week view has more than five week columns");
 assert.ok(planningHtml.indexOf("not Week 1 / 2 / 3") !== -1, "week headers are current shop dates, not example Week 1");
 assert.ok(planningHtml.indexOf("th.week[data-week]") !== -1, "clicking a week header does not hide other orders");
 assert.ok(planningHtml.indexOf("← Week view") !== -1 && planningHtml.indexOf("← Day view") !== -1, "Journey has back buttons to week and day views");

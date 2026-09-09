@@ -323,7 +323,7 @@ const weldLater = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.
 assert.ok(profileLater.start >= "2026-09-08T09:00:00+02:00", "drag later delays that job");
 assert.ok(tagLater.start >= profileLater.end, "tagging follows the new profile end");
 assert.ok(weldLater.start >= tagLater.end, "welding follows tagging after the shift");
-assert.ok(board.journeyWeeks && board.journeyWeeks.length >= 5, "journey has five week columns");
+assert.ok(board.journeyWeeks && board.journeyWeeks.length >= plan.JOURNEY_WEEK_COUNT, "journey shows many week columns so the order column can freeze while you scroll");
 assert.strictEqual(board.journeyWeeks[0].start, board.weekStart, "journey weeks start from the current shop week");
 assert.ok(/Sep/.test(board.journeyWeeks[0].label), "week headers are real dates, not Week 1");
 assert.ok(board.journeyWeeks.every((w) => !/^Week \d+$/.test(w.label)), "week headers are date ranges, not Week 1 / 2 / 3");

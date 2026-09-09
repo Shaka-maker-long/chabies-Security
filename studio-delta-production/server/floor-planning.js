@@ -331,6 +331,8 @@ const JOURNEY_PROCESS_ORDER = {
   "Assembly": 7
 };
 
+const JOURNEY_WEEK_COUNT = 20;
+
 const PROCESS_CODES = {
   "Profile Cutting": "C",
   "Tagging": "T",
@@ -1312,7 +1314,7 @@ function getBoard(week) {
     colors: PROCESS_COLORS,
     processCodes: Object.assign({}, PROCESS_CODES),
     processes: PLANNED_PROCESSES.slice(),
-    journeyWeeks: journeyWeeks(weekStart, 5),
+    journeyWeeks: journeyWeeks(weekStart, JOURNEY_WEEK_COUNT),
     firstPlannedWeek: journey.days[0] ? weekMondayIso(journey.days[0].iso) : "",
     autoProcesses: ["Grinding"],
     windows: {
@@ -1370,6 +1372,7 @@ module.exports = {
   formatDayHeader,
   JOURNEY_PROCESS_ORDER,
   PROCESS_CODES,
+  JOURNEY_WEEK_COUNT,
   processCode,
   journeyWeeks,
   journeyWeeksFromPlan,
