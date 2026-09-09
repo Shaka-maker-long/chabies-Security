@@ -527,6 +527,8 @@ assert.ok(planningHtml.indexOf("not Week 1 / 2 / 3") !== -1, "week headers are c
 assert.ok(planningHtml.indexOf("th.week[data-week]") !== -1, "clicking a week header does not hide other orders");
 assert.ok(planningHtml.indexOf("who starts first") !== -1, "Journey lists orders by start time");
 assert.ok(planningHtml.indexOf("names within an order") !== -1, "names on an order are listed by who works first");
+assert.ok(planningHtml.indexOf("data-filter-worker") !== -1, "click a name on the 15-minute grid to see only that person");
+assert.ok(planningHtml.indexOf("data-clear-worker") !== -1 && planningHtml.indexOf("← Everyone") !== -1, "filtered 15-minute view can show everyone again");
 assert.ok(planningHtml.indexOf("← Week view") !== -1 && planningHtml.indexOf("← Day view") !== -1, "Journey has back buttons to week and day views");
 assert.ok(planningHtml.indexOf("rowspan") !== -1, "same order numbers are merged across people");
 assert.ok(planningHtml.indexOf("C profile cutting") !== -1);
