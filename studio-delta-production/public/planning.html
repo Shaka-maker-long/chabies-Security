@@ -90,6 +90,8 @@
     table.grid.freeze-names thead th.name { z-index:5; background:var(--head); }
     table.grid td.order { cursor:pointer; text-decoration:underline; text-underline-offset:3px; vertical-align:middle; }
     table.grid td.order:hover { background:#eef2f6; }
+    table.grid td.name.pick { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+    table.grid td.name.pick:hover, table.grid td.name.on { background:#eef2f6; }
     table.grid th.week, table.grid td.codes { min-width:96px; }
     table.grid th.week, table.grid th.day { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
     table.grid th.week:hover, table.grid th.day:hover { color:#1d2939; background:#e4e7ec; }
@@ -233,6 +235,8 @@
     let journeyLevel = "weeks";
     let journeyWeekStart = "";
     let journeyDay = "";
+    let journeyWorkerId = "";
+    let journeyWorkerName = "";
     let personA = "";
     let personB = "";
     const openOrders = {};
@@ -287,7 +291,11 @@
     }
     function setView(next, syncHash) {
       view = next === "people" || next === "journey" ? next : "planning";
-      if (view !== "journey") openJourneyId = "";
+      if (view !== "journey") {
+        openJourneyId = "";
+        journeyWorkerId = "";
+        journeyWorkerName = "";
+      }
       document.body.setAttribute("data-view", view);
       document.getElementById("tabPlanning").classList.toggle("on", view === "planning");
       document.getElementById("tabJourney").classList.toggle("on", view === "journey");
@@ -481,13 +489,23 @@
       const rs = span > 1 ? " rowspan=\"" + span + "\"" : "";
       return "<td class='order'" + rs + " data-open-order=\"" + esc(order.orderId) + "\" title=\"" + esc((order.product ? order.product + " — " : "") + "Open timeline") + "\">" + esc(order.orderId) + "</td>";
     }
-    function nameCell(person) {
-      return "<td class='name'>" + esc(person && person.name ? person.name : "—") + "</td>";
+    function nameCell(person, pick, span) {
+      if (!span) return "";
+      const rs = span > 1 ? " rowspan=\"" + span + "\"" : "";
+      const on = pick && journeyWorkerId && String(person && person.id) === String(journeyWorkerId) ? " on" : "";
+      const extra = pick
+        ? " data-filter-worker=\"" + esc(person && person.id ? person.id : "") + "\" data-filter-name=\"" + esc(person && person.name ? person.name : "") + "\" title=\"Show only this person’s orders\""
+        : "";
+      return "<td class='name" + (pick ? " pick" : "") + on + "'" + rs + extra + ">" + esc(person && person.name ? person.name : "—") + "</td>";
     }
-    function pairRow(pairs, index, extraCells) {
+    function pairRow(pairs, index, extraCells, namePick) {
       const pair = pairs[index];
       const span = orderSpanAt(pairs, index);
-      return "<tr" + (span && index > 0 ? " class='order-start'" : "") + ">" + orderCell(pair.order, span) + nameCell(pair.person) + extraCells + "</tr>";
+      let nameSpan = 1;
+      if (namePick && journeyWorkerId) {
+        nameSpan = index === 0 ? pairs.length : 0;
+      }
+      return "<tr" + (span && index > 0 ? " class='order-start'" : "") + ">" + orderCell(pair.order, span) + nameCell(pair.person, namePick, nameSpan) + extraCells + "</tr>";
     }
     function weekHeadCells(weeks) {
       return (weeks || []).map((w) => {
@@ -517,9 +535,12 @@
       if (journeyLevel === "order" && journeyDay) {
         bits.push("<button class='ghost' type='button' data-journey-level='times'>← " + esc(prettyDate(journeyDay)) + "</button>");
       }
+      if (journeyLevel === "times" && journeyWorkerId) {
+        bits.push("<button class='ghost' type='button' data-clear-worker>← Everyone</button>");
+      }
       let here = "Week view";
       if (journeyLevel === "days") here = (selectedWeek() && selectedWeek().label) || "Day view";
-      else if (journeyLevel === "times") here = prettyDate(journeyDay) || "Day";
+      else if (journeyLevel === "times") here = (journeyWorkerName ? journeyWorkerName + " · " : "") + (prettyDate(journeyDay) || "Day");
       else if (journeyLevel === "order") here = openJourneyId || "Order";
       bits.push("<strong class='here'>" + esc(here) + "</strong>");
       return "<div class='crumb'>" + bits.join(" ") + "</div>";
@@ -604,10 +625,14 @@
         return;
       }
       const slots = timeSlots();
-      const pairs = orderNamePairs(visibleOrders(), (row) => rowOnDay(row, dayIso));
+      let pairs = orderNamePairs(visibleOrders(), (row) => rowOnDay(row, dayIso));
+      if (journeyWorkerId) {
+        pairs = pairs.filter((pair) => String(pair.person.id) === String(journeyWorkerId));
+      }
       fillWeekLabel();
       if (!pairs.length) {
-        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is planned on " + esc(prettyDate(dayIso)) + ".</div>";
+        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is planned on " + esc(prettyDate(dayIso)) +
+          (journeyWorkerId ? " for " + esc(journeyWorkerName || "that person") + ". <button class='ghost' type='button' data-clear-worker>Show everyone</button>" : ".") + "</div>";
         return;
       }
       const head = "<th class='order'>Order</th><th class='name'>Name</th>" +
@@ -617,10 +642,10 @@
           const rows = (pair.order.rows || []).filter((row) => String(row.workerId) === String(pair.person.id) && rowCoversSlot(row, dayIso, m));
           return "<td class='slot' data-day=\"" + esc(dayIso) + "\" data-min=\"" + m + "\" data-worker=\"" + esc(pair.person.id) + "\" data-slot='1'>" + chipsForRows(rows) + "</td>";
         }).join("");
-        return pairRow(pairs, i, cells);
+        return pairRow(pairs, i, cells, true);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Orders are listed by who starts first on this day, and names within an order follow who does the task first. Order and Name stay frozen on the left. Names show here and on the day view, not on the week view. Same order numbers are merged. ← Week view and ← Day view go back. 15-minute slots, paid hours only. Click an order number for its timeline. Drag a letter to a free time. That person cannot overlap.</p>" +
+        "<p class='help'>Click a name to see only that person’s orders on this day. ← Everyone shows the full shop again. Orders are listed by who starts first, and names within an order follow who does the task first. Order and Name stay frozen on the left. ← Week view and ← Day view go back. Drag a letter to a free time. That person cannot overlap.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-names'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function orderWorkDays(order) {
@@ -1037,14 +1062,38 @@
         if (journeyLevel === "weeks") {
           openJourneyId = "";
           journeyDay = "";
+          journeyWorkerId = "";
+          journeyWorkerName = "";
         }
         if (journeyLevel === "days") {
           journeyDay = "";
           openJourneyId = "";
+          journeyWorkerId = "";
+          journeyWorkerName = "";
         }
         if (journeyLevel === "times") {
           openJourneyId = "";
           if (!journeyDay) journeyLevel = "days";
+        }
+        renderBoard();
+        return;
+      }
+      const clearWho = e.target.closest("[data-clear-worker]");
+      if (clearWho && view === "journey") {
+        journeyWorkerId = "";
+        journeyWorkerName = "";
+        renderBoard();
+        return;
+      }
+      const who = e.target.closest("[data-filter-worker]");
+      if (who && view === "journey" && journeyLevel === "times" && !e.target.closest("[data-block]")) {
+        const id = who.getAttribute("data-filter-worker") || "";
+        if (id && String(id) === String(journeyWorkerId)) {
+          journeyWorkerId = "";
+          journeyWorkerName = "";
+        } else {
+          journeyWorkerId = id;
+          journeyWorkerName = who.getAttribute("data-filter-name") || id;
         }
         renderBoard();
         return;
@@ -1069,6 +1118,8 @@
       if (weekBtn && view === "journey") {
         journeyWeekStart = weekBtn.getAttribute("data-week") || "";
         openJourneyId = "";
+        journeyWorkerId = "";
+        journeyWorkerName = "";
         journeyLevel = "days";
         journeyDay = "";
         renderBoard();
