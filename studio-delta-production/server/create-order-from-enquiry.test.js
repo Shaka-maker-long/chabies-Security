@@ -213,6 +213,44 @@ assert.throws(
     {
       order_number: "S260300",
       delivery_date: "2026-10-15",
+      shared: { client_name: "No Paid", province: "Gauteng", address: "12 Main Road", city: "Sandton" },
+      products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000", amount_paid: "" })]
+    },
+    []
+  ),
+  /Amount paid is required/
+);
+
+const paidFullPlan = fromEnquiry.planCreate(
+  { enquiry_no: "#5006", quote_no: "SOQ92" },
+  {
+    order_number: "S260500",
+    delivery_date: "2026-10-15",
+    shared: { client_name: "Paid Full", province: "Gauteng", address: "12 Main Road", city: "Sandton" },
+    products: [shopFields({
+      product: "Air Chair",
+      category: "Chair",
+      type: "Standard",
+      quantity: 2,
+      price_incl_vat: "29322.00",
+      amount_paid: "",
+      paid_in_full: true
+    })]
+  },
+  []
+);
+assert.strictEqual(paidFullPlan.units.length, 2);
+assert.strictEqual(paidFullPlan.units[0].price_incl_vat, "14661.00");
+assert.strictEqual(paidFullPlan.units[1].price_incl_vat, "14661.00");
+assert.strictEqual(paidFullPlan.units[0].amount_paid, "14661.00");
+assert.strictEqual(paidFullPlan.units[1].amount_paid, "14661.00");
+
+assert.throws(
+  () => fromEnquiry.planCreate(
+    { enquiry_no: "#5003" },
+    {
+      order_number: "S260300",
+      delivery_date: "2026-10-15",
       shared: { client_name: "No Doors", province: "Gauteng", address: "12 Main Road", city: "Sandton" },
       products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000", doors: "" })]
     },
@@ -408,6 +446,8 @@ assert.ok(page.indexOf("data-f=\\\"quantity\\\"") !== -1);
 assert.ok(page.indexOf("Address *") !== -1);
 assert.ok(page.indexOf("City *") !== -1);
 assert.ok(page.indexOf("qty_price_confirmed") !== -1);
+assert.ok(page.indexOf("Paid in full") !== -1);
+assert.ok(page.indexOf("data-f=\\\"paid_in_full\\\"") !== -1);
 assert.ok(page.indexOf("strictest item") !== -1);
 assert.ok(page.indexOf("put LC on Monday") !== -1);
 assert.ok(page.indexOf("Mark selected as important") !== -1);

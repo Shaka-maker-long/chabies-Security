@@ -166,6 +166,27 @@ function parseMoney(s) {
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
 }
 
+function money(n) {
+  return (Math.round(Number(n) * 100) / 100).toFixed(2);
+}
+
+function isFlag(value) {
+  return value === true || value === "true" || value === 1 || value === "1" || value === "on";
+}
+
+function lineInclVat(p) {
+  const incl = String((p && p.price_incl_vat) == null ? "" : p.price_incl_vat).trim();
+  if (incl) return money(parseMoney(incl));
+  const excl = String((p && p.price_excl_vat) == null ? "" : p.price_excl_vat).trim();
+  if (!excl) return "";
+  return money(parseMoney(excl) * 1.15);
+}
+
+function lineAmountPaid(p, incl) {
+  if (isFlag(p && p.paid_in_full)) return incl;
+  return p && p.amount_paid;
+}
+
 function splitCents(total, qty, index) {
   const cents = Math.round(parseMoney(total) * 100);
   const n = Math.max(1, Number(qty) || 1);
@@ -337,11 +358,8 @@ function planUnits(products) {
     if (qty < 1) return;
     const product = String((p && p.product) || "").trim();
     if (!product) return;
-    let incl = p && p.price_incl_vat;
-    if (String(incl == null ? "" : incl).trim() === "" && String((p && p.price_excl_vat) || "").trim() !== "") {
-      const excl = Number(String(p.price_excl_vat).replace(/,/g, "").replace(/[^0-9.-]/g, ""));
-      incl = Number.isFinite(excl) ? (excl * 1.15).toFixed(2) : "";
-    }
+    let incl = lineInclVat(p);
+    const paid = lineAmountPaid(p, incl);
     for (let i = 0; i < qty; i++) {
       units.push({
         product,
@@ -353,7 +371,7 @@ function planUnits(products) {
         dimensions: String((p && p.dimensions) || "").trim(),
         powder_coating: String((p && p.powder_coating) || "").trim(),
         price_incl_vat: splitCents(incl, qty, i),
-        amount_paid: splitCents(p && p.amount_paid, qty, i)
+        amount_paid: splitCents(paid, qty, i)
       });
     }
   });
@@ -374,20 +392,20 @@ function assertProductReady(product, index) {
   const qty = Math.floor(Number(product && product.quantity) || 0);
   if (qty < 1) return;
   const label = String((product && product.product) || "").trim() || ("product " + (index + 1));
-  if (String(product && product.amount_paid == null ? "" : product.amount_paid).trim() === "") {
-    throw new Error("Amount paid is required for " + label);
+  const incl = lineInclVat(product);
+  const excl = String((product && product.price_excl_vat) || "").trim();
+  if (!incl && !excl) throw new Error("Price excl VAT is required for " + label);
+  if (!isQtyPriceConfirmed(product && product.qty_price_confirmed)) {
+    throw new Error("Confirm quantity and price excl VAT for " + label);
+  }
+  if (!isFlag(product && product.paid_in_full) && String(product && product.amount_paid == null ? "" : product.amount_paid).trim() === "") {
+    throw new Error("Amount paid is required for " + label + " unless you tick Paid in full");
   }
   requireText(product && product.variation, "Variation is required for " + label);
   requireText(product && product.doors, "Doors is required for " + label);
   requireText(product && product.powder_coating, "Powder coating is required for " + label);
   requireText(product && product.dimensions, "Dimensions are required for " + label);
   requireText(product && product.detailed_description, "Detailed description is required for " + label);
-  const incl = String((product && product.price_incl_vat) || "").trim();
-  const excl = String((product && product.price_excl_vat) || "").trim();
-  if (!incl && !excl) throw new Error("Price excl VAT is required for " + label);
-  if (!isQtyPriceConfirmed(product && product.qty_price_confirmed)) {
-    throw new Error("Confirm quantity and price excl VAT for " + label);
-  }
 }
 
 function planCreate(enquiry, body, existingOrders) {
