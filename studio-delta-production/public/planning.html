@@ -78,25 +78,26 @@
     .crumb .here { font-size:13px; font-weight:700; color:var(--ink); }
     body.office-app .crumb { background: var(--sd-linen, #f3efe8); }
     body.office-app .crumb .here { color:#1d2939; }
-    table.grid td.order { vertical-align:middle; }
-    table.grid tr.order-start td { border-top:2px solid #d0d5dd; }
-    table.grid { border-collapse:collapse; width:100%; background:#fff; font-size:13px; }
-    table.grid th, table.grid td { border:1px solid var(--line); padding:8px 10px; text-align:center; vertical-align:middle; }
-    table.grid th { background:var(--head); font-size:12px; }
+    table.grid { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; background:#fff; font-size:13px; }
+    table.grid th, table.grid td { border-bottom:1px solid var(--line); border-right:1px solid var(--line); padding:8px 10px; text-align:center; vertical-align:middle; background:#fff; }
+    table.grid th { background:var(--head); font-size:12px; position:sticky; top:0; z-index:3; }
     table.grid th.corner, table.grid td.corner,
     table.grid th.order, table.grid td.order,
     table.grid th.name, table.grid td.name { text-align:left; font-weight:700; font-family: Outfit, Inter, sans-serif; background:#fff; }
-    table.grid th.order, table.grid td.order { position:sticky; left:0; z-index:2; min-width:108px; box-shadow:1px 0 0 #e4e7ec; }
-    table.grid th.name, table.grid td.name { position:sticky; left:108px; z-index:2; min-width:110px; font-family: Inter, sans-serif; font-weight:600; box-shadow:2px 0 6px rgba(16,24,40,.06); }
-    table.grid thead th.corner, table.grid thead th.order, table.grid thead th.name { z-index:4; background:var(--head); }
-    table.grid td.order { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+    table.grid th.order, table.grid td.order { position:sticky; left:0; z-index:2; min-width:120px; box-shadow:1px 0 0 #e4e7ec; }
+    table.grid thead th.order { z-index:5; background:var(--head); }
+    table.grid.freeze-names th.name, table.grid.freeze-names td.name { position:sticky; left:120px; z-index:2; min-width:110px; font-family: Inter, sans-serif; font-weight:600; box-shadow:2px 0 6px rgba(16,24,40,.06); }
+    table.grid.freeze-names thead th.name { z-index:5; background:var(--head); }
+    table.grid td.order { cursor:pointer; text-decoration:underline; text-underline-offset:3px; vertical-align:middle; }
     table.grid td.order:hover { background:#eef2f6; }
+    table.grid th.week, table.grid td.codes { min-width:96px; }
     table.grid th.week, table.grid th.day { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
     table.grid th.week:hover, table.grid th.day:hover { color:#1d2939; background:#e4e7ec; }
     table.grid th.week.current { box-shadow: inset 0 -3px 0 #1d2939; }
     table.grid td.codes { font-weight:700; letter-spacing:.02em; }
     table.grid td.slot { min-width:52px; padding:4px 2px; font-weight:700; }
     table.grid .chip { display:inline-block; min-width:22px; padding:2px 6px; border-radius:4px; border:1px solid transparent; cursor:grab; }
+    table.grid tr.order-start td { border-top:2px solid #d0d5dd; }
     .timeline { margin:12px 0 0; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
     .timeline h3 { margin:0 0 8px; font-size:14px; font-family: Outfit, Inter, sans-serif; }
     .timeline ol { margin:0; padding:0; list-style:none; }
@@ -470,7 +471,7 @@
       const btn = jump
         ? " <button class='ghost' type='button' data-jump-week=\"" + esc(jump) + "\">Show the week that work starts</button>"
         : "";
-      return "<div class='empty'>No orders are planned in these weeks. Order number and name stay on every view once work lands here." + btn + "</div>";
+      return "<div class='empty'>No orders are planned in these weeks. Names show on the day and 15-minute views once work lands here." + btn + "</div>";
     }
     function renderJourneyCrumb() {
       const bits = [];
@@ -495,26 +496,23 @@
       const box = document.getElementById("calendars");
       const weeks = weekWindow();
       const isos = weeks.reduce((all, w) => all.concat(weekIsos(w)), []);
-      const pairs = orderNamePairs(journeyOrders(), (row) => (row.days || []).some((iso) => isos.indexOf(iso) !== -1));
+      const orders = journeyOrders().filter((o) => (o.rows || []).some((row) => (row.days || []).some((iso) => isos.indexOf(iso) !== -1)));
       fillWeekLabel();
-      if (!pairs.length) {
+      if (!orders.length) {
         box.innerHTML = renderJourneyCrumb() + emptyOutsideWeeks();
         return;
       }
-      const head = "<th class='order'>Order</th><th class='name'>Name</th>" + weekHeadCells(weeks);
-      const body = pairs.map((pair, i) => {
+      const head = "<th class='order'>Order</th>" + weekHeadCells(weeks);
+      const body = orders.map((o) => {
         const cells = weeks.map((w) => {
-          const codes = codesOnDays(
-            (pair.order.rows || []).filter((row) => String(row.workerId) === String(pair.person.id)),
-            weekIsos(w)
-          );
+          const codes = codesOnDays(o.rows, weekIsos(w));
           return "<td class='codes'>" + (codes.length ? codes.map(chipHtml).join(" ") : "") + "</td>";
         }).join("");
-        return pairRow(pairs, i, cells);
+        return "<tr>" + orderCell(o, 1) + cells + "</tr>";
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. Week columns are the real shop weeks from This week, not Week 1 / 2 / 3. Same order numbers are merged across the people on that job. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
-        "<div class='sheet-wrap'><table class='grid'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. Twenty shop weeks from This week, not Week 1 / 2 / 3. Order stays frozen while you scroll. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
+        "<div class='sheet-wrap'><table class='grid freeze-order'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function renderJourneyDays() {
       const box = document.getElementById("calendars");
@@ -532,7 +530,7 @@
         box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is planned in this week. Order numbers and names stay on this view when work is booked.</div>";
         return;
       }
-      const head = "<tr><th class='order' colspan=\"" + (days.length + 2) + "\">" + esc(week.label) + (openJourneyId ? " · " + esc(openJourneyId) : "") + "</th></tr>" +
+      const head = "<tr><th colspan=\"" + (days.length + 2) + "\">" + esc(week.label) + (openJourneyId ? " · " + esc(openJourneyId) : "") + "</th></tr>" +
         "<tr><th class='order'>Order</th><th class='name'>Name</th>" +
         days.map((d) => "<th class='day' data-day=\"" + esc(d.iso) + "\">" + esc(d.weekdayShort || d.weekday) + "</th>").join("") + "</tr>";
       const body = pairs.map((pair, i) => {
@@ -543,8 +541,8 @@
         return pairRow(pairs, i, cells);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Order number and name stay on the left so you can see who is working on which job. Same order numbers are merged. ← Week view goes back. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a letter to another free day.</p>" +
-        "<div class='sheet-wrap'><table class='grid'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
+        "<p class='help'>Order and Name stay frozen on the left. Names only show on this day view and the 15-minute grid, not on the week view. Same order numbers are merged. ← Week view goes back. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a letter to another free day.</p>" +
+        "<div class='sheet-wrap'><table class='grid freeze-names'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
     }
     function timeSlots() {
       const out = [];
@@ -587,8 +585,8 @@
         return pairRow(pairs, i, cells);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Order number and name stay on the left. Same order numbers are merged. ← Week view and ← Day view go back. 15-minute slots, paid hours only. Click an order number for its timeline. Drag a letter to a free time. That person cannot overlap.</p>" +
-        "<div class='sheet-wrap'><table class='grid'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+        "<p class='help'>Order and Name stay frozen on the left. Names show here and on the day view, not on the week view. Same order numbers are merged. ← Week view and ← Day view go back. 15-minute slots, paid hours only. Click an order number for its timeline. Drag a letter to a free time. That person cannot overlap.</p>" +
+        "<div class='sheet-wrap'><table class='grid freeze-names'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function orderWorkDays(order) {
       const set = {};
@@ -629,7 +627,7 @@
           }).join("");
           return pairRow(pairs, i, cells);
         }).join("");
-        table = "<div class='sheet-wrap'><table class='grid'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+        table = "<div class='sheet-wrap'><table class='grid freeze-names'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
       } else {
         table = "<div class='empty'>This order has no planned work days yet.</div>";
       }
