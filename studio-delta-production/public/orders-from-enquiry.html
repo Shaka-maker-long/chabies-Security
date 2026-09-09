@@ -69,7 +69,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Create orders from enquiry</h1>
-      <p class="lede">One enquiry form. Quantity splits into A, B, C across the whole order. Address, city, shop details, and a confirmed quantity and exclusive VAT are required. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
+      <p class="lede">One enquiry form. Quantity splits into A, B, C across the whole order. Tick Paid in full if they paid the price incl VAT for that quantity — only type an amount if they still owe. Address, city, shop details, and a confirmed quantity and exclusive VAT are required. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
     </div>
     <div class="tools">
       <a href="/enquiries"><button class="ghost" type="button">Back to Enquiries</button></a>
@@ -224,21 +224,27 @@
       return "/enquiries?q=" + encodeURIComponent(enquiryNo);
     }
     function collect() {
-      const products = [...document.querySelectorAll("[data-product]")].map((el) => ({
-        category: el.getAttribute("data-category") || "",
-        product: el.getAttribute("data-name") || "",
-        type: el.querySelector("[data-f=type]").value,
-        variation: el.querySelector("[data-f=variation]").value,
-        doors: el.querySelector("[data-f=doors]").value,
-        detailed_description: el.querySelector("[data-f=detailed_description]").value,
-        dimensions: el.querySelector("[data-f=dimensions]").value,
-        powder_coating: el.querySelector("[data-f=powder_coating]").value,
-        price_incl_vat: el.querySelector("[data-f=price_incl_vat]").value,
-        price_excl_vat: el.querySelector("[data-f=price_excl_vat]").value,
-        amount_paid: el.querySelector("[data-f=amount_paid]").value,
-        quantity: el.querySelector("[data-f=quantity]").value,
-        qty_price_confirmed: !!(el.querySelector("[data-f=qty_price_confirmed]") && el.querySelector("[data-f=qty_price_confirmed]").checked)
-      }));
+      const products = [...document.querySelectorAll("[data-product]")].map((el) => {
+        const paidInFull = !!(el.querySelector("[data-f=paid_in_full]") && el.querySelector("[data-f=paid_in_full]").checked);
+        const incl = el.querySelector("[data-f=price_incl_vat]").value;
+        const excl = el.querySelector("[data-f=price_excl_vat]").value;
+        return {
+          category: el.getAttribute("data-category") || "",
+          product: el.getAttribute("data-name") || "",
+          type: el.querySelector("[data-f=type]").value,
+          variation: el.querySelector("[data-f=variation]").value,
+          doors: el.querySelector("[data-f=doors]").value,
+          detailed_description: el.querySelector("[data-f=detailed_description]").value,
+          dimensions: el.querySelector("[data-f=dimensions]").value,
+          powder_coating: el.querySelector("[data-f=powder_coating]").value,
+          price_incl_vat: incl,
+          price_excl_vat: excl,
+          paid_in_full: paidInFull,
+          amount_paid: paidInFull ? (incl || inclFromExcl(excl)) : el.querySelector("[data-f=amount_paid]").value,
+          quantity: el.querySelector("[data-f=quantity]").value,
+          qty_price_confirmed: !!(el.querySelector("[data-f=qty_price_confirmed]") && el.querySelector("[data-f=qty_price_confirmed]").checked)
+        };
+      });
       return {
         order_number: document.getElementById("f_order_number").value,
         shared: {
@@ -329,18 +335,36 @@
         box.innerHTML = "One unit — saved as <b>" + esc(planned[0].no) + "</b> (" + esc(planned[0].product) + ").";
         return;
       }
-      box.innerHTML = "More than one unit — letters run across the whole order:<ol>" +
+      box.innerHTML = "More than one unit — letters run across the whole order. Quantity splits price incl VAT and amount paid equally:<ol>" +
         planned.map((u) => "<li><b>" + esc(u.no) + "</b> — " + esc(u.product) + "</li>").join("") + "</ol>";
-    }
-    function refreshExcl(input) {
-      const card = input.closest("[data-product]");
-      const out = card && card.querySelector("[data-f=price_excl_vat]");
-      if (out) out.value = exclFromIncl(input.value);
     }
     function refreshIncl(input) {
       const card = input.closest("[data-product]");
       const out = card && card.querySelector("[data-f=price_incl_vat]");
       if (out) out.value = inclFromExcl(input.value);
+      syncPaidInFull(card);
+    }
+    function refreshExcl(input) {
+      const card = input.closest("[data-product]");
+      const out = card && card.querySelector("[data-f=price_excl_vat]");
+      if (out) out.value = exclFromIncl(input.value);
+      syncPaidInFull(card);
+    }
+    function syncPaidInFull(card) {
+      if (!card) return;
+      const box = card.querySelector("[data-f=paid_in_full]");
+      const amount = card.querySelector("[data-f=amount_paid]");
+      const incl = card.querySelector("[data-f=price_incl_vat]");
+      const excl = card.querySelector("[data-f=price_excl_vat]");
+      if (!box || !amount) return;
+      if (box.checked) {
+        amount.value = (incl && incl.value) || inclFromExcl(excl && excl.value) || "";
+        amount.readOnly = true;
+        amount.removeAttribute("required");
+      } else {
+        amount.readOnly = false;
+        amount.setAttribute("required", "required");
+      }
     }
     function clearQtyPriceConfirm(el) {
       const card = el && el.closest("[data-product]");
@@ -440,7 +464,7 @@
         "</div>" +
         "<div class=\"card\">" +
           "<h2>Products</h2>" +
-          "<p class=\"hint\">Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Amount paid, variation, doors, powder coating, dimensions, and detailed description are required. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.</p>" +
+          "<p class=\"hint\">Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.</p>" +
           "<div id=\"products\"></div>" +
           "<div class=\"split\" id=\"splitBox\"></div>" +
         "</div>" +
@@ -461,8 +485,10 @@
           "</div>" +
           "<label class=\"confirm\"><input data-f=\"qty_price_confirmed\" type=\"checkbox\"" + (p.qty_price_confirmed ? " checked" : "") + ">" +
             "<span>Quantity and price excl VAT are correct<span class=\"hint\">Tick this after you check both. If either needs to change, change it first, then tick.</span></span></label>" +
+          "<label class=\"confirm\"><input data-f=\"paid_in_full\" type=\"checkbox\"" + (p.paid_in_full ? " checked" : "") + ">" +
+            "<span>Paid in full<span class=\"hint\">Tick this if they paid the price incl VAT for this quantity. Qty 2 of R 29,322.00 is R 14,661.00 on each unit. Type an amount only if they still owe.</span></span></label>" +
           "<div class=\"grid four\" style=\"margin-top:12px\">" +
-            "<label>Amount paid (Incl VAT) *<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "") + "\" required><span class=\"hint\">Including 15% VAT. Owing is price incl VAT minus this.</span></label>" +
+            "<label>Amount paid (Incl VAT)<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "") + "\"" + (p.paid_in_full ? " readonly" : " required") + "><span class=\"hint\">Including 15% VAT for this quantity. Owing is price incl VAT minus this.</span></label>" +
             "<label>Variation *<select data-f=\"variation\" required>" + options(dropdowns.variation, p.variation) + "</select></label>" +
             "<label>Doors *<select data-f=\"doors\" required>" + options(dropdowns.doors, p.doors) + "</select></label>" +
             "<label>Powder coating *<select data-f=\"powder_coating\" required>" + options(dropdowns.powder_coating, p.powder_coating) + "</select></label>" +
@@ -487,7 +513,11 @@
           refreshIncl(e.target);
           clearQtyPriceConfirm(e.target);
         }
-        if (field === "quantity") clearQtyPriceConfirm(e.target);
+        if (field === "quantity") {
+          clearQtyPriceConfirm(e.target);
+          syncPaidInFull(e.target.closest("[data-product]"));
+        }
+        if (field === "paid_in_full") syncPaidInFull(e.target.closest("[data-product]"));
         if (e.target && (e.target.id === "f_province" || field === "type") && !dateTouched) {
           refreshDeliveryCopy();
           return;
@@ -505,10 +535,13 @@
       });
       formRoot.addEventListener("change", (e) => {
         if (e.target && e.target.id === "f_delivery") dateTouched = true;
-        if (e.target && (e.target.id === "f_province" || e.target.getAttribute("data-f") === "type")) refreshDeliveryCopy();
+        const field = e.target && e.target.getAttribute("data-f");
+        if (field === "paid_in_full") syncPaidInFull(e.target.closest("[data-product]"));
+        if (e.target && (e.target.id === "f_province" || field === "type")) refreshDeliveryCopy();
         else { refreshSplit(); persist(); }
       });
       document.getElementById("saveBtn").onclick = saveForm;
+      document.querySelectorAll("[data-product]").forEach((card) => syncPaidInFull(card));
       refreshDeliveryCopy();
     }
     async function saveForm() {
@@ -556,8 +589,8 @@
           msg.className = "msg bad";
           return;
         }
-        if (String(p.amount_paid == null ? "" : p.amount_paid).trim() === "") {
-          msg.textContent = "Amount paid is required for " + label + ".";
+        if (!p.paid_in_full && String(p.amount_paid == null ? "" : p.amount_paid).trim() === "") {
+          msg.textContent = "Amount paid is required for " + label + " unless you tick Paid in full.";
           msg.className = "msg bad";
           return;
         }

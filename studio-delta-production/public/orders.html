@@ -58,6 +58,9 @@
     .stack-form textarea { min-height:88px; }
     .stack-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
     .stack-grid.four { grid-template-columns:repeat(4, 1fr); }
+    .confirm { flex-direction:row; align-items:flex-start; gap:8px; margin-top:4px; font-weight:600; }
+    .confirm input { width:auto; margin-top:3px; }
+    .confirm .hint { display:block; font-weight:400; }
     .hint { font-size:12px; color:var(--muted); margin:0; font-weight:400; }
     .link-box { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#f8fafc; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
     .link-box b { font-size:13px; }
@@ -204,12 +207,16 @@
         <div class="stack-grid">
           <label>Amount paid (Incl VAT)
             <input id="f_amount_paid" inputmode="decimal">
-            <span class="hint">Type the rands the client paid, including 15% VAT. Do not type the exclusive amount. Owing is price incl VAT minus this.</span>
+            <span class="hint">Type the rands the client paid, including 15% VAT, only if they still owe. Owing is price incl VAT minus this.</span>
           </label>
           <label>Owing
             <input id="f_owing" readonly>
           </label>
         </div>
+        <label class="confirm">
+          <input id="f_paid_in_full" type="checkbox">
+          <span>Paid in full<span class="hint">Tick this if they paid the price incl VAT. You then do not type an amount. Leave it unticked and type the amount if they still owe.</span></span>
+        </label>
         <div class="form-foot">
           <p class="hint" id="formFootHint">Progress stays on this device if you close this form. Save to clear it.</p>
           <button type="submit">Save order</button>
@@ -392,10 +399,24 @@
         amount_paid: document.getElementById("f_amount_paid").value
       });
     }
+    function syncPaidInFull() {
+      const box = document.getElementById("f_paid_in_full");
+      const paid = document.getElementById("f_amount_paid");
+      if (!box || !paid) return;
+      if (box.checked) {
+        const n = parseMoney(document.getElementById("f_price_incl_vat").value)
+          || parseMoney(inclFromExcl(document.getElementById("f_price_excl_vat").value));
+        paid.value = n ? money(n) : "";
+        paid.readOnly = true;
+      } else {
+        paid.readOnly = false;
+      }
+      updateOwing();
+    }
     function updateMoneyFields() {
       const excl = document.getElementById("f_price_excl_vat").value;
       document.getElementById("f_price_incl_vat").value = excl ? formatRand(inclFromExcl(excl)) : "";
-      updateOwing();
+      syncPaidInFull();
     }
     function setFormErr(msg) {
       document.getElementById("formErr").textContent = msg || "";
@@ -469,10 +490,13 @@
         const el = document.getElementById("f_" + k);
         if (!el) return;
         if (el.tagName === "SELECT") fillSelect("f_" + k, k, draft[k]);
+        else if (el.type === "checkbox") el.checked = draft[k] === true || draft[k] === "true" || draft[k] === "on" || draft[k] === 1;
         else if (k === "payment_date") el.value = toIsoDate(draft[k]);
         else el.value = draft[k] == null ? "" : draft[k];
       });
-      updateMoneyFields();
+      if (document.getElementById("f_paid_in_full") && document.getElementById("f_paid_in_full").checked) syncPaidInFull();
+      else if (document.getElementById("f_price_incl_vat").value) updateOwing();
+      else updateMoneyFields();
       return true;
     }
     function openForm(index) {
@@ -504,14 +528,19 @@
       document.getElementById("f_price_incl_vat").value = existing && existing.price_incl_vat
         ? formatRand(existing.price_incl_vat)
         : "";
+      const total = existing
+        ? (parseMoney(existing.price_incl_vat) || parseMoney(inclFromExcl(existing.price_excl_vat)))
+        : 0;
+      const paid = parseMoney(existing && existing.amount_paid);
+      document.getElementById("f_paid_in_full").checked = !!(total > 0 && Math.round((total - paid) * 100) <= 1);
       document.getElementById("f_status").value = existing ? (existing.status || "Not Yet Started") : "Not Yet Started";
       DROP_FIELDS.forEach((k) => fillSelect("f_" + k, k, existing ? existing[k] : ""));
       const restored = applyOrderDraft(orderDraftId());
       document.getElementById("formFootHint").textContent = restored
         ? "Unsaved progress from last time is filled in. Save to clear it."
         : "Progress stays on this device if you close this form. Save to clear it.";
-      if (existing && existing.price_incl_vat) updateOwing();
-      else updateMoneyFields();
+      if (!(existing && existing.price_incl_vat)) updateMoneyFields();
+      else syncPaidInFull();
       document.getElementById("formMask").classList.add("open");
       document.getElementById(existing ? "f_client_name" : "f_order_number").focus();
     }
@@ -545,6 +574,7 @@
         price_excl_vat: document.getElementById("f_price_excl_vat").value,
         price_incl_vat: document.getElementById("f_price_incl_vat").value,
         amount_paid: document.getElementById("f_amount_paid").value,
+        paid_in_full: document.getElementById("f_paid_in_full").checked,
         month_of_sale: document.getElementById("f_month_of_sale").value,
         source: document.getElementById("f_source").value,
         city: document.getElementById("f_city").value
@@ -725,6 +755,7 @@
     };
     document.getElementById("f_price_excl_vat").oninput = updateMoneyFields;
     document.getElementById("f_amount_paid").oninput = updateOwing;
+    document.getElementById("f_paid_in_full").onchange = syncPaidInFull;
     document.getElementById("form").addEventListener("input", persistOrderDraft);
     document.getElementById("form").addEventListener("change", persistOrderDraft);
     window.addEventListener("pagehide", persistOrderDraft);
