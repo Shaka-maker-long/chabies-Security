@@ -667,6 +667,7 @@ assert.ok(usersBackupHtml.indexOf("backup.db") !== -1);
 assert.ok(usersBackupHtml.indexOf("backup.tgz") !== -1);
 assert.ok(usersBackupHtml.indexOf("backups/restore") !== -1);
 assert.ok(usersBackupHtml.indexOf("x-sd-restore-password") !== -1);
+assert.ok(usersBackupHtml.indexOf("BACKUP_DRIVE_FOLDER_ID") !== -1, "Backup page must explain how to turn Drive on");
 assert.ok(usersBackupHtml.indexOf("href=\"/users\"") !== -1);
 assert.ok(floor.indexOf('href="/enquiries"') !== -1);
 assert.ok(floor.indexOf('href="/tasks"') !== -1);
