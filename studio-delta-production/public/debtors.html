@@ -60,7 +60,7 @@
         html += "<td>" + esc(row.total) + "</td>";
         html += "<td>" + esc(row.paid) + "</td>";
         html += "<td class=\"owing\">" + esc(row.owing) + "</td>";
-        html += "<td><form class=\"pay\"><input name=\"amount\" type=\"number\" min=\"0.01\" step=\"0.01\" placeholder=\"Amount\"><input name=\"note\" placeholder=\"Note\"><button type=\"submit\">Add payment</button></form>";
+        html += "<td><form class=\"pay\"><input name=\"amount\" type=\"number\" min=\"0.01\" step=\"0.01\" placeholder=\"Incl VAT\"><input name=\"note\" placeholder=\"Note\"><button type=\"submit\">Add payment</button></form>";
         if (hist) html += "<div class=\"hist\">" + hist + "</div>";
         html += "</td></tr>";
       });
