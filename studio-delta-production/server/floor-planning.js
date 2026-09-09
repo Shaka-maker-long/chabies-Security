@@ -345,16 +345,29 @@ function processCode(process) {
   return PROCESS_CODES[process] || String(process || "").slice(0, 2).toUpperCase();
 }
 
+function formatWeekRange(mondayIso) {
+  const days = weekDays(mondayIso);
+  if (!days.length) return "";
+  const a = days[0].iso.split("-").map(Number);
+  const b = days[4].iso.split("-").map(Number);
+  const am = monthShort(a[1]);
+  const bm = monthShort(b[1]);
+  if (a[1] === b[1]) return a[2] + "–" + b[2] + " " + am;
+  return a[2] + " " + am + " – " + b[2] + " " + bm;
+}
+
 function journeyWeeks(mondayIso, count) {
   const n = count > 0 ? count : 5;
   const out = [];
   let iso = weekMondayIso(mondayIso);
+  const todayMonday = weekMondayIso();
   for (let i = 0; i < n; i++) {
     out.push({
       index: i + 1,
-      label: "Week " + (i + 1),
+      label: formatWeekRange(iso),
       start: iso,
-      days: weekDays(iso)
+      days: weekDays(iso),
+      current: iso === todayMonday
     });
     iso = shiftWeek(iso, 1);
   }
@@ -1299,7 +1312,8 @@ function getBoard(week) {
     colors: PROCESS_COLORS,
     processCodes: Object.assign({}, PROCESS_CODES),
     processes: PLANNED_PROCESSES.slice(),
-    journeyWeeks: journeyWeeksFromPlan(journey, 5),
+    journeyWeeks: journeyWeeks(weekStart, 5),
+    firstPlannedWeek: journey.days[0] ? weekMondayIso(journey.days[0].iso) : "",
     autoProcesses: ["Grinding"],
     windows: {
       morning: "07:45–12:00",
@@ -1359,6 +1373,7 @@ module.exports = {
   processCode,
   journeyWeeks,
   journeyWeeksFromPlan,
+  formatWeekRange,
   grindingPool,
   USER_ASSIGNED_PROCESSES,
   weekStartingOrders
