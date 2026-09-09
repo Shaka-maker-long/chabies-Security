@@ -324,7 +324,11 @@ assert.ok(profileLater.start >= "2026-09-08T09:00:00+02:00", "drag later delays 
 assert.ok(tagLater.start >= profileLater.end, "tagging follows the new profile end");
 assert.ok(weldLater.start >= tagLater.end, "welding follows tagging after the shift");
 assert.ok(board.journeyWeeks && board.journeyWeeks.length >= 5, "journey has five week columns");
-assert.ok(board.journeyWeeks[0].days.some((d) => d.iso === "2026-09-08"), "week 1 starts at the first planned work");
+assert.strictEqual(board.journeyWeeks[0].start, board.weekStart, "journey weeks start from the current shop week");
+assert.ok(/Sep/.test(board.journeyWeeks[0].label), "week headers are real dates, not Week 1");
+assert.ok(board.journeyWeeks.every((w) => !/^Week \d+$/.test(w.label)), "week headers are date ranges, not Week 1 / 2 / 3");
+assert.ok(board.firstPlannedWeek, "board can jump to the first week that has planned work");
+assert.strictEqual(board.firstPlannedWeek, plan.weekMondayIso(trip.start));
 assert.strictEqual(plan.processCode("Profile Cutting"), "C");
 assert.strictEqual(plan.processCode("Powder coating"), "PC");
 assert.ok(trip.rows.find((r) => r.process === "Profile Cutting").code === "C");

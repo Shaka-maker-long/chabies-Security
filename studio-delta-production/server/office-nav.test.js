@@ -516,6 +516,12 @@ assert.ok(planningHtml.indexOf("data-tab=\"people\"") !== -1, "planning.html mus
 assert.ok(planningHtml.indexOf("data-tab=\"journey\"") !== -1, "planning.html must have a Journey tab");
 assert.ok(planningHtml.indexOf("data-week") !== -1 && planningHtml.indexOf("data-day") !== -1, "Journey drills from week to day");
 assert.ok(planningHtml.indexOf("15-minute") !== -1, "Journey day view opens a time grid");
+assert.ok(planningHtml.indexOf("data-open-order") !== -1, "click an order number for its timeline");
+assert.ok(planningHtml.indexOf('journeyLevel === "order"') !== -1, "Journey has an order timeline level");
+assert.ok(planningHtml.indexOf("Order number and name stay") !== -1, "order number and name stay on week, day, and time views");
+assert.ok(planningHtml.indexOf("<th class='order'>Order</th><th class='name'>Name</th>") !== -1, "week and day grids keep Order and Name columns");
+assert.ok(planningHtml.indexOf("not Week 1 / 2 / 3") !== -1, "week headers are current shop dates, not example Week 1");
+assert.ok(planningHtml.indexOf("th.week[data-week]") !== -1, "clicking a week header does not hide other orders");
 assert.ok(planningHtml.indexOf("C profile cutting") !== -1);
 assert.ok(planningHtml.indexOf("Production Meeting") !== -1 && planningHtml.indexOf("Cleaning") !== -1, "People calendar must highlight Production Meeting and Cleaning");
 assert.ok(planningHtml.indexOf("Compare with") !== -1, "People calendar must allow comparing two people");
