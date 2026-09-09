@@ -248,7 +248,8 @@ const dbPath = pickDataFile();
 let state = emptyState();
 try {
   const raw = fs.readFileSync(dbPath, "utf8");
-  applyParsedState(JSON.parse(raw));
+  const parsed = JSON.parse(raw);
+  applyParsedState(parsed);
   console.log("[db] opened", dbPath, "orders", state.orders.length);
   if (!parsed.dropdowns) save();
 } catch (e) {
