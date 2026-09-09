@@ -323,6 +323,10 @@ const weldLater = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.
 assert.ok(profileLater.start >= "2026-09-08T09:00:00+02:00", "drag later delays that job");
 assert.ok(tagLater.start >= profileLater.end, "tagging follows the new profile end");
 assert.ok(weldLater.start >= tagLater.end, "welding follows tagging after the shift");
+assert.ok(board.journeyWeeks && board.journeyWeeks.length === 5, "journey has five week columns");
+assert.strictEqual(plan.processCode("Profile Cutting"), "C");
+assert.strictEqual(plan.processCode("Powder coating"), "PC");
+assert.ok(trip.rows.find((r) => r.process === "Profile Cutting").code === "C");
 
 const removed = plan.unscheduleOrder("S260100 A");
 assert.ok(removed.removed > 0);
@@ -334,20 +338,26 @@ plan.scheduleSelected({
   assignments: { "S260100 A": assignA },
   from: plan.isoFromMs(fromTue)
 });
-const other = plan.insertOtherTask({
+assert.throws(() => plan.insertOtherTask({
   workerId: "Willard",
   title: "Material",
   minutes: 60,
   start: "2026-09-08T07:45:00+02:00"
+}), /already has work/);
+const profileFrozen = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Profile Cutting");
+const profileStartBefore = profileFrozen.start;
+const other = plan.insertOtherTask({
+  workerId: "Willard",
+  title: "Material",
+  minutes: 60,
+  start: "2026-09-08T14:00:00+02:00"
 });
 assert.ok(other.jobId);
 const otherBlock = plan.load().blocks.find((b) => b.kind === "other" && b.title === "Material");
 assert.ok(otherBlock);
-assert.strictEqual(otherBlock.start, "2026-09-08T07:45:00+02:00");
+assert.ok(otherBlock.start >= "2026-09-08T14:00:00+02:00");
 const profileAfterOther = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Profile Cutting");
-assert.ok(profileAfterOther.start >= otherBlock.end, "other tasks push shop work down");
-const tagAfterOther = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Tagging");
-assert.ok(tagAfterOther.start >= profileAfterOther.end, "downstream people move with the other task");
+assert.strictEqual(profileAfterOther.start, profileStartBefore, "an other task must not shove existing shop work");
 assert.ok(plan.getBoard("2026-09-08").otherTasks.indexOf("Material") !== -1);
 
 plan.removeBlock(otherBlock.id);
@@ -365,14 +375,19 @@ plan.scheduleSelected({
   from: plan.isoFromMs(fromTue)
 });
 const profileB = plan.load().blocks.find((b) => b.orderId === "S260100 B" && b.process === "Profile Cutting");
+const profileAKept = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Profile Cutting");
 assert.ok(profileB);
-plan.moveBlock(profileB.id, "2026-09-08T07:45:00+02:00");
-const swappedB = plan.load().blocks.find((b) => b.orderId === "S260100 B" && b.process === "Profile Cutting");
-const swappedA = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Profile Cutting");
-assert.ok(swappedB.start < swappedA.start, "drag earlier swaps with the job at the top");
-const tagB = plan.load().blocks.find((b) => b.orderId === "S260100 B" && b.process === "Tagging");
-const tagA = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Tagging");
-assert.ok(tagB.start < tagA.start, "the rest of both orders follow the swap");
+assert.throws(() => plan.moveBlock(profileB.id, "2026-09-08T07:45:00+02:00"), /already has work/);
+const stillA = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Profile Cutting");
+const stillB = plan.load().blocks.find((b) => b.orderId === "S260100 B" && b.process === "Profile Cutting");
+assert.strictEqual(stillA.start, profileAKept.start, "overlapping a move must leave the other order where it was");
+assert.strictEqual(stillB.start, profileB.start, "rejected move must not move the dragged order");
+const laterB = plan.moveBlock(profileB.id, stillB.end);
+assert.ok(laterB.blocks.length);
+const movedB = plan.load().blocks.find((b) => b.orderId === "S260100 B" && b.process === "Profile Cutting");
+const afterA = plan.load().blocks.find((b) => b.orderId === "S260100 A" && b.process === "Profile Cutting");
+assert.ok(movedB.start >= stillB.end, "a free-slot move is allowed");
+assert.strictEqual(afterA.start, stillA.start, "moving one order must not drop the other order");
 
 staff.upsertUser({
   name: "Sipho",

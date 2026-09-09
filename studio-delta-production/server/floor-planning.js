@@ -331,6 +331,36 @@ const JOURNEY_PROCESS_ORDER = {
   "Assembly": 7
 };
 
+const PROCESS_CODES = {
+  "Profile Cutting": "C",
+  "Tagging": "T",
+  "Plate Cutting": "P",
+  "Welding": "W",
+  "Grinding": "G",
+  "Powder coating": "PC",
+  "Assembly": "A"
+};
+
+function processCode(process) {
+  return PROCESS_CODES[process] || String(process || "").slice(0, 2).toUpperCase();
+}
+
+function journeyWeeks(mondayIso, count) {
+  const n = count > 0 ? count : 5;
+  const out = [];
+  let iso = weekMondayIso(mondayIso);
+  for (let i = 0; i < n; i++) {
+    out.push({
+      index: i + 1,
+      label: "Week " + (i + 1),
+      start: iso,
+      days: weekDays(iso)
+    });
+    iso = shiftWeek(iso, 1);
+  }
+  return out;
+}
+
 function isWorkIso(iso) {
   const parts = String(iso || "").split("-").map(Number);
   if (parts.length < 3 || !parts[0]) return false;
@@ -394,10 +424,12 @@ function buildJourney(blocks) {
         orderId,
         product: String(b.product || ""),
         process: String(b.process || ""),
+        code: processCode(b.process),
         workerId: b.workerId,
         workerName: b.workerName || b.workerId,
         start: b.start,
         end: b.end,
+        blockId: b.id,
         daySet: {}
       };
     }
@@ -410,16 +442,18 @@ function buildJourney(blocks) {
   Object.keys(groups).forEach((k) => {
     const g = groups[k];
     if (!byOrder[g.orderId]) byOrder[g.orderId] = [];
-    byOrder[g.orderId].push({
-      orderId: g.orderId,
-      product: g.product,
-      process: g.process,
-      workerId: g.workerId,
-      workerName: g.workerName,
-      start: g.start,
-      end: g.end,
-      days: Object.keys(g.daySet).sort()
-    });
+      byOrder[g.orderId].push({
+        orderId: g.orderId,
+        product: g.product,
+        process: g.process,
+        code: g.code || processCode(g.process),
+        workerId: g.workerId,
+        workerName: g.workerName,
+        start: g.start,
+        end: g.end,
+        blockId: g.blockId,
+        days: Object.keys(g.daySet).sort()
+      });
   });
   const orderIds = Object.keys(byOrder).sort();
   let minIso = "";
@@ -1006,6 +1040,66 @@ function jobContainingBlock(blocks, blockId) {
   return { raw, jobs, job };
 }
 
+function processRank(process) {
+  return JOURNEY_PROCESS_ORDER[process] || 99;
+}
+
+function laterJobsOnOrder(jobs, job) {
+  if (!job || !job.orderId || job.kind === "other") return [];
+  const rank = processRank(job.process);
+  return (jobs || [])
+    .filter((j) => j && j.orderId === job.orderId && j.key !== job.key && j.kind !== "other" && processRank(j.process) > rank)
+    .sort((a, b) => processRank(a.process) - processRank(b.process) || String(a.key).localeCompare(String(b.key)));
+}
+
+function busyForWorkerExcept(blocks, workerId, excludeKeys) {
+  const skip = {};
+  (excludeKeys || []).forEach((k) => { skip[k] = true; });
+  return (blocks || [])
+    .filter((b) => b && namesEqual(b.workerId, workerId) && b.kind !== "paint" && !skip[jobKeyFor(b)])
+    .map((b) => ({ start: b.start, end: b.end }));
+}
+
+function blocksFromJob(job, placed) {
+  return (placed.segments || []).map((seg, i) => ({
+    id: i === 0 ? (job.jobId || newId()) : newId(),
+    jobId: job.jobId || job.key,
+    orderId: job.orderId || "",
+    studioNo: job.kind === "other" ? job.title : job.studioNo,
+    product: job.product || "",
+    process: job.process,
+    title: job.title,
+    workerId: job.workerId,
+    workerName: job.workerName,
+    start: seg.start,
+    end: seg.end,
+    kind: job.kind === "paint" ? "paint" : (job.kind === "other" ? "other" : "work"),
+    durationMinutes: job.kind === "other" ? job.minutes : undefined
+  }));
+}
+
+function replaceJobBlocks(blocks, job, placed) {
+  const kept = (blocks || []).filter((b) => jobKeyFor(b) !== job.key);
+  return kept.concat(blocksFromJob(job, placed));
+}
+
+function placeJobAt(job, fromMs, busy) {
+  if (job.kind === "paint") {
+    const drop = earliestPaintMonday(fromMs);
+    const paintEnd = drop + PAINT_WAIT_DAYS * 86400000;
+    return {
+      segments: [{ start: isoFromMs(drop), end: isoFromMs(paintEnd) }],
+      start: isoFromMs(drop),
+      end: isoFromMs(paintEnd)
+    };
+  }
+  const placed = placeTask(fromMs, job.minutes, busy);
+  if (!placed.segments.length) {
+    throw new Error("Could not place " + (job.studioNo || job.process) + ".");
+  }
+  return placed;
+}
+
 function moveBlock(blockId, toStart) {
   const store = load();
   const { raw, jobs, job } = jobContainingBlock(store.blocks, blockId);
@@ -1013,34 +1107,30 @@ function moveBlock(blockId, toStart) {
   if (job.kind === "paint") throw new Error("Paint shop wait cannot be dragged. Move grinding instead.");
   const dropMs = nextWorkInstant(toMs(toStart));
   if (!Number.isFinite(dropMs)) throw new Error("Drop time is not valid.");
-  const oldStart = toMs(job.start);
-  const seq = defaultSequences(jobs);
-  const notBefore = {};
-  if (dropMs >= oldStart - 60000) {
-    notBefore[job.key] = dropMs;
-  } else {
-    const list = seq[job.workerId] || [];
-    const fromIdx = list.indexOf(job.key);
-    let targetKey = list[0] || job.key;
-    list.forEach((key) => {
-      const other = jobs.find((j) => j.key === key);
-      if (other && toMs(other.start) <= dropMs) targetKey = key;
-    });
-    const toIdx = list.indexOf(targetKey);
-    if (fromIdx >= 0 && toIdx >= 0 && fromIdx !== toIdx) {
-      list[fromIdx] = targetKey;
-      list[toIdx] = job.key;
-      seq[job.workerId] = list;
-    } else if (fromIdx > 0) {
-      list.splice(fromIdx, 1);
-      list.unshift(job.key);
-      seq[job.workerId] = list;
-      notBefore[job.key] = dropMs;
-    } else {
-      notBefore[job.key] = dropMs;
-    }
+  const followers = laterJobsOnOrder(jobs, job);
+  const excludeSelf = [job.key];
+  const busy = busyForWorkerExcept(store.blocks, job.workerId, excludeSelf.concat(followers.map((j) => j.key)));
+  const placed = placeJobAt(job, dropMs, busy);
+  if (toMs(placed.start) > dropMs + 60000) {
+    throw new Error((job.workerName || "That person") + " already has work there. Pick a free slot.");
   }
-  store.blocks = packPlan(store.blocks, seq, notBefore);
+  store.blocks = replaceJobBlocks(store.blocks, job, placed);
+  attachPreds(jobs);
+  followers.forEach((follower) => {
+    const live = collectJobs(store.blocks);
+    const predKeys = (attachPreds(live).find((j) => j.key === follower.key) || {}).predKeys || [];
+    let from = 0;
+    predKeys.forEach((k) => {
+      const pred = live.find((j) => j.key === k);
+      if (pred) from = Math.max(from, toMs(pred.end));
+    });
+    const nextFrom = nextWorkInstant(from || dropMs);
+    const followerBusy = follower.kind === "paint"
+      ? []
+      : busyForWorkerExcept(store.blocks, follower.workerId, [follower.key]);
+    const next = placeJobAt(follower, nextFrom, followerBusy);
+    store.blocks = replaceJobBlocks(store.blocks, follower, next);
+  });
   save(store);
   return { blocks: store.blocks, job: job.key };
 }
@@ -1060,39 +1150,28 @@ function insertOtherTask(body) {
   const who = user ? user.name : workerId;
   const jobId = newId();
   const store = load();
-  store.blocks.push({
-    id: jobId,
-    jobId,
-    kind: "other",
-    title,
-    process: title,
-    studioNo: title,
-    orderId: "",
-    product: "",
-    workerId: who,
-    workerName: who,
-    start: isoFromMs(startMs),
-    end: isoFromMs(startMs + minutes * 60000),
-    durationMinutes: minutes
-  });
-  const jobs = collectJobs(store.blocks);
-  const seq = defaultSequences(jobs);
-  const otherKey = "other:" + jobId;
-  const list = (seq[who] || []).filter((k) => k !== otherKey);
-  let idx = list.length;
-  for (let i = 0; i < list.length; i++) {
-    const j = jobs.find((x) => x.key === list[i]);
-    if (!j) continue;
-    if (toMs(j.start) >= startMs || toMs(j.end) > startMs) {
-      idx = i;
-      break;
-    }
+  const placed = placeTask(startMs, minutes, busyForWorker(store.blocks, who));
+  if (!placed.segments.length) throw new Error("Could not place that other task.");
+  if (toMs(placed.start) > startMs + 60000) {
+    throw new Error(who + " already has work there. Pick a free slot.");
   }
-  list.splice(idx, 0, otherKey);
-  seq[who] = list;
-  const notBefore = {};
-  notBefore[otherKey] = startMs;
-  store.blocks = packPlan(store.blocks, seq, notBefore);
+  placed.segments.forEach((seg, i) => {
+    store.blocks.push({
+      id: i === 0 ? jobId : newId(),
+      jobId,
+      kind: "other",
+      title,
+      process: title,
+      studioNo: title,
+      orderId: "",
+      product: "",
+      workerId: who,
+      workerName: who,
+      start: seg.start,
+      end: seg.end,
+      durationMinutes: minutes
+    });
+  });
   save(store);
   return { blocks: store.blocks, jobId };
 }
@@ -1103,7 +1182,6 @@ function removeBlock(blockId) {
   if (!raw || !job) throw new Error("That calendar block was not found.");
   if (job.kind !== "other") throw new Error("Unschedule the order to remove shop work.");
   store.blocks = store.blocks.filter((b) => jobKeyFor(b) !== job.key);
-  store.blocks = packPlan(store.blocks, defaultSequences(collectJobs(store.blocks)), {});
   save(store);
   return { removed: true };
 }
@@ -1193,10 +1271,12 @@ function getBoard(week) {
     weekDays: days,
     workers,
     paintShop: { id: PAINT_WORKER_ID, name: PAINT_WORKER_NAME },
-    blocks: store.blocks.filter((b) => blockOverlapsWeek(b, weekStart)),
+    blocks: store.blocks,
     queue: queueOrders(),
     colors: PROCESS_COLORS,
+    processCodes: Object.assign({}, PROCESS_CODES),
     processes: PLANNED_PROCESSES.slice(),
+    journeyWeeks: journeyWeeks(weekStart, 5),
     autoProcesses: ["Grinding"],
     windows: {
       morning: "07:45–12:00",
@@ -1252,6 +1332,9 @@ module.exports = {
   occupiedWorkdays,
   formatDayHeader,
   JOURNEY_PROCESS_ORDER,
+  PROCESS_CODES,
+  processCode,
+  journeyWeeks,
   grindingPool,
   USER_ASSIGNED_PROCESSES,
   weekStartingOrders
