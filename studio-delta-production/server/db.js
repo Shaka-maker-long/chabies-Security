@@ -141,13 +141,16 @@ function orderPaid(order) {
 }
 
 function orderOwing(order) {
-  return Math.max(0, Math.round((orderTotal(order) - orderPaid(order)) * 100) / 100);
+  const cents = Math.round((orderTotal(order) - orderPaid(order)) * 100);
+  if (cents <= 1) return 0;
+  return cents / 100;
 }
 
 function applyPriceAndPayments(payload, row, existing) {
-  if (payload.price_excl_vat) {
-    payload.price_excl_vat = money(parseMoney(payload.price_excl_vat));
-    payload.price_incl_vat = inclFromExcl(payload.price_excl_vat);
+  const pair = vatPair(payload.price_incl_vat, payload.price_excl_vat);
+  if (pair.incl || pair.excl) {
+    payload.price_excl_vat = pair.excl;
+    payload.price_incl_vat = pair.incl;
   }
   payload.amount_paid = payload.amount_paid === "" || payload.amount_paid == null
     ? (existing && existing.amount_paid) || "0.00"
@@ -437,6 +440,14 @@ function normalizeOrdersSheet() {
         rewritten++;
       }
     });
+    if (idx.price_incl_vat != null && idx.amount_paid != null) {
+      const incl = parseMoney(grid[i][idx.price_incl_vat]);
+      const paid = parseMoney(grid[i][idx.amount_paid]);
+      if (paid > 0 && Math.round((incl - paid) * 100) === 1) {
+        grid[i][idx.price_incl_vat] = money(paid);
+        rewritten++;
+      }
+    }
   }
   if (rewritten) {
     sheet.getRange(2, 1, last - 1, lastCol).setValues(grid);

@@ -329,6 +329,8 @@ assert.ok(ordersHtml.indexOf("Amount paid (Incl VAT)") !== -1);
 assert.ok(ordersHtml.indexOf("AMOUNT PAID (Incl VAT)") !== -1);
 assert.ok(ordersHtml.indexOf("including 15% VAT") !== -1);
 assert.ok(ordersHtml.indexOf("Do not type the exclusive amount") !== -1);
+assert.ok(ordersHtml.indexOf("cents <= 1") !== -1);
+assert.ok(ordersHtml.indexOf("price_incl_vat: document.getElementById(\"f_price_incl_vat\")") !== -1);
 assert.ok(ordersHtml.indexOf("data-edit-order") !== -1);
 assert.ok(ordersHtml.indexOf("wrap-text") === -1);
 assert.ok(enquiriesHtml.indexOf("wrap-text") === -1, "enquiry sheet rows must not wrap");
