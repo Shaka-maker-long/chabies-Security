@@ -525,6 +525,7 @@ assert.ok(planningHtml.indexOf("freeze-names") !== -1 && planningHtml.indexOf("f
 assert.ok(planningHtml.indexOf("Twenty shop weeks") !== -1, "Journey week view has more than five week columns");
 assert.ok(planningHtml.indexOf("not Week 1 / 2 / 3") !== -1, "week headers are current shop dates, not example Week 1");
 assert.ok(planningHtml.indexOf("th.week[data-week]") !== -1, "clicking a week header does not hide other orders");
+assert.ok(planningHtml.indexOf("who starts first") !== -1, "Journey lists orders by start time");
 assert.ok(planningHtml.indexOf("← Week view") !== -1 && planningHtml.indexOf("← Day view") !== -1, "Journey has back buttons to week and day views");
 assert.ok(planningHtml.indexOf("rowspan") !== -1, "same order numbers are merged across people");
 assert.ok(planningHtml.indexOf("C profile cutting") !== -1);

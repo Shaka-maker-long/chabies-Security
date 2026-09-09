@@ -430,4 +430,38 @@ assert.ok(["Sam", "Thabo"].indexOf(grindB[0].workerName) !== -1);
 assert.ok(!batch.blocks.some((b) => b.process === "Grinding" && b.workerName === "Nomsa"));
 assert.ok(!batch.blocks.some((b) => b.process === "Grinding" && b.workerName === "Willard"));
 
+const priorBlocks = plan.load();
+plan.save({
+  blocks: [
+    {
+      id: "late-a",
+      orderId: "S260001 A",
+      studioNo: "S260001 A",
+      product: "Product A",
+      process: "Tagging",
+      workerId: "Sipho",
+      workerName: "Sipho",
+      start: "2026-09-08T12:45:00+02:00",
+      end: "2026-09-08T13:15:00+02:00",
+      kind: "work"
+    },
+    {
+      id: "early-f",
+      orderId: "S260001 F",
+      studioNo: "S260001 F",
+      product: "Product A",
+      process: "Profile Cutting",
+      workerId: "Willard",
+      workerName: "Willard",
+      start: "2026-09-08T07:45:00+02:00",
+      end: "2026-09-08T09:15:00+02:00",
+      kind: "work"
+    }
+  ]
+});
+const byStart = plan.getBoard("2026-09-08").journey.orders.map((o) => o.orderId);
+assert.strictEqual(byStart[0], "S260001 F", "the order that starts first is listed first, not A–Z");
+assert.ok(byStart.indexOf("S260001 F") < byStart.indexOf("S260001 A"));
+plan.save(priorBlocks);
+
 console.log("floor-planning.test.js ok");
