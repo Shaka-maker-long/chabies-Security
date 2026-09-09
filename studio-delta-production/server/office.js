@@ -13,7 +13,9 @@ const {
   addDropdownItem,
   removeDropdownItem,
   listDebtors,
+  listDebtorHistory,
   recordPayment,
+  readPaymentProof,
   decorateMoney,
   VAT_RATE,
   normalizeOrdersSheet,
@@ -1076,6 +1078,25 @@ function mountOffice(app) {
     res.json({ ok: true, rows: listDebtors(), vatRate: VAT_RATE });
   });
 
+  app.get("/api/office/debtors/history", requireOffice, requireDebtors, (_req, res) => {
+    res.json({ ok: true, rows: listDebtorHistory() });
+  });
+
+  app.get("/api/office/debtors/payments/:id", requireOffice, requireDebtors, (req, res) => {
+    const file = readPaymentProof(req.params.id);
+    if (!file) {
+      res.status(404).json({ ok: false, error: "Proof of payment not found." });
+      return;
+    }
+    const download = String((req.query && req.query.download) || "") === "1";
+    res.setHeader("Content-Type", file.mime || "application/octet-stream");
+    res.setHeader(
+      "Content-Disposition",
+      (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "proof").replace(/"/g, "") + "\""
+    );
+    res.send(file.buffer);
+  });
+
   app.get("/api/office/paint-shop", requireOffice, (_req, res) => {
     try {
       res.json({ ok: true, ...paintShop.snapshot() });
@@ -1125,9 +1146,10 @@ function mountOffice(app) {
       const row = recordPayment(
         req.params.orderNumber,
         req.body && req.body.amount,
-        req.body && req.body.note
+        req.body && req.body.note,
+        req.body && (req.body.proof || req.body.file || req.body.attachment)
       );
-      res.json({ ok: true, row, debtors: listDebtors() });
+      res.json({ ok: true, row, debtors: listDebtors(), history: listDebtorHistory() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

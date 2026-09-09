@@ -142,7 +142,12 @@ app.get("/schedule", (_req, res) => {
 app.get("/dropdowns", (_req, res) => {
   res.sendFile(path.join(publicDir, "dropdowns.html"));
 });
+app.get("/debtors/history", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "debtors.html"));
+});
 app.get("/debtors", (_req, res) => {
+  noStore(res);
   res.sendFile(path.join(publicDir, "debtors.html"));
 });
 app.get("/users", (_req, res) => {

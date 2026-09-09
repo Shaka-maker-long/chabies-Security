@@ -121,9 +121,11 @@ function copyOfficeJson(dest) {
 function archiveEnquiryFiles(dest) {
   const quotes = path.join(dataDir(), "enquiry-quotes");
   const files = path.join(dataDir(), "enquiry-files");
+  const proofs = path.join(dataDir(), "debtor-payments");
   const parts = [];
   if (fs.existsSync(quotes)) parts.push("enquiry-quotes");
   if (fs.existsSync(files)) parts.push("enquiry-files");
+  if (fs.existsSync(proofs)) parts.push("debtor-payments");
   if (!parts.length) return { path: null, bytes: 0, skipped: "no enquiry files" };
   const r = spawnSync("tar", ["-czf", dest, "-C", dataDir()].concat(parts), { encoding: "utf8" });
   if (r.status !== 0) throw new Error(r.stderr || "Could not archive enquiry files");

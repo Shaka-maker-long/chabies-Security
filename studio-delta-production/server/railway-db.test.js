@@ -155,7 +155,11 @@ const CONFIRM = { understood: true, highlights: [] };
   const boards = book.getSheetByName("Backboard_Usage");
   assert.ok(boards.getLastRow() >= 2, "backboard usage row");
 
-  const paid = db.recordPayment("S-1001", "150", "deposit");
+  const paid = db.recordPayment("S-1001", "150", "deposit", {
+    filename: "pop.png",
+    mime: "image/png",
+    data: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  });
   assert.strictEqual(paid.paid, "R 150.00");
   assert.ok(paid.owing.indexOf("R ") === 0);
   assert.ok(db.parseMoney(paid.owing) > 0);

@@ -7,60 +7,182 @@
   <script src="/sd-pwa.js?v=pwa"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <style>
-    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; }
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --card:#fff; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
-    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); }
-    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
-    header a { color:#344054; text-decoration:none; font-size:13px; font-weight:600; }
-    header a.active { color:#000; }
-    .tools { margin-left:auto; font-size:12px; color:#667085; }
-    .wrap { overflow:auto; height:calc(100vh - 58px); padding:16px; }
+    header { display:flex; gap:16px; align-items:flex-start; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:4px 0 0; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+    .tools label { display:flex; align-items:center; gap:6px; font-weight:600; color:#344054; }
+    .tools select { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; min-width:180px; }
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; padding:12px 16px 0; }
+    .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    .kpi span { display:block; color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    .kpi b { display:block; margin-top:4px; font-family: Outfit, Inter, sans-serif; font-size:18px; }
+    .kpi.owing b { color:var(--bad); }
+    .wrap { overflow:auto; padding:16px; }
     table { border-collapse:collapse; width:100%; min-width:1100px; background:#fff; font-size:13px; }
     th, td { border:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
-    th { background:var(--head); position:sticky; top:0; }
-    .owing { color:#b42318; font-weight:700; }
-    .pay { display:flex; gap:6px; align-items:center; }
-    .pay input { width:110px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
-    .pay button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:6px 10px; font-weight:600; cursor:pointer; }
-    .hist { color:#667085; font-size:12px; margin-top:6px; }
-    .empty { padding:40px; text-align:center; color:#667085; }
+    th { background:var(--head); position:sticky; top:0; font-size:11px; letter-spacing:.03em; }
+    .owing { color:var(--bad); font-weight:700; }
+    .pay { display:flex; flex-direction:column; gap:6px; min-width:220px; }
+    .pay .row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+    .pay input[type=number], .pay input[type=text] { border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+    .pay input[type=number] { width:110px; }
+    .pay input[type=text] { min-width:120px; flex:1; }
+    .pay input[type=file] { font-size:12px; max-width:240px; }
+    .pay button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:6px 10px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; width:fit-content; }
+    .pay button:disabled { opacity:.55; cursor:not-allowed; }
+    .hint { font-size:11px; color:var(--muted); font-weight:400; margin:0; }
+    .hist { color:var(--muted); font-size:12px; margin-top:6px; }
+    .empty, .load, .err-box { padding:40px 16px; text-align:center; color:var(--muted); }
+    .err-box { color:var(--bad); font-weight:600; }
+    .page-err { color:var(--bad); font-size:13px; font-weight:600; min-height:0; }
+    a.file { color:#1d2939; font-weight:600; }
+    .muted { color:var(--muted); }
+    @media (max-width: 720px) {
+      .tools { width:100%; margin-left:0; }
+      .tools select { min-width:0; flex:1; }
+      table { min-width:760px; }
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>Debtors</h1>
-    <div class="tools" id="status"></div>
+    <div>
+      <nav class="tabs" aria-label="Debtors views">
+        <a id="tabOwing" href="/debtors">Owing</a>
+        <a id="tabHistory" href="/debtors/history">History</a>
+      </nav>
+      <h1 id="pageTitle">Debtors</h1>
+    </div>
+    <div class="tools">
+      <label>Client
+        <select id="clientFilter" aria-label="Filter by client">
+          <option value="">All clients</option>
+        </select>
+      </label>
+      <div id="status"></div>
+    </div>
   </header>
-  <div class="wrap" id="wrap"></div>
+  <div class="kpis" id="kpis" hidden></div>
+  <p class="page-err" id="pageErr" style="padding:0 16px"></p>
+  <div class="wrap" id="wrap"><div class="load">Loading debtors…</div></div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
-    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;"); }
+    const isHistory = location.pathname.indexOf("/history") !== -1;
+    let owingRows = [];
+    let historyRows = [];
+    let clientFilter = "";
+
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+    function parseRand(s) {
+      const n = Number(String(s || "").replace(/R/g, "").replace(/,/g, "").trim());
+      return Number.isFinite(n) ? n : 0;
+    }
+    function formatRand(n) {
+      const v = Math.round((Number(n) || 0) * 100) / 100;
+      const neg = v < 0 ? "-" : "";
+      const [whole, frac] = Math.abs(v).toFixed(2).split(".");
+      return neg + "R " + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + frac;
+    }
     function pretty(iso) {
       if (!iso) return "";
-      return String(iso).slice(0, 10);
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso).slice(0, 10);
+      return new Intl.DateTimeFormat("en-ZA", {
+        timeZone: "Africa/Johannesburg",
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit"
+      }).format(d);
     }
-    function render(rows) {
+    function setErr(msg) { document.getElementById("pageErr").textContent = msg || ""; }
+    function clientKey(name) { return String(name || "").trim(); }
+    function filteredOwing() {
+      if (!clientFilter) return owingRows.slice();
+      return owingRows.filter((r) => clientKey(r.client_name) === clientFilter);
+    }
+    function filteredHistory() {
+      if (!clientFilter) return historyRows.slice();
+      return historyRows.filter((r) => clientKey(r.client_name) === clientFilter);
+    }
+    function fillClientSelect(rows) {
+      const sel = document.getElementById("clientFilter");
+      const names = [];
+      const seen = {};
+      rows.forEach((r) => {
+        const name = clientKey(r.client_name);
+        if (!name || seen[name]) return;
+        seen[name] = true;
+        names.push(name);
+      });
+      names.sort((a, b) => a.localeCompare(b));
+      const keep = names.indexOf(clientFilter) !== -1 ? clientFilter : "";
+      clientFilter = keep;
+      sel.innerHTML = "<option value=\"\">All clients</option>" + names.map((n) => {
+        return "<option value=\"" + esc(n) + "\"" + (n === keep ? " selected" : "") + ">" + esc(n) + "</option>";
+      }).join("");
+    }
+    function renderKpis(cards) {
+      const box = document.getElementById("kpis");
+      if (!cards || !cards.length) { box.hidden = true; box.innerHTML = ""; return; }
+      box.hidden = false;
+      box.innerHTML = cards.map((c) => {
+        return "<div class=\"kpi" + (c.owing ? " owing" : "") + "\"><span>" + esc(c.label) + "</span><b>" + esc(c.value) + "</b></div>";
+      }).join("");
+    }
+    function renderOwing() {
       const wrap = document.getElementById("wrap");
+      const rows = filteredOwing();
+      const excl = rows.reduce((s, r) => s + parseRand(r.total_excl), 0);
+      const incl = rows.reduce((s, r) => s + parseRand(r.total), 0);
+      const paid = rows.reduce((s, r) => s + parseRand(r.paid), 0);
+      const owing = rows.reduce((s, r) => s + parseRand(r.owing), 0);
+      renderKpis([
+        { label: "Total excl VAT", value: formatRand(excl) },
+        { label: "Total incl VAT", value: formatRand(incl) },
+        { label: "Paid incl VAT", value: formatRand(paid) },
+        { label: "Owing incl VAT", value: formatRand(owing), owing: owing > 0 }
+      ]);
       document.getElementById("status").textContent = rows.length
         ? rows.length + " still owing"
-        : "Nobody is owing";
-      if (!rows.length) {
+        : (owingRows.length ? "Nobody owing for this client" : "Nobody is owing");
+      if (!owingRows.length) {
         wrap.innerHTML = "<div class=\"empty\">No debtors. When an order is not paid in full it will show here.</div>";
         return;
       }
-      let html = "<table><thead><tr><th>ORDER</th><th>CLIENT</th><th>NUMBER</th><th>EMAIL</th><th>TOTAL (Incl VAT)</th><th>PAID</th><th>OWING</th><th>RECORD PAYMENT</th></tr></thead><tbody>";
+      if (!rows.length) {
+        wrap.innerHTML = "<div class=\"empty\">No owing orders for this client. Choose All clients to see the full list.</div>";
+        return;
+      }
+      let html = "<table><thead><tr><th>ORDER</th><th>CLIENT</th><th>PRODUCT</th><th>NUMBER</th><th>EMAIL</th><th>TOTAL (Excl VAT)</th><th>TOTAL (Incl VAT)</th><th>PAID</th><th>OWING</th><th>RECORD PAYMENT</th></tr></thead><tbody>";
       rows.forEach((row) => {
-        const hist = (row.payments || []).map((p) => pretty(p.at) + " R " + String(p.amount || "").replace(/^R\s*/, "") + (p.note ? " · " + p.note : "")).join("<br>");
+        const hist = (row.payments || []).map((p) => {
+          const file = p.has_file || p.filename
+            ? (p.id ? " · <a class=\"file\" href=\"/api/office/debtors/payments/" + encodeURIComponent(p.id) + "\" target=\"_blank\" rel=\"noopener\">" + esc(p.filename || "Open") + "</a>" : " · " + esc(p.filename || "file"))
+            : "";
+          return pretty(p.at) + " " + esc(p.amount || "") + (p.note ? " · " + esc(p.note) : "") + file;
+        }).join("<br>");
         html += "<tr data-order=\"" + esc(row.order_number) + "\">";
         html += "<td>" + esc(row.order_number) + "</td>";
         html += "<td>" + esc(row.client_name) + "</td>";
+        html += "<td>" + esc(row.product) + "</td>";
         html += "<td>" + esc(row.client_number) + "</td>";
         html += "<td>" + esc(row.email) + "</td>";
+        html += "<td>" + esc(row.total_excl) + "</td>";
         html += "<td>" + esc(row.total) + "</td>";
         html += "<td>" + esc(row.paid) + "</td>";
         html += "<td class=\"owing\">" + esc(row.owing) + "</td>";
-        html += "<td><form class=\"pay\"><input name=\"amount\" type=\"number\" min=\"0.01\" step=\"0.01\" placeholder=\"Incl VAT\"><input name=\"note\" placeholder=\"Note\"><button type=\"submit\">Add payment</button></form>";
+        html += "<td><form class=\"pay\"><div class=\"row\"><input name=\"amount\" type=\"number\" min=\"0.01\" step=\"0.01\" placeholder=\"Incl VAT\" required><input name=\"note\" type=\"text\" placeholder=\"Note\"></div>";
+        html += "<input name=\"proof\" type=\"file\" required accept=\".jpg,.jpeg,.png,.webp,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt,image/jpeg,image/png,image/webp,image/gif,application/pdf\">";
+        html += "<p class=\"hint\">Proof of payment is required (screenshot or document, 15 MB or smaller).</p>";
+        html += "<button type=\"submit\">Add payment</button></form>";
         if (hist) html += "<div class=\"hist\">" + hist + "</div>";
         html += "</td></tr>";
       });
@@ -69,23 +191,110 @@
       wrap.querySelectorAll("form.pay").forEach((form) => {
         form.onsubmit = async (e) => {
           e.preventDefault();
+          setErr("");
           const tr = form.closest("tr");
           const order = tr.getAttribute("data-order");
+          const btn = form.querySelector("button");
+          const file = form.proof.files && form.proof.files[0];
+          if (!file) { setErr("Attach proof of payment (screenshot or document)."); return; }
+          if (file.size > 15 * 1024 * 1024) { setErr("Proof of payment must be 15 MB or smaller."); return; }
+          let proof;
+          try { proof = await readProof(file); }
+          catch (err) { setErr(err.message || "Could not read the file."); return; }
+          btn.disabled = true;
           const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(order) + "/payments", {
             method: "POST",
-            body: JSON.stringify({ amount: form.amount.value, note: form.note.value })
+            body: JSON.stringify({ amount: form.amount.value, note: form.note.value, proof })
           });
-          const j = await r.json();
-          if (!j.ok) { alert(j.error); return; }
-          render(j.debtors || []);
+          const j = await r.json().catch(function () { return {}; });
+          btn.disabled = false;
+          if (!j.ok) { setErr(j.error || "Could not record the payment."); return; }
+          owingRows = j.debtors || [];
+          historyRows = j.history || historyRows;
+          fillClientSelect(owingRows);
+          renderOwing();
         };
       });
     }
-    async function load() {
-      const r = await sdOfficeFetch("/api/office/debtors");
-      const j = await r.json();
-      render(j.rows || []);
+    function renderHistory() {
+      const wrap = document.getElementById("wrap");
+      const rows = filteredHistory();
+      const received = rows.reduce((s, r) => s + parseRand(r.amount), 0);
+      renderKpis([
+        { label: "Payments recorded", value: String(rows.length) },
+        { label: "Total received incl VAT", value: formatRand(received) }
+      ]);
+      document.getElementById("status").textContent = rows.length
+        ? rows.length + " payment" + (rows.length === 1 ? "" : "s")
+        : (historyRows.length ? "No payments for this client" : "No payments recorded");
+      if (!historyRows.length) {
+        wrap.innerHTML = "<div class=\"empty\">No debtor history yet. Record a payment on Owing and the proof of payment will be kept here.</div>";
+        return;
+      }
+      if (!rows.length) {
+        wrap.innerHTML = "<div class=\"empty\">No payments for this client. Choose All clients to see every attachment.</div>";
+        return;
+      }
+      let html = "<table><thead><tr><th>DATE</th><th>ORDER</th><th>CLIENT</th><th>PRODUCT</th><th>AMOUNT</th><th>NOTE</th><th>PROOF OF PAYMENT</th></tr></thead><tbody>";
+      rows.forEach((row) => {
+        const file = row.has_file && row.id
+          ? "<a class=\"file\" href=\"/api/office/debtors/payments/" + encodeURIComponent(row.id) + "\" target=\"_blank\" rel=\"noopener\">" + esc(row.filename || "Open attachment") + "</a>"
+          : "<span class=\"muted\">No attachment</span>";
+        html += "<tr>";
+        html += "<td>" + esc(pretty(row.at)) + "</td>";
+        html += "<td>" + esc(row.order_number) + "</td>";
+        html += "<td>" + esc(row.client_name) + "</td>";
+        html += "<td>" + esc(row.product) + "</td>";
+        html += "<td>" + esc(row.amount) + "</td>";
+        html += "<td>" + esc(row.note) + "</td>";
+        html += "<td>" + file + "</td></tr>";
+      });
+      html += "</tbody></table>";
+      wrap.innerHTML = html;
     }
+    function readProof(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ filename: file.name, mime: file.type, data: reader.result });
+        reader.onerror = () => reject(new Error("Could not read the proof of payment."));
+        reader.readAsDataURL(file);
+      });
+    }
+    function paint() {
+      if (isHistory) renderHistory();
+      else renderOwing();
+    }
+    async function load() {
+      setErr("");
+      const url = isHistory ? "/api/office/debtors/history" : "/api/office/debtors";
+      try {
+        const r = await sdOfficeFetch(url);
+        const j = await r.json().catch(function () { return {}; });
+        if (!j.ok) {
+          document.getElementById("wrap").innerHTML = "<div class=\"err-box\">" + esc(j.error || "Could not load debtors.") + "</div>";
+          renderKpis([]);
+          return;
+        }
+        if (isHistory) {
+          historyRows = j.rows || [];
+          fillClientSelect(historyRows);
+        } else {
+          owingRows = j.rows || [];
+          fillClientSelect(owingRows);
+        }
+        paint();
+      } catch (e) {
+        document.getElementById("wrap").innerHTML = "<div class=\"err-box\">" + esc((e && e.message) || "Could not load debtors.") + "</div>";
+        renderKpis([]);
+      }
+    }
+    document.getElementById("tabOwing").className = isHistory ? "" : "on";
+    document.getElementById("tabHistory").className = isHistory ? "on" : "";
+    document.getElementById("pageTitle").textContent = isHistory ? "Debtors history" : "Debtors";
+    document.getElementById("clientFilter").onchange = function () {
+      clientFilter = this.value;
+      paint();
+    };
     sdRequireOffice("debtors").then((p) => { if (p) load(); });
   </script>
 </body>

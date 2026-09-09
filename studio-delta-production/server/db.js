@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { DROPDOWN_KEYS, DEFAULT_DROPDOWNS } = require("./dropdowns-default");
 const {
   unique,
@@ -500,6 +501,7 @@ function deleteOrder(orderNumber) {
     sheet.deleteRow(rowNum);
     persistWorkbook();
   }
+  removeProofsForOrder(orderNumber);
   if (state.paymentsByOrder) delete state.paymentsByOrder[orderNumber];
   deleteScheduleForOrder(orderNumber, false);
   save();
@@ -714,16 +716,25 @@ function removeDropdownItem(field, value) {
   return listDropdowns();
 }
 
+function orderExcl(order) {
+  const excl = parseMoney(order && order.price_excl_vat);
+  if (excl) return excl;
+  return parseMoney(exclFromIncl(order && order.price_incl_vat));
+}
+
 function decorateMoney(order) {
   const total = orderTotal(order);
+  const excl = orderExcl(order);
   const paid = orderPaid(order);
   const owing = orderOwing(order);
   return {
     ...order,
+    product: order.product || "",
     price_excl_vat: order.price_excl_vat ? formatRand(order.price_excl_vat) : "",
     price_incl_vat: order.price_incl_vat ? formatRand(order.price_incl_vat) : "",
     amount_paid: formatRand(order.amount_paid || 0),
     total: formatRand(total),
+    total_excl: formatRand(excl),
     paid: formatRand(paid),
     owing: formatRand(owing),
     is_debtor: total > 0 && owing > 0.001
@@ -732,6 +743,30 @@ function decorateMoney(order) {
 
 function listDebtors() {
   return listOrders().map(decorateMoney).filter((o) => o.is_debtor);
+}
+
+function listDebtorHistory() {
+  const rows = [];
+  listOrders().forEach((order) => {
+    const payments = Array.isArray(order.payments) ? order.payments : [];
+    payments.forEach((p) => {
+      if (!p || typeof p !== "object") return;
+      rows.push({
+        id: p.id || "",
+        at: p.at || "",
+        amount: formatRand(p.amount),
+        note: p.note || "",
+        filename: p.filename || "",
+        mime: p.mime || "",
+        has_file: !!(p.id && p.storedAs),
+        order_number: order.order_number,
+        client_name: order.client_name || "",
+        product: order.product || ""
+      });
+    });
+  });
+  rows.sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
+  return rows;
 }
 
 const MONTH_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -2410,6 +2445,7 @@ function deleteAllOrders() {
   const sheet = ordersSheet();
   const last = sheet.getLastRow();
   for (let r = last; r >= 2; r--) sheet.deleteRow(r);
+  Object.keys(state.paymentsByOrder || {}).forEach((num) => removeProofsForOrder(num));
   state.paymentsByOrder = {};
   state.schedule_rows = [];
   state.schedule_cells = [];
@@ -2418,20 +2454,135 @@ function deleteAllOrders() {
   return nos.length;
 }
 
-function recordPayment(orderNumber, amount, note) {
+const PROOF_TYPES = {
+  "application/pdf": ".pdf",
+  "image/jpeg": ".jpg",
+  "image/jpg": ".jpg",
+  "image/png": ".png",
+  "image/webp": ".webp",
+  "image/gif": ".gif",
+  "application/msword": ".doc",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+  "application/vnd.ms-excel": ".xls",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+  "text/plain": ".txt"
+};
+const MAX_PROOF_BYTES = 15 * 1024 * 1024;
+
+function proofsDir() {
+  const dir = path.join(dataDir(), "debtor-payments");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function proofExtFromName(name) {
+  const ext = path.extname(String(name || "")).toLowerCase();
+  if (ext === ".jpeg") return ".jpg";
+  return ext;
+}
+
+function decodePaymentProof(proof) {
+  if (!proof || typeof proof !== "object") {
+    throw new Error("Attach proof of payment (screenshot or document).");
+  }
+  const raw = String(proof.data || proof.dataUrl || proof.base64 || "");
+  if (!raw.trim()) throw new Error("Attach proof of payment (screenshot or document).");
+  const match = raw.match(/^data:([^;]+);base64,(.+)$/i);
+  const mime = String(proof.mime || proof.type || (match && match[1]) || "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  const b64 = match ? match[2] : raw.replace(/\s+/g, "");
+  const filename = String(proof.filename || proof.name || "").trim();
+  let ext = PROOF_TYPES[mime] || proofExtFromName(filename);
+  if (!ext && mime.indexOf("image/") === 0) ext = ".jpg";
+  const allowedExt = {
+    ".pdf": true, ".jpg": true, ".png": true, ".webp": true, ".gif": true,
+    ".doc": true, ".docx": true, ".xls": true, ".xlsx": true, ".txt": true
+  };
+  if (!allowedExt[ext]) {
+    throw new Error("Proof of payment must be a screenshot (JPG, PNG, WebP) or a document (PDF, Word, Excel).");
+  }
+  const buffer = Buffer.from(b64, "base64");
+  if (!buffer.length) throw new Error("Attach proof of payment (screenshot or document).");
+  if (buffer.length > MAX_PROOF_BYTES) throw new Error("Proof of payment must be 15 MB or smaller.");
+  let storedName = String(filename || "proof" + ext).replace(/[^A-Za-z0-9._-]+/g, "_");
+  if (!path.extname(storedName)) storedName += ext;
+  return { buffer, mime: mime || "application/octet-stream", filename: storedName, ext };
+}
+
+function writePaymentProof(paymentId, proof) {
+  const decoded = decodePaymentProof(proof);
+  const dir = path.join(proofsDir(), paymentId);
+  fs.mkdirSync(dir, { recursive: true });
+  const storedAs = "proof" + decoded.ext;
+  fs.writeFileSync(path.join(dir, storedAs), decoded.buffer);
+  return {
+    id: paymentId,
+    filename: decoded.filename,
+    storedAs,
+    mime: decoded.mime,
+    size: decoded.buffer.length
+  };
+}
+
+function removeProofDir(paymentId) {
+  const dir = path.join(proofsDir(), String(paymentId || ""));
+  if (!paymentId || !fs.existsSync(dir)) return;
+  fs.rmSync(dir, { recursive: true, force: true });
+}
+
+function removeProofsForOrder(orderNumber) {
+  const history = (state.paymentsByOrder && state.paymentsByOrder[orderNumber]) || [];
+  history.forEach((p) => { if (p && p.id) removeProofDir(p.id); });
+}
+
+function findPaymentRecord(paymentId) {
+  const want = String(paymentId || "").trim();
+  if (!want) return null;
+  const pay = state.paymentsByOrder || {};
+  const keys = Object.keys(pay);
+  for (let i = 0; i < keys.length; i++) {
+    const list = Array.isArray(pay[keys[i]]) ? pay[keys[i]] : [];
+    const found = list.find((p) => p && p.id === want);
+    if (found) return found;
+  }
+  return null;
+}
+
+function readPaymentProof(paymentId) {
+  const rec = findPaymentRecord(paymentId);
+  if (!rec || !rec.storedAs) return null;
+  const file = path.join(proofsDir(), rec.id, rec.storedAs);
+  if (!fs.existsSync(file)) return null;
+  return {
+    buffer: fs.readFileSync(file),
+    filename: rec.filename || rec.storedAs,
+    mime: rec.mime || "application/octet-stream"
+  };
+}
+
+function recordPayment(orderNumber, amount, note, proof) {
   const num = String(orderNumber || "").trim();
   const existing = listOrders().find((o) => o.order_number === num);
   if (!existing) throw new Error("Order not found");
   const add = parseMoney(amount);
   if (add <= 0) throw new Error("Payment amount must be more than 0");
+  const paymentId = "pay_" + crypto.randomBytes(8).toString("hex");
+  const savedFile = writePaymentProof(paymentId, proof);
   if (!state.paymentsByOrder) state.paymentsByOrder = {};
   const history = Array.isArray(state.paymentsByOrder[num])
     ? state.paymentsByOrder[num].slice()
     : (Array.isArray(existing.payments) ? existing.payments.slice() : []);
   history.push({
+    id: savedFile.id,
     at: nowIso(),
     amount: money(add),
-    note: String(note || "").trim()
+    note: String(note || "").trim(),
+    filename: savedFile.filename,
+    storedAs: savedFile.storedAs,
+    mime: savedFile.mime,
+    size: savedFile.size
   });
   state.paymentsByOrder[num] = history;
   const saved = upsertOrder({
@@ -2476,7 +2627,9 @@ module.exports = {
   addDropdownItem,
   removeDropdownItem,
   listDebtors,
+  listDebtorHistory,
   recordPayment,
+  readPaymentProof,
   decorateMoney,
   closeReasonOf,
   costingRejectReasonOf,
