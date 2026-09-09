@@ -312,7 +312,8 @@
     }
     function owingOf(row) {
       const total = parseMoney(row.price_incl_vat) || parseMoney(inclFromExcl(row.price_excl_vat));
-      return formatRand(Math.max(0, total - parseMoney(row.amount_paid)));
+      const cents = Math.round((total - parseMoney(row.amount_paid)) * 100);
+      return formatRand(cents <= 1 ? 0 : Math.max(0, cents) / 100);
     }
     function canGenerateJobCard(status) {
       const s = String(status || "").trim();
@@ -384,16 +385,17 @@
         "<option value=\"" + esc(o) + "\"" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>"
       ).join("");
     }
+    function updateOwing() {
+      document.getElementById("f_owing").value = owingOf({
+        price_excl_vat: document.getElementById("f_price_excl_vat").value,
+        price_incl_vat: document.getElementById("f_price_incl_vat").value,
+        amount_paid: document.getElementById("f_amount_paid").value
+      });
+    }
     function updateMoneyFields() {
       const excl = document.getElementById("f_price_excl_vat").value;
-      const paid = document.getElementById("f_amount_paid").value;
-      const incl = excl ? formatRand(inclFromExcl(excl)) : "";
-      document.getElementById("f_price_incl_vat").value = incl;
-      document.getElementById("f_owing").value = owingOf({
-        price_excl_vat: excl,
-        price_incl_vat: incl,
-        amount_paid: paid
-      });
+      document.getElementById("f_price_incl_vat").value = excl ? formatRand(inclFromExcl(excl)) : "";
+      updateOwing();
     }
     function setFormErr(msg) {
       document.getElementById("formErr").textContent = msg || "";
@@ -499,13 +501,17 @@
       document.getElementById("f_month_of_sale").value = (existing && existing.month_of_sale) || "";
       document.getElementById("f_price_excl_vat").value = (existing && existing.price_excl_vat) || "";
       document.getElementById("f_amount_paid").value = (existing && existing.amount_paid) || "";
+      document.getElementById("f_price_incl_vat").value = existing && existing.price_incl_vat
+        ? formatRand(existing.price_incl_vat)
+        : "";
       document.getElementById("f_status").value = existing ? (existing.status || "Not Yet Started") : "Not Yet Started";
       DROP_FIELDS.forEach((k) => fillSelect("f_" + k, k, existing ? existing[k] : ""));
       const restored = applyOrderDraft(orderDraftId());
       document.getElementById("formFootHint").textContent = restored
         ? "Unsaved progress from last time is filled in. Save to clear it."
         : "Progress stays on this device if you close this form. Save to clear it.";
-      updateMoneyFields();
+      if (existing && existing.price_incl_vat) updateOwing();
+      else updateMoneyFields();
       document.getElementById("formMask").classList.add("open");
       document.getElementById(existing ? "f_client_name" : "f_order_number").focus();
     }
@@ -537,6 +543,7 @@
         address: document.getElementById("f_address").value,
         province: document.getElementById("f_province").value,
         price_excl_vat: document.getElementById("f_price_excl_vat").value,
+        price_incl_vat: document.getElementById("f_price_incl_vat").value,
         amount_paid: document.getElementById("f_amount_paid").value,
         month_of_sale: document.getElementById("f_month_of_sale").value,
         source: document.getElementById("f_source").value,
@@ -717,7 +724,7 @@
       else if (no) location.href = "/enquiries";
     };
     document.getElementById("f_price_excl_vat").oninput = updateMoneyFields;
-    document.getElementById("f_amount_paid").oninput = updateMoneyFields;
+    document.getElementById("f_amount_paid").oninput = updateOwing;
     document.getElementById("form").addEventListener("input", persistOrderDraft);
     document.getElementById("form").addEventListener("change", persistOrderDraft);
     window.addEventListener("pagehide", persistOrderDraft);

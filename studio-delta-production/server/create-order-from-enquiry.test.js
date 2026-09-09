@@ -351,6 +351,49 @@ assert.strictEqual(capeItems[0].day, "2026-11-05");
 
 assert.ok(fromEnquiry.orderBaseTaken("S260200", db.listOrders()));
 
+db.upsertEnquiry({
+  enquiry_no: "#5003",
+  status: "Ordered",
+  client_name: "Winelands Design Studio",
+  client_number: "0764405425",
+  client_email: "chante@winelandsdesignstudio.com",
+  province: "Western Cape",
+  enquiry_type: "Catologue",
+  quote_no: "SOQ91",
+  products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "29322.00" }],
+  ready_for_orders: true
+}, { fromPipeline: true, fromMigrate: true });
+
+const winelands = db.createOrdersFromEnquiryForm("#5003", {
+  order_number: "S260001",
+  delivery_date: "2026-11-05",
+  shared: {
+    client_name: "Winelands Design Studio",
+    client_number: "0764405425",
+    email: "chante@winelandsdesignstudio.com",
+    province: "Western Cape",
+    city: "Stellenbosch",
+    address: "1 Beach Road"
+  },
+  products: [shopFields({
+    product: "Air Chair",
+    category: "Chair",
+    type: "Standard",
+    quantity: 2,
+    price_incl_vat: "29322.00",
+    amount_paid: "29322.00",
+    detailed_description: "Pair"
+  })]
+});
+assert.strictEqual(winelands.rows.length, 2);
+assert.strictEqual(winelands.rows[0].price_incl_vat, "R 14,661.00");
+assert.strictEqual(winelands.rows[1].price_incl_vat, "R 14,661.00");
+assert.strictEqual(winelands.rows[0].amount_paid, "R 14,661.00");
+assert.strictEqual(winelands.rows[1].amount_paid, "R 14,661.00");
+assert.strictEqual(winelands.rows[0].owing, "R 0.00");
+assert.strictEqual(winelands.rows[1].owing, "R 0.00");
+assert.ok(!db.listDebtors().some((o) => String(o.order_number).indexOf("S260001") === 0));
+
 const page = fs.readFileSync(path.join(__dirname, "../public/orders-from-enquiry.html"), "utf8");
 assert.ok(page.indexOf("Create orders from enquiry") !== -1);
 assert.ok(page.indexOf("f_order_number") !== -1);

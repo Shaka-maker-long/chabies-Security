@@ -47,6 +47,33 @@ const saved = db.upsertOrder({
 assert.ok(saved.id >= 2);
 assert.strictEqual(saved.price_incl_vat, "1150.00");
 
+const splitPaid = db.upsertOrder({
+  order_number: "S-VAT-SPLIT",
+  status: "Not Yet Started",
+  client_name: "Winelands Design Studio",
+  price_excl_vat: "12748.70",
+  price_incl_vat: "14661.00",
+  amount_paid: "14661.00"
+});
+assert.strictEqual(splitPaid.price_incl_vat, "14661.00", "keep split incl VAT, do not rebuild it from excl");
+assert.strictEqual(db.parseMoney(db.decorateMoney(splitPaid).owing), 0);
+assert.ok(!db.listDebtors().some((o) => o.order_number === "S-VAT-SPLIT"));
+
+const pennyRow = db.upsertOrder({
+  order_number: "S-VAT-PENNY",
+  status: "Not Yet Started",
+  client_name: "Penny Owing",
+  price_excl_vat: "12748.70",
+  price_incl_vat: "14661.01",
+  amount_paid: "14661.00"
+});
+assert.strictEqual(db.parseMoney(db.decorateMoney(pennyRow).owing), 0, "1c VAT split leftover is not owing");
+assert.ok(!db.listDebtors().some((o) => o.order_number === "S-VAT-PENNY"));
+const repaired = db.normalizeOrdersSheet();
+assert.ok(repaired.rewritten >= 1);
+const afterRepair = db.listOrders().find((o) => o.order_number === "S-VAT-PENNY");
+assert.strictEqual(afterRepair.price_incl_vat, "14661.00");
+
 const assemblyOrder = db.upsertOrder({
   order_number: "S-1002",
   status: "Ready for Assembly",
