@@ -139,6 +139,43 @@ assert.notStrictEqual(later.invoiceId, recv.invoiceId);
   assert.ok(text.indexOf("Quantity") !== -1);
   assert.ok(text.indexOf("SD-G1") !== -1);
   assert.ok(text.indexOf("Reeded") !== -1);
+  assert.ok(text.indexOf("Est. cost") === -1, "PDF must not show estimated cost");
+  assert.ok(text.indexOf("ESTIMATED TOTAL") === -1, "PDF must not show estimated total");
+  assert.ok(text.indexOf("Area m") === -1);
+
+  addGlass("g-edit", "SD-EDIT");
+  const edited = glassPo.createPurchaseOrder(["g-edit"], "Office Boss", [
+    { id: "g-edit", type: "Clear", quantity: 4, height: 900, width: 400 }
+  ]);
+  const editedLine = (edited.outstanding || []).find((l) => l.id === "g-edit") ||
+    (edited.purchaseHistory || []).find((l) => l.id === "g-edit");
+  assert.ok(editedLine);
+  assert.strictEqual(String(editedLine.quantity), "4");
+  assert.strictEqual(editedLine.type, "Clear");
+
+  const sheet = getBook().getSheetByName("Glass_To_Order");
+  sheet.appendRow(["g-tpl", new Date(), "SD-TPL", "Nomsa", "Door", "Clear", "6mm", "", "", 1, "To order", "Yes", ""]);
+  persistWorkbook();
+  let tplFailed = false;
+  try {
+    glassPo.createPurchaseOrder(["g-tpl"], "Office Boss");
+  } catch (e) {
+    tplFailed = /template/i.test(e.message);
+  }
+  assert.ok(tplFailed, "template glass must be specified before PO");
+  const tplPo = glassPo.createPurchaseOrder(["g-tpl"], "Office Boss", [
+    { id: "g-tpl", isTemplate: true, templateSpec: "Irregular top for Air Chair" }
+  ]);
+  assert.ok((tplPo.purchaseHistory || []).some((r) => r.id === "g-tpl" && /Irregular top/.test(r.dimensions)));
+  const tplPdf = await glassPo.buildPurchaseOrderPdf(tplPo.poId);
+  const tplLatin = tplPdf.buffer.toString("latin1");
+  const tplDecoded = [];
+  tplLatin.replace(/<([0-9A-Fa-f]+)>/g, (_, hex) => {
+    try { tplDecoded.push(Buffer.from(hex, "hex").toString("latin1")); } catch (e) {}
+    return "";
+  });
+  const tplText = tplLatin + "\n" + tplDecoded.join("");
+  assert.ok(tplText.indexOf("Template") !== -1 || tplText.indexOf("Irregular") !== -1);
   addGlass("g-api-1", "SD-API-G1");
   addGlass("g-api-2", "SD-API-G2");
   const app = express();

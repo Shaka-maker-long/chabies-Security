@@ -45,6 +45,18 @@
     .pill.po { background:#eff8ff; color:#175cd3; }
     .batch { padding:12px 16px; border-top:1px solid var(--line); }
     .batch h3 { margin:0 0 8px; font-size:14px; }
+    .pill.tpl { background:#f4ebff; color:#6941c6; }
+    .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
+    .mask.open { display:flex; }
+    .sheet { width:min(920px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:24px auto; }
+    .sheet header { display:flex; gap:12px; align-items:center; justify-content:space-between; padding:12px 16px; border-bottom:1px solid var(--line); }
+    .sheet header h2 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .sheet .body { padding:16px; }
+    .edit { width:100%; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+    .edit.qty { width:72px; }
+    .edit.dim { width:88px; }
+    textarea.edit { min-height:56px; resize:vertical; }
+    .need { color:var(--bad); font-size:12px; font-weight:600; }
     @media print {
       header .tabs, .tools, .subtabs, .foot, td input, button { display:none !important; }
       body { background:#fff; }
@@ -70,7 +82,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>To order</h1>
-      <p class="lede">Glass logged at Pre-Powder Coating QC. Generate a purchase order PDF for the supplier. Estimated cost is square metres × the rate for that glass type and thickness on <a href="/orders/glass-rates">Glass rates</a>. When glass arrives, tick only what you received, put the invoice cost on each line, and attach one invoice for that batch.</p>
+      <p class="lede">Glass logged at Pre-Powder Coating QC. Tick the lines, then edit them if needed before you generate a purchase order PDF for the supplier. The PDF shows order number, glass type, thickness, height, width, and quantity — not estimated cost. Estimated cost stays here for planning (square metres × the rate on <a href="/orders/glass-rates">Glass rates</a>). Template glass is not rectangular: QC ticks <b>Has template glass</b>, and you must specify that template on the PO. When glass arrives, tick only what you received, put the invoice cost on each line, and attach one invoice for that batch.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -87,10 +99,10 @@
       <div class="cols">
         <section class="card">
           <h2>To put on a PO</h2>
-          <p class="hint">These lines are not on a purchase order yet. Estimated cost uses Glass rates (R per m²).</p>
+          <p class="hint">These lines are not on a purchase order yet. You can change type, size, quantity, or template details on the next screen before the PDF is generated.</p>
           <div id="toOrderBox"><div class="load">Loading…</div></div>
           <div class="foot">
-            <button type="button" id="poBtn" onclick="makePo()" disabled>Generate purchase order PDF</button>
+            <button type="button" id="poBtn" onclick="openPoReview()" disabled>Edit and generate purchase order PDF</button>
             <span class="msg" id="estMsg"></span>
             <span class="msg" id="poMsg"></span>
           </div>
@@ -109,6 +121,11 @@
         </section>
       </div>
       <section class="card">
+        <h2>Purchase history</h2>
+        <p class="hint">Every line that has been on a purchase order. Dimensions are height × width, or the template specification. Estimated cost is internal; actual cost is what was typed when the glass was received.</p>
+        <div id="histBox"><div class="load">Loading…</div></div>
+      </section>
+      <section class="card">
         <h2>Received glass</h2>
         <p class="hint">Each receive batch shares one invoice. Glass still on the PO stays outstanding until it arrives.</p>
         <div id="recvBox"><div class="load">Loading…</div></div>
@@ -118,10 +135,27 @@
       <div id="woodList"></div>
     </div>
   </div>
+  <div class="mask" id="poMask" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="poReviewTitle">
+      <header>
+        <h2 id="poReviewTitle">Edit purchase order</h2>
+        <button class="ghost" type="button" onclick="closePoReview()">Cancel</button>
+      </header>
+      <div class="body">
+        <p class="hint">Change a line if the QC sizes or type are wrong. Template glass must be specified before you generate the PDF. Estimated cost is not printed on the purchase order.</p>
+        <div id="poReview"></div>
+        <div class="foot" style="padding:12px 0 0;border:0;background:transparent">
+          <button type="button" id="poConfirm" onclick="makePo()">Generate purchase order PDF</button>
+          <span class="msg" id="poReviewMsg"></span>
+        </div>
+      </div>
+    </div>
+  </div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
-    let data = { toOrder: [], outstanding: [], received: [], wood: [] };
+    let data = { toOrder: [], outstanding: [], received: [], wood: [], purchaseHistory: [] };
     let kind = "glass";
+    let reviewIds = [];
     function esc(s) {
       return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
@@ -136,8 +170,9 @@
     }
     function glassCells(r) {
       const miss = r.rateMissing ? " <span class='msg bad'>No rate</span>" : "";
-      return "<td><b>" + esc(r.order) + "</b></td><td>" + esc(r.type) + "</td><td>" + esc(r.thickness) +
-        "</td><td>" + esc(r.height) + "</td><td>" + esc(r.width) + "</td><td>" + esc(r.quantity) +
+      const tpl = r.isTemplate ? " <span class='pill tpl'>Template</span>" : "";
+      return "<td><b>" + esc(r.order) + "</b></td><td>" + esc(r.type) + tpl + "</td><td>" + esc(r.thickness) +
+        "</td><td>" + (r.isTemplate ? "Template" : esc(r.height)) + "</td><td>" + (r.isTemplate ? "—" : esc(r.width)) + "</td><td>" + esc(r.quantity) +
         "</td><td>" + esc(r.areaLabel || "—") + "</td><td>" + esc(r.estimatedCostLabel || "—") + miss + "</td>";
     }
     function setMsg(id, text, bad) {
@@ -197,6 +232,17 @@
             "<a href=\"/api/office/glass-po/invoices/" + encodeURIComponent(batch.invoiceId) + "\" target=\"_blank\" rel=\"noopener\">" + esc(batch.invoiceFilename || "Open invoice") + "</a>" +
             "<div class='table-wrap'><table><thead><tr><th>Order Number</th><th>Glass type</th><th>Thickness</th><th>Height</th><th>Width</th><th>Quantity</th><th>Cost</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table></div></div>";
         }).join("");
+      }
+      const histBox = document.getElementById("histBox");
+      const hist = data.purchaseHistory || [];
+      if (!hist.length) {
+        histBox.innerHTML = '<div class="empty">No purchase history yet. Generate a purchase order to list those lines here.</div>';
+      } else {
+        histBox.innerHTML = "<div class='table-wrap'><table><thead><tr><th>Order number</th><th>Glass type</th><th>Dimensions</th><th>Estimated cost</th><th>Actual cost</th></tr></thead><tbody>" +
+          hist.map((r) => "<tr><td><b>" + esc(r.order) + "</b>" + (r.poNumber ? "<div class='msg'>" + esc(r.poNumber) + "</div>" : "") + "</td><td>" + esc(r.type) +
+            (r.isTemplate ? " <span class='pill tpl'>Template</span>" : "") + "</td><td>" + esc(r.dimensions) +
+            "</td><td>" + esc(r.estimatedCostLabel || "—") + "</td><td>" + esc(r.actualCostLabel || "—") + "</td></tr>").join("") +
+          "</tbody></table></div>";
       }
       syncButtons();
     }
@@ -260,16 +306,76 @@
       render();
       setMsg("status", (j.toOrderCount || 0) + " to put on a PO · " + (j.outstandingCount || 0) + " outstanding");
     }
+    function closePoReview() {
+      const mask = document.getElementById("poMask");
+      mask.classList.remove("open");
+      mask.hidden = true;
+      reviewIds = [];
+    }
+    function openPoReview() {
+      const ids = selectedToOrder();
+      if (!ids.length) return;
+      reviewIds = ids;
+      const byId = {};
+      (data.toOrder || []).forEach((r) => { byId[r.id] = r; });
+      const rows = ids.map((id) => byId[id]).filter(Boolean);
+      const box = document.getElementById("poReview");
+      box.innerHTML = "<div class='table-wrap'><table><thead><tr><th>Order number</th><th>Glass type</th><th>Thickness</th><th>Height</th><th>Width</th><th>Quantity</th></tr></thead><tbody>" +
+        rows.map((r) => {
+          const tpl = !!r.isTemplate;
+          return "<tr data-id=\"" + esc(r.id) + "\" data-template=\"" + (tpl ? "1" : "") + "\">" +
+            "<td><b>" + esc(r.order) + "</b>" + (tpl ? "<div><span class='pill tpl'>Template glass</span></div><label class='need'>Specify template glass<textarea class='edit spec' required placeholder='Describe the template (shape / item)'>" + esc(r.templateSpec || "") + "</textarea></label>" : "") + "</td>" +
+            "<td><input class='edit type' value=\"" + esc(r.type) + "\"></td>" +
+            "<td><input class='edit thick' value=\"" + esc(r.thickness) + "\"></td>" +
+            "<td>" + (tpl ? "Template" : "<input class='edit dim height' type='number' min='1' step='1' value=\"" + esc(r.height) + "\">") + "</td>" +
+            "<td>" + (tpl ? "—" : "<input class='edit dim width' type='number' min='1' step='1' value=\"" + esc(r.width) + "\">") + "</td>" +
+            "<td><input class='edit qty' type='number' min='1' step='1' value=\"" + esc(r.quantity) + "\"></td></tr>";
+        }).join("") + "</tbody></table></div>";
+      setMsg("poReviewMsg", "");
+      const mask = document.getElementById("poMask");
+      mask.hidden = false;
+      mask.classList.add("open");
+    }
+    function collectPoEdits() {
+      const edits = [];
+      document.querySelectorAll("#poReview tr[data-id]").forEach((tr) => {
+        const id = tr.getAttribute("data-id");
+        const isTemplate = tr.getAttribute("data-template") === "1";
+        const specEl = tr.querySelector("textarea.spec");
+        edits.push({
+          id: id,
+          type: (tr.querySelector(".type") || {}).value || "",
+          thickness: (tr.querySelector(".thick") || {}).value || "",
+          height: isTemplate ? 0 : ((tr.querySelector(".height") || {}).value || ""),
+          width: isTemplate ? 0 : ((tr.querySelector(".width") || {}).value || ""),
+          quantity: (tr.querySelector(".qty") || {}).value || "",
+          isTemplate: isTemplate,
+          templateSpec: specEl ? specEl.value : ""
+        });
+      });
+      return edits;
+    }
     async function makePo() {
-      const lineIds = selectedToOrder();
+      const lineIds = reviewIds.length ? reviewIds.slice() : selectedToOrder();
       if (!lineIds.length) return;
-      if (!confirm("Generate a purchase order PDF for " + lineIds.length + " glass line" + (lineIds.length === 1 ? "" : "s") + "?")) return;
+      const edits = collectPoEdits();
+      const missing = edits.find((e) => e.isTemplate && !String(e.templateSpec || "").trim());
+      if (missing) { setMsg("poReviewMsg", "Specify the template glass before generating the purchase order.", true); return; }
+      document.getElementById("poConfirm").disabled = true;
       document.getElementById("poBtn").disabled = true;
+      setMsg("poReviewMsg", "Saving…");
       setMsg("poMsg", "Saving…");
-      const r = await sdOfficeFetch("/api/office/glass-po", { method: "POST", body: JSON.stringify({ lineIds }) });
+      const r = await sdOfficeFetch("/api/office/glass-po", { method: "POST", body: JSON.stringify({ lineIds, edits }) });
       const j = await r.json();
-      if (!j.ok) { setMsg("poMsg", j.error || "Could not generate PO", true); document.getElementById("poBtn").disabled = false; return; }
+      document.getElementById("poConfirm").disabled = false;
+      if (!j.ok) {
+        setMsg("poReviewMsg", j.error || "Could not generate PO", true);
+        setMsg("poMsg", j.error || "Could not generate PO", true);
+        document.getElementById("poBtn").disabled = false;
+        return;
+      }
       data = j;
+      closePoReview();
       render();
       setMsg("poMsg", "Generated " + (j.poNumber || "PO") + ".");
       if (j.poId) {

@@ -255,6 +255,7 @@ function mountOffice(app) {
         outstanding: glass.outstanding,
         received: glass.received,
         pos: glass.pos,
+        purchaseHistory: glass.purchaseHistory,
         toOrderCount: glass.toOrderCount,
         outstandingCount: glass.outstandingCount
       });
@@ -267,7 +268,8 @@ function mountOffice(app) {
     try {
       const result = glassPo.createPurchaseOrder(
         (req.body && (req.body.lineIds || req.body.ids)) || [],
-        req.office && req.office.name
+        req.office && req.office.name,
+        (req.body && req.body.edits) || []
       );
       res.json({ ok: true, ...result });
     } catch (e) {

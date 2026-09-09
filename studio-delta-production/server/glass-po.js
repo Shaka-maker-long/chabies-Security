@@ -19,7 +19,7 @@ const INVOICE_TYPES = {
   "image/png": ".png",
   "image/webp": ".webp"
 };
-const HEADERS = ["ID", "Timestamp", "Order #", "Worker", "Component", "Glass type", "Thickness", "Height", "Width", "Quantity", "Status"];
+const HEADERS = ["ID", "Timestamp", "Order #", "Worker", "Component", "Glass type", "Thickness", "Height", "Width", "Quantity", "Status", "Template", "Template spec"];
 
 function nowIso() {
   return new Date().toISOString();
@@ -92,12 +92,32 @@ function isReceived(status) {
   return statusKey(status) === "received";
 }
 
+function isTemplateFlag(value) {
+  if (value === true || value === 1) return true;
+  const s = String(value || "").trim().toLowerCase();
+  return s === "yes" || s === "true" || s === "1" || s === "template";
+}
+
+function dimensionsLabel(line) {
+  if (line && line.isTemplate) {
+    const spec = String(line.templateSpec || "").trim();
+    return spec ? "Template · " + spec : "Template glass";
+  }
+  const h = line && line.height;
+  const w = line && line.width;
+  if (h && w) return h + " × " + w + " mm";
+  return "—";
+}
+
 function glassSheet() {
   const book = getBook();
   let sheet = book.getSheetByName("Glass_To_Order");
   if (!sheet) {
     sheet = book.insertSheet("Glass_To_Order");
     sheet.appendRow(HEADERS.slice());
+    persistWorkbook();
+  } else if (sheet.getLastColumn() < HEADERS.length) {
+    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS.slice()]);
     persistWorkbook();
   }
   return sheet;
@@ -107,7 +127,8 @@ function readGlassLines() {
   const sheet = glassSheet();
   const items = [];
   if (sheet.getLastRow() < 2) return items;
-  const grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 11).getValues();
+  const lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+  const grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
   for (let i = 0; i < grid.length; i++) {
     const id = String(grid[i][0] || "").trim();
     const typeName = String(grid[i][5] || "").trim();
@@ -124,6 +145,8 @@ function readGlassLines() {
       width: Number(grid[i][8]) || 0,
       quantity: Number(grid[i][9]) || 0,
       status: String(grid[i][10] || TO_ORDER).trim() || TO_ORDER,
+      isTemplate: isTemplateFlag(grid[i][11]),
+      templateSpec: String(grid[i][12] || "").trim(),
       kind: "glass",
       row: i + 2
     });
@@ -147,6 +170,82 @@ function setGlassStatus(id, status) {
   throw new Error("Glass line " + want + " was not found.");
 }
 
+function applyLinePatch(id, patch) {
+  const want = String(id || "").trim();
+  const sheet = glassSheet();
+  if (sheet.getLastRow() < 2) throw new Error("Glass line not found.");
+  const lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+  const grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+  for (let i = 0; i < grid.length; i++) {
+    if (String(grid[i][0] || "").trim() !== want) continue;
+    const row = i + 2;
+    const body = patch && typeof patch === "object" ? patch : {};
+    if (body.type != null) sheet.getRange(row, 6).setValue(String(body.type || "").trim());
+    if (body.thickness != null) sheet.getRange(row, 7).setValue(String(body.thickness || "").trim());
+    if (body.height != null) sheet.getRange(row, 8).setValue(Number(body.height) || 0);
+    if (body.width != null) sheet.getRange(row, 9).setValue(Number(body.width) || 0);
+    if (body.quantity != null) {
+      const qty = Math.round(Number(body.quantity));
+      if (!(qty > 0)) throw new Error("Quantity must be more than 0.");
+      sheet.getRange(row, 10).setValue(qty);
+    }
+    if (body.isTemplate != null || body.template != null) {
+      sheet.getRange(row, 12).setValue(isTemplateFlag(body.isTemplate != null ? body.isTemplate : body.template) ? "Yes" : "No");
+    }
+    if (body.templateSpec != null || body.template_spec != null) {
+      sheet.getRange(row, 13).setValue(String(body.templateSpec || body.template_spec || "").trim());
+    }
+    persistWorkbook();
+    try { require("./gas").clearShopCache(); } catch (e) {}
+    return true;
+  }
+  throw new Error("Glass line " + want + " was not found.");
+}
+
+function purchaseHistory(store, lines) {
+  const byId = {};
+  lines.forEach((line) => { byId[line.id] = line; });
+  const rows = [];
+  (store.pos || []).slice().reverse().forEach((po) => {
+    (po.lineIds || []).forEach((id) => {
+      const live = byId[id] || {};
+      const meta = (store.lines && store.lines[id]) || {};
+      const merged = Object.assign({}, live, {
+        id,
+        order: live.order || meta.order || "",
+        type: live.type || meta.type || "",
+        thickness: live.thickness || meta.thickness || "",
+        height: live.height || meta.height || 0,
+        width: live.width || meta.width || 0,
+        quantity: live.quantity || meta.quantity || 0,
+        isTemplate: live.isTemplate || isTemplateFlag(meta.isTemplate),
+        templateSpec: live.templateSpec || meta.templateSpec || ""
+      });
+      const decorated = decorateLine(merged, {
+        poId: po.id,
+        poNumber: po.number,
+        actualCost: meta.cost || "",
+        actualCostLabel: meta.cost ? formatRand(meta.cost) : "—"
+      });
+      rows.push({
+        id,
+        order: decorated.order,
+        type: decorated.type,
+        dimensions: decorated.dimensions,
+        estimatedCost: decorated.estimatedCost || "",
+        estimatedCostLabel: decorated.estimatedCostLabel || "—",
+        actualCost: decorated.actualCost,
+        actualCostLabel: decorated.actualCostLabel,
+        poNumber: po.number,
+        isTemplate: decorated.isTemplate,
+        templateSpec: decorated.templateSpec,
+        status: decorated.status
+      });
+    });
+  });
+  return rows;
+}
+
 function decorateLine(line, extra) {
   const costs = glassRates.costLine(line);
   return Object.assign({
@@ -161,6 +260,9 @@ function decorateLine(line, extra) {
     quantity: line.quantity,
     status: line.status,
     timestamp: line.timestamp,
+    isTemplate: !!line.isTemplate,
+    templateSpec: line.templateSpec || "",
+    dimensions: dimensionsLabel(line),
     kind: "glass"
   }, costs, extra || {});
 }
@@ -304,17 +406,27 @@ function snapshot() {
         cost: meta.cost || "",
         invoiceId: meta.invoiceId || ""
       });
-    })
+    }),
+    purchaseHistory: purchaseHistory(store, lines)
   };
 }
 
-function createPurchaseOrder(lineIds, actor) {
+function createPurchaseOrder(lineIds, actor, edits) {
   const ids = (Array.isArray(lineIds) ? lineIds : [])
     .map((id) => String(id || "").trim())
     .filter(Boolean);
   const unique = [];
   ids.forEach((id) => { if (unique.indexOf(id) === -1) unique.push(id); });
   if (!unique.length) throw new Error("Select at least one glass line to put on a purchase order.");
+  const patchById = {};
+  (Array.isArray(edits) ? edits : []).forEach((row) => {
+    const id = String((row && (row.id || row.lineId)) || "").trim();
+    if (!id) return;
+    patchById[id] = row;
+  });
+  unique.forEach((id) => {
+    if (patchById[id]) applyLinePatch(id, patchById[id]);
+  });
   const lines = readGlassLines();
   const byId = {};
   lines.forEach((line) => { byId[line.id] = line; });
@@ -324,6 +436,16 @@ function createPurchaseOrder(lineIds, actor) {
     if (!isToOrder(line.status)) {
       throw new Error((line.order || id) + " is already " + line.status + ". Only To order glass can go on a new PO.");
     }
+    if (!String(line.type || "").trim()) throw new Error("Glass type is required on every line.");
+    if (!String(line.thickness || "").trim()) throw new Error("Thickness is required on every line.");
+    const qty = Number(line.quantity);
+    if (!(qty > 0)) throw new Error("Quantity must be more than 0.");
+    if (line.isTemplate && !String(line.templateSpec || "").trim()) {
+      throw new Error("Specify the template glass for " + (line.order || id) + " before generating the purchase order.");
+    }
+    if (!line.isTemplate && (!(Number(line.height) > 0) || !(Number(line.width) > 0))) {
+      throw new Error("Height and width are required on " + (line.order || id) + " unless it is template glass.");
+    }
   });
   const store = loadStore();
   const createdAt = nowIso();
@@ -331,6 +453,7 @@ function createPurchaseOrder(lineIds, actor) {
   const number = poNumber(store.nextPo++);
   const poId = newId("gpo");
   unique.forEach((id) => {
+    const line = byId[id];
     setGlassStatus(id, ON_PO);
     store.lines[id] = Object.assign({}, store.lines[id] || {}, {
       poId,
@@ -340,7 +463,15 @@ function createPurchaseOrder(lineIds, actor) {
       receiveId: "",
       receivedAt: "",
       cost: "",
-      invoiceId: ""
+      invoiceId: "",
+      order: line.order,
+      type: line.type,
+      thickness: line.thickness,
+      height: line.height,
+      width: line.width,
+      quantity: line.quantity,
+      isTemplate: !!line.isTemplate,
+      templateSpec: line.templateSpec || ""
     });
   });
   store.pos.push({ id: poId, number, createdAt, createdBy, lineIds: unique });
@@ -539,13 +670,13 @@ async function buildPurchaseOrderPdf(poId) {
 
   y += 70;
   doc.fillColor(ink).font("Helvetica").fontSize(9).text(
-    "Please supply the glass listed below. Sizes are millimetres. Estimated cost uses Studio Delta rates per square metre for that glass type and thickness.",
+    "Please supply the glass listed below. Sizes are millimetres. Template glass is not rectangular — see the specification on that line.",
     margin, y, { width: inner }
   );
   y += 28;
 
-  const headers = ["Order Number", "Glass type", "Thickness", "Height", "Width", "Quantity", "Area m²", "Est. cost"];
-  const widths = [74, 74, 54, 46, 46, 50, 52, inner - 74 - 74 - 54 - 46 - 46 - 50 - 52];
+  const headers = ["Order Number", "Glass type", "Thickness", "Height", "Width", "Quantity"];
+  const widths = [100, 130, 70, 70, 70, inner - 100 - 130 - 70 - 70 - 70];
   const headerH = 22;
   doc.save().fillColor("#1c1917").rect(margin, y, inner, headerH).fill().restore();
   let x = margin;
@@ -555,11 +686,10 @@ async function buildPurchaseOrderPdf(poId) {
   });
   y += headerH;
 
-  let totalArea = 0;
-  let totalCost = 0;
-  let missing = 0;
   lines.forEach((line, idx) => {
-    const rowH = 18;
+    const spec = String(line.templateSpec || "").trim();
+    const template = !!line.isTemplate;
+    const rowH = template && spec ? 32 : 18;
     if (y + rowH > 760) {
       doc.addPage();
       y = margin;
@@ -568,44 +698,27 @@ async function buildPurchaseOrderPdf(poId) {
       doc.save().fillColor("#f3efe6").rect(margin, y, inner, rowH).fill().restore();
     }
     doc.save().strokeColor("#d7d1c6").lineWidth(0.4).rect(margin, y, inner, rowH).stroke().restore();
-    const area = Number(line.areaM2) || 0;
-    totalArea += area;
-    const cost = parseMoney(line.estimatedCost);
-    if (line.rateMissing) missing += 1;
-    else totalCost += cost;
+    const typeText = template
+      ? String(line.type || "") + (spec ? "\nTemplate: " + spec : "\nTemplate glass")
+      : String(line.type || "");
     const cells = [
       line.order || "",
-      line.type || "",
+      typeText,
       line.thickness || "",
-      line.height == null ? "" : String(line.height),
-      line.width == null ? "" : String(line.width),
-      line.quantity == null ? "" : String(line.quantity),
-      area > 0 ? formatArea(area) : "—",
-      line.estimatedCostLabel || "—"
+      template ? "Template" : (line.height == null ? "" : String(line.height)),
+      template ? "—" : (line.width == null ? "" : String(line.width)),
+      line.quantity == null ? "" : String(line.quantity)
     ];
     x = margin;
     cells.forEach((cell, i) => {
-      doc.fillColor(ink).font("Helvetica").fontSize(8).text(String(cell), x + 3, y + 5, { width: widths[i] - 6, lineBreak: false });
+      doc.fillColor(ink).font("Helvetica").fontSize(8)
+        .text(String(cell), x + 3, y + 5, { width: widths[i] - 6, lineBreak: i === 1 && template });
       x += widths[i];
     });
     y += rowH;
   });
 
-  y += 8;
-  drawPdfBox(doc, margin + inner - 220, y, 220, 48);
-  doc.fillColor(muted).font("Helvetica-Bold").fontSize(8).text("ESTIMATED TOTAL", margin + inner - 212, y + 8);
-  doc.fillColor(ink).font("Helvetica-Bold").fontSize(14).text(formatRand(totalCost), margin + inner - 212, y + 22, { width: 204 });
-  doc.fillColor(muted).font("Helvetica").fontSize(8).text(
-    "Area " + formatArea(totalArea) + " m²" + (missing ? "  ·  " + missing + " line" + (missing === 1 ? "" : "s") + " missing a rate" : ""),
-    margin, y + 8, { width: inner - 236 }
-  );
-
-  y += 64;
-  doc.fillColor(muted).font("Helvetica").fontSize(8).text(
-    "This estimated cost is for Studio Delta planning. The supplier invoice is the amount payable. Rates are set on Glass rates (R per m² by glass type and thickness).",
-    margin, y, { width: inner }
-  );
-  y += 28;
+  y += 24;
   doc.fillColor(ink).font("Helvetica").fontSize(9)
     .text("Authorised ________________________________", margin, y)
     .text("Date ________________________________", margin + inner / 2, y);
@@ -635,5 +748,6 @@ module.exports = {
   readInvoiceFile,
   readGlassLines,
   findPo,
-  buildPurchaseOrderPdf
+  buildPurchaseOrderPdf,
+  applyLinePatch
 };

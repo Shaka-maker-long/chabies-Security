@@ -30,7 +30,7 @@ const SEED_TABS = {
   Task_Durations: [["Product", "Process", "Hours"]],
   Glass_Types: [["Name"], ["Reeded"], ["Clear"], ["Ocean view"]],
   Wood_Types: [["Name"]],
-  Glass_To_Order: [["ID", "Timestamp", "Order #", "Worker", "Component", "Glass type", "Thickness", "Height", "Width", "Quantity", "Status"]],
+  Glass_To_Order: [["ID", "Timestamp", "Order #", "Worker", "Component", "Glass type", "Thickness", "Height", "Width", "Quantity", "Status", "Template", "Template spec"]],
   Wood_To_Order: [["ID", "Timestamp", "Order #", "Worker", "Component", "Wood type", "Thickness", "Height", "Width", "Quantity", "Status"]],
   Standard_Glass: [["Product", "No Glass", "Spec JSON", "From Order", "Updated"]]
 };

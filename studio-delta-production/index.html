@@ -5127,6 +5127,7 @@
         woodRows: collectGlassWoodRows("#woodRowsContainer .wood-order-row", "wood"),
         woodRequired: !!(document.getElementById("woodRequired") && document.getElementById("woodRequired").checked),
         noGlass: !!(document.getElementById("noGlass") && document.getElementById("noGlass").checked),
+        hasTemplateGlass: !!(document.getElementById("hasTemplateGlass") && document.getElementById("hasTemplateGlass").checked),
         glassFields: {
           component: qcFieldVal("glassComponent"),
           type: qcFieldVal("glassType"),
@@ -5308,7 +5309,10 @@
       syncWoodRequired();
       const noGlassBox = document.getElementById("noGlass");
       if (noGlassBox) noGlassBox.checked = !!draft.noGlass && !(draft.glassRows || []).length;
+      const tplBox = document.getElementById("hasTemplateGlass");
+      if (tplBox) tplBox.checked = !!draft.hasTemplateGlass || (draft.glassRows || []).some((l) => l && l.isTemplate);
       syncNoGlass();
+      syncTemplateGlass();
       const g = draft.glassFields || {};
       setQcFieldVal("glassComponent", g.component);
       setQcFieldVal("glassType", g.type);
@@ -5560,13 +5564,17 @@
     function glassWoodOrderHtml() {
       return `
         <div id="glassOrderSection" class="mt-4 pt-3 border-top">
-          <label class="d-flex gap-2 align-items-center fw-bold mb-2">
+            <label class="d-flex gap-2 align-items-center fw-bold mb-2">
             <input type="checkbox" id="noGlass" onchange="syncNoGlass()">
             <span>This order has no glass</span>
           </label>
+          <label class="d-flex gap-2 align-items-center fw-bold mb-2">
+            <input type="checkbox" id="hasTemplateGlass" onchange="syncTemplateGlass()">
+            <span>Has template glass</span>
+          </label>
           <div id="glassFormWrap">
             <label class="fw-bold">Glass to order</label>
-            <p class="small text-muted mb-2">Add every glass piece, or use the saved specification for this Standard item. It goes to <b>To order</b> so office can raise a purchase order.</p>
+            <p class="small text-muted mb-2">Add every glass piece, or use the saved specification for this Standard item. It goes to <b>To order</b> so office can raise a purchase order. Tick <b>Has template glass</b> when the piece is not rectangular or square — height and width are then optional. Office must specify that template when they generate the purchase order.</p>
             <div id="savedGlassWrap" class="border rounded p-2 mb-2 bg-light d-none">
               <p class="small mb-2" id="savedGlassText"></p>
               <button type="button" class="btn btn-sm btn-outline-dark" id="useSavedGlassBtn" onclick="useSavedGlassSpec()">Use existing glass specification</button>
@@ -5649,7 +5657,27 @@
       const on = !!(document.getElementById('noGlass') && document.getElementById('noGlass').checked);
       const wrap = document.getElementById('glassFormWrap');
       if (wrap) wrap.classList.toggle('d-none', on);
+      if (on) {
+        const tpl = document.getElementById('hasTemplateGlass');
+        if (tpl) tpl.checked = false;
+      }
       if (!on) paintSavedGlassOffer();
+      syncTemplateGlass();
+    }
+    function syncTemplateGlass() {
+      const tplOn = !!(document.getElementById('hasTemplateGlass') && document.getElementById('hasTemplateGlass').checked);
+      if (tplOn) {
+        const none = document.getElementById('noGlass');
+        if (none && none.checked) {
+          none.checked = false;
+          const wrap = document.getElementById('glassFormWrap');
+          if (wrap) wrap.classList.remove('d-none');
+        }
+      }
+      const h = document.getElementById('glassHeight');
+      const w = document.getElementById('glassWidth');
+      if (h) h.placeholder = tplOn ? 'Height mm (optional)' : 'Height mm';
+      if (w) w.placeholder = tplOn ? 'Width mm (optional)' : 'Width mm';
     }
     function paintSavedGlassOffer() {
       const wrap = document.getElementById('savedGlassWrap');
@@ -5719,8 +5747,10 @@
       row.dataset.height = String(line.height);
       row.dataset.width = String(line.width);
       row.dataset.quantity = String(line.quantity);
-      row.innerHTML = '<div><div class="fw-bold">' + line.type + ' · ' + line.thickness + '</div>' +
-        '<div class="small text-muted">' + line.component + ' · ' + line.height + ' × ' + line.width + ' mm · qty ' + line.quantity + '</div></div>' +
+      if (kind === 'glass' && line.isTemplate) row.dataset.template = '1';
+      const tpl = kind === 'glass' && line.isTemplate;
+      row.innerHTML = '<div><div class="fw-bold">' + line.type + ' · ' + line.thickness + (tpl ? ' · template' : '') + '</div>' +
+        '<div class="small text-muted">' + line.component + ' · ' + (tpl ? 'Template glass' : (line.height + ' × ' + line.width + ' mm')) + ' · qty ' + line.quantity + '</div></div>' +
         '<button type="button" class="btn btn-sm btn-outline-danger" onclick="document.getElementById(\'' + rowId + '\').remove()"><i class="bi bi-trash"></i></button>';
       container.appendChild(row);
     }
@@ -5734,10 +5764,14 @@
         thickness: (document.getElementById('glassThickness') || {}).value || '',
         height: Number((document.getElementById('glassHeight') || {}).value),
         width: Number((document.getElementById('glassWidth') || {}).value),
-        quantity: Number((document.getElementById('glassQty') || {}).value)
+        quantity: Number((document.getElementById('glassQty') || {}).value),
+        isTemplate: !!(document.getElementById('hasTemplateGlass') && document.getElementById('hasTemplateGlass').checked)
       };
-      if (!line.component || !line.type || !line.thickness || !(line.height > 0) || !(line.width > 0) || !(line.quantity > 0)) {
-        showAlert('Choose component, glass type, thickness, height, width, and quantity.');
+      const needSize = !line.isTemplate && (!(line.height > 0) || !(line.width > 0));
+      if (!line.component || !line.type || !line.thickness || !(line.quantity > 0) || needSize) {
+        showAlert(line.isTemplate
+          ? 'Choose component, glass type, thickness, and quantity for template glass.'
+          : 'Choose component, glass type, thickness, height, width, and quantity.');
         return;
       }
       const noGlassBox = document.getElementById('noGlass');
@@ -5790,7 +5824,8 @@
           thickness: el.dataset.thickness,
           height: Number(el.dataset.height),
           width: Number(el.dataset.width),
-          quantity: Number(el.dataset.quantity)
+          quantity: Number(el.dataset.quantity),
+          isTemplate: el.dataset.template === '1'
         };
         if (kind === 'glass') line.glassType = line.type;
         else line.woodType = line.type;
@@ -6130,13 +6165,19 @@
             const glassSection = document.getElementById('glassOrderSection');
             if (glassSection) {
               const noGlass = !!(document.getElementById('noGlass') && document.getElementById('noGlass').checked);
+              const hasTemplate = !!(document.getElementById('hasTemplateGlass') && document.getElementById('hasTemplateGlass').checked);
               const glassRows = collectGlassWoodRows('#glassRowsContainer .glass-order-row', 'glass');
+              if (hasTemplate && noGlass) {
+                showAlert("Has template glass cannot be ticked together with This order has no glass."); return;
+              }
               if (noGlass) {
                 session.pendingGlassOrder = { noGlass: true };
               } else if (!glassRows.length) {
                 showAlert("Add the glass for this order, or tick This order has no glass."); return;
+              } else if (hasTemplate && !glassRows.some((row) => row.isTemplate)) {
+                showAlert("Tick Has template glass only after you add the template glass for this order."); return;
               } else {
-                session.pendingGlassOrder = glassRows;
+                session.pendingGlassOrder = { hasTemplate: hasTemplate || glassRows.some((row) => row.isTemplate), lines: glassRows };
               }
             } else {
               session.pendingGlassOrder = [];
