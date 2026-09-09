@@ -194,35 +194,61 @@ function pickDataFile() {
   return fallback;
 }
 
-const dbPath = pickDataFile();
-let state = emptyState();
-try {
-  const raw = fs.readFileSync(dbPath, "utf8");
-  const parsed = JSON.parse(raw);
+function applyParsedState(parsed) {
   const dropdowns = JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS));
-  if (parsed.dropdowns && typeof parsed.dropdowns === "object") {
+  if (parsed && parsed.dropdowns && typeof parsed.dropdowns === "object") {
     for (const key of DROPDOWN_KEYS) {
       if (Array.isArray(parsed.dropdowns[key])) dropdowns[key] = parsed.dropdowns[key];
     }
   }
+  const paymentsByOrder = parsed && parsed.paymentsByOrder && typeof parsed.paymentsByOrder === "object"
+    ? parsed.paymentsByOrder
+    : {};
   state = {
     ...emptyState(),
-    ...parsed,
-    orders: Array.isArray(parsed.orders) ? parsed.orders : [],
-    schedule_rows: Array.isArray(parsed.schedule_rows) ? parsed.schedule_rows : [],
-    schedule_cells: Array.isArray(parsed.schedule_cells) ? parsed.schedule_cells : [],
+    ...(parsed || {}),
+    orders: Array.isArray(parsed && parsed.orders) ? parsed.orders : [],
+    schedule_rows: Array.isArray(parsed && parsed.schedule_rows) ? parsed.schedule_rows : [],
+    schedule_cells: Array.isArray(parsed && parsed.schedule_cells) ? parsed.schedule_cells : [],
     dropdowns,
-    paymentsByOrder: parsed.paymentsByOrder && typeof parsed.paymentsByOrder === "object" ? parsed.paymentsByOrder : {},
-    enquiries: Array.isArray(parsed.enquiries) ? parsed.enquiries : [],
-    enquiry_dropdowns: parsed.enquiry_dropdowns && typeof parsed.enquiry_dropdowns === "object" ? parsed.enquiry_dropdowns : {}
+    paymentsByOrder,
+    enquiries: Array.isArray(parsed && parsed.enquiries) ? parsed.enquiries : [],
+    enquiry_dropdowns: parsed && parsed.enquiry_dropdowns && typeof parsed.enquiry_dropdowns === "object"
+      ? parsed.enquiry_dropdowns
+      : {}
   };
-  if (!Object.keys(state.paymentsByOrder).length && Array.isArray(parsed.orders)) {
+  if (!Object.keys(state.paymentsByOrder).length && Array.isArray(parsed && parsed.orders)) {
     parsed.orders.forEach((o) => {
       if (o && o.order_number && Array.isArray(o.payments) && o.payments.length) {
         state.paymentsByOrder[o.order_number] = o.payments;
       }
     });
   }
+}
+
+function reloadOfficeState() {
+  try {
+    const sqlite = require("./sqlite-store");
+    const fromSql = sqlite.loadOffice();
+    if (fromSql && ((fromSql.enquiries || []).length || Object.keys(fromSql.dropdowns || {}).length || (fromSql.schedule_rows || []).length || (fromSql.orders || []).length)) {
+      applyParsedState(fromSql);
+      save();
+      return state;
+    }
+  } catch (e) {}
+  try {
+    applyParsedState(JSON.parse(fs.readFileSync(dbPath, "utf8")));
+  } catch (e) {
+    state = emptyState();
+  }
+  return state;
+}
+
+const dbPath = pickDataFile();
+let state = emptyState();
+try {
+  const raw = fs.readFileSync(dbPath, "utf8");
+  applyParsedState(JSON.parse(raw));
   console.log("[db] opened", dbPath, "orders", state.orders.length);
   if (!parsed.dropdowns) save();
 } catch (e) {
@@ -2598,6 +2624,7 @@ module.exports = {
   db: null,
   dbPath,
   persist: save,
+  reloadOfficeState,
   persistenceInfo,
   railwayBackup,
   copyEnquiriesFromWorkbook,

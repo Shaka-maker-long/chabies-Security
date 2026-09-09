@@ -159,6 +159,24 @@ function persistWorkbook() {
   writeBookFile(getBook());
 }
 
+function reloadWorkbook() {
+  book = null;
+  try {
+    const data = require("./sqlite-store").loadWorkbookJson();
+    if (data) {
+      book = attachPersist(new Spreadsheet(null, "railway-local"));
+      book.loadFromJSON(data);
+      seedMissingTabs(book);
+      writeBookFile(book);
+      console.log("[workbook] reloaded from SQLite");
+      return book;
+    }
+  } catch (e) {
+    console.error("[workbook] sqlite reload failed", e && e.message ? e.message : e);
+  }
+  return initWorkbook();
+}
+
 function ordersEmpty(target) {
   const sheet = (target || getBook()).getSheetByName("ORDERS");
   return !sheet || sheet.getLastRow() < 2;
@@ -284,6 +302,7 @@ module.exports = {
   initWorkbook,
   getBook,
   persistWorkbook,
+  reloadWorkbook,
   ordersEmpty,
   usersEmpty,
   productionLogHasRows,

@@ -528,8 +528,25 @@ function dropSession(req) {
   const token = tokenFromReq(req);
   if (!token) return false;
   const had = sessions.delete(token);
-  if (had) persistSessions();
+  persistSessions();
   return had;
+}
+
+function keepRequestSession(req) {
+  const token = tokenFromReq(req);
+  if (!token) return null;
+  const profile = sessions.get(token);
+  if (!profile) return null;
+  return { token, profile: { ...profile } };
+}
+
+function reloadSessionsKeeping(kept) {
+  sessions.clear();
+  loadSessions();
+  if (kept && kept.token && kept.profile) {
+    sessions.set(kept.token, kept.profile);
+    persistSessions();
+  }
 }
 
 function durationHoursFromRow(r) {
@@ -604,6 +621,8 @@ module.exports = {
   createSession,
   readSession,
   dropSession,
+  keepRequestSession,
+  reloadSessionsKeeping,
   persistSessions,
   sessionCount: () => sessions.size,
   listDurations,

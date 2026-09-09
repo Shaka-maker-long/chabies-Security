@@ -636,6 +636,19 @@ function checkpoint() {
   return fs.existsSync(sqlitePath());
 }
 
+function close() {
+  if (!opened) return;
+  try { opened.exec("PRAGMA wal_checkpoint(TRUNCATE);"); } catch (e) {}
+  try { opened.close(); } catch (e) {}
+  opened = null;
+  openedPath = "";
+}
+
+function reopen() {
+  close();
+  return open();
+}
+
 function info() {
   const n = counts();
   return {
@@ -672,5 +685,7 @@ module.exports = {
   loadSessions,
   importIfEmpty,
   checkpoint,
+  close,
+  reopen,
   info
 };
