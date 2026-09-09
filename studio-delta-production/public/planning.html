@@ -73,11 +73,18 @@
     table.sheet td.day .bar.start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
     table.sheet td.day .bar.end { border-top-right-radius:8px; border-bottom-right-radius:8px; }
     table.sheet tr.group-start td { border-top:2px solid #d0d5dd; }
+    .crumb { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px; }
+    table.grid { border-collapse:collapse; width:100%; background:#fff; font-size:13px; }
+    table.grid th, table.grid td { border:1px solid var(--line); padding:8px 10px; text-align:center; vertical-align:middle; }
+    table.grid th { background:var(--head); font-size:12px; }
+    table.grid th.corner, table.grid td.corner { text-align:left; font-weight:700; font-family: Outfit, Inter, sans-serif; min-width:110px; background:#fff; }
+    table.grid thead th.corner { background:var(--head); }
+    table.grid th.week, table.grid th.day { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+    table.grid th.week:hover, table.grid th.day:hover { color:#1d2939; background:#e4e7ec; }
+    table.grid td.codes { font-weight:700; letter-spacing:.02em; }
+    table.grid td.slot { min-width:52px; padding:4px 2px; font-weight:700; }
+    table.grid .chip { display:inline-block; min-width:22px; padding:2px 6px; border-radius:4px; border:1px solid transparent; cursor:grab; }
     .week-list { background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
-    .week-list button.row { display:grid; grid-template-columns: 140px 1fr 140px 140px; gap:8px; width:100%; text-align:left; background:#fff; color:inherit; border:0; border-bottom:1px solid var(--line); border-radius:0; padding:14px 16px; font-weight:500; }
-    .week-list button.row:hover { background:#f8fafc; }
-    .week-list button.row b { font-family: Outfit, Inter, sans-serif; }
-    .week-list .head { display:grid; grid-template-columns: 140px 1fr 140px 140px; gap:8px; padding:10px 16px; background:var(--head); font-size:11px; font-weight:700; color:#344054; text-transform:uppercase; }
     .outlook { min-width:720px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff; }
     .ol-head, .ol-body { display:grid; }
     .ol-head { background:var(--head); border-bottom:1px solid var(--line); }
@@ -138,7 +145,7 @@
         <label>Person <select id="personA" aria-label="Person"></select></label>
         <label>Compare with <select id="personB" aria-label="Compare with"><option value="">None</option></select></label>
         <button class="ghost" type="button" id="addOther">Add other task</button>
-        <span class="msg">Drag to shift or swap. Double-click an empty slot for an other task. Shaded: Production Meeting, Lunch, Cleaning</span>
+        <span class="msg">Drag a job to a free slot. Only later tasks on that same order move. People do not overlap. Double-click an empty slot for an other task. Shaded: Production Meeting, Lunch, Cleaning</span>
       </div>
     </div>
   </header>
@@ -179,7 +186,7 @@
       </div>
     </form>
   </div>
-  <script src="/office-auth.js?v=planning-tabs"></script>
+  <script src="/office-auth.js?v=planning-journey"></script>
   <script>
     const DAY_START = 7 * 60 + 45;
     const DAY_SPAN = 8 * 60;
@@ -198,6 +205,9 @@
     let week = "";
     let view = "planning";
     let openJourneyId = "";
+    let journeyLevel = "weeks";
+    let journeyWeekStart = "";
+    let journeyDay = "";
     let personA = "";
     let personB = "";
     const openOrders = {};
@@ -328,52 +338,175 @@
       const days = (board && board.weekDays) || [];
       document.getElementById("weekLabel").textContent = days.length ? days[0].label + " – " + days[4].label : "";
     }
-    function renderWeekList() {
-      const box = document.getElementById("calendars");
-      const rows = (board && board.weekStarting) || [];
-      fillWeekLabel();
-      if (!rows.length) {
-        box.innerHTML = "<div class='empty'>No orders are planned to start this week. Schedule work on Planning, or go to another week.</div>";
-        return;
-      }
-      box.innerHTML = "<h2>This week's orders</h2><p class='help'>Orders planned to start this week. Click an order for the visual journey.</p><div class='week-list'><div class='head'><span>Order</span><span>Product</span><span>Start date</span><span>End date</span></div>" +
-        rows.map((o) => {
-          return "<button type='button' class='row' data-open-journey=\"" + esc(o.orderId) + "\"><b>" + esc(o.orderId) + "</b><span>" + esc(o.product || "") + "</span><span>" + esc(prettyDate(o.start)) + "</span><span>" + esc(prettyDate(o.end)) + "</span></button>";
-        }).join("") + "</div>";
+    function codeOf(process) {
+      return (board && board.processCodes && board.processCodes[process]) || String(process || "").slice(0, 2);
     }
-    function renderOrderJourney(orderId) {
+    function weekWindow() {
+      return (board && board.journeyWeeks) || [];
+    }
+    function codesOnDays(rows, dayIsos) {
+      const seen = {};
+      const out = [];
+      (rows || []).forEach((row) => {
+        const hit = (row.days || []).some((iso) => dayIsos.indexOf(iso) !== -1);
+        if (!hit) return;
+        const code = row.code || codeOf(row.process);
+        if (seen[code]) return;
+        seen[code] = true;
+        out.push({ code: code, process: row.process, blockId: row.blockId, workerName: row.workerName });
+      });
+      return out;
+    }
+    function chipHtml(item) {
+      const c = color(item.process);
+      return "<span class='chip' data-block=\"" + esc(item.blockId || "") + "\" data-kind='work' title=\"" + esc(item.process + " · " + (item.workerName || "")) + "\" style='background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" + esc(item.code) + "</span>";
+    }
+    function journeyOrders() {
+      return ((board && board.journey && board.journey.orders) || []).slice();
+    }
+    function selectedOrder() {
+      return journeyOrders().find((o) => o.orderId === openJourneyId) || null;
+    }
+    function selectedWeek() {
+      const weeks = weekWindow();
+      return weeks.find((w) => w.start === journeyWeekStart) || weeks[0] || null;
+    }
+    function renderJourneyCrumb() {
+      const bits = ["<button class='ghost' type='button' data-journey-level='weeks'>Journey</button>"];
+      if (journeyLevel === "days" || journeyLevel === "times") {
+        const w = selectedWeek();
+        bits.push("<button class='ghost' type='button' data-journey-level='days'>" + esc(w ? w.label : "Week") + "</button>");
+      }
+      if (journeyLevel === "times" && journeyDay) {
+        bits.push("<strong>" + esc(prettyDate(journeyDay)) + "</strong>");
+      }
+      if (openJourneyId) bits.push("<span class='msg'>" + esc(openJourneyId) + "</span>");
+      return "<div class='crumb'>" + bits.join(" ") + "</div>";
+    }
+    function renderJourneyWeeks() {
       const box = document.getElementById("calendars");
-      const journey = board && board.journey;
-      const order = ((journey && journey.orders) || []).find((o) => o.orderId === orderId);
-      if (!order) {
-        openJourneyId = "";
-        renderWeekList();
+      const weeks = weekWindow();
+      const orders = journeyOrders();
+      fillWeekLabel();
+      if (!orders.length) {
+        box.innerHTML = "<div class='empty'>No orders are on the plan yet. Schedule work on Planning first.</div>";
         return;
       }
-      const days = (journey && journey.days) || [];
-      const head = "<th class='sticky c-order'>Order</th><th class='sticky c-worker'>Worker</th><th class='sticky c-task'>Task</th>" +
-        days.map((d) => "<th>" + esc(d.label) + "</th>").join("");
-      const body = order.rows.map((row, i) => {
-        const c = color(row.process);
-        const cells = days.map((d) => {
-          const on = row.days.indexOf(d.iso) !== -1;
-          if (!on) return "<td class='day'></td>";
-          const title = esc(row.process + " · " + row.workerName + " · " + hhmm(row.start) + "–" + hhmm(row.end));
-          return "<td class='day'><span class='" + barClass(row.days, d.iso) + "' title=\"" + title + "\" style='background:" + c.bg + ";border-color:" + c.border + "'></span></td>";
+      const head = "<th class='corner'>Order</th>" + weeks.map((w) => "<th class='week' data-week=\"" + esc(w.start) + "\">" + esc(w.label) + "</th>").join("");
+      const body = orders.map((o) => {
+        const cells = weeks.map((w) => {
+          const isos = (w.days || []).map((d) => d.iso);
+          const codes = codesOnDays(o.rows, isos);
+          return "<td class='codes' data-week=\"" + esc(w.start) + "\" data-open-order=\"" + esc(o.orderId) + "\">" +
+            (codes.length ? codes.map(chipHtml).join(", ") : "") + "</td>";
         }).join("");
-        const orderCell = i === 0
-          ? "<td class='sticky c-order' rowspan=\"" + order.rows.length + "\">" + esc(order.orderId) + "</td>"
-          : "";
-        return "<tr class='" + (i === 0 ? "group-start" : "") + "'>" + orderCell +
-          "<td class='sticky c-worker'>" + esc(row.workerName) + "</td>" +
-          "<td class='sticky c-task'>" + esc(row.process) + "</td>" + cells + "</tr>";
+        return "<tr><td class='corner'>" + esc(o.orderId) + "</td>" + cells + "</tr>";
       }).join("");
-      box.innerHTML = "<p><button class='ghost' type='button' id='backWeekList'>← This week's orders</button></p>" +
-        "<div class='sheet-wrap'><table class='sheet'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
-      document.getElementById("backWeekList").onclick = () => {
-        openJourneyId = "";
-        renderBoard();
-      };
+      box.innerHTML = renderJourneyCrumb() +
+        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. Click a week number for the daily breakdown. Drag a letter on the day or time view to a free slot — only later tasks on that order move.</p>" +
+        "<div class='sheet-wrap'><table class='grid'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+    }
+    function peopleForJourney(order, week) {
+      const isos = ((week && week.days) || []).map((d) => d.iso);
+      const names = {};
+      const rows = order ? (order.rows || []) : journeyOrders().reduce((all, o) => all.concat(o.rows || []), []);
+      rows.forEach((row) => {
+        if ((row.days || []).some((iso) => isos.indexOf(iso) !== -1)) {
+          names[row.workerName || row.workerId] = { id: row.workerId, name: row.workerName || row.workerId };
+        }
+      });
+      return Object.keys(names).sort().map((k) => names[k]);
+    }
+    function rowOnDay(row, dayIso) {
+      return (row.days || []).indexOf(dayIso) !== -1;
+    }
+    function renderJourneyDays() {
+      const box = document.getElementById("calendars");
+      const week = selectedWeek();
+      if (!week) {
+        journeyLevel = "weeks";
+        renderJourneyWeeks();
+        return;
+      }
+      const order = selectedOrder();
+      const days = week.days || [];
+      const people = peopleForJourney(order, week);
+      fillWeekLabel();
+      if (!people.length) {
+        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is planned in this week.</div>";
+        return;
+      }
+      const title = order ? order.orderId : week.label;
+      const head = "<tr><th class='corner' colspan=\"" + (days.length + 1) + "\">" + esc(week.label) + (order ? " · " + esc(order.orderId) : "") + "</th></tr>" +
+        "<tr><th class='corner'>" + esc(title) + "</th>" + days.map((d) => "<th class='day' data-day=\"" + esc(d.iso) + "\">" + esc(d.weekday) + "</th>").join("") + "</tr>";
+      const body = people.map((p) => {
+        const cells = days.map((d) => {
+          const rows = (order ? order.rows : journeyOrders().reduce((all, o) => all.concat(o.rows || []), []))
+            .filter((row) => String(row.workerId) === String(p.id) && rowOnDay(row, d.iso));
+          const html = rows.map((row) => chipHtml({
+            code: row.code || codeOf(row.process),
+            process: row.process,
+            blockId: row.blockId,
+            workerName: row.workerName
+          })).join(" ");
+          return "<td data-day=\"" + esc(d.iso) + "\" data-worker=\"" + esc(p.id) + "\">" + html + "</td>";
+        }).join("");
+        return "<tr><td class='corner'>" + esc(p.name) + "</td>" + cells + "</tr>";
+      }).join("");
+      box.innerHTML = renderJourneyCrumb() +
+        "<p class='help'>Click a day for the 15-minute grid. Drag a letter to another free day.</p>" +
+        "<div class='sheet-wrap'><table class='grid'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
+    }
+    function timeSlots() {
+      const out = [];
+      for (let m = 7 * 60 + 45; m < 15 * 60 + 45; m += 15) {
+        if (m >= 12 * 60 && m < 12 * 60 + 30) continue;
+        out.push(m);
+      }
+      return out;
+    }
+    function rowCoversSlot(row, dayIso, min) {
+      if (!rowOnDay(row, dayIso)) return false;
+      const start = dateOf(row.start) === dayIso ? minutesOf(row.start) : DAY_START;
+      let end = dateOf(row.end) === dayIso ? minutesOf(row.end) : 15 * 60 + 45;
+      if (dateOf(row.end) === dayIso && minutesOf(row.end) === 0) return false;
+      return min >= start && min < end;
+    }
+    function renderJourneyTimes() {
+      const box = document.getElementById("calendars");
+      const week = selectedWeek();
+      const dayIso = journeyDay;
+      if (!week || !dayIso) {
+        journeyLevel = "days";
+        renderJourneyDays();
+        return;
+      }
+      const order = selectedOrder();
+      const slots = timeSlots();
+      const people = peopleForJourney(order, week);
+      fillWeekLabel();
+      const head = "<th class='corner'>" + esc(order ? order.orderId : prettyDate(dayIso)) + "</th>" +
+        slots.map((m) => "<th>" + esc(pad2(Math.floor(m / 60)) + ":" + pad2(m % 60)) + "</th>").join("");
+      const labelRow = order
+        ? "<tr><td class='corner'>" + esc(order.orderId) + "</td>" + slots.map(() => "<td></td>").join("") + "</tr>"
+        : "";
+      const body = people.map((p) => {
+        const cells = slots.map((m) => {
+          const rows = (order ? order.rows : journeyOrders().reduce((all, o) => all.concat(o.rows || []), []))
+            .filter((row) => String(row.workerId) === String(p.id) && rowCoversSlot(row, dayIso, m));
+          const html = rows.map((row) => chipHtml({
+            code: row.code || codeOf(row.process),
+            process: row.process,
+            blockId: row.blockId,
+            workerName: row.workerName
+          })).join("");
+          return "<td class='slot' data-day=\"" + esc(dayIso) + "\" data-min=\"" + m + "\" data-worker=\"" + esc(p.id) + "\" data-slot='1'>" + html + "</td>";
+        }).join("");
+        return "<tr><td class='corner'>" + esc(p.name) + "</td>" + cells + "</tr>";
+      }).join("");
+      box.innerHTML = renderJourneyCrumb() +
+        "<p class='help'>15-minute slots, paid hours only. Drag a letter to a free time. That person cannot overlap.</p>" +
+        "<div class='sheet-wrap'><table class='grid'><thead><tr>" + head + "</tr></thead><tbody>" + labelRow + body + "</tbody></table></div>";
     }
     function clipToDay(block, dayIso) {
       const start = dateOf(block.start);
@@ -462,8 +595,9 @@
       box.innerHTML = "<div class='outlook'>" + head + "<div class='ol-body' style='grid-template-columns: var(--gutter) repeat(" + cols + ", 1fr)'><div class='time-col'>" + ticks + "</div>" + daysHtml + "</div></div>";
     }
     function renderJourney() {
-      if (openJourneyId) renderOrderJourney(openJourneyId);
-      else renderWeekList();
+      if (journeyLevel === "times") renderJourneyTimes();
+      else if (journeyLevel === "days") renderJourneyDays();
+      else renderJourneyWeeks();
     }
     function renderBoard() {
       renderLegend();
@@ -586,8 +720,9 @@
         return;
       }
       await load(week);
-      setView("people", false);
-      setStatus("Plan updated. Downstream work on other people moved with it.");
+      if (view === "people") setView("people", false);
+      else renderBoard();
+      setStatus("Moved. Later tasks on that order were rescheduled. Other orders stayed put.");
     }
     async function addOtherTask() {
       const titlePreset = document.getElementById("otherPreset").value;
@@ -612,8 +747,9 @@
       }
       closeOther();
       await load(week);
-      setView("people", false);
-      setStatus("Added " + title + " and shifted later work.");
+      if (view === "people") setView("people", false);
+      else renderBoard();
+      setStatus("Added " + title + " in a free slot.");
     }
     async function removeOther(id) {
       const r = await sdOfficeFetch("/api/office/planning/blocks/" + encodeURIComponent(id), { method: "DELETE" });
@@ -631,14 +767,22 @@
     function dropTarget(clientX, clientY) {
       const el = document.elementFromPoint(clientX, clientY);
       if (!el) return null;
+      const slot = el.closest("[data-slot]");
+      if (slot) {
+        return {
+          day: slot.getAttribute("data-day") || "",
+          worker: slot.getAttribute("data-worker") || "",
+          min: Number(slot.getAttribute("data-min") || DAY_START)
+        };
+      }
       const lane = el.closest("[data-worker]");
       const day = el.closest("[data-day]");
       const host = lane || day;
       if (!host) return null;
       return {
-        day: (day && day.getAttribute("data-day")) || "",
+        day: (day && day.getAttribute("data-day")) || host.getAttribute("data-day") || "",
         worker: (lane && lane.getAttribute("data-worker")) || (day && day.getAttribute("data-worker")) || "",
-        min: minFromPoint(host, clientY)
+        min: host.getAttribute("data-min") != null ? Number(host.getAttribute("data-min")) : minFromPoint(host, clientY)
       };
     }
     window.addEventListener("hashchange", () => setView(viewFromHash(), false));
@@ -679,7 +823,7 @@
       addOtherTask();
     };
     document.getElementById("calendars").addEventListener("pointerdown", (e) => {
-      if (view !== "people") return;
+      if (view !== "people" && view !== "journey") return;
       const kill = e.target.closest("[data-remove-block]");
       if (kill) return;
       const ev = e.target.closest("[data-block]");
@@ -713,6 +857,35 @@
       moveTo(cur.id, isoAt(hit.day, hit.min));
     });
     document.getElementById("calendars").addEventListener("click", (e) => {
+      const level = e.target.closest("[data-journey-level]");
+      if (level) {
+        journeyLevel = level.getAttribute("data-journey-level") || "weeks";
+        if (journeyLevel === "weeks") {
+          openJourneyId = "";
+          journeyDay = "";
+        }
+        if (journeyLevel === "days") journeyDay = "";
+        renderBoard();
+        return;
+      }
+      const weekBtn = e.target.closest("[data-week]");
+      if (weekBtn && view === "journey") {
+        journeyWeekStart = weekBtn.getAttribute("data-week") || "";
+        const orderHit = e.target.closest("[data-open-order]");
+        if (orderHit) openJourneyId = orderHit.getAttribute("data-open-order") || "";
+        else if (weekBtn.getAttribute("data-open-order")) openJourneyId = weekBtn.getAttribute("data-open-order") || "";
+        journeyLevel = "days";
+        journeyDay = "";
+        renderBoard();
+        return;
+      }
+      const dayBtn = e.target.closest("[data-day]");
+      if (dayBtn && view === "journey" && !e.target.closest("[data-block]")) {
+        journeyDay = dayBtn.getAttribute("data-day") || "";
+        journeyLevel = "times";
+        renderBoard();
+        return;
+      }
       const open = e.target.closest("[data-open-journey]");
       if (open) {
         openJourneyId = open.getAttribute("data-open-journey");
