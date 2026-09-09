@@ -2,14 +2,13 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { spawnSync } = require("child_process");
-const { dataDir, persistWorkbook, hasGoogleAuth } = require("./workbook-store");
+const { dataDir, persistWorkbook, hasGoogleAuth, parseGoogleCredentials, googleServiceAccountEmail } = require("./workbook-store");
 const sqlite = require("./sqlite-store");
 
 const KEEP_LOCAL = 14;
 const KEEP_DRIVE = 14;
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
 const MAIL_ATTACH_MAX = 12 * 1024 * 1024;
-const FOLDER_NAME = "Studio Delta ERP backups";
 const SAFE_NAME = /^studio-delta-[A-Za-z0-9._-]+$/;
 const CONFIRM_WORD = "RESTORE";
 const SKIP_LIVE = new Set([
@@ -56,10 +55,6 @@ function backupsDir() {
 
 function statusPath() {
   return path.join(backupsDir(), "last.json");
-}
-
-function folderStatePath() {
-  return path.join(backupsDir(), "drive-folder.json");
 }
 
 function restoreLogPath() {
@@ -364,26 +359,45 @@ function mailTo() {
   return String(process.env.BACKUP_EMAIL || process.env.GMAIL_SENDER || "").trim();
 }
 
-function ensureDriveFolder() {
-  const configured = String(process.env.BACKUP_DRIVE_FOLDER_ID || "").trim();
-  if (configured) return { id: configured, created: false };
-  const saved = readJson(folderStatePath(), null);
-  if (saved && saved.id) return { id: saved.id, created: false };
-  const listed = driveRpc({ op: "listFoldersByName", name: FOLDER_NAME });
-  const existing = (listed.files || [])[0];
-  if (existing && existing.id) {
-    writeJson(folderStatePath(), { id: existing.id, name: FOLDER_NAME });
-    return { id: existing.id, created: false };
+function normalizeFolderId(raw) {
+  let s = String(raw || "").trim();
+  if ((s.charAt(0) === '"' && s.slice(-1) === '"') || (s.charAt(0) === "'" && s.slice(-1) === "'")) {
+    s = s.slice(1, -1).trim();
   }
-  const created = driveRpc({ op: "createFolder", name: FOLDER_NAME });
+  const folder = s.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  if (folder) return folder[1];
+  const byId = s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (byId) return byId[1];
+  return s;
+}
+
+function configuredFolderId() {
+  return normalizeFolderId(process.env.BACKUP_DRIVE_FOLDER_ID);
+}
+
+function probeDriveFolder(folderId, email) {
+  let meta;
+  try {
+    meta = driveRpc({ op: "getFile", fileId: folderId });
+  } catch (e) {
+    throw new Error(
+      "The service account " + (email || "(unknown)") +
+      " cannot open that Drive folder. Open the folder → Share → add that email as Editor (not Viewer). Enable the Google Drive API on the Google Cloud project. " +
+      (e.message || String(e))
+    );
+  }
+  if (meta.mimeType && meta.mimeType !== "application/vnd.google-apps.folder") {
+    throw new Error("BACKUP_DRIVE_FOLDER_ID must be a folder ID, not a file.");
+  }
+  return meta;
+}
+
+function shareUploaded(fileId) {
   const email = shareEmail();
-  if (email) {
-    try { driveRpc({ op: "shareWithEmail", fileId: created.id, email, role: "writer" }); } catch (e) {
-      console.warn("[backup] could not share Drive folder", e.message || e);
-    }
+  if (!email || !fileId) return;
+  try { driveRpc({ op: "shareWithEmail", fileId, email, role: "writer" }); } catch (e) {
+    console.warn("[backup] could not share uploaded Drive file", e.message || e);
   }
-  writeJson(folderStatePath(), { id: created.id, name: FOLDER_NAME, url: created.url || null });
-  return { id: created.id, created: true, url: created.url || null };
 }
 
 function pruneDrive(folderId) {
@@ -399,35 +413,58 @@ function pruneDrive(folderId) {
   });
 }
 
+function driveReady() {
+  if (!hasGoogleAuth()) {
+    return { ok: false, offsite: false, reason: "Google Drive is not configured on Railway" };
+  }
+  const creds = parseGoogleCredentials();
+  if (!creds.ok) {
+    return { ok: false, offsite: false, offsiteError: creds.error, serviceAccount: null };
+  }
+  const folderId = configuredFolderId();
+  if (!folderId) {
+    return {
+      ok: false,
+      offsite: false,
+      offsiteError: "Set BACKUP_DRIVE_FOLDER_ID on Railway to the folder ID from the Drive URL, then share that folder with " + creds.email + " as Editor.",
+      serviceAccount: creds.email
+    };
+  }
+  return { ok: true, email: creds.email, folderId };
+}
+
 function uploadOffsite(localDb, localJson, archivePath, completePath) {
-  if (!hasGoogleAuth()) return { offsite: false, reason: "Google Drive is not configured on Railway" };
+  const ready = driveReady();
+  if (!ready.ok) return ready;
   if (!completePath || !fs.existsSync(completePath)) {
     throw new Error("Complete restore archive was not built, so nothing was sent to Drive.");
   }
-  const folder = ensureDriveFolder();
+  probeDriveFolder(ready.folderId, ready.email);
   const zipUp = driveRpc({
     op: "uploadFile",
     path: completePath,
     name: path.basename(completePath),
-    folderId: folder.id,
+    folderId: ready.folderId,
     mimeType: "application/gzip"
   });
+  shareUploaded(zipUp.id);
   let driveId = zipUp.id;
   let driveUrl = zipUp.url || null;
   if (localDb && fs.existsSync(localDb)) {
     try {
-      driveRpc({
+      const dbUp = driveRpc({
         op: "uploadFile",
         path: localDb,
         name: path.basename(localDb),
-        folderId: folder.id,
+        folderId: ready.folderId,
         mimeType: "application/vnd.sqlite3"
       });
+      shareUploaded(dbUp.id);
     } catch (e) {
       console.warn("[backup] Drive SQLite upload failed", e.message || e);
     }
   }
-  try { pruneDrive(folder.id); } catch (e) {
+  try { pruneDrive(ready.folderId); } catch (e) {
     console.warn("[backup] Drive prune failed", e.message || e);
   }
   return {
@@ -435,9 +472,65 @@ function uploadOffsite(localDb, localJson, archivePath, completePath) {
     driveId,
     driveUrl,
     filesUrl: driveUrl,
-    folderId: folder.id,
+    folderId: ready.folderId,
+    serviceAccount: ready.email,
     completeDrive: path.basename(completePath)
   };
+}
+
+function testDriveUpload() {
+  const ready = driveReady();
+  if (!ready.ok) {
+    const err = new Error(ready.offsiteError || ready.reason || "Google Drive is not configured");
+    err.detail = ready;
+    throw err;
+  }
+  probeDriveFolder(ready.folderId, ready.email);
+  const tmp = path.join(backupsDir(), "studio-delta-drive-check.txt");
+  fs.writeFileSync(tmp, "Studio Delta Drive check " + new Date().toISOString() + "\nShare this folder with " + ready.email + " as Editor.\n");
+  try {
+    const up = driveRpc({
+      op: "uploadFile",
+      path: tmp,
+      name: "studio-delta-drive-check.txt",
+      folderId: ready.folderId,
+      mimeType: "text/plain"
+    });
+    shareUploaded(up.id);
+    return {
+      ok: true,
+      offsite: true,
+      name: "studio-delta-drive-check.txt",
+      driveId: up.id || null,
+      driveUrl: up.url || null,
+      folderId: ready.folderId,
+      serviceAccount: ready.email
+    };
+  } finally {
+    rmQuiet(tmp);
+  }
+}
+
+function retryOffsite() {
+  const last = loadStatus();
+  if (!last || !last.ok || last.offsite) return last;
+  const ready = driveReady();
+  if (!ready.ok) return last;
+  const complete = last.complete ? path.join(backupsDir(), last.complete) : latestCompletePath();
+  const dbFile = last.localDb ? path.join(backupsDir(), last.localDb) : null;
+  if (!complete || !fs.existsSync(complete)) return last;
+  try {
+    const off = uploadOffsite(dbFile, null, null, complete);
+    const next = Object.assign({}, last, off, { offsiteError: null, reason: last.reason || "retry-offsite" });
+    writeJson(statusPath(), next);
+    console.log("[backup] off-site retry ok", next.completeDrive || next.complete);
+    return next;
+  } catch (e) {
+    const next = Object.assign({}, last, { offsite: false, offsiteError: e.message || String(e), serviceAccount: ready.email });
+    writeJson(statusPath(), next);
+    console.warn("[backup] off-site retry failed", next.offsiteError);
+    return next;
+  }
 }
 
 function sendBackupMail(status, localDb) {
@@ -543,8 +636,8 @@ function isDue(status) {
 function tick() {
   if (running || restoring) return null;
   try {
-    if (!isDue(loadStatus())) return null;
-    return runBackup("scheduled");
+    if (isDue(loadStatus())) return runBackup("scheduled");
+    return retryOffsite();
   } catch (e) {
     console.error("[backup] tick failed", e && e.message ? e.message : e);
     return null;
@@ -567,12 +660,16 @@ function info() {
     backupAt: last && last.at ? last.at : null,
     backupOk: !!(last && last.ok),
     backupOffsite: !!(last && last.offsite),
+    backupOffsiteError: last && last.offsiteError ? last.offsiteError : null,
     backupStale: stale,
     backupError: last && last.error ? last.error : null,
     backupDriveUrl: last && last.driveUrl ? last.driveUrl : null,
     backupLocalCount: listLocalSnapshots().length,
     backupKeepDays: KEEP_LOCAL,
     backupGoogleConfigured: hasGoogleAuth(),
+    backupServiceAccount: googleServiceAccountEmail(),
+    backupDriveFolderSet: !!configuredFolderId(),
+    backupDriveFolderId: configuredFolderId() || null,
     backupEmail: mailTo() || null,
     backupVerified: !!(last && last.ok && last.verified),
     backupComplete: last && last.complete ? last.complete : null,
@@ -769,5 +866,8 @@ module.exports = {
   restoreNamed,
   saveUploadedBackup,
   latestCompletePath,
+  testDriveUpload,
+  retryOffsite,
+  normalizeFolderId,
   CONFIRM_WORD
 };

@@ -1072,6 +1072,19 @@ function mountOffice(app) {
     }
   });
 
+  app.post("/api/office/backups/drive-test", requireOffice, (_req, res) => {
+    if (!staff.canManageUsers(_req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can test Google Drive." });
+      return;
+    }
+    try {
+      const result = require("./backup").testDriveUpload();
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e), ...(e.detail || {}) });
+    }
+  });
+
   app.get("/api/office/backups/file/:name", requireOffice, (req, res) => {
     if (!staff.canManageUsers(req.office)) {
       res.status(403).json({ ok: false, error: "Only the Manager can download backups." });

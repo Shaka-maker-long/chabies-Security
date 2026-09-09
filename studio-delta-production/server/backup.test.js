@@ -125,4 +125,26 @@ assert.throws(() => staff.checkRestoreSecrets(actor, { confirm: "RESTORE", passw
 assert.throws(() => staff.checkRestoreSecrets(actor, { confirm: "yes", password: "x", confirmPassword: "x" }), /RESTORE/);
 staff.checkRestoreSecrets(actor, { confirm: "RESTORE", password: "x", confirmPassword: "x" });
 
+assert.strictEqual(backup.normalizeFolderId("https://drive.google.com/drive/folders/AbC123_xYz?usp=sharing"), "AbC123_xYz");
+assert.strictEqual(backup.normalizeFolderId("AbC123_xYz"), "AbC123_xYz");
+
+const { parseGoogleCredentials } = require("./workbook-store");
+process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify(JSON.stringify({
+  type: "service_account",
+  client_email: "bot@x.iam.gserviceaccount.com"
+}));
+assert.strictEqual(parseGoogleCredentials().email, "bot@x.iam.gserviceaccount.com");
+
+process.env.GOOGLE_SERVICE_ACCOUNT_JSON = JSON.stringify({
+  type: "service_account",
+  client_email: "bot@x.iam.gserviceaccount.com",
+  private_key: "x"
+});
+delete process.env.BACKUP_DRIVE_FOLDER_ID;
+const missingFolder = backup.runBackup("drive-folder-missing");
+assert.ok(missingFolder.ok, missingFolder.error || "local backup still runs without a Drive folder");
+assert.strictEqual(missingFolder.offsite, false);
+assert.ok(/BACKUP_DRIVE_FOLDER_ID/.test(missingFolder.offsiteError || ""), missingFolder.offsiteError);
+delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+
 console.log("backup.test.js ok");

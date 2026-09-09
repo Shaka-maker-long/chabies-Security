@@ -55,8 +55,11 @@
       <p class="help">A complete <b>.tgz</b> is written every night at 02:00 Johannesburg and when you click <b>Backup now</b>. That file packs <b>everything the shop writes on the Railway volume</b>: SQLite (orders, enquiries, users, production logs, schedule, rates, to-order lists, payments), JSON sidecars, quotes, drawings, proofs of payment, paint and glass invoices, job cards and images, glass PDF images, showroom bookings, email-reply templates, and the Home floor layout. It is opened and integrity-checked before it is kept.</p>
       <p class="help" id="volumeLine"></p>
       <p class="help" id="backupDetail"></p>
+      <p class="help warn" id="driveError" hidden></p>
+      <p class="help" id="driveAccount"></p>
       <div class="actions">
         <button type="button" onclick="runBackup()">Backup now</button>
+        <button class="ghost" type="button" onclick="testDrive()">Send test file to Drive</button>
         <button class="ghost" type="button" onclick="downloadComplete()">Download complete backup</button>
         <button class="ghost" type="button" onclick="downloadSqlite()">Download SQLite only</button>
         <button class="ghost" type="button" onclick="downloadBackup()">Download JSON</button>
@@ -64,14 +67,14 @@
     </section>
     <section class="card">
       <h2>Turn on Google Drive</h2>
-      <p class="help">Drive is not a switch in this app. Set it on the <b>Railway service → Variables</b>. Until those exist, Backup now still saves on this disk and says “Drive not uploaded”.</p>
+      <p class="help">Putting variables on Railway does <b>not</b> copy files into Drive by itself. After a deploy, click <b>Backup now</b> or <b>Send test file to Drive</b>. If the folder is still empty, the red error on this page is the reason (almost always: the folder is not shared with the service-account email as Editor).</p>
       <ol class="steps">
         <li>Keep <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> — the same service-account JSON used for QC PDFs. Open it and copy <code>client_email</code> (it ends in <code>.iam.gserviceaccount.com</code>).</li>
         <li>In Google Drive, create a folder such as <b>Studio Delta ERP backups</b>.</li>
         <li>Share that folder with the <code>client_email</code> as <b>Editor</b> (not Viewer).</li>
         <li>Open the folder. The URL looks like <code>https://drive.google.com/drive/folders/THIS_PART</code>. Put <code>THIS_PART</code> on Railway as <code>BACKUP_DRIVE_FOLDER_ID</code>.</li>
         <li>Optional: <code>BACKUP_EMAIL</code> or <code>GMAIL_SENDER</code> so a “backup OK” mail goes out.</li>
-        <li>Wait for Railway to pick up the variables, then click <b>Backup now</b>. Success must say sent to Google Drive. <code>/health</code> should show <code>backupOffsite: true</code>.</li>
+        <li>Wait for Railway to pick up the variables, then click <b>Send test file to Drive</b>. A file named <code>studio-delta-drive-check.txt</code> must appear in the folder. Then click <b>Backup now</b>. Success must say sent to Google Drive.</li>
       </ol>
       <p class="help">QC photos taken on the tablet go into Google Docs. They are not files on this volume, so they are not inside the .tgz. Everything under <code>/app/data</code> is.</p>
     </section>
@@ -215,7 +218,16 @@
       }
       document.getElementById("status").textContent = j.offsite
         ? "Backup saved, checked, and sent to Google Drive"
-        : "Backup saved and checked (Drive not uploaded)";
+        : ("Backup saved on this disk, but Drive did not receive it" + (j.offsiteError ? ": " + j.offsiteError : ""));
+      loadBackup();
+    }
+    async function testDrive() {
+      document.getElementById("status").textContent = "Sending a test file to Google Drive…";
+      const r = await sdOfficeFetch("/api/office/backups/drive-test", { method: "POST" });
+      const j = await r.json();
+      document.getElementById("status").textContent = j.ok
+        ? "Test file sent. Open the Drive folder — studio-delta-drive-check.txt should be there."
+        : (j.error || "Drive test failed");
       loadBackup();
     }
     function backupWhen(iso) {
@@ -254,10 +266,29 @@
         if (j.backupCounts) bits.push("Users " + j.backupCounts.users + ", orders " + j.backupCounts.orders + ", enquiries " + j.backupCounts.enquiries + ".");
         if (j.backupPackedAll) bits.push("Last copy packed every file on the volume, including production logs in SQLite.");
         if (j.backupOffsite) bits.push("The complete .tgz was uploaded to Google Drive. Download that file and restore it here to put everything back.");
-        else if (j.backupGoogleConfigured) bits.push("Drive is configured but the last off-site upload did not run.");
+        else if (j.backupOffsiteError) bits.push("Drive upload failed: " + j.backupOffsiteError);
+        else if (j.backupGoogleConfigured) bits.push("Drive credentials are on Railway, but the last backup was not uploaded. Click Backup now (setting variables does not upload by itself).");
         else bits.push("Google Drive is not configured yet. Follow Turn on Google Drive below (Railway variables, not a button here).");
         if (j.restoreAt) bits.push((j.restoreOk ? "Last restore OK " : "Last restore failed ") + backupWhen(j.restoreAt) + ".");
         detail.textContent = bits.join(" ");
+      }
+      const err = document.getElementById("driveError");
+      if (err) {
+        if (j.backupOffsiteError && !j.backupOffsite) {
+          err.hidden = false;
+          err.textContent = j.backupOffsiteError;
+        } else {
+          err.hidden = true;
+          err.textContent = "";
+        }
+      }
+      const acct = document.getElementById("driveAccount");
+      if (acct) {
+        const bits = [];
+        if (j.backupServiceAccount) bits.push("Share the Drive folder with this email as Editor: " + j.backupServiceAccount);
+        if (j.backupDriveFolderId) bits.push("Folder ID on Railway: " + j.backupDriveFolderId);
+        else bits.push("BACKUP_DRIVE_FOLDER_ID is not set on Railway.");
+        acct.textContent = bits.join(" ");
       }
       const body = document.getElementById("backupBody");
       if (!body) return;
