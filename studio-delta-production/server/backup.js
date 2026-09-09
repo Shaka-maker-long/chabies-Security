@@ -12,24 +12,23 @@ const MAIL_ATTACH_MAX = 12 * 1024 * 1024;
 const FOLDER_NAME = "Studio Delta ERP backups";
 const SAFE_NAME = /^studio-delta-[A-Za-z0-9._-]+$/;
 const CONFIRM_WORD = "RESTORE";
+const SKIP_LIVE = new Set([
+  "backups",
+  "studio-delta.db",
+  "studio-delta.db-wal",
+  "studio-delta.db-shm",
+  "studio-delta.db-journal",
+  "manifest.json"
+]);
 const FILE_DIRS = [
   "enquiry-quotes",
   "enquiry-files",
   "debtor-payments",
   "paint-shop-invoices",
   "glass-po-invoices",
-  "job-cards"
-];
-const SIDECARS = [
-  "studio-delta.json",
-  "floor-workbook.json",
-  "paint-shop.json",
-  "glass-pos.json",
-  "glass-rates.json",
-  "steel-rates.json",
-  "floor-planning.json",
-  "job-cards.json",
-  "office-sessions.json"
+  "job-cards",
+  "job-card-images",
+  "pdf-images"
 ];
 
 let running = false;
@@ -119,6 +118,30 @@ function replaceFile(src, dest) {
 
 function rmQuiet(file) {
   try { fs.unlinkSync(file); } catch (e) {}
+}
+
+function skipLiveName(name) {
+  if (!name || name.charAt(0) === ".") return true;
+  if (SKIP_LIVE.has(name)) return true;
+  if (name.indexOf("backup-staging-") === 0) return true;
+  if (name.indexOf("restore-inspect-") === 0) return true;
+  if (name.indexOf("restore-apply-") === 0) return true;
+  return false;
+}
+
+function listLiveDataEntries() {
+  const dir = dataDir();
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).filter((ent) => !skipLiveName(ent.name));
+}
+
+function packLiveData(stageDir) {
+  listLiveDataEntries().forEach((ent) => {
+    const src = path.join(dataDir(), ent.name);
+    const dest = path.join(stageDir, ent.name);
+    if (ent.isDirectory()) copyDir(src, dest);
+    else if (ent.isFile()) fs.copyFileSync(src, dest);
+  });
 }
 
 function uniqueStamp() {
@@ -279,23 +302,20 @@ function buildCompleteBundle(stamp, localDb, localJson, verified) {
     if (fs.existsSync(staging)) fs.rmSync(staging, { recursive: true, force: true });
     fs.mkdirSync(staging, { recursive: true });
     fs.copyFileSync(localDb, path.join(staging, "studio-delta.db"));
+    packLiveData(staging);
     if (fs.existsSync(localJson)) fs.copyFileSync(localJson, path.join(staging, "studio-delta.json"));
-    SIDECARS.forEach((name) => {
-      const src = path.join(dataDir(), name);
-      if (fs.existsSync(src) && name !== "studio-delta.json") fs.copyFileSync(src, path.join(staging, name));
-    });
     FILE_DIRS.forEach((name) => {
-      const src = path.join(dataDir(), name);
-      if (fs.existsSync(src)) copyDir(src, path.join(staging, name));
-      else fs.mkdirSync(path.join(staging, name), { recursive: true });
+      const dest = path.join(staging, name);
+      if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
     });
     const parts = fs.readdirSync(staging);
     const manifest = {
-      version: 2,
+      version: 3,
       kind: "studio-delta-complete",
       at: new Date().toISOString(),
       stamp,
       ok: true,
+      packedAll: true,
       integrity: verified.integrity,
       counts: verified.counts,
       sha256Db: sha256File(localDb),
@@ -309,7 +329,9 @@ function buildCompleteBundle(stamp, localDb, localJson, verified) {
       complete: path.basename(complete)
     }));
     const filesTar = snapshotFiles(stamp).files;
-    const fileParts = FILE_DIRS.filter((name) => fs.existsSync(path.join(staging, name)));
+    const fileParts = fs.readdirSync(staging, { withFileTypes: true })
+      .filter((ent) => ent.isDirectory())
+      .map((ent) => ent.name);
     if (fileParts.length) tarCreate(filesTar, staging, fileParts);
     return {
       complete: path.basename(complete),
@@ -475,6 +497,8 @@ function runBackup(reason) {
     status.integrity = verified.integrity;
     status.counts = verified.counts;
     status.verified = true;
+    status.packedAll = true;
+    status.packedFiles = (bundle.manifest && bundle.manifest.files) || [];
     let off = { offsite: false };
     try {
       off = uploadOffsite(localDb, localJson, files.files, files.complete);
@@ -554,6 +578,8 @@ function info() {
     backupComplete: last && last.complete ? last.complete : null,
     backupIntegrity: last && last.integrity ? last.integrity : null,
     backupCounts: last && last.counts ? last.counts : null,
+    backupPackedAll: !!(last && last.packedAll),
+    backupPackedFiles: last && last.packedFiles ? last.packedFiles : null,
     restoreAt: restored && restored.at ? restored.at : null,
     restoreOk: restored ? !!restored.ok : null,
     restoreError: restored && restored.error ? restored.error : null,
@@ -611,13 +637,12 @@ function applyExtracted(staging) {
   replaceFile(dbSrc, liveDb);
   rmQuiet(liveDb + "-wal");
   rmQuiet(liveDb + "-shm");
-  SIDECARS.forEach((name) => {
-    const src = path.join(staging, name);
-    if (fs.existsSync(src)) replaceFile(src, path.join(dataDir(), name));
-  });
-  FILE_DIRS.forEach((name) => {
-    const src = path.join(staging, name);
-    if (fs.existsSync(src)) replaceDir(src, path.join(dataDir(), name));
+  fs.readdirSync(staging, { withFileTypes: true }).forEach((ent) => {
+    if (ent.name === "studio-delta.db" || ent.name === "manifest.json") return;
+    const src = path.join(staging, ent.name);
+    const dest = path.join(dataDir(), ent.name);
+    if (ent.isDirectory()) replaceDir(src, dest);
+    else if (ent.isFile()) replaceFile(src, dest);
   });
   const liveCheck = verifySqliteFile(liveDb);
   sqlite.reopen();

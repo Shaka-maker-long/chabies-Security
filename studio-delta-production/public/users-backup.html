@@ -33,6 +33,9 @@
     th, td { border:1px solid var(--line); padding:8px; text-align:left; vertical-align:top; }
     th { background:var(--head); }
     .lock { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin:12px 0; padding:12px; background:#f8f9fc; border:1px solid var(--line); border-radius:8px; }
+    code { font-size:12px; background:#eef2f6; padding:1px 5px; border-radius:4px; }
+    ol.steps { color:var(--muted); font-size:13px; max-width:860px; margin:0 0 10px; padding-left:20px; }
+    ol.steps li { margin:0 0 6px; }
   </style>
 </head>
 <body>
@@ -49,7 +52,7 @@
   <div class="wrap">
     <section class="card">
       <h2>Archive</h2>
-      <p class="help">A complete <b>.tgz</b> is written every night at 02:00 Johannesburg and when you click <b>Backup now</b>. That file is the restore pack: database, quotes, proofs, invoices, and job cards. It is opened and integrity-checked before it is kept. If Google Drive is configured on Railway, the same .tgz is uploaded there so you can download it and restore everything.</p>
+      <p class="help">A complete <b>.tgz</b> is written every night at 02:00 Johannesburg and when you click <b>Backup now</b>. That file packs <b>everything the shop writes on the Railway volume</b>: SQLite (orders, enquiries, users, production logs, schedule, rates, to-order lists, payments), JSON sidecars, quotes, drawings, proofs of payment, paint and glass invoices, job cards and images, glass PDF images, showroom bookings, email-reply templates, and the Home floor layout. It is opened and integrity-checked before it is kept.</p>
       <p class="help" id="volumeLine"></p>
       <p class="help" id="backupDetail"></p>
       <div class="actions">
@@ -58,6 +61,19 @@
         <button class="ghost" type="button" onclick="downloadSqlite()">Download SQLite only</button>
         <button class="ghost" type="button" onclick="downloadBackup()">Download JSON</button>
       </div>
+    </section>
+    <section class="card">
+      <h2>Turn on Google Drive</h2>
+      <p class="help">Drive is not a switch in this app. Set it on the <b>Railway service → Variables</b>. Until those exist, Backup now still saves on this disk and says “Drive not uploaded”.</p>
+      <ol class="steps">
+        <li>Keep <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> — the same service-account JSON used for QC PDFs. Open it and copy <code>client_email</code> (it ends in <code>.iam.gserviceaccount.com</code>).</li>
+        <li>In Google Drive, create a folder such as <b>Studio Delta ERP backups</b>.</li>
+        <li>Share that folder with the <code>client_email</code> as <b>Editor</b> (not Viewer).</li>
+        <li>Open the folder. The URL looks like <code>https://drive.google.com/drive/folders/THIS_PART</code>. Put <code>THIS_PART</code> on Railway as <code>BACKUP_DRIVE_FOLDER_ID</code>.</li>
+        <li>Optional: <code>BACKUP_EMAIL</code> or <code>GMAIL_SENDER</code> so a “backup OK” mail goes out.</li>
+        <li>Wait for Railway to pick up the variables, then click <b>Backup now</b>. Success must say sent to Google Drive. <code>/health</code> should show <code>backupOffsite: true</code>.</li>
+      </ol>
+      <p class="help">QC photos taken on the tablet go into Google Docs. They are not files on this volume, so they are not inside the .tgz. Everything under <code>/app/data</code> is.</p>
     </section>
     <section class="card">
       <h2>Restore</h2>
@@ -236,9 +252,10 @@
         if (j.backupAt) bits.push((j.backupOk ? "Last backup " : "Last backup failed ") + backupWhen(j.backupAt));
         if (j.backupVerified) bits.push("Last copy passed SQLite integrity_check.");
         if (j.backupCounts) bits.push("Users " + j.backupCounts.users + ", orders " + j.backupCounts.orders + ", enquiries " + j.backupCounts.enquiries + ".");
+        if (j.backupPackedAll) bits.push("Last copy packed every file on the volume, including production logs in SQLite.");
         if (j.backupOffsite) bits.push("The complete .tgz was uploaded to Google Drive. Download that file and restore it here to put everything back.");
         else if (j.backupGoogleConfigured) bits.push("Drive is configured but the last off-site upload did not run.");
-        else bits.push("Google Drive is not configured. Set GOOGLE_SERVICE_ACCOUNT_JSON and BACKUP_DRIVE_FOLDER_ID on Railway so every backup is archived off-site.");
+        else bits.push("Google Drive is not configured yet. Follow Turn on Google Drive below (Railway variables, not a button here).");
         if (j.restoreAt) bits.push((j.restoreOk ? "Last restore OK " : "Last restore failed ") + backupWhen(j.restoreAt) + ".");
         detail.textContent = bits.join(" ");
       }

@@ -30,6 +30,15 @@ db.upsertEnquiry({
 const proofDir = path.join(dir, "debtor-payments", "S-BACKUP");
 fs.mkdirSync(proofDir, { recursive: true });
 fs.writeFileSync(path.join(proofDir, "proof.txt"), "proof-of-payment");
+fs.writeFileSync(path.join(dir, "email-replies.json"), JSON.stringify({ subject: "Thanks" }));
+fs.writeFileSync(path.join(dir, "showroom-bookings.json"), JSON.stringify({ bookings: [{ who: "Nomsa" }] }));
+fs.writeFileSync(path.join(dir, "floor-layout.json"), JSON.stringify({ stations: ["weld"] }));
+fs.writeFileSync(path.join(dir, "standard-cutting-lists.json"), JSON.stringify({ lists: ["std"] }));
+fs.mkdirSync(path.join(dir, "job-card-images"), { recursive: true });
+fs.writeFileSync(path.join(dir, "job-card-images", "chair.png"), "fake-png");
+fs.mkdirSync(path.join(dir, "pdf-images"), { recursive: true });
+fs.writeFileSync(path.join(dir, "pdf-images", "glass.png"), "fake-glass");
+fs.writeFileSync(path.join(dir, "future-module.json"), JSON.stringify({ keep: "everything" }));
 
 const status = backup.runBackup("test");
 assert.ok(status.ok, status.error || "backup should succeed locally");
@@ -40,7 +49,14 @@ assert.strictEqual(status.integrity, "ok");
 assert.strictEqual(status.offsite, false);
 assert.ok(fs.existsSync(path.join(backup.backupsDir(), status.localDb)));
 assert.ok(fs.existsSync(path.join(backup.backupsDir(), status.complete)));
-assert.ok(status.bytes > 0);
+assert.ok(status.packedAll, "backup must pack every live data file");
+assert.ok(Array.isArray(status.packedFiles) && status.packedFiles.indexOf("email-replies.json") !== -1);
+assert.ok(status.packedFiles.indexOf("job-card-images") !== -1);
+assert.ok(status.packedFiles.indexOf("future-module.json") !== -1);
+
+const sqlite = require("./sqlite-store");
+const logBefore = sqlite.open().prepare("SELECT COUNT(*) AS n FROM sheet_rows WHERE title = 'Production_Log'").get();
+assert.ok(logBefore && logBefore.n >= 1, "production logs must be in SQLite before backup");
 assert.ok(status.sha256 && status.sha256.length === 64);
 assert.ok(status.counts && status.counts.enquiries >= 1);
 
@@ -53,6 +69,7 @@ const info = backup.info();
 assert.strictEqual(info.backupOk, true);
 assert.strictEqual(info.backupVerified, true);
 assert.strictEqual(info.backupOffsite, false);
+assert.strictEqual(info.backupPackedAll, true);
 assert.ok(info.backupLocalCount >= 1);
 
 const complete = path.join(backup.backupsDir(), status.complete);
@@ -64,6 +81,13 @@ assert.throws(() => backup.restoreFromPath(complete, { confirm: "yes" }), /RESTO
 
 db.deleteAllEnquiries();
 fs.rmSync(path.join(dir, "debtor-payments"), { recursive: true, force: true });
+fs.unlinkSync(path.join(dir, "email-replies.json"));
+fs.unlinkSync(path.join(dir, "showroom-bookings.json"));
+fs.unlinkSync(path.join(dir, "floor-layout.json"));
+fs.unlinkSync(path.join(dir, "standard-cutting-lists.json"));
+fs.unlinkSync(path.join(dir, "future-module.json"));
+fs.rmSync(path.join(dir, "job-card-images"), { recursive: true, force: true });
+fs.rmSync(path.join(dir, "pdf-images"), { recursive: true, force: true });
 assert.strictEqual(db.listEnquiries().length, 0, "live shop must be empty before restore");
 
 const restored = backup.restoreFromPath(complete, { confirm: "RESTORE" });
@@ -73,6 +97,14 @@ const after = db.listEnquiries();
 assert.ok(after.some((row) => String(row.client_name) === "Backup Client"), JSON.stringify(after));
 assert.ok(fs.existsSync(path.join(dir, "debtor-payments", "S-BACKUP", "proof.txt")), "proof files must come back");
 assert.strictEqual(fs.readFileSync(path.join(dir, "debtor-payments", "S-BACKUP", "proof.txt"), "utf8"), "proof-of-payment");
+assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, "email-replies.json"), "utf8")).subject, "Thanks");
+assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, "showroom-bookings.json"), "utf8")).bookings[0].who, "Nomsa");
+assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, "floor-layout.json"), "utf8")).stations[0], "weld");
+assert.ok(fs.existsSync(path.join(dir, "job-card-images", "chair.png")));
+assert.ok(fs.existsSync(path.join(dir, "pdf-images", "glass.png")));
+assert.strictEqual(JSON.parse(fs.readFileSync(path.join(dir, "future-module.json"), "utf8")).keep, "everything");
+const logAfter = sqlite.open().prepare("SELECT COUNT(*) AS n FROM sheet_rows WHERE title = 'Production_Log'").get();
+assert.ok(logAfter && logAfter.n >= 1, "production logs must come back from the .tgz");
 
 const junk = path.join(backup.backupsDir(), "studio-delta-20990101-000000.db");
 fs.writeFileSync(junk, "not a sqlite database");

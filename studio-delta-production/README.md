@@ -35,22 +35,29 @@ The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume
 | `DATA_DIR/steel-rates.json` | Steel rates per metre by profile type |
 | `DATA_DIR/glass-po-invoices/` | Invoice files for received glass batches |
 | `DATA_DIR/floor-planning.json` | Planning calendars: who is booked for which order and process |
+| `DATA_DIR/job-cards.json` / `job-cards/` / `job-card-images/` | Job cards, PDFs, and product images |
+| `DATA_DIR/email-replies.json` | Outlook reply templates |
+| `DATA_DIR/showroom-bookings.json` | Showroom bookings |
+| `DATA_DIR/standard-cutting-lists.json` | Standard job-card cutting lists |
+| `DATA_DIR/floor-layout.json` | Home 3D twin layout |
+| `DATA_DIR/pdf-images/` | Images used on glass purchase-order PDFs |
 
-On Railway, `DATA_DIR` is `/app/data`. **A Volume must be mounted at `/app/data`**. Without it, every deploy wipes the database. Users → **Backup** is the way to copy and recover the shop.
+On Railway, `DATA_DIR` is `/app/data`. **A Volume must be mounted at `/app/data`**. Without it, every deploy wipes the database. Users → **Backup** is the way to copy and recover the shop. Nightly and “Backup now” copies pack **every file under `/app/data` except the `backups/` folder itself** (the restore pack is a new `.tgz` written into `backups/`). Production logs live in SQLite (`sheet_rows` for `Production_Log`) and are inside that `.tgz`. QC photos taken on the tablet are sent to Google Docs and are **not** stored as files on the volume, so they are not in the pack.
 
 ### Automatic backups (volume + Google Drive)
 
-Every night at **02:00 Africa/Johannesburg** (and two minutes after boot if today’s copy is missing) the app writes a **complete, integrity-checked** snapshot into `/app/data/backups/` and keeps **14 days**. Each copy is a `.tgz` of SQLite plus quotes, enquiry files, debtor proofs, paint-shop and glass invoices, job cards, and the JSON sidecars. The SQLite file is opened with `integrity_check` before the copy is kept. Users → **Backup** → **Backup now** runs the same job immediately. **Download complete backup** saves that `.tgz` to your computer. That same `.tgz` is what you upload to restore **everything**.
+Every night at **02:00 Africa/Johannesburg** (and two minutes after boot if today’s copy is missing) the app writes a **complete, integrity-checked** snapshot into `/app/data/backups/` and keeps **14 days**. Each copy is a `.tgz` of the live database plus every other file the shop has written under `/app/data`. The SQLite file is opened with `integrity_check` before the copy is kept. Users → **Backup** → **Backup now** runs the same job immediately. **Download complete backup** saves that `.tgz` to your computer. That same `.tgz` is what you upload to restore **everything on the volume**.
 
-Those local copies are still on the same Railway disk. **Off-site** is Google Drive (a different company than Railway). If Drive is configured, every successful backup **uploads that complete `.tgz`** so you can download it later and restore the whole shop:
+Those local copies are still on the same Railway disk. **Off-site** is Google Drive (a different company than Railway). There is no in-app “connect Drive” button — set it on the **Railway service → Variables**:
 
-1. Keep `GOOGLE_SERVICE_ACCOUNT_JSON` on the Railway service (the same key used for QC PDFs).
+1. Keep `GOOGLE_SERVICE_ACCOUNT_JSON` on the Railway service (the same key used for QC PDFs). Open the JSON and copy `client_email` (it ends in `.iam.gserviceaccount.com`).
 2. In Google Drive, create a folder e.g. **Studio Delta ERP backups**.
-3. Share that folder with the service account email (`client_email` in the JSON key) as **Editor**.
-4. Set `BACKUP_DRIVE_FOLDER_ID` to the folder ID from the Drive URL.
+3. Share that folder with the service account `client_email` as **Editor** (not Viewer).
+4. Open the folder. The URL looks like `https://drive.google.com/drive/folders/THIS_PART`. Set `BACKUP_DRIVE_FOLDER_ID` to `THIS_PART`.
 5. Optional: `BACKUP_EMAIL` (or `GMAIL_SENDER`) so a “backup OK” mail goes out.
+6. After Railway picks up the variables, Users → **Backup** → **Backup now**. Success must say sent to Google Drive. `GET /health` should show `"backupOffsite": true`.
 
-If Drive is not set, nightly copies still run on the volume only. `/health` shows `backupOk`, `backupVerified`, `backupOffsite`, and `backupAt`.
+If Drive is not set, nightly copies still run on the volume only, and the page says “Drive not uploaded”. `/health` shows `backupOk`, `backupVerified`, `backupOffsite`, and `backupAt`.
 
 **Restore** is on **Users → Backup** (Manager only) — not on the People list. Type **RESTORE** and enter the Manager access code **twice**. Then restore a listed snapshot or upload a complete `.tgz` (the same file Drive stores). The app always writes a safety copy of the live shop first. If the chosen file is not a valid Studio Delta backup, the live shop is left untouched (or rolled back to that safety copy).
 
