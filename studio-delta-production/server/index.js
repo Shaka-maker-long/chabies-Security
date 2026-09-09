@@ -153,6 +153,10 @@ app.get("/debtors", (_req, res) => {
 app.get("/users", (_req, res) => {
   res.sendFile(path.join(publicDir, "users.html"));
 });
+app.get("/users/backup", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "users-backup.html"));
+});
 app.get("/durations", (_req, res) => {
   res.sendFile(path.join(publicDir, "durations.html"));
 });

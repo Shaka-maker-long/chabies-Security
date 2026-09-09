@@ -366,53 +366,43 @@ function ensureDriveFolder() {
 
 function pruneDrive(folderId) {
   const listed = driveRpc({ op: "listFiles", folderId });
-  const ours = (listed.files || [])
-    .filter((f) => String(f.name || "").indexOf("studio-delta-") === 0 && String(f.name).slice(-3) === ".db")
+  const archives = (listed.files || [])
+    .filter((f) => {
+      const n = String(f.name || "");
+      return /^studio-delta-/.test(n) && n.slice(-4) === ".tgz" && n.indexOf("-files.tgz") === -1;
+    })
     .sort((a, b) => String(b.createdTime || "").localeCompare(String(a.createdTime || "")));
-  ours.slice(KEEP_DRIVE).forEach((f) => {
+  archives.slice(KEEP_DRIVE).forEach((f) => {
     try { driveRpc({ op: "trashFile", fileId: f.id }); } catch (e) {}
   });
 }
 
 function uploadOffsite(localDb, localJson, archivePath, completePath) {
   if (!hasGoogleAuth()) return { offsite: false, reason: "Google Drive is not configured on Railway" };
-  const folder = ensureDriveFolder();
-  const dbUp = driveRpc({
-    op: "uploadFile",
-    path: localDb,
-    name: path.basename(localDb),
-    folderId: folder.id,
-    mimeType: "application/vnd.sqlite3"
-  });
-  let jsonUrl = null;
-  if (localJson && fs.existsSync(localJson)) {
-    try {
-      const jsonUp = driveRpc({
-        op: "uploadFile",
-        path: localJson,
-        name: path.basename(localJson),
-        folderId: folder.id,
-        mimeType: "application/json"
-      });
-      jsonUrl = jsonUp.url || null;
-    } catch (e) {
-      console.warn("[backup] Drive JSON upload failed", e.message || e);
-    }
+  if (!completePath || !fs.existsSync(completePath)) {
+    throw new Error("Complete restore archive was not built, so nothing was sent to Drive.");
   }
-  let filesUrl = null;
-  const extra = completePath && fs.existsSync(completePath) ? completePath : archivePath;
-  if (extra && fs.existsSync(extra)) {
+  const folder = ensureDriveFolder();
+  const zipUp = driveRpc({
+    op: "uploadFile",
+    path: completePath,
+    name: path.basename(completePath),
+    folderId: folder.id,
+    mimeType: "application/gzip"
+  });
+  let driveId = zipUp.id;
+  let driveUrl = zipUp.url || null;
+  if (localDb && fs.existsSync(localDb)) {
     try {
-      const zipUp = driveRpc({
+      driveRpc({
         op: "uploadFile",
-        path: extra,
-        name: path.basename(extra),
+        path: localDb,
+        name: path.basename(localDb),
         folderId: folder.id,
-        mimeType: "application/gzip"
+        mimeType: "application/vnd.sqlite3"
       });
-      filesUrl = zipUp.url || null;
     } catch (e) {
-      console.warn("[backup] Drive files archive upload failed", e.message || e);
+      console.warn("[backup] Drive SQLite upload failed", e.message || e);
     }
   }
   try { pruneDrive(folder.id); } catch (e) {
@@ -420,11 +410,11 @@ function uploadOffsite(localDb, localJson, archivePath, completePath) {
   }
   return {
     offsite: true,
-    driveId: dbUp.id,
-    driveUrl: dbUp.url || null,
-    jsonUrl,
-    filesUrl,
-    folderId: folder.id
+    driveId,
+    driveUrl,
+    filesUrl: driveUrl,
+    folderId: folder.id,
+    completeDrive: path.basename(completePath)
   };
 }
 
@@ -437,7 +427,7 @@ function sendBackupMail(status, localDb) {
     "<p>Integrity: " + (status.integrity || "n/a") + "</p>" +
     "<p>Off-site Drive: " + (status.offsite ? "yes" : "no") + (status.driveUrl ? " — " + status.driveUrl : "") + "</p>" +
     (status.error ? "<p>Error: " + String(status.error) + "</p>" : "") +
-    "<p>Restore from Users → Backup and restore. Type RESTORE. The app takes a safety copy of the live shop first.</p>";
+    "<p>Restore from Users → Backup. Type RESTORE and enter the Manager access code twice. Upload the complete .tgz from Drive to restore everything.</p>";
   const attachments = [];
   if (status.ok && localDb && fileSize(localDb) <= MAIL_ATTACH_MAX) {
     attachments.push({

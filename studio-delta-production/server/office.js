@@ -1096,6 +1096,11 @@ function mountOffice(app) {
     try {
       const backup = require("./backup");
       const kept = staff.keepRequestSession(req);
+      staff.checkRestoreSecrets(req.office, {
+        confirm: req.body && req.body.confirm,
+        password: req.body && req.body.password,
+        confirmPassword: req.body && (req.body.confirmPassword || req.body.passwordConfirm)
+      });
       const result = backup.restoreNamed((req.body && req.body.name) || "", {
         confirm: req.body && req.body.confirm,
         keepSession: kept
@@ -1113,7 +1118,10 @@ function mountOffice(app) {
     }
     try {
       const backup = require("./backup");
-      const confirm = req.query.confirm || req.headers["x-sd-restore-confirm"];
+      const confirm = req.headers["x-sd-restore-confirm"] || req.query.confirm;
+      const password = req.headers["x-sd-restore-password"] || "";
+      const confirmPassword = req.headers["x-sd-restore-password-confirm"] || "";
+      staff.checkRestoreSecrets(req.office, { confirm, password, confirmPassword });
       const filename = req.query.filename || req.headers["x-sd-filename"] || "upload.tgz";
       const saved = backup.saveUploadedBackup(req.body, filename);
       const kept = staff.keepRequestSession(req);
