@@ -522,7 +522,7 @@ function buildJourney(blocks) {
         end,
         rows
       };
-    })
+    }).sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")) || String(a.orderId).localeCompare(String(b.orderId)))
   };
 }
 

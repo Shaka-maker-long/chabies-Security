@@ -409,9 +409,26 @@
     function rowOnDay(row, dayIso) {
       return (row.days || []).indexOf(dayIso) !== -1;
     }
+    function earliestStart(order, rowMatch) {
+      let min = "";
+      ((order && order.rows) || []).forEach((row) => {
+        if (rowMatch && !rowMatch(row, order)) return;
+        const s = String(row.start || "");
+        if (s && (!min || s < min)) min = s;
+      });
+      return min || String((order && order.start) || "");
+    }
+    function sortByStart(orders, rowMatch) {
+      return (orders || []).slice().sort((a, b) => {
+        const sa = earliestStart(a, rowMatch);
+        const sb = earliestStart(b, rowMatch);
+        if (sa !== sb) return sa.localeCompare(sb);
+        return String(a.orderId).localeCompare(String(b.orderId));
+      });
+    }
     function orderNamePairs(orders, rowMatch) {
       const pairs = [];
-      (orders || []).forEach((o) => {
+      sortByStart(orders, rowMatch).forEach((o) => {
         const people = {};
         (o.rows || []).forEach((row) => {
           if (rowMatch && !rowMatch(row, o)) return;
@@ -496,7 +513,10 @@
       const box = document.getElementById("calendars");
       const weeks = weekWindow();
       const isos = weeks.reduce((all, w) => all.concat(weekIsos(w)), []);
-      const orders = journeyOrders().filter((o) => (o.rows || []).some((row) => (row.days || []).some((iso) => isos.indexOf(iso) !== -1)));
+      const orders = sortByStart(
+        journeyOrders().filter((o) => (o.rows || []).some((row) => (row.days || []).some((iso) => isos.indexOf(iso) !== -1))),
+        (row) => (row.days || []).some((iso) => isos.indexOf(iso) !== -1)
+      );
       fillWeekLabel();
       if (!orders.length) {
         box.innerHTML = renderJourneyCrumb() + emptyOutsideWeeks();
@@ -511,7 +531,7 @@
         return "<tr>" + orderCell(o, 1) + cells + "</tr>";
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. Twenty shop weeks from This week, not Week 1 / 2 / 3. Order stays frozen while you scroll. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
+        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Order stays frozen while you scroll. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-order'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function renderJourneyDays() {
@@ -541,7 +561,7 @@
         return pairRow(pairs, i, cells);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Order and Name stay frozen on the left. Names only show on this day view and the 15-minute grid, not on the week view. Same order numbers are merged. ← Week view goes back. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a letter to another free day.</p>" +
+        "<p class='help'>Orders are listed by who starts first. Order and Name stay frozen on the left. Names only show on this day view and the 15-minute grid, not on the week view. Same order numbers are merged. ← Week view goes back. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a letter to another free day.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-names'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
     }
     function timeSlots() {
@@ -585,7 +605,7 @@
         return pairRow(pairs, i, cells);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Order and Name stay frozen on the left. Names show here and on the day view, not on the week view. Same order numbers are merged. ← Week view and ← Day view go back. 15-minute slots, paid hours only. Click an order number for its timeline. Drag a letter to a free time. That person cannot overlap.</p>" +
+        "<p class='help'>Orders are listed by who starts first on this day. Order and Name stay frozen on the left. Names show here and on the day view, not on the week view. Same order numbers are merged. ← Week view and ← Day view go back. 15-minute slots, paid hours only. Click an order number for its timeline. Drag a letter to a free time. That person cannot overlap.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-names'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function orderWorkDays(order) {
