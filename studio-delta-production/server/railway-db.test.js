@@ -20,6 +20,15 @@ assert.strictEqual(db.formatMonthOfSale("2026-06-30T22:00:00.000Z"), "July 2026"
 assert.strictEqual(db.formatOrderId("S-1001"), "S-1001");
 assert.ok(/^\d+$/.test(db.formatOrderId(new Date("2026-06-30T22:00:00.000Z"))));
 
+const paidInclVat = db.decorateMoney({
+  price_excl_vat: "10000",
+  price_incl_vat: db.inclFromExcl("10000"),
+  amount_paid: "1150"
+});
+assert.strictEqual(db.parseMoney(paidInclVat.total), 11500);
+assert.strictEqual(db.parseMoney(paidInclVat.paid), 1150, "amount paid stays VAT-inclusive");
+assert.strictEqual(db.parseMoney(paidInclVat.owing), 10350, "owing is incl VAT minus amount paid");
+
 initWorkbook();
 const book = getBook();
 book.getSheetByName("Users").appendRow(["Sipho", "Profile Cutting", "1234", "Profile Cutting"]);

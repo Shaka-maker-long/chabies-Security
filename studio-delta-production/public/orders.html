@@ -197,14 +197,14 @@
           <label>Price (Excl VAT)
             <input id="f_price_excl_vat" inputmode="decimal">
           </label>
-          <label>Amount paid (Incl VAT)
-            <input id="f_amount_paid" inputmode="decimal">
-            <span class="hint">Type what the client paid, including 15% VAT. Owing is price incl VAT minus this.</span>
+          <label>Price (Incl VAT)
+            <input id="f_price_incl_vat" readonly>
           </label>
         </div>
         <div class="stack-grid">
-          <label>Price (Incl VAT)
-            <input id="f_price_incl_vat" readonly>
+          <label>Amount paid (Incl VAT)
+            <input id="f_amount_paid" inputmode="decimal">
+            <span class="hint">Type the rands the client paid, including 15% VAT. Do not type the exclusive amount. Owing is price incl VAT minus this.</span>
           </label>
           <label>Owing
             <input id="f_owing" readonly>
