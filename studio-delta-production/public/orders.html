@@ -197,8 +197,9 @@
           <label>Price (Excl VAT)
             <input id="f_price_excl_vat" inputmode="decimal">
           </label>
-          <label>Amount paid
+          <label>Amount paid (Incl VAT)
             <input id="f_amount_paid" inputmode="decimal">
+            <span class="hint">Type what the client paid, including 15% VAT. Owing is price incl VAT minus this.</span>
           </label>
         </div>
         <div class="stack-grid">
@@ -275,7 +276,7 @@
       ["province", "PROVINCE", 140, false],
       ["price_excl_vat", "PRICE (Excl VAT)", 130, false],
       ["price_incl_vat", "PRICE (Incl VAT)", 130, false],
-      ["amount_paid", "AMOUNT PAID", 120, false],
+      ["amount_paid", "AMOUNT PAID (Incl VAT)", 160, false],
       ["owing", "OWING", 110, false],
       ["month_of_sale", "MONTH OF SALE", 130, false],
       ["source", "SOURCE", 140, false],
@@ -604,7 +605,7 @@
       html += viewItem("Source", row.source);
       html += viewItem("Price excl VAT", row.price_excl_vat);
       html += viewItem("Price incl VAT", row.price_incl_vat);
-      html += viewItem("Amount paid", row.amount_paid);
+      html += viewItem("Amount paid (Incl VAT)", row.amount_paid);
       html += viewItem("Owing", owingOf(row));
       html += "</div>";
       html += "<div class=\"view-grid\" style=\"margin-top:8px\"><div class=\"view-item wide\"><div class=\"view-label\">Detailed description</div><div class=\"view-value\">" +

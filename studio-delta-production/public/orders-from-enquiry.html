@@ -462,7 +462,7 @@
           "<label class=\"confirm\"><input data-f=\"qty_price_confirmed\" type=\"checkbox\"" + (p.qty_price_confirmed ? " checked" : "") + ">" +
             "<span>Quantity and price excl VAT are correct<span class=\"hint\">Tick this after you check both. If either needs to change, change it first, then tick.</span></span></label>" +
           "<div class=\"grid four\" style=\"margin-top:12px\">" +
-            "<label>Amount paid *<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "") + "\" required></label>" +
+            "<label>Amount paid (Incl VAT) *<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "") + "\" required><span class=\"hint\">Including 15% VAT. Owing is price incl VAT minus this.</span></label>" +
             "<label>Variation *<select data-f=\"variation\" required>" + options(dropdowns.variation, p.variation) + "</select></label>" +
             "<label>Doors *<select data-f=\"doors\" required>" + options(dropdowns.doors, p.doors) + "</select></label>" +
             "<label>Powder coating *<select data-f=\"powder_coating\" required>" + options(dropdowns.powder_coating, p.powder_coating) + "</select></label>" +
