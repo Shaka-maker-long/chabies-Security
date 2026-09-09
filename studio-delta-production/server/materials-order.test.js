@@ -113,6 +113,29 @@ const SIG = "data:image/png;base64,aaa";
   assert.ok(noneBrief.standardGlass);
   assert.strictEqual(noneBrief.standardGlass.noGlass, true);
 
+  const tplOrder = db.upsertOrder({
+    order_number: "S-PRE-TPL",
+    status: "Ready for Pre-Powder Coating",
+    type: "Custom",
+    product: "Air Chair",
+    price_excl_vat: "90.00"
+  });
+  const startedTpl = await callShopFunction("startOrder", [
+    tplOrder.id, "Nomsa", "Quality Control", [], "", false, null, CONFIRM
+  ]);
+  assert.strictEqual(startedTpl.success, true, JSON.stringify(startedTpl));
+  const finishedTpl = await callShopFunction("finishOrder", [
+    tplOrder.id, startedTpl.logId, QC, SIG, [], "Nomsa", [], "S-PRE-TPL", [],
+    { hasTemplate: true, lines: [{ component: "Door", type: "Clear", thickness: "6", quantity: 1, isTemplate: true }] },
+    []
+  ]);
+  assert.strictEqual(finishedTpl.success, true, JSON.stringify(finishedTpl));
+  const listedTpl = await callShopFunction("listMaterialsToOrder", []);
+  const tplLine = (listedTpl.glass || []).find((g) => g.order === "S-PRE-TPL");
+  assert.ok(tplLine, JSON.stringify(listedTpl.glass));
+  assert.strictEqual(tplLine.isTemplate, true);
+  assert.strictEqual(tplLine.type, "Clear");
+
   console.log("materials-order.test.js ok");
 })().catch((e) => {
   console.error(e && e.stack ? e.stack : e);

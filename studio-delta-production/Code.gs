@@ -353,10 +353,21 @@ function standardGlassHeaders_() {
 
 function parseGlassOrderPayload_(glassOrderData) {
   if (glassOrderData && !Array.isArray(glassOrderData) && glassOrderData.noGlass) {
-    return { noGlass: true, lines: [] };
+    return { noGlass: true, hasTemplate: false, lines: [] };
+  }
+  if (glassOrderData && !Array.isArray(glassOrderData) && Array.isArray(glassOrderData.lines)) {
+    return {
+      noGlass: false,
+      hasTemplate: !!glassOrderData.hasTemplate,
+      lines: glassOrderData.lines
+    };
   }
   var list = Array.isArray(glassOrderData) ? glassOrderData : [];
-  return { noGlass: false, lines: list };
+  var hasTemplate = false;
+  list.forEach(function (line) {
+    if (line && (line.isTemplate || line.template || line.hasTemplate)) hasTemplate = true;
+  });
+  return { noGlass: false, hasTemplate: hasTemplate, lines: list };
 }
 
 function loadStandardGlassSpec(product) {
@@ -489,12 +500,14 @@ function ensureMaterialsOrderSheet(tab, headers) {
     sheet.appendRow(headers);
   } else if (sheet.getLastRow() < 1) {
     sheet.appendRow(headers);
+  } else if (headers && headers.length && sheet.getLastColumn() < headers.length) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   }
   return sheet;
 }
 
 function glassOrderHeaders() {
-  return ["ID", "Timestamp", "Order #", "Worker", "Component", "Glass type", "Thickness", "Height", "Width", "Quantity", "Status"];
+  return ["ID", "Timestamp", "Order #", "Worker", "Component", "Glass type", "Thickness", "Height", "Width", "Quantity", "Status", "Template", "Template spec"];
 }
 
 function woodOrderHeaders() {
@@ -511,6 +524,14 @@ function normalizeMmChoice(value, allowed) {
   return "";
 }
 
+function isTemplateGlass_(item) {
+  if (!item) return false;
+  var flag = item.isTemplate || item.template || item.hasTemplate;
+  if (flag === true || flag === 1) return true;
+  var s = String(flag || "").trim().toLowerCase();
+  return s === "yes" || s === "true" || s === "1" || s === "template";
+}
+
 function normalizeMaterialLine(item, kind) {
   item = item || {};
   var component = String(item.component || "").trim();
@@ -520,6 +541,7 @@ function normalizeMaterialLine(item, kind) {
   var height = Number(item.height);
   var width = Number(item.width);
   var qty = Math.round(Number(item.quantity));
+  var isTemplate = kind === "glass" && isTemplateGlass_(item);
   var okComp = false;
   for (var i = 0; i < GLASS_COMPONENTS.length; i++) {
     if (GLASS_COMPONENTS[i].toLowerCase() === component.toLowerCase()) {
@@ -528,15 +550,21 @@ function normalizeMaterialLine(item, kind) {
       break;
     }
   }
-  if (!okComp || !typeName || !thickness || !(height > 0) || !(width > 0) || !(qty > 0)) return null;
-  return {
+  if (!okComp || !typeName || !thickness || !(qty > 0)) return null;
+  if (!isTemplate && (!(height > 0) || !(width > 0))) return null;
+  var line = {
     component: component,
     type: typeName,
     thickness: thickness,
-    height: height,
-    width: width,
+    height: height > 0 ? height : 0,
+    width: width > 0 ? width : 0,
     quantity: qty
   };
+  if (kind === "glass") {
+    line.isTemplate = isTemplate;
+    line.templateSpec = String(item.templateSpec || item.template_spec || "").trim();
+  }
+  return line;
 }
 
 function writeGlassToOrder(ss, orderNum, workerName, lines) {
@@ -544,8 +572,8 @@ function writeGlassToOrder(ss, orderNum, workerName, lines) {
   var sheet = ensureMaterialsOrderSheet(TAB_GLASS_TO_ORDER, glassOrderHeaders());
   var wrote = 0;
   lines.forEach(function (raw) {
-    var line = normalizeMaterialLine(raw, "glass");
-    if (!line) return;
+    var line = normalizeMaterialLine(raw, "glass") || raw;
+    if (!line || !line.type) return;
     saveNameIfNew(TAB_GLASS_TYPES, "Name", DEFAULT_GLASS_TYPES, line.type);
     sheet.appendRow([
       Utilities.getUuid(),
@@ -558,7 +586,9 @@ function writeGlassToOrder(ss, orderNum, workerName, lines) {
       line.height,
       line.width,
       line.quantity,
-      "To order"
+      "To order",
+      line.isTemplate ? "Yes" : "No",
+      line.templateSpec || ""
     ]);
     wrote++;
   });
@@ -595,11 +625,12 @@ function readMaterialsSheet(tab, headers, kind) {
   var sheet = ensureMaterialsOrderSheet(tab, headers);
   var items = [];
   if (sheet.getLastRow() < 2) return items;
-  var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 11).getValues();
+  var lastCol = Math.max(sheet.getLastColumn(), headers.length || 11);
+  var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
   for (var i = 0; i < grid.length; i++) {
     var typeName = String(grid[i][5] || "").trim();
     if (!String(grid[i][0] || "").trim() && !typeName) continue;
-    items.push({
+    var row = {
       id: String(grid[i][0] || ""),
       timestamp: grid[i][1] ? new Date(grid[i][1]).toISOString() : "",
       order: String(grid[i][2] || ""),
@@ -613,7 +644,12 @@ function readMaterialsSheet(tab, headers, kind) {
       status: String(grid[i][10] || "To order"),
       kind: kind,
       row: i + 2
-    });
+    };
+    if (kind === "glass") {
+      row.isTemplate = isTemplateGlass_({ isTemplate: grid[i][11] });
+      row.templateSpec = String(grid[i][12] || "").trim();
+    }
+    items.push(row);
   }
   items.sort(function (a, b) {
     return String(b.timestamp || "").localeCompare(String(a.timestamp || ""));
@@ -2011,9 +2047,17 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
       var line = normalizeMaterialLine(raw, "wood");
       if (line) woodLines.push(line);
     });
+    if (glassPayload.hasTemplate && glassLines.length) {
+      glassLines.forEach(function (line) {
+        if (!line.isTemplate) line.isTemplate = true;
+      });
+    }
     if (processNeedsGlass(role, processName)) {
       if (!noGlass && !glassLines.length) {
         throw new Error("Server rejected: Add the glass for this order, or mark that this order has no glass.");
+      }
+      if (glassPayload.hasTemplate && !glassLines.length) {
+        throw new Error("Server rejected: Tick Has template glass only when you add the template glass for this order.");
       }
     }
 
