@@ -426,6 +426,16 @@
         return String(a.orderId).localeCompare(String(b.orderId));
       });
     }
+    function personStart(order, personId, rowMatch) {
+      let min = "";
+      ((order && order.rows) || []).forEach((row) => {
+        if (String(row.workerId) !== String(personId) && String(row.workerName) !== String(personId)) return;
+        if (rowMatch && !rowMatch(row, order)) return;
+        const s = String(row.start || "");
+        if (s && (!min || s < min)) min = s;
+      });
+      return min;
+    }
     function orderNamePairs(orders, rowMatch) {
       const pairs = [];
       sortByStart(orders, rowMatch).forEach((o) => {
@@ -436,7 +446,12 @@
           if (!id) return;
           if (!people[id]) people[id] = { id: row.workerId, name: row.workerName || row.workerId };
         });
-        Object.keys(people).sort((a, b) => String(people[a].name).localeCompare(String(people[b].name))).forEach((k) => {
+        Object.keys(people).sort((a, b) => {
+          const sa = personStart(o, people[a].id, rowMatch);
+          const sb = personStart(o, people[b].id, rowMatch);
+          if (sa !== sb) return sa.localeCompare(sb);
+          return String(people[a].name).localeCompare(String(people[b].name));
+        }).forEach((k) => {
           pairs.push({ order: o, person: people[k] });
         });
       });
@@ -561,7 +576,7 @@
         return pairRow(pairs, i, cells);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Orders are listed by who starts first. Order and Name stay frozen on the left. Names only show on this day view and the 15-minute grid, not on the week view. Same order numbers are merged. ← Week view goes back. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a letter to another free day.</p>" +
+        "<p class='help'>Orders are listed by who starts first, and names within an order follow who does the task first. Order and Name stay frozen on the left. Names only show on this day view and the 15-minute grid, not on the week view. Same order numbers are merged. ← Week view goes back. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a letter to another free day.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-names'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
     }
     function timeSlots() {
@@ -605,7 +620,7 @@
         return pairRow(pairs, i, cells);
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Orders are listed by who starts first on this day. Order and Name stay frozen on the left. Names show here and on the day view, not on the week view. Same order numbers are merged. ← Week view and ← Day view go back. 15-minute slots, paid hours only. Click an order number for its timeline. Drag a letter to a free time. That person cannot overlap.</p>" +
+        "<p class='help'>Orders are listed by who starts first on this day, and names within an order follow who does the task first. Order and Name stay frozen on the left. Names show here and on the day view, not on the week view. Same order numbers are merged. ← Week view and ← Day view go back. 15-minute slots, paid hours only. Click an order number for its timeline. Drag a letter to a free time. That person cannot overlap.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-names'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function orderWorkDays(order) {
@@ -651,7 +666,7 @@
       } else {
         table = "<div class='empty'>This order has no planned work days yet.</div>";
       }
-      const items = (order.rows || []).map((row) => {
+      const items = (order.rows || []).slice().sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")) || String(a.process || "").localeCompare(String(b.process || ""))).map((row) => {
         const c = color(row.process);
         return "<li><span class='code' style='background:" + c.bg + ";color:" + c.fg + ";border:1px solid " + c.border + ";border-radius:4px;padding:2px 6px;text-align:center'>" + esc(row.code || codeOf(row.process)) + "</span>" +
           "<span>" + esc(row.process) + "</span>" +
