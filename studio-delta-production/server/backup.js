@@ -338,16 +338,33 @@ function buildCompleteBundle(stamp, localDb, localJson, verified) {
   }
 }
 
+function impersonateEmail() {
+  return String(process.env.BACKUP_DRIVE_IMPERSONATE || process.env.GMAIL_SENDER || "").trim();
+}
+
+function explainDriveError(raw, email) {
+  const msg = String(raw || "");
+  const bot = email || googleServiceAccountEmail() || "the service account";
+  if (/storage quota|do not have storage quota/i.test(msg)) {
+    return "Google will not let " + bot +
+      " own files in an ordinary My Drive folder (service accounts have no storage). Put the backup folder in a Shared drive and add that email as Content manager. Or set BACKUP_DRIVE_IMPERSONATE to a Workspace mailbox after an admin enables domain-wide delegation.";
+  }
+  return msg;
+}
+
 function driveRpc(payload) {
+  const body = Object.assign({}, payload || {});
+  const who = impersonateEmail();
+  if (who && !body.impersonate) body.impersonate = who;
   const r = spawnSync(process.execPath, [path.join(__dirname, "drive-cli.js")], {
-    input: JSON.stringify(payload),
+    input: JSON.stringify(body),
     encoding: "utf8",
     env: process.env,
     maxBuffer: 8 * 1024 * 1024
   });
-  if (!r.stdout) throw new Error(r.stderr || "Drive helper failed");
+  if (!r.stdout) throw new Error(explainDriveError(r.stderr || "Drive helper failed"));
   const parsed = JSON.parse(r.stdout);
-  if (!parsed.ok) throw new Error(parsed.error || "Drive helper error");
+  if (!parsed.ok) throw new Error(explainDriveError(parsed.error || "Drive helper error"));
   return parsed;
 }
 
@@ -388,6 +405,12 @@ function probeDriveFolder(folderId, email) {
   }
   if (meta.mimeType && meta.mimeType !== "application/vnd.google-apps.folder") {
     throw new Error("BACKUP_DRIVE_FOLDER_ID must be a folder ID, not a file.");
+  }
+  if (!impersonateEmail() && !meta.driveId) {
+    throw new Error(
+      "This folder is in ordinary My Drive. Google will not let " + (email || "the service account") +
+      " store files there (no storage quota). In Drive: New → Shared drive, add that email as Content manager, put the backup folder inside the Shared drive, then set BACKUP_DRIVE_FOLDER_ID to that folder. Or set BACKUP_DRIVE_IMPERSONATE to a Workspace mailbox."
+    );
   }
   return meta;
 }
@@ -430,7 +453,7 @@ function driveReady() {
       serviceAccount: creds.email
     };
   }
-  return { ok: true, email: creds.email, folderId };
+  return { ok: true, email: creds.email, folderId, impersonate: impersonateEmail() || null };
 }
 
 function uploadOffsite(localDb, localJson, archivePath, completePath) {
@@ -474,6 +497,7 @@ function uploadOffsite(localDb, localJson, archivePath, completePath) {
     filesUrl: driveUrl,
     folderId: ready.folderId,
     serviceAccount: ready.email,
+    impersonate: ready.impersonate || null,
     completeDrive: path.basename(completePath)
   };
 }
@@ -670,6 +694,7 @@ function info() {
     backupServiceAccount: googleServiceAccountEmail(),
     backupDriveFolderSet: !!configuredFolderId(),
     backupDriveFolderId: configuredFolderId() || null,
+    backupDriveImpersonate: impersonateEmail() || null,
     backupEmail: mailTo() || null,
     backupVerified: !!(last && last.ok && last.verified),
     backupComplete: last && last.complete ? last.complete : null,
@@ -869,5 +894,7 @@ module.exports = {
   testDriveUpload,
   retryOffsite,
   normalizeFolderId,
+  impersonateEmail,
+  explainDriveError,
   CONFIRM_WORD
 };
