@@ -518,7 +518,7 @@ assert.ok(planningHtml.indexOf("data-week") !== -1 && planningHtml.indexOf("data
 assert.ok(planningHtml.indexOf("15-minute") !== -1, "Journey day view opens a time grid");
 assert.ok(planningHtml.indexOf("data-open-order") !== -1, "click an order number for its timeline");
 assert.ok(planningHtml.indexOf('journeyLevel === "order"') !== -1, "Journey has an order timeline level");
-assert.ok(planningHtml.indexOf("Order and Name stay frozen") !== -1, "day and 15-minute views freeze Order and Name");
+assert.ok(planningHtml.indexOf("Name and Order swap while filtered") !== -1, "filtered day and time views put Name in front of Order");
 assert.ok(planningHtml.indexOf("<th class='order'>Order</th><th class='name'>Name</th>") !== -1, "day and 15-minute grids keep Order and Name columns");
 assert.ok(planningHtml.indexOf("not on this view") !== -1 || planningHtml.indexOf("Names are not on this view") !== -1, "weekly Journey hides names");
 assert.ok(planningHtml.indexOf("freeze-names") !== -1 && planningHtml.indexOf("freeze-order") !== -1, "Order and Name columns freeze while the weeks scroll");
@@ -526,9 +526,11 @@ assert.ok(planningHtml.indexOf("Twenty shop weeks") !== -1, "Journey week view h
 assert.ok(planningHtml.indexOf("not Week 1 / 2 / 3") !== -1, "week headers are current shop dates, not example Week 1");
 assert.ok(planningHtml.indexOf("th.week[data-week]") !== -1, "clicking a week header does not hide other orders");
 assert.ok(planningHtml.indexOf("who starts first") !== -1, "Journey lists orders by start time");
-assert.ok(planningHtml.indexOf("names within an order") !== -1, "names on an order are listed by who works first");
-assert.ok(planningHtml.indexOf("data-filter-worker") !== -1, "click a name on the 15-minute grid to see only that person");
-assert.ok(planningHtml.indexOf("data-clear-worker") !== -1 && planningHtml.indexOf("← Everyone") !== -1, "filtered 15-minute view can show everyone again");
+assert.ok(planningHtml.indexOf("within an order") !== -1, "names on an order are listed by who works first");
+assert.ok(planningHtml.indexOf("data-filter-worker") !== -1, "click a name on the day or 15-minute grid to see only that person");
+assert.ok(planningHtml.indexOf("data-clear-worker") !== -1 && planningHtml.indexOf("← Everyone") !== -1, "filtered view can show everyone again");
+assert.ok(planningHtml.indexOf("name-first") !== -1 && planningHtml.indexOf("<th class='name'>Name</th><th class='order'>Order</th>") !== -1, "filtered view swaps Name in front of Order");
+assert.ok(planningHtml.indexOf('journeyLevel === "times" || journeyLevel === "days"') !== -1, "name filter works on day and 15-minute views");
 assert.ok(planningHtml.indexOf("← Week view") !== -1 && planningHtml.indexOf("← Day view") !== -1, "Journey has back buttons to week and day views");
 assert.ok(planningHtml.indexOf("rowspan") !== -1, "same order numbers are merged across people");
 assert.ok(planningHtml.indexOf("C profile cutting") !== -1);
