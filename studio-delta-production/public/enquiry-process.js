@@ -92,6 +92,7 @@
       "<div class=\"sd-process-sheet\" role=\"dialog\" aria-modal=\"true\">" +
       "<header><div><h1 id=\"sdProcessTitle\">Enquiry process</h1><p id=\"sdProcessSub\" class=\"sd-process-sub\"></p></div>" +
       "<div class=\"sd-process-tools\"><a id=\"sdProcessSheetLink\" href=\"/enquiries\">Enquiries sheet</a>" +
+      "<button type=\"button\" class=\"danger\" id=\"sdProcessDelete\">Delete enquiry</button>" +
       "<button type=\"button\" class=\"ghost\" id=\"sdProcessClose\">Close</button></div></header>" +
       "<div class=\"sd-process-body\" id=\"sdProcessBody\"></div></div>";
     document.body.appendChild(wrap);
@@ -148,6 +149,14 @@
         ".sd-process-fields{display:block;min-width:0}" +
         ".sd-process-sheet button{border:1px solid #1d2939;background:#1d2939;color:#fff;border-radius:6px;padding:8px 12px;font-weight:600;cursor:pointer}" +
         ".sd-process-sheet button.ghost{background:#fff;color:#1d2939}" +
+        ".sd-process-sheet button.danger{background:#fff;color:#b42318;border-color:#fda29b}" +
+        ".sd-confirm-mask{position:fixed;inset:0;background:rgba(16,24,40,.55);z-index:70;display:none;align-items:flex-start;justify-content:center;padding:48px 12px}" +
+        ".sd-confirm-mask.open{display:flex}" +
+        ".sd-confirm-sheet{width:min(440px,94vw);background:#fff;border:1px solid #d0d5dd;border-radius:12px;padding:16px 18px;font-family:Inter,system-ui,sans-serif;color:#1d2939}" +
+        ".sd-confirm-sheet h2{margin:0 0 8px;font-size:16px;font-family:Outfit,Inter,sans-serif}" +
+        ".sd-confirm-sheet p{margin:0 0 12px;font-size:13px;color:#344054;line-height:1.45}" +
+        ".sd-confirm-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}" +
+        ".sd-file-row .row-actions{display:flex;gap:6px;flex-wrap:wrap;align-items:center}" +
         ".sd-task-pill{display:inline-block;background:#fff;border:1px solid #d0d5dd;border-radius:999px;padding:2px 8px;font-size:12px;margin:0 6px 6px 0}" +
         ".sd-task-pill.overdue{border-color:#fda29b;color:#b42318}" +
         ".sd-lines{width:100%;border-collapse:collapse;font-size:12px;background:#fff}" +
@@ -195,6 +204,121 @@
       document.head.appendChild(css);
     }
     document.getElementById("sdProcessClose").onclick = closeProcess;
+    document.getElementById("sdProcessDelete").onclick = () => askDeleteEnquiry();
+  }
+
+  function ensureConfirmDom() {
+    if (document.getElementById("sdDeleteConfirm")) return;
+    const wrap = document.createElement("div");
+    wrap.id = "sdDeleteConfirm";
+    wrap.className = "sd-confirm-mask";
+    wrap.innerHTML =
+      "<div class=\"sd-confirm-sheet\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"sdDeleteTitle\">" +
+      "<h2 id=\"sdDeleteTitle\">Delete?</h2>" +
+      "<p id=\"sdDeleteMsg\"></p>" +
+      "<p class=\"sd-process-err\" id=\"sdDeleteErr\"></p>" +
+      "<div class=\"sd-confirm-actions\">" +
+      "<button type=\"button\" class=\"ghost\" id=\"sdDeleteCancel\">Cancel</button>" +
+      "<button type=\"button\" class=\"danger\" id=\"sdDeleteOk\">Delete</button>" +
+      "</div></div>";
+    document.body.appendChild(wrap);
+  }
+
+  function sdConfirmDelete(opts) {
+    ensureConfirmDom();
+    const box = document.getElementById("sdDeleteConfirm");
+    const title = document.getElementById("sdDeleteTitle");
+    const msg = document.getElementById("sdDeleteMsg");
+    const err = document.getElementById("sdDeleteErr");
+    const ok = document.getElementById("sdDeleteOk");
+    const cancel = document.getElementById("sdDeleteCancel");
+    title.textContent = (opts && opts.title) || "Delete?";
+    msg.textContent = (opts && opts.message) || "This cannot be undone.";
+    err.textContent = "";
+    ok.textContent = (opts && opts.confirmLabel) || "Delete";
+    ok.disabled = false;
+    cancel.disabled = false;
+    box.classList.add("open");
+    return new Promise((resolve) => {
+      const finish = (value) => {
+        ok.onclick = null;
+        cancel.onclick = null;
+        if (!value) box.classList.remove("open");
+        resolve(value);
+      };
+      cancel.onclick = () => finish(false);
+      ok.onclick = () => finish(true);
+    });
+  }
+  window.sdConfirmDelete = sdConfirmDelete;
+
+  async function askDeleteEnquiry() {
+    const row = state.snap && state.snap.row;
+    const no = (row && row.enquiry_no) || state.enquiryNo;
+    if (!no) return;
+    const linked = row && row.order_number ? " Linked order " + row.order_number + " stays on Orders." : " Linked orders stay on Orders.";
+    const ok = await sdConfirmDelete({
+      title: "Delete enquiry " + no + "?",
+      message: "This removes the enquiry and its files — quotes, cost sheets, proof of payment, drawings, and Correspondance." + linked + " This cannot be undone.",
+      confirmLabel: "Delete enquiry"
+    });
+    if (!ok) return;
+    const err = document.getElementById("sdDeleteErr");
+    const btn = document.getElementById("sdDeleteOk");
+    const cancel = document.getElementById("sdDeleteCancel");
+    try {
+      if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
+      if (cancel) cancel.disabled = true;
+      const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(no), { method: "DELETE" });
+      const j = await r.json();
+      if (!j.ok) {
+        if (err) err.textContent = j.error || "Could not delete";
+        if (btn) { btn.disabled = false; btn.textContent = "Delete enquiry"; }
+        if (cancel) cancel.disabled = false;
+        return;
+      }
+      document.getElementById("sdDeleteConfirm").classList.remove("open");
+      closeProcess();
+      if (typeof window.sdOnEnquiryDeleted === "function") window.sdOnEnquiryDeleted(no);
+    } catch (e) {
+      if (err) err.textContent = (e && e.message) || "Could not delete";
+      if (btn) { btn.disabled = false; btn.textContent = "Delete enquiry"; }
+      if (cancel) cancel.disabled = false;
+    }
+  }
+
+  async function askDeleteFile(kind, label) {
+    const no = state.enquiryNo;
+    if (!no || !kind) return;
+    const ok = await sdConfirmDelete({
+      title: "Delete this file?",
+      message: "Delete " + (label || "this attachment") + " from " + no + "? This cannot be undone.",
+      confirmLabel: "Delete file"
+    });
+    if (!ok) return;
+    const err = document.getElementById("sdDeleteErr");
+    const btn = document.getElementById("sdDeleteOk");
+    const cancel = document.getElementById("sdDeleteCancel");
+    try {
+      if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
+      if (cancel) cancel.disabled = true;
+      const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(no) + "/files/" + encodeURIComponent(kind), { method: "DELETE" });
+      const j = await r.json();
+      if (!j.ok) {
+        if (err) err.textContent = j.error || "Could not delete";
+        if (btn) { btn.disabled = false; btn.textContent = "Delete file"; }
+        if (cancel) cancel.disabled = false;
+        return;
+      }
+      document.getElementById("sdDeleteConfirm").classList.remove("open");
+      state.snap = j;
+      renderBody();
+      if (typeof window.sdOnEnquiryChanged === "function") window.sdOnEnquiryChanged(no);
+    } catch (e) {
+      if (err) err.textContent = (e && e.message) || "Could not delete";
+      if (btn) { btn.disabled = false; btn.textContent = "Delete file"; }
+      if (cancel) cancel.disabled = false;
+    }
   }
 
   function closeProcess() {
@@ -743,6 +867,12 @@
           ? "<a class=\"sd-open-mail\" href=\"" + esc(href) + "\" target=\"_blank\" rel=\"noopener\">Open</a>"
           : "<span class=\"sd-process-sub\">No file yet</span>";
       }
+      if (f.kind) {
+        const name = correspondence
+          ? (corrTotal > 1 ? "Correspondance link " + corrN : "Correspondance link")
+          : (f.label || f.title || f.filename || "this file");
+        actions += "<button type=\"button\" class=\"danger\" data-delete-file=\"" + esc(f.kind) + "\" data-delete-label=\"" + esc(name) + "\">Delete</button>";
+      }
       const pathLine = correspondence && href
         ? "<div class=\"sd-process-sub\" style=\"word-break:break-all\">" + esc(href) + "</div>"
         : "";
@@ -1176,6 +1306,12 @@
         } finally {
           if (btn && form.isConnected) { btn.disabled = false; btn.textContent = "Save update"; }
         }
+      };
+    });
+    body.querySelectorAll("[data-delete-file]").forEach((btn) => {
+      btn.onclick = async (e) => {
+        e.preventDefault();
+        await askDeleteFile(btn.getAttribute("data-delete-file"), btn.getAttribute("data-delete-label") || "");
       };
     });
     body.querySelectorAll("[data-copy-link]").forEach((btn) => {
