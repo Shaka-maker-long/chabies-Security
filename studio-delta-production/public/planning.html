@@ -76,6 +76,9 @@
     .crumb { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px; position:sticky; top:0; z-index:6; background:#f8f9fc; padding:6px 0 10px; }
     .crumb button { font-size:13px; }
     .crumb .here { font-size:13px; font-weight:700; color:var(--ink); }
+    .kind-filter { display:inline-flex; gap:4px; align-items:center; margin-left:auto; }
+    .kind-filter button { font-size:12px; padding:6px 10px; }
+    .kind-filter button.on { background:#1d2939; color:#fff; }
     body.office-app .crumb { background: var(--sd-linen, #f3efe8); }
     body.office-app .crumb .here { color:#1d2939; }
     table.grid { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; background:#fff; font-size:13px; }
@@ -84,20 +87,21 @@
     table.grid th.corner, table.grid td.corner,
     table.grid th.order, table.grid td.order,
     table.grid th.name, table.grid td.name { text-align:left; font-weight:700; font-family: Outfit, Inter, sans-serif; background:#fff; }
-    table.grid th.order, table.grid td.order { position:sticky; left:0; z-index:2; min-width:120px; box-shadow:1px 0 0 #e4e7ec; }
+    table.grid th.order, table.grid td.order { position:sticky; left:0; z-index:2; min-width:176px; box-shadow:1px 0 0 #e4e7ec; }
     table.grid thead th.order { z-index:5; background:var(--head); }
+    table.grid td.order .product { display:block; font-family: Inter, sans-serif; font-weight:600; font-size:11px; color:var(--muted); margin-top:2px; text-decoration:none; }
     table.grid th.kind, table.grid td.kind { text-align:left; font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; min-width:72px; color:var(--muted); }
-    table.grid.freeze-order th.kind, table.grid.freeze-order td.kind { position:sticky; left:120px; z-index:2; background:#fff; box-shadow:2px 0 6px rgba(16,24,40,.06); }
+    table.grid.freeze-order th.kind, table.grid.freeze-order td.kind { position:sticky; left:176px; z-index:2; background:#fff; box-shadow:2px 0 6px rgba(16,24,40,.06); }
     table.grid.freeze-order thead th.kind { z-index:5; background:var(--head); }
-    table.grid.freeze-names th.name, table.grid.freeze-names td.name { position:sticky; left:120px; z-index:2; min-width:110px; font-family: Inter, sans-serif; font-weight:600; box-shadow:1px 0 0 #e4e7ec; }
+    table.grid.freeze-names th.name, table.grid.freeze-names td.name { position:sticky; left:176px; z-index:2; min-width:110px; font-family: Inter, sans-serif; font-weight:600; box-shadow:1px 0 0 #e4e7ec; }
     table.grid.freeze-names thead th.name { z-index:5; background:var(--head); }
-    table.grid.freeze-names th.kind, table.grid.freeze-names td.kind { position:sticky; left:230px; z-index:2; background:#fff; box-shadow:2px 0 6px rgba(16,24,40,.06); }
+    table.grid.freeze-names th.kind, table.grid.freeze-names td.kind { position:sticky; left:286px; z-index:2; background:#fff; box-shadow:2px 0 6px rgba(16,24,40,.06); }
     table.grid.freeze-names thead th.kind { z-index:5; background:var(--head); }
     table.grid.freeze-names.name-first th.name, table.grid.freeze-names.name-first td.name { left:0; z-index:2; min-width:110px; box-shadow:1px 0 0 #e4e7ec; }
     table.grid.freeze-names.name-first thead th.name { z-index:5; background:var(--head); }
-    table.grid.freeze-names.name-first th.order, table.grid.freeze-names.name-first td.order { left:110px; z-index:2; min-width:120px; box-shadow:1px 0 0 #e4e7ec; }
+    table.grid.freeze-names.name-first th.order, table.grid.freeze-names.name-first td.order { left:110px; z-index:2; min-width:176px; box-shadow:1px 0 0 #e4e7ec; }
     table.grid.freeze-names.name-first thead th.order { z-index:5; background:var(--head); }
-    table.grid.freeze-names.name-first th.kind, table.grid.freeze-names.name-first td.kind { left:230px; }
+    table.grid.freeze-names.name-first th.kind, table.grid.freeze-names.name-first td.kind { left:286px; }
     table.grid td.order { cursor:pointer; text-decoration:underline; text-underline-offset:3px; vertical-align:middle; }
     table.grid td.order:hover { background:#eef2f6; }
     table.grid td.name.pick { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
@@ -252,6 +256,7 @@
     let journeyDay = "";
     let journeyWorkerId = "";
     let journeyWorkerName = "";
+    let journeyKind = "both";
     let personA = "";
     let personB = "";
     const openOrders = {};
@@ -437,7 +442,13 @@
     function rowOnDay(row, dayIso, kind) {
       return daysOf(row, kind).indexOf(dayIso) !== -1;
     }
+    function kindFilter() {
+      return journeyKind === "plan" || journeyKind === "actual" ? journeyKind : "both";
+    }
     function activityHits(row, isos) {
+      const filter = kindFilter();
+      if (filter === "plan") return daysOf(row, "plan").some((iso) => isos.indexOf(iso) !== -1);
+      if (filter === "actual") return daysOf(row, "actual").some((iso) => isos.indexOf(iso) !== -1);
       return daysOf(row, "plan").some((iso) => isos.indexOf(iso) !== -1) ||
         daysOf(row, "actual").some((iso) => isos.indexOf(iso) !== -1);
     }
@@ -452,7 +463,9 @@
       let min = "";
       ((order && order.rows) || []).forEach((row) => {
         if (rowMatch && !rowMatch(row, order)) return;
-        const s = String(row.start || "");
+        const s = kindFilter() === "actual"
+          ? String((row.actual && row.actual.start) || "")
+          : String(row.start || "");
         if (s && (!min || s < min)) min = s;
       });
       return min || String((order && order.start) || "");
@@ -466,16 +479,33 @@
       });
     }
     function activityPairs(orders, windowMatch) {
+      const filter = kindFilter();
       const pairs = [];
-      sortByStart(orders, (row) => windowMatch(row, "plan") || windowMatch(row, "actual")).forEach((o) => {
+      sortByStart(orders, (row) => {
+        if (filter === "plan") return windowMatch(row, "plan");
+        if (filter === "actual") return windowMatch(row, "actual");
+        return windowMatch(row, "plan") || windowMatch(row, "actual");
+      }).forEach((o) => {
         (o.rows || []).forEach((row) => {
-          if (!windowMatch(row, "plan") && !windowMatch(row, "actual")) return;
           if (!processMatchesWorker(row)) return;
+          const planHit = windowMatch(row, "plan");
+          const actualHit = windowMatch(row, "actual");
           const planPerson = { id: row.workerId, name: row.workerName || row.workerId };
           const act = row.actual || {};
           const actualPerson = (act.workerId || act.workerName)
             ? { id: act.workerId || act.workerName, name: act.workerName || act.workerId }
             : planPerson;
+          if (filter === "plan") {
+            if (!planHit) return;
+            pairs.push({ order: o, person: planPerson, row: row, kind: "plan" });
+            return;
+          }
+          if (filter === "actual") {
+            if (!actualHit) return;
+            pairs.push({ order: o, person: actualPerson, row: row, kind: "actual" });
+            return;
+          }
+          if (!planHit && !actualHit) return;
           pairs.push({ order: o, person: planPerson, row: row, kind: "plan" });
           pairs.push({ order: o, person: actualPerson, row: row, kind: "actual" });
         });
@@ -538,7 +568,9 @@
     function orderCell(order, span) {
       if (!span) return "";
       const rs = span > 1 ? " rowspan=\"" + span + "\"" : "";
-      return "<td class='order'" + rs + " data-open-order=\"" + esc(order.orderId) + "\" title=\"" + esc((order.product ? order.product + " — " : "") + "Open timeline") + "\">" + esc(order.orderId) + "</td>";
+      const product = order.product ? "<span class='product'>" + esc(order.product) + "</span>" : "";
+      const title = (order.orderId || "") + (order.product ? " · " + order.product : "") + " — Open timeline";
+      return "<td class='order'" + rs + " data-open-order=\"" + esc(order.orderId) + "\" title=\"" + esc(title) + "\">" + esc(order.orderId) + product + "</td>";
     }
     function nameCell(person, pick, span) {
       if (!span) return "";
@@ -584,6 +616,19 @@
         return "<th class='week" + now + "' data-week=\"" + esc(w.start) + "\">" + esc(w.label) + mark + "</th>";
       }).join("");
     }
+    function kindFilterButtons() {
+      const cur = kindFilter();
+      function btn(id, label) {
+        return "<button class='ghost" + (cur === id ? " on" : "") + "' type='button' data-kind-filter='" + id + "'>" + label + "</button>";
+      }
+      return "<span class='kind-filter' role='group' aria-label='Show planned or actual'>" +
+        btn("both", "Both") + btn("plan", "Planned") + btn("actual", "Actual") + "</span>";
+    }
+    function emptyKindLabel() {
+      if (kindFilter() === "actual") return "clocked";
+      if (kindFilter() === "plan") return "planned";
+      return "planned or clocked";
+    }
     function emptyOutsideWeeks() {
       const jump = board && board.firstPlannedWeek;
       const n = journeyOrders().length;
@@ -591,7 +636,7 @@
       const btn = jump
         ? " <button class='ghost' type='button' data-jump-week=\"" + esc(jump) + "\">Show the week that work starts</button>"
         : "";
-      return "<div class='empty'>No orders are planned or clocked in these weeks. Names show on the day and 15-minute views once work lands here." + btn + "</div>";
+      return "<div class='empty'>No orders are " + emptyKindLabel() + " in these weeks. Names show on the day and 15-minute views once work lands here." + btn + "</div>";
     }
     function renderJourneyCrumb() {
       const bits = [];
@@ -613,6 +658,7 @@
       else if (journeyLevel === "times") here = (journeyWorkerName ? journeyWorkerName + " · " : "") + (prettyDate(journeyDay) || "Day");
       else if (journeyLevel === "order") here = openJourneyId || "Order";
       bits.push("<strong class='here'>" + esc(here) + "</strong>");
+      bits.push(kindFilterButtons());
       return "<div class='crumb'>" + bits.join(" ") + "</div>";
     }
     function renderJourneyWeeks() {
@@ -639,7 +685,7 @@
         return pairRow(pairs, i, cells, { names: false });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. Each process has a Plan row and an Actual row under it. Plan is the booked slot. Actual is the production clock — if Cutting ran in week 2, the C sits on Actual in that week. Empty Actual means it has not been clocked yet. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Order stays frozen while you scroll. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
+        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. Each process has a Plan row and an Actual row under it. Plan is the booked slot. Actual is the production clock — if Cutting ran in week 2, the C sits on Actual in that week. Empty Actual means it has not been clocked yet. Use Both, Planned, or Actual to show one or both. The frozen Order column is the number and the product. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-order'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function renderJourneyDays() {
@@ -656,8 +702,8 @@
       const pairs = activityPairs(visibleOrders(), windowMatch);
       fillWeekLabel();
       if (!pairs.length) {
-        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is planned or clocked in this week" +
-          (journeyWorkerId ? " for " + esc(journeyWorkerName || "that person") + ". <button class='ghost' type='button' data-clear-worker>Show everyone</button>" : ". Order numbers and names stay on this view when work is booked.") + "</div>";
+        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is " + emptyKindLabel() + " in this week" +
+          (journeyWorkerId ? " for " + esc(journeyWorkerName || "that person") + ". <button class='ghost' type='button' data-clear-worker>Show everyone</button>" : ". Order numbers, products, and names stay on this view when work is booked.") + "</div>";
         return;
       }
       const head = "<tr><th colspan=\"" + (days.length + 3) + "\">" + esc(week.label) + (openJourneyId ? " · " + esc(openJourneyId) : "") + "</th></tr>" +
@@ -671,7 +717,7 @@
         return pairRow(pairs, i, cells, { names: true, namePick: true });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Each process has a Plan row and an Actual row under it so you can compare the booked slot with the shop clock. Click a name to see only that person’s orders this week. Name and Order swap while filtered. ← Everyone puts Order first again. Names within an order follow who does the task first. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a Plan letter to another free day. Actual letters stay put.</p>" +
+        "<p class='help'>Each process has a Plan row and an Actual row under it so you can compare the booked slot with the shop clock. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders this week. Name and Order swap while filtered. ← Everyone puts Order first again. Names within an order follow who does the task first. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a Plan letter to another free day. Actual letters stay put.</p>" +
         "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
     }
     function timeSlots() {
@@ -699,7 +745,7 @@
       const pairs = activityPairs(visibleOrders(), windowMatch);
       fillWeekLabel();
       if (!pairs.length) {
-        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is planned or clocked on " + esc(prettyDate(dayIso)) +
+        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is " + emptyKindLabel() + " on " + esc(prettyDate(dayIso)) +
           (journeyWorkerId ? " for " + esc(journeyWorkerName || "that person") + ". <button class='ghost' type='button' data-clear-worker>Show everyone</button>" : ".") + "</div>";
         return;
       }
@@ -713,7 +759,7 @@
         return pairRow(pairs, i, cells, { names: true, namePick: true });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Plan is the booked 15-minute slot. Actual is when the clock ran. Click a name to see only that person’s orders on this day. Name and Order swap while filtered. ← Everyone puts Order first again. ← Week view and ← Day view go back. Drag a Plan letter to a free time. That person cannot overlap. Actual letters are not draggable.</p>" +
+        "<p class='help'>Plan is the booked 15-minute slot. Actual is when the clock ran. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders on this day. Name and Order swap while filtered. ← Everyone puts Order first again. ← Week view and ← Day view go back. Drag a Plan letter to a free time. That person cannot overlap. Actual letters are not draggable.</p>" +
         "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function orderWorkDays(order) {
@@ -742,7 +788,10 @@
         return;
       }
       const days = orderWorkDays(order);
-      const pairs = activityPairs([order], () => true);
+      const pairs = activityPairs([order], (row, kind) => {
+        if (kind === "actual") return daysOf(row, "actual").length > 0 || !!(row.actual && row.actual.start);
+        return true;
+      });
       fillWeekLabel();
       const title = esc(order.orderId) + (order.product ? " · " + esc(order.product) : "");
       let table = "";
@@ -776,7 +825,7 @@
         return planLine + actualLine;
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Timeline for " + title + ". Plan is the booked slot. Actual is the shop clock. Same order number is merged across the people on this job. ← Week view and ← Day view go back. Click a day for the 15-minute plan. Drag a Plan letter to a free slot — only later tasks on this order move.</p>" +
+        "<p class='help'>Timeline for " + title + ". Plan is the booked slot. Actual is the shop clock. Both, Planned, and Actual filter those rows. Same order number is merged across the people on this job. ← Week view and ← Day view go back. Click a day for the 15-minute plan. Drag a Plan letter to a free slot — only later tasks on this order move.</p>" +
         table +
         "<div class='timeline'><h3>Planning</h3>" +
         (items ? "<ol>" + items + "</ol>" : "<p class='help'>No processes are booked on this order.</p>") +
@@ -1134,6 +1183,12 @@
     });
     document.getElementById("calendars").addEventListener("click", (e) => {
       if (justDragged) return;
+      const kindBtn = e.target.closest("[data-kind-filter]");
+      if (kindBtn && view === "journey") {
+        journeyKind = kindBtn.getAttribute("data-kind-filter") || "both";
+        renderBoard();
+        return;
+      }
       const level = e.target.closest("[data-journey-level]");
       if (level) {
         journeyLevel = level.getAttribute("data-journey-level") || "weeks";
