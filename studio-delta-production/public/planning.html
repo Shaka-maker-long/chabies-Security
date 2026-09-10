@@ -76,9 +76,10 @@
     .crumb { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px; position:sticky; top:0; z-index:6; background:#f8f9fc; padding:6px 0 10px; }
     .crumb button { font-size:13px; }
     .crumb .here { font-size:13px; font-weight:700; color:var(--ink); }
-    .kind-filter { display:none; gap:4px; align-items:center; margin-left:8px; padding-left:10px; border-left:1px solid #3f3f3f; }
-    body[data-view="journey"] .kind-filter { display:inline-flex; }
-    .kind-filter button { font-size:12px; padding:6px 10px; }
+    .kind-filter { display:none; align-items:center; gap:6px; flex-wrap:wrap; margin:0 0 12px; min-height:36px; }
+    body[data-view="journey"] .kind-filter { display:flex !important; }
+    .kind-filter-label { font-size:12px; font-weight:700; color:var(--muted); }
+    .kind-filter button { font-size:12px; padding:7px 12px !important; min-height:34px !important; height:auto !important; }
     .kind-filter button.on { background:#1d2939 !important; color:#fff !important; }
     body.office-app .kind-filter button.on { background:var(--sd-brass) !important; color:var(--sd-steel) !important; border-color:var(--sd-brass) !important; }
     body.office-app .crumb { background: var(--sd-linen, #f3efe8); }
@@ -188,11 +189,6 @@
         <strong id="weekLabel"></strong>
         <button class="ghost" type="button" id="nextWeek">Week →</button>
         <button class="ghost" type="button" id="thisWeek">This week</button>
-        <span class="kind-filter" id="kindFilter" role="group" aria-label="Show planned or actual">
-          <button class="ghost on" type="button" data-kind-filter="both">Both</button>
-          <button class="ghost" type="button" data-kind-filter="plan">Planned</button>
-          <button class="ghost" type="button" data-kind-filter="actual">Actual</button>
-        </span>
       </div>
       <div class="people-tools">
         <label>Person <select id="personA" aria-label="Person"></select></label>
@@ -214,6 +210,12 @@
     </section>
     <main class="board">
       <div class="legend" id="legend"></div>
+      <div class="kind-filter" id="kindFilter" role="group" aria-label="Show planned or actual">
+        <span class="kind-filter-label">Show</span>
+        <button class="ghost on" type="button" data-kind-filter="both">Both</button>
+        <button class="ghost" type="button" data-kind-filter="plan">Planned</button>
+        <button class="ghost" type="button" data-kind-filter="actual">Actual</button>
+      </div>
       <div id="calendars"></div>
     </main>
   </div>
