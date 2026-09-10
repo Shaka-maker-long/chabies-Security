@@ -76,9 +76,9 @@
     .crumb { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px; position:sticky; top:0; z-index:6; background:#f8f9fc; padding:6px 0 10px; }
     .crumb button { font-size:13px; }
     .crumb .here { font-size:13px; font-weight:700; color:var(--ink); }
-    .crumb .kind-filter { display:flex; align-items:center; gap:6px; flex:1 1 100%; margin:0; min-height:0; }
+    .crumb .kind-filter { display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; gap:8px; flex:1 1 100%; margin:4px 0 0; min-height:34px; }
     .kind-filter-label { font-size:12px; font-weight:700; color:var(--muted); }
-    .crumb .kind-filter button { font-size:12px; padding:7px 12px; min-height:34px; }
+    .crumb .kind-filter button { position:static; float:none; flex:0 0 auto; font-size:12px; padding:7px 12px; min-height:34px; }
     .crumb .kind-filter button.on { background:#1d2939; color:#fff; }
     body.office-app .crumb .kind-filter button.on { background:var(--sd-brass) !important; color:var(--sd-steel) !important; border-color:var(--sd-brass) !important; }
     body.office-app .crumb { background: var(--sd-linen, #f3efe8); }
@@ -623,8 +623,8 @@
       function btn(id, label) {
         return "<button class='ghost" + (cur === id ? " on" : "") + "' type='button' data-kind-filter='" + id + "'>" + label + "</button>";
       }
-      return "<span class='kind-filter' role='group' aria-label='Show planned or actual'><span class='kind-filter-label'>Show</span>" +
-        btn("both", "Both") + btn("plan", "Planned") + btn("actual", "Actual") + "</span>";
+      return "<div class='kind-filter' role='group' aria-label='Show planned or actual'><span class='kind-filter-label'>Show</span>" +
+        btn("both", "Both") + btn("plan", "Planned") + btn("actual", "Actual") + "</div>";
     }
     function emptyKindLabel() {
       if (kindFilter() === "actual") return "clocked";
