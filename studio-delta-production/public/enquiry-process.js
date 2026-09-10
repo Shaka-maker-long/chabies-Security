@@ -853,11 +853,13 @@
     const corrTotal = items.filter((f) => f.group === "correspondence").length;
     let corrN = 0;
     html += items.map((f) => {
-      const server = f.kind ? absoluteHref(fileHref(f.kind)) : "";
-      const href = (f.kind && (f.open || f.stored_as) && server) ? server : (f.href || "");
       const correspondence = f.group === "correspondence";
       if (correspondence) corrN += 1;
       const kind = f.kind || (correspondence ? "correspondence_" + corrN : (f.group || ""));
+      const server = kind ? absoluteHref(fileHref(kind)) : "";
+      const href = correspondence
+        ? (f.href || (f.stored_as ? server : ""))
+        : ((kind && (f.open || f.stored_as) && server) ? server : (f.href || ""));
       let actions = "";
       if (correspondence) {
         actions = href
