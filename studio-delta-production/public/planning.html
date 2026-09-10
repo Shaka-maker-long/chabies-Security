@@ -92,6 +92,12 @@
     table.grid th.order, table.grid td.order { position:sticky; left:0; z-index:2; min-width:176px; box-shadow:1px 0 0 #e4e7ec; }
     table.grid thead th.order { z-index:5; background:var(--head); }
     table.grid td.order .product { display:block; font-family: Inter, sans-serif; font-weight:600; font-size:11px; color:var(--muted); margin-top:2px; text-decoration:none; }
+    table.grid td.order .product.has-shot { cursor:zoom-in; border-bottom:1px dotted #98a2b3; width:fit-content; max-width:100%; }
+    table.grid td.order .order-id { text-decoration:underline; text-underline-offset:3px; }
+    #productShot { position:fixed; z-index:80; width:min(280px, calc(100vw - 24px)); background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 12px 32px rgba(16,24,40,.2); padding:8px; pointer-events:none; }
+    #productShot[hidden] { display:none !important; }
+    #productShot img { display:block; width:100%; height:auto; max-height:280px; object-fit:contain; background:#f8f9fc; border-radius:6px; }
+    #productShot .product-shot-name { margin:8px 2px 2px; font-size:12px; font-weight:700; color:var(--ink); }
     table.grid th.kind, table.grid td.kind { text-align:left; font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; min-width:72px; color:var(--muted); }
     table.grid.freeze-order th.kind, table.grid.freeze-order td.kind { position:sticky; left:176px; z-index:2; background:#fff; box-shadow:2px 0 6px rgba(16,24,40,.06); }
     table.grid.freeze-order thead th.kind { z-index:5; background:var(--head); }
@@ -104,7 +110,7 @@
     table.grid.freeze-names.name-first th.order, table.grid.freeze-names.name-first td.order { left:110px; z-index:2; min-width:176px; box-shadow:1px 0 0 #e4e7ec; }
     table.grid.freeze-names.name-first thead th.order { z-index:5; background:var(--head); }
     table.grid.freeze-names.name-first th.kind, table.grid.freeze-names.name-first td.kind { left:286px; }
-    table.grid td.order { cursor:pointer; text-decoration:underline; text-underline-offset:3px; vertical-align:middle; }
+    table.grid td.order { cursor:pointer; vertical-align:middle; }
     table.grid td.order:hover { background:#eef2f6; }
     table.grid td.name.pick { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
     table.grid td.name.pick:hover, table.grid td.name.on { background:#eef2f6; }
@@ -212,6 +218,10 @@
       <div class="legend" id="legend"></div>
       <div id="calendars"></div>
     </main>
+  </div>
+  <div id="productShot" hidden>
+    <img alt="">
+    <p class="product-shot-name"></p>
   </div>
   <div class="mask" id="otherMask">
     <form class="sheet" id="otherForm">
@@ -623,9 +633,14 @@
     function orderCell(order, span) {
       if (!span) return "";
       const rs = span > 1 ? " rowspan=\"" + span + "\"" : "";
-      const product = order.product ? "<span class='product'>" + esc(order.product) + "</span>" : "";
+      let product = "";
+      if (order.product) {
+        const shot = String(order.imageUrl || "").trim();
+        const extra = shot ? " data-product-shot=\"" + esc(shot) + "\"" : "";
+        product = "<span class='product" + (shot ? " has-shot" : "") + "'" + extra + ">" + esc(order.product) + "</span>";
+      }
       const title = (order.orderId || "") + (order.product ? " · " + order.product : "") + " — Open timeline";
-      return "<td class='order'" + rs + " data-open-order=\"" + esc(order.orderId) + "\" title=\"" + esc(title) + "\">" + esc(order.orderId) + product + "</td>";
+      return "<td class='order'" + rs + " data-open-order=\"" + esc(order.orderId) + "\" title=\"" + esc(title) + "\"><span class='order-id'>" + esc(order.orderId) + "</span>" + product + "</td>";
     }
     function nameCell(person, pick, span) {
       if (!span) return "";
@@ -739,7 +754,7 @@
         return pairRow(entries, i, cells, { names: false });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. On this week grid each order has one Plan row and one Actual row — tasks stay together. Letters for that week sit in the same cell (C T P W), not on separate task rows. Plan is the booked slot. Actual is the production clock — if Cutting ran in week 2, the C sits on Actual in that week. Empty Actual means it has not been clocked yet. Use Both, Planned, or Actual to show one or both. The frozen Order column is the number and the product. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
+        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. On this week grid each order has one Plan row and one Actual row — tasks stay together. Letters for that week sit in the same cell (C T P W), not on separate task rows. Plan is the booked slot. Actual is the production clock — if Cutting ran in week 2, the C sits on Actual in that week. Empty Actual means it has not been clocked yet. Use Both, Planned, or Actual to show one or both. The frozen Order column is the number and the product. Hover the product name for the catalog photo. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-order'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function renderJourneyDays() {
@@ -980,7 +995,35 @@
       else if (journeyLevel === "order") renderJourneyOrder();
       else renderJourneyWeeks();
     }
+    function hideProductShot() {
+      const box = document.getElementById("productShot");
+      if (box) box.hidden = true;
+    }
+    function showProductShot(el) {
+      const url = el && el.getAttribute("data-product-shot");
+      const box = document.getElementById("productShot");
+      if (!url || !box) return;
+      const img = box.querySelector("img");
+      const name = box.querySelector(".product-shot-name");
+      const label = String(el.textContent || "").trim();
+      img.alt = label;
+      img.src = url;
+      name.textContent = label;
+      box.setAttribute("data-url", url);
+      box.hidden = false;
+      const r = el.getBoundingClientRect();
+      const w = box.offsetWidth || 280;
+      const h = box.offsetHeight || 300;
+      let left = r.right + 10;
+      let top = r.top;
+      if (left + w > window.innerWidth - 8) left = Math.max(8, r.left - w - 10);
+      if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+      if (top < 8) top = 8;
+      box.style.left = left + "px";
+      box.style.top = top + "px";
+    }
     function renderBoard() {
+      hideProductShot();
       renderLegend();
       fillWeekLabel();
       if (view === "planning") return;
@@ -1238,6 +1281,17 @@
       }
       moveTo(cur.id, isoAt(hit.day, hit.min));
     });
+    document.getElementById("calendars").addEventListener("pointerover", (e) => {
+      const hit = e.target.closest && e.target.closest("[data-product-shot]");
+      if (hit) showProductShot(hit);
+    });
+    document.getElementById("calendars").addEventListener("pointerout", (e) => {
+      const from = e.target.closest && e.target.closest("[data-product-shot]");
+      const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-product-shot]") : null;
+      if (from && from !== to) hideProductShot();
+    });
+    document.querySelector(".board").addEventListener("scroll", hideProductShot, true);
+    window.addEventListener("scroll", hideProductShot, true);
     document.getElementById("calendars").addEventListener("click", (e) => {
       if (justDragged) return;
       const el = e.target instanceof Element ? e.target : (e.target && e.target.parentElement);
@@ -1246,6 +1300,15 @@
         e.preventDefault();
         e.stopPropagation();
         setJourneyKind(kindBtn.getAttribute("data-kind-filter"));
+        return;
+      }
+      const shotEl = el && el.closest ? el.closest("[data-product-shot]") : null;
+      if (shotEl && view === "journey") {
+        e.preventDefault();
+        e.stopPropagation();
+        const box = document.getElementById("productShot");
+        if (box && !box.hidden && box.getAttribute("data-url") === shotEl.getAttribute("data-product-shot")) hideProductShot();
+        else showProductShot(shotEl);
         return;
       }
       const level = e.target.closest("[data-journey-level]");
