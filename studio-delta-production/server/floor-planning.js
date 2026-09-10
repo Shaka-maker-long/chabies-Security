@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { dataDir } = require("./workbook-store");
+const { dataDir, getBook } = require("./workbook-store");
 const { listOrders, formatOrderId } = require("./db");
 const staff = require("./staff");
 
@@ -376,17 +376,27 @@ function journeyWeeks(mondayIso, count) {
   return out;
 }
 
-function journeyWeeksFromPlan(journey, minCount) {
-  let min = "";
-  let max = "";
+function addJourneyIso(iso, bounds) {
+  if (!iso) return;
+  if (!bounds.min || iso < bounds.min) bounds.min = iso;
+  if (!bounds.max || iso > bounds.max) bounds.max = iso;
+}
+
+function journeyDayBounds(journey) {
+  const bounds = { min: "", max: "" };
   ((journey && journey.orders) || []).forEach((o) => {
     (o.rows || []).forEach((row) => {
-      (row.days || []).forEach((iso) => {
-        if (!min || iso < min) min = iso;
-        if (!max || iso > max) max = iso;
-      });
+      (row.days || []).forEach((iso) => addJourneyIso(iso, bounds));
+      ((row.actual && row.actual.days) || []).forEach((iso) => addJourneyIso(iso, bounds));
     });
   });
+  return bounds;
+}
+
+function journeyWeeksFromPlan(journey, minCount) {
+  const bounds = journeyDayBounds(journey);
+  const min = bounds.min;
+  const max = bounds.max;
   if (!min) return journeyWeeks(undefined, minCount || 5);
   const start = weekMondayIso(min);
   const last = weekMondayIso(max);
@@ -451,6 +461,115 @@ function occupiedWorkdays(block) {
   return workdaysFromTo(startIso, endIso).map((d) => d.iso);
 }
 
+function emptyActual() {
+  return { start: "", end: "", days: [], workerId: "", workerName: "", bouts: [] };
+}
+
+function matchJourneyProcess(task) {
+  const s = String(task || "").toLowerCase();
+  if (!s) return "";
+  if (/pre-powder|final qc|quality control|paint prep|painting/.test(s) && !/powder coating/.test(s)) return "";
+  if (/powder coating|paint shop/.test(s)) return "Powder coating";
+  const names = PLANNED_PROCESSES.concat(["Powder coating"]);
+  return names.find((name) => s.indexOf(name.toLowerCase().split(" ")[0]) !== -1) || "";
+}
+
+function readProductionActuals() {
+  try {
+    const sheet = getBook().getSheetByName("Production_Log");
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    const lastCol = Math.max(sheet.getLastColumn(), 13);
+    const grid = sheet.getRange(1, 1, sheet.getLastRow(), lastCol).getValues();
+    const nowMs = Date.now();
+    const out = [];
+    for (let i = 1; i < grid.length; i++) {
+      const row = grid[i] || [];
+      const orderId = formatOrderId(row[1]);
+      const process = matchJourneyProcess(row[3]);
+      if (!orderId || !process) continue;
+      const startMs = toMs(row[5]);
+      if (!Number.isFinite(startMs)) continue;
+      let endMs = toMs(row[6]);
+      if (!Number.isFinite(endMs) || endMs <= startMs) endMs = nowMs;
+      const bout = { start: isoFromMs(startMs), end: isoFromMs(endMs) };
+      out.push({
+        orderId,
+        process,
+        workerId: String(row[2] || "").trim(),
+        workerName: String(row[2] || "").trim(),
+        start: bout.start,
+        end: bout.end,
+        bouts: [bout]
+      });
+    }
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
+function groupProductionActuals(logs) {
+  const groups = {};
+  (logs || []).forEach((log) => {
+    const key = log.orderId + "||" + log.process;
+    if (!groups[key]) {
+      groups[key] = {
+        orderId: log.orderId,
+        process: log.process,
+        workerId: log.workerId,
+        workerName: log.workerName,
+        start: log.start,
+        end: log.end,
+        bouts: [],
+        daySet: {}
+      };
+    }
+    const g = groups[key];
+    if (String(log.start || "") < String(g.start || "")) g.start = log.start;
+    if (String(log.end || "") > String(g.end || "")) g.end = log.end;
+    if (log.workerName) {
+      g.workerId = log.workerId;
+      g.workerName = log.workerName;
+    }
+    (log.bouts || [{ start: log.start, end: log.end }]).forEach((bout) => {
+      g.bouts.push({ start: bout.start, end: bout.end });
+      occupiedWorkdays(bout).forEach((iso) => { g.daySet[iso] = true; });
+    });
+  });
+  Object.keys(groups).forEach((k) => {
+    const g = groups[k];
+    g.days = Object.keys(g.daySet).sort();
+    g.bouts.sort((a, b) => String(a.start).localeCompare(String(b.start)));
+    delete g.daySet;
+  });
+  return groups;
+}
+
+function attachActuals(journey) {
+  const groups = groupProductionActuals(readProductionActuals());
+  ((journey && journey.orders) || []).forEach((o) => {
+    (o.rows || []).forEach((row) => {
+      const key = formatOrderId(row.orderId || o.orderId) + "||" + String(row.process || "");
+      const act = groups[key];
+      row.actual = act
+        ? {
+          start: act.start,
+          end: act.end,
+          days: act.days.slice(),
+          workerId: act.workerId,
+          workerName: act.workerName,
+          bouts: act.bouts.map((b) => ({ start: b.start, end: b.end }))
+        }
+        : emptyActual();
+    });
+  });
+  const bounds = journeyDayBounds(journey);
+  if (journey) {
+    journey.days = bounds.min && bounds.max ? workdaysFromTo(bounds.min, bounds.max) : [];
+  }
+  return journey;
+}
+
 function buildJourney(blocks) {
   const groups = {};
   (blocks || []).forEach((b) => {
@@ -505,7 +624,7 @@ function buildJourney(blocks) {
       });
     });
   });
-  return {
+  const built = {
     days: minIso && maxIso ? workdaysFromTo(minIso, maxIso) : [],
     orders: orderIds.map((id) => {
       const rows = byOrder[id];
@@ -524,6 +643,7 @@ function buildJourney(blocks) {
       };
     }).sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")) || String(a.orderId).localeCompare(String(b.orderId)))
   };
+  return attachActuals(built);
 }
 
 const USER_ASSIGNED_PROCESSES = [
@@ -1379,5 +1499,7 @@ module.exports = {
   formatWeekRange,
   grindingPool,
   USER_ASSIGNED_PROCESSES,
-  weekStartingOrders
+  weekStartingOrders,
+  attachActuals,
+  matchJourneyProcess
 };
