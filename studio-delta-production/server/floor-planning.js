@@ -7,6 +7,7 @@ const { dataDir, getBook } = require("./workbook-store");
 const { listOrders, formatOrderId } = require("./db");
 const staff = require("./staff");
 const catalog = require("./product-catalog");
+const { remainingPlanForStatus } = require("./shop-status");
 
 const ZONE = "+02:00";
 const PAINT_WORKER_ID = "__paint_shop__";
@@ -930,10 +931,14 @@ function scheduleBatch({ jobs, existingBlocks, fromMs }) {
 
   (jobs || []).forEach((job) => {
     const order = job.order;
+    const remaining = remainingPlanForStatus(order.status);
     const minutes = minutesByProcessFor(order.product);
-    const hasWork = PLANNED_PROCESSES.some((p) => minutes[p] > 0);
+    PLANNED_PROCESSES.forEach((p) => {
+      if (remaining.processes.indexOf(p) === -1) minutes[p] = 0;
+    });
+    const hasWork = remaining.processes.some((p) => minutes[p] > 0) || (remaining.paintWait && minutes.Assembly > 0);
     if (!hasWork) {
-      throw new Error("No Task times for " + (order.product || order.order_number) + ". Add hours on Task times first.");
+      throw new Error("No remaining Task times for " + (order.product || order.order_number) + ". Add hours on Task times first.");
     }
     const assign = job.assignments || {};
     const metal = [];
@@ -951,7 +956,7 @@ function scheduleBatch({ jobs, existingBlocks, fromMs }) {
     let afterWeld = afterTag;
     if (minutes.Welding > 0) afterWeld = run("Welding", afterTag);
     if (minutes["Plate Cutting"] > 0) run("Plate Cutting", afterTag);
-    drafts.push({ order, assign, minutes, afterWeld, metal, grind: [], rest: [] });
+    drafts.push({ order, assign, minutes, afterWeld, metal, grind: [], rest: [], paintWait: remaining.paintWait });
   });
 
   drafts.forEach((draft) => {
@@ -973,7 +978,7 @@ function scheduleBatch({ jobs, existingBlocks, fromMs }) {
     const hadMetal = ["Profile Cutting", "Tagging", "Plate Cutting", "Welding", "Grinding"]
       .some((p) => draft.minutes[p] > 0);
     let after = draft.afterGrind;
-    if (hadMetal) {
+    if (draft.paintWait && (hadMetal || draft.minutes.Assembly > 0)) {
       const drop = earliestPaintMonday(after);
       const paintEnd = drop + PAINT_WAIT_DAYS * 86400000;
       const paint = {
@@ -1425,9 +1430,9 @@ function queueOrders() {
     if (b && b.orderId) scheduled[formatOrderId(b.orderId)] = true;
   });
   return listOrders()
-    .filter((o) => QUEUE_STATUSES.indexOf(String(o.status || "").trim()) !== -1)
     .map((o) => {
-      const processes = PLANNED_PROCESSES.map((process) => {
+      const remaining = remainingPlanForStatus(o.status);
+      const processes = remaining.processes.map((process) => {
         const minutes = staff.durationMinutes(o.product, process) || 0;
         const hours = minutes > 0 ? Math.round((minutes / 60) * 100) / 100 : 0;
         return {
@@ -1445,9 +1450,12 @@ function queueOrders() {
         type: String(o.type || ""),
         category: String(o.category || ""),
         scheduled: !!scheduled[formatOrderId(o.order_number)],
+        remaining: remaining.processes.slice(),
+        paintWait: !!remaining.paintWait,
         processes
       };
-    });
+    })
+    .filter((o) => o.processes.length > 0);
 }
 
 function blockOverlapsWeek(block, weekStartIso) {
@@ -1554,5 +1562,7 @@ module.exports = {
   weekStartingOrders,
   attachActuals,
   matchJourneyProcess,
-  productImageUrl
+  productImageUrl,
+  remainingPlanForStatus,
+  QUEUE_STATUSES
 };

@@ -124,13 +124,14 @@
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search orders">
       <button class="ghost" type="button" onclick="location.href='/orders/job-card'">Generate job card</button>
+      <button class="ghost" type="button" onclick="location.href='/orders/onboard'">Add existing order</button>
       <button class="ghost" type="button" onclick="openForm()">New order</button>
       <button class="danger" type="button" id="clearAllBtn" style="display:none" onclick="openClearAll()">Clear all orders</button>
     </div>
   </header>
   <div id="readyBox" class="ready-box" hidden>
     <h2>Ready to add to Orders</h2>
-    <p class="hint">These enquiries are Ordered and not on this sheet yet. Add the order here.</p>
+    <p class="hint">These enquiries are Ordered and not on this sheet yet. Add the order here. If the shop is already working it, use Add existing order and pick the current status.</p>
     <div class="ready-list" id="readyList"></div>
   </div>
   <div class="wrap">

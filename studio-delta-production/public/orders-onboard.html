@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Add existing order</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:780px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .page { padding:18px 16px 48px; max-width:920px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin:0 0 16px; }
+    .card h2 { margin:0 0 12px; font-size:16px; }
+    .hint { font-size:12px; color:var(--muted); margin:4px 0 0; font-weight:400; }
+    .grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:12px 16px; }
+    .grid.three { grid-template-columns:repeat(3, 1fr); }
+    label { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:600; }
+    input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-weight:400; font-size:13px; width:100%; }
+    textarea { min-height:72px; resize:vertical; }
+    .remain { background:#fff7ed; border:1px solid #fdc5a3; border-radius:8px; padding:10px 12px; font-size:13px; line-height:1.45; }
+    .remain b { display:block; margin-bottom:4px; }
+    .confirm { flex-direction:row; align-items:flex-start; gap:8px; margin-top:12px; font-weight:600; }
+    .confirm input { width:auto; margin-top:3px; }
+    .confirm .hint { display:block; font-weight:400; }
+    .foot { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .msg { font-size:13px; color:var(--muted); }
+    .msg.bad { color:var(--bad); }
+    .msg.ok { color:var(--ok); }
+    .empty, .load, .err { padding:36px 16px; text-align:center; color:var(--muted); }
+    .err { color:var(--bad); }
+    .done { display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
+    .done a { color:#175cd3; }
+    @media (max-width: 720px) {
+      .grid, .grid.three { grid-template-columns:1fr; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/glass-rates">Glass rates</a>
+        <a href="/orders/cost">Cost</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Add existing order</h1>
+      <p class="lede">Use this for shop jobs already in progress. Keep the Studio number they already have, pick where the floor is now, and Planning will only book the work that is left. New work from an Ordered enquiry still uses Add to Orders.</p>
+    </div>
+    <div class="tools">
+      <a href="/orders"><button class="ghost" type="button">Back to Orders</button></a>
+    </div>
+  </header>
+  <div class="page" id="page">
+    <div class="load" id="boot">Loading…</div>
+  </div>
+  <script src="/office-auth.js?v=onboard-order"></script>
+  <script>
+    const TYPES = ["Standard", "Custom", "New Design"];
+    let statuses = [];
+    let remaining = {};
+    let dropdowns = {};
+    let saving = false;
+
+    function esc(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+    function val(id) { return (document.getElementById(id) || {}).value || ""; }
+    function setVal(id, v) { const el = document.getElementById(id); if (el) el.value = v == null ? "" : v; }
+    function opts(list, chosen) {
+      return (list || []).map((item) => {
+        const v = typeof item === "string" ? item : item.value;
+        return "<option" + (v === chosen ? " selected" : "") + ">" + esc(v) + "</option>";
+      }).join("");
+    }
+    function remainCopy(status) {
+      const pack = remaining[status] || { processes: [], paintWait: false };
+      if (!pack.processes.length) {
+        return "Nothing left for Planning — this order is past assembly. It still lands on the Orders sheet and the floor at this status.";
+      }
+      const bits = pack.processes.slice();
+      if (pack.paintWait && bits.indexOf("Assembly") !== -1) bits.splice(bits.indexOf("Assembly"), 0, "Paint shop wait");
+      return "Planning will book: " + bits.join(", ") + ". Work they are already on is skipped.";
+    }
+    function renderRemain() {
+      const box = document.getElementById("remain");
+      if (box) box.textContent = remainCopy(val("status"));
+    }
+    function showForm() {
+      document.getElementById("page").innerHTML =
+        "<form class='card' id='form'>" +
+          "<h2>Where it is now</h2>" +
+          "<div class='grid three'>" +
+            "<label>Order number *<input id='order_number' autocomplete='off' placeholder='S260100'><span class='hint'>The number already on the floor.</span></label>" +
+            "<label>Shop status *<select id='status'>" + opts(statuses, "Welding") + "</select><span class='hint'>Where they are working it today.</span></label>" +
+            "<label>Enquiry no.<input id='enquiry_no' autocomplete='off' placeholder='#3999'><span class='hint'>Optional. Links the enquiry if you already brought it across.</span></label>" +
+          "</div>" +
+          "<p class='remain' id='remain'></p>" +
+        "</form>" +
+        "<form class='card' id='shop'>" +
+          "<h2>Shop details</h2>" +
+          "<div class='grid three'>" +
+            "<label>Type *<select id='type'>" + opts(TYPES, "Standard") + "</select></label>" +
+            "<label>CATERGORY<select id='category'><option value=''></option>" + opts(dropdowns.category) + "</select></label>" +
+            "<label>Product *<input id='product' list='products' autocomplete='off'></label>" +
+          "</div>" +
+          "<datalist id='products'>" + opts(dropdowns.product) + "</datalist>" +
+          "<div class='grid three'>" +
+            "<label>Variation<input id='variation' autocomplete='off'></label>" +
+            "<label>Doors<input id='doors' autocomplete='off'></label>" +
+            "<label>Powder coating<input id='powder_coating' autocomplete='off'></label>" +
+          "</div>" +
+          "<label>Detailed description<textarea id='detailed_description'></textarea></label>" +
+          "<label>Dimensions<input id='dimensions' autocomplete='off'></label>" +
+        "</form>" +
+        "<form class='card' id='client'>" +
+          "<h2>Client</h2>" +
+          "<div class='grid'>" +
+            "<label>Client name *<input id='client_name' autocomplete='off'></label>" +
+            "<label>Number<input id='client_number' autocomplete='off'></label>" +
+            "<label>Email<input id='email' autocomplete='off'></label>" +
+            "<label>Province<select id='province'><option value=''></option>" + opts(dropdowns.province) + "</select></label>" +
+            "<label>City<input id='city' autocomplete='off'></label>" +
+            "<label>Quote number<input id='quote_number' autocomplete='off'></label>" +
+          "</div>" +
+          "<label>Address<textarea id='address'></textarea></label>" +
+          "<div class='grid three'>" +
+            "<label>Price incl VAT<input id='price_incl_vat' inputmode='decimal'></label>" +
+            "<label>Amount paid (Incl VAT)<input id='amount_paid' inputmode='decimal'></label>" +
+            "<label>Delivery date<input id='delivery_date' type='date'><span class='hint'>Stamped as LD (Gauteng) or LC. Use the date already promised.</span></label>" +
+          "</div>" +
+          "<label class='confirm'><input id='confirmed' type='checkbox'><span>This order is already at this status on the floor.<span class='hint'>Planning will not put finished or current work back on the calendar.</span></span></label>" +
+        "</form>" +
+        "<div class='foot'>" +
+          "<button type='button' id='save'>Save onto this system</button>" +
+          "<span class='msg' id='msg'></span>" +
+        "</div>";
+      document.getElementById("status").onchange = renderRemain;
+      document.getElementById("save").onclick = save;
+      document.getElementById("enquiry_no").addEventListener("blur", fillEnquiry);
+      renderRemain();
+    }
+    function setMsg(text, kind) {
+      const el = document.getElementById("msg");
+      if (!el) return;
+      el.textContent = text || "";
+      el.className = "msg" + (kind ? " " + kind : "");
+    }
+    async function fillEnquiry() {
+      const no = val("enquiry_no").trim();
+      if (!no) return;
+      const r = await sdOfficeFetch("/api/office/enquiries");
+      const j = await r.json().catch(() => ({}));
+      const row = (j.rows || []).find((item) => String(item.enquiry_no || "").trim() === no);
+      if (!row) return;
+      if (!val("client_name")) setVal("client_name", row.client_name);
+      if (!val("client_number")) setVal("client_number", row.client_number || "");
+      if (!val("email")) setVal("email", row.client_email || "");
+      if (!val("province")) setVal("province", row.province || "");
+      if (!val("product")) setVal("product", row.product || ((row.products || [])[0] && row.products[0].product) || "");
+      if (!val("quote_number")) setVal("quote_number", row.quote_no || "");
+    }
+    async function save() {
+      if (saving) return;
+      setMsg("");
+      if (!document.getElementById("confirmed").checked) {
+        setMsg("Tick that this is where the order is on the floor now.", "bad");
+        return;
+      }
+      saving = true;
+      document.getElementById("save").disabled = true;
+      const r = await sdOfficeFetch("/api/office/orders/onboard", {
+        method: "POST",
+        body: JSON.stringify({
+          order_number: val("order_number"),
+          status: val("status"),
+          enquiry_no: val("enquiry_no"),
+          type: val("type"),
+          category: val("category"),
+          product: val("product"),
+          variation: val("variation"),
+          doors: val("doors"),
+          powder_coating: val("powder_coating"),
+          detailed_description: val("detailed_description"),
+          dimensions: val("dimensions"),
+          client_name: val("client_name"),
+          client_number: val("client_number"),
+          email: val("email"),
+          province: val("province"),
+          city: val("city"),
+          address: val("address"),
+          quote_number: val("quote_number"),
+          price_incl_vat: val("price_incl_vat"),
+          amount_paid: val("amount_paid"),
+          delivery_date: val("delivery_date"),
+          confirmed: true
+        })
+      });
+      const j = await r.json().catch(() => ({}));
+      saving = false;
+      document.getElementById("save").disabled = false;
+      if (!j.ok) {
+        setMsg(j.error || "Could not add that order.", "bad");
+        return;
+      }
+      const left = (j.remaining && j.remaining.processes) || [];
+      document.getElementById("page").innerHTML =
+        "<div class='card done'>" +
+          "<h2>" + esc(j.row.order_number) + " is on the sheet</h2>" +
+          "<p>Status is <strong>" + esc(j.row.status) + "</strong>. The floor sees it there. Ordinary edits still cannot change shop status.</p>" +
+          (left.length
+            ? "<p>Open Planning and schedule the remaining work: " + esc(left.join(", ")) + ".</p>" +
+              "<a href='/planning'>Plan remaining work</a>"
+            : "<p>Nothing left for Planning.</p>") +
+          "<a href='/orders'>Back to Orders</a>" +
+        "</div>";
+    }
+    sdRequireOffice("orders").then(async (ok) => {
+      if (!ok) return;
+      try {
+        const [metaRes, dropRes] = await Promise.all([
+          sdOfficeFetch("/api/office/orders/onboard"),
+          sdOfficeFetch("/api/office/dropdowns")
+        ]);
+        const meta = await metaRes.json();
+        const drop = await dropRes.json();
+        if (!meta.ok) throw new Error(meta.error || "Could not load statuses");
+        statuses = meta.statuses || [];
+        remaining = meta.remaining || {};
+        dropdowns = drop.dropdowns || {};
+        showForm();
+      } catch (e) {
+        document.getElementById("page").innerHTML = "<div class='err'>" + esc(e.message || e) + "</div>";
+      }
+    });
+  </script>
+</body>
+</html>
