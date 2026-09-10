@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Delivery summary</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --blue:#2f6fed; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f4f6f9; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:640px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .page { padding:18px 16px 32px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px 8px; box-shadow:0 1px 2px rgba(16,24,40,.04); }
+    .filters { display:grid; grid-template-columns:repeat(4, minmax(140px, 1fr)); gap:12px 16px; }
+    .filters label { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:600; color:#344054; }
+    .filters select, .filters input {
+      border:1px solid var(--line); border-radius:8px; padding:9px 10px; font:inherit; font-weight:500; color:var(--ink); background:#fff;
+    }
+    .filters select:focus, .filters input:focus { outline:none; border-color:var(--blue); box-shadow:0 0 0 3px rgba(47,111,237,.15); }
+    .count { display:inline-flex; margin:12px 0 8px; background:#eef2f6; color:#475467; border-radius:999px; padding:5px 10px; font-size:12px; font-weight:600; }
+    table { width:100%; border-collapse:collapse; }
+    th { text-align:left; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:#98a2b3; font-weight:700; padding:10px 12px; border-bottom:1px solid var(--line); }
+    td { padding:12px; border-bottom:1px solid #eaecf0; height:56px; white-space:nowrap; vertical-align:middle; }
+    tbody tr { cursor:pointer; }
+    tbody tr:hover td { background:#f8fafc; }
+    .rail { box-shadow:inset 3px 0 0 var(--blue); }
+    .week { display:block; font-size:12px; color:#98a2b3; font-weight:600; }
+    .when { display:block; font-size:15px; font-weight:700; color:var(--ink); }
+    .oid { font-weight:700; font-size:15px; }
+    .prod { font-size:14px; color:#344054; overflow:hidden; text-overflow:ellipsis; max-width:42vw; }
+    .ord-status { font-size:14px; font-weight:600; color:#344054; }
+    .empty, .load, .err { padding:40px 16px; text-align:center; color:var(--muted); font-size:14px; }
+    .err { color:#b42318; }
+    @media (max-width: 800px) {
+      .filters { grid-template-columns:1fr 1fr; }
+      .prod { max-width:180px; }
+    }
+    @media (max-width: 560px) {
+      .filters { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/paste">Paste orders</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a class="on" href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/glass-rates">Glass rates</a>
+        <a href="/orders/cost">Cost</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Delivery summary</h1>
+      <p class="lede">Orders that must go that week — Latest Delivery (LD) or Latest Courier (LC) on the production schedule.</p>
+    </div>
+  </header>
+  <div class="page">
+    <div class="card">
+      <div class="filters">
+        <label>Filter by Category
+          <select id="category"><option value="">All categories</option></select>
+        </label>
+        <label>Filter by Week
+          <select id="week"></select>
+        </label>
+        <label>Filter by Day
+          <select id="day">
+            <option value="">All days</option>
+            <option>Monday</option>
+            <option>Tuesday</option>
+            <option>Wednesday</option>
+            <option>Thursday</option>
+            <option>Friday</option>
+          </select>
+        </label>
+        <label>Search Product/Order
+          <input id="q" type="search" placeholder="Type to search...">
+        </label>
+      </div>
+      <div class="count" id="count">Total: 0 orders found</div>
+      <div id="list"></div>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    let items = [];
+    let weeks = [];
+    let currentWeekKey = "";
+
+    function esc(s) {
+      return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+    }
+
+    function filtered() {
+      const cat = document.getElementById("category").value;
+      const week = document.getElementById("week").value;
+      const day = document.getElementById("day").value;
+      const q = document.getElementById("q").value.trim().toLowerCase();
+      return items.filter((it) => {
+        if (week && it.weekKey !== week) return false;
+        if (cat && it.category !== cat) return false;
+        if (day && it.weekday !== day) return false;
+        if (q && (String(it.order_number).toLowerCase().indexOf(q) === -1 && String(it.product).toLowerCase().indexOf(q) === -1)) return false;
+        return true;
+      });
+    }
+
+    function render() {
+      const rows = filtered();
+      document.getElementById("count").textContent = "Total: " + rows.length + " order" + (rows.length === 1 ? "" : "s") + " found";
+      const box = document.getElementById("list");
+      if (!rows.length) {
+        box.innerHTML = "<div class=\"empty\">No LD or LC dates in this week. Mark them on Production schedule.</div>";
+        return;
+      }
+      let html = "<table><thead><tr><th>Schedule</th><th>Order ID</th><th>Product</th><th>Status</th></tr></thead><tbody>";
+      rows.forEach((it) => {
+        html += "<tr data-start=\"" + esc(it.day) + "\">";
+        html += "<td class=\"rail\"><span class=\"week\">" + esc(it.weekLabel) + "</span><span class=\"when\">" + esc(it.dateLabel) + "</span></td>";
+        html += "<td class=\"oid\">" + esc(it.order_number) + "</td>";
+        html += "<td><span class=\"prod\" title=\"" + esc(it.product) + "\">" + esc(it.product) + "</span></td>";
+        html += "<td><span class=\"ord-status\">" + esc(it.status || "—") + "</span></td>";
+        html += "</tr>";
+      });
+      html += "</tbody></table>";
+      box.innerHTML = html;
+      box.querySelectorAll("tr[data-start]").forEach((tr) => {
+        tr.onclick = () => { location.href = "/orders/schedule?start=" + encodeURIComponent(tr.getAttribute("data-start")); };
+      });
+    }
+
+    async function load() {
+      const box = document.getElementById("list");
+      box.innerHTML = "<div class=\"load\">Loading deliveries…</div>";
+      const r = await sdOfficeFetch("/api/office/schedule/delivery");
+      const j = await r.json();
+      if (!j.ok) {
+        box.innerHTML = "<div class=\"err\">" + esc(j.error || "Could not load delivery summary") + "</div>";
+        return;
+      }
+      items = j.items || [];
+      weeks = j.weeks || [];
+      currentWeekKey = j.currentWeekKey || "";
+      const cat = document.getElementById("category");
+      (j.categories || []).forEach((c) => {
+        const o = document.createElement("option");
+        o.value = c;
+        o.textContent = c;
+        cat.appendChild(o);
+      });
+      const week = document.getElementById("week");
+      weeks.forEach((w) => {
+        const o = document.createElement("option");
+        o.value = w.key;
+        o.textContent = w.label;
+        if (w.key === currentWeekKey) o.selected = true;
+        week.appendChild(o);
+      });
+      if (!week.value && weeks.length) week.selectedIndex = 0;
+      ["category", "week", "day", "q"].forEach((id) => {
+        document.getElementById(id).addEventListener("input", render);
+        document.getElementById(id).addEventListener("change", render);
+      });
+      render();
+    }
+    sdRequireOffice("orders").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

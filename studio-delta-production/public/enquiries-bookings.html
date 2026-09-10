@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Showroom bookings</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --card:#fff; --bad:#b42318; --ok:#027a48; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:560px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#fff; color:var(--bad); border-color:#fda29b; }
+    .wrap { padding:16px; max-width:980px; }
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+    .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    .kpi span { display:block; color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    .kpi b { display:block; margin-top:4px; font-family: Outfit, Inter, sans-serif; font-size:22px; }
+    .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff; margin-bottom:12px; flex-wrap:wrap; }
+    .seg button { border:0; border-radius:0; background:transparent; padding:7px 10px; font-size:12px; color:var(--muted); }
+    .seg button.on { background:#1d2939; color:#fff; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:0 0 10px; }
+    .card h2 { margin:0 0 10px; font-size:14px; color:var(--muted); font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+    .visit { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; padding:10px 0; border-top:1px solid var(--line); }
+    .visit:first-of-type { border-top:0; padding-top:0; }
+    .when { min-width:88px; font-family: Outfit, Inter, sans-serif; font-size:18px; }
+    .when span { display:block; font-family: Inter, sans-serif; font-size:12px; color:var(--muted); font-weight:600; }
+    .grow { flex:1; min-width:180px; }
+    .grow b { display:block; font-size:15px; }
+    .grow p { margin:2px 0 0; font-size:13px; color:var(--muted); }
+    .actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .pill { display:inline-block; font-size:11px; font-weight:600; border:1px solid var(--line); border-radius:999px; padding:2px 8px; margin-right:6px; }
+    .pill.Booked { color:#026aa2; border-color:#b2ddff; }
+    .pill.Done { color:var(--ok); border-color:#abefc6; }
+    .pill.Cancelled, .pill.No-show { color:var(--bad); border-color:#fda29b; }
+    .empty, .err, .load { padding:36px 16px; text-align:center; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:12px; }
+    .err { color:var(--bad); }
+    .hint { margin:0 0 10px; color:var(--muted); font-size:12px; }
+    .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
+    .mask.open { display:flex; }
+    .sheet { width:min(520px,96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:24px auto; }
+    .sheet header { position:static; }
+    .sheet .body { padding:16px; }
+    label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; margin:0 0 10px; }
+    input, select, textarea { width:100%; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; font-weight:400; }
+    textarea { min-height:72px; }
+    .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .msg { font-size:12px; color:var(--muted); }
+    .warn { color:#b54708; font-size:12px; font-weight:600; }
+    @media (max-width: 720px) {
+      .tools { width:100%; margin-left:0; }
+      .grid2 { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Enquiries views">
+        <a href="/enquiries">Sheet</a>
+        <a href="/enquiries/dashboard">Dashboard</a>
+        <a href="/enquiries/replies">Email replies</a>
+        <a class="on" href="/enquiries/bookings">Showroom bookings</a>
+      </nav>
+      <h1>Showroom bookings</h1>
+      <p class="lede">Client visits to the showroom. Times are Africa/Johannesburg. After a successful visit, make an enquiry or start a quote from that walk-in — name, email, and cell come across.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <button type="button" id="addBtn">Book a visit</button>
+    </div>
+  </header>
+  <div class="wrap">
+    <div id="load" class="load">Loading bookings…</div>
+    <div id="err" class="err" hidden></div>
+    <div id="app" hidden>
+      <div class="kpis" id="kpis"></div>
+      <div class="seg" id="filter">
+        <button type="button" data-v="upcoming" class="on">Upcoming</button>
+        <button type="button" data-v="today">Today</button>
+        <button type="button" data-v="past">Past</button>
+        <button type="button" data-v="all">All</button>
+      </div>
+      <div id="list"></div>
+    </div>
+  </div>
+  <div class="mask" id="mask">
+    <div class="sheet">
+      <header>
+        <h1 id="formTitle">Book a visit</h1>
+        <div class="tools"><button type="button" class="ghost" id="closeBtn">Close</button></div>
+      </header>
+      <form class="body" id="form">
+        <input type="hidden" name="id">
+        <label>Enquiry
+          <select name="enquiry_no"><option value="">No enquiry — walk-in</option></select>
+        </label>
+        <label>Client name <input name="client_name" required></label>
+        <div class="grid2">
+          <label>Cell <input name="client_number"></label>
+          <label>Email <input name="client_email"></label>
+        </div>
+        <div class="grid2">
+          <label>Date <input name="date" type="date" required></label>
+          <label>Time
+            <select name="time" required></select>
+          </label>
+        </div>
+        <div class="grid2">
+          <label>Duration
+            <select name="duration_min">
+              <option value="30">30 minutes</option>
+              <option value="45" selected>45 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="90">1 hour 30</option>
+            </select>
+          </label>
+          <label>Status
+            <select name="status">
+              <option>Booked</option>
+              <option>Done</option>
+              <option>No-show</option>
+              <option>Cancelled</option>
+            </select>
+          </label>
+        </div>
+        <label>Notes <textarea name="notes" placeholder="Sizes, finish, who they are bringing"></textarea></label>
+        <p class="warn" id="formWarn"></p>
+        <div class="actions">
+          <button type="submit">Save booking</button>
+          <button type="button" class="danger" id="deleteBtn" hidden>Delete</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    const TIMES = [];
+    for (let h = 9; h <= 16; h += 1) {
+      TIMES.push(String(h).padStart(2, "0") + ":00");
+      if (h < 16) TIMES.push(String(h).padStart(2, "0") + ":30");
+    }
+    let bookings = [];
+    let enquiries = [];
+    let filter = "upcoming";
+    const SAST = 2 * 60 * 60 * 1000;
+
+    function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+    function todayKey() {
+      const sast = new Date(Date.now() + SAST);
+      return sast.toISOString().slice(0, 10);
+    }
+    function prettyDate(iso) {
+      const [y, m, d] = String(iso || "").split("-");
+      if (!d) return iso;
+      const dt = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+      return dt.toLocaleDateString("en-ZA", { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    }
+    function isUpcoming(row) {
+      return row.status === "Booked";
+    }
+    function isPast(row) {
+      return !isUpcoming(row);
+    }
+    function filtered() {
+      if (filter === "today") return bookings.filter((b) => b.date === todayKey());
+      if (filter === "upcoming") return bookings.filter(isUpcoming);
+      if (filter === "past") return bookings.filter(isPast);
+      return bookings.slice();
+    }
+    function setStatus(t) { document.getElementById("status").textContent = t || ""; }
+    function setFilter(v) {
+      filter = v;
+      Array.from(document.getElementById("filter").querySelectorAll("button")).forEach((b) => {
+        b.classList.toggle("on", b.getAttribute("data-v") === v);
+      });
+    }
+    function enquiryQuoted(row) {
+      const status = String((row && row.status) || "");
+      return status === "Quoted" || status === "Followed Up" || status === "Ordered" || !!(row && row.quote_no);
+    }
+    async function transferVisit(id, wantQuote) {
+      const r = await sdOfficeFetch("/api/office/enquiries/bookings/" + encodeURIComponent(id) + "/enquiry", {
+        method: "POST",
+        body: "{}"
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || "Could not make the enquiry");
+      bookings = j.bookings || [];
+      render();
+      const no = j.enquiry && j.enquiry.enquiry_no;
+      if (!no) throw new Error("The enquiry did not come back");
+      if (j.created) setStatus("Made enquiry " + no + " from this visit");
+      else if (j.linkedExisting) setStatus("Linked this visit to " + no);
+      else setStatus(no);
+      if (wantQuote && enquiryQuoted(j.enquiry)) {
+        location.href = "/enquiries/replies?enquiry=" + encodeURIComponent(no);
+        return j;
+      }
+      if (typeof sdOpenEnquiryProcess === "function") sdOpenEnquiryProcess(no);
+      return j;
+    }
+
+    function render() {
+      const today = todayKey();
+      const upcoming = bookings.filter(isUpcoming).length;
+      const todays = bookings.filter((b) => b.date === today && b.status === "Booked").length;
+      document.getElementById("kpis").innerHTML =
+        "<div class=\"kpi\"><span>Upcoming</span><b>" + upcoming + "</b></div>" +
+        "<div class=\"kpi\"><span>Today</span><b>" + todays + "</b></div>" +
+        "<div class=\"kpi\"><span>All bookings</span><b>" + bookings.length + "</b></div>";
+      const rows = filtered();
+      const box = document.getElementById("list");
+      if (!bookings.length) {
+        box.innerHTML = "<div class=\"empty\">No showroom visits booked. Book a visit when a client is coming in.</div>";
+        return;
+      }
+      if (!rows.length) {
+        box.innerHTML = "<div class=\"empty\">Nothing in this view.</div>";
+        return;
+      }
+      const groups = [];
+      rows.forEach((row) => {
+        const last = groups[groups.length - 1];
+        if (!last || last.date !== row.date) groups.push({ date: row.date, rows: [row] });
+        else last.rows.push(row);
+      });
+      box.innerHTML = groups.map((g) => {
+        const items = g.rows.map((row) => {
+          const who = esc(row.client_name) + (row.enquiry_no ? " · " + esc(row.enquiry_no) : "");
+          const bits = [row.duration_min + " min"];
+          if (row.client_number) bits.push(row.client_number);
+          if (row.booked_by) bits.push("booked by " + row.booked_by);
+          const note = row.notes ? "<p>" + esc(row.notes) + "</p>" : "";
+          const transfer = row.status === "Done"
+            ? (row.enquiry_no
+              ? "<button type=\"button\" class=\"ghost\" data-open=\"" + esc(row.enquiry_no) + "\">Open enquiry</button>" +
+                "<button type=\"button\" class=\"ghost\" data-quote=\"" + esc(row.id) + "\">Quote</button>"
+              : "<button type=\"button\" class=\"ghost\" data-enquiry=\"" + esc(row.id) + "\">Make enquiry</button>" +
+                "<button type=\"button\" class=\"ghost\" data-quote=\"" + esc(row.id) + "\">Start quote</button>")
+            : (row.enquiry_no
+              ? "<button type=\"button\" class=\"ghost\" data-open=\"" + esc(row.enquiry_no) + "\">Open enquiry</button>"
+              : "");
+          return "<div class=\"visit\">" +
+            "<div class=\"when\">" + esc(row.time) + "<span>" + esc(row.duration_min + " min") + "</span></div>" +
+            "<div class=\"grow\"><b>" + who + "</b><p><span class=\"pill " + esc(row.status) + "\">" + esc(row.status) + "</span>" + esc(bits.join(" · ")) + "</p>" + note + "</div>" +
+            "<div class=\"actions\">" +
+            transfer +
+            "<button type=\"button\" class=\"ghost\" data-edit=\"" + esc(row.id) + "\">Edit</button>" +
+            (row.status === "Booked" ? "<button type=\"button\" class=\"ghost\" data-status=\"" + esc(row.id) + "|Done\">Done</button>" +
+              "<button type=\"button\" class=\"ghost\" data-status=\"" + esc(row.id) + "|No-show\">No-show</button>" +
+              "<button type=\"button\" class=\"ghost\" data-status=\"" + esc(row.id) + "|Cancelled\">Cancel</button>" : "") +
+            "</div></div>";
+        }).join("");
+        return "<section class=\"card\"><h2>" + esc(prettyDate(g.date)) + (g.date === today ? " · Today" : "") + "</h2>" + items + "</section>";
+      }).join("");
+    }
+
+    function fillEnquirySelect() {
+      const sel = document.querySelector("[name=enquiry_no]");
+      sel.innerHTML = "<option value=\"\">No enquiry — walk-in</option>" +
+        enquiries.map((e) => "<option value=\"" + esc(e.enquiry_no) + "\">" + esc(e.enquiry_no + " · " + (e.client_name || "No name")) + "</option>").join("");
+    }
+    function openForm(row) {
+      const form = document.getElementById("form");
+      form.reset();
+      document.getElementById("formTitle").textContent = row && row.id ? "Edit booking" : "Book a visit";
+      document.getElementById("deleteBtn").hidden = !(row && row.id);
+      document.getElementById("formWarn").textContent = "";
+      form.id.value = (row && row.id) || "";
+      form.enquiry_no.value = (row && row.enquiry_no) || "";
+      form.client_name.value = (row && row.client_name) || "";
+      form.client_number.value = (row && row.client_number) || "";
+      form.client_email.value = (row && row.client_email) || "";
+      form.date.value = (row && row.date) || todayKey();
+      form.time.value = (row && row.time) || "09:00";
+      form.duration_min.value = String((row && row.duration_min) || 45);
+      form.status.value = (row && row.status) || "Booked";
+      form.notes.value = (row && row.notes) || "";
+      document.getElementById("mask").classList.add("open");
+    }
+    function closeForm() { document.getElementById("mask").classList.remove("open"); }
+
+    async function saveBooking(payload) {
+      const r = await sdOfficeFetch("/api/office/enquiries/bookings", {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      const j = await r.json();
+      if (!j.ok) throw new Error(j.error || "Save failed");
+      bookings = j.bookings || [];
+      if (j.overlap) {
+        setStatus("Saved — overlaps " + j.overlap.time + " " + j.overlap.client_name);
+      } else setStatus("Saved");
+      render();
+      return j;
+    }
+
+    async function load() {
+      document.getElementById("load").hidden = false;
+      document.getElementById("err").hidden = true;
+      document.getElementById("app").hidden = true;
+      try {
+        const [b, e] = await Promise.all([
+          sdOfficeFetch("/api/office/enquiries/bookings"),
+          sdOfficeFetch("/api/office/enquiries")
+        ]);
+        const j = await b.json();
+        const enq = await e.json();
+        if (!b.ok || !j.ok) throw new Error(j.error || b.statusText);
+        bookings = j.bookings || [];
+        enquiries = (enq.ok && enq.rows) ? enq.rows : [];
+        fillEnquirySelect();
+        document.getElementById("load").hidden = true;
+        document.getElementById("app").hidden = false;
+        render();
+      } catch (err) {
+        document.getElementById("load").hidden = true;
+        document.getElementById("err").hidden = false;
+        document.getElementById("err").textContent = "Could not load bookings. " + (err.message || err);
+      }
+    }
+
+    document.querySelector("[name=time]").innerHTML = TIMES.map((t) => "<option>" + t + "</option>").join("");
+    document.getElementById("filter").onclick = (e) => {
+      const btn = e.target.closest("[data-v]");
+      if (!btn) return;
+      filter = btn.getAttribute("data-v");
+      Array.from(document.getElementById("filter").querySelectorAll("button")).forEach((b) => b.classList.toggle("on", b === btn));
+      render();
+    };
+    document.getElementById("addBtn").onclick = () => openForm(null);
+    document.getElementById("closeBtn").onclick = closeForm;
+    document.getElementById("list").onclick = async (e) => {
+      const make = e.target.closest("[data-enquiry]");
+      if (make) {
+        try { await transferVisit(make.getAttribute("data-enquiry"), false); }
+        catch (err) { setStatus(err.message); }
+        return;
+      }
+      const quote = e.target.closest("[data-quote]");
+      if (quote) {
+        try { await transferVisit(quote.getAttribute("data-quote"), true); }
+        catch (err) { setStatus(err.message); }
+        return;
+      }
+      const open = e.target.closest("[data-open]");
+      if (open && typeof sdOpenEnquiryProcess === "function") {
+        sdOpenEnquiryProcess(open.getAttribute("data-open"));
+        return;
+      }
+      const edit = e.target.closest("[data-edit]");
+      if (edit) {
+        openForm(bookings.find((b) => b.id === edit.getAttribute("data-edit")));
+        return;
+      }
+      const st = e.target.closest("[data-status]");
+      if (!st) return;
+      const [id, status] = st.getAttribute("data-status").split("|");
+      const row = bookings.find((b) => b.id === id);
+      if (!row) return;
+      try {
+        await saveBooking(Object.assign({}, row, { status }));
+        if (status === "Done") {
+          setFilter("past");
+          render();
+          setStatus(row.enquiry_no
+            ? "Visit done. Open the enquiry or start the quote."
+            : "Visit done. Make an enquiry or start a quote from this visit.");
+        }
+      } catch (err) { setStatus(err.message); }
+    };
+    document.querySelector("[name=enquiry_no]").onchange = () => {
+      const no = document.querySelector("[name=enquiry_no]").value;
+      const row = enquiries.find((e) => e.enquiry_no === no);
+      if (!row) return;
+      const form = document.getElementById("form");
+      if (!form.client_name.value) form.client_name.value = row.client_name || "";
+      if (!form.client_number.value) form.client_number.value = row.client_number || "";
+      if (!form.client_email.value) form.client_email.value = row.client_email || "";
+    };
+    document.getElementById("form").onsubmit = async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      try {
+        const j = await saveBooking({
+          id: form.id.value || undefined,
+          enquiry_no: form.enquiry_no.value,
+          client_name: form.client_name.value,
+          client_number: form.client_number.value,
+          client_email: form.client_email.value,
+          date: form.date.value,
+          time: form.time.value,
+          duration_min: Number(form.duration_min.value),
+          status: form.status.value,
+          notes: form.notes.value
+        });
+        if (j.overlap) {
+          document.getElementById("formWarn").textContent = "This overlaps " + j.overlap.time + " " + j.overlap.client_name + ". It is still saved.";
+        } else closeForm();
+      } catch (err) {
+        document.getElementById("formWarn").textContent = err.message;
+      }
+    };
+    document.getElementById("deleteBtn").onclick = async () => {
+      const id = document.querySelector("[name=id]").value;
+      if (!id || !confirm("Delete this booking?")) return;
+      const r = await sdOfficeFetch("/api/office/enquiries/bookings/" + encodeURIComponent(id), { method: "DELETE" });
+      const j = await r.json();
+      if (!j.ok) { document.getElementById("formWarn").textContent = j.error || "Delete failed"; return; }
+      bookings = j.bookings || [];
+      setStatus("Deleted");
+      closeForm();
+      render();
+    };
+
+    sdRequireOffice("enquiries").then((p) => { if (p) load(); });
+  </script>
+  <script src="/enquiry-process.js?v=corr-links"></script>
+</body>
+</html>

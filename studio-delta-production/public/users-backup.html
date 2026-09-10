@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Backup</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-start; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:4px 0 0; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .msg { font-size:12px; color:var(--muted); margin-left:auto; }
+    .wrap { padding:16px; max-width:1100px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; margin:0 0 16px; }
+    .card h2 { font-family: Outfit, Inter, sans-serif; font-size:16px; margin:0 0 8px; }
+    p.help { color:var(--muted); font-size:13px; max-width:860px; margin:0 0 10px; }
+    .warn { color:var(--bad); font-weight:600; }
+    .ok { color:var(--ok); }
+    .actions { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:10px 0; }
+    label.field { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; }
+    input, button { font:inherit; }
+    input[type=text], input[type=password] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:180px; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#b42318; border-color:#b42318; }
+    table { border-collapse:collapse; width:100%; background:#fff; font-size:13px; margin-top:10px; }
+    th, td { border:1px solid var(--line); padding:8px; text-align:left; vertical-align:top; }
+    th { background:var(--head); }
+    .lock { display:grid; gap:10px; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); margin:12px 0; padding:12px; background:#f8f9fc; border:1px solid var(--line); border-radius:8px; }
+    code { font-size:12px; background:#eef2f6; padding:1px 5px; border-radius:4px; }
+    ol.steps { color:var(--muted); font-size:13px; max-width:860px; margin:0 0 10px; padding-left:20px; }
+    ol.steps li { margin:0 0 6px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Users views">
+        <a href="/users">People</a>
+        <a class="on" href="/users/backup">Backup</a>
+      </nav>
+      <h1>Backup</h1>
+    </div>
+    <span class="msg" id="status"></span>
+  </header>
+  <div class="wrap">
+    <section class="card">
+      <h2>Archive</h2>
+      <p class="help">A complete <b>.tgz</b> is written every night at 02:00 Johannesburg and when you click <b>Backup now</b>. That file packs <b>everything the shop writes on the Railway volume</b>: SQLite (orders, enquiries, users, production logs, schedule, rates, to-order lists, payments), JSON sidecars, quotes, drawings, proofs of payment, paint and glass invoices, job cards and images, glass PDF images, showroom bookings, email-reply templates, and the Home floor layout. It is opened and integrity-checked before it is kept.</p>
+      <p class="help" id="volumeLine"></p>
+      <p class="help" id="backupDetail"></p>
+      <p class="help warn" id="driveError" hidden></p>
+      <p class="help" id="driveAccount"></p>
+      <div class="actions">
+        <button type="button" onclick="runBackup()">Backup now</button>
+        <button class="ghost" type="button" onclick="testDrive()">Send test file to Drive</button>
+        <button class="ghost" type="button" onclick="downloadComplete()">Download complete backup</button>
+        <button class="ghost" type="button" onclick="downloadSqlite()">Download SQLite only</button>
+        <button class="ghost" type="button" onclick="downloadBackup()">Download JSON</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Turn on Google Drive</h2>
+      <p class="help">A service account has <b>no Drive storage</b>. Sharing an ordinary My Drive folder is not enough — Google will reject the upload with a storage quota error. The folder must live in a <b>Shared drive</b> (Google Workspace), or Railway must impersonate a real Workspace mailbox.</p>
+      <ol class="steps">
+        <li>Keep <code>GOOGLE_SERVICE_ACCOUNT_JSON</code>. Copy <code>client_email</code> (ends in <code>.iam.gserviceaccount.com</code>).</li>
+        <li>In Google Drive (a Workspace account, not a personal gmail.com): <b>Shared drives</b> → <b>New</b> → name it e.g. Studio Delta ERP backups.</li>
+        <li>Open that Shared drive → <b>Manage members</b> → add the <code>client_email</code> as <b>Content manager</b> (not Viewer).</li>
+        <li>Create a folder inside the Shared drive if you want. Open it. The URL looks like <code>https://drive.google.com/drive/folders/THIS_PART</code>. Put <code>THIS_PART</code> on Railway as <code>BACKUP_DRIVE_FOLDER_ID</code>.</li>
+        <li>Optional: <code>BACKUP_DRIVE_IMPERSONATE</code> or <code>GMAIL_SENDER</code> set to a Workspace user (e.g. willard@…) if an admin has enabled domain-wide delegation. Then a Shared drive is not required.</li>
+        <li>After Railway picks up the variables, click <b>Send test file to Drive</b>, then <b>Backup now</b>. Success must say sent to Google Drive.</li>
+      </ol>
+      <p class="help">QC photos taken on the tablet go into Google Docs. They are not files on this volume, so they are not inside the .tgz. Everything under <code>/app/data</code> is.</p>
+    </section>
+    <section class="card">
+      <h2>Restore</h2>
+      <p class="help">Restore replaces the live shop. It is not on People, and it will not run from a logged-in session alone. Type <b>RESTORE</b>, then enter the <b>Manager access code twice</b>. Upload a complete .tgz (from this page or from Google Drive) to put every file back.</p>
+      <div class="lock">
+        <label class="field">Type RESTORE
+          <input id="restoreConfirm" type="text" placeholder="Type RESTORE" autocomplete="off">
+        </label>
+        <label class="field">Manager access code
+          <input id="restorePass" type="password" placeholder="Access code" autocomplete="off">
+        </label>
+        <label class="field">Confirm access code
+          <input id="restorePass2" type="password" placeholder="Type it again" autocomplete="off">
+        </label>
+      </div>
+      <div class="actions">
+        <label class="field">Restore a .tgz from this computer
+          <input id="restoreFile" type="file" accept=".tgz,.db,.gz">
+        </label>
+        <button class="danger" type="button" onclick="restoreUpload()">Restore uploaded file</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>When</th><th>File</th><th>Checked</th><th>Size</th><th></th></tr>
+        </thead>
+        <tbody id="backupBody"><tr><td colspan="5">No backups yet. Click Backup now.</td></tr></tbody>
+      </table>
+    </section>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+    async function downloadBlob(url, filename, fail) {
+      const r = await sdOfficeFetch(url);
+      if (!r.ok) {
+        document.getElementById("status").textContent = fail;
+        return;
+      }
+      const blob = await r.blob();
+      const href = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(href);
+    }
+    async function downloadBackup() {
+      await downloadBlob("/api/office/backup", "studio-delta-railway-backup.json", "Could not download JSON backup");
+    }
+    async function downloadSqlite() {
+      const day = new Date().toISOString().slice(0, 10);
+      await downloadBlob("/api/office/backup.db", "studio-delta-" + day + ".db", "Could not download SQLite");
+    }
+    async function downloadComplete() {
+      await downloadBlob("/api/office/backup.tgz", "studio-delta-complete.tgz", "Could not download complete backup");
+    }
+    async function downloadNamed(name) {
+      await downloadBlob("/api/office/backups/file/" + encodeURIComponent(name), name, "Could not download that backup");
+    }
+    function restoreWord() {
+      return String(document.getElementById("restoreConfirm").value || "").trim();
+    }
+    function restorePass() {
+      return String(document.getElementById("restorePass").value || "");
+    }
+    function restorePass2() {
+      return String(document.getElementById("restorePass2").value || "");
+    }
+    function restoreSecretsOk() {
+      if (restoreWord() !== "RESTORE") {
+        document.getElementById("status").textContent = "Type RESTORE to restore.";
+        return false;
+      }
+      if (!restorePass() || !restorePass2()) {
+        document.getElementById("status").textContent = "Enter the Manager access code twice.";
+        return false;
+      }
+      if (restorePass() !== restorePass2()) {
+        document.getElementById("status").textContent = "The two access codes do not match.";
+        return false;
+      }
+      return true;
+    }
+    async function restoreNamed(name) {
+      if (!restoreSecretsOk()) return;
+      if (!confirm("This replaces the live shop with " + name + ". Continue?")) return;
+      document.getElementById("status").textContent = "Restoring…";
+      const r = await sdOfficeFetch("/api/office/backups/restore", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          confirm: restoreWord(),
+          password: restorePass(),
+          confirmPassword: restorePass2()
+        })
+      });
+      const j = await r.json();
+      document.getElementById("status").textContent = j.ok
+        ? "Restored from " + name
+        : (j.error || "Restore failed");
+      loadBackup();
+    }
+    async function restoreUpload() {
+      const input = document.getElementById("restoreFile");
+      const file = input && input.files && input.files[0];
+      if (!file) {
+        document.getElementById("status").textContent = "Choose a complete .tgz backup first.";
+        return;
+      }
+      if (!restoreSecretsOk()) return;
+      if (!confirm("This replaces the live shop with " + file.name + ". Continue?")) return;
+      document.getElementById("status").textContent = "Restoring…";
+      const profile = sdOfficeProfile() || {};
+      const r = await fetch("/api/office/backups/restore-upload?filename=" + encodeURIComponent(file.name), {
+        method: "POST",
+        headers: {
+          "x-sd-token": profile.token || "",
+          "Content-Type": "application/gzip",
+          "x-sd-restore-confirm": restoreWord(),
+          "x-sd-restore-password": restorePass(),
+          "x-sd-restore-password-confirm": restorePass2()
+        },
+        body: file
+      });
+      const j = await r.json();
+      document.getElementById("status").textContent = j.ok
+        ? "Restored from " + file.name
+        : (j.error || "Restore failed");
+      loadBackup();
+    }
+    async function runBackup() {
+      document.getElementById("status").textContent = "Backing up…";
+      const r = await sdOfficeFetch("/api/office/backups/run", { method: "POST" });
+      const j = await r.json();
+      if (!j.ok) {
+        document.getElementById("status").textContent = j.error || "Backup failed";
+        loadBackup();
+        return;
+      }
+      document.getElementById("status").textContent = j.offsite
+        ? "Backup saved, checked, and sent to Google Drive"
+        : ("Backup saved on this disk, but Drive did not receive it" + (j.offsiteError ? ": " + j.offsiteError : ""));
+      loadBackup();
+    }
+    async function testDrive() {
+      document.getElementById("status").textContent = "Sending a test file to Google Drive…";
+      const r = await sdOfficeFetch("/api/office/backups/drive-test", { method: "POST" });
+      const j = await r.json();
+      document.getElementById("status").textContent = j.ok
+        ? "Test file sent. Open the Drive folder — studio-delta-drive-check.txt should be there."
+        : (j.error || "Drive test failed");
+      loadBackup();
+    }
+    function backupWhen(iso) {
+      if (!iso) return "never";
+      try {
+        return new Date(iso).toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" });
+      } catch (e) {
+        return iso;
+      }
+    }
+    function bytesLabel(n) {
+      const b = Number(n) || 0;
+      if (b < 1024) return b + " B";
+      if (b < 1024 * 1024) return (b / 1024).toFixed(1) + " KB";
+      return (b / (1024 * 1024)).toFixed(1) + " MB";
+    }
+    async function loadBackup() {
+      const r = await sdOfficeFetch("/api/office/backups");
+      const j = await r.json();
+      if (!j.ok) return;
+      const detail = document.getElementById("backupDetail");
+      const volume = document.getElementById("volumeLine");
+      if (volume) {
+        if (j.usingEphemeralDisk || j.volumeWarning) {
+          volume.className = "help warn";
+          volume.textContent = j.volumeWarning || "No Railway volume is attached. Data will be wiped on the next deploy.";
+        } else {
+          volume.className = "help ok";
+          volume.textContent = "Saving on this disk: " + (j.dataDir || "");
+        }
+      }
+      if (detail) {
+        const bits = [];
+        if (j.backupAt) bits.push((j.backupOk ? "Last backup " : "Last backup failed ") + backupWhen(j.backupAt));
+        if (j.backupVerified) bits.push("Last copy passed SQLite integrity_check.");
+        if (j.backupCounts) bits.push("Users " + j.backupCounts.users + ", orders " + j.backupCounts.orders + ", enquiries " + j.backupCounts.enquiries + ".");
+        if (j.backupPackedAll) bits.push("Last copy packed every file on the volume, including production logs in SQLite.");
+        if (j.backupOffsite) bits.push("The complete .tgz was uploaded to Google Drive. Download that file and restore it here to put everything back.");
+        else if (j.backupOffsiteError) bits.push("Drive upload failed: " + j.backupOffsiteError);
+        else if (j.backupGoogleConfigured) bits.push("Drive credentials are on Railway, but the last backup was not uploaded. Click Backup now (setting variables does not upload by itself).");
+        else bits.push("Google Drive is not configured yet. Follow Turn on Google Drive below (Railway variables, not a button here).");
+        if (j.restoreAt) bits.push((j.restoreOk ? "Last restore OK " : "Last restore failed ") + backupWhen(j.restoreAt) + ".");
+        detail.textContent = bits.join(" ");
+      }
+      const err = document.getElementById("driveError");
+      if (err) {
+        if (j.backupOffsiteError && !j.backupOffsite) {
+          err.hidden = false;
+          err.textContent = j.backupOffsiteError;
+        } else {
+          err.hidden = true;
+          err.textContent = "";
+        }
+      }
+      const acct = document.getElementById("driveAccount");
+      if (acct) {
+        const bits = [];
+        if (j.backupServiceAccount) bits.push("Share the Drive folder with this email as Editor: " + j.backupServiceAccount);
+        if (j.backupDriveFolderId) bits.push("Folder ID on Railway: " + j.backupDriveFolderId);
+        else bits.push("BACKUP_DRIVE_FOLDER_ID is not set on Railway.");
+        acct.textContent = bits.join(" ");
+      }
+      const body = document.getElementById("backupBody");
+      if (!body) return;
+      const rows = j.snapshots || [];
+      if (!rows.length) {
+        body.innerHTML = "<tr><td colspan=\"5\">No backups yet. Click Backup now.</td></tr>";
+        return;
+      }
+      body.innerHTML = rows.map((s) => {
+        const file = s.complete || s.name;
+        const checked = s.verified ? "Yes" : (s.integrity || "—");
+        return "<tr><td>" + esc(backupWhen(s.at)) + "</td><td>" + esc(file) + "</td><td>" + esc(checked) + "</td><td>" + esc(bytesLabel(s.bytes)) + "</td><td>" +
+          "<button class='ghost' type='button' data-dl='"+esc(file)+"'>Download</button> " +
+          "<button class='danger' type='button' data-rs='"+esc(file)+"'>Restore</button></td></tr>";
+      }).join("");
+      body.onclick = (e) => {
+        const dl = e.target.getAttribute("data-dl");
+        const rs = e.target.getAttribute("data-rs");
+        if (dl) downloadNamed(dl);
+        if (rs) restoreNamed(rs);
+      };
+    }
+    sdRequireOffice("users").then((p) => {
+      if (!p) return;
+      if (!p.canManageUsers) {
+        location.replace("/users");
+        return;
+      }
+      loadBackup();
+    });
+  </script>
+</body>
+</html>

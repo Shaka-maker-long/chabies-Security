@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Generate job card</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:720px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .page { max-width:1100px; margin:0 auto; padding:18px 16px 48px; display:flex; flex-direction:column; gap:16px; }
+    .list-tools { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+    .list-tools input[type=search] { max-width:280px; }
+    .row-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .row-actions a { font-size:12px; font-weight:600; color:#1d2939; text-decoration:none; border:1px solid #1d2939; border-radius:6px; padding:5px 8px; background:#fff; }
+    .row-actions a.primary { background:#1d2939; color:#fff; }
+    #printedTable td { white-space:nowrap; }
+    #printedTable td.prod { white-space:normal; max-width:220px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; }
+    .card h2 { margin:0 0 12px; font-size:15px; }
+    .hint { font-size:12px; color:var(--muted); margin:0 0 10px; }
+    .err { color:var(--bad); font-size:13px; font-weight:600; min-height:0; }
+    .ok { color:var(--ok); font-size:13px; font-weight:600; }
+    label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; }
+    input, select, textarea { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; font-weight:400; }
+    input[readonly], textarea[readonly] { background:#f2f4f7; color:#344054; }
+    textarea { min-height:140px; resize:vertical; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .grid.four { grid-template-columns:repeat(4, 1fr); }
+    .hero { display:flex; gap:16px; flex-wrap:wrap; align-items:flex-start; }
+    .product-image { width:220px; max-width:100%; height:auto; border:1px solid var(--line); background:#f2f4f7; display:none; }
+    .form-grow { flex:1; min-width:240px; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:6px 8px; text-align:left; }
+    th { background:#1d2939; color:#fff; }
+    .empty { color:var(--muted); text-align:center; }
+    .mode { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; background:#eef2f6; color:#344054; border-radius:999px; padding:3px 8px; }
+    .mode.regen { background:#ecfdf3; color:#067647; }
+    .card.needs-confirm { border-color:#f79009; box-shadow:0 0 0 3px rgba(247,144,9,.15); }
+    .confirm { background:#fff7ed; border:1px solid #f79009; }
+    .suggest { background:#ecfdf3; border:1px solid #abefc6; border-radius:8px; padding:12px; margin:0 0 12px; display:flex; flex-direction:column; gap:12px; }
+    .suggest .opt p { margin:0 0 8px; color:#067647; font-size:13px; font-weight:600; }
+    .suggest .opt button { width:auto; }
+    .choices { display:flex; flex-direction:column; gap:8px; }
+    .choices label { flex-direction:row; align-items:flex-start; gap:10px; font-weight:500; font-size:13px; }
+    .choices input { width:auto; margin-top:3px; }
+    @media (max-width: 720px) {
+      .grid, .grid.four { grid-template-columns:1fr; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/paste">Paste orders</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a class="on" href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/glass-rates">Glass rates</a>
+        <a href="/orders/cost">Cost</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <nav class="tabs" aria-label="Job card" style="margin-top:8px">
+        <a class="on" href="/orders/job-card">Generate job card</a>
+        <a href="/orders/job-card/existing">Existing job cards</a>
+      </nav>
+      <h1>Generate job card</h1>
+      <p class="lede">Make a first card, or fix one that is still Ready for Steelwork or Profile Cutting. Existing PDFs are on the other tab so this form has the full page.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+    </div>
+  </header>
+  <div class="page">
+    <div class="card">
+      <h2>Order and shop details</h2>
+      <p class="hint" id="emptyHint">Only Not Yet Started orders appear for a first card. Ready for Steelwork and Profile Cutting stay on this list so you can fix a mistake.</p>
+      <p class="hint" id="jobCardDraftHint">Cutting list and dimension answers stay on this device if you leave this page. Generate clears them.</p>
+      <div class="hero">
+        <img id="productImage" class="product-image" alt="Product">
+        <div class="form-grow">
+          <label>Order number
+            <select id="orderNumber"></select>
+          </label>
+          <p class="hint" id="modeHint"></p>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:12px">
+        <label>Customer name<input id="customer" readonly></label>
+        <label>Product<input id="product" readonly></label>
+        <label>Design type<input id="designType" readonly></label>
+        <label>Glass type<input id="glassType" readonly></label>
+        <label>Powder coating<input id="colour" readonly></label>
+        <label>Province<input id="province" readonly></label>
+        <label>Variation<textarea id="variation" readonly style="min-height:72px"></textarea></label>
+        <label>Description
+          <textarea id="description" placeholder="Finish, glass, extras — what the shop must build" style="min-height:72px"></textarea>
+          <span class="hint">This is the shop description, not Standard / Custom / New Design. Select words production must not miss, then mark them as important.</span>
+          <button type="button" class="ghost" id="markImportantBtn" style="margin-top:6px;width:auto">Mark selected as important</button>
+        </label>
+      </div>
+    </div>
+
+    <div class="card" id="dimCard">
+      <h2>Product dimensions (mm)</h2>
+      <p class="hint" id="dimHint">Saved from the Studio Delta catalog. Change a value only if this job is a custom size.</p>
+      <div class="grid four">
+        <label>Height<input id="dimHeight" type="number" min="0" step="1"></label>
+        <label>Width<input id="dimWidth" type="number" min="0" step="1"></label>
+        <label>Depth<input id="dimDepth" type="number" min="0" step="1"></label>
+        <label>Diameter<input id="dimDiameter" type="number" min="0" step="1"></label>
+      </div>
+    </div>
+
+    <div class="card confirm" id="dimCheckCard" hidden>
+      <h2>Confirm dimensions</h2>
+      <p class="hint">This order is not Standard. You must confirm the sizes did not change, or type the actual millimetres. A job card cannot be generated until you do — missing dimensions have gone to the floor too many times.</p>
+      <p class="hint" id="sheetDims"></p>
+      <div class="choices">
+        <label>
+          <input type="radio" name="dimCheck" value="unchanged">
+          <span>Dimensions did not change — use the Height, Width, Depth, and Diameter shown above.</span>
+        </label>
+        <label>
+          <input type="radio" name="dimCheck" value="updated">
+          <span>Update to the actual dimensions — I have typed the real millimetres above.</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Paste cutting list from Excel</h2>
+      <p class="hint">First column is the material name (for example 13mm SQ Square Tube), second is the description (Width). Then length or height, width, quantity, and cut angle. Standard products keep a saved cutting list after you generate a card, so the next one can reuse it.</p>
+      <div id="suggestWrap" class="suggest" hidden></div>
+      <textarea id="pasted" placeholder="13mm SQ Square Tube	Width	600		2	2
+13mm SQ Square Tube	Height	600		4	2
+1.6mm Plate	Top (Bend)	587	401	1	0"></textarea>
+      <div class="tools" style="margin:10px 0 0; justify-content:flex-start">
+        <button type="button" class="ghost" id="parseBtn">Parse cutting list</button>
+      </div>
+      <div id="cuttingWrap"></div>
+    </div>
+
+    <div class="card">
+      <p class="err" id="formErr" role="alert"></p>
+      <p class="ok" id="formOk"></p>
+      <div class="tools" style="margin:0; justify-content:flex-start">
+        <button type="button" id="generateBtn" disabled>Generate job card</button>
+        <a id="pdfLink" class="tabs" href="#" hidden style="padding:8px 12px; border:1px solid #1d2939">Open PDF</a>
+        <a id="existingLink" href="/orders/job-card/existing" hidden style="padding:8px 12px; border:1px solid #1d2939; border-radius:6px; font-size:13px; font-weight:600; color:#1d2939; text-decoration:none">Existing job cards</a>
+      </div>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    let eligible = [];
+    let current = null;
+    let cutting = { bars: [], plates: [], tubes: [], wood: [] };
+
+    function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+    function setErr(msg) { document.getElementById("formErr").textContent = msg || ""; }
+    function setOk(msg) { document.getElementById("formOk").textContent = msg || ""; }
+
+    function tableHtml(title, rows, cols) {
+      if (!rows.length) return "";
+      let html = "<h3 style=\"font-size:13px;margin:16px 0 8px\">" + esc(title) + "</h3><table><thead><tr>";
+      cols.forEach((c) => { html += "<th>" + esc(c[1]) + "</th>"; });
+      html += "</tr></thead><tbody>";
+      rows.forEach((row) => {
+        html += "<tr>";
+        cols.forEach((c) => { html += "<td>" + esc(row[c[0]]) + "</td>"; });
+        html += "</tr>";
+      });
+      return html + "</tbody></table>";
+    }
+    function renderCutting() {
+      const wrap = document.getElementById("cuttingWrap");
+      const total = (cutting.bars.length + cutting.plates.length + cutting.tubes.length + cutting.wood.length);
+      if (!total) {
+        wrap.innerHTML = "<p class=\"hint empty\">Nothing parsed yet.</p>";
+        return;
+      }
+      wrap.innerHTML =
+        tableHtml("Bars", cutting.bars, [["description","Description"],["name","Name"],["length","Length (mm)"],["quantity","Qty"],["cutAngle45","Cut angle 45"]]) +
+        tableHtml("Tubes", cutting.tubes, [["description","Description"],["name","Name"],["length","Length (mm)"],["quantity","Qty"],["cutAngle45","Cut angle 45"]]) +
+        tableHtml("Plates", cutting.plates, [["description","Description"],["name","Name"],["height","Height (mm)"],["width","Width (mm)"],["quantity","Qty"]]) +
+        tableHtml("Wood", cutting.wood, [["description","Description"],["name","Name"],["height","Height (mm)"],["width","Width (mm)"],["quantity","Qty"]]);
+    }
+
+    function cuttingIsEmpty() {
+      const total = (cutting.bars.length + cutting.plates.length + cutting.tubes.length + cutting.wood.length);
+      return !total && !String(document.getElementById("pasted").value || "").trim();
+    }
+    function cuttingOptions() {
+      const row = current;
+      const options = [];
+      if (!row) return options;
+      const sibling = row.suggested_cutting;
+      if (sibling && sibling.paste_text) {
+        options.push({
+          id: "sibling",
+          title: sibling.same_split
+            ? sibling.from_order_number + " is the same product and description. Use that cutting list?"
+            : "Order " + sibling.from_order_number + " is the same product and description. Use that cutting list?",
+          button: "Use this cutting list",
+          ok: "Copied the cutting list from " + sibling.from_order_number + ". Generate when you are ready — this does not change that order.",
+          payload: sibling
+        });
+      }
+      const std = row.standard_cutting;
+      if (std && std.paste_text) {
+        const sameAsSibling = sibling && sibling.from_order_number && sibling.from_order_number === std.from_order_number;
+        if (!sameAsSibling) {
+          const name = std.product || row.product || "this Standard product";
+          options.push({
+            id: "standard",
+            title: "A saved Standard cutting list exists for " + name + ". Use the existing cutting list?",
+            button: "Use existing cutting list",
+            ok: "Copied the saved Standard cutting list for " + name + ".",
+            payload: std
+          });
+        }
+      }
+      return options;
+    }
+    function syncSuggestedCutting() {
+      const wrap = document.getElementById("suggestWrap");
+      if (!wrap) return;
+      if (!cuttingIsEmpty()) {
+        wrap.hidden = true;
+        wrap.innerHTML = "";
+        return;
+      }
+      const options = cuttingOptions();
+      if (!options.length) {
+        wrap.hidden = true;
+        wrap.innerHTML = "";
+        return;
+      }
+      wrap.innerHTML = options.map((opt) => (
+        "<div class=\"opt\">" +
+          "<p>" + esc(opt.title) + "</p>" +
+          "<button type=\"button\" class=\"ghost\" data-use-cutting=\"" + esc(opt.id) + "\">" + esc(opt.button) + "</button>" +
+        "</div>"
+      )).join("");
+      wrap.hidden = false;
+      wrap.querySelectorAll("[data-use-cutting]").forEach((btn) => {
+        btn.onclick = () => useCuttingOption(btn.getAttribute("data-use-cutting"));
+      });
+    }
+    function useCuttingOption(id) {
+      const opt = cuttingOptions().find((row) => row.id === id);
+      const s = opt && opt.payload;
+      if (!s) return;
+      document.getElementById("pasted").value = s.paste_text || "";
+      cutting = JSON.parse(JSON.stringify(s.cutting || { bars: [], plates: [], tubes: [], wood: [] }));
+      renderCutting();
+      persistJobCardDraft();
+      syncSuggestedCutting();
+      setErr("");
+      setOk(opt.ok || "Copied that cutting list. Generate when you are ready.");
+    }
+
+    function isStandardType(type) {
+      return String(type || "").trim().toLowerCase() === "standard";
+    }
+    function isTypeOnlyDescription(text) {
+      return /^(standard|custom|new\s*design)$/i.test(String(text || "").trim());
+    }
+    function shopDescriptionFromRow(row) {
+      const raw = String((row && row.detailed_description) || "").trim();
+      if (!raw || isTypeOnlyDescription(raw)) return "";
+      return raw;
+    }
+    function markSelectedImportant() {
+      const box = document.getElementById("description");
+      const start = box.selectionStart;
+      const end = box.selectionEnd;
+      if (start == null || end == null || end <= start) {
+        setErr("Select the words in the description first, then mark them as important.");
+        return;
+      }
+      const val = box.value;
+      const picked = val.slice(start, end);
+      if (picked.indexOf("⟦") !== -1 || picked.indexOf("[[") !== -1) return;
+      box.value = val.slice(0, start) + "⟦" + picked + "⟧" + val.slice(end);
+      setErr("");
+      box.focus();
+      box.selectionStart = start;
+      box.selectionEnd = end + 2;
+      persistJobCardDraft();
+      syncGenerateReady();
+    }
+    function dimNumber(id) {
+      const n = Number(document.getElementById(id).value);
+      return Number.isFinite(n) && n > 1;
+    }
+    function hasUsableDims() {
+      return dimNumber("dimHeight") || dimNumber("dimWidth") || dimNumber("dimDepth") || dimNumber("dimDiameter");
+    }
+    function chosenCheck() {
+      const el = document.querySelector("input[name=\"dimCheck\"]:checked");
+      return el ? el.value : "";
+    }
+    function resetDimCheck() {
+      document.querySelectorAll("input[name=\"dimCheck\"]").forEach((el) => { el.checked = false; });
+    }
+    function setDimField(id, value, blankPlaceholder) {
+      const n = Number(value);
+      if (!Number.isFinite(n) || value == null || value === "") {
+        document.getElementById(id).value = "";
+        return;
+      }
+      document.getElementById(id).value = (blankPlaceholder && n <= 1) ? "" : n;
+    }
+    function syncGenerateReady() {
+      const btn = document.getElementById("generateBtn");
+      const row = current;
+      if (!row) {
+        btn.disabled = true;
+        return;
+      }
+      if (!isStandardType(row.type) && (!chosenCheck() || !hasUsableDims())) {
+        btn.disabled = true;
+        return;
+      }
+      const desc = String(document.getElementById("description").value || "").trim();
+      if (!desc || isTypeOnlyDescription(desc)) {
+        btn.disabled = true;
+        return;
+      }
+      btn.disabled = false;
+    }
+    function syncDimCheck() {
+      const row = current;
+      const need = !!(row && !isStandardType(row.type));
+      document.getElementById("dimCheckCard").hidden = !need;
+      document.getElementById("dimCard").classList.toggle("needs-confirm", need);
+      document.getElementById("dimHint").textContent = need
+        ? "Type is not Standard. Confirm the sizes shown, or type the actual millimetres. Placeholders such as 1 × 1 × 1 are not accepted."
+        : "Saved from the Studio Delta catalog. Change a value only if this job is a custom size.";
+      document.getElementById("sheetDims").textContent = row && row.dimensions
+        ? "On the order sheet: " + row.dimensions
+        : "On the order sheet: no dimensions saved.";
+      syncGenerateReady();
+    }
+
+    let jobCardDraftOrder = "";
+    function persistJobCardDraft() {
+      const order = jobCardDraftOrder || (document.getElementById("orderNumber") && document.getElementById("orderNumber").value) || "";
+      if (!order || typeof sdWriteFormDraft !== "function") return;
+      sdWriteFormDraft("job-card", order, {
+        pasted: document.getElementById("pasted").value,
+        cutting: cutting,
+        dimHeight: document.getElementById("dimHeight").value,
+        dimWidth: document.getElementById("dimWidth").value,
+        dimDepth: document.getElementById("dimDepth").value,
+        dimDiameter: document.getElementById("dimDiameter").value,
+        dimCheck: chosenCheck(),
+        description: document.getElementById("description").value
+      });
+    }
+    function applyJobCardDraft(order) {
+      jobCardDraftOrder = order || "";
+      const hint = document.getElementById("jobCardDraftHint");
+      if (!order || typeof sdReadFormDraft !== "function") {
+        if (hint) hint.textContent = "Cutting list and dimension answers stay on this device if you leave this page. Generate clears them.";
+        return false;
+      }
+      const draft = sdReadFormDraft("job-card", order);
+      if (!draft) {
+        if (hint) hint.textContent = "Cutting list and dimension answers stay on this device if you leave this page. Generate clears them.";
+        return false;
+      }
+      if (draft.pasted != null) document.getElementById("pasted").value = draft.pasted;
+      if (draft.cutting) {
+        cutting = draft.cutting;
+        renderCutting();
+      }
+      ["dimHeight", "dimWidth", "dimDepth", "dimDiameter"].forEach((id) => {
+        const key = id.replace("dim", "");
+        const field = key.charAt(0).toLowerCase() + key.slice(1);
+        if (draft[id] != null && draft[id] !== "") document.getElementById(id).value = draft[id];
+        else if (draft.dimensions && draft.dimensions[field] != null) document.getElementById(id).value = draft.dimensions[field];
+      });
+      if (draft.dimCheck) {
+        const el = document.querySelector('input[name="dimCheck"][value="' + draft.dimCheck + '"]');
+        if (el) el.checked = true;
+      }
+      if (draft.description != null && String(draft.description).trim() && !isTypeOnlyDescription(draft.description)) {
+        document.getElementById("description").value = draft.description;
+      }
+      const cut = draft.cutting || {};
+      const cutCount = (cut.bars || []).length + (cut.plates || []).length + (cut.tubes || []).length + (cut.wood || []).length;
+      const meaningful = !!(String(draft.pasted || "").trim() || draft.dimCheck || cutCount);
+      if (hint) hint.textContent = meaningful
+        ? "Unsaved progress from last time is filled in. Generate to clear it."
+        : "Cutting list and dimension answers stay on this device if you leave this page. Generate clears them.";
+      syncGenerateReady();
+      return meaningful;
+    }
+
+    function fillOrder(row) {
+      current = row || null;
+      const img = document.getElementById("productImage");
+      document.getElementById("customer").value = (row && row.client_name) || "";
+      document.getElementById("product").value = (row && row.product) || "";
+      document.getElementById("designType").value = (row && row.type) || "";
+      document.getElementById("glassType").value = (row && row.doors) || "N/A";
+      document.getElementById("colour").value = (row && row.powder_coating) || "";
+      document.getElementById("province").value = (row && row.province) || "";
+      document.getElementById("variation").value = (row && row.variation) || "";
+      document.getElementById("description").value = shopDescriptionFromRow(row);
+      const dims = (row && row.catalog_dimensions) || {};
+      const blankPlaceholder = !!(row && !isStandardType(row.type));
+      setDimField("dimHeight", dims.height, blankPlaceholder);
+      setDimField("dimWidth", dims.width, blankPlaceholder);
+      setDimField("dimDepth", dims.depth, blankPlaceholder);
+      setDimField("dimDiameter", dims.diameter, blankPlaceholder);
+      resetDimCheck();
+      if (row && row.image_url) {
+        img.src = row.image_url;
+        img.style.display = "block";
+      } else {
+        img.removeAttribute("src");
+        img.style.display = "none";
+      }
+      const hint = document.getElementById("modeHint");
+      if (!row) {
+        hint.textContent = "";
+        jobCardDraftOrder = "";
+        syncDimCheck();
+        syncSuggestedCutting();
+        return;
+      }
+      hint.innerHTML = row.mode === "regenerate"
+        ? "<span class=\"mode regen\">Regenerate</span> This order already has a job card (or is on steel / profile). Generating again replaces the PDF and keeps the current status. Non-Standard jobs must confirm dimensions again."
+        : "<span class=\"mode\">First card</span> Generating will move this order to Ready for Steelwork.";
+      syncDimCheck();
+      applyJobCardDraft(row.order_number);
+      syncSuggestedCutting();
+    }
+
+    function selected() {
+      const n = document.getElementById("orderNumber").value;
+      return eligible.find((r) => r.order_number === n) || null;
+    }
+
+    async function parseList() {
+      setErr("");
+      const text = document.getElementById("pasted").value;
+      const r = await sdOfficeFetch("/api/office/job-cards/parse", { method: "POST", body: JSON.stringify({ text }) });
+      const j = await r.json();
+      if (!j.ok) { setErr(j.error || "Could not parse"); return; }
+      cutting = j.cutting || { bars: [], plates: [], tubes: [], wood: [] };
+      renderCutting();
+      persistJobCardDraft();
+      syncSuggestedCutting();
+      if (!j.count) setErr("No valid cutting-list rows. Check tabs and quantities.");
+    }
+
+    async function generate() {
+      const row = selected();
+      setErr("");
+      setOk("");
+      if (!row) { setErr("Choose an order number."); return; }
+      const check = isStandardType(row.type) ? "standard" : chosenCheck();
+      if (!isStandardType(row.type) && !check) {
+        setErr("This order is not Standard. Confirm that dimensions did not change, or type the actual millimetres.");
+        return;
+      }
+      if (!isStandardType(row.type) && !hasUsableDims()) {
+        setErr("Enter the actual Height, Width, Depth, or Diameter in millimetres. Catalog placeholders such as 1 × 1 × 1 are not accepted.");
+        return;
+      }
+      const description = String(document.getElementById("description").value || "").trim();
+      if (!description || isTypeOnlyDescription(description)) {
+        setErr("Type the detailed description. Do not put Standard, Custom, or New Design in that box — those belong in Design type.");
+        return;
+      }
+      const btn = document.getElementById("generateBtn");
+      btn.disabled = true;
+      btn.textContent = "Generating…";
+      try {
+        const payload = {
+          order_number: row.order_number,
+          cutting,
+          dimensions: {
+            height: document.getElementById("dimHeight").value,
+            width: document.getElementById("dimWidth").value,
+            depth: document.getElementById("dimDepth").value,
+            diameter: document.getElementById("dimDiameter").value
+          },
+          description: description
+        };
+        if (!isStandardType(row.type)) payload.dimension_check = check;
+        const r = await sdOfficeFetch("/api/office/job-cards", {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        const j = await r.json();
+        if (!j.ok) { setErr(j.error || "Could not generate"); return; }
+        if (typeof sdDropFormDraft === "function") sdDropFormDraft("job-card", row.order_number);
+        jobCardDraftOrder = "";
+        setOk("Job card saved. Status is now " + (j.status || "") + ". Open the PDF, or find it on Existing job cards.");
+        const link = document.getElementById("pdfLink");
+        link.href = j.pdf_url;
+        link.hidden = false;
+        document.getElementById("existingLink").hidden = false;
+        window.open(j.pdf_url, "_blank");
+        await load();
+        document.getElementById("orderNumber").value = row.order_number;
+        fillOrder(selected());
+      } catch (e) {
+        setErr(e.message || "Could not generate");
+      } finally {
+        btn.textContent = "Generate job card";
+        syncGenerateReady();
+      }
+    }
+
+    async function load() {
+      const r = await sdOfficeFetch("/api/office/job-cards/eligible");
+      const j = await r.json();
+      if (!j.ok) {
+        document.getElementById("status").textContent = j.error || "Could not load orders";
+        return;
+      }
+      eligible = j.rows || [];
+      const sel = document.getElementById("orderNumber");
+      const keep = sel.value || new URLSearchParams(location.search).get("order") || "";
+      sel.innerHTML = "<option value=\"\">— Select an order —</option>" + eligible.map((row) => {
+        const tag = row.mode === "regenerate" ? " · regenerate" : "";
+        return "<option value=\"" + esc(row.order_number) + "\">" + esc(row.order_number) + " · " + esc(row.product || "No product") + " · " + esc(row.status) + tag + "</option>";
+      }).join("");
+      document.getElementById("status").textContent = eligible.length ? eligible.length + " orders ready for a job card" : "No orders waiting for a job card";
+      document.getElementById("emptyHint").hidden = eligible.length > 0;
+      if (keep && eligible.some((r) => r.order_number === keep)) sel.value = keep;
+      fillOrder(selected());
+    }
+
+    document.getElementById("orderNumber").onchange = () => {
+      persistJobCardDraft();
+      setErr("");
+      setOk("");
+      document.getElementById("pdfLink").hidden = true;
+      document.getElementById("existingLink").hidden = true;
+      document.getElementById("pasted").value = "";
+      cutting = { bars: [], plates: [], tubes: [], wood: [] };
+      renderCutting();
+      fillOrder(selected());
+    };
+    document.getElementById("markImportantBtn").onclick = markSelectedImportant;
+    document.getElementById("description").oninput = () => { syncGenerateReady(); persistJobCardDraft(); };
+    document.getElementById("parseBtn").onclick = parseList;
+    document.getElementById("generateBtn").onclick = generate;
+    document.getElementById("pasted").oninput = () => { persistJobCardDraft(); syncSuggestedCutting(); };
+    ["dimHeight", "dimWidth", "dimDepth", "dimDiameter"].forEach((id) => {
+      document.getElementById(id).oninput = () => { syncGenerateReady(); persistJobCardDraft(); };
+    });
+    document.querySelectorAll("input[name=\"dimCheck\"]").forEach((el) => {
+      el.onchange = () => { syncGenerateReady(); persistJobCardDraft(); };
+    });
+    window.addEventListener("pagehide", persistJobCardDraft);
+
+    sdRequireOffice("orders").then(() => load());
+  </script>
+</body>
+</html>

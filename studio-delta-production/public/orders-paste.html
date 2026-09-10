@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Paste orders</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; min-height:100vh; display:flex; flex-direction:column; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:820px; }
+    .lede a { color:#175cd3; font-weight:600; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .page { padding:18px 16px 48px; max-width:1100px; width:100%; margin:0 auto; flex:1; display:flex; flex-direction:column; gap:14px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; display:flex; flex-direction:column; gap:12px; flex:1; }
+    .hint { font-size:12px; color:var(--muted); margin:0; font-weight:400; }
+    label { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:600; }
+    textarea, input { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-weight:400; font-size:13px; width:100%; }
+    #pasteText {
+      min-height:420px; flex:1; resize:vertical;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size:12px; line-height:1.45; background:#f8fafc;
+    }
+    .confirm { flex-direction:row; align-items:flex-start; gap:8px; font-weight:600; }
+    .confirm input { width:auto; margin-top:3px; }
+    .confirm .hint { display:block; font-weight:400; }
+    .foot { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .err { color:var(--bad); font-size:13px; min-height:16px; margin:0; font-weight:600; }
+    .msg { font-size:13px; color:var(--muted); }
+    .msg.ok { color:var(--ok); font-weight:600; }
+    .paste-table-wrap { overflow:auto; }
+    .paste-preview { width:100%; min-width:640px; border-collapse:collapse; font-size:12px; }
+    .paste-preview th, .paste-preview td { border:1px solid var(--line); padding:6px 8px; text-align:left; white-space:normal; }
+    .paste-preview th { background:var(--head); }
+    @media (max-width: 720px) {
+      .tools { width:100%; margin-left:0; }
+      #pasteText { min-height:280px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a class="on" href="/orders/paste">Paste orders</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/glass-rates">Glass rates</a>
+        <a href="/orders/cost">Cost</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Paste orders</h1>
+      <p class="lede">The Orders sheet is still on <a href="/orders">Sheet</a>. This page is only the paste box. Copy the rows from the old Google Sheet, paste them here, then Add to Orders — you go back to the sheet.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <a href="/orders"><button class="ghost" type="button">Back to Orders</button></a>
+    </div>
+  </header>
+  <div class="page">
+    <section class="card" id="pasteBox" aria-label="Paste from the old sheet">
+      <label>Paste area
+        <textarea id="pasteText" spellcheck="false" placeholder="Copy the rows in Google Sheets, then paste here.&#10;&#10;SOQ2913	S260226 D	Ready for Tagging		Standard	Cabinet	…"></textarea>
+      </label>
+      <label class="confirm">
+        <input id="pastePaid" type="checkbox" checked>
+        <span>Everyone has paid in full<span class="hint">Amount paid is set to the incl-VAT price. Untick only if the paste already has Amount paid and some still owe.</span></span>
+      </label>
+      <div class="foot">
+        <button class="ghost" type="button" onclick="previewPaste()">Preview</button>
+        <button type="button" id="pasteAddBtn" onclick="confirmPaste()">Add to Orders</button>
+        <p class="err" id="pasteErr" role="alert"></p>
+      </div>
+      <div id="pasteResult" hidden></div>
+    </section>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script src="/order-paste-ui.js?v=paste-area"></script>
+  <script>
+    sdRequireOffice("orders").then((p) => {
+      if (!p) return;
+      sdInitOrderPaste({
+        onAdded: function (j) {
+          const n = (j.added || []).length;
+          const msg = "Added " + n + (n === 1 ? " order" : " orders") + " from the paste.";
+          try { sessionStorage.setItem("sd-paste-added", msg); } catch (e) {}
+          location.href = "/orders";
+        }
+      });
+      document.getElementById("pasteText").focus();
+    });
+  </script>
+</body>
+</html>

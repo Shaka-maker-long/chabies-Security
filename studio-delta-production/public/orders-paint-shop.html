@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Paint shop</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:780px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .page { padding:18px 16px 40px; display:flex; flex-direction:column; gap:16px; }
+    .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    .card h2 { margin:0; padding:14px 16px 0; font-size:16px; }
+    .card .hint { margin:6px 16px 12px; color:var(--muted); font-size:13px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-top:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; vertical-align:top; }
+    th { background:var(--head); font-size:11px; letter-spacing:.03em; }
+    .empty, .load, .err { padding:28px 16px; text-align:center; color:var(--muted); }
+    .err { color:var(--bad); }
+    .foot { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:12px 16px; border-top:1px solid var(--line); background:#f8fafc; }
+    .msg { font-size:12px; color:var(--muted); }
+    .msg.bad { color:var(--bad); }
+    .cost { width:110px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
+    .file { font-size:13px; }
+    .pill { display:inline-block; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; }
+    .pill.ready { background:#fffaeb; color:#b54708; }
+    .pill.sent { background:#eff8ff; color:#175cd3; }
+    .pill.back { background:#ecfdf3; color:var(--ok); }
+    .batch { padding:12px 16px; border-top:1px solid var(--line); }
+    .batch h3 { margin:0 0 8px; font-size:14px; }
+    .batch table { margin-top:8px; }
+    @media (max-width: 900px) {
+      .cols { grid-template-columns:1fr; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/paste">Paste orders</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/glass-rates">Glass rates</a>
+        <a href="/orders/cost">Cost</a>
+        <a class="on" href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Paint shop</h1>
+      <p class="lede">Mark Ready for Powder Coating orders when they leave for the paint shop. When a load comes back, tick only the orders that arrived, put a cost on each one, and attach one invoice for that received batch. Orders still at the shop stay here until you receive them.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <button class="ghost" type="button" onclick="load()">Refresh</button>
+    </div>
+  </header>
+  <div class="page">
+    <div class="cols">
+      <section class="card">
+        <h2>Ready to send</h2>
+        <p class="hint">These are Ready for Powder Coating. Send the ones you drop at the paint shop.</p>
+        <div id="readyBox"><div class="load">Loading…</div></div>
+        <div class="foot">
+          <button type="button" id="sendBtn" onclick="sendSelected()" disabled>Send to paint shop</button>
+          <span class="msg" id="sendMsg"></span>
+        </div>
+      </section>
+      <section class="card">
+        <h2>At the paint shop</h2>
+        <p class="hint">Receive only what came back. Cost is required on each received order. One invoice covers this received batch.</p>
+        <div id="sentBox"><div class="load">Loading…</div></div>
+        <div class="foot">
+          <label class="file">Invoice for this received batch
+            <input id="invoiceFile" type="file" accept="application/pdf,image/jpeg,image/png,image/webp">
+          </label>
+          <button type="button" id="recvBtn" onclick="receiveSelected()" disabled>Receive selected</button>
+          <span class="msg" id="recvMsg"></span>
+        </div>
+      </section>
+    </div>
+    <section class="card">
+      <h2>Received batches</h2>
+      <p class="hint">Each batch shares one invoice. Later arrivals from the same send get their own invoice when you receive them.</p>
+      <div id="recvBox"><div class="load">Loading…</div></div>
+    </section>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    let data = { ready: [], sent: [], received: [] };
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+    function when(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      return d.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg", dateStyle: "medium", timeStyle: "short" });
+    }
+    function selectedReady() {
+      return Array.from(document.querySelectorAll(".ready-chk:checked")).map((el) => el.value);
+    }
+    function selectedSent() {
+      return Array.from(document.querySelectorAll(".sent-chk:checked")).map((el) => el.value);
+    }
+    function setMsg(id, text, bad) {
+      const el = document.getElementById(id);
+      el.textContent = text || "";
+      el.classList.toggle("bad", !!bad);
+    }
+    function renderReady() {
+      const box = document.getElementById("readyBox");
+      if (!data.ready.length) {
+        box.innerHTML = '<div class="empty">Nothing is Ready for Powder Coating.</div>';
+        document.getElementById("sendBtn").disabled = true;
+        return;
+      }
+      box.innerHTML = "<table><thead><tr><th></th><th>Order</th><th>Product</th><th>Colour</th></tr></thead><tbody>" +
+        data.ready.map((o) => "<tr><td><input class='ready-chk' type='checkbox' value=\"" + esc(o.order_number) + "\"></td>" +
+          "<td><b>" + esc(o.order_number) + "</b></td><td>" + esc(o.product) + "</td><td>" + esc(o.powder_coating) + "</td></tr>").join("") +
+        "</tbody></table>";
+      box.querySelectorAll(".ready-chk").forEach((el) => { el.onchange = syncButtons; });
+      syncButtons();
+    }
+    function renderSent() {
+      const box = document.getElementById("sentBox");
+      if (!data.sent.length) {
+        box.innerHTML = '<div class="empty">No orders are at the paint shop.</div>';
+        document.getElementById("recvBtn").disabled = true;
+        return;
+      }
+      box.innerHTML = "<table><thead><tr><th></th><th>Order</th><th>Product</th><th>Sent</th><th>Cost (R)</th></tr></thead><tbody>" +
+        data.sent.map((o) => "<tr><td><input class='sent-chk' type='checkbox' value=\"" + esc(o.order_number) + "\"></td>" +
+          "<td><b>" + esc(o.order_number) + "</b><div class='msg'>" + esc(o.powder_coating) + "</div></td>" +
+          "<td>" + esc(o.product) + "</td><td>" + esc(when(o.sentAt)) + (o.sentBy ? "<div class='msg'>" + esc(o.sentBy) + "</div>" : "") + "</td>" +
+          "<td><input class='cost' data-order=\"" + esc(o.order_number) + "\" inputmode='decimal' placeholder='Required' disabled></td></tr>").join("") +
+        "</tbody></table>";
+      box.querySelectorAll(".sent-chk").forEach((el) => { el.onchange = syncButtons; });
+      syncButtons();
+    }
+    function renderReceived() {
+      const box = document.getElementById("recvBox");
+      if (!data.received.length) {
+        box.innerHTML = '<div class="empty">No paint shop invoices received yet.</div>';
+        return;
+      }
+      box.innerHTML = data.received.map((batch) => {
+        const rows = (batch.orders || []).map((o) => "<tr><td>" + esc(o.order_number) + "</td><td>" + esc(o.product) + "</td><td>" + esc(o.costLabel || o.cost) + "</td><td><span class='pill back'>" + esc(o.status) + "</span></td></tr>").join("");
+        return "<div class='batch'><h3>" + esc(when(batch.receivedAt)) + " · " + esc(batch.receivedBy) + " · " + (batch.orders || []).length + " orders · " + esc(batch.totalLabel) + "</h3>" +
+          "<a href=\"/api/office/paint-shop/invoices/" + encodeURIComponent(batch.invoiceId) + "\" target=\"_blank\" rel=\"noopener\">" + esc(batch.invoiceFilename || "Open invoice") + "</a>" +
+          "<table><thead><tr><th>Order</th><th>Product</th><th>Cost</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
+      }).join("");
+    }
+    function syncButtons() {
+      document.getElementById("sendBtn").disabled = !selectedReady().length;
+      const picked = selectedSent();
+      document.querySelectorAll(".cost").forEach((input) => {
+        const on = picked.indexOf(input.getAttribute("data-order")) !== -1;
+        input.disabled = !on;
+        if (!on) input.value = "";
+      });
+      document.getElementById("recvBtn").disabled = !picked.length;
+    }
+    async function load() {
+      setMsg("status", "Loading…");
+      try {
+        const r = await sdOfficeFetch("/api/office/paint-shop");
+        const j = await r.json().catch(function () { return {}; });
+        if (!j.ok) {
+          const err = j.error || "Could not load Paint shop. Log in again if this stays blank.";
+          setMsg("status", err, true);
+          document.getElementById("readyBox").innerHTML = '<div class="err">' + err + "</div>";
+          document.getElementById("sentBox").innerHTML = '<div class="err">' + err + "</div>";
+          document.getElementById("recvBox").innerHTML = '<div class="empty">No paint shop invoices received yet.</div>';
+          return;
+        }
+        data = j;
+        renderReady();
+        renderSent();
+        renderReceived();
+        setMsg("status", (j.readyCount || 0) + " ready · " + (j.sentCount || 0) + " at the shop");
+      } catch (e) {
+        const err = (e && e.message) || "Could not load Paint shop.";
+        setMsg("status", err, true);
+        document.getElementById("readyBox").innerHTML = '<div class="err">' + err + "</div>";
+        document.getElementById("sentBox").innerHTML = '<div class="err">' + err + "</div>";
+      }
+    }
+    async function sendSelected() {
+      const orderNumbers = selectedReady();
+      if (!orderNumbers.length) return;
+      if (!confirm("Send " + orderNumbers.length + " order" + (orderNumbers.length === 1 ? "" : "s") + " to the paint shop?")) return;
+      document.getElementById("sendBtn").disabled = true;
+      setMsg("sendMsg", "Sending…");
+      const r = await sdOfficeFetch("/api/office/paint-shop/send", { method: "POST", body: JSON.stringify({ orderNumbers }) });
+      const j = await r.json();
+      if (!j.ok) { setMsg("sendMsg", j.error || "Could not send", true); document.getElementById("sendBtn").disabled = false; return; }
+      data = j;
+      renderReady();
+      renderSent();
+      renderReceived();
+      setMsg("sendMsg", "Sent " + (j.orderNumbers || []).length + " to the paint shop.");
+      setMsg("status", (j.readyCount || 0) + " ready · " + (j.sentCount || 0) + " at the shop");
+    }
+    function readInvoice() {
+      const input = document.getElementById("invoiceFile");
+      const file = input.files && input.files[0];
+      if (!file) return Promise.reject(new Error("Attach the invoice for the orders you are receiving."));
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ filename: file.name, mime: file.type, data: reader.result });
+        reader.onerror = () => reject(new Error("Could not read the invoice file."));
+        reader.readAsDataURL(file);
+      });
+    }
+    async function receiveSelected() {
+      const orderNumbers = selectedSent();
+      if (!orderNumbers.length) return;
+      const orders = [];
+      for (const num of orderNumbers) {
+        const input = document.querySelector('.cost[data-order="' + num + '"]');
+        const cost = input ? String(input.value || "").trim() : "";
+        if (!cost) { setMsg("recvMsg", "Put the paint shop cost on " + num + ".", true); return; }
+        orders.push({ orderNumber: num, cost });
+      }
+      let invoice;
+      try { invoice = await readInvoice(); }
+      catch (e) { setMsg("recvMsg", e.message || "Attach the invoice.", true); return; }
+      if (!confirm("Receive " + orders.length + " order" + (orders.length === 1 ? "" : "s") + " and attach this invoice to that batch?")) return;
+      document.getElementById("recvBtn").disabled = true;
+      setMsg("recvMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/paint-shop/receive", {
+        method: "POST",
+        body: JSON.stringify({ orders, invoice })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("recvMsg", j.error || "Could not receive", true); document.getElementById("recvBtn").disabled = false; return; }
+      data = j;
+      document.getElementById("invoiceFile").value = "";
+      renderReady();
+      renderSent();
+      renderReceived();
+      setMsg("recvMsg", "Received " + (j.orderNumbers || []).length + " with one invoice.");
+      setMsg("status", (j.readyCount || 0) + " ready · " + (j.sentCount || 0) + " at the shop");
+    }
+    sdRequireOffice("orders").then(load);
+  </script>
+</body>
+</html>

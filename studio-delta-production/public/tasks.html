@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — My tasks</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:12px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    input[type=search], select { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:160px; font:inherit; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    button.ghost { background:#fff; color:#1d2939; }
+    .wrap { padding:16px; max-width:980px; }
+    .msg { font-size:12px; color:var(--muted); }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .subtabs { width:100%; padding-top:2px; }
+    .subtabs a { border:1px solid var(--line); background:#fff; }
+    .subtabs a.on { background:#1d2939; color:#fff; border-color:#1d2939; }
+    .empty { background:#fff; border:1px solid var(--line); border-radius:12px; padding:28px 18px; color:var(--muted); }
+    .group { margin:0 0 22px; }
+    .group h2 { font-size:13px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin:0 0 10px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px; margin:0 0 10px; display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+    .card.overdue { border-color:#fda29b; }
+    .card h3 { margin:0 0 4px; font-size:16px; font-family: Outfit, Inter, sans-serif; }
+    .card p { margin:0; font-size:13px; color:var(--muted); }
+    .card .job { font-size:14px; color:var(--ink); font-weight:600; margin-bottom:2px; }
+    .card .grow { flex:1; min-width:200px; }
+    .pill { display:inline-block; font-size:11px; font-weight:600; border:1px solid var(--line); border-radius:999px; padding:2px 8px; margin-right:6px; }
+    .pill.overdue { color:#b42318; border-color:#fda29b; }
+    @media (max-width: 720px) {
+      input[type=search], select { min-width:0; width:100%; }
+      .tools { width:100%; margin-left:0; }
+      .card { padding:12px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>My tasks</h1>
+    <nav class="tabs" aria-label="My tasks">
+      <a id="tabTodo" href="/tasks">To do</a>
+      <a id="tabDone" href="/tasks/completed">Completed</a>
+    </nav>
+    <span class="msg" id="who"></span>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <select id="typeFilter" aria-label="Task type">
+        <option value="">All work</option>
+        <option value="cost_sheet">Costing</option>
+        <option value="quote">Quoting</option>
+        <option value="approval">Approval</option>
+        <option value="follow_up">Follow-up</option>
+        <option value="chase_info">Chase</option>
+        <option value="supplier">Supplier</option>
+        <option value="pop">Client outcome</option>
+        <option value="drawing">Drawing</option>
+      </select>
+      <select id="personFilter" hidden aria-label="Whose tasks"></select>
+      <input type="search" id="q" placeholder="Search my tasks">
+      <button class="ghost" type="button" onclick="load()">Refresh</button>
+    </div>
+    <nav class="tabs subtabs" id="todoSubs" hidden aria-label="To do">
+      <a id="tabMine" href="/tasks">Mine</a>
+      <a id="tabTeam" href="/tasks/team">Other people</a>
+    </nav>
+  </header>
+  <div class="wrap" id="list"></div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script src="/enquiry-process.js?v=corr-links"></script>
+  <script>
+    let rows = [];
+    let grants = [];
+    let me = "";
+    let canViewAll = false;
+    const pathName = location.pathname.replace(/\/+$/, "") || "/tasks";
+    const completedView = pathName === "/tasks/completed";
+    const teamView = pathName === "/tasks/team";
+    const TASK_TYPES = [
+      ["cost_sheet", "Costing"],
+      ["quote", "Quoting"],
+      ["approval", "Approval"],
+      ["follow_up", "Follow-up"],
+      ["chase_info", "Chase"],
+      ["supplier", "Supplier"],
+      ["pop", "Client outcome"],
+      ["drawing", "Drawing"]
+    ];
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
+    function typeHeading(row) {
+      return String(row.type_label || "").trim() || (TASK_TYPES.find((t) => t[0] === row.kind) || [])[1] || row.title || row.kind || "Task";
+    }
+    function typeFilterValue() {
+      return (document.getElementById("typeFilter") || {}).value || "";
+    }
+    function typeFilterLabel() {
+      const sel = document.getElementById("typeFilter");
+      if (!sel || !sel.value) return "";
+      const opt = sel.options[sel.selectedIndex];
+      return opt ? String(opt.textContent || "").trim() : "";
+    }
+    function personFilterValue() {
+      return (document.getElementById("personFilter") || {}).value || "";
+    }
+    function namesOn(row) {
+      return String((row && row.assignee) || "").split(",").map((n) => n.trim()).filter(Boolean);
+    }
+    function isMine(row) {
+      const mine = String(me || "").trim().toLowerCase();
+      if (!mine) return false;
+      if (namesOn(row).some((n) => n.toLowerCase() === mine)) return true;
+      return String(row.completed_by || "").trim().toLowerCase() === mine;
+    }
+    function fillPersonFilter() {
+      const sel = document.getElementById("personFilter");
+      if (!sel) return;
+      const show = canViewAll && (teamView || completedView);
+      sel.hidden = !show;
+      if (!show) { sel.innerHTML = ""; return; }
+      const names = [];
+      const mine = String(me || "").trim().toLowerCase();
+      rows.forEach((r) => {
+        namesOn(r).forEach((who) => {
+          if (teamView && who.toLowerCase() === mine) return;
+          if (who && names.indexOf(who) === -1) names.push(who);
+        });
+        const doneBy = String(r.completed_by || "").trim();
+        if (doneBy && names.indexOf(doneBy) === -1) {
+          if (!(teamView && doneBy.toLowerCase() === mine)) names.push(doneBy);
+        }
+      });
+      names.sort(function (a, b) { return a.localeCompare(b); });
+      const keep = personFilterValue();
+      let h = "<option value=\"\">" + (teamView ? "Everyone else" : "Everyone") + "</option>";
+      if (completedView) {
+        h += "<option value=\"__me__\"" + (keep === "__me__" ? " selected" : "") + ">Assigned to me</option>";
+      }
+      names.forEach((n) => {
+        h += "<option value=\"" + esc(n) + "\"" + (keep === n ? " selected" : "") + ">" + esc(n) + "</option>";
+      });
+      sel.innerHTML = h;
+    }
+    function matchesPerson(row) {
+      if (teamView && isMine(row)) return false;
+      const want = personFilterValue();
+      if (!want) return true;
+      if (want === "__me__") return isMine(row);
+      const needle = want.toLowerCase();
+      return namesOn(row).some((n) => n.toLowerCase() === needle)
+        || String(row.completed_by || "").trim().toLowerCase() === needle;
+    }
+    function matchesType(row) {
+      const want = typeFilterValue();
+      if (!want) return true;
+      return String(row.kind || "") === want;
+    }
+    function render() {
+      const q = document.getElementById("q").value.toLowerCase();
+      const filtered = rows.filter((r) => {
+        if (!matchesPerson(r)) return false;
+        if (!matchesType(r)) return false;
+        const blob = [r.enquiry_no, r.client_name, r.product, r.title, r.type_label, r.kind, r.enquiry_status, r.assignee, r.completed_by, r.completed_at_label].join(" ").toLowerCase();
+        return !q || blob.indexOf(q) >= 0;
+      });
+      const list = document.getElementById("list");
+      const typeName = typeFilterLabel();
+      if (!filtered.length && (completedView || !grants.length || q || personFilterValue() || typeFilterValue())) {
+        let empty;
+        if (typeName && (q || personFilterValue())) empty = "No " + typeName.toLowerCase() + " tasks match that search.";
+        else if (typeName) empty = "No " + typeName.toLowerCase() + " work right now.";
+        else if (q || personFilterValue()) empty = "No " + (completedView ? "completed " : "") + "tasks match that search.";
+        else if (completedView) empty = "Nothing completed yet. When you finish costing, quoting, a follow-up, or a drawing, that work moves here.";
+        else if (teamView) empty = "Nobody else has open work right now.";
+        else if (canViewAll) empty = "Nothing is assigned to you right now.";
+        else empty = "Nothing is assigned to you right now. Capture new enquiries on the Enquiries sheet, then assign costing, quoting, follow-up, or drawing to an office Admin. That person will see the work here and update the system from the task.";
+        list.innerHTML = "<div class=\"empty\">" + empty + "</div>";
+        return;
+      }
+      function cards(items) {
+        return items.map((row) => {
+          const overdue = !completedView && row.overdue;
+          const when = completedView
+            ? (row.completed_at_label ? "<span class=\"pill\">Completed " + esc(row.completed_at_label) + "</span>" : "<span class=\"pill\">Completed</span>")
+            : (row.due_at ? "<span class=\"pill\">Due " + esc(String(row.due_at).slice(0, 10)) + "</span>" : "");
+          return "<article class=\"card" + (overdue ? " overdue" : "") + "\">" +
+            "<div class=\"grow\">" +
+            "<h3>" + esc(typeHeading(row)) + "</h3>" +
+            "<p class=\"job\">" + esc(row.enquiry_no) + " · " + esc(row.client_name || "No client name yet") + "</p>" +
+            (row.product ? "<p>" + esc(row.product) + "</p>" : "") +
+            (row.assignee ? "<p>Assigned to <b>" + esc(row.assignee) + "</b>" +
+              (completedView && row.completed_by ? " · done by " + esc(row.completed_by) : "") + "</p>" : "") +
+            (row.deliverable_count ? "<p>" + row.deliverable_count + " file" + (row.deliverable_count === 1 ? "" : "s") + " on this enquiry</p>" : (row.correspondence_mails ? "<p>" + row.correspondence_mails + " Correspondance link" + (row.correspondence_mails === 1 ? "" : "s") + "</p>" : "")) +
+            "<p><span class=\"pill" + (overdue ? " overdue" : "") + "\">" + esc(row.enquiry_status || "") + "</span>" +
+            (overdue ? "<span class=\"pill overdue\">Overdue</span>" : "") +
+            when +
+            "</p></div>" +
+            "<button type=\"button\" data-open=\"" + esc(row.enquiry_no) + "\" data-task=\"" + esc(row.id || "") + "\">" +
+            (completedView ? "Open" : "Update") + "</button>" +
+            "</article>";
+        }).join("");
+      }
+      let html = "";
+      if (!completedView && grants.length && !q && !typeFilterValue()) {
+        html += "<section class=\"group\"><h2>Access requests</h2>" + grants.map((g) => {
+          return "<article class=\"card\">" +
+            "<div class=\"grow\"><h3>" + esc(g.kind_label || g.kind || "Access") + "</h3>" +
+            "<p class=\"job\">" + esc(g.enquiry_no) + " · " + esc(g.client_name || "") + "</p>" +
+            "<p><b>" + esc(g.requester) + "</b> wants to " + esc(g.kind_label || g.kind) + "</p>" +
+            "<p><span class=\"pill\">" + esc(g.enquiry_status || "") + "</span></p></div>" +
+            "<button type=\"button\" data-open=\"" + esc(g.enquiry_no) + "\">Review</button></article>";
+        }).join("") + "</section>";
+      }
+      if (completedView) {
+        html += "<section class=\"group\"><h2>Completed</h2>" + cards(filtered) + "</section>";
+      } else {
+        const overdue = filtered.filter((r) => r.overdue);
+        const rest = filtered.filter((r) => !r.overdue);
+        if (overdue.length) html += "<section class=\"group\"><h2>Overdue</h2>" + cards(overdue) + "</section>";
+        const assignedLabel = teamView
+          ? (personFilterValue() ? ("Assigned to " + personFilterValue()) : "Other people")
+          : "Assigned to me";
+        if (rest.length) html += "<section class=\"group\"><h2>" + esc(assignedLabel) + "</h2>" + cards(rest) + "</section>";
+      }
+      list.innerHTML = html;
+      list.onclick = (e) => {
+        const btn = e.target.closest("[data-open]");
+        if (!btn) return;
+        sdOpenEnquiryProcess(btn.getAttribute("data-open"), btn.getAttribute("data-task"));
+      };
+    }
+    window.sdOnEnquiryProcessClose = function () { load(); };
+    async function load() {
+      document.getElementById("status").textContent = "Loading…";
+      const qs = [];
+      if (completedView) qs.push("done=1");
+      if (canViewAll && (teamView || completedView)) qs.push("scope=all");
+      if (canViewAll && !teamView && !completedView) qs.push("scope=mine");
+      const r = await sdOfficeFetch("/api/office/my-tasks" + (qs.length ? "?" + qs.join("&") : ""));
+      const j = await r.json();
+      if (!j.ok) { document.getElementById("status").textContent = j.error || "Could not load"; return; }
+      if (j.canViewAll) canViewAll = true;
+      rows = j.rows || [];
+      grants = [];
+      if (!completedView) {
+        const g = await sdOfficeFetch("/api/office/access-requests");
+        const gj = await g.json();
+        if (gj.ok) grants = gj.rows || [];
+      }
+      fillPersonFilter();
+      const shown = rows.filter((r) => matchesPerson(r) && matchesType(r)).length;
+      if (completedView) document.getElementById("status").textContent = shown ? (shown + " completed") : "No completed tasks";
+      else document.getElementById("status").textContent = shown ? (shown + " assigned") : "No open tasks";
+      render();
+    }
+    document.getElementById("q").oninput = render;
+    document.getElementById("personFilter").onchange = render;
+    document.getElementById("typeFilter").onchange = render;
+    if (completedView) {
+      document.title = "Studio Delta — Tasks completed";
+      document.getElementById("tabDone").className = "on";
+      document.getElementById("q").placeholder = "Search completed tasks";
+    } else {
+      document.getElementById("tabTodo").className = "on";
+      if (teamView) document.getElementById("tabTeam").className = "on";
+      else document.getElementById("tabMine").className = "on";
+    }
+    sdRequireOffice("tasks").then((p) => {
+      if (!p) return;
+      me = p.name || "";
+      canViewAll = !!p.canManageUsers;
+      if (teamView && !canViewAll) {
+        location.replace("/tasks");
+        return;
+      }
+      const subs = document.getElementById("todoSubs");
+      if (subs) subs.hidden = !canViewAll || completedView;
+      document.getElementById("who").textContent = me
+        ? ("Signed in as " + me + (teamView ? " · other people’s tasks" : ""))
+        : "";
+      if (canViewAll && teamView) document.getElementById("q").placeholder = "Search other people’s tasks";
+      else if (canViewAll && completedView) document.getElementById("q").placeholder = "Search everyone’s completed tasks";
+      const want = new URLSearchParams(location.search).get("enquiry");
+      load().then(() => {
+        if (want) sdOpenEnquiryProcess(want);
+      });
+    });
+  </script>
+</body>
+</html>

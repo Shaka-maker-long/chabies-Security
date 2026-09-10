@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Production schedule</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --warn:#fff4e0; --lock:992px; --day:44px; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:640px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .tools input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:220px; font:inherit; font-size:13px; }
+    .tools input[type=search]:focus { outline:none; border-color:#2f6fed; box-shadow:0 0 0 3px rgba(47,111,237,.15); }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    .board { display:flex; height:calc(100vh - 118px); min-width:0; overflow:hidden; background:#fff; }
+    .meta-pane { flex:0 0 auto; width:var(--lock); overflow-x:hidden; overflow-y:auto; box-shadow:4px 0 10px rgba(16,24,40,.12); z-index:2; scrollbar-width:none; }
+    .meta-pane::-webkit-scrollbar { display:none; }
+    .cal-pane { flex:1 1 auto; overflow-x:auto; overflow-y:auto; min-width:0; }
+    table { border-collapse:separate; border-spacing:0; background:#fff; font-size:12px; }
+    #meta { table-layout:fixed; width:var(--lock); }
+    #grid { table-layout:fixed; }
+    th, td { border:1px solid var(--line); padding:4px 6px; height:34px; white-space:nowrap; background:#fff; }
+    thead th { background:var(--head); font-size:11px; position:sticky; z-index:5; }
+    thead tr:nth-child(1) th { top:0; }
+    thead tr:nth-child(2) th { top:34px; }
+    thead tr:nth-child(3) th { top:68px; }
+    body.office-app #grid thead th.day { text-transform:none; letter-spacing:0; }
+    #grid th.day, #grid td.day { width:var(--day); min-width:var(--day); max-width:var(--day); text-align:center; padding:4px 2px; }
+    .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; }
+    td input { width:100%; border:0; font:inherit; background:transparent; }
+    .code-cell { text-align:center; font-weight:700; cursor:pointer; user-select:none; }
+    .code-cell:focus { outline:2px solid #2f6fed; outline-offset:-2px; }
+    .week-lock { font-weight:700; letter-spacing:.02em; text-align:left; }
+    tr.unplanned td { background:var(--warn); }
+    tr.unplanned td input { background:transparent; }
+    #picker {
+      position:fixed; z-index:30; display:none; width:240px; background:#fff;
+      border:1px solid var(--line); border-radius:10px; padding:8px;
+      box-shadow:0 10px 28px rgba(16,24,40,.18);
+    }
+    #picker.open { display:block; }
+    #picker h2 { margin:0 0 6px; font-size:11px; color:var(--muted); font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    #picker .chips { display:flex; flex-wrap:wrap; gap:4px; }
+    #picker button { border:0; border-radius:6px; padding:6px 8px; font:inherit; font-size:11px; font-weight:700; cursor:pointer; }
+    #picker .clear { width:100%; margin-top:6px; background:#fff; color:#1d2939; border:1px solid var(--line); }
+    #picker .reason { display:none; margin-top:8px; }
+    #picker.need-reason .reason { display:block; }
+    #picker.need-reason .chips, #picker.need-reason h2, #picker.need-reason .clear { display:none; }
+    #picker textarea { width:100%; min-height:64px; border:1px solid var(--line); border-radius:6px; padding:6px; font:inherit; font-size:12px; }
+    #picker .reason-err { color:#b42318; font-size:11px; min-height:14px; margin:4px 0 0; }
+    .msg { font-size:12px; color:var(--muted); }
+    .legend { display:flex; flex-wrap:wrap; gap:6px; padding:8px 16px; background:#fff; border-bottom:1px solid var(--line); align-items:center; }
+    .legend span { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#344054; font-weight:600; }
+    .swatch { min-width:28px; padding:2px 6px; border-radius:4px; text-align:center; font-size:11px; font-weight:700; }
+    .hint { color:var(--muted); font-weight:500; margin-left:4px; }
+    .empty { padding:36px 16px; color:var(--muted); font-size:13px; text-align:center; }
+    @media (max-width: 720px) {
+      .tools { width:100%; margin-left:0; }
+      .tools input[type=search] { width:100%; min-width:0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/paste">Paste orders</a>
+        <a class="on" href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/glass-rates">Glass rates</a>
+        <a href="/orders/cost">Cost</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Production schedule</h1>
+      <p class="lede">One live Latest Delivery (LD) or Latest Courier (LC) per order. Move it to another day and you must give a reason — the old cell stays as gray LD* or LC*. Amber rows still need a latest date.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <input type="search" id="q" placeholder="Search order, product, province…">
+      <button class="ghost" type="button" onclick="shift(-7)">← Week</button>
+      <button class="ghost" type="button" onclick="shift(7)">Week →</button>
+    </div>
+  </header>
+  <div class="legend" id="legend"></div>
+  <div class="board">
+    <div class="meta-pane" id="metaPane"><table id="meta"></table></div>
+    <div class="cal-pane" id="scroller"><table id="grid"></table></div>
+  </div>
+  <div id="picker" role="listbox" aria-label="Schedule code"></div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    const LEFT = [
+      ["order_number","ORDER", true, 96],
+      ["item_type","ITEM TYPE", true, 92],
+      ["category","CATEGORY", true, 100],
+      ["product","PRODUCT", true, 168],
+      ["province","PROVINCE", true, 112],
+      ["order_date","ORDER", false, 72],
+      ["courier","COURIER", false, 120],
+      ["waybill","WAYBILL", false, 112],
+      ["status","STATUS", true, 120]
+    ];
+    let start = new URLSearchParams(location.search).get("start") || "";
+    let days = [];
+    let rows = [];
+    let codes = [];
+    let pickCell = null;
+    let pendingCode = "";
+    let query = "";
+
+    function mondayOf(iso) {
+      const d = new Date((iso || "") + "T12:00:00");
+      if (Number.isNaN(d.getTime())) return "";
+      const day = d.getDay() || 7;
+      d.setDate(d.getDate() - day + 1);
+      return d.toISOString().slice(0, 10);
+    }
+    function dow(iso) {
+      return ["S","M","T","W","T","F","S"][new Date(iso + "T12:00:00").getDay()];
+    }
+    function weekNum(iso) {
+      const d = new Date(iso + "T12:00:00");
+      const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+      const dayNum = utc.getUTCDay() || 7;
+      utc.setUTCDate(utc.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+      return Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
+    }
+    function weekLabel(iso) {
+      return "Week" + String(weekNum(iso)).padStart(2, "0");
+    }
+    function pretty(iso) {
+      const d = new Date(iso + "T12:00:00");
+      return String(d.getDate()).padStart(2, "0") + "-" + d.toLocaleString("en-GB", { month: "short" }).replace(/\./g, "").slice(0, 3);
+    }
+    function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
+    function codeStyle(code) {
+      const hit = codes.find((c) => c.code === code);
+      if (!hit) return "";
+      return "background:" + hit.bg + ";color:" + hit.fg;
+    }
+    function displayValue(row, key) {
+      if (key === "order_date") return row.order_date_label || row.order_date || "";
+      return row[key];
+    }
+    function liveCode(value) {
+      const c = String(value || "").trim().toUpperCase();
+      return c === "LD" || c === "LC" ? c : "";
+    }
+    function isPlanned(row) {
+      if (row.delivery_planned) return true;
+      return Object.values(row.cells || {}).some((v) => liveCode(v));
+    }
+    function liveDay(row) {
+      const days = Object.keys(row.cells || {}).filter((day) => liveCode(row.cells[day]));
+      return days.sort()[0] || "";
+    }
+    function matches(row) {
+      if (!query) return true;
+      const bits = LEFT.map(([k]) => displayValue(row, k)).concat([row.order_number, row.product, row.province, row.status]);
+      return bits.join(" ").toLowerCase().indexOf(query) !== -1;
+    }
+
+    function renderLegend() {
+      document.getElementById("legend").innerHTML = codes.map((c) => {
+        return "<span><b class=\"swatch\" style=\"" + codeStyle(c.code) + "\">" + esc(c.code) + "</b>" + esc(c.label) + "</span>";
+      }).join("") + "<span class=\"hint\">Amber rows have no live LD or LC. Gray LD* / LC* is a date that moved.</span>";
+    }
+
+    function paintCell(td, value, reason) {
+      td.dataset.code = value || "";
+      td.textContent = value || "";
+      td.setAttribute("style", codeStyle(value));
+      if (reason) td.title = reason;
+      else td.removeAttribute("title");
+    }
+
+    function renderPicker() {
+      const box = document.getElementById("picker");
+      const groups = {};
+      codes.forEach((c) => {
+        if (!groups[c.group]) groups[c.group] = [];
+        groups[c.group].push(c);
+      });
+      const shown = {};
+      Object.keys(groups).forEach((g) => {
+        const list = groups[g].filter((c) => !c.moved);
+        if (list.length) shown[g] = list;
+      });
+      box.innerHTML = Object.keys(shown).map((g) => {
+        return "<h2>" + esc(g) + "</h2><div class=\"chips\">" + shown[g].map((c) => {
+          return "<button type=\"button\" data-code=\"" + esc(c.code) + "\" style=\"" + codeStyle(c.code) + "\" title=\"" + esc(c.label) + "\">" + esc(c.code) + "</button>";
+        }).join("") + "</div>";
+      }).join("") + "<button type=\"button\" class=\"clear\" data-code=\"\">Clear</button>" +
+        "<div class=\"reason\" id=\"reasonBox\"><h2>Move LD or LC</h2><p class=\"hint\" style=\"margin:0 0 6px\">The old date stays as gray LD* or LC*. Type why it moved.</p>" +
+        "<textarea id=\"moveReason\" placeholder=\"Why is this date moving?\"></textarea>" +
+        "<p class=\"reason-err\" id=\"moveErr\"></p>" +
+        "<button type=\"button\" id=\"reasonGo\">Save new date</button>" +
+        "<button type=\"button\" class=\"clear\" id=\"reasonCancel\">Cancel</button></div>";
+    }
+
+    function closePicker() {
+      pickCell = null;
+      pendingCode = "";
+      const box = document.getElementById("picker");
+      box.classList.remove("open");
+      box.classList.remove("need-reason");
+    }
+
+    function openPicker(td) {
+      pickCell = td;
+      const box = document.getElementById("picker");
+      box.classList.add("open");
+      const r = td.getBoundingClientRect();
+      const left = Math.min(Math.max(8, r.left), window.innerWidth - 256);
+      const top = r.bottom + 6 + 200 > window.innerHeight ? Math.max(8, r.top - 206) : r.bottom + 6;
+      box.style.left = left + "px";
+      box.style.top = top + "px";
+    }
+
+    function colStyle(i) {
+      const w = LEFT[i][3];
+      return "width:" + w + "px;min-width:" + w + "px;max-width:" + w + "px";
+    }
+
+    function paintStatus() {
+      const shown = rows.filter(matches);
+      const open = shown.filter((r) => !isPlanned(r)).length;
+      const week = start ? pretty(start) : "";
+      document.getElementById("status").textContent =
+        shown.length + " of " + rows.length + " orders · " + open + " not planned · week of " + week;
+    }
+
+    function render() {
+      const meta = document.getElementById("meta");
+      const table = document.getElementById("grid");
+      const shown = rows.filter(matches);
+      const board = document.querySelector(".board");
+      let empty = board.querySelector(".empty");
+      if (!rows.length || !shown.length) {
+        meta.innerHTML = "";
+        table.innerHTML = "";
+        if (!empty) {
+          empty = document.createElement("div");
+          empty.className = "empty";
+          board.appendChild(empty);
+        }
+        empty.textContent = rows.length
+          ? "No orders match that search."
+          : "No orders yet. New orders from the sheet appear here automatically so you can mark LD or LC.";
+        empty.hidden = false;
+        paintStatus();
+        return;
+      }
+      if (empty) empty.hidden = true;
+      let weeks = "";
+      let drow = "";
+      let dates = "";
+      let cursor = 0;
+      while (cursor < days.length) {
+        const w = weekLabel(days[cursor]);
+        const monday = mondayOf(days[cursor]);
+        let n = 0;
+        while (cursor + n < days.length && weekLabel(days[cursor + n]) === w) n++;
+        weeks += "<th class=\"day\" colspan=\"" + n + "\" data-week-start=\"" + monday + "\">" + w + "</th>";
+        cursor += n;
+      }
+      days.forEach((d) => {
+        drow += "<th class=\"day\" data-day=\"" + d + "\">" + dow(d) + "</th>";
+        dates += "<th class=\"day\" data-day=\"" + d + "\">" + pretty(d) + "</th>";
+      });
+      const frozen = weekLabel(start || days[0]);
+      let left = "<thead><tr><th class=\"week-lock\" id=\"frozenWeek\" colspan=\"" + LEFT.length + "\">" + frozen + "</th></tr><tr>";
+      LEFT.forEach(([, l], i) => { left += "<th style=\"" + colStyle(i) + "\">" + l + "</th>"; });
+      left += "</tr><tr>";
+      LEFT.forEach((col, i) => { left += "<th style=\"" + colStyle(i) + "\"></th>"; });
+      left += "</tr></thead><tbody>";
+      let cal = "<thead><tr>" + weeks + "</tr><tr>" + drow + "</tr><tr>" + dates + "</tr></thead><tbody>";
+      shown.forEach((row) => {
+        const mark = isPlanned(row) ? "" : " class=\"unplanned\"";
+        left += "<tr data-id=\"" + row.id + "\"" + mark + ">";
+        LEFT.forEach(([k,, locked], i) => {
+          const v = displayValue(row, k);
+          if (locked) {
+            left += "<td style=\"" + colStyle(i) + "\"><span class=\"cell-text\" title=\"" + esc(v) + "\">" + esc(v) + "</span></td>";
+          } else {
+            left += "<td style=\"" + colStyle(i) + "\"><input data-k=\"" + k + "\" value=\"" + esc(v) + "\"" + (k === "order_date" ? " placeholder=\"07-Jan\"" : "") + "></td>";
+          }
+        });
+        left += "</tr>";
+        cal += "<tr data-id=\"" + row.id + "\"" + mark + ">";
+        days.forEach((d) => {
+          const v = (row.cells && row.cells[d]) || "";
+          const why = (row.cell_reasons && row.cell_reasons[d]) || "";
+          cal += "<td class=\"day code-cell\" data-day=\"" + d + "\" data-code=\"" + esc(v) + "\" tabindex=\"0\" style=\"" + codeStyle(v) + "\"" + (why ? " title=\"" + esc(why) + "\"" : "") + ">" + esc(v) + "</td>";
+        });
+        cal += "</tr>";
+      });
+      meta.innerHTML = left + "</tbody>";
+      table.innerHTML = cal + "</tbody>";
+      const gridW = Math.max(days.length * 44, 1600);
+      table.style.width = gridW + "px";
+      table.style.minWidth = gridW + "px";
+      meta.onchange = onChange;
+      table.onclick = onGridClick;
+      table.onkeydown = onGridKey;
+      paintStatus();
+      syncFrozenWeek();
+    }
+
+    function scrollToWeek(monday) {
+      const wrap = document.getElementById("scroller");
+      const th = wrap.querySelector('th[data-week-start="' + monday + '"]');
+      if (!th) return false;
+      wrap.scrollTo({ left: Math.max(0, th.offsetLeft), behavior: "smooth" });
+      const frozen = document.getElementById("frozenWeek");
+      if (frozen) frozen.textContent = weekLabel(monday);
+      return true;
+    }
+
+    function syncFrozenWeek() {
+      const wrap = document.getElementById("scroller");
+      const frozen = document.getElementById("frozenWeek");
+      if (!wrap || !frozen || !days.length) return;
+      const edge = wrap.getBoundingClientRect().left + 4;
+      let pick = days[0];
+      for (let i = 0; i < days.length; i++) {
+        const th = wrap.querySelector('thead tr:nth-child(3) th.day[data-day="' + days[i] + '"]');
+        if (th && th.getBoundingClientRect().right > edge) { pick = days[i]; break; }
+      }
+      frozen.textContent = weekLabel(pick);
+    }
+
+    function syncScrollY(from, to) {
+      if (syncScrollY.lock) return;
+      syncScrollY.lock = true;
+      to.scrollTop = from.scrollTop;
+      syncScrollY.lock = false;
+    }
+
+    function onGridClick(e) {
+      const td = e.target.closest(".code-cell");
+      if (td) { openPicker(td); return; }
+      closePicker();
+    }
+    function onGridKey(e) {
+      if (e.key === "Enter") {
+        if (e.target.classList.contains("code-cell")) { e.preventDefault(); openPicker(e.target); }
+        else e.target.blur();
+      }
+    }
+
+    function refreshPlanned(row) {
+      const daysSet = new Set();
+      Object.keys(row.cells || {}).forEach((day) => {
+        if (liveCode(row.cells[day])) daysSet.add(day);
+      });
+      row.delivery_days = Array.from(daysSet).sort();
+      row.delivery_planned = daysSet.size > 0;
+      document.querySelectorAll('tr[data-id="' + row.id + '"]').forEach((el) => {
+        el.classList.toggle("unplanned", !row.delivery_planned);
+      });
+      paintStatus();
+    }
+
+    function starOtherLive(row, keepDay, reason) {
+      Object.keys(row.cells || {}).forEach((day) => {
+        const live = liveCode(row.cells[day]);
+        if (!live || day === keepDay) return;
+        row.cells[day] = live + "*";
+        if (!row.cell_reasons) row.cell_reasons = {};
+        row.cell_reasons[day] = reason;
+        document.querySelectorAll('tr[data-id="' + row.id + '"] td.code-cell[data-day="' + day + '"]').forEach((cell) => {
+          paintCell(cell, row.cells[day], reason);
+        });
+      });
+    }
+
+    async function applyCode(value, reason) {
+      if (!pickCell) return;
+      const td = pickCell;
+      const tr = td.closest("tr");
+      const id = Number(tr.getAttribute("data-id"));
+      const day = td.getAttribute("data-day");
+      const row = rows.find((r) => r.id === id);
+      if (!row) return;
+      if (!row.cells) row.cells = {};
+      const moving = liveCode(value) && liveDay(row) && liveDay(row) !== day;
+      if (moving && !String(reason || "").trim()) {
+        pendingCode = value;
+        document.getElementById("picker").classList.add("need-reason");
+        const box = document.getElementById("moveReason");
+        const err = document.getElementById("moveErr");
+        if (err) err.textContent = "";
+        if (box) { box.value = ""; box.focus(); }
+        return;
+      }
+      if (moving) starOtherLive(row, day, reason);
+      row.cells[day] = value;
+      paintCell(td, value, reason);
+      refreshPlanned(row);
+      closePicker();
+      const r = await sdOfficeFetch("/api/office/schedule/cell", {
+        method: "PUT",
+        body: JSON.stringify({ rowId: id, day, value, reason: reason || "" })
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!j.ok) document.getElementById("status").textContent = j.error || "Could not save that date.";
+    }
+
+    async function onChange(e) {
+      if (!e.target.dataset.k) return;
+      const tr = e.target.closest("tr");
+      const id = Number(tr.getAttribute("data-id"));
+      const row = rows.find((r) => r.id === id);
+      if (!row) return;
+      let value = e.target.value;
+      if (e.target.dataset.k === "order_date") {
+        value = value.trim();
+        row.order_date = value;
+        row.order_date_label = value;
+        e.target.value = value;
+      } else {
+        row[e.target.dataset.k] = value;
+      }
+      await sdOfficeFetch("/api/office/schedule/row", {
+        method: "PUT",
+        body: JSON.stringify(row)
+      });
+    }
+
+    async function load() {
+      document.getElementById("status").textContent = "Loading orders…";
+      closePicker();
+      const r = await sdOfficeFetch("/api/office/schedule?start=" + encodeURIComponent(start));
+      const j = await r.json();
+      start = j.start;
+      days = j.days;
+      rows = j.rows;
+      codes = j.codes || [];
+      renderLegend();
+      renderPicker();
+      render();
+      scrollToWeek(start);
+    }
+    function shift(n) {
+      const base = start || days[0];
+      const d = new Date(base + "T12:00:00");
+      d.setDate(d.getDate() + n);
+      const monday = mondayOf(d.toISOString().slice(0, 10));
+      start = monday;
+      if (scrollToWeek(monday)) {
+        paintStatus();
+        return;
+      }
+      load();
+    }
+    document.getElementById("picker").onclick = (e) => {
+      if (e.target.id === "reasonCancel") { closePicker(); return; }
+      if (e.target.id === "reasonGo") {
+        const why = (document.getElementById("moveReason").value || "").trim();
+        if (!why) {
+          document.getElementById("moveErr").textContent = "Give a reason before moving LD or LC.";
+          return;
+        }
+        applyCode(pendingCode, why);
+        return;
+      }
+      const btn = e.target.closest("button[data-code]");
+      if (btn) applyCode(btn.getAttribute("data-code"));
+    };
+    document.getElementById("q").addEventListener("input", (e) => {
+      query = e.target.value.trim().toLowerCase();
+      render();
+    });
+    document.getElementById("scroller").addEventListener("scroll", () => {
+      syncFrozenWeek();
+      syncScrollY(document.getElementById("scroller"), document.getElementById("metaPane"));
+    }, { passive: true });
+    document.getElementById("metaPane").addEventListener("scroll", () => {
+      syncScrollY(document.getElementById("metaPane"), document.getElementById("scroller"));
+    }, { passive: true });
+    document.addEventListener("click", (e) => {
+      if (e.target.closest("#picker") || e.target.closest(".code-cell")) return;
+      closePicker();
+    });
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePicker(); });
+    sdRequireOffice("orders").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

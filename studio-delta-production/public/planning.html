@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Planning</title>
+  <script src="/sd-pwa.js?v=pwa2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --hour:52px; --gutter:56px; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:12px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .msg { font-size:12px; color:var(--muted); }
+    .msg.error { color:#b42318; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    button.ghost { background:#fff; color:#1d2939; pointer-events:auto; position:static; }
+    button.danger { background:#b42318; border-color:#b42318; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .tabs { display:flex; gap:4px; }
+    .tabs a { padding:7px 12px; font-size:13px; font-weight:600; color:#344054; text-decoration:none; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .week-tools, .people-tools { display:none; align-items:center; gap:8px; flex-wrap:wrap; }
+    body[data-view="journey"] .week-tools,
+    body[data-view="people"] .week-tools,
+    body[data-view="people"] .people-tools { display:flex; }
+    body.office-app .people-tools label,
+    body.office-app .week-tools strong { color:#c4bdb3; }
+    select { border:1px solid var(--line); border-radius:6px; padding:7px 10px; font:inherit; background:#fff; }
+    .layout { min-height:calc(100vh - 58px); display:block; }
+    .queue { display:none !important; padding:16px; max-width:820px; }
+    body[data-view="planning"] .queue { display:block !important; }
+    .board { display:none !important; padding:14px 16px 40px; overflow:auto; min-width:0; }
+    body[data-view="journey"] .board,
+    body[data-view="people"] .board { display:block !important; }
+    .queue h2 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
+    .help { font-size:13px; color:var(--muted); margin:0 0 12px; line-height:1.45; }
+    input[type=search] { width:100%; max-width:420px; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; margin:0 0 12px; }
+    .order { border:1px solid var(--line); border-radius:10px; padding:10px 10px 8px; margin:0 0 8px; background:#fff; }
+    .order.scheduled { background:#f8fafc; }
+    .order-top { display:flex; gap:8px; align-items:flex-start; }
+    .order-top label { display:flex; gap:8px; align-items:flex-start; flex:1; cursor:pointer; }
+    .order h3 { margin:0; font-size:14px; font-family: Outfit, Inter, sans-serif; }
+    .order p { margin:2px 0 0; font-size:12px; color:var(--muted); }
+    .pill { display:inline-block; font-size:10px; font-weight:700; border:1px solid var(--line); border-radius:999px; padding:1px 7px; margin-left:6px; vertical-align:middle; }
+    .pill.on { background:#ecfdf3; border-color:#abefc6; color:#067647; }
+    .tasks { display:none; margin:10px 0 0; padding-top:8px; border-top:1px dashed var(--line); }
+    .order.open .tasks { display:block; }
+    .task-row { display:grid; grid-template-columns: 1fr 160px; gap:6px; align-items:center; margin:0 0 6px; font-size:12px; }
+    .task-row span { color:#344054; }
+    .task-row em { font-style:normal; color:var(--muted); font-weight:600; }
+    .task-row select { width:100%; }
+    .actions { display:flex; gap:6px; margin-top:10px; }
+    .actions button { flex:1; font-size:12px; padding:7px 8px; }
+    .empty, .loading { background:#fff; border:1px solid var(--line); border-radius:12px; padding:22px 16px; color:var(--muted); }
+    .legend { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 12px; }
+    .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:5px; border:1px solid transparent; }
+    .legend span { font-size:11px; font-weight:600; color:#344054; display:inline-flex; align-items:center; margin-right:8px; }
+    .sheet-wrap { overflow:auto; border:1px solid var(--line); border-radius:10px; background:#fff; max-height:calc(100vh - 160px); }
+    table.sheet { border-collapse:separate; border-spacing:0; min-width:100%; font-size:13px; }
+    table.sheet th, table.sheet td { border-bottom:1px solid #e4e7ec; border-right:1px solid #e4e7ec; padding:0; vertical-align:middle; }
+    table.sheet thead th { position:sticky; top:0; z-index:3; background:var(--head); font-size:11px; font-weight:700; color:#344054; padding:8px 8px; white-space:nowrap; text-align:center; }
+    table.sheet .sticky { position:sticky; z-index:2; background:#fff; text-align:left; padding:8px 10px; white-space:nowrap; font-weight:600; }
+    table.sheet thead .sticky { z-index:4; background:var(--head); }
+    table.sheet .c-order { left:0; min-width:108px; box-shadow:1px 0 0 #e4e7ec; }
+    table.sheet .c-worker { left:108px; min-width:110px; box-shadow:1px 0 0 #e4e7ec; }
+    table.sheet .c-task { left:218px; min-width:130px; box-shadow:2px 0 6px rgba(16,24,40,.06); }
+    table.sheet td.c-order { font-family: Outfit, Inter, sans-serif; font-size:14px; }
+    table.sheet td.day { min-width:76px; height:36px; padding:4px; }
+    table.sheet td.day .bar { display:block; height:26px; border-radius:4px; border:1px solid transparent; }
+    table.sheet td.day .bar.start { border-top-left-radius:8px; border-bottom-left-radius:8px; }
+    table.sheet td.day .bar.end { border-top-right-radius:8px; border-bottom-right-radius:8px; }
+    table.sheet tr.group-start td { border-top:2px solid #d0d5dd; }
+    .crumb { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px; position:sticky; top:0; z-index:6; background:#f8f9fc; padding:6px 0 10px; }
+    .crumb button { font-size:13px; }
+    .crumb .here { font-size:13px; font-weight:700; color:var(--ink); }
+    .crumb .kind-filter { display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; gap:8px; flex:1 1 100%; margin:4px 0 0; min-height:34px; }
+    .kind-filter-label { font-size:12px; font-weight:700; color:var(--muted); }
+    .crumb .kind-filter button { position:static; float:none; flex:0 0 auto; font-size:12px; padding:7px 12px; min-height:34px; pointer-events:auto; z-index:1; }
+    .crumb .kind-filter button.on { background:#1d2939; color:#fff; }
+    body.office-app .crumb .kind-filter button.on { background:var(--sd-brass) !important; color:var(--sd-steel) !important; border-color:var(--sd-brass) !important; }
+    body.office-app .crumb { background: var(--sd-linen, #f3efe8); }
+    body.office-app .crumb .here { color:#1d2939; }
+    table.grid { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; background:#fff; font-size:13px; }
+    table.grid th, table.grid td { border-bottom:1px solid var(--line); border-right:1px solid var(--line); padding:8px 10px; text-align:center; vertical-align:middle; background:#fff; }
+    table.grid th { background:var(--head); font-size:12px; position:sticky; top:0; z-index:3; }
+    table.grid th.corner, table.grid td.corner,
+    table.grid th.order, table.grid td.order,
+    table.grid th.name, table.grid td.name { text-align:left; font-weight:700; font-family: Outfit, Inter, sans-serif; background:#fff; }
+    table.grid th.order, table.grid td.order { position:sticky; left:0; z-index:2; min-width:176px; box-shadow:1px 0 0 #e4e7ec; }
+    table.grid thead th.order { z-index:5; background:var(--head); }
+    table.grid td.order .product { display:block; font-family: Inter, sans-serif; font-weight:600; font-size:11px; color:var(--muted); margin-top:2px; text-decoration:none; }
+    table.grid td.order .product.has-shot { cursor:zoom-in; border-bottom:1px dotted #98a2b3; width:fit-content; max-width:100%; }
+    table.grid td.order .order-id { text-decoration:underline; text-underline-offset:3px; }
+    #productShot { position:fixed; z-index:80; width:min(280px, calc(100vw - 24px)); background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 12px 32px rgba(16,24,40,.2); padding:8px; pointer-events:none; }
+    #productShot[hidden] { display:none !important; }
+    #productShot img { display:block; width:100%; height:auto; max-height:280px; object-fit:contain; background:#f8f9fc; border-radius:6px; }
+    #productShot .product-shot-name { margin:8px 2px 2px; font-size:12px; font-weight:700; color:var(--ink); }
+    table.grid th.kind, table.grid td.kind { text-align:left; font-weight:700; font-size:11px; letter-spacing:.04em; text-transform:uppercase; min-width:72px; color:var(--muted); }
+    table.grid.freeze-order th.kind, table.grid.freeze-order td.kind { position:sticky; left:176px; z-index:2; background:#fff; box-shadow:2px 0 6px rgba(16,24,40,.06); }
+    table.grid.freeze-order thead th.kind { z-index:5; background:var(--head); }
+    table.grid.freeze-names th.name, table.grid.freeze-names td.name { position:sticky; left:176px; z-index:2; min-width:110px; font-family: Inter, sans-serif; font-weight:600; box-shadow:1px 0 0 #e4e7ec; }
+    table.grid.freeze-names thead th.name { z-index:5; background:var(--head); }
+    table.grid.freeze-names th.kind, table.grid.freeze-names td.kind { position:sticky; left:286px; z-index:2; background:#fff; box-shadow:2px 0 6px rgba(16,24,40,.06); }
+    table.grid.freeze-names thead th.kind { z-index:5; background:var(--head); }
+    table.grid.freeze-names.name-first th.name, table.grid.freeze-names.name-first td.name { left:0; z-index:2; min-width:110px; box-shadow:1px 0 0 #e4e7ec; }
+    table.grid.freeze-names.name-first thead th.name { z-index:5; background:var(--head); }
+    table.grid.freeze-names.name-first th.order, table.grid.freeze-names.name-first td.order { left:110px; z-index:2; min-width:176px; box-shadow:1px 0 0 #e4e7ec; }
+    table.grid.freeze-names.name-first thead th.order { z-index:5; background:var(--head); }
+    table.grid.freeze-names.name-first th.kind, table.grid.freeze-names.name-first td.kind { left:286px; }
+    table.grid td.order { cursor:pointer; vertical-align:middle; }
+    table.grid td.order:hover { background:#eef2f6; }
+    table.grid td.name.pick { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+    table.grid td.name.pick:hover, table.grid td.name.on { background:#eef2f6; }
+    table.grid th.week, table.grid td.codes { min-width:108px; }
+    table.grid th.week, table.grid th.day { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+    table.grid th.week:hover, table.grid th.day:hover { color:#1d2939; background:#e4e7ec; }
+    table.grid th.week.current { box-shadow: inset 0 -3px 0 #1d2939; }
+    table.grid td.codes { font-weight:700; letter-spacing:.02em; white-space:nowrap; }
+    table.grid td.codes .chip { margin:0 1px; }
+    table.grid td.slot { min-width:52px; padding:4px 2px; font-weight:700; }
+    table.grid .chip { display:inline-block; min-width:22px; padding:2px 6px; border-radius:4px; border:1px solid transparent; cursor:grab; }
+    table.grid .chip.actual { cursor:default; }
+    table.grid .chip.other-actual { cursor:pointer; }
+    table.grid tr.order-start td { border-top:2px solid #d0d5dd; }
+    table.grid tr.actual td { background:#f8fafc; }
+    table.grid tr.actual td.kind { color:#067647; }
+    .timeline { margin:12px 0 0; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+    .timeline h3 { margin:0 0 8px; font-size:14px; font-family: Outfit, Inter, sans-serif; }
+    .timeline ol { margin:0; padding:0; list-style:none; }
+    .timeline li { display:grid; grid-template-columns: 42px 52px 1fr 160px minmax(180px, auto); gap:8px; align-items:center; padding:7px 0; border-top:1px solid #eef0f4; font-size:13px; }
+    .timeline .kind { font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); }
+    .timeline li.actual .kind { color:#067647; }
+    .timeline li:first-child { border-top:0; }
+    .timeline .code { font-weight:700; }
+    .timeline .when { color:var(--muted); font-weight:600; font-size:12px; }
+    .life { margin:12px 0 0; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+    .life h3 { margin:0 0 4px; font-size:14px; font-family: Outfit, Inter, sans-serif; }
+    .life .help { margin:0 0 10px; }
+    .life ol { list-style:none; margin:0; padding:0; border-left:2px solid #d0d5dd; }
+    .life li { position:relative; padding:0 0 12px 16px; font-size:13px; }
+    .life li:last-child { padding-bottom:0; }
+    .life li::before { content:""; position:absolute; left:-5px; top:6px; width:8px; height:8px; border-radius:50%; background:#1d2939; }
+    .life time { display:block; font-size:11px; font-weight:600; color:var(--muted); }
+    .life .stage { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#344054; background:#e4e7ec; border-radius:4px; padding:1px 6px; margin-right:6px; }
+    .life .detail, .life .actor { color:var(--muted); font-size:12px; }
+    @media (max-width: 720px) {
+      .timeline li { grid-template-columns: 42px 52px 1fr; }
+      .timeline .who, .timeline .when { grid-column: 2 / span 2; }
+    }
+    .week-list { background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+    .outlook { min-width:720px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff; }
+    .ol-head, .ol-body { display:grid; }
+    .ol-head { background:var(--head); border-bottom:1px solid var(--line); }
+    .ol-head div { font-size:11px; font-weight:700; padding:8px 6px; text-align:center; }
+    .ol-head small { display:block; font-weight:600; color:var(--muted); }
+    .time-col { position:relative; }
+    .time-col span { position:absolute; left:4px; transform:translateY(-50%); font-size:10px; font-weight:600; color:var(--muted); white-space:nowrap; }
+    .ol-day, .lane, .time-col { height: calc(var(--hour) * 8); }
+    .ol-day { position:relative; border-left:1px solid #e4e7ec; }
+    .ol-day.split { display:grid; grid-template-columns: 1fr 1fr; }
+    .lane { position:relative; min-width:0; }
+    .ol-day.split .lane + .lane { border-left:1px dashed #d0d5dd; }
+    .hour-line { position:absolute; left:0; right:0; border-top:1px solid #eef0f4; pointer-events:none; }
+    .band { position:absolute; left:0; right:0; pointer-events:none; z-index:0; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; opacity:.92; }
+    .lane-name { position:sticky; top:0; z-index:2; font-size:10px; font-weight:700; padding:3px 6px; background:rgba(255,255,255,.92); border-bottom:1px solid #e4e7ec; }
+    .event { position:absolute; left:4px; right:4px; border-radius:6px; padding:4px 6px; font-size:11px; line-height:1.25; overflow:hidden; border:1px solid transparent; z-index:1; cursor:grab; touch-action:none; user-select:none; }
+    .event b { display:block; }
+    .event small { display:block; opacity:.9; }
+    .event.paint { cursor:default; }
+    .event.other { font-style:normal; }
+    .event .kill { position:absolute; top:2px; right:4px; border:0; background:transparent; color:inherit; padding:0 2px; font-size:14px; line-height:1; cursor:pointer; }
+    .event.dragging, .event.drag-ghost { opacity:.55; cursor:grabbing; }
+    .drag-ghost { position:fixed; z-index:50; pointer-events:none; min-width:120px; box-shadow:0 8px 24px rgba(16,24,40,.18); }
+    .compare-a { box-shadow: inset 3px 0 0 #2563eb; }
+    .compare-b { box-shadow: inset 3px 0 0 #c2410c; }
+    .board h2 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
+    .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
+    .mask.open { display:flex; }
+    .mask .sheet { width:min(420px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:48px auto; padding:16px; }
+    .mask h2 { margin:0 0 12px; font-size:16px; }
+    .mask label { display:block; font-size:12px; font-weight:600; margin:0 0 8px; }
+    .mask input, .mask select { width:100%; margin-top:4px; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
+    .mask .row { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
+    .mask .actions { margin-top:14px; }
+    .chip.other-actual { cursor:pointer; }
+    .other-detail p { margin:0 0 8px; font-size:13px; line-height:1.45; }
+    @media (max-width: 900px) {
+      .week-list button.row, .week-list .head { grid-template-columns: 1fr 1fr; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body data-view="planning">
+  <header>
+    <h1>Planning</h1>
+    <nav class="tabs" aria-label="Planning views">
+      <a href="#planning" class="on" id="tabPlanning" data-tab="planning">Planning</a>
+      <a href="#journey" id="tabJourney" data-tab="journey">Journey</a>
+      <a href="#people" id="tabPeople" data-tab="people">People</a>
+    </nav>
+    <span class="msg" id="status">Assign work, then open Journey or People.</span>
+    <button class="danger" type="button" id="clearPlanBtn" style="display:none">Clear planning</button>
+    <div class="tools">
+      <div class="week-tools">
+        <button class="ghost" type="button" id="prevWeek">← Week</button>
+        <strong id="weekLabel"></strong>
+        <button class="ghost" type="button" id="nextWeek">Week →</button>
+        <button class="ghost" type="button" id="thisWeek">This week</button>
+      </div>
+      <div class="people-tools">
+        <label>Person <select id="personA" aria-label="Person"></select></label>
+        <label>Compare with <select id="personB" aria-label="Compare with"><option value="">None</option></select></label>
+        <button class="ghost" type="button" id="addOther">Add other task</button>
+        <span class="msg">Drag a job to a free slot. Only later tasks on that same order move. People do not overlap. Double-click an empty slot for an other task. Shaded: Production Meeting, Lunch, Cleaning</span>
+      </div>
+    </div>
+  </header>
+  <div class="layout">
+    <section class="queue">
+      <h2>Plan work</h2>
+      <p class="help">First out: the order with the earliest live LD or LC is planned first. Tick orders that still have shop work left (Not Yet Started, Ready for Steelwork, and in-progress jobs). The system books remaining work from that date and the shop status — Sam on profile cutting, John on tagging, Muruba (Mon / Wed / Fri) and Willard on welding, Thabile on plate cutting, Admire and Uriah on assembly. You can change those names. Grinding is not booked until you pick someone and schedule it.</p>
+      <input type="search" id="q" placeholder="Search order, product, status">
+      <div class="actions" style="margin:0 0 12px; max-width:420px">
+        <button type="button" id="scheduleSelected">Schedule selected</button>
+      </div>
+      <div id="queue"></div>
+    </section>
+    <main class="board">
+      <div class="legend" id="legend"></div>
+      <div id="calendars"></div>
+    </main>
+  </div>
+  <div id="productShot" hidden>
+    <img alt="">
+    <p class="product-shot-name"></p>
+  </div>
+  <div class="mask" id="clearMask">
+    <form class="sheet" id="clearForm">
+      <h2>Clear planning</h2>
+      <p class="help">This deletes every booked slot, assignment, and other task on Planning, Journey, and People. Orders stay on the sheet. Type CLEAR to confirm.</p>
+      <label>Type CLEAR <input id="clearConfirm" autocomplete="off"></label>
+      <p class="msg error" id="clearErr"></p>
+      <div class="actions">
+        <button class="danger" type="submit">Delete planning data</button>
+        <button class="ghost" type="button" id="clearCancel">Cancel</button>
+      </div>
+    </form>
+  </div>
+  <div class="mask" id="otherMask">
+    <form class="sheet" id="otherForm">
+      <h2>Other task</h2>
+      <p class="help">Not an order — cleaning, a meeting, material, or any other job. It takes that person’s time and pushes shop work.</p>
+      <label>Person <select id="otherWho" required></select></label>
+      <label>Task
+        <select id="otherPreset">
+          <option value="">Choose a task…</option>
+        </select>
+      </label>
+      <label>Name <input id="otherTitle" autocomplete="off" placeholder="e.g. Collect steel"></label>
+      <div class="row">
+        <label>Hours <input id="otherHours" type="number" min="0.25" step="0.25" value="0.5"></label>
+        <label>Date <input id="otherDate" type="date"></label>
+      </div>
+      <label>Starts <input id="otherTime" type="time" value="07:45"></label>
+      <div class="actions">
+        <button type="submit">Add to calendar</button>
+        <button class="ghost" type="button" id="otherCancel">Cancel</button>
+      </div>
+    </form>
+  </div>
+  <div class="mask" id="otherDetailMask">
+    <div class="sheet other-detail" role="dialog" aria-modal="true">
+      <h2>Other task</h2>
+      <div id="otherDetailBody"></div>
+      <div class="actions">
+        <button class="ghost" type="button" id="otherDetailClose">Close</button>
+      </div>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=planning-journey"></script>
+  <script>
+    const DAY_START = 7 * 60 + 45;
+    const DAY_SPAN = 8 * 60;
+    const TICKS = [
+      { label: "07:45", min: 7 * 60 + 45 },
+      { label: "09:00", min: 9 * 60 },
+      { label: "10:00", min: 10 * 60 },
+      { label: "11:00", min: 11 * 60 },
+      { label: "12:00", min: 12 * 60 },
+      { label: "12:30", min: 12 * 60 + 30 },
+      { label: "14:00", min: 14 * 60 },
+      { label: "15:15", min: 15 * 60 + 15 },
+      { label: "15:45", min: 15 * 60 + 45 }
+    ];
+    let board = null;
+    let week = "";
+    let view = "planning";
+    let openJourneyId = "";
+    let journeyLevel = "weeks";
+    let journeyWeekStart = "";
+    let journeyDay = "";
+    let journeyWorkerId = "";
+    let journeyWorkerName = "";
+    let journeyKind = "both";
+    let personA = "";
+    let personB = "";
+    const openOrders = {};
+    const picked = {};
+    const assigns = {};
+
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+      }[c]));
+    }
+    function color(process, kind) {
+      if (kind === "other") return (board && board.colors && board.colors.Other) || { bg: "#ffedd5", fg: "#9a3412", border: "#f97316" };
+      return (board && board.colors && board.colors[process]) || { bg: "#eef2f6", fg: "#344054", border: "#98a2b3" };
+    }
+    function dateOf(iso) {
+      return String(iso || "").slice(0, 10);
+    }
+    function hhmm(iso) {
+      const m = String(iso || "").match(/T(\d{2}):(\d{2})/);
+      return m ? m[1] + ":" + m[2] : "";
+    }
+    function minutesOf(iso) {
+      const m = String(iso || "").match(/T(\d{2}):(\d{2})/);
+      return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+    }
+    function prettyDate(iso) {
+      const s = dateOf(iso);
+      if (!s) return "—";
+      const p = s.split("-");
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      return p[2] + " " + (months[Number(p[1]) - 1] || "") + " " + p[0];
+    }
+    function topPct(min) {
+      return ((min - DAY_START) / DAY_SPAN) * 100;
+    }
+    function heightPct(startMin, endMin) {
+      return Math.max(2.4, ((endMin - startMin) / DAY_SPAN) * 100);
+    }
+    function setStatus(text, isError) {
+      const el = document.getElementById("status");
+      el.textContent = text;
+      el.className = "msg" + (isError ? " error" : "");
+    }
+    function peopleList() {
+      return ((board && board.workers) || []).concat([board && board.paintShop].filter(Boolean));
+    }
+    function viewFromHash() {
+      const h = String(location.hash || "").replace(/^#/, "");
+      if (h === "people" || h === "journey" || h === "planning") return h;
+      return "planning";
+    }
+    function setView(next, syncHash) {
+      view = next === "people" || next === "journey" ? next : "planning";
+      if (view !== "journey") {
+        openJourneyId = "";
+        journeyWorkerId = "";
+        journeyWorkerName = "";
+      }
+      document.body.setAttribute("data-view", view);
+      document.getElementById("tabPlanning").classList.toggle("on", view === "planning");
+      document.getElementById("tabJourney").classList.toggle("on", view === "journey");
+      document.getElementById("tabPeople").classList.toggle("on", view === "people");
+      if (syncHash !== false && location.hash !== "#" + view) {
+        location.hash = view;
+      }
+      renderBoard();
+    }
+    function renderLegend() {
+      const box = document.getElementById("legend");
+      if (view === "planning") {
+        box.innerHTML = "";
+        return;
+      }
+      const processes = (board && board.processes ? board.processes.slice() : []).concat(["Powder coating"]);
+      const bands = (board && board.bands) || [];
+      box.innerHTML = processes.map((p) => {
+        const c = color(p);
+        return "<span><i style='background:" + c.bg + ";border-color:" + c.border + "'></i>" + esc(p) + "</span>";
+      }).concat(view === "people" ? bands.map((b) => {
+        return "<span><i style='background:" + b.bg + "'></i>" + esc(b.label) + "</span>";
+      }).concat(["<span><i style='background:" + color("", "other").bg + ";border-color:" + color("", "other").border + "'></i>Other task</span>"]) : []).join("");
+    }
+    function renderQueue() {
+      const q = String(document.getElementById("q").value || "").trim().toLowerCase();
+      const rows = ((board && board.queue) || []).filter((o) => {
+        if (!q) return true;
+        return [o.order_number, o.product, o.status, o.type].join(" ").toLowerCase().indexOf(q) !== -1;
+      });
+      const box = document.getElementById("queue");
+      if (!rows.length) {
+        box.innerHTML = "<div class='empty'>" + (q ? "No orders match that search." : "No orders left to plan. Add Task times, or bring an in-progress order across with Add existing order.") + "</div>";
+        return;
+      }
+      box.innerHTML = rows.map((o) => {
+        const id = o.order_number;
+        if (!assigns[id]) assigns[id] = {};
+        const checked = picked[id] ? " checked" : "";
+        const open = openOrders[id] || picked[id] ? " open" : "";
+        const tasks = (o.processes || []).map((p) => {
+          const chosen = assigns[id][p.process] || p.suggested || (p.workers.length === 1 ? p.workers[0].id : "");
+          if (chosen) assigns[id][p.process] = chosen;
+          const grind = p.process === "Grinding";
+          const opts = ["<option value=''>" + (grind ? "Pick who grinds" : "Assign person") + "</option>"].concat(
+            p.workers.map((w) => "<option value=\"" + esc(w.id) + "\"" + (w.id === chosen ? " selected" : "") + ">" + esc(w.name) + "</option>")
+          );
+          const empty = p.workers.length ? "" : "<option value=''>Nobody ticked for this task</option>";
+          const grindBtn = grind
+            ? "<button type='button' data-grind=\"" + esc(id) + "\">Schedule grinding</button>"
+            : "";
+          return "<div class='task-row'><span>" + esc(p.process) + " <em>" + p.hours + " h</em></span><select data-order=\"" + esc(id) + "\" data-process=\"" + esc(p.process) + "\">" + (p.workers.length ? opts.join("") : empty) + "</select>" + grindBtn + "</div>";
+        }).join("");
+        const none = tasks ? "" : "<p>No Task times for this product. Add hours on Task times first.</p>";
+        const needTimes = (o.processes || []).length && (o.processes || []).every((p) => !(p.minutes > 0 || p.hours > 0));
+        const timesHint = needTimes ? "<p>No Task times for this product. Add hours on Task times first, then schedule.</p>" : "";
+        return "<article class='order" + (o.scheduled ? " scheduled" : "") + open + "' data-id=\"" + esc(id) + "\">" +
+          "<div class='order-top'><label><input type='checkbox' data-pick=\"" + esc(id) + "\"" + checked + ">" +
+          "<div><h3>" + esc(id) + (o.scheduled ? "<span class='pill on'>On calendar</span>" : "") + "</h3>" +
+          "<p>" + esc(o.product || "No product") + " · " + esc(o.status) + (o.type ? " · " + esc(o.type) : "") + (o.delivery_code ? " · " + esc(o.delivery_code) + " " + esc(o.delivery_day) : "") + "</p></div></label></div>" +
+          "<div class='tasks'>" + (tasks || none) + timesHint +
+          "<div class='actions'><button type='button' data-schedule=\"" + esc(id) + "\">Schedule</button>" +
+          (o.scheduled ? "<button class='ghost' type='button' data-unschedule=\"" + esc(id) + "\">Unschedule</button>" : "") +
+          "</div></div></article>";
+      }).join("");
+    }
+    function barClass(days, iso) {
+      const i = days.indexOf(iso);
+      if (i < 0) return "";
+      const bits = ["bar"];
+      if (i === 0) bits.push("start");
+      if (i === days.length - 1) bits.push("end");
+      return bits.join(" ");
+    }
+    function fillWeekLabel() {
+      const days = (board && board.weekDays) || [];
+      document.getElementById("weekLabel").textContent = days.length ? days[0].label + " – " + days[4].label : "";
+    }
+    function codeOf(process) {
+      return (board && board.processCodes && board.processCodes[process]) || String(process || "").slice(0, 2);
+    }
+    function weekWindow() {
+      return (board && board.journeyWeeks) || [];
+    }
+    function daysOf(row, kind) {
+      if (kind === "actual") return ((row && row.actual && row.actual.days) || []);
+      return (row && row.days) || [];
+    }
+    function chipHtml(item) {
+      const other = !!(item.otherDetail || item.code === "O");
+      const c = color(item.process, other ? "other" : "");
+      const actual = item.kind === "actual";
+      const blockAttr = actual || !item.blockId ? "" : " data-block=\"" + esc(item.blockId) + "\"";
+      const kind = actual ? "actual" : "work";
+      const title = other
+        ? "O · click for what was done" + (item.workerName ? " · " + item.workerName : "")
+        : item.process + " · " + (actual ? "Actual" : "Plan") + (item.workerName ? " · " + item.workerName : "");
+      const otherAttr = item.otherDetail
+        ? " data-other=\"" + esc(JSON.stringify(item.otherDetail)) + "\""
+        : "";
+      return "<span class='chip" + (actual ? " actual" : "") + (other ? " other-actual" : "") + "'" + blockAttr + otherAttr + " data-kind='" + kind + "' title=\"" + esc(title) + "\" style='background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" + esc(item.code) + "</span>";
+    }
+    function chipFromPair(pair, seg) {
+      const src = pair.kind === "actual" ? (pair.row.actual || {}) : pair.row;
+      return chipHtml({
+        code: pair.row.code || codeOf(pair.row.process),
+        process: pair.row.process,
+        blockId: pair.kind === "actual" ? "" : ((seg && seg.blockId) || pair.row.blockId),
+        workerName: src.workerName || pair.person.name,
+        kind: pair.kind,
+        otherDetail: pair.row.otherDetail
+      });
+    }
+    function processRank(process) {
+      const list = ((board && board.processes) || []).concat(["Powder coating"]);
+      const i = list.indexOf(process);
+      return i < 0 ? 99 : i;
+    }
+    function chipsForWeek(entry, weekIsos) {
+      const kind = entry.kind;
+      const items = ((entry.order && entry.order.rows) || []).filter((row) =>
+        daysOf(row, kind).some((iso) => weekIsos.indexOf(iso) !== -1)
+      );
+      items.sort((a, b) => processRank(a.process) - processRank(b.process) || String(a.start || "").localeCompare(String(b.start || "")));
+      return items.map((row) => {
+        const src = kind === "actual" ? (row.actual || {}) : row;
+        return chipHtml({
+          code: row.code || codeOf(row.process),
+          process: row.process,
+          blockId: kind === "actual" ? "" : row.blockId,
+          workerName: src.workerName || row.workerName,
+          kind: kind,
+          otherDetail: row.otherDetail
+        });
+      }).join("");
+    }
+    function weekKindEntries(orders, isos) {
+      const filter = kindFilter();
+      const entries = [];
+      sortByStart(orders, (row) => activityHits(row, isos)).forEach((order) => {
+        const hasPlan = (order.rows || []).some((row) => daysOf(row, "plan").some((iso) => isos.indexOf(iso) !== -1));
+        const hasActual = (order.rows || []).some((row) => daysOf(row, "actual").some((iso) => isos.indexOf(iso) !== -1));
+        if (filter === "plan") {
+          if (hasPlan) entries.push({ order: order, kind: "plan" });
+          return;
+        }
+        if (filter === "actual") {
+          if (hasActual) entries.push({ order: order, kind: "actual" });
+          return;
+        }
+        if (!hasPlan && !hasActual) return;
+        if (hasPlan) entries.push({ order: order, kind: "plan" });
+        entries.push({ order: order, kind: "actual" });
+      });
+      return entries;
+    }
+    function otherJourneyOrder() {
+      const items = ((board && board.journey && board.journey.otherActuals) || []);
+      if (!items.length) return null;
+      return {
+        orderId: "Other",
+        product: "Idle / other",
+        other: true,
+        start: items[0].start,
+        rows: items.map((item) => ({
+          process: item.title || "Other",
+          code: "O",
+          workerId: item.workerId || item.workerName,
+          workerName: item.workerName,
+          start: item.start,
+          end: item.end,
+          days: [],
+          actual: {
+            start: item.start,
+            end: item.end,
+            days: item.days || [],
+            workerId: item.workerId || item.workerName,
+            workerName: item.workerName,
+            bouts: item.bouts || [{ start: item.start, end: item.end }]
+          },
+          otherDetail: item
+        }))
+      };
+    }
+    function journeyOrders() {
+      const rows = ((board && board.journey && board.journey.orders) || []).slice();
+      const extra = otherJourneyOrder();
+      if (extra) rows.push(extra);
+      return rows;
+    }
+    function selectedOrder() {
+      return journeyOrders().find((o) => o.orderId === openJourneyId) || null;
+    }
+    function selectedWeek() {
+      const weeks = weekWindow();
+      return weeks.find((w) => w.start === journeyWeekStart) || weeks[0] || null;
+    }
+    function visibleOrders() {
+      if (openJourneyId && journeyLevel !== "weeks") {
+        const o = selectedOrder();
+        return o ? [o] : [];
+      }
+      return journeyOrders();
+    }
+    function weekIsos(week) {
+      return ((week && week.days) || []).map((d) => d.iso);
+    }
+    function rowOnDay(row, dayIso, kind) {
+      return daysOf(row, kind).indexOf(dayIso) !== -1;
+    }
+    function kindFilter() {
+      return journeyKind === "plan" || journeyKind === "actual" ? journeyKind : "both";
+    }
+    function setJourneyKind(id) {
+      const next = id === "plan" || id === "actual" ? id : "both";
+      if (journeyKind === next && view === "journey") {
+        const on = document.querySelector("[data-kind-filter].on");
+        if (on && on.getAttribute("data-kind-filter") === next) return;
+      }
+      journeyKind = next;
+      if (view === "journey") renderBoard();
+    }
+    window.setJourneyKind = setJourneyKind;
+    function activityHits(row, isos) {
+      const filter = kindFilter();
+      if (filter === "plan") return daysOf(row, "plan").some((iso) => isos.indexOf(iso) !== -1);
+      if (filter === "actual") return daysOf(row, "actual").some((iso) => isos.indexOf(iso) !== -1);
+      return daysOf(row, "plan").some((iso) => isos.indexOf(iso) !== -1) ||
+        daysOf(row, "actual").some((iso) => isos.indexOf(iso) !== -1);
+    }
+    function processMatchesWorker(row) {
+      if (!journeyWorkerId) return true;
+      const planId = String(row.workerId || row.workerName || "");
+      const act = row.actual || {};
+      const actId = String(act.workerId || act.workerName || "");
+      return planId === String(journeyWorkerId) || actId === String(journeyWorkerId);
+    }
+    function earliestStart(order, rowMatch) {
+      let min = "";
+      ((order && order.rows) || []).forEach((row) => {
+        if (rowMatch && !rowMatch(row, order)) return;
+        const s = kindFilter() === "actual"
+          ? String((row.actual && row.actual.start) || "")
+          : String(row.start || "");
+        if (s && (!min || s < min)) min = s;
+      });
+      return min || String((order && order.start) || "");
+    }
+    function sortByStart(orders, rowMatch) {
+      return (orders || []).slice().sort((a, b) => {
+        const sa = earliestStart(a, rowMatch);
+        const sb = earliestStart(b, rowMatch);
+        if (sa !== sb) return sa.localeCompare(sb);
+        return String(a.orderId).localeCompare(String(b.orderId));
+      });
+    }
+    function activityPairs(orders, windowMatch) {
+      const filter = kindFilter();
+      const pairs = [];
+      sortByStart(orders, (row) => {
+        if (filter === "plan") return windowMatch(row, "plan");
+        if (filter === "actual") return windowMatch(row, "actual");
+        return windowMatch(row, "plan") || windowMatch(row, "actual");
+      }).forEach((o) => {
+        (o.rows || []).forEach((row) => {
+          if (o.other) {
+            const actualHit = windowMatch(row, "actual");
+            if (!actualHit || filter === "plan") return;
+            if (!processMatchesWorker(row)) return;
+            const act = row.actual || {};
+            pairs.push({
+              order: o,
+              person: { id: act.workerId || row.workerId, name: act.workerName || row.workerName },
+              row: row,
+              kind: "actual"
+            });
+            return;
+          }
+          if (!processMatchesWorker(row)) return;
+          const planHit = windowMatch(row, "plan");
+          const actualHit = windowMatch(row, "actual");
+          const planPerson = { id: row.workerId, name: row.workerName || row.workerId };
+          const act = row.actual || {};
+          const actualPerson = (act.workerId || act.workerName)
+            ? { id: act.workerId || act.workerName, name: act.workerName || act.workerId }
+            : planPerson;
+          if (filter === "plan") {
+            if (!planHit) return;
+            pairs.push({ order: o, person: planPerson, row: row, kind: "plan" });
+            return;
+          }
+          if (filter === "actual") {
+            if (!actualHit) return;
+            pairs.push({ order: o, person: actualPerson, row: row, kind: "actual" });
+            return;
+          }
+          if (!planHit && !actualHit) return;
+          pairs.push({ order: o, person: planPerson, row: row, kind: "plan" });
+          pairs.push({ order: o, person: actualPerson, row: row, kind: "actual" });
+        });
+      });
+      return pairs;
+    }
+    function pairOnDays(pair, dayIsos) {
+      return daysOf(pair.row, pair.kind).some((iso) => dayIsos.indexOf(iso) !== -1);
+    }
+    function srcCoversSlot(src, dayIso, min) {
+      if (!src || !src.start) return false;
+      const startIso = dateOf(src.start);
+      const endIso = dateOf(src.end);
+      const days = src.days || [];
+      if (days.length) {
+        if (days.indexOf(dayIso) === -1) return false;
+      } else if (dayIso < startIso || dayIso > endIso) {
+        return false;
+      }
+      if (endIso === dayIso && minutesOf(src.end) === 0 && startIso !== dayIso) return false;
+      const start = startIso === dayIso ? minutesOf(src.start) : DAY_START;
+      const end = endIso === dayIso ? minutesOf(src.end) : 15 * 60 + 45;
+      return min >= start && min < end;
+    }
+    function coveringPlanSegment(row, dayIso, min) {
+      const segs = (row && row.segments) || [];
+      if (segs.length) return segs.find((seg) => srcCoversSlot(seg, dayIso, min)) || null;
+      return srcCoversSlot(row, dayIso, min) ? row : null;
+    }
+    function pairCoversSlot(pair, dayIso, min) {
+      if (pair.kind === "actual") {
+        const act = pair.row.actual || {};
+        if ((act.bouts || []).length) {
+          return act.bouts.some((bout) => srcCoversSlot(bout, dayIso, min));
+        }
+        if (!(act.days || []).length && !act.start) return false;
+        return srcCoversSlot(Object.assign({ days: act.days }, act), dayIso, min);
+      }
+      return !!coveringPlanSegment(pair.row, dayIso, min);
+    }
+    function orderSpanAt(pairs, index) {
+      const id = pairs[index] && pairs[index].order && pairs[index].order.orderId;
+      if (!id) return 1;
+      if (index > 0 && pairs[index - 1].order.orderId === id) return 0;
+      let n = 1;
+      for (let i = index + 1; i < pairs.length; i++) {
+        if (pairs[i].order.orderId !== id) break;
+        n += 1;
+      }
+      return n;
+    }
+    function nameSpanAt(pairs, index) {
+      const pair = pairs[index];
+      const id = pair && pair.person && pair.person.id;
+      const orderId = pair && pair.order && pair.order.orderId;
+      if (!id) return 1;
+      if (index > 0 && String(pairs[index - 1].person.id) === String(id) && pairs[index - 1].order.orderId === orderId) return 0;
+      let n = 1;
+      for (let i = index + 1; i < pairs.length; i++) {
+        if (String(pairs[i].person.id) !== String(id) || pairs[i].order.orderId !== orderId) break;
+        n += 1;
+      }
+      return n;
+    }
+    function orderCell(order, span) {
+      if (!span) return "";
+      const rs = span > 1 ? " rowspan=\"" + span + "\"" : "";
+      let product = "";
+      if (order.product) {
+        const shot = String(order.imageUrl || "").trim();
+        const extra = shot ? " data-product-shot=\"" + esc(shot) + "\"" : "";
+        product = "<span class='product" + (shot ? " has-shot" : "") + "'" + extra + ">" + esc(order.product) + "</span>";
+      }
+      if (order.other) {
+        return "<td class='order'" + rs + "><span class='order-id'>Other</span>" + (order.product ? "<span class='product'>" + esc(order.product) + "</span>" : "") + "</td>";
+      }
+      const title = (order.orderId || "") + (order.product ? " · " + order.product : "") + " — Open timeline";
+      return "<td class='order'" + rs + " data-open-order=\"" + esc(order.orderId) + "\"><span class='order-id' title=\"" + esc(title) + "\">" + esc(order.orderId) + "</span>" + product + "</td>";
+    }
+    function nameCell(person, pick, span) {
+      if (!span) return "";
+      const rs = span > 1 ? " rowspan=\"" + span + "\"" : "";
+      const on = pick && journeyWorkerId && String(person && person.id) === String(journeyWorkerId) ? " on" : "";
+      const extra = pick
+        ? " data-filter-worker=\"" + esc(person && person.id ? person.id : "") + "\" data-filter-name=\"" + esc(person && person.name ? person.name : "") + "\" title=\"Show only this person’s orders\""
+        : "";
+      return "<td class='name" + (pick ? " pick" : "") + on + "'" + rs + extra + ">" + esc(person && person.name ? person.name : "—") + "</td>";
+    }
+    function kindCell(kind) {
+      return "<td class='kind'>" + (kind === "actual" ? "Actual" : "Plan") + "</td>";
+    }
+    function pairRow(pairs, index, extraCells, opts) {
+      const pair = pairs[index];
+      const names = !opts || opts.names !== false;
+      const namePick = opts && opts.namePick;
+      const span = orderSpanAt(pairs, index);
+      const orderHtml = orderCell(pair.order, span);
+      let leading = orderHtml;
+      if (names) {
+        const nameHtml = nameCell(pair.person, namePick, nameSpanAt(pairs, index));
+        leading = journeyWorkerId ? nameHtml + orderHtml : orderHtml + nameHtml;
+      }
+      const classes = [];
+      if (span && index > 0) classes.push("order-start");
+      classes.push(pair.kind === "actual" ? "actual" : "plan");
+      return "<tr class='" + classes.join(" ") + "'>" + leading + kindCell(pair.kind) + extraCells + "</tr>";
+    }
+    function orderNameHeads() {
+      const kind = "<th class='kind'>Kind</th>";
+      return journeyWorkerId
+        ? "<th class='name'>Name</th><th class='order'>Order</th>" + kind
+        : "<th class='order'>Order</th><th class='name'>Name</th>" + kind;
+    }
+    function namesGridClass() {
+      return "grid freeze-names" + (journeyWorkerId ? " name-first" : "");
+    }
+    function weekHeadCells(weeks) {
+      return (weeks || []).map((w) => {
+        const now = w.current ? " current" : "";
+        const mark = w.current ? " · now" : "";
+        return "<th class='week" + now + "' data-week=\"" + esc(w.start) + "\">" + esc(w.label) + mark + "</th>";
+      }).join("");
+    }
+    function kindFilterButtons() {
+      const cur = kindFilter();
+      function btn(id, label) {
+        return "<button class='ghost" + (cur === id ? " on" : "") + "' type='button' data-kind-filter='" + id +
+          "' aria-pressed='" + (cur === id ? "true" : "false") + "' onclick='setJourneyKind(\"" + id + "\")'>" + label + "</button>";
+      }
+      return "<div class='kind-filter' id='kindFilter' role='group' aria-label='Show planned or actual'><span class='kind-filter-label'>Show</span>" +
+        btn("both", "Both") + btn("plan", "Planned") + btn("actual", "Actual") + "</div>";
+    }
+    function emptyKindLabel() {
+      if (kindFilter() === "actual") return "clocked";
+      if (kindFilter() === "plan") return "planned";
+      return "planned or clocked";
+    }
+    function emptyOutsideWeeks() {
+      const jump = board && board.firstPlannedWeek;
+      const n = journeyOrders().length;
+      if (!n) return "<div class='empty'>No orders are on the plan yet. Schedule work on Planning first.</div>";
+      const btn = jump
+        ? " <button class='ghost' type='button' data-jump-week=\"" + esc(jump) + "\">Show the week that work starts</button>"
+        : "";
+      return "<div class='empty'>No orders are " + emptyKindLabel() + " in these weeks. Names show on the day and 15-minute views once work lands here." + btn + "</div>";
+    }
+    function renderJourneyCrumb() {
+      const bits = [];
+      if (journeyLevel !== "weeks") {
+        bits.push("<button type='button' data-journey-level='weeks'>← Week view</button>");
+      }
+      if (journeyLevel === "times" || journeyLevel === "order") {
+        const w = selectedWeek();
+        bits.push("<button class='ghost' type='button' data-journey-level='days'>← Day view" + (w ? " · " + esc(w.label) : "") + "</button>");
+      }
+      if (journeyLevel === "order" && journeyDay) {
+        bits.push("<button class='ghost' type='button' data-journey-level='times'>← " + esc(prettyDate(journeyDay)) + "</button>");
+      }
+      if ((journeyLevel === "times" || journeyLevel === "days") && journeyWorkerId) {
+        bits.push("<button class='ghost' type='button' data-clear-worker>← Everyone</button>");
+      }
+      let here = "Week view";
+      if (journeyLevel === "days") here = (journeyWorkerName ? journeyWorkerName + " · " : "") + ((selectedWeek() && selectedWeek().label) || "Day view");
+      else if (journeyLevel === "times") here = (journeyWorkerName ? journeyWorkerName + " · " : "") + (prettyDate(journeyDay) || "Day");
+      else if (journeyLevel === "order") here = openJourneyId || "Order";
+      bits.push("<strong class='here'>" + esc(here) + "</strong>");
+      bits.push(kindFilterButtons());
+      return "<div class='crumb'>" + bits.join(" ") + "</div>";
+    }
+    function renderJourneyWeeks() {
+      const box = document.getElementById("calendars");
+      const weeks = weekWindow();
+      const isos = weeks.reduce((all, w) => all.concat(weekIsos(w)), []);
+      const orders = sortByStart(
+        journeyOrders().filter((o) => (o.rows || []).some((row) => activityHits(row, isos))),
+        (row) => activityHits(row, isos)
+      );
+      const entries = weekKindEntries(orders, isos);
+      fillWeekLabel();
+      if (!entries.length) {
+        box.innerHTML = renderJourneyCrumb() + emptyOutsideWeeks();
+        return;
+      }
+      const head = "<th class='order'>Order</th><th class='kind'>Kind</th>" + weekHeadCells(weeks);
+      const body = entries.map((entry, i) => {
+        const cells = weeks.map((w) => {
+          return "<td class='codes'>" + chipsForWeek(entry, weekIsos(w)) + "</td>";
+        }).join("");
+        return pairRow(entries, i, cells, { names: false });
+      }).join("");
+      box.innerHTML = renderJourneyCrumb() +
+        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. O is an idle / other actual — click O for who, the slot, and what they did. On this week grid each order has one Plan row and one Actual row — tasks stay together. Letters for that week sit in the same cell (C T P W), not on separate task rows. Plan is the booked slot. Actual is the production clock — if Cutting ran in week 2, the C sits on Actual in that week. Empty Actual means it has not been clocked yet. Use Both, Planned, or Actual to show one or both. The frozen Order column is the number and the product. Hover the product name for the catalog photo. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
+        "<div class='sheet-wrap'><table class='grid freeze-order'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+    }
+    function renderJourneyDays() {
+      const box = document.getElementById("calendars");
+      const week = selectedWeek();
+      if (!week) {
+        journeyLevel = "weeks";
+        renderJourneyWeeks();
+        return;
+      }
+      const days = week.days || [];
+      const isos = weekIsos(week);
+      const windowMatch = (row, kind) => daysOf(row, kind).some((iso) => isos.indexOf(iso) !== -1);
+      const pairs = activityPairs(visibleOrders(), windowMatch);
+      fillWeekLabel();
+      if (!pairs.length) {
+        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is " + emptyKindLabel() + " in this week" +
+          (journeyWorkerId ? " for " + esc(journeyWorkerName || "that person") + ". <button class='ghost' type='button' data-clear-worker>Show everyone</button>" : ". Order numbers, products, and names stay on this view when work is booked.") + "</div>";
+        return;
+      }
+      const head = "<tr><th colspan=\"" + (days.length + 3) + "\">" + esc(week.label) + (openJourneyId ? " · " + esc(openJourneyId) : "") + "</th></tr>" +
+        "<tr>" + orderNameHeads() +
+        days.map((d) => "<th class='day' data-day=\"" + esc(d.iso) + "\">" + esc(d.weekdayShort || d.weekday) + "</th>").join("") + "</tr>";
+      const body = pairs.map((pair, i) => {
+        const cells = days.map((d) => {
+          const hit = pairOnDays(pair, [d.iso]);
+          return "<td data-day=\"" + esc(d.iso) + "\" data-worker=\"" + esc(pair.person.id) + "\">" + (hit ? chipFromPair(pair) : "") + "</td>";
+        }).join("");
+        return pairRow(pairs, i, cells, { names: true, namePick: true });
+      }).join("");
+      box.innerHTML = renderJourneyCrumb() +
+        "<p class='help'>Each process has a Plan row and an Actual row under it so you can compare the booked slot with the shop clock. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders this week. Name and Order swap while filtered. ← Everyone puts Order first again. Names within an order follow who does the task first. O is an idle / other actual — click O for who, the slot, and what they did. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a Plan letter to another free day. Actual letters stay put.</p>" +
+        "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
+    }
+    function timeSlots() {
+      const out = [];
+      for (let m = 7 * 60 + 45; m < 15 * 60 + 45; m += 15) {
+        if (m >= 12 * 60 && m < 12 * 60 + 30) continue;
+        out.push(m);
+      }
+      return out;
+    }
+    function rowCoversSlot(row, dayIso, min) {
+      return srcCoversSlot(row, dayIso, min);
+    }
+    function renderJourneyTimes() {
+      const box = document.getElementById("calendars");
+      const week = selectedWeek();
+      const dayIso = journeyDay;
+      if (!week || !dayIso) {
+        journeyLevel = "days";
+        renderJourneyDays();
+        return;
+      }
+      const slots = timeSlots();
+      const windowMatch = (row, kind) => rowOnDay(row, dayIso, kind);
+      const pairs = activityPairs(visibleOrders(), windowMatch);
+      fillWeekLabel();
+      if (!pairs.length) {
+        box.innerHTML = renderJourneyCrumb() + "<div class='empty'>Nothing is " + emptyKindLabel() + " on " + esc(prettyDate(dayIso)) +
+          (journeyWorkerId ? " for " + esc(journeyWorkerName || "that person") + ". <button class='ghost' type='button' data-clear-worker>Show everyone</button>" : ".") + "</div>";
+        return;
+      }
+      const head = orderNameHeads() +
+        slots.map((m) => "<th>" + esc(pad2(Math.floor(m / 60)) + ":" + pad2(m % 60)) + "</th>").join("");
+      const body = pairs.map((pair, i) => {
+        const cells = slots.map((m) => {
+          const hit = pairCoversSlot(pair, dayIso, m);
+          const seg = pair.kind === "plan" ? coveringPlanSegment(pair.row, dayIso, m) : null;
+          return "<td class='slot' data-day=\"" + esc(dayIso) + "\" data-min=\"" + m + "\" data-worker=\"" + esc(pair.person.id) + "\" data-slot='1'>" + (hit ? chipFromPair(pair, seg) : "") + "</td>";
+        }).join("");
+        return pairRow(pairs, i, cells, { names: true, namePick: true });
+      }).join("");
+      box.innerHTML = renderJourneyCrumb() +
+        "<p class='help'>Plan is the booked 15-minute slot. Actual is when the clock ran. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders on this day. Name and Order swap while filtered. ← Everyone puts Order first again. ← Week view and ← Day view go back. O is an idle / other actual — click O for who, the slot, and what they did. Drag a Plan letter to a free time. That person cannot overlap. Actual letters are not draggable.</p>" +
+        "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+    }
+    function orderWorkDays(order) {
+      const set = {};
+      ((order && order.rows) || []).forEach((row) => {
+        (row.days || []).forEach((iso) => { set[iso] = true; });
+        ((row.actual && row.actual.days) || []).forEach((iso) => { set[iso] = true; });
+      });
+      return Object.keys(set).sort();
+    }
+    function dayHeading(iso) {
+      const days = ((board && board.journey && board.journey.days) || []).concat(
+        weekWindow().reduce((all, w) => all.concat(w.days || []), [])
+      );
+      const hit = days.find((d) => d.iso === iso);
+      if (hit) return (hit.weekdayShort || String(hit.weekday || "").slice(0, 3)) + " " + (hit.label || prettyDate(iso));
+      return prettyDate(iso);
+    }
+    function renderJourneyOrder() {
+      const box = document.getElementById("calendars");
+      const order = selectedOrder();
+      if (!order) {
+        openJourneyId = "";
+        journeyLevel = "weeks";
+        renderJourneyWeeks();
+        return;
+      }
+      const days = orderWorkDays(order);
+      const pairs = activityPairs([order], (row, kind) => {
+        if (kind === "actual") return daysOf(row, "actual").length > 0 || !!(row.actual && row.actual.start);
+        return true;
+      });
+      fillWeekLabel();
+      const title = esc(order.orderId) + (order.product ? " · " + esc(order.product) : "");
+      let table = "";
+      if (days.length && pairs.length) {
+        const head = "<th class='order'>Order</th><th class='name'>Name</th><th class='kind'>Kind</th>" +
+          days.map((iso) => "<th class='day' data-day=\"" + esc(iso) + "\">" + esc(dayHeading(iso)) + "</th>").join("");
+        const body = pairs.map((pair, i) => {
+          const cells = days.map((iso) => {
+            const hit = pairOnDays(pair, [iso]);
+            return "<td data-day=\"" + esc(iso) + "\" data-worker=\"" + esc(pair.person.id) + "\">" + (hit ? chipFromPair(pair) : "") + "</td>";
+          }).join("");
+          return pairRow(pairs, i, cells, { names: true });
+        }).join("");
+        table = "<div class='sheet-wrap'><table class='grid freeze-names'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
+      } else {
+        table = "<div class='empty'>This order has no planned work days yet.</div>";
+      }
+      const items = (order.rows || []).slice().sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")) || String(a.process || "").localeCompare(String(b.process || ""))).map((row) => {
+        const c = color(row.process);
+        const code = "<span class='code' style='background:" + c.bg + ";color:" + c.fg + ";border:1px solid " + c.border + ";border-radius:4px;padding:2px 6px;text-align:center'>" + esc(row.code || codeOf(row.process)) + "</span>";
+        const planLine = "<li class='plan'>" + code + "<span class='kind'>Plan</span><span>" + esc(row.process) + "</span>" +
+          "<span class='who'>" + esc(row.workerName || row.workerId || "") + "</span>" +
+          "<span class='when'>" + esc(prettyDate(row.start) + " " + hhmm(row.start) + "–" + hhmm(row.end)) + "</span></li>";
+        const act = row.actual || {};
+        const actualWhen = act.start
+          ? prettyDate(act.start) + " " + hhmm(act.start) + "–" + hhmm(act.end)
+          : "Not clocked yet";
+        const actualLine = "<li class='actual'>" + code + "<span class='kind'>Actual</span><span>" + esc(row.process) + "</span>" +
+          "<span class='who'>" + esc(act.workerName || act.workerId || "—") + "</span>" +
+          "<span class='when'>" + esc(actualWhen) + "</span></li>";
+        const filter = kindFilter();
+        if (filter === "plan") return planLine;
+        if (filter === "actual") return actualLine;
+        return planLine + actualLine;
+      }).join("");
+      box.innerHTML = renderJourneyCrumb() +
+        "<p class='help'>Plan vs Actual for " + title + " is the shop booking and clock. The Journey list under that is the same order from enquiry through materials, paint, and delivery. Both, Planned, and Actual filter the grid. Same order number is merged across the people on this job. ← Week view and ← Day view go back. Click a day for the 15-minute plan. Drag a Plan letter to a free slot — only later tasks on this order move.</p>" +
+        table +
+        "<div class='timeline'><h3>Planning</h3>" +
+        (items ? "<ol>" + items + "</ol>" : "<p class='help'>No processes are booked on this order.</p>") +
+        "</div>" +
+        "<div class='life' id='orderLife'><h3>Journey</h3><p class='help'>Loading enquiry through delivery…</p></div>";
+      fillOrderLife(order.orderId);
+    }
+    async function fillOrderLife(orderNumber) {
+      const box = document.getElementById("orderLife");
+      if (!box) return;
+      try {
+        const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(orderNumber) + "/life");
+        const j = await r.json();
+        if (!document.getElementById("orderLife")) return;
+        if (!j.ok) {
+          box.innerHTML = "<h3>Journey</h3><p class='help'>" + esc(j.error || "Could not load the journey.") + "</p>";
+          return;
+        }
+        const events = j.events || [];
+        const sub = [j.status ? "Now: " + j.status : "", j.enquiry_no ? "Enquiry " + j.enquiry_no : "", j.product]
+          .filter(Boolean).join(" · ");
+        if (!events.length) {
+          box.innerHTML = "<h3>Journey</h3><p class='help'>" + esc(sub || "No dated steps yet.") + "</p>";
+          return;
+        }
+        box.innerHTML = "<h3>Journey</h3><p class='help'>" + esc(sub) +
+          " — from first enquiry through shop clocks, materials, paint, and delivery.</p><ol>" +
+          events.map((ev) => {
+            return "<li><time>" + esc(ev.at_label || ev.at || "") + "</time>" +
+              "<span class='stage'>" + esc(ev.stage || "") + "</span>" +
+              esc(ev.title || "") +
+              (ev.detail ? "<div class='detail'>" + esc(ev.detail) + "</div>" : "") +
+              (ev.actor ? "<div class='actor'>" + esc(ev.actor) + "</div>" : "") +
+              "</li>";
+          }).join("") + "</ol>";
+      } catch (e) {
+        if (document.getElementById("orderLife")) {
+          document.getElementById("orderLife").innerHTML = "<h3>Journey</h3><p class='help'>Could not load the journey.</p>";
+        }
+      }
+    }
+    function clipToDay(block, dayIso) {
+      const start = dateOf(block.start);
+      const end = dateOf(block.end);
+      if (end < dayIso || start > dayIso) return null;
+      if (block.kind === "paint") {
+        if (start <= dayIso && end > dayIso) return { startMin: DAY_START, endMin: 15 * 60 + 45 };
+        return null;
+      }
+      let startMin = start === dayIso ? minutesOf(block.start) : DAY_START;
+      let endMin = end === dayIso ? minutesOf(block.end) : 15 * 60 + 45;
+      if (end === dayIso && minutesOf(block.end) === 0) return null;
+      startMin = Math.max(DAY_START, startMin);
+      endMin = Math.min(15 * 60 + 45, endMin);
+      if (endMin <= startMin) return null;
+      return { startMin, endMin };
+    }
+    function hourLinesHtml() {
+      return TICKS.map((t) => "<div class='hour-line' style='top:" + topPct(t.min) + "%'></div>").join("");
+    }
+    function bandHtml() {
+      return ((board && board.bands) || []).map((b) => {
+        return "<div class='band' style='top:" + topPct(b.startMin) + "%;height:" + heightPct(b.startMin, b.endMin) + "%;background:" + b.bg + ";color:" + (b.fg || "#344054") + "'>" + esc(b.label) + "</div>";
+      }).join("");
+    }
+    function eventHtml(block, dayIso, who) {
+      const clip = clipToDay(block, dayIso);
+      if (!clip) return "";
+      const c = color(block.process, block.kind);
+      const paint = block.kind === "paint";
+      const other = block.kind === "other";
+      const klass = "event" + (who === "b" ? " compare-b" : (who === "a" ? " compare-a" : "")) + (paint ? " paint" : "") + (other ? " other" : "");
+      const title = other ? (block.title || block.process) : block.studioNo;
+      const sub = other
+        ? (hhmm(block.start) + "–" + hhmm(block.end))
+        : (esc(block.process) + " · " + esc(hhmm(block.start)) + "–" + esc(hhmm(block.end)));
+      const kill = other ? "<button type='button' class='kill' data-remove-block=\"" + esc(block.id) + "\" aria-label='Remove'>×</button>" : "";
+      return "<div class='" + klass + "' data-block=\"" + esc(block.id) + "\" data-kind=\"" + esc(block.kind || "work") + "\" style='top:" + topPct(clip.startMin) + "%;height:" + heightPct(clip.startMin, clip.endMin) + "%;background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" +
+        kill + "<b>" + esc(title) + "</b><small>" + sub + "</small></div>";
+    }
+    function fillPeopleSelects() {
+      const people = peopleList();
+      if (!personA && people[0]) personA = people[0].id;
+      const opts = people.map((w) => "<option value=\"" + esc(w.id) + "\">" + esc(w.name) + "</option>").join("");
+      const a = document.getElementById("personA");
+      const b = document.getElementById("personB");
+      a.innerHTML = opts;
+      b.innerHTML = "<option value=''>None</option>" + opts;
+      if (![].some.call(a.options, (o) => o.value === personA) && people[0]) personA = people[0].id;
+      a.value = personA;
+      b.value = personB && personB !== personA ? personB : "";
+      personB = b.value;
+    }
+    function renderOutlook() {
+      const box = document.getElementById("calendars");
+      const days = (board && board.weekDays) || [];
+      fillWeekLabel();
+      fillPeopleSelects();
+      const people = peopleList();
+      if (!people.length) {
+        box.innerHTML = "<div class='empty'>Add people on Users and tick the shop tasks they do.</div>";
+        return;
+      }
+      const compare = !!(personB && personB !== personA);
+      const nameOf = (id) => {
+        const hit = people.find((w) => String(w.id) === String(id));
+        return hit ? hit.name : id;
+      };
+      const cols = days.length;
+      const head = "<div class='ol-head' style='grid-template-columns: var(--gutter) repeat(" + cols + ", 1fr)'><div></div>" +
+        days.map((d) => "<div>" + esc(d.label) + (compare ? "<small>" + esc(nameOf(personA)) + " · " + esc(nameOf(personB)) + "</small>" : "") + "</div>").join("") + "</div>";
+      const ticks = TICKS.map((t) => "<span style='top:" + topPct(t.min) + "%'>" + t.label + "</span>").join("");
+      const mineA = ((board && board.blocks) || []).filter((b) => String(b.workerId) === String(personA));
+      const mineB = compare ? ((board && board.blocks) || []).filter((b) => String(b.workerId) === String(personB)) : [];
+      const daysHtml = days.map((d) => {
+        const eventsA = mineA.map((b) => eventHtml(b, d.iso, compare ? "a" : "")).join("");
+        if (!compare) {
+          return "<div class='ol-day' data-day=\"" + esc(d.iso) + "\" data-worker=\"" + esc(personA) + "\">" + hourLinesHtml() + bandHtml() + eventsA + "</div>";
+        }
+        const eventsB = mineB.map((b) => eventHtml(b, d.iso, "b")).join("");
+        return "<div class='ol-day split' data-day=\"" + esc(d.iso) + "\">" +
+          "<div class='lane' data-worker=\"" + esc(personA) + "\">" + hourLinesHtml() + bandHtml() + "<div class='lane-name'>" + esc(nameOf(personA)) + "</div>" + eventsA + "</div>" +
+          "<div class='lane' data-worker=\"" + esc(personB) + "\">" + hourLinesHtml() + bandHtml() + "<div class='lane-name'>" + esc(nameOf(personB)) + "</div>" + eventsB + "</div>" +
+          "</div>";
+      }).join("");
+      box.innerHTML = "<div class='outlook'>" + head + "<div class='ol-body' style='grid-template-columns: var(--gutter) repeat(" + cols + ", 1fr)'><div class='time-col'>" + ticks + "</div>" + daysHtml + "</div></div>";
+    }
+    function renderJourney() {
+      if (journeyLevel === "times") renderJourneyTimes();
+      else if (journeyLevel === "days") renderJourneyDays();
+      else if (journeyLevel === "order") renderJourneyOrder();
+      else renderJourneyWeeks();
+    }
+    function hideProductShot() {
+      const box = document.getElementById("productShot");
+      if (box) box.hidden = true;
+    }
+    function showProductShot(el) {
+      const url = el && el.getAttribute("data-product-shot");
+      const box = document.getElementById("productShot");
+      if (!url || !box) return;
+      const img = box.querySelector("img");
+      const name = box.querySelector(".product-shot-name");
+      const label = String(el.textContent || "").trim();
+      img.alt = label;
+      img.src = url;
+      name.textContent = label;
+      box.setAttribute("data-url", url);
+      box.hidden = false;
+      const r = el.getBoundingClientRect();
+      const w = box.offsetWidth || 280;
+      const h = box.offsetHeight || 300;
+      let left = r.right + 10;
+      let top = r.top;
+      if (left + w > window.innerWidth - 8) left = Math.max(8, r.left - w - 10);
+      if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+      if (top < 8) top = 8;
+      box.style.left = left + "px";
+      box.style.top = top + "px";
+    }
+    function renderBoard() {
+      hideProductShot();
+      renderLegend();
+      fillWeekLabel();
+      if (view === "planning") return;
+      if (!board) {
+        document.getElementById("calendars").innerHTML = "<div class='loading'>Loading…</div>";
+        return;
+      }
+      if (view === "people") renderOutlook();
+      else renderJourney();
+    }
+    async function load(nextWeek) {
+      setStatus("Loading…");
+      try {
+        const url = "/api/office/planning" + (nextWeek ? "?week=" + encodeURIComponent(nextWeek) : "");
+        const r = await sdOfficeFetch(url);
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || "Could not load planning.");
+        board = j.board;
+        week = board.weekStart;
+        renderQueue();
+        renderBoard();
+        const n = ((board.weekStarting) || []).length;
+        setStatus("Work days only · Monday to Friday · " + n + " order" + (n === 1 ? "" : "s") + " starting this week");
+      } catch (e) {
+        board = null;
+        document.getElementById("queue").innerHTML = "<div class='empty'>Could not load the order list.</div>";
+        document.getElementById("calendars").innerHTML = "<div class='empty'>Could not load calendars.</div>";
+        setStatus(e.message || String(e), true);
+      }
+    }
+    function collectAssignments(id) {
+      const out = {};
+      document.querySelectorAll("select[data-order=\"" + id + "\"]").forEach((sel) => {
+        out[sel.getAttribute("data-process")] = sel.value;
+      });
+      assigns[id] = out;
+      return out;
+    }
+    async function scheduleIds(ids) {
+      if (!ids.length) {
+        setStatus("Tick at least one order.", true);
+        return;
+      }
+      const assignments = {};
+      for (let i = 0; i < ids.length; i++) {
+        const pickedPeople = collectAssignments(ids[i]);
+        delete pickedPeople.Grinding;
+        assignments[ids[i]] = pickedPeople;
+      }
+      setStatus("Placing work on the calendars…");
+      const r = await sdOfficeFetch("/api/office/planning/schedule", {
+        method: "POST",
+        body: JSON.stringify({ orderIds: ids, assignments })
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "Could not schedule.", true);
+        return;
+      }
+      ids.forEach((id) => { picked[id] = false; });
+      await load(week);
+      setStatus("Scheduled " + ids.length + " order" + (ids.length === 1 ? "" : "s") + " into the next free work slots.");
+    }
+    async function scheduleGrind(id) {
+      const who = (collectAssignments(id) || {}).Grinding;
+      if (!who) {
+        setStatus("Pick someone for grinding.", true);
+        return;
+      }
+      setStatus("Booking grinding…");
+      const r = await sdOfficeFetch("/api/office/planning/grind", {
+        method: "POST",
+        body: JSON.stringify({ orderId: id, worker: who })
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "Could not schedule grinding.", true);
+        return;
+      }
+      await load(week);
+      setStatus("Grinding booked on " + id + ".");
+    }
+    async function unschedule(id) {
+      const r = await sdOfficeFetch("/api/office/planning/orders/" + encodeURIComponent(id), { method: "DELETE" });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "Could not unschedule.", true);
+        return;
+      }
+      await load(week);
+      setStatus("Removed " + id + " from the calendars.");
+    }
+    function pad2(n) { return String(n).padStart(2, "0"); }
+    function snapMin(min) {
+      let m = Math.round(Number(min) / 15) * 15;
+      if (m < DAY_START) m = DAY_START;
+      if (m >= 12 * 60 && m < 12 * 60 + 30) m = 12 * 60 + 30;
+      if (m > 15 * 60 + 45) m = 15 * 60 + 45;
+      return m;
+    }
+    function isoAt(dayIso, min) {
+      const h = Math.floor(min / 60);
+      const mm = min % 60;
+      return dayIso + "T" + pad2(h) + ":" + pad2(mm) + ":00+02:00";
+    }
+    function minFromPoint(el, clientY) {
+      const r = el.getBoundingClientRect();
+      const pct = (clientY - r.top) / Math.max(1, r.height);
+      return snapMin(DAY_START + pct * DAY_SPAN);
+    }
+    function fillOtherForm(who, dayIso, min) {
+      const people = peopleList().filter((w) => w && w.id !== (board && board.paintShop && board.paintShop.id));
+      const whoSel = document.getElementById("otherWho");
+      whoSel.innerHTML = people.map((w) => "<option value=\"" + esc(w.id) + "\">" + esc(w.name) + "</option>").join("");
+      whoSel.value = who || personA || (people[0] && people[0].id) || "";
+      const presets = ((board && board.otherTasks) || ["Cleaning", "Production Meeting", "Maintenance", "Material", "Setup"]);
+      const pre = document.getElementById("otherPreset");
+      pre.innerHTML = "<option value=''>Choose a task…</option>" + presets.map((t) => "<option value=\"" + esc(t) + "\">" + esc(t) + "</option>").join("") + "<option value='__other'>Other</option>";
+      document.getElementById("otherTitle").value = "";
+      document.getElementById("otherHours").value = "0.5";
+      document.getElementById("otherDate").value = dayIso || (((board && board.weekDays) || [])[0] || {}).iso || "";
+      const m = min == null ? DAY_START : min;
+      document.getElementById("otherTime").value = pad2(Math.floor(m / 60)) + ":" + pad2(m % 60);
+    }
+    function openOther(who, dayIso, min) {
+      fillOtherForm(who, dayIso, min);
+      document.getElementById("otherMask").classList.add("open");
+    }
+    function closeOther() {
+      document.getElementById("otherMask").classList.remove("open");
+    }
+    async function moveTo(blockId, startIso) {
+      setStatus("Updating the plan…");
+      const r = await sdOfficeFetch("/api/office/planning/move", {
+        method: "POST",
+        body: JSON.stringify({ blockId: blockId, start: startIso })
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "Could not move that job.", true);
+        return;
+      }
+      await load(week);
+      if (view === "people") setView("people", false);
+      else renderBoard();
+      setStatus("Moved. Later tasks on that order were rescheduled. Other orders stayed put.");
+    }
+    async function addOtherTask() {
+      const titlePreset = document.getElementById("otherPreset").value;
+      const title = String(document.getElementById("otherTitle").value || "").trim() || (titlePreset !== "__other" ? titlePreset : "");
+      const hours = Number(document.getElementById("otherHours").value || 0);
+      const day = document.getElementById("otherDate").value;
+      const time = document.getElementById("otherTime").value || "07:45";
+      const workerId = document.getElementById("otherWho").value;
+      if (!title) {
+        setStatus("Name the other task.", true);
+        return;
+      }
+      const start = isoAt(day, Number(time.split(":")[0]) * 60 + Number(time.split(":")[1] || 0));
+      const r = await sdOfficeFetch("/api/office/planning/other", {
+        method: "POST",
+        body: JSON.stringify({ workerId: workerId, title: title, minutes: Math.round(hours * 60), start: start })
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "Could not add that task.", true);
+        return;
+      }
+      closeOther();
+      await load(week);
+      if (view === "people") setView("people", false);
+      else renderBoard();
+      setStatus("Added " + title + " in a free slot.");
+    }
+    async function removeOther(id) {
+      const r = await sdOfficeFetch("/api/office/planning/blocks/" + encodeURIComponent(id), { method: "DELETE" });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "Could not remove that task.", true);
+        return;
+      }
+      await load(week);
+      setView("people", false);
+      setStatus("Removed the other task.");
+    }
+    let drag = null;
+    let justDragged = false;
+    function dropTarget(clientX, clientY) {
+      const el = document.elementFromPoint(clientX, clientY);
+      if (!el) return null;
+      const slot = el.closest("[data-slot]");
+      if (slot) {
+        return {
+          day: slot.getAttribute("data-day") || "",
+          worker: slot.getAttribute("data-worker") || "",
+          min: Number(slot.getAttribute("data-min") || DAY_START)
+        };
+      }
+      const lane = el.closest("[data-worker]");
+      const day = el.closest("[data-day]");
+      const host = lane || day;
+      if (!host) return null;
+      return {
+        day: (day && day.getAttribute("data-day")) || host.getAttribute("data-day") || "",
+        worker: (lane && lane.getAttribute("data-worker")) || (day && day.getAttribute("data-worker")) || "",
+        min: host.getAttribute("data-min") != null ? Number(host.getAttribute("data-min")) : minFromPoint(host, clientY)
+      };
+    }
+    window.addEventListener("hashchange", () => setView(viewFromHash(), false));
+    document.querySelector(".tabs").addEventListener("click", (e) => {
+      const tab = e.target.closest("[data-tab]");
+      if (!tab) return;
+      e.preventDefault();
+      setView(tab.getAttribute("data-tab"));
+    });
+    document.getElementById("scheduleSelected").onclick = () => {
+      const ids = Object.keys(picked).filter((id) => picked[id]);
+      scheduleIds(ids);
+    };
+    document.getElementById("q").addEventListener("input", renderQueue);
+    document.getElementById("prevWeek").onclick = () => load(board && board.prevWeek);
+    document.getElementById("nextWeek").onclick = () => load(board && board.nextWeek);
+    document.getElementById("thisWeek").onclick = () => load("");
+    document.getElementById("personA").onchange = () => {
+      personA = document.getElementById("personA").value;
+      if (personB === personA) personB = "";
+      renderOutlook();
+    };
+    document.getElementById("personB").onchange = () => {
+      personB = document.getElementById("personB").value;
+      renderOutlook();
+    };
+    document.getElementById("addOther").onclick = () => openOther(personA, ((board && board.weekDays) || [])[0] && board.weekDays[0].iso, DAY_START);
+    document.getElementById("otherCancel").onclick = closeOther;
+    document.getElementById("otherMask").addEventListener("click", (e) => {
+      if (e.target.id === "otherMask") closeOther();
+    });
+    function otherDetailHtml(item) {
+      const who = (item && (item.workerName || item.workerId)) || "—";
+      const start = prettyDate(item && item.start) + (hhmm(item && item.start) ? " " + hhmm(item && item.start) : "");
+      const end = hhmm(item && item.end) || prettyDate(item && item.end);
+      const title = String((item && (item.title || item.process)) || "Other");
+      const note = String((item && item.note) || "").trim();
+      const isOther = /^other\b/i.test(title);
+      let html = "<p><strong>Who</strong><br>" + esc(who) + "</p>";
+      html += "<p><strong>Slot</strong><br>" + esc(start) + (end ? " – " + esc(end) : "") + "</p>";
+      html += "<p><strong>Task</strong><br>" + esc(isOther ? "Other" : title) + "</p>";
+      if (note) html += "<p><strong>" + (isOther ? "What they did" : "Note") + "</strong><br>" + esc(note) + "</p>";
+      return html;
+    }
+    function openOtherDetail(item) {
+      document.getElementById("otherDetailBody").innerHTML = otherDetailHtml(item || {});
+      document.getElementById("otherDetailMask").classList.add("open");
+    }
+    function closeOtherDetail() {
+      document.getElementById("otherDetailMask").classList.remove("open");
+    }
+    document.getElementById("otherDetailClose").onclick = closeOtherDetail;
+    document.getElementById("otherDetailMask").addEventListener("click", (e) => {
+      if (e.target.id === "otherDetailMask") closeOtherDetail();
+    });
+    document.getElementById("otherPreset").onchange = () => {
+      const v = document.getElementById("otherPreset").value;
+      if (v && v !== "__other") document.getElementById("otherTitle").value = v;
+    };
+    document.getElementById("otherForm").onsubmit = (e) => {
+      e.preventDefault();
+      addOtherTask();
+    };
+    document.getElementById("calendars").addEventListener("pointerdown", (e) => {
+      if (view !== "people" && view !== "journey") return;
+      const kill = e.target.closest("[data-remove-block]");
+      if (kill) return;
+      const ev = e.target.closest("[data-block]");
+      if (!ev || ev.getAttribute("data-kind") === "paint" || ev.getAttribute("data-kind") === "actual") return;
+      if (!ev.getAttribute("data-block")) return;
+      drag = {
+        id: ev.getAttribute("data-block"),
+        x: e.clientX,
+        y: e.clientY,
+        moved: false,
+        el: ev
+      };
+    });
+    document.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      if (Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y) > 4) drag.moved = true;
+      if (drag.moved && drag.el) drag.el.classList.add("dragging");
+    });
+    document.addEventListener("pointerup", (e) => {
+      if (!drag) return;
+      const cur = drag;
+      drag = null;
+      if (cur.el) cur.el.classList.remove("dragging");
+      if (!cur.moved) return;
+      justDragged = true;
+      setTimeout(() => { justDragged = false; }, 50);
+      const hit = dropTarget(e.clientX, e.clientY);
+      if (!hit || !hit.day) {
+        setStatus("Drop the job on a day in this week.", true);
+        return;
+      }
+      moveTo(cur.id, isoAt(hit.day, hit.min));
+    });
+    document.getElementById("calendars").addEventListener("pointerover", (e) => {
+      const hit = e.target.closest && e.target.closest("[data-product-shot]");
+      if (hit) showProductShot(hit);
+    });
+    document.getElementById("calendars").addEventListener("pointerout", (e) => {
+      const from = e.target.closest && e.target.closest("[data-product-shot]");
+      const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-product-shot]") : null;
+      if (from && from !== to) hideProductShot();
+    });
+    document.querySelector(".board").addEventListener("scroll", hideProductShot, true);
+    window.addEventListener("scroll", hideProductShot, true);
+    document.getElementById("calendars").addEventListener("click", (e) => {
+      if (justDragged) return;
+      const el = e.target instanceof Element ? e.target : (e.target && e.target.parentElement);
+      const otherChip = el && el.closest ? el.closest("[data-other]") : null;
+      if (otherChip) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          openOtherDetail(JSON.parse(otherChip.getAttribute("data-other") || "{}"));
+        } catch (err) {
+          openOtherDetail({});
+        }
+        return;
+      }
+      const kindBtn = el && el.closest ? el.closest("[data-kind-filter]") : null;
+      if (kindBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        setJourneyKind(kindBtn.getAttribute("data-kind-filter"));
+        return;
+      }
+      const shotEl = el && el.closest ? el.closest("[data-product-shot]") : null;
+      if (shotEl && view === "journey") {
+        e.preventDefault();
+        e.stopPropagation();
+        const box = document.getElementById("productShot");
+        if (box && !box.hidden && box.getAttribute("data-url") === shotEl.getAttribute("data-product-shot")) hideProductShot();
+        else showProductShot(shotEl);
+        return;
+      }
+      const level = e.target.closest("[data-journey-level]");
+      if (level) {
+        journeyLevel = level.getAttribute("data-journey-level") || "weeks";
+        if (journeyLevel === "weeks") {
+          openJourneyId = "";
+          journeyDay = "";
+          journeyWorkerId = "";
+          journeyWorkerName = "";
+        }
+        if (journeyLevel === "days") {
+          journeyDay = "";
+          openJourneyId = "";
+        }
+        if (journeyLevel === "times") {
+          openJourneyId = "";
+          if (!journeyDay) journeyLevel = "days";
+        }
+        renderBoard();
+        return;
+      }
+      const clearWho = e.target.closest("[data-clear-worker]");
+      if (clearWho && view === "journey") {
+        journeyWorkerId = "";
+        journeyWorkerName = "";
+        renderBoard();
+        return;
+      }
+      const who = e.target.closest("[data-filter-worker]");
+      if (who && view === "journey" && (journeyLevel === "times" || journeyLevel === "days") && !e.target.closest("[data-block]")) {
+        const id = who.getAttribute("data-filter-worker") || "";
+        if (id && String(id) === String(journeyWorkerId)) {
+          journeyWorkerId = "";
+          journeyWorkerName = "";
+        } else {
+          journeyWorkerId = id;
+          journeyWorkerName = who.getAttribute("data-filter-name") || id;
+        }
+        renderBoard();
+        return;
+      }
+      const jump = e.target.closest("[data-jump-week]");
+      if (jump && view === "journey") {
+        const next = jump.getAttribute("data-jump-week") || "";
+        journeyLevel = "weeks";
+        openJourneyId = "";
+        journeyDay = "";
+        load(next);
+        return;
+      }
+      const openOrder = e.target.closest("[data-open-order]");
+      if (openOrder && view === "journey" && !e.target.closest("[data-block]")) {
+        openJourneyId = openOrder.getAttribute("data-open-order") || "";
+        journeyLevel = "order";
+        renderBoard();
+        return;
+      }
+      const weekBtn = e.target.closest("th.week[data-week]");
+      if (weekBtn && view === "journey") {
+        journeyWeekStart = weekBtn.getAttribute("data-week") || "";
+        openJourneyId = "";
+        journeyWorkerId = "";
+        journeyWorkerName = "";
+        journeyLevel = "days";
+        journeyDay = "";
+        renderBoard();
+        return;
+      }
+      const dayBtn = e.target.closest("th.day[data-day], td[data-day]");
+      if (dayBtn && view === "journey" && !e.target.closest("[data-block]")) {
+        const dayIso = dayBtn.getAttribute("data-day") || "";
+        if (dayIso) {
+          journeyDay = dayIso;
+          const hit = weekWindow().find((w) => weekIsos(w).indexOf(dayIso) !== -1);
+          if (hit) journeyWeekStart = hit.start;
+          journeyLevel = "times";
+          renderBoard();
+        }
+        return;
+      }
+      const open = e.target.closest("[data-open-journey]");
+      if (open) {
+        openJourneyId = open.getAttribute("data-open-journey");
+        journeyLevel = "order";
+        renderBoard();
+        return;
+      }
+      const kill = e.target.closest("[data-remove-block]");
+      if (kill) {
+        removeOther(kill.getAttribute("data-remove-block"));
+        return;
+      }
+    });
+    document.getElementById("calendars").addEventListener("dblclick", (e) => {
+      if (view !== "people") return;
+      if (e.target.closest("[data-block], [data-remove-block], [data-open-journey]")) return;
+      const host = e.target.closest("[data-worker], [data-day]");
+      if (!host) return;
+      const dayEl = e.target.closest("[data-day]");
+      const day = (dayEl && dayEl.getAttribute("data-day")) || "";
+      const who = host.getAttribute("data-worker") || personA;
+      openOther(who, day, minFromPoint(host, e.clientY));
+    });
+    document.getElementById("queue").addEventListener("change", (e) => {
+      const pick = e.target.getAttribute("data-pick");
+      if (pick) {
+        picked[pick] = !!e.target.checked;
+        openOrders[pick] = true;
+        if (e.target.checked) collectAssignments(pick);
+        renderQueue();
+        return;
+      }
+      const order = e.target.getAttribute("data-order");
+      if (order) collectAssignments(order);
+    });
+    document.getElementById("queue").addEventListener("click", (e) => {
+      const grind = e.target.getAttribute("data-grind");
+      if (grind) {
+        scheduleGrind(grind);
+        return;
+      }
+      const sched = e.target.getAttribute("data-schedule");
+      if (sched) {
+        scheduleIds([sched]);
+        return;
+      }
+      const unsched = e.target.getAttribute("data-unschedule");
+      if (unsched) {
+        unschedule(unsched);
+        return;
+      }
+      const art = e.target.closest(".order");
+      if (art && !e.target.closest("input, select, button, label")) {
+        const id = art.getAttribute("data-id");
+        openOrders[id] = !art.classList.contains("open");
+        art.classList.toggle("open");
+      }
+    });
+    function openClearPlan() {
+      document.getElementById("clearConfirm").value = "";
+      document.getElementById("clearErr").textContent = "";
+      document.getElementById("clearMask").classList.add("open");
+      document.getElementById("clearConfirm").focus();
+    }
+    function closeClearPlan() {
+      document.getElementById("clearMask").classList.remove("open");
+    }
+    async function confirmClearPlan(e) {
+      if (e) e.preventDefault();
+      const err = document.getElementById("clearErr");
+      err.textContent = "";
+      const r = await sdOfficeFetch("/api/office/planning/clear", {
+        method: "POST",
+        body: JSON.stringify({ confirm: document.getElementById("clearConfirm").value })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        err.textContent = j.error || "Could not clear planning.";
+        return;
+      }
+      closeClearPlan();
+      Object.keys(openOrders).forEach((k) => { delete openOrders[k]; });
+      Object.keys(picked).forEach((k) => { delete picked[k]; });
+      Object.keys(assigns).forEach((k) => { delete assigns[k]; });
+      await load(week);
+      setStatus("Cleared " + ((j.result && j.result.removed) || 0) + " planning slots.");
+    }
+    document.getElementById("clearPlanBtn").onclick = openClearPlan;
+    document.getElementById("clearCancel").onclick = closeClearPlan;
+    document.getElementById("clearForm").onsubmit = confirmClearPlan;
+    document.getElementById("clearMask").addEventListener("click", (e) => {
+      if (e.target.id === "clearMask") closeClearPlan();
+    });
+    sdRequireOffice("planning").then((p) => {
+      if (!p) return;
+      document.getElementById("clearPlanBtn").style.display = p.canManageUsers ? "" : "none";
+      load().then(() => setView(viewFromHash(), false));
+    });
+  </script>
+</body>
+</html>

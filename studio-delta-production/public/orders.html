@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Orders</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --blue:#cfe2f3; --green:#d9ead3; --ink:#1d2939; --muted:#667085; --bad:#b42318; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:center; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    input[type=search] { border:1px solid var(--line); border-radius:6px; padding:8px 10px; min-width:220px; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#fff; color:var(--bad); border-color:#fda29b; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .wrap { overflow:auto; height:calc(100vh - 58px); }
+    .ready-box { margin:12px 16px 0; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+    .ready-box[hidden] { display:none !important; }
+    .ready-box h2 { font-family: Outfit, Inter, sans-serif; font-size:15px; margin:0 0 4px; }
+    .ready-box .hint { margin:0 0 10px; }
+    .ready-list { display:flex; flex-direction:column; gap:8px; }
+    .ready-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:#f8fafc; }
+    .ready-row b { font-size:13px; }
+    .ready-row span { font-size:13px; color:var(--muted); }
+    table { border-collapse:separate; border-spacing:0; min-width:3800px; background:#fff; font-size:12px; }
+    th, td { border:1px solid var(--line); padding:6px 8px; vertical-align:middle; white-space:nowrap; background:#fff; height:36px; }
+    th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; height:34px; }
+    .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+    #grid tbody tr[data-i] { cursor:pointer; }
+    #grid tbody tr[data-i]:hover td { background:#f2f4f7; }
+    .st-couriers { background:var(--blue); }
+    .st-green { background:var(--green); }
+    .freeze { position:sticky; z-index:3; box-shadow:1px 0 0 var(--line); }
+    th.freeze { z-index:6; background:var(--head); }
+    td.freeze { background:#fff; }
+    td.freeze.st-couriers { background:var(--blue); }
+    .freeze-end { box-shadow:4px 0 8px rgba(16,24,40,.12); }
+    .row-actions-cell { display:flex; gap:4px; align-items:center; }
+    .icon-btn {
+      width:28px; height:28px; min-height:28px; padding:0;
+      display:inline-flex; align-items:center; justify-content:center;
+      border-radius:2px; font-size:14px; line-height:1;
+    }
+    .msg { font-size:12px; color:var(--muted); }
+    .empty { padding:28px 16px; color:var(--muted); font-size:13px; }
+    .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
+    .mask.open { display:flex; }
+    .sheet { width:min(780px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:24px auto; }
+    .sheet header { position:static; border-radius:12px 12px 0 0; }
+    .sheet header.form-head { position:sticky; top:0; z-index:3; background:#fff; align-items:flex-start; flex-wrap:wrap; }
+    .form-head-err { flex:1 0 100%; color:var(--bad); font-size:13px; font-weight:600; margin:6px 0 0; min-height:0; }
+    .form-head-err:empty { display:none; }
+    .sheet .body { padding:16px; display:flex; flex-direction:column; gap:14px; }
+    .stack-form { display:flex; flex-direction:column; gap:12px; }
+    .stack-form label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; }
+    .stack-form input, .stack-form select, .stack-form textarea { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; font-weight:400; }
+    .stack-form textarea { min-height:88px; }
+    .stack-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .stack-grid.four { grid-template-columns:repeat(4, 1fr); }
+    .confirm { flex-direction:row; align-items:flex-start; gap:8px; margin-top:4px; font-weight:600; }
+    .confirm input { width:auto; margin-top:3px; }
+    .confirm .hint { display:block; font-weight:400; }
+    .hint { font-size:12px; color:var(--muted); margin:0; font-weight:400; }
+    .link-box { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#f8fafc; display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+    .link-box b { font-size:13px; }
+    .view-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px 20px; }
+    .view-item { min-width:0; }
+    .view-item.wide { grid-column:1 / -1; }
+    .view-label { font-size:11px; font-weight:600; letter-spacing:.03em; color:var(--muted); margin:0 0 4px; }
+    .view-value { font-size:13px; margin:0; white-space:pre-wrap; word-break:break-word; }
+    .view-value.empty { color:var(--muted); }
+    .life { margin-top:16px; border:1px solid var(--line); border-radius:8px; background:#f8fafc; padding:12px 14px; }
+    .life h2 { font-family: Outfit, Inter, sans-serif; font-size:15px; margin:0 0 4px; }
+    .life .life-sub { font-size:12px; color:var(--muted); margin:0 0 10px; }
+    .life ol { list-style:none; margin:0; padding:0; border-left:2px solid #d0d5dd; }
+    .life li { position:relative; padding:0 0 12px 16px; font-size:13px; }
+    .life li:last-child { padding-bottom:0; }
+    .life li::before { content:""; position:absolute; left:-5px; top:6px; width:8px; height:8px; border-radius:50%; background:#1d2939; }
+    .life time { display:block; font-size:11px; font-weight:600; color:var(--muted); }
+    .life .stage { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#344054; background:#e4e7ec; border-radius:4px; padding:1px 6px; margin-right:6px; }
+    .life .stage-quote { background:#e0f2fe; color:#075985; }
+    .life .stage-money { background:#d1fadf; color:#067647; }
+    .life .stage-shop, .life .stage-qc { background:#ffefc6; color:#93370d; }
+    .life .stage-paint { background:#e0e7ff; color:#3730a3; }
+    .life .stage-materials { background:#fce7f6; color:#9d174d; }
+    .life .stage-delivery { background:#fee4e2; color:#b42318; }
+    .life .stage-order { background:#ede9fe; color:#5b21b6; }
+    .life .detail, .life .actor { color:var(--muted); font-size:12px; }
+    .form-foot { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line); }
+    .err { color:var(--bad); font-size:12px; min-height:16px; }
+    @media (max-width: 720px) {
+      .stack-grid, .stack-grid.four, .view-grid { grid-template-columns:1fr; }
+      .tools { width:100%; margin-left:0; }
+      .ready-row { display:grid; grid-template-columns:1fr; }
+      .ready-row button { width:100%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a class="on" href="/orders">Sheet</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/glass-rates">Glass rates</a>
+        <a href="/orders/cost">Cost</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Orders</h1>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <input type="search" id="q" placeholder="Search orders">
+      <button class="ghost" type="button" onclick="location.href='/orders/job-card'">Generate job card</button>
+      <button class="ghost" type="button" onclick="location.href='/orders/onboard'">Add existing order</button>
+      <button class="ghost" type="button" onclick="location.href='/orders/paste'">Paste orders</button>
+      <button class="ghost" type="button" onclick="openForm()">New order</button>
+      <button class="danger" type="button" id="clearAllBtn" style="display:none" onclick="openClearAll()">Clear all orders</button>
+    </div>
+  </header>
+  <div id="readyBox" class="ready-box" hidden>
+    <h2>Ready to add to Orders</h2>
+    <p class="hint">These enquiries are Ordered and not on this sheet yet. Add the order here. If the shop is already working it, use Add existing order and pick the current status, or Paste orders from the old sheet.</p>
+    <div class="ready-list" id="readyList"></div>
+  </div>
+  <div class="wrap">
+    <table id="grid"></table>
+  </div>
+
+  <div class="mask" id="formMask">
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="formTitle">
+      <header class="form-head">
+        <h1 id="formTitle">New order</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeForm()">Cancel</button>
+          <button type="button" id="saveBtn" onclick="saveForm()">Save order</button>
+        </div>
+        <p class="form-head-err" id="formErr" role="alert"></p>
+      </header>
+      <form class="body stack-form" id="form" onsubmit="event.preventDefault(); saveForm();">
+        <input type="hidden" name="enquiry_no" id="f_enquiry_no">
+        <div class="link-box" id="linkBox" hidden>
+          <b id="linkLabel">Linked to an enquiry</b>
+          <button class="ghost" type="button" id="openEnquiryBtn">Open enquiry</button>
+        </div>
+        <div class="stack-grid four">
+          <label>Order number *
+            <input id="f_order_number" autocomplete="off">
+            <span class="hint" id="orderNoHint">Next number fills in.</span>
+          </label>
+          <label>Quote number
+            <input id="f_quote_number" autocomplete="off">
+          </label>
+          <label>Status
+            <input id="f_status" readonly>
+            <span class="hint">Status starts as Not Yet Started. Generating a job card moves it to Ready for Steelwork. The shop floor updates it after that.</span>
+          </label>
+          <label>Assigned operator
+            <select id="f_assigned_operator"></select>
+          </label>
+        </div>
+        <div class="stack-grid four">
+          <label>Type
+            <select id="f_type"></select>
+          </label>
+          <label>CATERGORY
+            <select id="f_category"></select>
+          </label>
+          <label>Product
+            <select id="f_product"></select>
+          </label>
+          <label>Variation
+            <select id="f_variation"></select>
+          </label>
+        </div>
+        <div class="stack-grid">
+          <label>Doors
+            <select id="f_doors"></select>
+          </label>
+          <label>Dimensions
+            <input id="f_dimensions">
+          </label>
+          <label>Powder coating
+            <select id="f_powder_coating"></select>
+          </label>
+          <label>Source
+            <select id="f_source"></select>
+          </label>
+        </div>
+        <label>Detailed description
+          <textarea id="f_detailed_description" placeholder="Finish, glass, extras"></textarea>
+          <span class="hint">Select the words production must not miss (for example additional shelf), then mark them as important.</span>
+          <button type="button" class="ghost" id="markImportantBtn" style="margin-top:6px;width:auto">Mark selected as important</button>
+        </label>
+        <label>Client name *
+          <input id="f_client_name">
+        </label>
+        <div class="stack-grid">
+          <label>Client number
+            <input id="f_client_number">
+          </label>
+          <label>Email
+            <input id="f_email" type="email">
+          </label>
+          <label>Province
+            <select id="f_province"></select>
+          </label>
+          <label>City
+            <input id="f_city">
+          </label>
+        </div>
+        <label>Address
+          <input id="f_address">
+        </label>
+        <div class="stack-grid four">
+          <label>Payment date
+            <input id="f_payment_date" type="date">
+          </label>
+          <label>Month of sale
+            <input id="f_month_of_sale" placeholder="September 2026">
+          </label>
+          <label>Price (Excl VAT)
+            <input id="f_price_excl_vat" inputmode="decimal">
+          </label>
+          <label>Price (Incl VAT)
+            <input id="f_price_incl_vat" readonly>
+          </label>
+        </div>
+        <div class="stack-grid">
+          <label>Amount paid (Incl VAT)
+            <input id="f_amount_paid" inputmode="decimal">
+            <span class="hint">Type the rands the client paid, including 15% VAT, only if they still owe. Owing is price incl VAT minus this.</span>
+          </label>
+          <label>Owing
+            <input id="f_owing" readonly>
+          </label>
+        </div>
+        <label class="confirm">
+          <input id="f_paid_in_full" type="checkbox">
+          <span>Paid in full<span class="hint">Tick this if they paid the price incl VAT. You then do not type an amount. Leave it unticked and type the amount if they still owe.</span></span>
+        </label>
+        <div class="form-foot">
+          <p class="hint" id="formFootHint">Progress stays on this device if you close this form. Save to clear it.</p>
+          <button type="submit">Save order</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="mask" id="viewMask">
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="viewTitle">
+      <header>
+        <h1 id="viewTitle">Order</h1>
+        <div class="tools">
+          <button class="ghost" type="button" id="viewEnquiryBtn" hidden>Open enquiry</button>
+          <button class="ghost" type="button" id="viewPrintCardBtn" hidden>Open / print job card</button>
+          <button class="ghost" type="button" id="viewJobCardBtn" hidden>Generate job card</button>
+          <button class="ghost" type="button" id="viewEditBtn">Edit</button>
+          <button class="ghost" type="button" onclick="closeView()">Close</button>
+        </div>
+      </header>
+      <div class="body" id="viewBody"></div>
+    </div>
+  </div>
+  <div class="mask" id="clearMask">
+    <div class="sheet" role="dialog" aria-modal="true" style="width:min(480px,96vw)">
+      <header>
+        <h1>Clear all orders</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeClearAll()">Cancel</button>
+          <button class="danger" type="button" onclick="confirmClearAll()">Delete every order</button>
+        </div>
+      </header>
+      <div class="body stack-form">
+        <p class="hint">This removes every order from the Orders sheet, the production schedule, the Planning calendar, and saved job cards. Enquiries are not deleted. Type <b>CLEAR</b> to confirm.</p>
+        <label>Type CLEAR
+          <input id="clearConfirm" autocomplete="off">
+        </label>
+        <div class="err" id="clearErr"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    const HEADERS = [
+      ["_edit", "", 56, true],
+      ["quote_number", "QUOTE NUMBER", 96, true],
+      ["order_number", "ORDER NUMBER", 108, true],
+      ["status", "STATUS", 128, true],
+      ["assigned_operator", "ASSIGNED OPERATOR", 120, true],
+      ["type", "TYPE", 100, true],
+      ["category", "CATERGORY", 128, true],
+      ["product", "PRODUCT", 148, true],
+      ["variation", "VARIATION", 168, true],
+      ["doors", "DOORS", 160, false],
+      ["detailed_description", "DETAILED DESCRIPTION", 220, false],
+      ["dimensions", "DIMENSIONS", 160, false],
+      ["powder_coating", "POWDER COATING", 170, false],
+      ["client_name", "CLIENT NAME", 170, false],
+      ["client_number", "CLIENT NUMBER", 140, false],
+      ["email", "EMAIL ADDRESS", 200, false],
+      ["payment_date", "PAYMENT DATE", 120, false],
+      ["address", "ADDRESS", 220, false],
+      ["province", "PROVINCE", 140, false],
+      ["price_excl_vat", "PRICE (Excl VAT)", 130, false],
+      ["price_incl_vat", "PRICE (Incl VAT)", 130, false],
+      ["amount_paid", "AMOUNT PAID (Incl VAT)", 160, false],
+      ["owing", "OWING", 110, false],
+      ["month_of_sale", "MONTH OF SALE", 130, false],
+      ["source", "SOURCE", 140, false],
+      ["city", "CITY", 120, false]
+    ];
+    const DROP_FIELDS = ["type", "category", "product", "variation", "doors", "powder_coating", "province", "source", "assigned_operator"];
+    const VAT_RATE = 0.15;
+    const freezeLeft = {};
+    const colWidths = HEADERS.map((h) => h[2]);
+    let rows = [];
+    let dropdowns = {};
+    let operators = [];
+    let nextOrderNumber = "S1";
+    let canManage = false;
+    let editingIndex = -1;
+    let printedByOrder = {};
+
+    function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
+    function parseMoney(s) {
+      const n = Number(String(s || "").replace(/,/g, "").replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+    }
+    function money(n) { return (Math.round(Number(n) * 100) / 100).toFixed(2); }
+    function formatRand(n) {
+      const v = parseMoney(n);
+      const neg = v < 0 ? "-" : "";
+      const [whole, frac] = money(Math.abs(v)).split(".");
+      return neg + "R " + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + frac;
+    }
+    function inclFromExcl(excl) {
+      const n = parseMoney(excl);
+      return n ? money(n * (1 + VAT_RATE)) : "";
+    }
+    function owingOf(row) {
+      const total = parseMoney(row.price_incl_vat) || parseMoney(inclFromExcl(row.price_excl_vat));
+      const cents = Math.round((total - parseMoney(row.amount_paid)) * 100);
+      return formatRand(cents <= 1 ? 0 : Math.max(0, cents) / 100);
+    }
+    function canGenerateJobCard(status) {
+      const s = String(status || "").trim();
+      return !s || s === "Not Yet Started" || s === "Ready for Steelwork" || s === "Profile Cutting";
+    }
+    function statusClass(s) {
+      const v = String(s || "").toLowerCase();
+      if (v.indexOf("courier") !== -1) return "st-couriers";
+      if (v.indexOf("complete") !== -1 || v.indexOf("ready") !== -1) return "st-green";
+      return "";
+    }
+    function layoutFreeze() {
+      const wrap = document.querySelector(".wrap");
+      const avail = wrap && wrap.clientWidth ? wrap.clientWidth : window.innerWidth;
+      const maxFreeze = Math.max(420, Math.floor(avail * 0.45));
+      HEADERS.forEach((h, i) => { colWidths[i] = h[2]; });
+      let total = 0;
+      HEADERS.forEach((h, i) => { if (h[3]) total += colWidths[i]; });
+      if (total > maxFreeze) {
+        const scale = maxFreeze / total;
+        HEADERS.forEach((h, i) => {
+          if (h[3] && h[0] !== "_edit") colWidths[i] = Math.max(72, Math.floor(h[2] * scale));
+        });
+      }
+      let left = 0;
+      HEADERS.forEach((h, i) => {
+        if (h[3]) {
+          freezeLeft[h[0]] = left;
+          left += colWidths[i];
+        }
+      });
+    }
+    function colStyle(k, width, freeze) {
+      let s = "width:" + width + "px;min-width:" + width + "px;max-width:" + width + "px;";
+      if (freeze) s += "left:" + freezeLeft[k] + "px;";
+      return s;
+    }
+    function colClass(k, freeze, extra) {
+      const parts = [];
+      if (extra) parts.push(extra);
+      if (freeze) parts.push("freeze");
+      if (k === "variation") parts.push("freeze-end");
+      return parts.join(" ");
+    }
+    function displayValue(k, row) {
+      if (k === "owing") return owingOf(row);
+      return row[k] || "";
+    }
+    function searchBlob(row) {
+      return HEADERS.map(([k]) => row[k] || "").concat([row.enquiry_no || ""]).join(" ").toLowerCase();
+    }
+    function toIsoDate(dmy) {
+      const m = String(dmy || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (m) return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+      if (/^\d{4}-\d{2}-\d{2}$/.test(String(dmy || "").trim())) return String(dmy).trim();
+      return "";
+    }
+    function fromIsoDate(iso) {
+      const m = String(iso || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!m) return "";
+      return m[3] + "/" + m[2] + "/" + m[1];
+    }
+    function fillSelect(id, key, value) {
+      const el = document.getElementById(id);
+      const current = String(value || "");
+      const opts = (key === "assigned_operator" ? operators.slice() : (dropdowns[key] || []).slice());
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      el.innerHTML = "<option value=\"\"></option>" + opts.map((o) =>
+        "<option value=\"" + esc(o) + "\"" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>"
+      ).join("");
+    }
+    function updateOwing() {
+      document.getElementById("f_owing").value = owingOf({
+        price_excl_vat: document.getElementById("f_price_excl_vat").value,
+        price_incl_vat: document.getElementById("f_price_incl_vat").value,
+        amount_paid: document.getElementById("f_amount_paid").value
+      });
+    }
+    function syncPaidInFull() {
+      const box = document.getElementById("f_paid_in_full");
+      const paid = document.getElementById("f_amount_paid");
+      if (!box || !paid) return;
+      if (box.checked) {
+        const n = parseMoney(document.getElementById("f_price_incl_vat").value)
+          || parseMoney(inclFromExcl(document.getElementById("f_price_excl_vat").value));
+        paid.value = n ? money(n) : "";
+        paid.readOnly = true;
+      } else {
+        paid.readOnly = false;
+      }
+      updateOwing();
+    }
+    function updateMoneyFields() {
+      const excl = document.getElementById("f_price_excl_vat").value;
+      document.getElementById("f_price_incl_vat").value = excl ? formatRand(inclFromExcl(excl)) : "";
+      syncPaidInFull();
+    }
+    function setFormErr(msg) {
+      document.getElementById("formErr").textContent = msg || "";
+    }
+
+    function render() {
+      layoutFreeze();
+      const q = document.getElementById("q").value.toLowerCase();
+      const table = document.getElementById("grid");
+      let html = "<thead><tr>";
+      HEADERS.forEach(([k, label, , freeze], i) => {
+        html += "<th class=\"" + colClass(k, freeze, "") + "\" style=\"" + colStyle(k, colWidths[i], freeze) + "\">" + esc(label) + "</th>";
+      });
+      html += "</tr></thead><tbody>";
+      let shown = 0;
+      rows.forEach((row, i) => {
+        if (q && searchBlob(row).indexOf(q) === -1) return;
+        shown += 1;
+        html += "<tr data-i=\"" + i + "\">";
+        HEADERS.forEach(([k, , , freeze], c) => {
+          const extra = k === "status" ? statusClass(row[k]) : "";
+          if (k === "_edit") {
+            const printed = printedByOrder[row.order_number];
+            const canCard = canGenerateJobCard(row.status);
+            html += "<td class=\"" + colClass(k, freeze, "") + "\" style=\"" + colStyle(k, colWidths[c], freeze) + "\">" +
+              "<div class=\"row-actions-cell\">" +
+              "<button type=\"button\" class=\"ghost icon-btn\" title=\"Edit order\" aria-label=\"Edit order\" data-edit-order=\"" + i + "\"><i class=\"bi bi-pencil\"></i></button>" +
+              (printed && printed.has_pdf
+                ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Open / print job card\" aria-label=\"Open / print job card\" data-open-job-card=\"" + esc(printed.pdf_url) + "\"><i class=\"bi bi-printer\"></i></button>"
+                : (canCard ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Generate job card\" aria-label=\"Generate job card\" data-job-card=\"" + esc(row.order_number) + "\"><i class=\"bi bi-file-earmark-pdf\"></i></button>" : "")) +
+              "</div></td>";
+            return;
+          }
+          html += "<td class=\"" + colClass(k, freeze, extra) + "\" style=\"" + colStyle(k, colWidths[c], freeze) + "\"><span class=\"cell-text\">" + esc(displayValue(k, row)) + "</span></td>";
+        });
+        html += "</tr>";
+      });
+      if (!shown) {
+        html += "<tr><td class=\"empty\" colspan=\"" + HEADERS.length + "\">" +
+          (rows.length && q ? "No orders match that search." : "No orders yet. New order opens a form. Enquiries that are ready still create an order from the enquiry.") +
+          "</td></tr>";
+      }
+      html += "</tbody>";
+      table.innerHTML = html;
+      const status = document.getElementById("status");
+      if (status && !/Saved|Saving/.test(status.textContent || "")) {
+        status.textContent = (q ? shown + " of " : "") + rows.length + " orders";
+      }
+    }
+
+    function orderDraftId() {
+      if (editingIndex >= 0 && rows[editingIndex] && rows[editingIndex].order_number) return rows[editingIndex].order_number;
+      return "new";
+    }
+    function orderDraftHasWork(d) {
+      if (!d) return false;
+      return ["client_name", "client_number", "email", "address", "city", "quote_number", "detailed_description", "dimensions", "product", "type"]
+        .some((k) => String(d[k] || "").trim());
+    }
+    function persistOrderDraft() {
+      if (!document.getElementById("formMask").classList.contains("open")) return;
+      sdWriteFormDraft("order", orderDraftId(), formPayload());
+    }
+    function applyOrderDraft(id) {
+      const draft = typeof sdReadFormDraft === "function" ? sdReadFormDraft("order", id) : null;
+      if (!orderDraftHasWork(draft)) return false;
+      const skip = { status: true };
+      if (id !== "new") skip.order_number = true;
+      Object.keys(draft).forEach((k) => {
+        if (skip[k]) return;
+        const el = document.getElementById("f_" + k);
+        if (!el) return;
+        if (el.tagName === "SELECT") fillSelect("f_" + k, k, draft[k]);
+        else if (el.type === "checkbox") el.checked = draft[k] === true || draft[k] === "true" || draft[k] === "on" || draft[k] === 1;
+        else if (k === "payment_date") el.value = toIsoDate(draft[k]);
+        else el.value = draft[k] == null ? "" : draft[k];
+      });
+      if (document.getElementById("f_paid_in_full") && document.getElementById("f_paid_in_full").checked) syncPaidInFull();
+      else if (document.getElementById("f_price_incl_vat").value) updateOwing();
+      else updateMoneyFields();
+      return true;
+    }
+    function openForm(index) {
+      const existing = Number.isInteger(index) ? rows[index] : null;
+      editingIndex = existing ? index : -1;
+      setFormErr("");
+      document.getElementById("formTitle").textContent = existing
+        ? "Edit order " + (existing.order_number || "")
+        : "New order";
+      document.getElementById("f_enquiry_no").value = (existing && existing.enquiry_no) || "";
+      const linked = !!(existing && existing.enquiry_no);
+      document.getElementById("linkBox").hidden = !linked;
+      document.getElementById("linkLabel").textContent = linked ? "Linked to enquiry " + existing.enquiry_no : "";
+      document.getElementById("f_order_number").value = (existing && existing.order_number) || nextOrderNumber;
+      document.getElementById("f_order_number").readOnly = !!existing;
+      document.getElementById("orderNoHint").hidden = !!existing;
+      document.getElementById("f_quote_number").value = (existing && existing.quote_number) || "";
+      document.getElementById("f_dimensions").value = (existing && existing.dimensions) || "";
+      document.getElementById("f_detailed_description").value = (existing && existing.detailed_description) || "";
+      document.getElementById("f_client_name").value = (existing && existing.client_name) || "";
+      document.getElementById("f_client_number").value = (existing && existing.client_number) || "";
+      document.getElementById("f_email").value = (existing && existing.email) || "";
+      document.getElementById("f_city").value = (existing && existing.city) || "";
+      document.getElementById("f_address").value = (existing && existing.address) || "";
+      document.getElementById("f_payment_date").value = toIsoDate(existing && existing.payment_date);
+      document.getElementById("f_month_of_sale").value = (existing && existing.month_of_sale) || "";
+      document.getElementById("f_price_excl_vat").value = (existing && existing.price_excl_vat) || "";
+      document.getElementById("f_amount_paid").value = (existing && existing.amount_paid) || "";
+      document.getElementById("f_price_incl_vat").value = existing && existing.price_incl_vat
+        ? formatRand(existing.price_incl_vat)
+        : "";
+      const total = existing
+        ? (parseMoney(existing.price_incl_vat) || parseMoney(inclFromExcl(existing.price_excl_vat)))
+        : 0;
+      const paid = parseMoney(existing && existing.amount_paid);
+      document.getElementById("f_paid_in_full").checked = !!(total > 0 && Math.round((total - paid) * 100) <= 1);
+      document.getElementById("f_status").value = existing ? (existing.status || "Not Yet Started") : "Not Yet Started";
+      DROP_FIELDS.forEach((k) => fillSelect("f_" + k, k, existing ? existing[k] : ""));
+      const restored = applyOrderDraft(orderDraftId());
+      document.getElementById("formFootHint").textContent = restored
+        ? "Unsaved progress from last time is filled in. Save to clear it."
+        : "Progress stays on this device if you close this form. Save to clear it.";
+      if (!(existing && existing.price_incl_vat)) updateMoneyFields();
+      else syncPaidInFull();
+      document.getElementById("formMask").classList.add("open");
+      document.getElementById(existing ? "f_client_name" : "f_order_number").focus();
+    }
+    function closeForm() {
+      persistOrderDraft();
+      document.getElementById("formMask").classList.remove("open");
+      editingIndex = -1;
+    }
+    function formPayload() {
+      const existing = editingIndex >= 0 ? rows[editingIndex] : {};
+      return {
+        enquiry_no: document.getElementById("f_enquiry_no").value || existing.enquiry_no || "",
+        order_number: document.getElementById("f_order_number").value,
+        quote_number: document.getElementById("f_quote_number").value,
+        status: document.getElementById("f_status").value,
+        assigned_operator: document.getElementById("f_assigned_operator").value,
+        type: document.getElementById("f_type").value,
+        category: document.getElementById("f_category").value,
+        product: document.getElementById("f_product").value,
+        variation: document.getElementById("f_variation").value,
+        doors: document.getElementById("f_doors").value,
+        detailed_description: document.getElementById("f_detailed_description").value,
+        dimensions: document.getElementById("f_dimensions").value,
+        powder_coating: document.getElementById("f_powder_coating").value,
+        client_name: document.getElementById("f_client_name").value,
+        client_number: document.getElementById("f_client_number").value,
+        email: document.getElementById("f_email").value,
+        payment_date: fromIsoDate(document.getElementById("f_payment_date").value),
+        address: document.getElementById("f_address").value,
+        province: document.getElementById("f_province").value,
+        price_excl_vat: document.getElementById("f_price_excl_vat").value,
+        price_incl_vat: document.getElementById("f_price_incl_vat").value,
+        amount_paid: document.getElementById("f_amount_paid").value,
+        paid_in_full: document.getElementById("f_paid_in_full").checked,
+        month_of_sale: document.getElementById("f_month_of_sale").value,
+        source: document.getElementById("f_source").value,
+        city: document.getElementById("f_city").value
+      };
+    }
+    async function saveForm() {
+      const payload = formPayload();
+      setFormErr("");
+      if (!String(payload.order_number || "").trim()) {
+        setFormErr("Enter an order number.");
+        document.getElementById("f_order_number").focus();
+        return;
+      }
+      if (!String(payload.client_name || "").trim()) {
+        setFormErr("Enter the client name.");
+        document.getElementById("f_client_name").focus();
+        return;
+      }
+      document.getElementById("saveBtn").disabled = true;
+      try {
+        const r = await sdOfficeFetch("/api/office/orders", { method: "PUT", body: JSON.stringify(payload) });
+        const j = await r.json();
+        if (!j.ok) { setFormErr(j.error || "Save failed"); return; }
+        sdDropFormDraft("order", orderDraftId());
+        document.getElementById("formMask").classList.remove("open");
+        editingIndex = -1;
+        await load();
+        document.getElementById("status").textContent = "Saved " + ((j.row && j.row.order_number) || payload.order_number);
+      } catch (e) {
+        setFormErr(e.message || "Save failed");
+      } finally {
+        document.getElementById("saveBtn").disabled = false;
+      }
+    }
+
+    function viewItem(label, value, wide) {
+      const v = String(value == null ? "" : value).trim();
+      return "<div class=\"view-item" + (wide ? " wide" : "") + "\"><div class=\"view-label\">" + esc(label) + "</div>" +
+        "<div class=\"view-value" + (v ? "" : " empty") + "\">" + esc(v || "—") + "</div></div>";
+    }
+    function lifeItemHtml(ev) {
+      const stage = String((ev && ev.stage) || "order");
+      return "<li><time>" + esc(ev.at_label || ev.at || "") + "</time>" +
+        "<span class=\"stage stage-" + esc(stage) + "\">" + esc(stage) + "</span>" +
+        esc(ev.title || "") +
+        (ev.detail ? "<div class=\"detail\">" + esc(ev.detail) + "</div>" : "") +
+        (ev.actor ? "<div class=\"actor\">" + esc(ev.actor) + "</div>" : "") +
+        "</li>";
+    }
+    function renderLife(j) {
+      const now = j.status ? "Now: " + j.status : "";
+      const linked = j.enquiry_no ? "Enquiry " + j.enquiry_no : "";
+      const sub = [now, linked, j.product].filter(Boolean).join(" · ");
+      const events = j.events || [];
+      if (!events.length) {
+        return "<h2>Journey</h2><p class=\"life-sub\">" + esc(sub || "No dated steps yet.") +
+          "</p><p class=\"life-sub\">Nothing has been recorded from enquiry through delivery yet.</p>";
+      }
+      return "<h2>Journey</h2><p class=\"life-sub\">" + esc(sub) +
+        " — enquiry through shop clocks, materials, paint, and delivery.</p><ol>" +
+        events.map(lifeItemHtml).join("") + "</ol>";
+    }
+    async function fillOrderLife(orderNumber) {
+      const box = document.getElementById("orderLife");
+      if (!box) return;
+      try {
+        const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(orderNumber) + "/life");
+        const j = await r.json();
+        if (!document.getElementById("orderLife")) return;
+        if (!j.ok) {
+          box.innerHTML = "<h2>Journey</h2><p class=\"life-sub\">" + esc(j.error || "Could not load the journey.") + "</p>";
+          return;
+        }
+        box.innerHTML = renderLife(j);
+      } catch (e) {
+        if (document.getElementById("orderLife")) {
+          document.getElementById("orderLife").innerHTML = "<h2>Journey</h2><p class=\"life-sub\">Could not load the journey.</p>";
+        }
+      }
+    }
+    function openView(i) {
+      const row = rows[i];
+      if (!row) return;
+      document.getElementById("viewTitle").textContent = (row.order_number || "Order") + (row.client_name ? " · " + row.client_name : "");
+      let html = "<div class=\"view-grid\">";
+      html += viewItem("Order number", row.order_number);
+      html += viewItem("Quote number", row.quote_number);
+      html += viewItem("Status", row.status);
+      html += viewItem("Assigned operator", row.assigned_operator);
+      html += viewItem("Type", row.type);
+      html += viewItem("CATERGORY", row.category);
+      html += viewItem("Product", row.product);
+      html += viewItem("Variation", row.variation);
+      html += viewItem("Doors", row.doors);
+      html += viewItem("Dimensions", row.dimensions);
+      html += viewItem("Powder coating", row.powder_coating);
+      html += viewItem("Client name", row.client_name, true);
+      html += viewItem("Client number", row.client_number);
+      html += viewItem("Email", row.email);
+      html += viewItem("Province", row.province);
+      html += viewItem("City", row.city);
+      html += viewItem("Address", row.address, true);
+      html += viewItem("Payment date", row.payment_date);
+      html += viewItem("Month of sale", row.month_of_sale);
+      html += viewItem("Source", row.source);
+      html += viewItem("Price excl VAT", row.price_excl_vat);
+      html += viewItem("Price incl VAT", row.price_incl_vat);
+      html += viewItem("Amount paid (Incl VAT)", row.amount_paid);
+      html += viewItem("Owing", owingOf(row));
+      html += "</div>";
+      html += "<div class=\"view-grid\" style=\"margin-top:8px\"><div class=\"view-item wide\"><div class=\"view-label\">Detailed description</div><div class=\"view-value\">" +
+        String(row.detailed_description || "—").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/⟦([^⟧]+)⟧/g, "<mark>$1</mark>").replace(/\[\[([^\]]+)\]\]/g, "<mark>$1</mark>") +
+        "</div></div></div>";
+      html += "<div class=\"life\" id=\"orderLife\"><h2>Journey</h2><p class=\"life-sub\">Loading the journey…</p></div>";
+      document.getElementById("viewBody").innerHTML = html;
+      const enqBtn = document.getElementById("viewEnquiryBtn");
+      enqBtn.hidden = !row.enquiry_no;
+      enqBtn.onclick = () => {
+        if (row.enquiry_no && typeof sdOpenEnquiryProcess === "function") sdOpenEnquiryProcess(row.enquiry_no);
+        else if (row.enquiry_no) location.href = "/enquiries";
+      };
+      const printed = printedByOrder[row.order_number];
+      const printBtn = document.getElementById("viewPrintCardBtn");
+      printBtn.hidden = !(printed && printed.has_pdf);
+      printBtn.onclick = () => {
+        if (printed && printed.pdf_url) window.open(printed.pdf_url, "_blank", "noopener");
+      };
+      const cardBtn = document.getElementById("viewJobCardBtn");
+      cardBtn.hidden = !canGenerateJobCard(row.status);
+      cardBtn.onclick = () => {
+        location.href = "/orders/job-card?order=" + encodeURIComponent(row.order_number || "");
+      };
+      document.getElementById("viewEditBtn").onclick = () => {
+        closeView();
+        openForm(i);
+      };
+      document.getElementById("viewMask").classList.add("open");
+      fillOrderLife(row.order_number);
+    }
+    function closeView() {
+      document.getElementById("viewMask").classList.remove("open");
+    }
+
+    function renderReadyEnquiries(list) {
+      const box = document.getElementById("readyBox");
+      const host = document.getElementById("readyList");
+      if (!box || !host) return;
+      const rows = Array.isArray(list) ? list : [];
+      if (!rows.length) {
+        box.hidden = true;
+        host.innerHTML = "";
+        return;
+      }
+      box.hidden = false;
+      host.innerHTML = rows.map((row) => {
+        const no = String(row.enquiry_no || "");
+        return "<div class=\"ready-row\">" +
+          "<b>" + esc(no) + "</b>" +
+          "<span>" + esc(row.client_name || "No client") + "</span>" +
+          "<span>" + esc(row.product || "") + "</span>" +
+          "<span>" + esc(row.status || "Ordered") + (row.quote_no ? " · " + esc(row.quote_no) : "") + "</span>" +
+          "<button type=\"button\" data-add-enquiry=\"" + esc(no) + "\">Add to Orders</button>" +
+          "</div>";
+      }).join("");
+      host.querySelectorAll("[data-add-enquiry]").forEach((btn) => {
+        btn.onclick = () => {
+          location.href = "/orders/from-enquiry?enquiry=" + encodeURIComponent(btn.getAttribute("data-add-enquiry") || "");
+        };
+      });
+    }
+
+    async function load() {
+      const [ordersRes, dropRes, cardsRes] = await Promise.all([
+        sdOfficeFetch("/api/office/orders"),
+        sdOfficeFetch("/api/office/dropdowns"),
+        sdOfficeFetch("/api/office/job-cards")
+      ]);
+      const j = await ordersRes.json();
+      const d = await dropRes.json();
+      const cards = await cardsRes.json().catch(function () { return {}; });
+      if (!j.ok) {
+        document.getElementById("status").textContent = j.error || "Could not load orders";
+        return;
+      }
+      rows = j.rows || [];
+      dropdowns = d.dropdowns || {};
+      operators = j.operators || [];
+      nextOrderNumber = j.nextOrderNumber || "S1";
+      printedByOrder = {};
+      (cards.ok && cards.rows ? cards.rows : []).forEach((card) => {
+        if (card && card.order_number) printedByOrder[card.order_number] = card;
+      });
+      if (j.canManageUsers != null) canManage = !!j.canManageUsers;
+      const clearBtn = document.getElementById("clearAllBtn");
+      if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
+      document.getElementById("status").textContent = rows.length + " orders";
+      try {
+        const pasted = sessionStorage.getItem("sd-paste-added");
+        if (pasted) {
+          sessionStorage.removeItem("sd-paste-added");
+          document.getElementById("status").textContent = pasted;
+        }
+      } catch (e) {}
+      renderReadyEnquiries(j.readyEnquiries || []);
+      render();
+    }
+    function openClearAll() {
+      document.getElementById("clearConfirm").value = "";
+      document.getElementById("clearErr").textContent = "";
+      document.getElementById("clearMask").classList.add("open");
+      document.getElementById("clearConfirm").focus();
+    }
+    function closeClearAll() {
+      document.getElementById("clearMask").classList.remove("open");
+    }
+    async function confirmClearAll() {
+      const err = document.getElementById("clearErr");
+      err.textContent = "";
+      const r = await sdOfficeFetch("/api/office/orders/clear-all", {
+        method: "POST",
+        body: JSON.stringify({ confirm: document.getElementById("clearConfirm").value })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { err.textContent = j.error || "Could not clear orders"; return; }
+      closeClearAll();
+      await load();
+      document.getElementById("status").textContent = "Cleared " + (j.removed || 0) + " orders. Enquiries were not deleted.";
+    }
+    window.openClearAll = openClearAll;
+    window.closeClearAll = closeClearAll;
+    window.confirmClearAll = confirmClearAll;
+
+    document.getElementById("grid").onclick = (e) => {
+      const printed = e.target.closest("[data-open-job-card]");
+      if (printed) {
+        window.open(printed.getAttribute("data-open-job-card"), "_blank", "noopener");
+        return;
+      }
+      const card = e.target.closest("[data-job-card]");
+      if (card) {
+        location.href = "/orders/job-card?order=" + encodeURIComponent(card.getAttribute("data-job-card"));
+        return;
+      }
+      const edit = e.target.closest("[data-edit-order]");
+      if (edit) {
+        openForm(Number(edit.getAttribute("data-edit-order")));
+        return;
+      }
+      const tr = e.target.closest("tr[data-i]");
+      if (tr) openView(Number(tr.getAttribute("data-i")));
+    };
+    document.getElementById("openEnquiryBtn").onclick = () => {
+      const no = document.getElementById("f_enquiry_no").value;
+      if (no && typeof sdOpenEnquiryProcess === "function") sdOpenEnquiryProcess(no);
+      else if (no) location.href = "/enquiries";
+    };
+    document.getElementById("f_price_excl_vat").oninput = updateMoneyFields;
+    document.getElementById("f_amount_paid").oninput = updateOwing;
+    document.getElementById("f_paid_in_full").onchange = syncPaidInFull;
+    document.getElementById("form").addEventListener("input", persistOrderDraft);
+    document.getElementById("form").addEventListener("change", persistOrderDraft);
+    window.addEventListener("pagehide", persistOrderDraft);
+    document.getElementById("formMask").addEventListener("click", (e) => {
+      if (e.target.id === "formMask") closeForm();
+    });
+    document.getElementById("viewMask").addEventListener("click", (e) => {
+      if (e.target.id === "viewMask") closeView();
+    });
+    let qTimer = 0;
+    document.getElementById("q").oninput = () => {
+      clearTimeout(qTimer);
+      qTimer = setTimeout(render, 180);
+    };
+    let resizeTimer = 0;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(render, 120);
+    });
+    document.getElementById("markImportantBtn").onclick = () => {
+      const box = document.getElementById("f_detailed_description");
+      const start = box.selectionStart;
+      const end = box.selectionEnd;
+      if (start == null || end == null || end <= start) {
+        setFormErr("Select the words in the description first, then mark them as important.");
+        return;
+      }
+      const val = box.value;
+      const picked = val.slice(start, end);
+      if (picked.indexOf("⟦") !== -1 || picked.indexOf("[[") !== -1) return;
+      box.value = val.slice(0, start) + "⟦" + picked + "⟧" + val.slice(end);
+      setFormErr("");
+      box.focus();
+      box.selectionStart = start;
+      box.selectionEnd = end + 2;
+    };
+    sdRequireOffice("orders").then((p) => {
+      if (!p) return;
+      canManage = !!p.canManageUsers;
+      const clearBtn = document.getElementById("clearAllBtn");
+      if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
+      load();
+    });
+  </script>
+  <script src="/enquiry-process.js?v=corr-links"></script>
+</body>
+</html>
