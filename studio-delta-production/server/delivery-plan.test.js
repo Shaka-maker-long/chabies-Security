@@ -75,10 +75,11 @@ assert.ok(auto.count > 0, auto.error || "auto plan should place work");
 const q = plan.queueOrders();
 assert.ok(q[0].order_number === "S260702", "earliest LD is First Out");
 assert.strictEqual(q[0].delivery_code, "LD");
-assert.ok(!q.some((row) => row.processes.some((p) => p.auto)));
+assert.ok(q.some((row) => row.processes.some((p) => p.process === "Grinding" && p.auto)));
 
 const store = plan.load();
-assert.ok(!store.blocks.some((b) => b.process === "Grinding"), "auto plan leaves grinding for the user");
+assert.ok(store.blocks.some((b) => b.process === "Grinding"), "auto plan books grinding");
+assert.strictEqual(store.blocks.find((b) => b.process === "Grinding").workerName, "Thabo");
 const cutEarly = store.blocks.find((b) => b.orderId === "S260702" && b.process === "Profile Cutting");
 const cutLate = store.blocks.find((b) => b.orderId === "S260701" && b.process === "Profile Cutting");
 assert.ok(cutEarly && cutLate);

@@ -931,13 +931,10 @@ function placeContiguousTask(fromMs, durationMinutes, busy) {
 }
 
 function grindingPool(users) {
-  return (users || staff.listUsers())
-    .filter((u) => {
-      const tasks = u.tasks || [];
-      if (tasks.indexOf("Grinding") === -1) return false;
-      return GRIND_POOL_TASKS.some((t) => tasks.indexOf(t) !== -1);
-    })
-    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const list = users || staff.listUsers();
+  const grinders = list.filter((u) => (u.tasks || []).indexOf("Grinding") !== -1);
+  const metal = grinders.filter((u) => GRIND_POOL_TASKS.some((t) => (u.tasks || []).indexOf(t) !== -1));
+  return (metal.length ? metal : grinders).sort((a, b) => String(a.name).localeCompare(String(b.name)));
 }
 
 function placeGrindingOnOpenSlot(order, minutes, fromMs, busy, users) {
@@ -1003,7 +1000,7 @@ function scheduleBatch({ jobs, existingBlocks, fromMs, skipGrinding }) {
   let busy = (existingBlocks || []).slice();
   const startMs = nextWorkInstant(fromMs != null ? fromMs : Date.now());
   const drafts = [];
-  const noAutoGrind = skipGrinding !== false;
+  const noAutoGrind = skipGrinding === true;
 
   (jobs || []).forEach((job) => {
     const order = job.order;
@@ -1117,13 +1114,8 @@ function scheduleSelected(body) {
       assignments: assignments[id] || assignments[order.order_number] || {}
     };
   });
-  const skipGrinding = !jobs.some((j) => j.assignments && j.assignments.Grinding);
-  const remaining = store.blocks.filter((b) => {
-    if (ids.indexOf(formatOrderId(b.orderId)) === -1) return true;
-    if (skipGrinding && b.process === "Grinding") return true;
-    return false;
-  });
-  const created = scheduleBatch({ jobs, existingBlocks: remaining, fromMs, skipGrinding }).blocks;
+  const remaining = store.blocks.filter((b) => ids.indexOf(formatOrderId(b.orderId)) === -1);
+  const created = scheduleBatch({ jobs, existingBlocks: remaining, fromMs, skipGrinding: false }).blocks;
   store.blocks = remaining.concat(created);
   store.assignments = Object.assign({}, store.assignments || {});
   ids.forEach((id) => {
@@ -1171,7 +1163,7 @@ function autoPlanFromDeliveries(opts) {
     if (!order) return;
     const remaining = remainingPlanForStatus(order.status);
     const minutes = minutesByProcessFor(order.product);
-    const has = remaining.processes.some((p) => p !== "Grinding" && minutes[p] > 0);
+    const has = remaining.processes.some((p) => minutes[p] > 0);
     if (!has && !(remaining.paintWait && minutes.Assembly > 0)) return;
     jobs.push({
       order,
@@ -1184,7 +1176,6 @@ function autoPlanFromDeliveries(opts) {
     if (!b) return false;
     if (b.kind === "other") return true;
     if (ids.indexOf(formatOrderId(b.orderId)) === -1) return true;
-    if (b.process === "Grinding") return true;
     return false;
   });
   let created = [];
@@ -1193,7 +1184,7 @@ function autoPlanFromDeliveries(opts) {
       jobs,
       existingBlocks: keep,
       fromMs: Number.isFinite(fromMs) ? fromMs : Date.now(),
-      skipGrinding: true
+      skipGrinding: false
     }).blocks;
   } catch (e) {
     return { count: 0, orders: jobs.length, error: e.message || String(e) };
@@ -1613,14 +1604,16 @@ function queueOrders() {
         const minutes = staff.durationMinutes(o.product, process) || 0;
         const hours = minutes > 0 ? Math.round((minutes / 60) * 100) / 100 : 0;
         const workers = workersForProcess(process, users);
-        const suggested = (assign[process] && [assign[process]]) || defaultCrewNames(process, users);
+        const grindAuto = process === "Grinding" && !assign[process];
+        const suggested = (assign[process] && [assign[process]])
+          || (process === "Grinding" ? grindingPool(users).map((u) => u.name) : defaultCrewNames(process, users));
         return {
           process,
           hours,
           minutes,
-          auto: false,
+          auto: grindAuto,
           workers,
-          suggested: suggested[0] || "",
+          suggested: grindAuto ? "" : (suggested[0] || ""),
           suggestedAll: suggested
         };
       });
@@ -1686,7 +1679,7 @@ function getBoard(week) {
     processes: PLANNED_PROCESSES.slice(),
     journeyWeeks: journeyWeeks(weekStart, JOURNEY_WEEK_COUNT),
     firstPlannedWeek: journey.days[0] ? weekMondayIso(journey.days[0].iso) : "",
-    autoProcesses: [],
+    autoProcesses: ["Grinding"],
     crew: DEFAULT_CREW,
     windows: {
       morning: "07:45–12:00",
