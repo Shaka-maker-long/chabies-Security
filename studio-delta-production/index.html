@@ -1565,13 +1565,15 @@
 
     <div id="view-admin-workers" class="view-section container d-none-view">
       <div id="idleWorkersPanel" class="card p-3 mb-4 idle-card">
+        <div class="idle-only">
         <div class="d-flex justify-content-between align-items-center mb-2">
           <h5 class="brand-font m-0">Idle workers</h5>
           <button class="btn btn-sm btn-outline-dark" onclick="loadIdleWorkers()"><i class="bi bi-arrow-clockwise"></i></button>
         </div>
-        <p class="small text-muted mb-2">During shift hours, workers with no running job appear here. Assign a non-order task; it closes automatically when they start an order.</p>
+        <p class="small text-muted mb-2">Production people idle more than 15 minutes stay here until Siya or the Manager records what they actually did. If they clock on again, the hole stays open. Other needs a reason.</p>
         <div id="idleWorkersList"><span class="text-muted small">Loading…</span></div>
         <hr>
+        </div>
         <h5 class="brand-font">Overtime</h5>
         <p class="small text-muted">Work lock is off for testing. After 16:00 and weekend lock, and the 8-hour cap, stay off until WORK_LOCKS_DISABLED is set back to false.</p>
         <div class="d-flex gap-2 flex-wrap mb-2">
@@ -7938,14 +7940,21 @@
 
     function loadIdleWorkers() {
       const box = document.getElementById('idleWorkersList');
+      document.querySelectorAll('#idleWorkersPanel .idle-only').forEach((el) => {
+        el.hidden = !sessionSeesIdleAlerts();
+      });
       if (!box) return;
       google.script.run.withSuccessHandler(data => {
         const idle = (data && data.idle) || data || {};
         const workers = idle.workers || [];
         const tasks = idle.tasks || [];
-        box.innerHTML = workers.length
-          ? workers.map(w => idleWorkerRowHtml(w, tasks, 'idle-task-')).join('')
-          : '<span class="text-muted small">No idle workers right now.</span>';
+        if (sessionSeesIdleAlerts()) {
+          box.innerHTML = workers.length
+            ? workers.map(w => idleWorkerRowHtml(w, tasks, 'idle-task-')).join('')
+            : '<span class="text-muted small">No idle workers right now.</span>';
+        } else {
+          box.innerHTML = '';
+        }
         const otSel = document.getElementById('otWorker');
         if (otSel) {
           const names = (data && data.workers) || [];
@@ -8003,22 +8012,35 @@
     function idleWorkerRowHtml(w, tasks, idPrefix) {
       const opts = tasks.map(task => '<option value="'+task+'">'+task+'</option>').join('');
       const since = w.idleSince ? new Date(w.idleSince).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : 'unknown';
+      const until = w.idleUntil ? new Date(w.idleUntil).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '';
+      const when = w.liveAgain && until
+        ? 'was idle ' + since + '–' + until + ' — now on a job'
+        : 'idle since ' + since;
       const nameAttr = String(w.worker || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
       const nameJs = JSON.stringify(String(w.worker || ''));
       return `<div class="d-flex flex-wrap gap-2 align-items-center mb-2" data-idle-worker="${nameAttr}">
             <strong>${nameAttr}</strong>
             <span class="badge bg-light text-dark border">${w.role || ''}</span>
-            <span class="small text-muted">idle since ${since}</span>
-            <select class="form-select form-select-sm" style="max-width:220px" id="${idPrefix}${w.row}">${opts}</select>
+            <span class="small text-muted">${when}</span>
+            <select class="form-select form-select-sm" style="max-width:220px" id="${idPrefix}${w.row}" onchange="toggleIdleOther('${idPrefix}', ${w.row})">${opts}</select>
+            <input class="form-control form-control-sm" style="max-width:220px;display:none" id="${idPrefix}note-${w.row}" placeholder="If Other, specify what they did">
             <button class="btn btn-sm btn-dark" onclick="assignIdleTask(${nameJs}, ${w.row}, '${idPrefix}')">ASSIGN TASK</button>
           </div>`;
     }
 
+    function toggleIdleOther(idPrefix, row) {
+      const sel = document.getElementById(idPrefix + row);
+      const note = document.getElementById(idPrefix + 'note-' + row);
+      if (!sel || !note) return;
+      note.style.display = String(sel.value || '').toLowerCase() === 'other' ? '' : 'none';
+    }
+
     function sessionSeesIdleAlerts() {
       if (!session.name) return false;
-      if (session.isAdmin || session.isQcOnly) return true;
-      if (session.role === 'Quality Control') return true;
-      return (session.tasks || []).indexOf('Quality Control') !== -1;
+      if (session.canSeeIdleAlerts) return true;
+      const title = String(session.jobTitle || session.role || '').trim().toLowerCase();
+      if (title === 'manager') return true;
+      return String(session.name || '').trim().toLowerCase() === 'siya';
     }
 
     function startIdleAlertPolling() {
@@ -8080,12 +8102,18 @@
     function assignIdleTask(worker, row, idPrefix) {
       const prefix = idPrefix || 'idle-task-';
       const sel = document.getElementById(prefix + row);
+      const noteEl = document.getElementById(prefix + 'note-' + row);
       const task = sel ? sel.value : 'Other';
+      const note = noteEl ? String(noteEl.value || '').trim() : '';
+      if (String(task).toLowerCase() === 'other' && !note) {
+        showAlert('If it is Other, specify what they did.');
+        return;
+      }
       google.script.run.withSuccessHandler(res => {
         if (!res.success) showAlert(res.message || 'Assign failed');
         loadIdleWorkers();
         pollIdleAlertsNow();
-      }).assignIndirectTask(worker, task, session.name);
+      }).assignIndirectTask(worker, task, session.name, note);
     }
 
     let activityLoadTimer = null;

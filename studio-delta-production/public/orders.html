@@ -23,6 +23,14 @@
     button.danger { background:#fff; color:var(--bad); border-color:#fda29b; }
     button:disabled { opacity:.55; cursor:not-allowed; }
     .wrap { overflow:auto; height:calc(100vh - 58px); }
+    .ready-box { margin:12px 16px 0; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+    .ready-box[hidden] { display:none !important; }
+    .ready-box h2 { font-family: Outfit, Inter, sans-serif; font-size:15px; margin:0 0 4px; }
+    .ready-box .hint { margin:0 0 10px; }
+    .ready-list { display:flex; flex-direction:column; gap:8px; }
+    .ready-row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:#f8fafc; }
+    .ready-row b { font-size:13px; }
+    .ready-row span { font-size:13px; color:var(--muted); }
     table { border-collapse:separate; border-spacing:0; min-width:3800px; background:#fff; font-size:12px; }
     th, td { border:1px solid var(--line); padding:6px 8px; vertical-align:middle; white-space:nowrap; background:#fff; height:36px; }
     th { position:sticky; top:0; background:var(--head); z-index:4; text-align:left; font-size:11px; letter-spacing:.02em; height:34px; }
@@ -92,6 +100,8 @@
     @media (max-width: 720px) {
       .stack-grid, .stack-grid.four, .view-grid { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
+      .ready-row { display:grid; grid-template-columns:1fr; }
+      .ready-row button { width:100%; }
     }
   </style>
 </head>
@@ -118,6 +128,11 @@
       <button class="danger" type="button" id="clearAllBtn" style="display:none" onclick="openClearAll()">Clear all orders</button>
     </div>
   </header>
+  <div id="readyBox" class="ready-box" hidden>
+    <h2>Ready to add to Orders</h2>
+    <p class="hint">These enquiries are Ordered and not on this sheet yet. Add the order here.</p>
+    <div class="ready-list" id="readyList"></div>
+  </div>
   <div class="wrap">
     <table id="grid"></table>
   </div>
@@ -735,6 +750,34 @@
       document.getElementById("viewMask").classList.remove("open");
     }
 
+    function renderReadyEnquiries(list) {
+      const box = document.getElementById("readyBox");
+      const host = document.getElementById("readyList");
+      if (!box || !host) return;
+      const rows = Array.isArray(list) ? list : [];
+      if (!rows.length) {
+        box.hidden = true;
+        host.innerHTML = "";
+        return;
+      }
+      box.hidden = false;
+      host.innerHTML = rows.map((row) => {
+        const no = String(row.enquiry_no || "");
+        return "<div class=\"ready-row\">" +
+          "<b>" + esc(no) + "</b>" +
+          "<span>" + esc(row.client_name || "No client") + "</span>" +
+          "<span>" + esc(row.product || "") + "</span>" +
+          "<span>" + esc(row.status || "Ordered") + (row.quote_no ? " · " + esc(row.quote_no) : "") + "</span>" +
+          "<button type=\"button\" data-add-enquiry=\"" + esc(no) + "\">Add to Orders</button>" +
+          "</div>";
+      }).join("");
+      host.querySelectorAll("[data-add-enquiry]").forEach((btn) => {
+        btn.onclick = () => {
+          location.href = "/orders/from-enquiry?enquiry=" + encodeURIComponent(btn.getAttribute("data-add-enquiry") || "");
+        };
+      });
+    }
+
     async function load() {
       const [ordersRes, dropRes, cardsRes] = await Promise.all([
         sdOfficeFetch("/api/office/orders"),
@@ -760,6 +803,7 @@
       const clearBtn = document.getElementById("clearAllBtn");
       if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       document.getElementById("status").textContent = rows.length + " orders";
+      renderReadyEnquiries(j.readyEnquiries || []);
       render();
     }
     function openClearAll() {

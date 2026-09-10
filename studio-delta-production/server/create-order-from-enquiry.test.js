@@ -314,6 +314,8 @@ assert.strictEqual(draft.shared.city, "");
 assert.strictEqual(draft.delivery.scheduleCode, "LD");
 assert.ok(draft.dropdowns.type.indexOf("Standard") !== -1);
 
+assert.ok(db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#5001"), "ordered enquiries with no Orders row are ready to add");
+
 const created = db.createOrdersFromEnquiryForm("#5001", {
   order_number: "S260100",
   delivery_date: "2026-10-15",
@@ -345,6 +347,7 @@ assert.strictEqual(created.rows[2].product, "Air Bar Stool");
 assert.strictEqual(created.rows[2].type, "Custom");
 assert.strictEqual(db.getEnquiry("#5001").order_number, "S260100 A");
 assert.strictEqual(db.nextStudioOrderNumber(), "S260101");
+assert.ok(!db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#5001"), "enquiries already on Orders leave the ready-to-add list");
 
 const items = db.listDeliveryItems().items.filter((it) => String(it.order_number).indexOf("S260100") === 0);
 assert.strictEqual(items.length, 3);

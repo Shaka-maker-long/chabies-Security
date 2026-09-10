@@ -10,7 +10,7 @@ process.env.TZ = "Africa/Johannesburg";
 delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
-const { initWorkbook, getBook } = require("./workbook-store");
+const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const db = require("./db");
 const staff = require("./staff");
 const plan = require("./floor-planning");
@@ -505,5 +505,34 @@ const withPhoto = plan.buildJourney([{
 assert.strictEqual(withPhoto.orders[0].product, "Talitha Bookshelf");
 assert.strictEqual(withPhoto.orders[0].imageUrl, talithaUrl, "Journey carries the catalog photo for hover");
 assert.strictEqual(compared.imageUrl || "", "", "unknown products have no photo");
+
+const idleSheet = getBook().getSheetByName("Idle_Alerts");
+idleSheet.appendRow([
+  "2026-09-10",
+  "Willard",
+  "Cutter",
+  new Date("2026-09-10T06:00:00.000Z"),
+  new Date("2026-09-10T06:15:00.000Z"),
+  "Assigned",
+  "Cleaning",
+  new Date("2026-09-10T06:45:00.000Z"),
+  ""
+]);
+idleSheet.appendRow([
+  "2026-09-10",
+  "Sipho",
+  "Tagger",
+  new Date("2026-09-10T07:00:00.000Z"),
+  new Date("2026-09-10T07:15:00.000Z"),
+  "Open",
+  "",
+  "",
+  ""
+]);
+persistWorkbook();
+const idleJourney = plan.buildJourney([]);
+assert.ok((idleJourney.otherActuals || []).some((row) => row.code === "O" && row.title === "Cleaning"), JSON.stringify(idleJourney.otherActuals));
+assert.ok((idleJourney.otherActuals || []).every((row) => String(row.workerName) !== "Sipho"), "open idle holes are not Journey actuals yet");
+assert.strictEqual(plan.PROCESS_CODES.Other, "O");
 
 console.log("floor-planning.test.js ok");
