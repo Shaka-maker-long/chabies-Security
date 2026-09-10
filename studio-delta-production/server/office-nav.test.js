@@ -541,6 +541,8 @@ assert.ok(planningHtml.indexOf("if Cutting ran in week 2") !== -1, "Actual can s
 assert.ok(planningHtml.indexOf("class='product'") !== -1, "Journey shows the product under the order number");
 assert.ok(planningHtml.indexOf('btn("plan", "Planned")') !== -1, "Journey can filter to Planned rows");
 assert.ok(planningHtml.indexOf('btn("actual", "Actual")') !== -1, "Journey can filter to Actual rows");
+assert.ok(planningHtml.indexOf("function setJourneyKind") !== -1, "Plan / Actual filter has a click handler");
+assert.ok(planningHtml.indexOf("onclick='setJourneyKind") !== -1, "Plan / Actual buttons call the filter handler");
 assert.ok(planningHtml.indexOf("Show planned or actual") !== -1, "Planned / Actual filter is labelled");
 assert.ok(planningHtml.indexOf("flex:1 1 100%") !== -1, "Plan / Actual buttons sit on their own row so they do not cover back links");
 assert.ok(planningHtml.indexOf("Production Meeting") !== -1 && planningHtml.indexOf("Cleaning") !== -1, "People calendar must highlight Production Meeting and Cleaning");
