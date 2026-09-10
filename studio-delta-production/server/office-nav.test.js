@@ -534,6 +534,10 @@ assert.ok(planningHtml.indexOf('journeyLevel === "times" || journeyLevel === "da
 assert.ok(planningHtml.indexOf("← Week view") !== -1 && planningHtml.indexOf("← Day view") !== -1, "Journey has back buttons to week and day views");
 assert.ok(planningHtml.indexOf("rowspan") !== -1, "same order numbers are merged across people");
 assert.ok(planningHtml.indexOf("C profile cutting") !== -1);
+assert.ok(planningHtml.indexOf("<th class='kind'>Kind</th>") !== -1, "Journey has a Plan / Actual kind column");
+assert.ok(planningHtml.indexOf(">Plan<") !== -1 && planningHtml.indexOf(">Actual<") !== -1, "each activity has a Plan row and an Actual row");
+assert.ok(planningHtml.indexOf('getAttribute("data-kind") === "actual"') !== -1, "Actual chips are marked so they are not dragged");
+assert.ok(planningHtml.indexOf("if Cutting ran in week 2") !== -1, "Actual can sit in a later week than Plan");
 assert.ok(planningHtml.indexOf("Production Meeting") !== -1 && planningHtml.indexOf("Cleaning") !== -1, "People calendar must highlight Production Meeting and Cleaning");
 assert.ok(planningHtml.indexOf("Compare with") !== -1, "People calendar must allow comparing two people");
 assert.ok(planningHtml.indexOf("Add other task") !== -1, "People calendar can add other tasks");

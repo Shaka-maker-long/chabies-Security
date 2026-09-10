@@ -10,7 +10,7 @@ process.env.TZ = "Africa/Johannesburg";
 delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
-const { initWorkbook } = require("./workbook-store");
+const { initWorkbook, getBook } = require("./workbook-store");
 const db = require("./db");
 const staff = require("./staff");
 const plan = require("./floor-planning");
@@ -310,6 +310,7 @@ assert.strictEqual(trip.rows.find((r) => r.process === "Welding").workerName, "T
 assert.ok(trip.rows.find((r) => r.process === "Tagging").days.indexOf("2026-09-08") !== -1);
 assert.ok(trip.rows.find((r) => r.process === "Powder coating").days.indexOf("2026-09-14") !== -1);
 assert.ok(trip.rows.find((r) => r.process === "Assembly").days.indexOf("2026-09-21") !== -1);
+assert.deepStrictEqual(trip.rows.find((r) => r.process === "Profile Cutting").actual.days, [], "no clock yet means an empty Actual row");
 assert.ok(journey.days.some((d) => d.iso === "2026-09-21"));
 assert.ok(!journey.days.some((d) => d.iso === "2026-09-12" || d.iso === "2026-09-13"), "weekends stay off the journey");
 
@@ -463,5 +464,28 @@ const byStart = plan.getBoard("2026-09-08").journey.orders.map((o) => o.orderId)
 assert.strictEqual(byStart[0], "S260001 F", "the order that starts first is listed first, not A–Z");
 assert.ok(byStart.indexOf("S260001 F") < byStart.indexOf("S260001 A"));
 plan.save(priorBlocks);
+
+assert.strictEqual(plan.matchJourneyProcess("Profile Cutter"), "Profile Cutting");
+getBook().getSheetByName("Production_Log").appendRow([
+  "log_cut_week2",
+  "S260100 A",
+  "Willard",
+  "Profile Cutting",
+  "Done",
+  new Date("2026-09-15T05:45:00.000Z"),
+  new Date("2026-09-15T06:45:00.000Z"),
+  "",
+  "",
+  "",
+  0,
+  "",
+  ""
+]);
+const compared = plan.getBoard("2026-09-08").journey.orders.find((o) => o.orderId === "S260100 A");
+const cutPlan = compared.rows.find((r) => r.process === "Profile Cutting");
+assert.ok(cutPlan.days.indexOf("2026-09-08") !== -1, "plan stays on the booked Monday");
+assert.ok(cutPlan.actual.days.indexOf("2026-09-15") !== -1, "actual Cutting lands in the week it was clocked");
+assert.ok(String(cutPlan.actual.start).indexOf("2026-09-15T07:45") === 0);
+assert.ok(compared.rows.find((r) => r.process === "Tagging").actual.days.length === 0, "other processes stay empty until clocked");
 
 console.log("floor-planning.test.js ok");
