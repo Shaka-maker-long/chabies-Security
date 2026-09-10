@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const { dataDir, getBook } = require("./workbook-store");
 const { listOrders, formatOrderId } = require("./db");
 const staff = require("./staff");
+const catalog = require("./product-catalog");
 
 const ZONE = "+02:00";
 const PAINT_WORKER_ID = "__paint_shop__";
@@ -464,6 +465,10 @@ function occupiedWorkdays(block) {
 function emptyActual() {
   return { start: "", end: "", days: [], workerId: "", workerName: "", bouts: [] };
 }
+function productImageUrl(product) {
+  const found = catalog.lookupProduct(product);
+  return (found && found.imageUrl) || "";
+}
 
 function matchJourneyProcess(task) {
   const s = String(task || "").toLowerCase();
@@ -634,9 +639,11 @@ function buildJourney(blocks) {
         if (row.start && (!start || row.start < start)) start = row.start;
         if (row.end && (!end || row.end > end)) end = row.end;
       });
+      const product = rows[0] ? rows[0].product : "";
       return {
         orderId: id,
-        product: rows[0] ? rows[0].product : "",
+        product,
+        imageUrl: productImageUrl(product),
         start,
         end,
         rows
@@ -1501,5 +1508,6 @@ module.exports = {
   USER_ASSIGNED_PROCESSES,
   weekStartingOrders,
   attachActuals,
-  matchJourneyProcess
+  matchJourneyProcess,
+  productImageUrl
 };

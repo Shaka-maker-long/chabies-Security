@@ -488,4 +488,22 @@ assert.ok(cutPlan.actual.days.indexOf("2026-09-15") !== -1, "actual Cutting land
 assert.ok(String(cutPlan.actual.start).indexOf("2026-09-15T07:45") === 0);
 assert.ok(compared.rows.find((r) => r.process === "Tagging").actual.days.length === 0, "other processes stay empty until clocked");
 
+const catalog = require("./product-catalog");
+const talithaUrl = catalog.lookupProduct("Talitha Bookshelf").imageUrl;
+assert.ok(talithaUrl && /TALITHA/i.test(talithaUrl));
+const withPhoto = plan.buildJourney([{
+  id: "photo-talitha",
+  orderId: "S260193",
+  product: "Talitha Bookshelf",
+  process: "Tagging",
+  workerId: "Sipho",
+  workerName: "Sipho",
+  start: "2026-09-10T07:45:00+02:00",
+  end: "2026-09-10T08:45:00+02:00",
+  kind: "work"
+}]);
+assert.strictEqual(withPhoto.orders[0].product, "Talitha Bookshelf");
+assert.strictEqual(withPhoto.orders[0].imageUrl, talithaUrl, "Journey carries the catalog photo for hover");
+assert.strictEqual(compared.imageUrl || "", "", "unknown products have no photo");
+
 console.log("floor-planning.test.js ok");

@@ -540,7 +540,9 @@ assert.ok(planningHtml.indexOf("function chipsForWeek") !== -1 && planningHtml.i
 assert.ok(planningHtml.indexOf("not on separate task rows") !== -1, "week-view help says tasks stay in the same cell");
 assert.ok(planningHtml.indexOf('getAttribute("data-kind") === "actual"') !== -1, "Actual chips are marked so they are not dragged");
 assert.ok(planningHtml.indexOf("if Cutting ran in week 2") !== -1, "Actual can sit in a later week than Plan");
-assert.ok(planningHtml.indexOf("class='product'") !== -1, "Journey shows the product under the order number");
+assert.ok(planningHtml.indexOf("class='product") !== -1, "Journey shows the product under the order number");
+assert.ok(planningHtml.indexOf("data-product-shot") !== -1 && planningHtml.indexOf("id=\"productShot\"") !== -1, "hover the product name to see the catalog photo");
+assert.ok(planningHtml.indexOf("Hover the product name") !== -1, "week view tells you to hover the product");
 assert.ok(planningHtml.indexOf('btn("plan", "Planned")') !== -1, "Journey can filter to Planned rows");
 assert.ok(planningHtml.indexOf('btn("actual", "Actual")') !== -1, "Journey can filter to Actual rows");
 assert.ok(planningHtml.indexOf("function setJourneyKind") !== -1, "Plan / Actual filter has a click handler");
