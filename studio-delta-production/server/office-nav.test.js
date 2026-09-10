@@ -536,6 +536,8 @@ assert.ok(planningHtml.indexOf("rowspan") !== -1, "same order numbers are merged
 assert.ok(planningHtml.indexOf("C profile cutting") !== -1);
 assert.ok(planningHtml.indexOf("<th class='kind'>Kind</th>") !== -1, "Journey has a Plan / Actual kind column");
 assert.ok(planningHtml.indexOf(">Plan<") !== -1 && planningHtml.indexOf(">Actual<") !== -1, "each activity has a Plan row and an Actual row");
+assert.ok(planningHtml.indexOf("function chipsForWeek") !== -1 && planningHtml.indexOf("function weekKindEntries") !== -1, "week view keeps an order’s tasks together on one Plan row and one Actual row");
+assert.ok(planningHtml.indexOf("not on separate task rows") !== -1, "week-view help says tasks stay in the same cell");
 assert.ok(planningHtml.indexOf('getAttribute("data-kind") === "actual"') !== -1, "Actual chips are marked so they are not dragged");
 assert.ok(planningHtml.indexOf("if Cutting ran in week 2") !== -1, "Actual can sit in a later week than Plan");
 assert.ok(planningHtml.indexOf("class='product'") !== -1, "Journey shows the product under the order number");
