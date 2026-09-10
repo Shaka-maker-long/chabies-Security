@@ -222,7 +222,7 @@
   <div class="layout">
     <section class="queue">
       <h2>Plan work</h2>
-      <p class="help">First out: the order with the earliest live LD or LC is planned first. Tick orders that still have shop work left (Not Yet Started, Ready for Steelwork, and in-progress jobs). The system books remaining work from that date and the shop status — Sam on profile cutting, John on tagging, Muruba (Mon / Wed / Fri) and Willard on welding, Thabile on plate cutting, Admire and Uriah on assembly. You can change those names. Grinding is not booked until you pick someone and schedule it.</p>
+      <p class="help">First out: the order with the earliest live LD or LC is planned first. Tick orders that still have shop work left (Not Yet Started, Ready for Steelwork, and in-progress jobs). The system books remaining work from that date and the shop status — Sam on profile cutting, John on tagging, Muruba (Mon / Wed / Fri) and Willard on welding, Thabile on plate cutting, Admire and Uriah on assembly. Grinding is auto-assigned to a person ticked for Grinding who has the most open time. You can change any name, or pick who grinds and tap Schedule grinding.</p>
       <input type="search" id="q" placeholder="Search order, product, status">
       <div class="actions" style="margin:0 0 12px; max-width:420px">
         <button type="button" id="scheduleSelected">Schedule selected</button>
@@ -406,10 +406,10 @@
         const checked = picked[id] ? " checked" : "";
         const open = openOrders[id] || picked[id] ? " open" : "";
         const tasks = (o.processes || []).map((p) => {
-          const chosen = assigns[id][p.process] || p.suggested || (p.workers.length === 1 ? p.workers[0].id : "");
-          if (chosen) assigns[id][p.process] = chosen;
           const grind = p.process === "Grinding";
-          const opts = ["<option value=''>" + (grind ? "Pick who grinds" : "Assign person") + "</option>"].concat(
+          const chosen = assigns[id][p.process] || (grind && p.auto ? "" : (p.suggested || (p.workers.length === 1 ? p.workers[0].id : "")));
+          if (chosen) assigns[id][p.process] = chosen;
+          const opts = ["<option value=''>" + (grind ? "Auto — most open time" : "Assign person") + "</option>"].concat(
             p.workers.map((w) => "<option value=\"" + esc(w.id) + "\"" + (w.id === chosen ? " selected" : "") + ">" + esc(w.name) + "</option>")
           );
           const empty = p.workers.length ? "" : "<option value=''>Nobody ticked for this task</option>";
@@ -1206,7 +1206,7 @@
       const assignments = {};
       for (let i = 0; i < ids.length; i++) {
         const pickedPeople = collectAssignments(ids[i]);
-        delete pickedPeople.Grinding;
+        if (!pickedPeople.Grinding) delete pickedPeople.Grinding;
         assignments[ids[i]] = pickedPeople;
       }
       setStatus("Placing work on the calendars…");

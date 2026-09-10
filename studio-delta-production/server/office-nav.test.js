@@ -576,6 +576,7 @@ assert.ok(durationsHtml.indexOf("Minutes per product") === -1);
 const planningHtml = fs.readFileSync(path.join(__dirname, "../public/planning.html"), "utf8");
 assert.ok(planningHtml.indexOf("First out") !== -1);
 assert.ok(planningHtml.indexOf("Schedule grinding") !== -1);
+assert.ok(planningHtml.indexOf("most open time") !== -1);
 assert.ok(planningHtml.indexOf("Muruba") !== -1);
 assert.ok(planningHtml.indexOf("Thabile") !== -1);
 assert.ok(planningHtml.indexOf("Admire") !== -1);

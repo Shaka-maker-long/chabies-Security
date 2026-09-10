@@ -190,8 +190,9 @@ assert.strictEqual(byProcess["Plate Cutting"][0].start, "2026-09-08T10:45:00+02:
 assert.ok(byProcess["Plate Cutting"][0].end <= byProcess.Welding[byProcess.Welding.length - 1].end, "plate may overlap welding");
 assert.ok(byProcess.Welding.some((b) => b.start < byProcess["Plate Cutting"][0].end), "welding does not wait for plate");
 
-assert.ok(!byProcess.Grinding, "the system does not book grinding");
-assert.ok(!assignA.Grinding, "grinding is not assigned by the user");
+assert.ok(byProcess.Grinding, "grinding is auto-booked after welding");
+assert.ok(byProcess.Grinding[0].start >= byProcess.Welding[byProcess.Welding.length - 1].end, "grinding after welding");
+assert.strictEqual(byProcess.Grinding[0].workerName, "Thabo");
 const grindLater = plan.scheduleGrinding({
   orderId: "S260100 A",
   worker: "Thabo",
@@ -293,7 +294,7 @@ assert.ok(!productA.processes.some((p) => p.process === "Quality Control"));
 assert.ok(productA.processes.find((p) => p.process === "Welding").hours === 3);
 assert.ok(productA.processes.find((p) => p.process === "Welding").workers.some((w) => w.name === "Thabo"));
 const grindRow = productA.processes.find((p) => p.process === "Grinding");
-assert.ok(grindRow && !grindRow.auto, "grinding is booked by the user");
+assert.ok(grindRow && grindRow.auto, "grinding is auto-assigned unless a person is pinned");
 assert.ok(grindRow.workers.some((w) => w.name === "Thabo"));
 
 const journey = board.journey;
@@ -426,10 +427,12 @@ const batch = plan.scheduleSelected({
   },
   from: plan.isoFromMs(fromTue)
 });
-assert.ok(!batch.blocks.some((b) => b.process === "Grinding"), "batch does not auto-place grinding");
+const grindBatch = batch.blocks.filter((b) => b.process === "Grinding");
+assert.ok(grindBatch.length, "batch auto-places grinding");
 const weldAEnd = batch.blocks.filter((b) => b.orderId === "S260100 A" && b.process === "Welding").pop().end;
+assert.ok(grindBatch.some((b) => b.orderId === "S260100 A" && b.start >= weldAEnd), "grind waits for that order's welding");
 const grindA = plan.scheduleGrinding({ orderId: "S260100 A", worker: "Sam", from: weldAEnd });
-assert.ok(grindA.blocks[0].start >= weldAEnd, "grind waits for that order's welding");
+assert.ok(grindA.blocks[0].start >= weldAEnd, "a pinned grinder still waits for welding");
 assert.strictEqual(grindA.blocks[0].workerName, "Sam");
 
 const priorBlocks = plan.load();

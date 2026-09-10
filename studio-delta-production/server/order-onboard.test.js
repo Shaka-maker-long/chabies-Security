@@ -124,15 +124,9 @@ const booked = plan.scheduleSelected({
   from: "2026-09-08T07:45:00+02:00"
 });
 assert.ok(!booked.blocks.some((b) => b.process === "Profile Cutting" || b.process === "Tagging" || b.process === "Welding"));
-assert.ok(!booked.blocks.some((b) => b.process === "Grinding"), "grinding is booked by the user, not Schedule");
+assert.ok(booked.blocks.some((b) => b.process === "Grinding"), "remaining grinding is auto-booked");
 assert.ok(booked.blocks.some((b) => b.process === "Powder coating"));
 assert.ok(booked.blocks.some((b) => b.process === "Assembly"));
-const grind = plan.scheduleGrinding({
-  orderId: "S260400",
-  worker: "Thabo",
-  from: "2026-09-08T07:45:00+02:00"
-});
-assert.ok(grind.blocks.some((b) => b.process === "Grinding"));
 
 (async function main() {
   const app = express();
