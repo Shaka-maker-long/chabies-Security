@@ -135,6 +135,16 @@
     .timeline li:first-child { border-top:0; }
     .timeline .code { font-weight:700; }
     .timeline .when { color:var(--muted); font-weight:600; font-size:12px; }
+    .life { margin:12px 0 0; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+    .life h3 { margin:0 0 4px; font-size:14px; font-family: Outfit, Inter, sans-serif; }
+    .life .help { margin:0 0 10px; }
+    .life ol { list-style:none; margin:0; padding:0; border-left:2px solid #d0d5dd; }
+    .life li { position:relative; padding:0 0 12px 16px; font-size:13px; }
+    .life li:last-child { padding-bottom:0; }
+    .life li::before { content:""; position:absolute; left:-5px; top:6px; width:8px; height:8px; border-radius:50%; background:#1d2939; }
+    .life time { display:block; font-size:11px; font-weight:600; color:var(--muted); }
+    .life .stage { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#344054; background:#e4e7ec; border-radius:4px; padding:1px 6px; margin-right:6px; }
+    .life .detail, .life .actor { color:var(--muted); font-size:12px; }
     @media (max-width: 720px) {
       .timeline li { grid-template-columns: 42px 52px 1fr; }
       .timeline .who, .timeline .when { grid-column: 2 / span 2; }
@@ -897,11 +907,47 @@
         return planLine + actualLine;
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Timeline for " + title + ". Plan is the booked slot. Actual is the shop clock. Both, Planned, and Actual filter those rows. Same order number is merged across the people on this job. ← Week view and ← Day view go back. Click a day for the 15-minute plan. Drag a Plan letter to a free slot — only later tasks on this order move.</p>" +
+        "<p class='help'>Plan vs Actual for " + title + " is the shop booking and clock. The Journey list under that is the same order from enquiry through materials, paint, and delivery. Both, Planned, and Actual filter the grid. Same order number is merged across the people on this job. ← Week view and ← Day view go back. Click a day for the 15-minute plan. Drag a Plan letter to a free slot — only later tasks on this order move.</p>" +
         table +
         "<div class='timeline'><h3>Planning</h3>" +
         (items ? "<ol>" + items + "</ol>" : "<p class='help'>No processes are booked on this order.</p>") +
-        "</div>";
+        "</div>" +
+        "<div class='life' id='orderLife'><h3>Journey</h3><p class='help'>Loading enquiry through delivery…</p></div>";
+      fillOrderLife(order.orderId);
+    }
+    async function fillOrderLife(orderNumber) {
+      const box = document.getElementById("orderLife");
+      if (!box) return;
+      try {
+        const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(orderNumber) + "/life");
+        const j = await r.json();
+        if (!document.getElementById("orderLife")) return;
+        if (!j.ok) {
+          box.innerHTML = "<h3>Journey</h3><p class='help'>" + esc(j.error || "Could not load the journey.") + "</p>";
+          return;
+        }
+        const events = j.events || [];
+        const sub = [j.status ? "Now: " + j.status : "", j.enquiry_no ? "Enquiry " + j.enquiry_no : "", j.product]
+          .filter(Boolean).join(" · ");
+        if (!events.length) {
+          box.innerHTML = "<h3>Journey</h3><p class='help'>" + esc(sub || "No dated steps yet.") + "</p>";
+          return;
+        }
+        box.innerHTML = "<h3>Journey</h3><p class='help'>" + esc(sub) +
+          " — from first enquiry through shop clocks, materials, paint, and delivery.</p><ol>" +
+          events.map((ev) => {
+            return "<li><time>" + esc(ev.at_label || ev.at || "") + "</time>" +
+              "<span class='stage'>" + esc(ev.stage || "") + "</span>" +
+              esc(ev.title || "") +
+              (ev.detail ? "<div class='detail'>" + esc(ev.detail) + "</div>" : "") +
+              (ev.actor ? "<div class='actor'>" + esc(ev.actor) + "</div>" : "") +
+              "</li>";
+          }).join("") + "</ol>";
+      } catch (e) {
+        if (document.getElementById("orderLife")) {
+          document.getElementById("orderLife").innerHTML = "<h3>Journey</h3><p class='help'>Could not load the journey.</p>";
+        }
+      }
     }
     function clipToDay(block, dayIso) {
       const start = dateOf(block.start);

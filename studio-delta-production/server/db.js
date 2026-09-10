@@ -2672,6 +2672,7 @@ module.exports = {
   createOrderFromEnquiry,
   createOrderDraftFromEnquiry,
   createOrdersFromEnquiryForm,
+  ordersLinkedToEnquiry,
   listEnquiries,
   getEnquiry,
   getEnquiryRaw,
