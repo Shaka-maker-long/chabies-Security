@@ -398,6 +398,7 @@ assert.ok(pasteHtml.indexOf("Import from Sheets") === -1);
 const pasteUi = fs.readFileSync(path.join(__dirname, "../public/order-paste-ui.js"), "utf8");
 assert.ok(pasteUi.indexOf("/api/office/orders/paste") !== -1);
 assert.ok(indexJs.indexOf("/orders/paste") !== -1);
+assert.ok(indexJs.indexOf("order-paste-ui.js") !== -1, "paste page script must be served");
 const onboardHtml = fs.readFileSync(path.join(__dirname, "../public/orders-onboard.html"), "utf8");
 assert.ok(onboardHtml.indexOf("Add existing order") !== -1);
 assert.ok(onboardHtml.indexOf("where the floor is now") !== -1 || onboardHtml.indexOf("Shop status") !== -1);
