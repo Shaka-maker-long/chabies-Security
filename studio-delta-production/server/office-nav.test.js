@@ -543,6 +543,8 @@ assert.ok(planningHtml.indexOf('btn("plan", "Planned")') !== -1, "Journey can fi
 assert.ok(planningHtml.indexOf('btn("actual", "Actual")') !== -1, "Journey can filter to Actual rows");
 assert.ok(planningHtml.indexOf("function setJourneyKind") !== -1, "Plan / Actual filter has a click handler");
 assert.ok(planningHtml.indexOf("onclick='setJourneyKind") !== -1, "Plan / Actual buttons call the filter handler");
+assert.ok(planningHtml.indexOf(".ghost { position:fixed") === -1, "outline ghost buttons must not use the drag-preview CSS");
+assert.ok(planningHtml.indexOf("button.ghost") !== -1 && planningHtml.indexOf("pointer-events:auto") !== -1, "ghost buttons stay clickable");
 assert.ok(planningHtml.indexOf("Show planned or actual") !== -1, "Planned / Actual filter is labelled");
 assert.ok(planningHtml.indexOf("flex:1 1 100%") !== -1, "Plan / Actual buttons sit on their own row so they do not cover back links");
 assert.ok(planningHtml.indexOf("Production Meeting") !== -1 && planningHtml.indexOf("Cleaning") !== -1, "People calendar must highlight Production Meeting and Cleaning");
