@@ -76,12 +76,11 @@
     .crumb { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:0 0 10px; position:sticky; top:0; z-index:6; background:#f8f9fc; padding:6px 0 10px; }
     .crumb button { font-size:13px; }
     .crumb .here { font-size:13px; font-weight:700; color:var(--ink); }
-    .kind-filter { display:none; align-items:center; gap:6px; flex-wrap:wrap; margin:0 0 12px; min-height:36px; }
-    body[data-view="journey"] .kind-filter { display:flex !important; }
+    .crumb .kind-filter { display:flex; align-items:center; gap:6px; flex:1 1 100%; margin:0; min-height:0; }
     .kind-filter-label { font-size:12px; font-weight:700; color:var(--muted); }
-    .kind-filter button { font-size:12px; padding:7px 12px !important; min-height:34px !important; height:auto !important; }
-    .kind-filter button.on { background:#1d2939 !important; color:#fff !important; }
-    body.office-app .kind-filter button.on { background:var(--sd-brass) !important; color:var(--sd-steel) !important; border-color:var(--sd-brass) !important; }
+    .crumb .kind-filter button { font-size:12px; padding:7px 12px; min-height:34px; }
+    .crumb .kind-filter button.on { background:#1d2939; color:#fff; }
+    body.office-app .crumb .kind-filter button.on { background:var(--sd-brass) !important; color:var(--sd-steel) !important; border-color:var(--sd-brass) !important; }
     body.office-app .crumb { background: var(--sd-linen, #f3efe8); }
     body.office-app .crumb .here { color:#1d2939; }
     table.grid { border-collapse:separate; border-spacing:0; width:max-content; min-width:100%; background:#fff; font-size:13px; }
@@ -210,12 +209,6 @@
     </section>
     <main class="board">
       <div class="legend" id="legend"></div>
-      <div class="kind-filter" id="kindFilter" role="group" aria-label="Show planned or actual">
-        <span class="kind-filter-label">Show</span>
-        <button class="ghost on" type="button" data-kind-filter="both">Both</button>
-        <button class="ghost" type="button" data-kind-filter="plan">Planned</button>
-        <button class="ghost" type="button" data-kind-filter="actual">Actual</button>
-      </div>
       <div id="calendars"></div>
     </main>
   </div>
@@ -625,11 +618,13 @@
         return "<th class='week" + now + "' data-week=\"" + esc(w.start) + "\">" + esc(w.label) + mark + "</th>";
       }).join("");
     }
-    function updateKindFilterButtons() {
+    function kindFilterButtons() {
       const cur = kindFilter();
-      document.querySelectorAll("[data-kind-filter]").forEach((btn) => {
-        btn.classList.toggle("on", btn.getAttribute("data-kind-filter") === cur);
-      });
+      function btn(id, label) {
+        return "<button class='ghost" + (cur === id ? " on" : "") + "' type='button' data-kind-filter='" + id + "'>" + label + "</button>";
+      }
+      return "<span class='kind-filter' role='group' aria-label='Show planned or actual'><span class='kind-filter-label'>Show</span>" +
+        btn("both", "Both") + btn("plan", "Planned") + btn("actual", "Actual") + "</span>";
     }
     function emptyKindLabel() {
       if (kindFilter() === "actual") return "clocked";
@@ -665,6 +660,7 @@
       else if (journeyLevel === "times") here = (journeyWorkerName ? journeyWorkerName + " · " : "") + (prettyDate(journeyDay) || "Day");
       else if (journeyLevel === "order") here = openJourneyId || "Order";
       bits.push("<strong class='here'>" + esc(here) + "</strong>");
+      bits.push(kindFilterButtons());
       return "<div class='crumb'>" + bits.join(" ") + "</div>";
     }
     function renderJourneyWeeks() {
@@ -1130,13 +1126,6 @@
     document.getElementById("prevWeek").onclick = () => load(board && board.prevWeek);
     document.getElementById("nextWeek").onclick = () => load(board && board.nextWeek);
     document.getElementById("thisWeek").onclick = () => load("");
-    document.getElementById("kindFilter").addEventListener("click", (e) => {
-      const kindBtn = e.target.closest("[data-kind-filter]");
-      if (!kindBtn) return;
-      journeyKind = kindBtn.getAttribute("data-kind-filter") || "both";
-      updateKindFilterButtons();
-      if (view === "journey") renderBoard();
-    });
     document.getElementById("personA").onchange = () => {
       personA = document.getElementById("personA").value;
       if (personB === personA) personB = "";
@@ -1198,6 +1187,8 @@
       if (justDragged) return;
       const kindBtn = e.target.closest("[data-kind-filter]");
       if (kindBtn && view === "journey") {
+        e.preventDefault();
+        e.stopPropagation();
         journeyKind = kindBtn.getAttribute("data-kind-filter") || "both";
         renderBoard();
         return;
