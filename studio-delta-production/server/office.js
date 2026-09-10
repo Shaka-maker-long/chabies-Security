@@ -514,6 +514,22 @@ function mountOffice(app) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
   });
+  app.post("/api/office/planning/clear", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can clear planning." });
+      return;
+    }
+    const confirm = String((req.body && (req.body.confirm || req.body.confirmation)) || "").trim();
+    if (confirm.toUpperCase() !== "CLEAR") {
+      res.status(400).json({ ok: false, error: "Type CLEAR to delete every booked planning slot. Orders stay." });
+      return;
+    }
+    try {
+      res.json({ ok: true, result: floorPlanning.clearAllPlanning() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
 
   app.get("/api/office/orders", requireOffice, (_req, res) => {
     const rows = listOrders().map((o) => {
