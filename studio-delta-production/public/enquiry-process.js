@@ -857,6 +857,7 @@
       const href = (f.kind && (f.open || f.stored_as) && server) ? server : (f.href || "");
       const correspondence = f.group === "correspondence";
       if (correspondence) corrN += 1;
+      const kind = f.kind || (correspondence ? "correspondence_" + corrN : (f.group || ""));
       let actions = "";
       if (correspondence) {
         actions = href
@@ -867,11 +868,11 @@
           ? "<a class=\"sd-open-mail\" href=\"" + esc(href) + "\" target=\"_blank\" rel=\"noopener\">Open</a>"
           : "<span class=\"sd-process-sub\">No file yet</span>";
       }
-      if (f.kind) {
+      if (kind) {
         const name = correspondence
           ? (corrTotal > 1 ? "Correspondance link " + corrN : "Correspondance link")
           : (f.label || f.title || f.filename || "this file");
-        actions += "<button type=\"button\" class=\"danger\" data-delete-file=\"" + esc(f.kind) + "\" data-delete-label=\"" + esc(name) + "\">Delete</button>";
+        actions += "<button type=\"button\" class=\"danger\" data-delete-file=\"" + esc(kind) + "\" data-delete-label=\"" + esc(name) + "\">Delete</button>";
       }
       const pathLine = correspondence && href
         ? "<div class=\"sd-process-sub\" style=\"word-break:break-all\">" + esc(href) + "</div>"
