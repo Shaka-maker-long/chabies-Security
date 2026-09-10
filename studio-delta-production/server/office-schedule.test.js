@@ -38,6 +38,8 @@ assert.ok(horizon.indexOf("2026-11-30") !== -1, "grid must pass week 48");
 assert.ok(horizon[horizon.length - 1] >= "2027-05-01", "grid must reach the following year");
 assert.ok(sched.DELIVERY_CODES.indexOf("LD") !== -1);
 assert.ok(sched.DELIVERY_CODES.indexOf("LC") !== -1);
+assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "LD*" && c.moved));
+assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "LC*" && c.moved));
 assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "LD" && c.label === "Latest Delivery"));
 assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "P" && c.label === "Photograpy"));
 
@@ -78,6 +80,17 @@ assert.strictEqual(planned.order_date_label, "01-Sep");
 const side = db.listSchedule("2026-09-21", "2026-09-25").find((r) => r.order_number === "S260207");
 db.setScheduleCell(side.id, "2026-09-22", "LC");
 db.setScheduleCell(side.id, "2026-09-22", "LC");
+assert.throws(() => db.setScheduleCell(cabinet.id, "2026-09-24", "LD"), /reason/);
+db.setScheduleCell(cabinet.id, "2026-09-24", "LD", true, { reason: "Client asked for later", skipPlan: true });
+const moved = db.listSchedule("2026-09-21", "2026-09-25").find((r) => r.order_number === "S260186");
+assert.strictEqual(moved.cells["2026-09-21"], "LD*");
+assert.strictEqual(moved.cells["2026-09-24"], "LD");
+assert.deepStrictEqual(moved.delivery_days, ["2026-09-24"]);
+assert.ok(!db.listDeliveryItems().items.some((i) => i.order_number === "S260186" && i.day === "2026-09-21"));
+assert.ok(db.listDeliveryItems().items.some((i) => i.order_number === "S260186" && i.day === "2026-09-24" && i.code === "LD"));
+db.setScheduleCell(cabinet.id, "2026-09-21", "LD*", true, { skipPlan: true });
+db.setScheduleCell(cabinet.id, "2026-09-24", "", true, { skipPlan: true });
+db.setScheduleCell(cabinet.id, "2026-09-21", "LD", true, { skipPlan: true });
 db.setScheduleCell(cabinet.id, "2026-09-24", "QC");
 
 const delivery = db.listDeliveryItems();

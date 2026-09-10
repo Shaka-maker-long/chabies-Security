@@ -471,6 +471,20 @@ function mountOffice(app) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
   });
+  app.post("/api/office/planning/grind", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, result: floorPlanning.scheduleGrinding(req.body || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.post("/api/office/planning/auto", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, result: floorPlanning.autoPlanFromDeliveries(req.body || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
   app.delete("/api/office/planning/orders/:orderNumber", requireOffice, (req, res) => {
     try {
       res.json({ ok: true, result: floorPlanning.unscheduleOrder(req.params.orderNumber) });
@@ -1032,13 +1046,17 @@ function mountOffice(app) {
   });
 
   app.put("/api/office/schedule/cell", requireOffice, (req, res) => {
-    const { rowId, day, value } = req.body || {};
+    const { rowId, day, value, reason } = req.body || {};
     if (!rowId || !day) {
       res.status(400).json({ ok: false, error: "rowId and day are required" });
       return;
     }
-    setScheduleCell(Number(rowId), day, value);
-    res.json({ ok: true });
+    try {
+      setScheduleCell(Number(rowId), day, value, true, { reason });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.post("/api/office/import-sheets", requireOffice, async (req, res) => {

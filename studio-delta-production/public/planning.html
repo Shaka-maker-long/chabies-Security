@@ -220,7 +220,7 @@
   <div class="layout">
     <section class="queue">
       <h2>Plan work</h2>
-      <p class="help">Not Yet Started and Ready for Steelwork, plus in-progress orders that still have work left. Only the remaining tasks show. Assign people for each task except grinding. After those jobs are placed, grinding goes to the eligible person with the most open time. Eligible people are ticked for grinding plus profile cutting, tagging, or welding on Users.</p>
+      <p class="help">First out: the order with the earliest live LD or LC is planned first. Tick orders that still have shop work left (Not Yet Started, Ready for Steelwork, and in-progress jobs). The system books remaining work from that date and the shop status — Sam on profile cutting, John on tagging, Muruba (Mon / Wed / Fri) and Willard on welding, Admire and Uriah on plate cutting. You can change those names. Grinding is not booked until you pick someone and schedule it.</p>
       <input type="search" id="q" placeholder="Search order, product, status">
       <div class="actions" style="margin:0 0 12px; max-width:420px">
         <button type="button" id="scheduleSelected">Schedule selected</button>
@@ -392,16 +392,17 @@
         const checked = picked[id] ? " checked" : "";
         const open = openOrders[id] || picked[id] ? " open" : "";
         const tasks = (o.processes || []).map((p) => {
-          if (p.auto || p.process === "Grinding") {
-            return "<div class='task-row'><span>" + esc(p.process) + " <em>" + p.hours + " h</em></span><span>Auto - next open slot</span></div>";
-          }
-          const chosen = assigns[id][p.process] || (p.workers.length === 1 ? p.workers[0].id : "");
-          if (p.workers.length === 1) assigns[id][p.process] = p.workers[0].id;
-          const opts = ["<option value=''>Assign person</option>"].concat(
+          const chosen = assigns[id][p.process] || p.suggested || (p.workers.length === 1 ? p.workers[0].id : "");
+          if (chosen) assigns[id][p.process] = chosen;
+          const grind = p.process === "Grinding";
+          const opts = ["<option value=''>" + (grind ? "Pick who grinds" : "Assign person") + "</option>"].concat(
             p.workers.map((w) => "<option value=\"" + esc(w.id) + "\"" + (w.id === chosen ? " selected" : "") + ">" + esc(w.name) + "</option>")
           );
           const empty = p.workers.length ? "" : "<option value=''>Nobody ticked for this task</option>";
-          return "<div class='task-row'><span>" + esc(p.process) + " <em>" + p.hours + " h</em></span><select data-order=\"" + esc(id) + "\" data-process=\"" + esc(p.process) + "\">" + (p.workers.length ? opts.join("") : empty) + "</select></div>";
+          const grindBtn = grind
+            ? "<button type='button' data-grind=\"" + esc(id) + "\">Schedule grinding</button>"
+            : "";
+          return "<div class='task-row'><span>" + esc(p.process) + " <em>" + p.hours + " h</em></span><select data-order=\"" + esc(id) + "\" data-process=\"" + esc(p.process) + "\">" + (p.workers.length ? opts.join("") : empty) + "</select>" + grindBtn + "</div>";
         }).join("");
         const none = tasks ? "" : "<p>No Task times for this product. Add hours on Task times first.</p>";
         const needTimes = (o.processes || []).length && (o.processes || []).every((p) => !(p.minutes > 0 || p.hours > 0));
@@ -409,7 +410,7 @@
         return "<article class='order" + (o.scheduled ? " scheduled" : "") + open + "' data-id=\"" + esc(id) + "\">" +
           "<div class='order-top'><label><input type='checkbox' data-pick=\"" + esc(id) + "\"" + checked + ">" +
           "<div><h3>" + esc(id) + (o.scheduled ? "<span class='pill on'>On calendar</span>" : "") + "</h3>" +
-          "<p>" + esc(o.product || "No product") + " · " + esc(o.status) + (o.type ? " · " + esc(o.type) : "") + "</p></div></label></div>" +
+          "<p>" + esc(o.product || "No product") + " · " + esc(o.status) + (o.type ? " · " + esc(o.type) : "") + (o.delivery_code ? " · " + esc(o.delivery_code) + " " + esc(o.delivery_day) : "") + "</p></div></label></div>" +
           "<div class='tasks'>" + (tasks || none) + timesHint +
           "<div class='actions'><button type='button' data-schedule=\"" + esc(id) + "\">Schedule</button>" +
           (o.scheduled ? "<button class='ghost' type='button' data-unschedule=\"" + esc(id) + "\">Unschedule</button>" : "") +
@@ -1183,7 +1184,11 @@
         return;
       }
       const assignments = {};
-      for (let i = 0; i < ids.length; i++) assignments[ids[i]] = collectAssignments(ids[i]);
+      for (let i = 0; i < ids.length; i++) {
+        const pickedPeople = collectAssignments(ids[i]);
+        delete pickedPeople.Grinding;
+        assignments[ids[i]] = pickedPeople;
+      }
       setStatus("Placing work on the calendars…");
       const r = await sdOfficeFetch("/api/office/planning/schedule", {
         method: "POST",
@@ -1197,6 +1202,25 @@
       ids.forEach((id) => { picked[id] = false; });
       await load(week);
       setStatus("Scheduled " + ids.length + " order" + (ids.length === 1 ? "" : "s") + " into the next free work slots.");
+    }
+    async function scheduleGrind(id) {
+      const who = (collectAssignments(id) || {}).Grinding;
+      if (!who) {
+        setStatus("Pick someone for grinding.", true);
+        return;
+      }
+      setStatus("Booking grinding…");
+      const r = await sdOfficeFetch("/api/office/planning/grind", {
+        method: "POST",
+        body: JSON.stringify({ orderId: id, worker: who })
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        setStatus(j.error || "Could not schedule grinding.", true);
+        return;
+      }
+      await load(week);
+      setStatus("Grinding booked on " + id + ".");
     }
     async function unschedule(id) {
       const r = await sdOfficeFetch("/api/office/planning/orders/" + encodeURIComponent(id), { method: "DELETE" });
@@ -1576,6 +1600,11 @@
       if (order) collectAssignments(order);
     });
     document.getElementById("queue").addEventListener("click", (e) => {
+      const grind = e.target.getAttribute("data-grind");
+      if (grind) {
+        scheduleGrind(grind);
+        return;
+      }
       const sched = e.target.getAttribute("data-schedule");
       if (sched) {
         scheduleIds([sched]);

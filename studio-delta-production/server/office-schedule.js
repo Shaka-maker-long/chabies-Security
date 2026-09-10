@@ -1,6 +1,8 @@
 const SCHEDULE_CODES = [
   { code: "LD", label: "Latest Delivery", group: "Delivery", bg: "#ff0000", fg: "#ffffff" },
   { code: "LC", label: "Latest Courier", group: "Delivery", bg: "#ff9900", fg: "#1d2939" },
+  { code: "LD*", label: "Moved Latest Delivery", group: "Moved", bg: "#d0d5dd", fg: "#667085", moved: true },
+  { code: "LC*", label: "Moved Latest Courier", group: "Moved", bg: "#d0d5dd", fg: "#667085", moved: true },
   { code: "PD", label: "Planned Delivery", group: "Delivery", bg: "#00ff00", fg: "#1d2939" },
   { code: "C", label: "Planned Courier", group: "Delivery", bg: "#00ffff", fg: "#1d2939" },
   { code: "A", label: "Assemble", group: "Production", bg: "#f4cccc", fg: "#1d2939" },
@@ -15,6 +17,18 @@ const SCHEDULE_CODES = [
 ];
 
 const DELIVERY_CODES = ["LD", "LC"];
+const MOVED_DELIVERY_CODES = ["LD*", "LC*"];
+
+function liveDeliveryCode(value) {
+  const c = String(value || "").trim().toUpperCase();
+  if (c === "LD" || c === "LC") return c;
+  return "";
+}
+
+function starredDeliveryCode(value) {
+  const live = liveDeliveryCode(value);
+  return live ? live + "*" : "";
+}
 const SCHEDULE_WORKDAYS = 180;
 
 function parseDay(iso) {
@@ -156,6 +170,9 @@ function weekOptions(items, aroundIso) {
 module.exports = {
   SCHEDULE_CODES,
   DELIVERY_CODES,
+  MOVED_DELIVERY_CODES,
+  liveDeliveryCode,
+  starredDeliveryCode,
   SCHEDULE_WORKDAYS,
   mondayOf,
   workdays,

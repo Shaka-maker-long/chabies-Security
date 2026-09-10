@@ -68,14 +68,15 @@ function planningPath() {
 }
 
 function emptyStore() {
-  return { blocks: [] };
+  return { blocks: [], assignments: {} };
 }
 
 function load() {
   try {
     const parsed = JSON.parse(fs.readFileSync(planningPath(), "utf8"));
     const blocks = Array.isArray(parsed.blocks) ? parsed.blocks.filter(Boolean) : [];
-    return { blocks };
+    const assignments = parsed.assignments && typeof parsed.assignments === "object" ? parsed.assignments : {};
+    return { blocks, assignments };
   } catch (e) {
     if (e && e.code !== "ENOENT") {
       console.error("[planning] could not read", planningPath(), e.message || e);
@@ -88,7 +89,10 @@ function save(store) {
   const file = planningPath();
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = file + ".tmp";
-  fs.writeFileSync(tmp, JSON.stringify({ blocks: (store && store.blocks) || [] }, null, 2));
+  fs.writeFileSync(tmp, JSON.stringify({
+    blocks: (store && store.blocks) || [],
+    assignments: (store && store.assignments) || {}
+  }, null, 2));
   fs.renameSync(tmp, file);
   return store;
 }
@@ -205,9 +209,22 @@ function normalizeBusy(busy) {
     .sort((a, b) => a.start - b.start || a.end - b.end);
 }
 
-function placeTask(fromMs, durationMinutes, busy) {
+function normalizeWeekdays(list) {
+  if (!list || !list.length) return null;
+  const map = { 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri" };
+  const out = [];
+  list.forEach((v) => {
+    const key = typeof v === "number" ? v : String(v || "").slice(0, 3).toLowerCase();
+    const name = map[key] || map[String(v || "").toLowerCase()];
+    if (name && out.indexOf(name) === -1) out.push(name);
+  });
+  return out.length ? out : null;
+}
+
+function placeTask(fromMs, durationMinutes, busy, allowedWeekdays) {
   const minutes = Math.max(0, Math.round(Number(durationMinutes) || 0));
   if (!(minutes > 0)) return { segments: [], start: null, end: null };
+  const allow = normalizeWeekdays(allowedWeekdays);
   const busyList = normalizeBusy(busy);
   let cursor = ceilToMinute(nextWorkInstant(fromMs));
   let left = minutes;
@@ -216,6 +233,11 @@ function placeTask(fromMs, durationMinutes, busy) {
   while (left > 0 && guard++ < 20000) {
     const win = currentOrNextWindow(cursor);
     if (!win) break;
+    if (allow && allow.indexOf(partsFromMs(win.start).weekday) === -1) {
+      const p = partsFromMs(win.start);
+      cursor = nextWorkInstant(sastMs(p.year, p.month, p.day, 16, 0));
+      continue;
+    }
     if (cursor < win.start) cursor = win.start;
     if (cursor >= win.end) {
       cursor = nextWorkInstant(win.end);
@@ -736,7 +758,37 @@ function findUser(name, users) {
   return list.find((u) => namesEqual(u.name, name)) || null;
 }
 
-function placeProcess(order, process, fromMs, workerName, busyBlocks) {
+const DEFAULT_CREW = {
+  "Profile Cutting": ["Sam"],
+  "Tagging": ["John"],
+  "Welding": ["Muruba", "Willard"],
+  "Plate Cutting": ["Admire", "Uriah"]
+};
+
+function weldingWeekdays(name) {
+  if (namesEqual(name, "Muruba")) return ["Mon", "Wed", "Fri"];
+  return null;
+}
+
+function defaultCrewNames(process, users) {
+  const wanted = DEFAULT_CREW[process] || [];
+  const list = users || staff.listUsers();
+  const named = wanted.filter((name) => {
+    const user = findUser(name, list);
+    return user && (user.tasks || []).indexOf(process) !== -1;
+  });
+  if (named.length) return named;
+  return workersForProcess(process, list).map((w) => w.name);
+}
+
+function workerNamesFor(assign, process, users) {
+  const raw = assign && assign[process];
+  if (Array.isArray(raw) && raw.filter(Boolean).length) return raw.filter(Boolean);
+  if (raw) return [String(raw)];
+  return defaultCrewNames(process, users);
+}
+
+function placeProcess(order, process, fromMs, workerName, busyBlocks, allowedWeekdays) {
   const minutes = staff.durationMinutes(order.product, process);
   if (!(minutes > 0)) return { endMs: fromMs, blocks: [] };
   const who = String(workerName || "").trim();
@@ -746,7 +798,8 @@ function placeProcess(order, process, fromMs, workerName, busyBlocks) {
   if ((user.tasks || []).indexOf(process) === -1) {
     throw new Error(who + " is not ticked for " + process + " on Users.");
   }
-  const placed = placeTask(fromMs, minutes, busyForWorker(busyBlocks, who));
+  const days = allowedWeekdays || (process === "Welding" ? weldingWeekdays(who) : null);
+  const placed = placeTask(fromMs, minutes, busyForWorker(busyBlocks, who), days);
   if (!placed.segments.length) {
     throw new Error("Could not place " + process + " for " + order.order_number + ".");
   }
@@ -763,6 +816,24 @@ function placeProcess(order, process, fromMs, workerName, busyBlocks) {
     kind: "work"
   }));
   return { endMs: toMs(placed.end), blocks };
+}
+
+function placeProcessBest(order, process, fromMs, workerNames, busyBlocks) {
+  const names = (workerNames || []).map((n) => String(n || "").trim()).filter(Boolean);
+  if (!names.length) throw new Error("Assign someone for " + process + " on " + order.order_number + ".");
+  if (names.length === 1) return placeProcess(order, process, fromMs, names[0], busyBlocks);
+  let best = null;
+  names.forEach((name) => {
+    try {
+      const placed = placeProcess(order, process, fromMs, name, busyBlocks);
+      const start = placed.blocks[0] && toMs(placed.blocks[0].start);
+      if (!best || (Number.isFinite(start) && start < best.start)) {
+        best = { placed, start };
+      }
+    } catch (e) {}
+  });
+  if (!best) throw new Error("Could not place " + process + " for " + order.order_number + ".");
+  return best.placed;
 }
 
 function workerBusyMinutes(blocks, workerId) {
@@ -923,11 +994,12 @@ function scheduleOrder({ order, assignments, existingBlocks, fromMs }) {
   }).blocks;
 }
 
-function scheduleBatch({ jobs, existingBlocks, fromMs }) {
+function scheduleBatch({ jobs, existingBlocks, fromMs, skipGrinding }) {
   const users = staff.listUsers();
   let busy = (existingBlocks || []).slice();
   const startMs = nextWorkInstant(fromMs != null ? fromMs : Date.now());
   const drafts = [];
+  const noAutoGrind = skipGrinding !== false;
 
   (jobs || []).forEach((job) => {
     const order = job.order;
@@ -944,7 +1016,7 @@ function scheduleBatch({ jobs, existingBlocks, fromMs }) {
     const metal = [];
     function run(process, from) {
       if (!(minutes[process] > 0)) return from;
-      const placed = placeProcess(order, process, from, assign[process], busy);
+      const placed = placeProcessBest(order, process, from, workerNamesFor(assign, process, users), busy);
       metal.push.apply(metal, placed.blocks);
       busy = busy.concat(placed.blocks);
       return placed.endMs;
@@ -960,15 +1032,17 @@ function scheduleBatch({ jobs, existingBlocks, fromMs }) {
   });
 
   drafts.forEach((draft) => {
-    draft.afterGrind = draft.afterWeld;
+    const existingGrind = busy.filter((b) => (
+      formatOrderId(b.orderId) === formatOrderId(draft.order.order_number) && b.process === "Grinding"
+    ));
+    const grindEnd = existingGrind.length ? toMs(existingGrind[existingGrind.length - 1].end) : 0;
+    draft.afterGrind = Math.max(draft.afterWeld, grindEnd || 0);
     if (!(draft.minutes.Grinding > 0)) return;
-    const placed = placeGrindingOnOpenSlot(
-      draft.order,
-      draft.minutes.Grinding,
-      draft.afterWeld,
-      busy,
-      users
-    );
+    if (noAutoGrind && !draft.assign.Grinding) return;
+    const who = draft.assign.Grinding;
+    const placed = who
+      ? placeProcess(draft.order, "Grinding", draft.afterWeld, who, busy)
+      : placeGrindingOnOpenSlot(draft.order, draft.minutes.Grinding, draft.afterWeld, busy, users);
     draft.grind = placed.blocks;
     draft.afterGrind = placed.endMs;
     busy = busy.concat(placed.blocks);
@@ -998,11 +1072,11 @@ function scheduleBatch({ jobs, existingBlocks, fromMs }) {
       after = paintEnd;
     }
     if (draft.minutes.Assembly > 0) {
-      const placed = placeProcess(
+      const placed = placeProcessBest(
         draft.order,
         "Assembly",
         nextWorkInstant(after),
-        draft.assign.Assembly,
+        workerNamesFor(draft.assign, "Assembly", users),
         busy
       );
       draft.rest.push.apply(draft.rest, placed.blocks);
@@ -1031,7 +1105,6 @@ function scheduleSelected(body) {
   const fromMs = body && body.from ? toMs(body.from) : Date.now();
   if (body && body.from && !Number.isFinite(fromMs)) throw new Error("From date is not a valid time.");
   const store = load();
-  const remaining = store.blocks.filter((b) => ids.indexOf(formatOrderId(b.orderId)) === -1);
   const jobs = ids.map((id) => {
     const order = findOrder(id);
     if (!order) throw new Error("Order " + id + " was not found.");
@@ -1040,10 +1113,90 @@ function scheduleSelected(body) {
       assignments: assignments[id] || assignments[order.order_number] || {}
     };
   });
-  const created = scheduleBatch({ jobs, existingBlocks: remaining, fromMs }).blocks;
+  const skipGrinding = !jobs.some((j) => j.assignments && j.assignments.Grinding);
+  const remaining = store.blocks.filter((b) => {
+    if (ids.indexOf(formatOrderId(b.orderId)) === -1) return true;
+    if (skipGrinding && b.process === "Grinding") return true;
+    return false;
+  });
+  const created = scheduleBatch({ jobs, existingBlocks: remaining, fromMs, skipGrinding }).blocks;
   store.blocks = remaining.concat(created);
+  store.assignments = Object.assign({}, store.assignments || {});
+  ids.forEach((id) => {
+    store.assignments[id] = Object.assign({}, store.assignments[id] || {}, assignments[id] || {});
+  });
   save(store);
   return { blocks: created, count: created.length };
+}
+
+function scheduleGrinding(body) {
+  const id = formatOrderId(body && (body.orderId || body.order_number));
+  const who = String((body && (body.worker || body.workerName)) || "").trim();
+  if (!id) throw new Error("Order is required.");
+  if (!who) throw new Error("Pick someone for grinding.");
+  const order = findOrder(id);
+  if (!order) throw new Error("Order " + id + " was not found.");
+  const remaining = remainingPlanForStatus(order.status);
+  if (remaining.processes.indexOf("Grinding") === -1) {
+    throw new Error(id + " does not still need grinding.");
+  }
+  const minutes = staff.durationMinutes(order.product, "Grinding");
+  if (!(minutes > 0)) throw new Error("Add grinding hours on Task times first.");
+  const store = load();
+  const other = store.blocks.filter((b) => !(formatOrderId(b.orderId) === id && b.process === "Grinding"));
+  const metalEnd = other
+    .filter((b) => formatOrderId(b.orderId) === id && ["Profile Cutting", "Tagging", "Plate Cutting", "Welding"].indexOf(b.process) !== -1)
+    .reduce((max, b) => Math.max(max, toMs(b.end) || 0), 0);
+  const fromMs = body && body.from ? toMs(body.from) : (metalEnd || Date.now());
+  const placed = placeProcess(order, "Grinding", nextWorkInstant(fromMs), who, other);
+  store.blocks = other.concat(placed.blocks);
+  store.assignments = Object.assign({}, store.assignments || {});
+  store.assignments[id] = Object.assign({}, store.assignments[id] || {}, { Grinding: who });
+  save(store);
+  return { blocks: placed.blocks, count: placed.blocks.length };
+}
+
+function autoPlanFromDeliveries(opts) {
+  const fromMs = opts && opts.from ? toMs(opts.from) : Date.now();
+  const deliveries = require("./db").listLiveDeliveries();
+  const store = load();
+  const assignments = store.assignments || {};
+  const jobs = [];
+  deliveries.forEach((d) => {
+    const order = findOrder(d.order_number);
+    if (!order) return;
+    const remaining = remainingPlanForStatus(order.status);
+    const minutes = minutesByProcessFor(order.product);
+    const has = remaining.processes.some((p) => p !== "Grinding" && minutes[p] > 0);
+    if (!has && !(remaining.paintWait && minutes.Assembly > 0)) return;
+    jobs.push({
+      order,
+      assignments: Object.assign({}, assignments[formatOrderId(order.order_number)] || {})
+    });
+  });
+  if (!jobs.length) return { count: 0, orders: 0 };
+  const ids = jobs.map((j) => formatOrderId(j.order.order_number));
+  const keep = store.blocks.filter((b) => {
+    if (!b) return false;
+    if (b.kind === "other") return true;
+    if (ids.indexOf(formatOrderId(b.orderId)) === -1) return true;
+    if (b.process === "Grinding") return true;
+    return false;
+  });
+  let created = [];
+  try {
+    created = scheduleBatch({
+      jobs,
+      existingBlocks: keep,
+      fromMs: Number.isFinite(fromMs) ? fromMs : Date.now(),
+      skipGrinding: true
+    }).blocks;
+  } catch (e) {
+    return { count: 0, orders: jobs.length, error: e.message || String(e) };
+  }
+  store.blocks = keep.concat(created);
+  save(store);
+  return { count: created.length, orders: jobs.length };
 }
 
 function unscheduleOrder(orderNumber) {
@@ -1426,36 +1579,61 @@ function plannedWorkers() {
 function queueOrders() {
   const users = staff.listUsers();
   const scheduled = {};
-  load().blocks.forEach((b) => {
+  const store = load();
+  store.blocks.forEach((b) => {
     if (b && b.orderId) scheduled[formatOrderId(b.orderId)] = true;
   });
+  const deliveries = {};
+  try {
+    require("./db").listLiveDeliveries().forEach((d) => {
+      deliveries[formatOrderId(d.order_number)] = d;
+    });
+  } catch (e) {}
+  const saved = store.assignments || {};
   return listOrders()
     .map((o) => {
       const remaining = remainingPlanForStatus(o.status);
+      const id = formatOrderId(o.order_number);
+      const assign = saved[id] || {};
+      const due = deliveries[id] || null;
       const processes = remaining.processes.map((process) => {
         const minutes = staff.durationMinutes(o.product, process) || 0;
         const hours = minutes > 0 ? Math.round((minutes / 60) * 100) / 100 : 0;
+        const workers = workersForProcess(process, users);
+        const suggested = (assign[process] && [assign[process]]) || defaultCrewNames(process, users);
         return {
           process,
           hours,
           minutes,
-          auto: process === "Grinding",
-          workers: process === "Grinding" ? [] : workersForProcess(process, users)
+          auto: false,
+          workers,
+          suggested: suggested[0] || "",
+          suggestedAll: suggested
         };
       });
       return {
-        order_number: formatOrderId(o.order_number),
+        order_number: id,
         product: String(o.product || ""),
         status: String(o.status || ""),
         type: String(o.type || ""),
         category: String(o.category || ""),
-        scheduled: !!scheduled[formatOrderId(o.order_number)],
+        scheduled: !!scheduled[id],
         remaining: remaining.processes.slice(),
         paintWait: !!remaining.paintWait,
+        delivery_day: due ? due.day : "",
+        delivery_code: due ? due.code : "",
         processes
       };
     })
-    .filter((o) => o.remaining.length > 0);
+    .filter((o) => o.remaining.length > 0)
+    .sort((a, b) => {
+      if (a.delivery_day && b.delivery_day && a.delivery_day !== b.delivery_day) {
+        return a.delivery_day.localeCompare(b.delivery_day);
+      }
+      if (a.delivery_day && !b.delivery_day) return -1;
+      if (!a.delivery_day && b.delivery_day) return 1;
+      return String(a.order_number).localeCompare(String(b.order_number));
+    });
 }
 
 function blockOverlapsWeek(block, weekStartIso) {
@@ -1495,7 +1673,8 @@ function getBoard(week) {
     processes: PLANNED_PROCESSES.slice(),
     journeyWeeks: journeyWeeks(weekStart, JOURNEY_WEEK_COUNT),
     firstPlannedWeek: journey.days[0] ? weekMondayIso(journey.days[0].iso) : "",
-    autoProcesses: ["Grinding"],
+    autoProcesses: [],
+    crew: DEFAULT_CREW,
     windows: {
       morning: "07:45–12:00",
       afternoon: "12:30–15:45",
@@ -1536,6 +1715,10 @@ module.exports = {
   weekDays,
   scheduleOrder,
   scheduleSelected,
+  scheduleGrinding,
+  autoPlanFromDeliveries,
+  defaultCrewNames,
+  DEFAULT_CREW,
   unscheduleOrder,
   moveBlock,
   insertOtherTask,
