@@ -88,6 +88,20 @@ assert.strictEqual(created.row.order_number, "S260400");
 assert.strictEqual(created.row.status, "Welding");
 assert.strictEqual(created.row.client_name, "Live Client");
 
+const noTimes = db.onboardExistingOrder({
+  order_number: "S260410",
+  status: "Welding",
+  product: "Unknown Gate",
+  client_name: "No Times",
+  type: "Standard",
+  confirmed: true
+});
+assert.strictEqual(noTimes.row.status, "Welding");
+const bare = plan.queueOrders().find((row) => row.order_number === "S260410");
+assert.ok(bare, "in-progress orders stay in Planning even before Task times exist");
+assert.ok(bare.processes.some((p) => p.process === "Grinding"));
+assert.ok(bare.processes.every((p) => !(p.minutes > 0)));
+
 const locked = require("./job-card").applyOfficeOrderStatusLock({
   order_number: "S260400",
   status: "Delivered",

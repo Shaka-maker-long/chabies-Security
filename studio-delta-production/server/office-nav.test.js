@@ -615,6 +615,7 @@ assert.ok(planningHtml.indexOf("Add other task") !== -1, "People calendar can ad
 assert.ok(planningHtml.indexOf("data-block") !== -1, "calendar events can be moved");
 assert.ok(officeJs.indexOf("/api/office/planning/move") !== -1);
 assert.ok(officeJs.indexOf("/api/office/planning/other") !== -1);
+assert.ok(planningHtml.indexOf("Add hours on Task times first, then schedule") !== -1);
 assert.ok(planningHtml.indexOf("Not Yet Started") !== -1);
 assert.ok(planningHtml.indexOf("Ready for Steelwork") !== -1);
 assert.ok(planningHtml.indexOf("Paint shop") !== -1 || planningHtml.indexOf("paintShop") !== -1);

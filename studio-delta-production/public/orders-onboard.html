@@ -97,7 +97,7 @@
       }
       const bits = pack.processes.slice();
       if (pack.paintWait && bits.indexOf("Assembly") !== -1) bits.splice(bits.indexOf("Assembly"), 0, "Paint shop wait");
-      return "Planning will book: " + bits.join(", ") + ". Work they are already on is skipped.";
+      return "Planning will book: " + bits.join(", ") + ". Work they are already on is skipped. Add hours for those processes on Task times if this product is not there yet.";
     }
     function renderRemain() {
       const box = document.getElementById("remain");
