@@ -186,6 +186,10 @@ app.get("/enquiry-process.js", (_req, res) => {
   noStore(res);
   res.type("application/javascript").sendFile(path.join(publicDir, "enquiry-process.js"));
 });
+app.get("/order-paste-ui.js", (_req, res) => {
+  noStore(res);
+  res.type("application/javascript").sendFile(path.join(publicDir, "order-paste-ui.js"));
+});
 app.get("/office-shell.css", (_req, res) => {
   noStore(res);
   res.type("text/css").sendFile(path.join(publicDir, "office-shell.css"));
