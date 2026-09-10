@@ -762,7 +762,8 @@ const DEFAULT_CREW = {
   "Profile Cutting": ["Sam"],
   "Tagging": ["John"],
   "Welding": ["Muruba", "Willard"],
-  "Plate Cutting": ["Admire", "Uriah"]
+  "Plate Cutting": ["Thabile"],
+  "Assembly": ["Admire", "Uriah"]
 };
 
 function weldingWeekdays(name) {

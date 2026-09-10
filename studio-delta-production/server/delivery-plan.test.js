@@ -22,8 +22,9 @@ initWorkbook();
   ["John", ["Tagging"]],
   ["Muruba", ["Welding"]],
   ["Willard", ["Welding"]],
-  ["Admire", ["Plate Cutting"]],
-  ["Uriah", ["Plate Cutting"]],
+  ["Thabile", ["Plate Cutting"]],
+  ["Admire", ["Assembly"]],
+  ["Uriah", ["Assembly"]],
   ["Nomsa", ["Assembly"]],
   ["Thabo", ["Grinding"]]
 ].forEach(([name, tasks]) => {
@@ -84,7 +85,8 @@ assert.ok(cutEarly && cutLate);
 assert.ok(cutEarly.start <= cutLate.start, "earliest LD uses the first profile-cutting slot");
 assert.strictEqual(cutEarly.workerName, "Sam");
 assert.strictEqual(store.blocks.find((b) => b.process === "Tagging").workerName, "John");
-assert.ok(["Admire", "Uriah"].indexOf(store.blocks.find((b) => b.process === "Plate Cutting").workerName) !== -1);
+assert.strictEqual(store.blocks.find((b) => b.process === "Plate Cutting").workerName, "Thabile");
+assert.ok(["Admire", "Uriah"].indexOf(store.blocks.find((b) => b.process === "Assembly").workerName) !== -1);
 
 const welds = store.blocks.filter((b) => b.process === "Welding");
 assert.ok(welds.length);
