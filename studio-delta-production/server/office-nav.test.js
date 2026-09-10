@@ -377,6 +377,7 @@ assert.ok(ordersHtml.indexOf("<select id=\"f_status\">") === -1, "status is not 
 assert.ok(ordersHtml.indexOf("id=\"f_status\" readonly") !== -1);
 assert.ok(ordersHtml.indexOf("Mark selected as important") !== -1);
 assert.ok(ordersHtml.indexOf("Clear all orders") !== -1);
+assert.ok(ordersHtml.indexOf("Planning calendar") !== -1);
 assert.ok(ordersHtml.indexOf("/api/office/orders/clear-all") !== -1);
 assert.ok(ordersHtml.indexOf("id=\"readyBox\"") !== -1, "Orders lists enquiries that are ready to add");
 assert.ok(ordersHtml.indexOf("Ready to add to Orders") !== -1);
@@ -581,6 +582,9 @@ assert.ok(planningHtml.indexOf("Admire") !== -1);
 assert.ok(planningHtml.indexOf("Journey") !== -1);
 assert.ok(planningHtml.indexOf("Monday to Friday") !== -1 || planningHtml.indexOf("work days") !== -1);
 assert.ok(planningHtml.indexOf("Schedule selected") !== -1);
+assert.ok(planningHtml.indexOf("Clear planning") !== -1);
+assert.ok(planningHtml.indexOf("/api/office/planning/clear") !== -1);
+assert.ok(officeJs.indexOf("/api/office/planning/clear") !== -1);
 assert.ok(planningHtml.indexOf(">Order<") !== -1 || planningHtml.indexOf("Order") !== -1);
 assert.ok(planningHtml.indexOf("Person") !== -1);
 assert.ok(planningHtml.indexOf("href=\"#people\"") !== -1, "People is a planning subpage");

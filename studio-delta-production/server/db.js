@@ -532,6 +532,7 @@ function deleteOrder(orderNumber) {
   removeProofsForOrder(orderNumber);
   if (state.paymentsByOrder) delete state.paymentsByOrder[orderNumber];
   deleteScheduleForOrder(orderNumber, false);
+  try { require("./floor-planning").unscheduleOrder(orderNumber); } catch (e) {}
   save();
 }
 
@@ -2684,6 +2685,7 @@ function deleteAllOrders() {
   state.paymentsByOrder = {};
   state.schedule_rows = [];
   state.schedule_cells = [];
+  try { require("./floor-planning").clearAllPlanning(); } catch (e) {}
   persistWorkbook();
   save();
   return nos.length;

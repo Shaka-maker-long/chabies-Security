@@ -18,6 +18,7 @@
     .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
     button.ghost { background:#fff; color:#1d2939; pointer-events:auto; position:static; }
+    button.danger { background:#b42318; border-color:#b42318; }
     button:disabled { opacity:.45; cursor:not-allowed; }
     .tabs { display:flex; gap:4px; }
     .tabs a { padding:7px 12px; font-size:13px; font-weight:600; color:#344054; text-decoration:none; border-radius:6px; border:1px solid transparent; }
@@ -202,6 +203,7 @@
       <a href="#people" id="tabPeople" data-tab="people">People</a>
     </nav>
     <span class="msg" id="status">Assign work, then open Journey or People.</span>
+    <button class="danger" type="button" id="clearPlanBtn" style="display:none">Clear planning</button>
     <div class="tools">
       <div class="week-tools">
         <button class="ghost" type="button" id="prevWeek">← Week</button>
@@ -235,6 +237,18 @@
   <div id="productShot" hidden>
     <img alt="">
     <p class="product-shot-name"></p>
+  </div>
+  <div class="mask" id="clearMask">
+    <form class="sheet" id="clearForm">
+      <h2>Clear planning</h2>
+      <p class="help">This deletes every booked slot, assignment, and other task on Planning, Journey, and People. Orders stay on the sheet. Type CLEAR to confirm.</p>
+      <label>Type CLEAR <input id="clearConfirm" autocomplete="off"></label>
+      <p class="msg error" id="clearErr"></p>
+      <div class="actions">
+        <button class="danger" type="submit">Delete planning data</button>
+        <button class="ghost" type="button" id="clearCancel">Cancel</button>
+      </div>
+    </form>
   </div>
   <div class="mask" id="otherMask">
     <form class="sheet" id="otherForm">
@@ -1628,7 +1642,46 @@
         art.classList.toggle("open");
       }
     });
-    sdRequireOffice("planning").then((p) => { if (p) load().then(() => setView(viewFromHash(), false)); });
+    function openClearPlan() {
+      document.getElementById("clearConfirm").value = "";
+      document.getElementById("clearErr").textContent = "";
+      document.getElementById("clearMask").classList.add("open");
+      document.getElementById("clearConfirm").focus();
+    }
+    function closeClearPlan() {
+      document.getElementById("clearMask").classList.remove("open");
+    }
+    async function confirmClearPlan(e) {
+      if (e) e.preventDefault();
+      const err = document.getElementById("clearErr");
+      err.textContent = "";
+      const r = await sdOfficeFetch("/api/office/planning/clear", {
+        method: "POST",
+        body: JSON.stringify({ confirm: document.getElementById("clearConfirm").value })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        err.textContent = j.error || "Could not clear planning.";
+        return;
+      }
+      closeClearPlan();
+      Object.keys(openOrders).forEach((k) => { delete openOrders[k]; });
+      Object.keys(picked).forEach((k) => { delete picked[k]; });
+      Object.keys(assigns).forEach((k) => { delete assigns[k]; });
+      await load(week);
+      setStatus("Cleared " + ((j.result && j.result.removed) || 0) + " planning slots.");
+    }
+    document.getElementById("clearPlanBtn").onclick = openClearPlan;
+    document.getElementById("clearCancel").onclick = closeClearPlan;
+    document.getElementById("clearForm").onsubmit = confirmClearPlan;
+    document.getElementById("clearMask").addEventListener("click", (e) => {
+      if (e.target.id === "clearMask") closeClearPlan();
+    });
+    sdRequireOffice("planning").then((p) => {
+      if (!p) return;
+      document.getElementById("clearPlanBtn").style.display = p.canManageUsers ? "" : "none";
+      load().then(() => setView(viewFromHash(), false));
+    });
   </script>
 </body>
 </html>

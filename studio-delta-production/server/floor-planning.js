@@ -1209,8 +1209,17 @@ function unscheduleOrder(orderNumber) {
   const store = load();
   const before = store.blocks.length;
   store.blocks = store.blocks.filter((b) => formatOrderId(b.orderId) !== id);
+  if (store.assignments) delete store.assignments[id];
   save(store);
   return { removed: before - store.blocks.length };
+}
+
+function clearAllPlanning() {
+  const store = load();
+  const removed = (store.blocks || []).length;
+  const assignments = Object.keys(store.assignments || {}).length;
+  save(emptyStore());
+  return { removed, assignments };
 }
 
 function jobKeyFor(block) {
@@ -1724,6 +1733,7 @@ module.exports = {
   defaultCrewNames,
   DEFAULT_CREW,
   unscheduleOrder,
+  clearAllPlanning,
   moveBlock,
   insertOtherTask,
   removeBlock,

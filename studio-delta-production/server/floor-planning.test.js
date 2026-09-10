@@ -567,4 +567,60 @@ assert.strictEqual(splitCut.end, "2026-09-10T13:15:00+02:00");
 assert.strictEqual(splitCut.segments[0].end, "2026-09-10T09:00:00+02:00");
 assert.strictEqual(splitCut.segments[1].start, "2026-09-10T12:30:00+02:00");
 
+plan.save({
+  blocks: [
+    {
+      id: "keep-me",
+      orderId: "S260888",
+      process: "Profile Cutting",
+      workerId: "Sam",
+      workerName: "Sam",
+      start: "2026-09-10T07:45:00+02:00",
+      end: "2026-09-10T08:45:00+02:00",
+      kind: "work"
+    }
+  ],
+  assignments: { "S260888": { "Profile Cutting": "Sam" } }
+});
+const wipedPlan = plan.clearAllPlanning();
+assert.ok(wipedPlan.removed >= 1);
+assert.strictEqual(plan.load().blocks.length, 0);
+assert.deepStrictEqual(plan.load().assignments, {});
+plan.save({
+  blocks: [{
+    id: "gone-with-order",
+    orderId: "S260100 A",
+    process: "Tagging",
+    workerId: "Sipho",
+    workerName: "Sipho",
+    start: "2026-09-10T07:45:00+02:00",
+    end: "2026-09-10T08:45:00+02:00",
+    kind: "work"
+  }],
+  assignments: { "S260100 A": { Tagging: "Sipho" } }
+});
+db.deleteOrder("S260100 A");
+assert.ok(!plan.load().blocks.some((b) => b.orderId === "S260100 A"), "deleting an order drops its planning slots");
+db.upsertOrder({
+  order_number: "S260900",
+  status: "Not Yet Started",
+  product: "Air Chair"
+});
+plan.save({
+  blocks: [{
+    id: "wipe-all",
+    orderId: "S260900",
+    process: "Assembly",
+    workerId: "Nomsa",
+    workerName: "Nomsa",
+    start: "2026-09-10T07:45:00+02:00",
+    end: "2026-09-10T08:45:00+02:00",
+    kind: "work"
+  }],
+  assignments: { S260900: { Assembly: "Nomsa" } }
+});
+db.deleteAllOrders();
+assert.strictEqual(plan.load().blocks.length, 0, "clearing orders also clears planning");
+assert.deepStrictEqual(plan.load().assignments, {});
+
 console.log("floor-planning.test.js ok");
