@@ -52,6 +52,7 @@ const glassRates = require("./glass-rates");
 const steelRates = require("./steel-rates");
 const productionCost = require("./production-cost");
 const floorPlanning = require("./floor-planning");
+const orderLife = require("./order-life");
 const fs = require("fs");
 const express = require("express");
 const sqlite = require("./sqlite-store");
@@ -578,6 +579,15 @@ function mountOffice(app) {
     }
   });
 
+  app.get("/api/office/orders/:orderNumber/life", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...orderLife.collectOrderLife(req.params.orderNumber) });
+    } catch (e) {
+      const notFound = /not found/i.test(e.message || "");
+      res.status(notFound ? 404 : 400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.delete("/api/office/orders/:orderNumber", requireOffice, (req, res) => {
     deleteOrder(req.params.orderNumber);
     res.json({ ok: true });
@@ -851,6 +861,15 @@ function mountOffice(app) {
         ? pipeline.listMyCompletedTasks(req.office.name, { all })
         : pipeline.listMyTasks(req.office.name, { all })
     });
+  });
+
+  app.get("/api/office/enquiries/:enquiryNo/life", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...orderLife.collectEnquiryLife(req.params.enquiryNo) });
+    } catch (e) {
+      const notFound = /not found/i.test(e.message || "");
+      res.status(notFound ? 404 : 400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.get("/api/office/enquiries/:enquiryNo/process", requireOffice, (req, res) => {

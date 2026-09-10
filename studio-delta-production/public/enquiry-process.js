@@ -168,6 +168,14 @@
         ".sd-timeline li::before{content:\"\";position:absolute;left:-5px;top:6px;width:8px;height:8px;border-radius:50%;background:#1d2939}" +
         ".sd-timeline time{display:block;font-size:11px;font-weight:600;color:#667085;letter-spacing:.02em}" +
         ".sd-timeline .sd-tl-actor{color:#667085;font-size:12px}" +
+        ".sd-timeline .sd-stage{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#344054;background:#e4e7ec;border-radius:4px;padding:1px 6px;margin-right:6px}" +
+        ".sd-timeline .sd-stage-quote{background:#e0f2fe;color:#075985}" +
+        ".sd-timeline .sd-stage-money{background:#d1fadf;color:#067647}" +
+        ".sd-timeline .sd-stage-shop,.sd-timeline .sd-stage-qc{background:#ffefc6;color:#93370d}" +
+        ".sd-timeline .sd-stage-paint{background:#e0e7ff;color:#3730a3}" +
+        ".sd-timeline .sd-stage-materials{background:#fce7f6;color:#9d174d}" +
+        ".sd-timeline .sd-stage-delivery{background:#fee4e2;color:#b42318}" +
+        ".sd-timeline .sd-stage-order{background:#ede9fe;color:#5b21b6}" +
         ".sd-product-cost{background:#fff;border:1px solid #d0d5dd;border-radius:8px;padding:10px 12px;margin:10px 0}" +
         ".sd-cost-product{margin:0 0 8px;font-size:14px}" +
         ".sd-cost-slot{margin:0 0 12px;padding:0 0 12px;border-bottom:1px solid #eaecf0}" +
@@ -1020,6 +1028,59 @@
     return i === 0;
   }
 
+  function lifeItemHtml(ev) {
+    const stage = String((ev && ev.stage) || "enquiry");
+    return "<li><time>" + esc(ev.at_label || ev.at || "") + "</time>" +
+      "<span class=\"sd-stage sd-stage-" + esc(stage) + "\">" + esc(stage) + "</span>" +
+      esc(ev.title || ev.label || ev.kind || "") +
+      (ev.order_number ? " · " + esc(ev.order_number) : "") +
+      (ev.status ? " · " + esc(ev.status) : "") +
+      (ev.detail ? "<div class=\"sd-tl-actor\">" + esc(ev.detail) + "</div>" : "") +
+      (ev.note ? "<div class=\"sd-tl-actor\">" + esc(ev.note) + "</div>" : "") +
+      (ev.actor ? "<div class=\"sd-tl-actor\">" + esc(ev.actor) + "</div>" : "") +
+      "</li>";
+  }
+
+  function enquiryFallbackEvents(row) {
+    return (row.events || []).map((ev) => ({
+      at: ev.at,
+      at_label: ev.at_label,
+      stage: "enquiry",
+      title: ev.label || ev.kind,
+      status: ev.status,
+      note: ev.note,
+      actor: ev.actor
+    }));
+  }
+
+  function journeyHtml(events, sub) {
+    if (!events || !events.length) {
+      return "<details class=\"sd-timeline-fold\" id=\"sdJourney\" open><summary>Journey</summary>" +
+        "<p class=\"sd-process-sub\" style=\"margin:8px 12px 12px\">No dated steps yet.</p></details>";
+    }
+    return "<details class=\"sd-timeline-fold\" id=\"sdJourney\" open><summary>Journey</summary>" +
+      (sub ? "<p class=\"sd-process-sub\" style=\"margin:8px 12px 0\">" + esc(sub) + "</p>" : "") +
+      "<ol class=\"sd-timeline\">" + events.map(lifeItemHtml).join("") + "</ol></details>";
+  }
+
+  async function fillEnquiryLife(enquiryNo) {
+    const fold = document.getElementById("sdJourney");
+    if (!fold) return;
+    try {
+      const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(enquiryNo) + "/life");
+      const j = await r.json();
+      if (!document.getElementById("sdJourney")) return;
+      if (!j.ok) return;
+      const orders = (j.order_numbers || []).filter(Boolean);
+      const sub = orders.length
+        ? ("Enquiry through shop and delivery" + (orders.length ? " · " + orders.join(", ") : ""))
+        : "From capture through whatever has been recorded so far.";
+      const wrap = document.createElement("div");
+      wrap.innerHTML = journeyHtml(j.events || [], sub);
+      fold.replaceWith(wrap.firstChild);
+    } catch (e) {}
+  }
+
   function renderBody() {
     const snap = state.snap;
     const row = snap.row;
@@ -1042,17 +1103,7 @@
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +
       (row.lifespan_label ? "<span class=\"sd-life\">Lifespan <b>" + esc(row.lifespan_label) + "</b></span>" : "") +
       "</div>";
-    const events = row.events || [];
-    if (events.length) {
-      html += "<details class=\"sd-timeline-fold\"><summary>Timeline</summary><ol class=\"sd-timeline\">" + events.map((ev) => {
-        return "<li><time>" + esc(ev.at_label || ev.at) + "</time>" +
-          esc(ev.label || ev.kind) +
-          (ev.status ? " · " + esc(ev.status) : "") +
-          (ev.actor ? "<div class=\"sd-tl-actor\">" + esc(ev.actor) + "</div>" : "") +
-          (ev.note ? "<div class=\"sd-tl-actor\">" + esc(ev.note) + "</div>" : "") +
-          "</li>";
-      }).join("") + "</ol></details>";
-    }
+    html += journeyHtml(enquiryFallbackEvents(row), "");
     html += correspondenceCard(row);
     if (openTasks.length) {
       html += "<h2>Assigned now</h2>" + openTasks.map((t) => {
@@ -1197,6 +1248,7 @@
         window.location.href = "/orders/from-enquiry?enquiry=" + encodeURIComponent(state.enquiryNo);
       };
     }
+    fillEnquiryLife(row.enquiry_no);
   }
 
   window.sdOpenEnquiryProcess = async function (enquiryNo, focusTaskId) {

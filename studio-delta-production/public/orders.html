@@ -70,6 +70,23 @@
     .view-label { font-size:11px; font-weight:600; letter-spacing:.03em; color:var(--muted); margin:0 0 4px; }
     .view-value { font-size:13px; margin:0; white-space:pre-wrap; word-break:break-word; }
     .view-value.empty { color:var(--muted); }
+    .life { margin-top:16px; border:1px solid var(--line); border-radius:8px; background:#f8fafc; padding:12px 14px; }
+    .life h2 { font-family: Outfit, Inter, sans-serif; font-size:15px; margin:0 0 4px; }
+    .life .life-sub { font-size:12px; color:var(--muted); margin:0 0 10px; }
+    .life ol { list-style:none; margin:0; padding:0; border-left:2px solid #d0d5dd; }
+    .life li { position:relative; padding:0 0 12px 16px; font-size:13px; }
+    .life li:last-child { padding-bottom:0; }
+    .life li::before { content:""; position:absolute; left:-5px; top:6px; width:8px; height:8px; border-radius:50%; background:#1d2939; }
+    .life time { display:block; font-size:11px; font-weight:600; color:var(--muted); }
+    .life .stage { display:inline-block; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#344054; background:#e4e7ec; border-radius:4px; padding:1px 6px; margin-right:6px; }
+    .life .stage-quote { background:#e0f2fe; color:#075985; }
+    .life .stage-money { background:#d1fadf; color:#067647; }
+    .life .stage-shop, .life .stage-qc { background:#ffefc6; color:#93370d; }
+    .life .stage-paint { background:#e0e7ff; color:#3730a3; }
+    .life .stage-materials { background:#fce7f6; color:#9d174d; }
+    .life .stage-delivery { background:#fee4e2; color:#b42318; }
+    .life .stage-order { background:#ede9fe; color:#5b21b6; }
+    .life .detail, .life .actor { color:var(--muted); font-size:12px; }
     .form-foot { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line); }
     .err { color:var(--bad); font-size:12px; min-height:16px; }
     @media (max-width: 720px) {
@@ -615,6 +632,46 @@
       return "<div class=\"view-item" + (wide ? " wide" : "") + "\"><div class=\"view-label\">" + esc(label) + "</div>" +
         "<div class=\"view-value" + (v ? "" : " empty") + "\">" + esc(v || "—") + "</div></div>";
     }
+    function lifeItemHtml(ev) {
+      const stage = String((ev && ev.stage) || "order");
+      return "<li><time>" + esc(ev.at_label || ev.at || "") + "</time>" +
+        "<span class=\"stage stage-" + esc(stage) + "\">" + esc(stage) + "</span>" +
+        esc(ev.title || "") +
+        (ev.detail ? "<div class=\"detail\">" + esc(ev.detail) + "</div>" : "") +
+        (ev.actor ? "<div class=\"actor\">" + esc(ev.actor) + "</div>" : "") +
+        "</li>";
+    }
+    function renderLife(j) {
+      const now = j.status ? "Now: " + j.status : "";
+      const linked = j.enquiry_no ? "Enquiry " + j.enquiry_no : "";
+      const sub = [now, linked, j.product].filter(Boolean).join(" · ");
+      const events = j.events || [];
+      if (!events.length) {
+        return "<h2>Journey</h2><p class=\"life-sub\">" + esc(sub || "No dated steps yet.") +
+          "</p><p class=\"life-sub\">Nothing has been recorded from enquiry through delivery yet.</p>";
+      }
+      return "<h2>Journey</h2><p class=\"life-sub\">" + esc(sub) +
+        " — enquiry through shop clocks, materials, paint, and delivery.</p><ol>" +
+        events.map(lifeItemHtml).join("") + "</ol>";
+    }
+    async function fillOrderLife(orderNumber) {
+      const box = document.getElementById("orderLife");
+      if (!box) return;
+      try {
+        const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(orderNumber) + "/life");
+        const j = await r.json();
+        if (!document.getElementById("orderLife")) return;
+        if (!j.ok) {
+          box.innerHTML = "<h2>Journey</h2><p class=\"life-sub\">" + esc(j.error || "Could not load the journey.") + "</p>";
+          return;
+        }
+        box.innerHTML = renderLife(j);
+      } catch (e) {
+        if (document.getElementById("orderLife")) {
+          document.getElementById("orderLife").innerHTML = "<h2>Journey</h2><p class=\"life-sub\">Could not load the journey.</p>";
+        }
+      }
+    }
     function openView(i) {
       const row = rows[i];
       if (!row) return;
@@ -648,6 +705,7 @@
       html += "<div class=\"view-grid\" style=\"margin-top:8px\"><div class=\"view-item wide\"><div class=\"view-label\">Detailed description</div><div class=\"view-value\">" +
         String(row.detailed_description || "—").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/⟦([^⟧]+)⟧/g, "<mark>$1</mark>").replace(/\[\[([^\]]+)\]\]/g, "<mark>$1</mark>") +
         "</div></div></div>";
+      html += "<div class=\"life\" id=\"orderLife\"><h2>Journey</h2><p class=\"life-sub\">Loading the journey…</p></div>";
       document.getElementById("viewBody").innerHTML = html;
       const enqBtn = document.getElementById("viewEnquiryBtn");
       enqBtn.hidden = !row.enquiry_no;
@@ -671,6 +729,7 @@
         openForm(i);
       };
       document.getElementById("viewMask").classList.add("open");
+      fillOrderLife(row.order_number);
     }
     function closeView() {
       document.getElementById("viewMask").classList.remove("open");
