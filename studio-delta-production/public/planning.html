@@ -220,7 +220,7 @@
   <div class="layout">
     <section class="queue">
       <h2>Plan work</h2>
-      <p class="help">Not Yet Started and Ready for Steelwork. Assign people for each task except grinding. After those jobs are placed, grinding goes to the eligible person with the most open time. Eligible people are ticked for grinding plus profile cutting, tagging, or welding on Users.</p>
+      <p class="help">Not Yet Started and Ready for Steelwork, plus in-progress orders that still have work left. Only the remaining tasks show. Assign people for each task except grinding. After those jobs are placed, grinding goes to the eligible person with the most open time. Eligible people are ticked for grinding plus profile cutting, tagging, or welding on Users.</p>
       <input type="search" id="q" placeholder="Search order, product, status">
       <div class="actions" style="margin:0 0 12px; max-width:420px">
         <button type="button" id="scheduleSelected">Schedule selected</button>
@@ -383,7 +383,7 @@
       });
       const box = document.getElementById("queue");
       if (!rows.length) {
-        box.innerHTML = "<div class='empty'>" + (q ? "No orders match that search." : "No Not Yet Started or Ready for Steelwork orders.") + "</div>";
+        box.innerHTML = "<div class='empty'>" + (q ? "No orders match that search." : "No orders left to plan. Add Task times, or bring an in-progress order across with Add existing order.") + "</div>";
         return;
       }
       box.innerHTML = rows.map((o) => {

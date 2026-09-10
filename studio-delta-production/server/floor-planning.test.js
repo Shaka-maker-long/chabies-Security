@@ -280,7 +280,10 @@ assert.ok(!board.workers.some((w) => w.name === "Office Only"), "people without 
 assert.strictEqual(board.paintShop.id, plan.PAINT_WORKER_ID);
 assert.ok(board.queue.some((q) => q.order_number === "S260100 A" && q.scheduled));
 assert.ok(board.queue.some((q) => q.order_number === "S260100 B"));
-assert.ok(!board.queue.some((q) => q.order_number === "S260199"), "only NYS and Ready for Steelwork");
+const weldQ = board.queue.find((q) => q.order_number === "S260199");
+assert.ok(weldQ, "in-progress orders stay in the queue for remaining work");
+assert.ok(!weldQ.processes.some((p) => p.process === "Profile Cutting" || p.process === "Tagging" || p.process === "Welding"));
+assert.ok(weldQ.processes.some((p) => p.process === "Grinding"));
 const productA = board.queue.find((q) => q.order_number === "S260100 A");
 assert.ok(!productA.processes.some((p) => p.process === "Quality Control"));
 assert.ok(productA.processes.find((p) => p.process === "Welding").hours === 3);

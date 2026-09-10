@@ -11,6 +11,7 @@ const {
 const { getBook, persistWorkbook, ORDER_HEADERS, dataDir } = require("./workbook-store");
 const fromEnquiry = require("./create-order-from-enquiry");
 const quoteOptions = require("./quote-options");
+const { SHOP_STATUSES, isShopStatus } = require("./shop-status");
 
 const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
@@ -1439,6 +1440,78 @@ function createOrdersFromEnquiryForm(enquiryNo, body) {
   };
 }
 
+function onboardExistingOrder(body) {
+  const row = body || {};
+  if (!row.confirmed) throw new Error("Tick that this is where the order is on the floor now.");
+  const orderNumber = formatOrderId(row.order_number);
+  if (!orderNumber) throw new Error("Order number is required");
+  if (listOrders().some((o) => formatOrderId(o.order_number) === orderNumber)) {
+    throw new Error(orderNumber + " is already on Orders.");
+  }
+  const status = String(row.status || "").trim();
+  if (!isShopStatus(status)) throw new Error("Pick where this order is on the floor now.");
+  const product = String(row.product || "").trim();
+  if (!product) throw new Error("Product is required");
+  const client = String(row.client_name || "").trim();
+  if (!client) throw new Error("Client name is required");
+  const type = String(row.type || "").trim();
+  if (fromEnquiry.ORDER_TYPES.indexOf(type) === -1) {
+    throw new Error("Type must be Standard, Custom, or New Design.");
+  }
+  const enquiryNo = String(row.enquiry_no || "").trim();
+  if (enquiryNo) {
+    const enquiry = getEnquiry(enquiryNo);
+    if (!enquiry) throw new Error("Enquiry " + enquiryNo + " was not found.");
+    if (ordersLinkedToEnquiry(enquiry).length) {
+      throw new Error("Enquiry " + enquiryNo + " already has an Orders row.");
+    }
+  }
+  const pair = vatPair(row.price_incl_vat, row.price_excl_vat);
+  const paid = parseMoney(row.amount_paid);
+  const saved = decorateMoney(upsertOrder({
+    enquiry_no: enquiryNo,
+    quote_number: row.quote_number || "",
+    order_number: orderNumber,
+    status,
+    type,
+    category: row.category || "",
+    product,
+    variation: row.variation || "",
+    doors: row.doors || "",
+    detailed_description: row.detailed_description || "",
+    dimensions: row.dimensions || "",
+    powder_coating: row.powder_coating || "",
+    client_name: client,
+    client_number: row.client_number || "",
+    email: row.email || "",
+    address: row.address || "",
+    province: row.province || "",
+    city: row.city || "",
+    source: row.source || "",
+    price_excl_vat: pair.excl,
+    price_incl_vat: pair.incl,
+    amount_paid: row.amount_paid || "",
+    payment_date: paid > 0 ? nowIso().slice(0, 10) : "",
+    month_of_sale: formatMonthOfSale(nowIso())
+  }));
+  const deliveryDate = String(row.delivery_date || "").slice(0, 10);
+  if (deliveryDate) {
+    const sched = findScheduleRowByOrder(saved.order_number);
+    if (sched) {
+      setScheduleCell(sched.id, deliveryDate, fromEnquiry.scheduleCodeForProvince(saved.province), false);
+    }
+  }
+  if (enquiryNo) {
+    const raw = getEnquiryRaw(enquiryNo);
+    if (raw) {
+      raw.order_number = saved.order_number;
+      saveEnquiryRecord(raw);
+    }
+  }
+  save();
+  return { row: saved };
+}
+
 function createOrderFromEnquiry(enquiryNo) {
   const enquiry = getEnquiry(enquiryNo);
   if (!enquiry) throw new Error("Enquiry not found");
@@ -2685,6 +2758,8 @@ module.exports = {
   createOrderFromEnquiry,
   createOrderDraftFromEnquiry,
   createOrdersFromEnquiryForm,
+  onboardExistingOrder,
+  SHOP_STATUSES,
   ordersLinkedToEnquiry,
   listEnquiriesWaitingForOrders,
   listEnquiries,

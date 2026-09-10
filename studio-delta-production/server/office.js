@@ -37,6 +37,8 @@ const {
   createOrderFromEnquiry,
   createOrderDraftFromEnquiry,
   createOrdersFromEnquiryForm,
+  onboardExistingOrder,
+  SHOP_STATUSES,
   nextStudioOrderNumber,
   formatOrderId
 } = require("./db");
@@ -528,6 +530,31 @@ function mountOffice(app) {
       const existing = listOrders().find((o) => o.order_number === formatOrderId(body.order_number)) || null;
       const row = upsertOrder(jobCard.applyOfficeOrderStatusLock(body, existing));
       res.json({ ok: true, row });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/orders/onboard", requireOffice, (_req, res) => {
+    const remaining = {};
+    SHOP_STATUSES.forEach((status) => {
+      remaining[status] = floorPlanning.remainingPlanForStatus(status);
+    });
+    res.json({
+      ok: true,
+      statuses: SHOP_STATUSES.slice(),
+      remaining
+    });
+  });
+
+  app.post("/api/office/orders/onboard", requireOffice, (req, res) => {
+    try {
+      const created = onboardExistingOrder(req.body || {});
+      res.json({
+        ok: true,
+        row: created.row,
+        remaining: floorPlanning.remainingPlanForStatus(created.row.status)
+      });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
