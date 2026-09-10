@@ -404,11 +404,13 @@
           return "<div class='task-row'><span>" + esc(p.process) + " <em>" + p.hours + " h</em></span><select data-order=\"" + esc(id) + "\" data-process=\"" + esc(p.process) + "\">" + (p.workers.length ? opts.join("") : empty) + "</select></div>";
         }).join("");
         const none = tasks ? "" : "<p>No Task times for this product. Add hours on Task times first.</p>";
+        const needTimes = (o.processes || []).length && (o.processes || []).every((p) => !(p.minutes > 0 || p.hours > 0));
+        const timesHint = needTimes ? "<p>No Task times for this product. Add hours on Task times first, then schedule.</p>" : "";
         return "<article class='order" + (o.scheduled ? " scheduled" : "") + open + "' data-id=\"" + esc(id) + "\">" +
           "<div class='order-top'><label><input type='checkbox' data-pick=\"" + esc(id) + "\"" + checked + ">" +
           "<div><h3>" + esc(id) + (o.scheduled ? "<span class='pill on'>On calendar</span>" : "") + "</h3>" +
           "<p>" + esc(o.product || "No product") + " · " + esc(o.status) + (o.type ? " · " + esc(o.type) : "") + "</p></div></label></div>" +
-          "<div class='tasks'>" + (tasks || none) +
+          "<div class='tasks'>" + (tasks || none) + timesHint +
           "<div class='actions'><button type='button' data-schedule=\"" + esc(id) + "\">Schedule</button>" +
           (o.scheduled ? "<button class='ghost' type='button' data-unschedule=\"" + esc(id) + "\">Unschedule</button>" : "") +
           "</div></div></article>";

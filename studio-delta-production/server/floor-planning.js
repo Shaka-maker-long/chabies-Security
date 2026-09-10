@@ -1442,7 +1442,7 @@ function queueOrders() {
           auto: process === "Grinding",
           workers: process === "Grinding" ? [] : workersForProcess(process, users)
         };
-      }).filter((p) => p.minutes > 0);
+      });
       return {
         order_number: formatOrderId(o.order_number),
         product: String(o.product || ""),
@@ -1455,7 +1455,7 @@ function queueOrders() {
         processes
       };
     })
-    .filter((o) => o.processes.length > 0);
+    .filter((o) => o.remaining.length > 0);
 }
 
 function blockOverlapsWeek(block, weekStartIso) {
