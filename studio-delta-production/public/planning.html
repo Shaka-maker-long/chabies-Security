@@ -640,7 +640,7 @@
         product = "<span class='product" + (shot ? " has-shot" : "") + "'" + extra + ">" + esc(order.product) + "</span>";
       }
       const title = (order.orderId || "") + (order.product ? " · " + order.product : "") + " — Open timeline";
-      return "<td class='order'" + rs + " data-open-order=\"" + esc(order.orderId) + "\" title=\"" + esc(title) + "\"><span class='order-id'>" + esc(order.orderId) + "</span>" + product + "</td>";
+      return "<td class='order'" + rs + " data-open-order=\"" + esc(order.orderId) + "\"><span class='order-id' title=\"" + esc(title) + "\">" + esc(order.orderId) + "</span>" + product + "</td>";
     }
     function nameCell(person, pick, span) {
       if (!span) return "";
