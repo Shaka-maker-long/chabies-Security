@@ -610,7 +610,7 @@ function listSchedule(fromDay, toDay) {
   for (const c of state.schedule_cells) {
     withCells.add(c.row_id);
     const code = String(c.value || "").trim().toUpperCase();
-    if (code === "LD" || code === "LC") {
+    if (require("./office-schedule").liveDeliveryCode(c.value)) {
       const list = deliveryDays.get(c.row_id) || [];
       list.push(c.day);
       deliveryDays.set(c.row_id, list);
@@ -631,9 +631,45 @@ function listSchedule(fromDay, toDay) {
       order_date_label: formatOrderDate(r.order_date),
       cells: cellsByRow.get(r.id) || {},
       delivery_planned: ddays.length > 0,
-      delivery_days: ddays
+      delivery_days: ddays,
+      delivery_code: (function () {
+        const live = (state.schedule_cells || []).find((c) => (
+          c.row_id === r.id && require("./office-schedule").liveDeliveryCode(c.value)
+        ));
+        return live ? require("./office-schedule").liveDeliveryCode(live.value) : "";
+      })(),
+      cell_reasons: (function () {
+        const bag = {};
+        (state.schedule_cells || []).forEach((c) => {
+          if (c.row_id === r.id && c.reason) bag[c.day] = c.reason;
+        });
+        return bag;
+      })()
     };
   });
+}
+
+function listLiveDeliveries() {
+  syncScheduleFromOrders();
+  const byRow = new Map();
+  (state.schedule_cells || []).forEach((c) => {
+    const code = require("./office-schedule").liveDeliveryCode(c.value);
+    if (!code) return;
+    const row = state.schedule_rows.find((r) => r.id === c.row_id);
+    if (!row) return;
+    const day = String(c.day || "").slice(0, 10);
+    const cur = byRow.get(c.row_id);
+    if (!cur || day < cur.day) {
+      byRow.set(c.row_id, {
+        order_number: formatOrderId(row.order_number),
+        day,
+        code
+      });
+    }
+  });
+  return Array.from(byRow.values()).sort((a, b) => (
+    a.day.localeCompare(b.day) || a.order_number.localeCompare(b.order_number)
+  ));
 }
 
 function listDeliveryItems() {
@@ -686,13 +722,40 @@ function upsertScheduleRow(row) {
   return existing;
 }
 
-function setScheduleCell(rowId, day, value, persist = true) {
+function setScheduleCell(rowId, day, value, persist = true, extra) {
   const id = Number(rowId);
-  state.schedule_cells = state.schedule_cells.filter((c) => !(c.row_id === id && c.day === day));
-  if (value != null && String(value).trim() !== "") {
-    state.schedule_cells.push({ row_id: id, day, value: String(value) });
+  const dayIso = String(day || "").slice(0, 10);
+  const code = value == null ? "" : String(value).trim();
+  const sched = require("./office-schedule");
+  const live = sched.liveDeliveryCode(code);
+  const extraObj = extra && typeof extra === "object" ? extra : {};
+  const reason = String(extraObj.reason || "").trim();
+  const prev = (state.schedule_cells || []).find((c) => c.row_id === id && String(c.day).slice(0, 10) === dayIso);
+  const prevLive = prev ? sched.liveDeliveryCode(prev.value) : "";
+  if (live) {
+    const others = (state.schedule_cells || []).filter((c) => (
+      c.row_id === id
+      && String(c.day).slice(0, 10) !== dayIso
+      && sched.liveDeliveryCode(c.value)
+    ));
+    if (others.length) {
+      if (!reason) throw new Error("Give a reason before moving LD or LC to another day.");
+      others.forEach((c) => {
+        c.value = sched.starredDeliveryCode(c.value);
+        c.reason = reason;
+      });
+    }
+  }
+  state.schedule_cells = (state.schedule_cells || []).filter((c) => !(c.row_id === id && String(c.day).slice(0, 10) === dayIso));
+  if (code) {
+    const cell = { row_id: id, day: dayIso, value: code };
+    if (reason && live) cell.reason = reason;
+    state.schedule_cells.push(cell);
   }
   if (persist) save();
+  if (!extraObj.skipPlan && (live || prevLive || !code)) {
+    try { require("./floor-planning").autoPlanFromDeliveries(); } catch (e) {}
+  }
 }
 
 function countOrders() {
@@ -2793,6 +2856,7 @@ module.exports = {
   listDeliveryItems,
   upsertScheduleRow,
   setScheduleCell,
+  listLiveDeliveries,
   syncScheduleFromOrders,
   deleteScheduleForOrder,
   countOrders,

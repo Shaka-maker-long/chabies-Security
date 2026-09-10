@@ -52,6 +52,11 @@
     #picker .chips { display:flex; flex-wrap:wrap; gap:4px; }
     #picker button { border:0; border-radius:6px; padding:6px 8px; font:inherit; font-size:11px; font-weight:700; cursor:pointer; }
     #picker .clear { width:100%; margin-top:6px; background:#fff; color:#1d2939; border:1px solid var(--line); }
+    #picker .reason { display:none; margin-top:8px; }
+    #picker.need-reason .reason { display:block; }
+    #picker.need-reason .chips, #picker.need-reason h2, #picker.need-reason .clear { display:none; }
+    #picker textarea { width:100%; min-height:64px; border:1px solid var(--line); border-radius:6px; padding:6px; font:inherit; font-size:12px; }
+    #picker .reason-err { color:#b42318; font-size:11px; min-height:14px; margin:4px 0 0; }
     .msg { font-size:12px; color:var(--muted); }
     .legend { display:flex; flex-wrap:wrap; gap:6px; padding:8px 16px; background:#fff; border-bottom:1px solid var(--line); align-items:center; }
     .legend span { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:#344054; font-weight:600; }
@@ -79,7 +84,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Production schedule</h1>
-      <p class="lede">Search any column, jump a week or scroll the dates through the year. Amber rows still need Latest Delivery (LD) or Latest Courier (LC).</p>
+      <p class="lede">One live Latest Delivery (LD) or Latest Courier (LC) per order. Move it to another day and you must give a reason — the old cell stays as gray LD* or LC*. Amber rows still need a latest date.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -112,6 +117,7 @@
     let rows = [];
     let codes = [];
     let pickCell = null;
+    let pendingCode = "";
     let query = "";
 
     function mondayOf(iso) {
@@ -149,12 +155,17 @@
       if (key === "order_date") return row.order_date_label || row.order_date || "";
       return row[key];
     }
+    function liveCode(value) {
+      const c = String(value || "").trim().toUpperCase();
+      return c === "LD" || c === "LC" ? c : "";
+    }
     function isPlanned(row) {
       if (row.delivery_planned) return true;
-      return Object.values(row.cells || {}).some((v) => {
-        const c = String(v || "").toUpperCase();
-        return c === "LD" || c === "LC";
-      });
+      return Object.values(row.cells || {}).some((v) => liveCode(v));
+    }
+    function liveDay(row) {
+      const days = Object.keys(row.cells || {}).filter((day) => liveCode(row.cells[day]));
+      return days.sort()[0] || "";
     }
     function matches(row) {
       if (!query) return true;
@@ -165,13 +176,15 @@
     function renderLegend() {
       document.getElementById("legend").innerHTML = codes.map((c) => {
         return "<span><b class=\"swatch\" style=\"" + codeStyle(c.code) + "\">" + esc(c.code) + "</b>" + esc(c.label) + "</span>";
-      }).join("") + "<span class=\"hint\">Amber rows are not planned for delivery yet (no LD or LC).</span>";
+      }).join("") + "<span class=\"hint\">Amber rows have no live LD or LC. Gray LD* / LC* is a date that moved.</span>";
     }
 
-    function paintCell(td, value) {
+    function paintCell(td, value, reason) {
       td.dataset.code = value || "";
       td.textContent = value || "";
       td.setAttribute("style", codeStyle(value));
+      if (reason) td.title = reason;
+      else td.removeAttribute("title");
     }
 
     function renderPicker() {
@@ -181,16 +194,29 @@
         if (!groups[c.group]) groups[c.group] = [];
         groups[c.group].push(c);
       });
-      box.innerHTML = Object.keys(groups).map((g) => {
-        return "<h2>" + esc(g) + "</h2><div class=\"chips\">" + groups[g].map((c) => {
+      const shown = {};
+      Object.keys(groups).forEach((g) => {
+        const list = groups[g].filter((c) => !c.moved);
+        if (list.length) shown[g] = list;
+      });
+      box.innerHTML = Object.keys(shown).map((g) => {
+        return "<h2>" + esc(g) + "</h2><div class=\"chips\">" + shown[g].map((c) => {
           return "<button type=\"button\" data-code=\"" + esc(c.code) + "\" style=\"" + codeStyle(c.code) + "\" title=\"" + esc(c.label) + "\">" + esc(c.code) + "</button>";
         }).join("") + "</div>";
-      }).join("") + "<button type=\"button\" class=\"clear\" data-code=\"\">Clear</button>";
+      }).join("") + "<button type=\"button\" class=\"clear\" data-code=\"\">Clear</button>" +
+        "<div class=\"reason\" id=\"reasonBox\"><h2>Move LD or LC</h2><p class=\"hint\" style=\"margin:0 0 6px\">The old date stays as gray LD* or LC*. Type why it moved.</p>" +
+        "<textarea id=\"moveReason\" placeholder=\"Why is this date moving?\"></textarea>" +
+        "<p class=\"reason-err\" id=\"moveErr\"></p>" +
+        "<button type=\"button\" id=\"reasonGo\">Save new date</button>" +
+        "<button type=\"button\" class=\"clear\" id=\"reasonCancel\">Cancel</button></div>";
     }
 
     function closePicker() {
       pickCell = null;
-      document.getElementById("picker").classList.remove("open");
+      pendingCode = "";
+      const box = document.getElementById("picker");
+      box.classList.remove("open");
+      box.classList.remove("need-reason");
     }
 
     function openPicker(td) {
@@ -277,7 +303,8 @@
         cal += "<tr data-id=\"" + row.id + "\"" + mark + ">";
         days.forEach((d) => {
           const v = (row.cells && row.cells[d]) || "";
-          cal += "<td class=\"day code-cell\" data-day=\"" + d + "\" data-code=\"" + esc(v) + "\" tabindex=\"0\" style=\"" + codeStyle(v) + "\">" + esc(v) + "</td>";
+          const why = (row.cell_reasons && row.cell_reasons[d]) || "";
+          cal += "<td class=\"day code-cell\" data-day=\"" + d + "\" data-code=\"" + esc(v) + "\" tabindex=\"0\" style=\"" + codeStyle(v) + "\"" + (why ? " title=\"" + esc(why) + "\"" : "") + ">" + esc(v) + "</td>";
         });
         cal += "</tr>";
       });
@@ -335,14 +362,12 @@
       }
     }
 
-    function refreshPlanned(row, tr) {
-      const daysSet = new Set(row.delivery_days || []);
+    function refreshPlanned(row) {
+      const daysSet = new Set();
       Object.keys(row.cells || {}).forEach((day) => {
-        const c = String(row.cells[day] || "").toUpperCase();
-        if (c === "LD" || c === "LC") daysSet.add(day);
-        else daysSet.delete(day);
+        if (liveCode(row.cells[day])) daysSet.add(day);
       });
-      row.delivery_days = Array.from(daysSet);
+      row.delivery_days = Array.from(daysSet).sort();
       row.delivery_planned = daysSet.size > 0;
       document.querySelectorAll('tr[data-id="' + row.id + '"]').forEach((el) => {
         el.classList.toggle("unplanned", !row.delivery_planned);
@@ -350,7 +375,20 @@
       paintStatus();
     }
 
-    async function applyCode(value) {
+    function starOtherLive(row, keepDay, reason) {
+      Object.keys(row.cells || {}).forEach((day) => {
+        const live = liveCode(row.cells[day]);
+        if (!live || day === keepDay) return;
+        row.cells[day] = live + "*";
+        if (!row.cell_reasons) row.cell_reasons = {};
+        row.cell_reasons[day] = reason;
+        document.querySelectorAll('tr[data-id="' + row.id + '"] td.code-cell[data-day="' + day + '"]').forEach((cell) => {
+          paintCell(cell, row.cells[day], reason);
+        });
+      });
+    }
+
+    async function applyCode(value, reason) {
       if (!pickCell) return;
       const td = pickCell;
       const tr = td.closest("tr");
@@ -359,14 +397,27 @@
       const row = rows.find((r) => r.id === id);
       if (!row) return;
       if (!row.cells) row.cells = {};
+      const moving = liveCode(value) && liveDay(row) && liveDay(row) !== day;
+      if (moving && !String(reason || "").trim()) {
+        pendingCode = value;
+        document.getElementById("picker").classList.add("need-reason");
+        const box = document.getElementById("moveReason");
+        const err = document.getElementById("moveErr");
+        if (err) err.textContent = "";
+        if (box) { box.value = ""; box.focus(); }
+        return;
+      }
+      if (moving) starOtherLive(row, day, reason);
       row.cells[day] = value;
-      paintCell(td, value);
-      refreshPlanned(row, tr);
+      paintCell(td, value, reason);
+      refreshPlanned(row);
       closePicker();
-      await sdOfficeFetch("/api/office/schedule/cell", {
+      const r = await sdOfficeFetch("/api/office/schedule/cell", {
         method: "PUT",
-        body: JSON.stringify({ rowId: id, day, value })
+        body: JSON.stringify({ rowId: id, day, value, reason: reason || "" })
       });
+      const j = await r.json().catch(function () { return {}; });
+      if (!j.ok) document.getElementById("status").textContent = j.error || "Could not save that date.";
     }
 
     async function onChange(e) {
@@ -417,6 +468,16 @@
       load();
     }
     document.getElementById("picker").onclick = (e) => {
+      if (e.target.id === "reasonCancel") { closePicker(); return; }
+      if (e.target.id === "reasonGo") {
+        const why = (document.getElementById("moveReason").value || "").trim();
+        if (!why) {
+          document.getElementById("moveErr").textContent = "Give a reason before moving LD or LC.";
+          return;
+        }
+        applyCode(pendingCode, why);
+        return;
+      }
       const btn = e.target.closest("button[data-code]");
       if (btn) applyCode(btn.getAttribute("data-code"));
     };
