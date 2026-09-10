@@ -60,13 +60,48 @@ const LEAD_FIELDS = [
   "client_name", "client_number", "email", "payment_date", "address"
 ];
 
+function spacesToTabs(s) {
+  if (s.indexOf("\t") !== -1) return s;
+  let out = "";
+  let inQuotes = false;
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (inQuotes) {
+      out += c;
+      if (c === "\"" && s[i + 1] === "\"") {
+        out += s[i + 1];
+        i += 2;
+        continue;
+      }
+      if (c === "\"") inQuotes = false;
+      i += 1;
+      continue;
+    }
+    if (c === "\"") {
+      inQuotes = true;
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (c === " " && s[i + 1] === " ") {
+      while (s[i] === " ") i += 1;
+      out += "\t";
+      continue;
+    }
+    out += c;
+    i += 1;
+  }
+  return out;
+}
+
 function parseTsv(text) {
   const rows = [];
   let row = [];
   let cell = "";
   let i = 0;
   let inQuotes = false;
-  const s = String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const s = spacesToTabs(String(text || "").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
   while (i < s.length) {
     const c = s[i];
     if (inQuotes) {

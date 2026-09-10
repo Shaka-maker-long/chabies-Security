@@ -13,6 +13,7 @@
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
     header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
     .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:820px; }
+    .lede a { color:#175cd3; font-weight:600; }
     .tabs { display:flex; gap:4px; flex-wrap:wrap; }
     .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
     .tabs a.on { background:#1d2939; color:#fff; }
@@ -62,7 +63,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Paste orders</h1>
-      <p class="lede">Copy the rows from the old Google Sheet and paste them in the box. Header row is optional. Shop status and assigned operator come across. A blank status is Not Yet Started. Confirming the paste is enough; Planning then books only the work that is left.</p>
+      <p class="lede">The Orders sheet is still on <a href="/orders">Sheet</a>. This page is only the paste box. Copy the rows from the old Google Sheet, paste them here, then Add to Orders — you go back to the sheet.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -94,8 +95,9 @@
       sdInitOrderPaste({
         onAdded: function (j) {
           const n = (j.added || []).length;
-          document.getElementById("status").textContent = "Added " + n + (n === 1 ? " order" : " orders") + " from the paste.";
-          document.getElementById("status").className = "msg ok";
+          const msg = "Added " + n + (n === 1 ? " order" : " orders") + " from the paste.";
+          try { sessionStorage.setItem("sd-paste-added", msg); } catch (e) {}
+          location.href = "/orders";
         }
       });
       document.getElementById("pasteText").focus();

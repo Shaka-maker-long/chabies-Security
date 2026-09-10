@@ -97,19 +97,6 @@
     .life .detail, .life .actor { color:var(--muted); font-size:12px; }
     .form-foot { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line); }
     .err { color:var(--bad); font-size:12px; min-height:16px; }
-    .paste-area { margin:12px 16px 0; background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:10px; }
-    .paste-area h2 { font-family: Outfit, Inter, sans-serif; font-size:15px; margin:0; }
-    .paste-area-head { display:flex; gap:12px; align-items:baseline; justify-content:space-between; flex-wrap:wrap; }
-    .paste-area-head a { font-size:13px; font-weight:600; color:#175cd3; }
-    #pasteText {
-      min-height:160px; width:100%; border:1px solid var(--line); border-radius:6px; padding:10px;
-      font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; line-height:1.45; background:#f8fafc;
-    }
-    .paste-foot { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-    .paste-table-wrap { overflow:auto; }
-    .paste-preview { width:100%; min-width:640px; border-collapse:collapse; font-size:12px; }
-    .paste-preview th, .paste-preview td { border:1px solid var(--line); padding:6px 8px; text-align:left; white-space:normal; }
-    .paste-preview th { background:var(--head); }
     @media (max-width: 720px) {
       .stack-grid, .stack-grid.four, .view-grid { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
@@ -123,7 +110,6 @@
     <div>
       <nav class="tabs" aria-label="Orders views">
         <a class="on" href="/orders">Sheet</a>
-        <a href="/orders/paste">Paste orders</a>
         <a href="/orders/schedule">Production schedule</a>
         <a href="/orders/delivery">Delivery summary</a>
         <a href="/orders/job-card">Job card</a>
@@ -149,26 +135,6 @@
     <p class="hint">These enquiries are Ordered and not on this sheet yet. Add the order here. If the shop is already working it, use Add existing order and pick the current status, or Paste orders from the old sheet.</p>
     <div class="ready-list" id="readyList"></div>
   </div>
-  <section class="paste-area" id="pasteBox" aria-label="Paste from the old sheet">
-    <div class="paste-area-head">
-      <h2>Paste from the old sheet</h2>
-      <a href="/orders/paste">Open the full paste area</a>
-    </div>
-    <p class="hint">Copy the rows in Google Sheets and paste them in this box. Shop status and assigned operator come across. A blank status is Not Yet Started.</p>
-    <label>Paste area
-      <textarea id="pasteText" spellcheck="false" placeholder="SOQ2913	S260226 D	Ready for Tagging		Standard	Cabinet	…"></textarea>
-    </label>
-    <label class="confirm">
-      <input id="pastePaid" type="checkbox" checked>
-      <span>Everyone has paid in full<span class="hint">Amount paid is set to the incl-VAT price. Untick only if the paste already has Amount paid and some still owe.</span></span>
-    </label>
-    <div class="paste-foot">
-      <button class="ghost" type="button" onclick="previewPaste()">Preview</button>
-      <button type="button" onclick="confirmPaste()">Add to Orders</button>
-      <p class="err" id="pasteErr" role="alert"></p>
-    </div>
-    <div id="pasteResult" hidden></div>
-  </section>
   <div class="wrap">
     <table id="grid"></table>
   </div>
@@ -328,7 +294,6 @@
   </div>
 
   <script src="/office-auth.js?v=plain-copy"></script>
-  <script src="/order-paste-ui.js?v=paste-area"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 56, true],
@@ -840,6 +805,13 @@
       const clearBtn = document.getElementById("clearAllBtn");
       if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       document.getElementById("status").textContent = rows.length + " orders";
+      try {
+        const pasted = sessionStorage.getItem("sd-paste-added");
+        if (pasted) {
+          sessionStorage.removeItem("sd-paste-added");
+          document.getElementById("status").textContent = pasted;
+        }
+      } catch (e) {}
       renderReadyEnquiries(j.readyEnquiries || []);
       render();
     }
@@ -937,13 +909,6 @@
       canManage = !!p.canManageUsers;
       const clearBtn = document.getElementById("clearAllBtn");
       if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
-      sdInitOrderPaste({
-        onAdded: function (j) {
-          load().then(function () {
-            document.getElementById("status").textContent = "Added " + j.added.length + (j.added.length === 1 ? " order" : " orders") + " from the paste.";
-          });
-        }
-      });
       load();
     });
   </script>
