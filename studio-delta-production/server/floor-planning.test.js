@@ -314,6 +314,7 @@ assert.ok(board.bands.some((b) => b.label === "Cleaning"));
 assert.strictEqual(trip.rows.find((r) => r.process === "Profile Cutting").workerName, "Willard");
 assert.strictEqual(trip.rows.find((r) => r.process === "Tagging").workerName, "Sipho");
 assert.strictEqual(trip.rows.find((r) => r.process === "Welding").workerName, "Thabo");
+assert.ok(trip.rows.find((r) => r.process === "Profile Cutting").segments.length >= 1);
 assert.ok(trip.rows.find((r) => r.process === "Tagging").days.indexOf("2026-09-08") !== -1);
 assert.ok(trip.rows.find((r) => r.process === "Powder coating").days.indexOf("2026-09-14") !== -1);
 assert.ok(trip.rows.find((r) => r.process === "Assembly").days.indexOf("2026-09-21") !== -1);
@@ -534,5 +535,36 @@ const idleJourney = plan.buildJourney([]);
 assert.ok((idleJourney.otherActuals || []).some((row) => row.code === "O" && row.title === "Cleaning"), JSON.stringify(idleJourney.otherActuals));
 assert.ok((idleJourney.otherActuals || []).every((row) => String(row.workerName) !== "Sipho"), "open idle holes are not Journey actuals yet");
 assert.strictEqual(plan.PROCESS_CODES.Other, "O");
+
+const split = plan.buildJourney([
+  {
+    id: "cut-am",
+    orderId: "S260214 B",
+    product: "Naomi Arched Cabinet",
+    process: "Profile Cutting",
+    workerId: "Sam",
+    workerName: "Sam",
+    start: "2026-09-10T08:45:00+02:00",
+    end: "2026-09-10T09:00:00+02:00",
+    kind: "work"
+  },
+  {
+    id: "cut-pm",
+    orderId: "S260214 B",
+    product: "Naomi Arched Cabinet",
+    process: "Profile Cutting",
+    workerId: "Sam",
+    workerName: "Sam",
+    start: "2026-09-10T12:30:00+02:00",
+    end: "2026-09-10T13:15:00+02:00",
+    kind: "work"
+  }
+]);
+const splitCut = split.orders[0].rows.find((r) => r.process === "Profile Cutting");
+assert.strictEqual(splitCut.segments.length, 2, "split cutting stays as separate booked slots");
+assert.strictEqual(splitCut.start, "2026-09-10T08:45:00+02:00");
+assert.strictEqual(splitCut.end, "2026-09-10T13:15:00+02:00");
+assert.strictEqual(splitCut.segments[0].end, "2026-09-10T09:00:00+02:00");
+assert.strictEqual(splitCut.segments[1].start, "2026-09-10T12:30:00+02:00");
 
 console.log("floor-planning.test.js ok");

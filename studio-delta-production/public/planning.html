@@ -453,12 +453,12 @@
         : "";
       return "<span class='chip" + (actual ? " actual" : "") + (other ? " other-actual" : "") + "'" + blockAttr + otherAttr + " data-kind='" + kind + "' title=\"" + esc(title) + "\" style='background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" + esc(item.code) + "</span>";
     }
-    function chipFromPair(pair) {
+    function chipFromPair(pair, seg) {
       const src = pair.kind === "actual" ? (pair.row.actual || {}) : pair.row;
       return chipHtml({
         code: pair.row.code || codeOf(pair.row.process),
         process: pair.row.process,
-        blockId: pair.kind === "actual" ? "" : pair.row.blockId,
+        blockId: pair.kind === "actual" ? "" : ((seg && seg.blockId) || pair.row.blockId),
         workerName: src.workerName || pair.person.name,
         kind: pair.kind,
         otherDetail: pair.row.otherDetail
@@ -672,6 +672,11 @@
       const end = endIso === dayIso ? minutesOf(src.end) : 15 * 60 + 45;
       return min >= start && min < end;
     }
+    function coveringPlanSegment(row, dayIso, min) {
+      const segs = (row && row.segments) || [];
+      if (segs.length) return segs.find((seg) => srcCoversSlot(seg, dayIso, min)) || null;
+      return srcCoversSlot(row, dayIso, min) ? row : null;
+    }
     function pairCoversSlot(pair, dayIso, min) {
       if (pair.kind === "actual") {
         const act = pair.row.actual || {};
@@ -681,7 +686,7 @@
         if (!(act.days || []).length && !act.start) return false;
         return srcCoversSlot(Object.assign({ days: act.days }, act), dayIso, min);
       }
-      return srcCoversSlot(pair.row, dayIso, min);
+      return !!coveringPlanSegment(pair.row, dayIso, min);
     }
     function orderSpanAt(pairs, index) {
       const id = pairs[index] && pairs[index].order && pairs[index].order.orderId;
@@ -903,7 +908,8 @@
       const body = pairs.map((pair, i) => {
         const cells = slots.map((m) => {
           const hit = pairCoversSlot(pair, dayIso, m);
-          return "<td class='slot' data-day=\"" + esc(dayIso) + "\" data-min=\"" + m + "\" data-worker=\"" + esc(pair.person.id) + "\" data-slot='1'>" + (hit ? chipFromPair(pair) : "") + "</td>";
+          const seg = pair.kind === "plan" ? coveringPlanSegment(pair.row, dayIso, m) : null;
+          return "<td class='slot' data-day=\"" + esc(dayIso) + "\" data-min=\"" + m + "\" data-worker=\"" + esc(pair.person.id) + "\" data-slot='1'>" + (hit ? chipFromPair(pair, seg) : "") + "</td>";
         }).join("");
         return pairRow(pairs, i, cells, { names: true, namePick: true });
       }).join("");
