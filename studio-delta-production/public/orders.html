@@ -97,6 +97,10 @@
     .life .detail, .life .actor { color:var(--muted); font-size:12px; }
     .form-foot { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line); }
     .err { color:var(--bad); font-size:12px; min-height:16px; }
+    .paste-preview { width:100%; min-width:0; border-collapse:collapse; font-size:12px; }
+    .paste-preview th, .paste-preview td { border:1px solid var(--line); padding:6px 8px; text-align:left; white-space:normal; }
+    .paste-preview th { background:var(--head); }
+    .paste-box { min-height:180px; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12px; }
     @media (max-width: 720px) {
       .stack-grid, .stack-grid.four, .view-grid { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
@@ -125,13 +129,14 @@
       <input type="search" id="q" placeholder="Search orders">
       <button class="ghost" type="button" onclick="location.href='/orders/job-card'">Generate job card</button>
       <button class="ghost" type="button" onclick="location.href='/orders/onboard'">Add existing order</button>
+      <button class="ghost" type="button" onclick="openPaste()">Paste orders</button>
       <button class="ghost" type="button" onclick="openForm()">New order</button>
       <button class="danger" type="button" id="clearAllBtn" style="display:none" onclick="openClearAll()">Clear all orders</button>
     </div>
   </header>
   <div id="readyBox" class="ready-box" hidden>
     <h2>Ready to add to Orders</h2>
-    <p class="hint">These enquiries are Ordered and not on this sheet yet. Add the order here. If the shop is already working it, use Add existing order and pick the current status.</p>
+    <p class="hint">These enquiries are Ordered and not on this sheet yet. Add the order here. If the shop is already working it, use Add existing order and pick the current status, or Paste orders from the old sheet.</p>
     <div class="ready-list" id="readyList"></div>
   </div>
   <div class="wrap">
@@ -271,6 +276,30 @@
         </div>
       </header>
       <div class="body" id="viewBody"></div>
+    </div>
+  </div>
+  <div class="mask" id="pasteMask">
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pasteTitle">
+      <header class="form-head">
+        <h1 id="pasteTitle">Paste orders</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closePaste()">Cancel</button>
+          <button class="ghost" type="button" onclick="previewPaste()">Preview</button>
+          <button type="button" id="pasteAddBtn" onclick="confirmPaste()">Add to Orders</button>
+        </div>
+        <p class="form-head-err" id="pasteErr" role="alert"></p>
+      </header>
+      <div class="body stack-form">
+        <p class="hint">Copy the rows from the old sheet and paste them here — header row optional. Shop status and assigned operator come across. A blank status is Not Yet Started. Confirming the paste is enough; Planning then books only the work that is left.</p>
+        <label>Sheet rows
+          <textarea id="pasteText" class="paste-box" spellcheck="false" placeholder="SOQ2913	S260226 D	Ready for Tagging		Standard	Cabinet	…"></textarea>
+        </label>
+        <label class="confirm">
+          <input id="pastePaid" type="checkbox" checked>
+          <span>Everyone has paid in full<span class="hint">Amount paid is set to the incl-VAT price. Untick only if the paste already has Amount paid and some still owe.</span></span>
+        </label>
+        <div id="pasteResult" hidden></div>
+      </div>
     </div>
   </div>
   <div class="mask" id="clearMask">
@@ -807,6 +836,91 @@
       renderReadyEnquiries(j.readyEnquiries || []);
       render();
     }
+    function pasteErr(msg) {
+      document.getElementById("pasteErr").textContent = msg || "";
+    }
+    function renderPasteResult(j, saved) {
+      const host = document.getElementById("pasteResult");
+      const added = j.added || [];
+      const skipped = j.skipped || [];
+      const errors = j.errors || [];
+      if (!added.length && !skipped.length && !errors.length) {
+        host.hidden = true;
+        host.innerHTML = "";
+        return;
+      }
+      host.hidden = false;
+      let html = "";
+      if (added.length) {
+        html += "<p class=\"hint\">" + (saved ? "Added " : "Ready to add ") + added.length + (added.length === 1 ? " order." : " orders.") + "</p>";
+        html += "<table class=\"paste-preview\"><thead><tr><th>Order</th><th>Product</th><th>Client</th><th>Status</th><th>Operator</th><th>Incl VAT</th><th>Paid</th></tr></thead><tbody>";
+        html += added.map((row) => {
+          return "<tr><td>" + esc(row.order_number) + "</td><td>" + esc(row.product) + "</td><td>" + esc(row.client_name) + "</td><td>" + esc(row.status) + "</td><td>" + esc(row.assigned_operator || "—") + "</td><td>" + esc(formatRand(row.price_incl_vat)) + "</td><td>" + esc(formatRand(row.amount_paid)) + "</td></tr>";
+        }).join("");
+        html += "</tbody></table>";
+      }
+      if (skipped.length) {
+        html += "<p class=\"hint\">Already on Orders: " + skipped.map((s) => esc(s.order_number)).join(", ") + "</p>";
+      }
+      if (errors.length) {
+        html += "<p class=\"err\">" + errors.map((e) => esc(e)).join(" · ") + "</p>";
+      }
+      host.innerHTML = html;
+    }
+    function openPaste() {
+      pasteErr("");
+      document.getElementById("pasteResult").hidden = true;
+      document.getElementById("pasteResult").innerHTML = "";
+      document.getElementById("pasteMask").classList.add("open");
+      document.getElementById("pasteText").focus();
+    }
+    function closePaste() {
+      document.getElementById("pasteMask").classList.remove("open");
+    }
+    async function postPaste(preview) {
+      pasteErr("");
+      const text = document.getElementById("pasteText").value;
+      if (!String(text || "").trim()) {
+        pasteErr("Paste the order rows from the old sheet.");
+        return null;
+      }
+      const r = await sdOfficeFetch("/api/office/orders/paste", {
+        method: "POST",
+        body: JSON.stringify({
+          text,
+          paid_in_full: document.getElementById("pastePaid").checked,
+          preview: !!preview
+        })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        pasteErr(j.error || "Could not read that paste.");
+        return null;
+      }
+      renderPasteResult(j, !preview);
+      if (!(j.added || []).length && !(j.skipped || []).length) {
+        pasteErr((j.errors && j.errors[0]) || "No order rows were found in that paste.");
+      }
+      return j;
+    }
+    async function previewPaste() {
+      await postPaste(true);
+    }
+    async function confirmPaste() {
+      const j = await postPaste(false);
+      if (!j) return;
+      if ((j.added || []).length) {
+        document.getElementById("pasteText").value = "";
+        await load();
+        document.getElementById("status").textContent = "Added " + j.added.length + (j.added.length === 1 ? " order" : " orders") + " from the paste.";
+        if (!(j.skipped || []).length && !(j.errors || []).length) closePaste();
+      }
+    }
+    window.openPaste = openPaste;
+    window.closePaste = closePaste;
+    window.previewPaste = previewPaste;
+    window.confirmPaste = confirmPaste;
+
     function openClearAll() {
       document.getElementById("clearConfirm").value = "";
       document.getElementById("clearErr").textContent = "";
@@ -868,6 +982,9 @@
     });
     document.getElementById("viewMask").addEventListener("click", (e) => {
       if (e.target.id === "viewMask") closeView();
+    });
+    document.getElementById("pasteMask").addEventListener("click", (e) => {
+      if (e.target.id === "pasteMask") closePaste();
     });
     let qTimer = 0;
     document.getElementById("q").oninput = () => {
