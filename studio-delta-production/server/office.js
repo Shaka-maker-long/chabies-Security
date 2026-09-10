@@ -23,6 +23,7 @@ const {
   getEnquiry,
   upsertEnquiry,
   deleteEnquiry,
+  deleteEnquiryAttachment,
   deleteAllEnquiries,
   deleteAllOrders,
   nextEnquiryNo,
@@ -832,8 +833,13 @@ function mountOffice(app) {
   });
 
   app.delete("/api/office/enquiries/:enquiryNo", requireOffice, (req, res) => {
-    deleteEnquiry(req.params.enquiryNo);
-    res.json({ ok: true, nextEnquiryNo: nextEnquiryNo() });
+    try {
+      const out = deleteEnquiry(req.params.enquiryNo);
+      res.json({ ok: true, nextEnquiryNo: nextEnquiryNo(), enquiry_no: out.enquiry_no });
+    } catch (e) {
+      const notFound = /not found/i.test(e.message || "");
+      res.status(notFound ? 404 : 400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.get("/api/office/enquiries/:enquiryNo/quote.pdf", requireOffice, (req, res) => {
@@ -842,6 +848,16 @@ function mountOffice(app) {
 
   app.get("/api/office/enquiries/:enquiryNo/files/:kind", requireOffice, (req, res) => {
     sendEnquiryFile(res, req.params.enquiryNo, req.params.kind, String(req.query.download || "") === "1");
+  });
+
+  app.delete("/api/office/enquiries/:enquiryNo/files/:kind", requireOffice, (req, res) => {
+    try {
+      deleteEnquiryAttachment(req.params.enquiryNo, req.params.kind);
+      res.json({ ok: true, ...pipeline.processSnapshot(req.params.enquiryNo, req.office.name) });
+    } catch (e) {
+      const notFound = /not found/i.test(e.message || "");
+      res.status(notFound ? 404 : 400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.get("/api/office/assignees", requireOffice, (_req, res) => {
