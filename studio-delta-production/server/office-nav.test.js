@@ -576,6 +576,8 @@ const planningHtml = fs.readFileSync(path.join(__dirname, "../public/planning.ht
 assert.ok(planningHtml.indexOf("First out") !== -1);
 assert.ok(planningHtml.indexOf("Schedule grinding") !== -1);
 assert.ok(planningHtml.indexOf("Muruba") !== -1);
+assert.ok(planningHtml.indexOf("Thabile") !== -1);
+assert.ok(planningHtml.indexOf("Admire") !== -1);
 assert.ok(planningHtml.indexOf("Journey") !== -1);
 assert.ok(planningHtml.indexOf("Monday to Friday") !== -1 || planningHtml.indexOf("work days") !== -1);
 assert.ok(planningHtml.indexOf("Schedule selected") !== -1);
