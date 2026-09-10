@@ -1512,6 +1512,65 @@ function onboardExistingOrder(body) {
   return { row: saved };
 }
 
+function pasteOrdersFromSheet(body) {
+  const src = body || {};
+  const text = String(src.text || src.paste || "");
+  const paidInFull = src.paid_in_full !== false;
+  const preview = !!src.preview;
+  const parsed = require("./order-paste").parseOrderPaste(text, { paidInFull });
+  const taken = new Set(listOrders().map((o) => formatOrderId(o.order_number)));
+  const added = [];
+  const skipped = [];
+  parsed.rows.forEach((row) => {
+    const orderNumber = formatOrderId(row.order_number);
+    if (taken.has(orderNumber)) {
+      skipped.push({ order_number: orderNumber, reason: orderNumber + " is already on Orders." });
+      return;
+    }
+    if (preview) {
+      taken.add(orderNumber);
+      added.push(decorateMoney(row));
+      return;
+    }
+    const pair = vatPair(row.price_incl_vat, row.price_excl_vat);
+    const saved = decorateMoney(upsertOrder({
+      enquiry_no: row.enquiry_no || "",
+      quote_number: row.quote_number || "",
+      order_number: orderNumber,
+      status: row.status || "Not Yet Started",
+      assigned_operator: row.assigned_operator || "",
+      type: row.type || "Standard",
+      category: row.category || "",
+      product: row.product || "",
+      variation: row.variation || "",
+      doors: row.doors || "",
+      detailed_description: row.detailed_description || "",
+      dimensions: row.dimensions || "",
+      powder_coating: row.powder_coating || "",
+      client_name: row.client_name || "",
+      client_number: row.client_number || "",
+      email: row.email || "",
+      address: row.address || "",
+      province: row.province || "",
+      city: row.city || "",
+      source: row.source || "",
+      price_excl_vat: pair.excl,
+      price_incl_vat: pair.incl,
+      amount_paid: row.amount_paid || "",
+      payment_date: row.payment_date || "",
+      month_of_sale: row.month_of_sale || ""
+    }));
+    taken.add(orderNumber);
+    added.push(saved);
+  });
+  return {
+    added,
+    skipped,
+    errors: parsed.errors.slice(),
+    preview
+  };
+}
+
 function createOrderFromEnquiry(enquiryNo) {
   const enquiry = getEnquiry(enquiryNo);
   if (!enquiry) throw new Error("Enquiry not found");
@@ -2759,6 +2818,7 @@ module.exports = {
   createOrderDraftFromEnquiry,
   createOrdersFromEnquiryForm,
   onboardExistingOrder,
+  pasteOrdersFromSheet,
   SHOP_STATUSES,
   ordersLinkedToEnquiry,
   listEnquiriesWaitingForOrders,
