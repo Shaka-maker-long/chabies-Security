@@ -108,11 +108,12 @@
     table.grid td.order:hover { background:#eef2f6; }
     table.grid td.name.pick { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
     table.grid td.name.pick:hover, table.grid td.name.on { background:#eef2f6; }
-    table.grid th.week, table.grid td.codes { min-width:96px; }
+    table.grid th.week, table.grid td.codes { min-width:108px; }
     table.grid th.week, table.grid th.day { cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
     table.grid th.week:hover, table.grid th.day:hover { color:#1d2939; background:#e4e7ec; }
     table.grid th.week.current { box-shadow: inset 0 -3px 0 #1d2939; }
-    table.grid td.codes { font-weight:700; letter-spacing:.02em; }
+    table.grid td.codes { font-weight:700; letter-spacing:.02em; white-space:nowrap; }
+    table.grid td.codes .chip { margin:0 1px; }
     table.grid td.slot { min-width:52px; padding:4px 2px; font-weight:700; }
     table.grid .chip { display:inline-block; min-width:22px; padding:2px 6px; border-radius:4px; border:1px solid transparent; cursor:grab; }
     table.grid .chip.actual { cursor:default; }
@@ -421,6 +422,48 @@
         kind: pair.kind
       });
     }
+    function processRank(process) {
+      const list = ((board && board.processes) || []).concat(["Powder coating"]);
+      const i = list.indexOf(process);
+      return i < 0 ? 99 : i;
+    }
+    function chipsForWeek(entry, weekIsos) {
+      const kind = entry.kind;
+      const items = ((entry.order && entry.order.rows) || []).filter((row) =>
+        daysOf(row, kind).some((iso) => weekIsos.indexOf(iso) !== -1)
+      );
+      items.sort((a, b) => processRank(a.process) - processRank(b.process) || String(a.start || "").localeCompare(String(b.start || "")));
+      return items.map((row) => {
+        const src = kind === "actual" ? (row.actual || {}) : row;
+        return chipHtml({
+          code: row.code || codeOf(row.process),
+          process: row.process,
+          blockId: kind === "actual" ? "" : row.blockId,
+          workerName: src.workerName || row.workerName,
+          kind: kind
+        });
+      }).join("");
+    }
+    function weekKindEntries(orders, isos) {
+      const filter = kindFilter();
+      const entries = [];
+      sortByStart(orders, (row) => activityHits(row, isos)).forEach((order) => {
+        const hasPlan = (order.rows || []).some((row) => daysOf(row, "plan").some((iso) => isos.indexOf(iso) !== -1));
+        const hasActual = (order.rows || []).some((row) => daysOf(row, "actual").some((iso) => isos.indexOf(iso) !== -1));
+        if (filter === "plan") {
+          if (hasPlan) entries.push({ order: order, kind: "plan" });
+          return;
+        }
+        if (filter === "actual") {
+          if (hasActual) entries.push({ order: order, kind: "actual" });
+          return;
+        }
+        if (!hasPlan && !hasActual) return;
+        if (hasPlan) entries.push({ order: order, kind: "plan" });
+        entries.push({ order: order, kind: "actual" });
+      });
+      return entries;
+    }
     function journeyOrders() {
       return ((board && board.journey && board.journey.orders) || []).slice();
     }
@@ -678,27 +721,25 @@
       const box = document.getElementById("calendars");
       const weeks = weekWindow();
       const isos = weeks.reduce((all, w) => all.concat(weekIsos(w)), []);
-      const windowMatch = (row, kind) => daysOf(row, kind).some((iso) => isos.indexOf(iso) !== -1);
       const orders = sortByStart(
         journeyOrders().filter((o) => (o.rows || []).some((row) => activityHits(row, isos))),
         (row) => activityHits(row, isos)
       );
-      const pairs = activityPairs(orders, windowMatch);
+      const entries = weekKindEntries(orders, isos);
       fillWeekLabel();
-      if (!pairs.length) {
+      if (!entries.length) {
         box.innerHTML = renderJourneyCrumb() + emptyOutsideWeeks();
         return;
       }
       const head = "<th class='order'>Order</th><th class='kind'>Kind</th>" + weekHeadCells(weeks);
-      const body = pairs.map((pair, i) => {
+      const body = entries.map((entry, i) => {
         const cells = weeks.map((w) => {
-          const hit = pairOnDays(pair, weekIsos(w));
-          return "<td class='codes'>" + (hit ? chipFromPair(pair) : "") + "</td>";
+          return "<td class='codes'>" + chipsForWeek(entry, weekIsos(w)) + "</td>";
         }).join("");
-        return pairRow(pairs, i, cells, { names: false });
+        return pairRow(entries, i, cells, { names: false });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. Each process has a Plan row and an Actual row under it. Plan is the booked slot. Actual is the production clock — if Cutting ran in week 2, the C sits on Actual in that week. Empty Actual means it has not been clocked yet. Use Both, Planned, or Actual to show one or both. The frozen Order column is the number and the product. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
+        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. On this week grid each order has one Plan row and one Actual row — tasks stay together. Letters for that week sit in the same cell (C T P W), not on separate task rows. Plan is the booked slot. Actual is the production clock — if Cutting ran in week 2, the C sits on Actual in that week. Empty Actual means it has not been clocked yet. Use Both, Planned, or Actual to show one or both. The frozen Order column is the number and the product. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-order'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function renderJourneyDays() {
