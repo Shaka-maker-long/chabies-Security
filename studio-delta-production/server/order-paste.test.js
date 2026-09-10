@@ -90,6 +90,16 @@ assert.strictEqual(headed.rows[0].status, "Not Yet Started");
 assert.strictEqual(headed.rows[0].price_incl_vat, "1150.00");
 assert.strictEqual(headed.rows[0].amount_paid, "1150.00");
 
+const spaced = parseOrderPaste(
+  "SOQ8  S260320  Welding  Willard  Standard  Chair  Air Chair  N/A  N/A  A chair  Standard  Black  Pat  012  pat@test.com  05-Sep  1 Road    Gauteng  R1,150.00  R1,000.00   Sep 2026  Website  Pretoria",
+  { paidInFull: true }
+);
+assert.strictEqual(spaced.rows.length, 1, spaced.errors.join(" · "));
+assert.strictEqual(spaced.rows[0].order_number, "S260320");
+assert.strictEqual(spaced.rows[0].status, "Welding");
+assert.strictEqual(spaced.rows[0].assigned_operator, "Willard");
+assert.strictEqual(spaced.rows[0].amount_paid, "1150.00");
+
 const preview = db.pasteOrdersFromSheet({ text: SHEET, paid_in_full: true, preview: true });
 assert.strictEqual(preview.added.length, 4);
 assert.strictEqual(db.listOrders().length, 0, "preview must not write");
