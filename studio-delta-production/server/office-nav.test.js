@@ -591,6 +591,7 @@ assert.ok(planningHtml.indexOf("data-tab=\"people\"") !== -1, "planning.html mus
 assert.ok(planningHtml.indexOf("data-tab=\"journey\"") !== -1, "planning.html must have a Journey tab");
 assert.ok(planningHtml.indexOf("data-week") !== -1 && planningHtml.indexOf("data-day") !== -1, "Journey drills from week to day");
 assert.ok(planningHtml.indexOf("15-minute") !== -1, "Journey day view opens a time grid");
+assert.ok(planningHtml.indexOf("coveringPlanSegment") !== -1, "15-minute plan uses each booked slot, not the first-to-last span");
 assert.ok(planningHtml.indexOf("data-open-order") !== -1, "click an order number for its timeline");
 assert.ok(planningHtml.indexOf("id='orderLife'") !== -1, "Journey order view loads the full enquiry-to-delivery path");
 assert.ok(planningHtml.indexOf("fillOrderLife") !== -1);

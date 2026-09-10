@@ -659,12 +659,14 @@ function buildJourney(blocks) {
         start: b.start,
         end: b.end,
         blockId: b.id,
-        daySet: {}
+        daySet: {},
+        segments: []
       };
     }
     const g = groups[key];
     if (String(b.start || "") < String(g.start || "")) g.start = b.start;
     if (String(b.end || "") > String(g.end || "")) g.end = b.end;
+    g.segments.push({ start: b.start, end: b.end, blockId: b.id });
     occupiedWorkdays(b).forEach((iso) => { g.daySet[iso] = true; });
   });
   const byOrder = {};
@@ -681,7 +683,8 @@ function buildJourney(blocks) {
         start: g.start,
         end: g.end,
         blockId: g.blockId,
-        days: Object.keys(g.daySet).sort()
+        days: Object.keys(g.daySet).sort(),
+        segments: g.segments.slice().sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")))
       });
   });
   const orderIds = Object.keys(byOrder).sort();
