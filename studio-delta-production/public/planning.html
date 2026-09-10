@@ -447,6 +447,16 @@
     function kindFilter() {
       return journeyKind === "plan" || journeyKind === "actual" ? journeyKind : "both";
     }
+    function setJourneyKind(id) {
+      const next = id === "plan" || id === "actual" ? id : "both";
+      if (journeyKind === next && view === "journey") {
+        const on = document.querySelector("[data-kind-filter].on");
+        if (on && on.getAttribute("data-kind-filter") === next) return;
+      }
+      journeyKind = next;
+      if (view === "journey") renderBoard();
+    }
+    window.setJourneyKind = setJourneyKind;
     function activityHits(row, isos) {
       const filter = kindFilter();
       if (filter === "plan") return daysOf(row, "plan").some((iso) => isos.indexOf(iso) !== -1);
@@ -621,9 +631,10 @@
     function kindFilterButtons() {
       const cur = kindFilter();
       function btn(id, label) {
-        return "<button class='ghost" + (cur === id ? " on" : "") + "' type='button' data-kind-filter='" + id + "'>" + label + "</button>";
+        return "<button class='ghost" + (cur === id ? " on" : "") + "' type='button' data-kind-filter='" + id +
+          "' aria-pressed='" + (cur === id ? "true" : "false") + "' onclick='setJourneyKind(\"" + id + "\")'>" + label + "</button>";
       }
-      return "<div class='kind-filter' role='group' aria-label='Show planned or actual'><span class='kind-filter-label'>Show</span>" +
+      return "<div class='kind-filter' id='kindFilter' role='group' aria-label='Show planned or actual'><span class='kind-filter-label'>Show</span>" +
         btn("both", "Both") + btn("plan", "Planned") + btn("actual", "Actual") + "</div>";
     }
     function emptyKindLabel() {
@@ -824,6 +835,9 @@
         const actualLine = "<li class='actual'>" + code + "<span class='kind'>Actual</span><span>" + esc(row.process) + "</span>" +
           "<span class='who'>" + esc(act.workerName || act.workerId || "—") + "</span>" +
           "<span class='when'>" + esc(actualWhen) + "</span></li>";
+        const filter = kindFilter();
+        if (filter === "plan") return planLine;
+        if (filter === "actual") return actualLine;
         return planLine + actualLine;
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
@@ -1185,12 +1199,12 @@
     });
     document.getElementById("calendars").addEventListener("click", (e) => {
       if (justDragged) return;
-      const kindBtn = e.target.closest("[data-kind-filter]");
-      if (kindBtn && view === "journey") {
+      const el = e.target instanceof Element ? e.target : (e.target && e.target.parentElement);
+      const kindBtn = el && el.closest ? el.closest("[data-kind-filter]") : null;
+      if (kindBtn) {
         e.preventDefault();
         e.stopPropagation();
-        journeyKind = kindBtn.getAttribute("data-kind-filter") || "both";
-        renderBoard();
+        setJourneyKind(kindBtn.getAttribute("data-kind-filter"));
         return;
       }
       const level = e.target.closest("[data-journey-level]");
