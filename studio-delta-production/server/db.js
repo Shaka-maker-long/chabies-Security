@@ -1331,6 +1331,13 @@ function nextStudioOrderNumber() {
   return fromEnquiry.nextStudioOrderNumberFrom(listOrders());
 }
 
+function listEnquiriesWaitingForOrders() {
+  return listEnquiries().filter((row) => {
+    if (!row || !row.ready_for_orders) return false;
+    return !ordersLinkedToEnquiry(row).length;
+  });
+}
+
 function ordersLinkedToEnquiry(enquiry) {
   const no = String((enquiry && enquiry.enquiry_no) || "").trim();
   const linked = String((enquiry && enquiry.order_number) || "").trim();
@@ -2679,6 +2686,7 @@ module.exports = {
   createOrderDraftFromEnquiry,
   createOrdersFromEnquiryForm,
   ordersLinkedToEnquiry,
+  listEnquiriesWaitingForOrders,
   listEnquiries,
   getEnquiry,
   getEnquiryRaw,

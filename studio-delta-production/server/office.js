@@ -20,6 +20,7 @@ const {
   VAT_RATE,
   normalizeOrdersSheet,
   listEnquiries,
+  listEnquiriesWaitingForOrders,
   getEnquiry,
   upsertEnquiry,
   deleteAllEnquiries,
@@ -510,7 +511,14 @@ function mountOffice(app) {
       vatRate: VAT_RATE,
       nextOrderNumber: nextStudioOrderNumber(),
       operators: staff.listUsers().map((u) => u.name).filter(Boolean),
-      canManageUsers: staff.canManageUsers(_req.office)
+      canManageUsers: staff.canManageUsers(_req.office),
+      readyEnquiries: listEnquiriesWaitingForOrders().map((row) => ({
+        enquiry_no: row.enquiry_no,
+        client_name: row.client_name || "",
+        product: row.product || "",
+        status: row.status || "",
+        quote_no: row.quote_no || ""
+      }))
     });
   });
 

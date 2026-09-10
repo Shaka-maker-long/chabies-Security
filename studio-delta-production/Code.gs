@@ -30,7 +30,7 @@ var LUNCH_END_MINS = 12 * 60 + 30;
 var SHIFT_DURATION = STANDARD_DAY_MINS;
 var MAX_REGULAR_MINS = 8 * 60;
 var RESUME_CHASE_MINS = 8 * 60;
-var IDLE_GRACE_MINS = 10;
+var IDLE_GRACE_MINS = 15;
 var TAB_OVERTIME = "Overtime_Grants";
 var TAB_RESUME_CHASE = "Resume_Chase";
 // Set false to bring back assignment lock, Admin look-only, and after-16:00 lock.
@@ -974,6 +974,7 @@ function verifyGlobalLogin(name, password) {
           canSeeOffice: profile.canSeeOffice,
           canSeeDebtors: profile.canSeeDebtors,
           canManageUsers: profile.canManageUsers,
+          canSeeIdleAlerts: userManagesIdle(profile),
           isQcOnly: profile.isQcOnly,
           tasks: profile.tasks
         };
@@ -4428,8 +4429,12 @@ function getIdleAlertSheet(ss) {
   var sheet = ss.getSheetByName(TAB_IDLE);
   if (!sheet) {
     sheet = ss.insertSheet(TAB_IDLE);
-    sheet.appendRow(["Date", "Worker", "Role", "IdleSince", "AlertedAt", "Status", "AssignedTask"]);
+    sheet.appendRow(["Date", "Worker", "Role", "IdleSince", "AlertedAt", "Status", "AssignedTask", "IdleUntil", "TaskNote"]);
     sheet.hideSheet();
+  } else {
+    var headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 9)).getValues()[0];
+    if (String(headers[7] || "") !== "IdleUntil") sheet.getRange(1, 8).setValue("IdleUntil");
+    if (String(headers[8] || "") !== "TaskNote") sheet.getRange(1, 9).setValue("TaskNote");
   }
   return sheet;
 }
@@ -4474,11 +4479,46 @@ function alreadyAlertedToday(idleSheet, workerName) {
   for (var i = 1; i < data.length; i++) {
     if (String(data[i][1]).trim() === String(workerName).trim() &&
         String(data[i][0]) === today &&
-        String(data[i][5]).toLowerCase() !== "resolved") {
+        String(data[i][5]).toLowerCase() === "open") {
       return true;
     }
   }
   return false;
+}
+
+function runningJobStartMs(logs, workerName) {
+  var latest = 0;
+  for (var i = 1; i < logs.length; i++) {
+    if (String(logs[i][2]).trim() !== String(workerName).trim()) continue;
+    if (logs[i][6]) continue;
+    var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
+    if (meta.entryType === "indirect") continue;
+    if (hasOpenPause(meta.pauses) || logs[i][9]) continue;
+    var start = logs[i][5] ? new Date(logs[i][5]).getTime() : 0;
+    if (start > latest) latest = start;
+  }
+  return latest;
+}
+
+function stampOpenIdleUntil(idleSheet, logs, workerName, now) {
+  if (!workerHasRunningJob(logs, workerName)) return;
+  var until = runningJobStartMs(logs, workerName) || now.getTime();
+  var today = sastDayStamp(now);
+  var data = idleSheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][1]).trim() !== String(workerName).trim()) continue;
+    if (String(data[i][0]) !== today) continue;
+    if (String(data[i][5]).toLowerCase() !== "open") continue;
+    if (data[i][7]) continue;
+    idleSheet.getRange(i + 1, 8).setValue(new Date(until));
+  }
+}
+
+function userManagesIdle(profile) {
+  if (!profile) return false;
+  var title = String(profile.jobTitle || profile.role || "").trim().toLowerCase();
+  if (title === "manager") return true;
+  return String(profile.name || "").trim().toLowerCase() === "siya";
 }
 
 function enforceShiftHours(now) {
@@ -4683,7 +4723,9 @@ function checkIdleWorkers() {
   for (var u = 0; u < users.length; u++) {
     var name = users[u].name;
     var role = users[u].role;
-    if (!name || String(role).toLowerCase() === "admin") continue;
+    if (!name) continue;
+    if (users[u].isAdmin || String(users[u].access || "").toLowerCase() === "admin") continue;
+    stampOpenIdleUntil(idleSheet, logs, name, now);
     if (workerHasRunningJob(logs, name)) continue;
     if (workerHasOpenIndirect(logs, name)) continue;
     var last = lastActivityMs(logs, name);
@@ -4697,6 +4739,8 @@ function checkIdleWorkers() {
       last ? new Date(last) : "",
       now,
       "Open",
+      "",
+      "",
       ""
     ]);
     alerted.push(name + " (" + role + ")");
@@ -4716,7 +4760,9 @@ function getIdleWorkers() {
         worker: data[i][1],
         role: data[i][2],
         idleSince: data[i][3] ? new Date(data[i][3]).getTime() : null,
-        alertedAt: data[i][4] ? new Date(data[i][4]).getTime() : null
+        alertedAt: data[i][4] ? new Date(data[i][4]).getTime() : null,
+        idleUntil: data[i][7] ? new Date(data[i][7]).getTime() : null,
+        liveAgain: !!(data[i][7])
       });
     }
   }
@@ -4728,12 +4774,7 @@ function heartbeatKey(name) {
 }
 
 function userSeesIdleAlerts(workerName) {
-  var profile = getUserProfileByName(workerName);
-  if (!profile) return false;
-  if (profile.isAdmin || profile.isQcOnly) return true;
-  if (profile.tasks && profile.tasks.indexOf("Quality Control") !== -1) return true;
-  var role = String(profile.role || "").toLowerCase();
-  return role === "qc" || role === "quality control";
+  return userManagesIdle(getUserProfileByName(workerName));
 }
 
 function markStaffHeartbeat(workerName) {
@@ -4762,27 +4803,51 @@ function pollIdleAlerts(workerName) {
   };
 }
 
-function assignIndirectTask(workerName, taskName, assignedBy) {
+function assignIndirectTask(workerName, taskName, assignedBy, taskNote) {
+  if (!userSeesIdleAlerts(assignedBy)) {
+    return { success: false, message: "Only Siya or the Manager can assign idle tasks." };
+  }
   if (!workerName || !taskName) return { success: false, message: "Worker and task are required." };
+  var task = String(taskName || "").trim();
+  var note = String(taskNote || "").trim();
+  if (task.toLowerCase() === "other" && !note) {
+    return { success: false, message: "If it is Other, specify what they did." };
+  }
+  var label = task.toLowerCase() === "other" ? ("Other — " + note) : task;
   var ss = getSpreadsheet();
   var logSheet = getSheetOrDie(ss, TAB_LOGS);
   var logs = getLogPack(ss).values;
-  if (workerHasRunningJob(logs, workerName)) {
-    return { success: false, message: workerName + " already has a running job." };
+  var idleSheet = getIdleAlertSheet(ss);
+  var data = idleSheet.getDataRange().getValues();
+  var today = sastDayStamp(new Date());
+  var holeStart = null;
+  var holeEnd = null;
+  var r;
+  for (r = 1; r < data.length; r++) {
+    if (String(data[r][1]).trim() === String(workerName).trim() &&
+        String(data[r][0]) === today &&
+        String(data[r][5]).toLowerCase() === "open") {
+      holeStart = data[r][3] ? new Date(data[r][3]) : null;
+      holeEnd = data[r][7] ? new Date(data[r][7]) : null;
+      break;
+    }
   }
-  closeIndirectTasksForWorker(ss, workerName);
+  var now = new Date();
+  var live = workerHasRunningJob(logs, workerName);
+  if (!live) closeIndirectTasksForWorker(ss, workerName);
 
   var uniqueId = Utilities.getUuid();
   var meta = defaultLogMeta();
   meta.entryType = "indirect";
+  meta.idleFill = true;
   logSheet.appendRow([
     uniqueId,
     "INDIRECT",
     workerName,
     "Indirect",
-    taskName,
-    new Date(),
-    "",
+    label,
+    holeStart || now,
+    live || holeEnd ? (holeEnd || now) : "",
     "",
     "",
     "",
@@ -4791,15 +4856,14 @@ function assignIndirectTask(workerName, taskName, assignedBy) {
     JSON.stringify(meta)
   ]);
 
-  var idleSheet = getIdleAlertSheet(ss);
-  var data = idleSheet.getDataRange().getValues();
-  var today = sastDayStamp(new Date());
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).trim() === String(workerName).trim() &&
-        String(data[i][0]) === today &&
-        String(data[i][5]).toLowerCase() === "open") {
-      idleSheet.getRange(i + 1, 6).setValue("Assigned");
-      idleSheet.getRange(i + 1, 7).setValue(taskName);
+  for (r = 1; r < data.length; r++) {
+    if (String(data[r][1]).trim() === String(workerName).trim() &&
+        String(data[r][0]) === today &&
+        String(data[r][5]).toLowerCase() === "open") {
+      idleSheet.getRange(r + 1, 6).setValue("Assigned");
+      idleSheet.getRange(r + 1, 7).setValue(label);
+      if (!data[r][7]) idleSheet.getRange(r + 1, 8).setValue(holeEnd || now);
+      idleSheet.getRange(r + 1, 9).setValue(note);
     }
   }
   bumpFloorCache();

@@ -341,7 +341,8 @@ const PROCESS_CODES = {
   "Welding": "W",
   "Grinding": "G",
   "Powder coating": "PC",
-  "Assembly": "A"
+  "Assembly": "A",
+  Other: "O"
 };
 
 function processCode(process) {
@@ -390,6 +391,9 @@ function journeyDayBounds(journey) {
       (row.days || []).forEach((iso) => addJourneyIso(iso, bounds));
       ((row.actual && row.actual.days) || []).forEach((iso) => addJourneyIso(iso, bounds));
     });
+  });
+  ((journey && journey.otherActuals) || []).forEach((item) => {
+    (item.days || []).forEach((iso) => addJourneyIso(iso, bounds));
   });
   return bounds;
 }
@@ -550,6 +554,45 @@ function groupProductionActuals(logs) {
   return groups;
 }
 
+function readIdleActuals() {
+  try {
+    const sheet = getBook().getSheetByName("Idle_Alerts");
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    const lastCol = Math.max(sheet.getLastColumn(), 9);
+    const grid = sheet.getRange(1, 1, sheet.getLastRow(), lastCol).getValues();
+    const out = [];
+    for (let i = 1; i < grid.length; i++) {
+      const row = grid[i] || [];
+      if (String(row[5] || "").trim().toLowerCase() !== "assigned") continue;
+      const title = String(row[6] || "Other").trim() || "Other";
+      const note = String(row[8] || "").trim();
+      const startMs = toMs(row[3]) || toMs(row[4]);
+      if (!Number.isFinite(startMs)) continue;
+      let endMs = toMs(row[7]);
+      if (!Number.isFinite(endMs) || endMs <= startMs) endMs = toMs(row[4]) || startMs + 15 * 60 * 1000;
+      const start = isoFromMs(startMs);
+      const end = isoFromMs(endMs);
+      const days = occupiedWorkdays({ start, end });
+      out.push({
+        id: "idle-" + (i + 1),
+        workerId: String(row[1] || "").trim(),
+        workerName: String(row[1] || "").trim(),
+        title,
+        note,
+        process: title,
+        code: "O",
+        start,
+        end,
+        days,
+        bouts: [{ start, end }]
+      });
+    }
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
 function attachActuals(journey) {
   const groups = groupProductionActuals(readProductionActuals());
   ((journey && journey.orders) || []).forEach((o) => {
@@ -568,6 +611,7 @@ function attachActuals(journey) {
         : emptyActual();
     });
   });
+  if (journey) journey.otherActuals = readIdleActuals();
   const bounds = journeyDayBounds(journey);
   if (journey) {
     journey.days = bounds.min && bounds.max ? workdaysFromTo(bounds.min, bounds.max) : [];
@@ -1494,6 +1538,7 @@ module.exports = {
   save,
   queueOrders,
   buildJourney,
+  readIdleActuals,
   workdaysFromTo,
   occupiedWorkdays,
   formatDayHeader,

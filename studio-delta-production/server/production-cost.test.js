@@ -119,6 +119,36 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   assert.ok(!(openSnap.orders || []).some((o) => o.orderNum === "S-COST-OPEN"), "open jobs must not stay on the cost matrix");
   assert.ok(!(openSnap.orders || []).some((o) => o.orderNum === "S-COST-ZERO"), "zero-minute starts must not stay on the cost matrix");
 
+  db.upsertOrder({
+    order_number: "S-COST-2",
+    product: "Gate",
+    status: "Ready for Assembly",
+    price_excl_vat: "3000.00"
+  });
+  const glassSheet = book.getSheetByName("Glass_To_Order");
+  glassSheet.appendRow(["g-cost-1", start, "S-COST-2", "Nomsa", "Door", "Reeded", "6mm", 1800, 500, 2, "Received"]);
+  persistWorkbook();
+  fs.writeFileSync(path.join(dir, "glass-pos.json"), JSON.stringify({
+    nextPo: 2,
+    lines: { "g-cost-1": { cost: "125.50", receivedAt: "2026-09-09T08:00:00.000Z" } },
+    pos: [],
+    receives: [],
+    invoices: []
+  }));
+  fs.writeFileSync(path.join(dir, "paint-shop.json"), JSON.stringify({
+    sends: [],
+    receives: [],
+    invoices: [],
+    orders: { "S-COST-2": { cost: "350.00", receivedAt: "2026-09-09T10:00:00.000Z" } }
+  }));
+  const withMats = await cost.getAppData({ mode: "all" });
+  const matOrder = withMats.orders.find((o) => o.orderNum === "S-COST-2");
+  assert.ok(matOrder, "received glass and powder must open a Cost row");
+  assert.ok(Math.abs(matOrder.glassCost - 125.5) < 0.02, "glass actual " + matOrder.glassCost);
+  assert.ok(Math.abs(matOrder.powderCost - 350) < 0.02, "powder actual " + matOrder.powderCost);
+  assert.ok(matOrder.materialCost >= 475);
+  assert.ok(!(matOrder.materialEntries || []).some((e) => e.type === "glass" && Math.abs((e.cost || 0) - 810) < 0.02), "glass estimates must not land on Cost");
+
   const refuseSteel = await fetch(base + "/api/office/steel-usage/clear", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-sd-token": session.token },
@@ -153,6 +183,10 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   assert.ok(afterJson.ok);
   const leftover = (afterJson.orders || []).find((o) => o.orderNum === "S-COST-1");
   assert.ok(!leftover, "cleared labour and steel must leave the cost matrix");
+  const keptMats = (afterJson.orders || []).find((o) => o.orderNum === "S-COST-2");
+  assert.ok(keptMats, "received glass and powder stay after labour and steel are cleared");
+  assert.ok(Math.abs(keptMats.glassCost - 125.5) < 0.02);
+  assert.ok(Math.abs(keptMats.powderCost - 350) < 0.02);
 
   server.close();
   console.log("production-cost.test.js ok");

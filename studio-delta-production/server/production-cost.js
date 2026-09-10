@@ -243,6 +243,8 @@ function emptyOrder(id, meta) {
     totalHours: 0,
     laborCost: 0,
     materialCost: 0,
+    glassCost: 0,
+    powderCost: 0,
     materialEntries: [],
     tasks,
     staff: {},
@@ -264,6 +266,55 @@ async function loadLogs() {
   const { callShopFunction } = require("./gas");
   const rows = await callShopFunction("listCostingLogs", []);
   return Array.isArray(rows) ? rows : [];
+}
+
+function addMaterial(rec, entry) {
+  rec.materialEntries.push(entry);
+  rec.materialCost += entry.cost;
+  if (entry.type === "glass") rec.glassCost += entry.cost;
+  if (entry.type === "powder") rec.powderCost += entry.cost;
+  if (entry.month && entry.month !== "unknown") {
+    rec.monthMaterials[entry.month] = (rec.monthMaterials[entry.month] || 0) + entry.cost;
+  }
+}
+
+function addGlassActuals(order) {
+  let snap;
+  try { snap = require("./glass-po").snapshot(); } catch (e) { return; }
+  (snap.glass || []).forEach((line) => {
+    const cost = parseMoney(line.cost);
+    if (!(cost > 0)) return;
+    const orderNum = String(line.order || "").trim();
+    if (!orderNum) return;
+    const rec = order(orderNum);
+    const month = line.receivedAt ? monthKey(new Date(line.receivedAt)) : "unknown";
+    addMaterial(rec, {
+      type: "glass",
+      item: [line.type, line.thickness].filter(Boolean).join(" ") || "Glass",
+      qty: [line.height, line.width].filter(Boolean).join(" × ") + (line.quantity ? " × " + line.quantity : ""),
+      cost,
+      month
+    });
+  });
+}
+
+function addPowderActuals(order) {
+  let shop;
+  try { shop = require("./powder-shop").loadShop(); } catch (e) { return; }
+  Object.keys(shop.orders || {}).forEach((orderNum) => {
+    const meta = shop.orders[orderNum] || {};
+    const cost = parseMoney(meta.cost);
+    if (!(cost > 0)) return;
+    const rec = order(orderNum);
+    const month = meta.receivedAt ? monthKey(new Date(meta.receivedAt)) : "unknown";
+    addMaterial(rec, {
+      type: "powder",
+      item: "Powder coating",
+      qty: "",
+      cost,
+      month
+    });
+  });
 }
 
 async function getAppData(query) {
@@ -331,6 +382,9 @@ async function getAppData(query) {
       rec.monthMaterials[month] = (rec.monthMaterials[month] || 0) + priced.cost;
     }
   });
+
+  addGlassActuals(order);
+  addPowderActuals(order);
 
   const startMonth = range.start ? monthKey(range.start) : "";
 
@@ -415,6 +469,9 @@ async function getAppData(query) {
       totalHours: fHours,
       laborCost: fLabor,
       materialCost: fMat,
+      glassCost: prunedMats.filter((e) => e.type === "glass").reduce((s, e) => s + (e.cost || 0), 0),
+      powderCost: prunedMats.filter((e) => e.type === "powder").reduce((s, e) => s + (e.cost || 0), 0),
+      steelCost: prunedMats.filter((e) => e.type === "steel").reduce((s, e) => s + (e.cost || 0), 0),
       overheadCost: displayOH,
       materialEntries: prunedMats,
       tasks: o.tasks,

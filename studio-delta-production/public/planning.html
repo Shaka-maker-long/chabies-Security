@@ -123,6 +123,7 @@
     table.grid td.slot { min-width:52px; padding:4px 2px; font-weight:700; }
     table.grid .chip { display:inline-block; min-width:22px; padding:2px 6px; border-radius:4px; border:1px solid transparent; cursor:grab; }
     table.grid .chip.actual { cursor:default; }
+    table.grid .chip.other-actual { cursor:pointer; }
     table.grid tr.order-start td { border-top:2px solid #d0d5dd; }
     table.grid tr.actual td { background:#f8fafc; }
     table.grid tr.actual td.kind { color:#067647; }
@@ -184,6 +185,8 @@
     .mask input, .mask select { width:100%; margin-top:4px; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
     .mask .row { display:grid; grid-template-columns: 1fr 1fr; gap:8px; }
     .mask .actions { margin-top:14px; }
+    .chip.other-actual { cursor:pointer; }
+    .other-detail p { margin:0 0 8px; font-size:13px; line-height:1.45; }
     @media (max-width: 900px) {
       .week-list button.row, .week-list .head { grid-template-columns: 1fr 1fr; }
       .tools { width:100%; margin-left:0; }
@@ -254,6 +257,15 @@
         <button class="ghost" type="button" id="otherCancel">Cancel</button>
       </div>
     </form>
+  </div>
+  <div class="mask" id="otherDetailMask">
+    <div class="sheet other-detail" role="dialog" aria-modal="true">
+      <h2>Other task</h2>
+      <div id="otherDetailBody"></div>
+      <div class="actions">
+        <button class="ghost" type="button" id="otherDetailClose">Close</button>
+      </div>
+    </div>
   </div>
   <script src="/office-auth.js?v=planning-journey"></script>
   <script>
@@ -425,12 +437,18 @@
       return (row && row.days) || [];
     }
     function chipHtml(item) {
-      const c = color(item.process);
+      const other = !!(item.otherDetail || item.code === "O");
+      const c = color(item.process, other ? "other" : "");
       const actual = item.kind === "actual";
       const blockAttr = actual || !item.blockId ? "" : " data-block=\"" + esc(item.blockId) + "\"";
       const kind = actual ? "actual" : "work";
-      const title = item.process + " · " + (actual ? "Actual" : "Plan") + (item.workerName ? " · " + item.workerName : "");
-      return "<span class='chip" + (actual ? " actual" : "") + "'" + blockAttr + " data-kind='" + kind + "' title=\"" + esc(title) + "\" style='background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" + esc(item.code) + "</span>";
+      const title = other
+        ? "O · click for what was done" + (item.workerName ? " · " + item.workerName : "")
+        : item.process + " · " + (actual ? "Actual" : "Plan") + (item.workerName ? " · " + item.workerName : "");
+      const otherAttr = item.otherDetail
+        ? " data-other=\"" + esc(JSON.stringify(item.otherDetail)) + "\""
+        : "";
+      return "<span class='chip" + (actual ? " actual" : "") + (other ? " other-actual" : "") + "'" + blockAttr + otherAttr + " data-kind='" + kind + "' title=\"" + esc(title) + "\" style='background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" + esc(item.code) + "</span>";
     }
     function chipFromPair(pair) {
       const src = pair.kind === "actual" ? (pair.row.actual || {}) : pair.row;
@@ -439,7 +457,8 @@
         process: pair.row.process,
         blockId: pair.kind === "actual" ? "" : pair.row.blockId,
         workerName: src.workerName || pair.person.name,
-        kind: pair.kind
+        kind: pair.kind,
+        otherDetail: pair.row.otherDetail
       });
     }
     function processRank(process) {
@@ -460,7 +479,8 @@
           process: row.process,
           blockId: kind === "actual" ? "" : row.blockId,
           workerName: src.workerName || row.workerName,
-          kind: kind
+          kind: kind,
+          otherDetail: row.otherDetail
         });
       }).join("");
     }
@@ -484,8 +504,39 @@
       });
       return entries;
     }
+    function otherJourneyOrder() {
+      const items = ((board && board.journey && board.journey.otherActuals) || []);
+      if (!items.length) return null;
+      return {
+        orderId: "Other",
+        product: "Idle / other",
+        other: true,
+        start: items[0].start,
+        rows: items.map((item) => ({
+          process: item.title || "Other",
+          code: "O",
+          workerId: item.workerId || item.workerName,
+          workerName: item.workerName,
+          start: item.start,
+          end: item.end,
+          days: [],
+          actual: {
+            start: item.start,
+            end: item.end,
+            days: item.days || [],
+            workerId: item.workerId || item.workerName,
+            workerName: item.workerName,
+            bouts: item.bouts || [{ start: item.start, end: item.end }]
+          },
+          otherDetail: item
+        }))
+      };
+    }
     function journeyOrders() {
-      return ((board && board.journey && board.journey.orders) || []).slice();
+      const rows = ((board && board.journey && board.journey.orders) || []).slice();
+      const extra = otherJourneyOrder();
+      if (extra) rows.push(extra);
+      return rows;
     }
     function selectedOrder() {
       return journeyOrders().find((o) => o.orderId === openJourneyId) || null;
@@ -562,6 +613,19 @@
         return windowMatch(row, "plan") || windowMatch(row, "actual");
       }).forEach((o) => {
         (o.rows || []).forEach((row) => {
+          if (o.other) {
+            const actualHit = windowMatch(row, "actual");
+            if (!actualHit || filter === "plan") return;
+            if (!processMatchesWorker(row)) return;
+            const act = row.actual || {};
+            pairs.push({
+              order: o,
+              person: { id: act.workerId || row.workerId, name: act.workerName || row.workerName },
+              row: row,
+              kind: "actual"
+            });
+            return;
+          }
           if (!processMatchesWorker(row)) return;
           const planHit = windowMatch(row, "plan");
           const actualHit = windowMatch(row, "actual");
@@ -648,6 +712,9 @@
         const shot = String(order.imageUrl || "").trim();
         const extra = shot ? " data-product-shot=\"" + esc(shot) + "\"" : "";
         product = "<span class='product" + (shot ? " has-shot" : "") + "'" + extra + ">" + esc(order.product) + "</span>";
+      }
+      if (order.other) {
+        return "<td class='order'" + rs + "><span class='order-id'>Other</span>" + (order.product ? "<span class='product'>" + esc(order.product) + "</span>" : "") + "</td>";
       }
       const title = (order.orderId || "") + (order.product ? " · " + order.product : "") + " — Open timeline";
       return "<td class='order'" + rs + " data-open-order=\"" + esc(order.orderId) + "\"><span class='order-id' title=\"" + esc(title) + "\">" + esc(order.orderId) + "</span>" + product + "</td>";
@@ -764,7 +831,7 @@
         return pairRow(entries, i, cells, { names: false });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. On this week grid each order has one Plan row and one Actual row — tasks stay together. Letters for that week sit in the same cell (C T P W), not on separate task rows. Plan is the booked slot. Actual is the production clock — if Cutting ran in week 2, the C sits on Actual in that week. Empty Actual means it has not been clocked yet. Use Both, Planned, or Actual to show one or both. The frozen Order column is the number and the product. Hover the product name for the catalog photo. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
+        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. O is an idle / other actual — click O for who, the slot, and what they did. On this week grid each order has one Plan row and one Actual row — tasks stay together. Letters for that week sit in the same cell (C T P W), not on separate task rows. Plan is the booked slot. Actual is the production clock — if Cutting ran in week 2, the C sits on Actual in that week. Empty Actual means it has not been clocked yet. Use Both, Planned, or Actual to show one or both. The frozen Order column is the number and the product. Hover the product name for the catalog photo. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-order'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function renderJourneyDays() {
@@ -796,7 +863,7 @@
         return pairRow(pairs, i, cells, { names: true, namePick: true });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Each process has a Plan row and an Actual row under it so you can compare the booked slot with the shop clock. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders this week. Name and Order swap while filtered. ← Everyone puts Order first again. Names within an order follow who does the task first. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a Plan letter to another free day. Actual letters stay put.</p>" +
+        "<p class='help'>Each process has a Plan row and an Actual row under it so you can compare the booked slot with the shop clock. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders this week. Name and Order swap while filtered. ← Everyone puts Order first again. Names within an order follow who does the task first. O is an idle / other actual — click O for who, the slot, and what they did. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a Plan letter to another free day. Actual letters stay put.</p>" +
         "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
     }
     function timeSlots() {
@@ -838,7 +905,7 @@
         return pairRow(pairs, i, cells, { names: true, namePick: true });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Plan is the booked 15-minute slot. Actual is when the clock ran. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders on this day. Name and Order swap while filtered. ← Everyone puts Order first again. ← Week view and ← Day view go back. Drag a Plan letter to a free time. That person cannot overlap. Actual letters are not draggable.</p>" +
+        "<p class='help'>Plan is the booked 15-minute slot. Actual is when the clock ran. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders on this day. Name and Order swap while filtered. ← Everyone puts Order first again. ← Week view and ← Day view go back. O is an idle / other actual — click O for who, the slot, and what they did. Drag a Plan letter to a free time. That person cannot overlap. Actual letters are not draggable.</p>" +
         "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function orderWorkDays(order) {
@@ -1284,6 +1351,30 @@
     document.getElementById("otherMask").addEventListener("click", (e) => {
       if (e.target.id === "otherMask") closeOther();
     });
+    function otherDetailHtml(item) {
+      const who = (item && (item.workerName || item.workerId)) || "—";
+      const start = prettyDate(item && item.start) + (hhmm(item && item.start) ? " " + hhmm(item && item.start) : "");
+      const end = hhmm(item && item.end) || prettyDate(item && item.end);
+      const title = String((item && (item.title || item.process)) || "Other");
+      const note = String((item && item.note) || "").trim();
+      const isOther = /^other\b/i.test(title);
+      let html = "<p><strong>Who</strong><br>" + esc(who) + "</p>";
+      html += "<p><strong>Slot</strong><br>" + esc(start) + (end ? " – " + esc(end) : "") + "</p>";
+      html += "<p><strong>Task</strong><br>" + esc(isOther ? "Other" : title) + "</p>";
+      if (note) html += "<p><strong>" + (isOther ? "What they did" : "Note") + "</strong><br>" + esc(note) + "</p>";
+      return html;
+    }
+    function openOtherDetail(item) {
+      document.getElementById("otherDetailBody").innerHTML = otherDetailHtml(item || {});
+      document.getElementById("otherDetailMask").classList.add("open");
+    }
+    function closeOtherDetail() {
+      document.getElementById("otherDetailMask").classList.remove("open");
+    }
+    document.getElementById("otherDetailClose").onclick = closeOtherDetail;
+    document.getElementById("otherDetailMask").addEventListener("click", (e) => {
+      if (e.target.id === "otherDetailMask") closeOtherDetail();
+    });
     document.getElementById("otherPreset").onchange = () => {
       const v = document.getElementById("otherPreset").value;
       if (v && v !== "__other") document.getElementById("otherTitle").value = v;
@@ -1341,6 +1432,17 @@
     document.getElementById("calendars").addEventListener("click", (e) => {
       if (justDragged) return;
       const el = e.target instanceof Element ? e.target : (e.target && e.target.parentElement);
+      const otherChip = el && el.closest ? el.closest("[data-other]") : null;
+      if (otherChip) {
+        e.preventDefault();
+        e.stopPropagation();
+        try {
+          openOtherDetail(JSON.parse(otherChip.getAttribute("data-other") || "{}"));
+        } catch (err) {
+          openOtherDetail({});
+        }
+        return;
+      }
       const kindBtn = el && el.closest ? el.closest("[data-kind-filter]") : null;
       if (kindBtn) {
         e.preventDefault();

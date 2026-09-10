@@ -404,6 +404,7 @@ function snapshot() {
         poId: meta.poId || "",
         poNumber: meta.poNumber || "",
         cost: meta.cost || "",
+        receivedAt: meta.receivedAt || "",
         invoiceId: meta.invoiceId || ""
       });
     }),

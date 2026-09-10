@@ -46,6 +46,8 @@ const floor = staff.verifyUser("Floor Only", "floor");
 assert.ok(floor);
 assert.strictEqual(floor.canSeeOffice, false);
 assert.strictEqual(floor.canSeeDebtors, false);
+assert.strictEqual(staff.canSeeIdleAlerts(floor), false);
+assert.strictEqual(staff.isProductionFloorUser(floor), true);
 assert.ok(floor.tasks.indexOf("Welding") !== -1);
 
 const productionTitledAdmin = staff.upsertUser({
@@ -355,6 +357,18 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   assert.strictEqual(mgr.canManageUsers, true);
   assert.strictEqual(mgr.jobTitle, "Manager");
   assert.strictEqual(mgr.access, "Admin");
+  assert.strictEqual(mgr.canSeeIdleAlerts, true);
+  assert.strictEqual(boss2.canSeeIdleAlerts, false);
+  const siya = staff.upsertUser({
+    name: "Siya",
+    access: "Admin",
+    role: "Admin",
+    password: "siya",
+    seeDebtors: "Yes"
+  });
+  assert.strictEqual(staff.canSeeIdleAlerts(siya), true);
+  assert.strictEqual(staff.isProductionFloorUser(siya), false);
+  assert.strictEqual(staff.canSeeIdleAlerts({ name: "QC Pat", role: "Quality Control", access: "Production" }), false);
 
   const bossPut = await fetch(base + "/api/office/users", {
     method: "PUT",

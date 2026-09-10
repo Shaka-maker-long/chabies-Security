@@ -141,6 +141,18 @@ function isManagerTitle(role) {
   return String(role || "").trim().toLowerCase() === "manager";
 }
 
+function canSeeIdleAlerts(profile) {
+  if (!profile) return false;
+  if (isManagerTitle(profile.jobTitle || profile.role)) return true;
+  return String(profile.name || "").trim().toLowerCase() === "siya";
+}
+
+function isProductionFloorUser(profile) {
+  if (!profile || !String(profile.name || "").trim()) return false;
+  if (profile.isAdmin) return false;
+  return String(profile.access || "").toLowerCase() !== "admin";
+}
+
 function parseAccess(accessCell, roleCell) {
   if (isManagerTitle(roleCell)) return "Admin";
   const a = String(accessCell || "").trim().toLowerCase();
@@ -480,6 +492,7 @@ function createSession(profile) {
     canSeeOffice: profile.canSeeOffice,
     canSeeDebtors: profile.canSeeDebtors,
     canManageUsers: canManageUsers(profile),
+    canSeeIdleAlerts: canSeeIdleAlerts(profile),
     tasks: profile.tasks
   };
   sessions.set(token, safe);
@@ -532,9 +545,11 @@ function readSession(req) {
     row.isAdmin = !!live.isAdmin;
     row.canSeeOffice = !!live.canSeeOffice;
     row.canSeeDebtors = !!live.canSeeDebtors;
+    row.canSeeIdleAlerts = canSeeIdleAlerts(live);
   } else {
     row.canManageUsers = canManageUsers(row);
     row.jobTitle = String(row.jobTitle || row.role || "").trim();
+    row.canSeeIdleAlerts = canSeeIdleAlerts(row);
   }
   return row;
 }
@@ -631,6 +646,9 @@ module.exports = {
   changeOwnPassword,
   setUserPassword,
   canManageUsers,
+  canSeeIdleAlerts,
+  isProductionFloorUser,
+  isManagerTitle,
   verifyUser,
   checkRestoreSecrets,
   loginFailureMessage,
