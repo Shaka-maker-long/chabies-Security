@@ -527,7 +527,6 @@
         <h1 id="viewTitle">Enquiry</h1>
         <div class="tools">
           <button class="ghost" type="button" id="viewEmailBtn">Write email</button>
-          <button class="danger" type="button" id="viewDeleteBtn">Delete enquiry</button>
           <button class="ghost" type="button" onclick="closeView()">Close</button>
         </div>
       </header>
@@ -538,7 +537,7 @@
   <script src="/enquiry-process.js?v=corr-links"></script>
   <script>
     const HEADERS = [
-      ["_edit", "", 144, true],
+      ["_edit", "", 112, true],
       ["enquiry_no", "ENQUIRY NO", 108, true],
       ["date_enquired", "DATE ENQUIRED", 128, true],
       ["month_enquired", "MONTH ENQUIRED", 128, true],
@@ -1004,7 +1003,6 @@
               (row.ready_for_orders
                 ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Create order\" aria-label=\"Create order\" data-create-order=\"" + i + "\"><i class=\"bi bi-box-seam\"></i></button>"
                 : "") +
-              "<button type=\"button\" class=\"danger icon-btn\" title=\"Delete enquiry\" aria-label=\"Delete enquiry\" data-delete-enquiry=\"" + i + "\"><i class=\"bi bi-trash\"></i></button>" +
               "</div></td>";
             return;
           }
@@ -1080,12 +1078,6 @@
           const row = rows[i];
           if (!row || !row.enquiry_no) return;
           window.location.href = "/orders/from-enquiry?enquiry=" + encodeURIComponent(row.enquiry_no);
-          return;
-        }
-        const delBtn = e.target.closest("[data-delete-enquiry]");
-        if (delBtn) {
-          const i = Number(delBtn.getAttribute("data-delete-enquiry"));
-          deleteEnquiryRow(rows[i]);
           return;
         }
         const tr = e.target.closest("tr[data-i]");
@@ -1164,12 +1156,9 @@
       }
       html += "<div class=\"view-grid\" style=\"margin-top:8px\">" + viewItem("Comment", row.comment, true) + "</div>";
       if (quotes.length) {
-        html += "<div class=\"view-item wide\" style=\"margin-top:8px\"><div class=\"view-label\">Quotes</div><table class=\"lines\"><thead><tr><th style=\"width:72px\">OPTION</th><th>QUOTE NO.</th><th>DATE QUOTED</th><th style=\"width:88px\"></th></tr></thead><tbody>";
-        quotes.forEach((q, qi) => {
-          const kind = (q.file && q.file.kind) || (q.n ? "quote_" + q.n : (qi === quotes.length - 1 ? "quote" : "quote_" + (qi + 1)));
-          const label = (q.quote_no ? "Quote " + q.quote_no : "Quote") + (q.option ? " option " + q.option : "");
-          html += "<tr><td>" + esc(q.option || (q.kind === "revision" ? "Rev" : "A")) + "</td><td>" + esc(q.quote_no || "") + "</td><td>" + esc(isoToDmy(q.date_quoted || q.uploaded_at || "")) + "</td>" +
-            "<td><button type=\"button\" class=\"danger\" data-view-delete-file=\"" + esc(kind) + "\" data-delete-label=\"" + esc(label) + "\">Delete</button></td></tr>";
+        html += "<div class=\"view-item wide\" style=\"margin-top:8px\"><div class=\"view-label\">Quotes</div><table class=\"lines\"><thead><tr><th style=\"width:72px\">OPTION</th><th>QUOTE NO.</th><th>DATE QUOTED</th></tr></thead><tbody>";
+        quotes.forEach((q) => {
+          html += "<tr><td>" + esc(q.option || (q.kind === "revision" ? "Rev" : "A")) + "</td><td>" + esc(q.quote_no || "") + "</td><td>" + esc(isoToDmy(q.date_quoted || q.uploaded_at || "")) + "</td></tr>";
         });
         html += "</tbody></table></div>";
       }
@@ -1180,101 +1169,12 @@
           location.href = "/enquiries/replies?enquiry=" + encodeURIComponent(row.enquiry_no || "");
         };
       }
-      const delBtn = document.getElementById("viewDeleteBtn");
-      if (delBtn) delBtn.onclick = () => deleteEnquiryRow(row);
-      document.getElementById("viewBody").querySelectorAll("[data-view-delete-file]").forEach((btn) => {
-        btn.onclick = (e) => {
-          e.preventDefault();
-          deleteEnquiryFile(row, btn.getAttribute("data-view-delete-file"), btn.getAttribute("data-delete-label") || "this quote");
-        };
-      });
       document.getElementById("viewMask").classList.add("open");
     }
     function closeView() {
       document.getElementById("viewMask").classList.remove("open");
     }
     window.closeView = closeView;
-    async function deleteEnquiryRow(row) {
-      if (!row || !row.enquiry_no) return;
-      const linked = row.order_number ? " Linked order " + row.order_number + " stays on Orders." : " Linked orders stay on Orders.";
-      const confirmFn = typeof sdConfirmDelete === "function" ? sdConfirmDelete : null;
-      const ok = confirmFn
-        ? await confirmFn({
-          title: "Delete enquiry " + row.enquiry_no + "?",
-          message: "This removes the enquiry and its files — quotes, cost sheets, proof of payment, drawings, and Correspondance." + linked + " This cannot be undone.",
-          confirmLabel: "Delete enquiry"
-        })
-        : window.confirm("Delete enquiry " + row.enquiry_no + "? This cannot be undone.");
-      if (!ok) return;
-      const err = document.getElementById("sdDeleteErr");
-      const btn = document.getElementById("sdDeleteOk");
-      const cancel = document.getElementById("sdDeleteCancel");
-      try {
-        if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
-        if (cancel) cancel.disabled = true;
-        const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(row.enquiry_no), { method: "DELETE" });
-        const j = await r.json();
-        if (!j.ok) {
-          if (err) err.textContent = j.error || "Could not delete";
-          if (btn) { btn.disabled = false; btn.textContent = "Delete enquiry"; }
-          if (cancel) cancel.disabled = false;
-          document.getElementById("status").textContent = j.error || "Could not delete";
-          return;
-        }
-        if (document.getElementById("sdDeleteConfirm")) document.getElementById("sdDeleteConfirm").classList.remove("open");
-        closeView();
-        document.getElementById("status").textContent = "Deleted " + row.enquiry_no;
-        await load();
-      } catch (e) {
-        if (err) err.textContent = (e && e.message) || "Could not delete";
-        if (btn) { btn.disabled = false; btn.textContent = "Delete enquiry"; }
-        if (cancel) cancel.disabled = false;
-        document.getElementById("status").textContent = (e && e.message) || "Could not delete";
-      }
-    }
-    async function deleteEnquiryFile(row, kind, label) {
-      if (!row || !row.enquiry_no || !kind) return;
-      const confirmFn = typeof sdConfirmDelete === "function" ? sdConfirmDelete : null;
-      const ok = confirmFn
-        ? await confirmFn({
-          title: "Delete this file?",
-          message: "Delete " + (label || "this attachment") + " from " + row.enquiry_no + "? This cannot be undone.",
-          confirmLabel: "Delete file"
-        })
-        : window.confirm("Delete " + (label || "this file") + "? This cannot be undone.");
-      if (!ok) return;
-      const err = document.getElementById("sdDeleteErr");
-      const btn = document.getElementById("sdDeleteOk");
-      const cancel = document.getElementById("sdDeleteCancel");
-      try {
-        if (btn) { btn.disabled = true; btn.textContent = "Deleting…"; }
-        if (cancel) cancel.disabled = true;
-        const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(row.enquiry_no) + "/files/" + encodeURIComponent(kind), { method: "DELETE" });
-        const j = await r.json();
-        if (!j.ok) {
-          if (err) err.textContent = j.error || "Could not delete";
-          if (btn) { btn.disabled = false; btn.textContent = "Delete file"; }
-          if (cancel) cancel.disabled = false;
-          document.getElementById("status").textContent = j.error || "Could not delete";
-          return;
-        }
-        if (document.getElementById("sdDeleteConfirm")) document.getElementById("sdDeleteConfirm").classList.remove("open");
-        document.getElementById("status").textContent = "Deleted " + (label || kind);
-        await load();
-        const fresh = rows.find((o) => o.enquiry_no === row.enquiry_no);
-        const idx = rows.indexOf(fresh);
-        if (fresh && idx >= 0) openView(idx);
-      } catch (e) {
-        if (err) err.textContent = (e && e.message) || "Could not delete";
-        if (btn) { btn.disabled = false; btn.textContent = "Delete file"; }
-        if (cancel) cancel.disabled = false;
-        document.getElementById("status").textContent = (e && e.message) || "Could not delete";
-      }
-    }
-    window.sdOnEnquiryDeleted = function () {
-      closeView();
-      load();
-    };
     window.sdOnEnquiryChanged = function () {
       load();
     };

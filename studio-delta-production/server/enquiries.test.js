@@ -298,39 +298,23 @@ assert.throws(
 );
 
 assert.ok(db.readEnquiryAttachment("#2400", "cost_sheet"));
-const afterSheet = db.deleteEnquiryAttachment("#2400", "cost_sheet");
-assert.ok(!db.readEnquiryAttachment("#2400", "cost_sheet"));
-assert.ok(afterSheet.events.some((ev) => ev.kind === "delete_file" && /cost sheet/i.test(ev.label)));
 assert.ok(db.enquiryHasQuotePdf("#2400"));
-db.deleteEnquiryAttachment("#2400", "quote");
-assert.ok(!db.enquiryHasQuotePdf("#2400"));
-assert.ok(!db.getEnquiry("#2400").quote_no);
-assert.throws(() => db.deleteEnquiryAttachment("#2400", "quote"), /not found/);
 const stillLinked = db.listOrders().find((o) => o.order_number === "S260099");
 assert.strictEqual(stillLinked.enquiry_no, "#2400");
-db.deleteEnquiry("#2400");
-assert.ok(!db.getEnquiry("#2400"));
-assert.strictEqual(
-  db.listOrders().find((o) => o.order_number === "S260099").enquiry_no,
-  "#2400",
-  "deleting an enquiry must not delete its orders"
-);
-assert.throws(() => db.deleteEnquiry("#2400"), /not found/);
 
 const linkEnq = db.upsertEnquiry({
   enquiry_no: "#2501",
   date_enquired: "10/09/2026",
-  client_name: "Link Delete",
+  client_name: "Link Kind",
   product: "Air Chair"
 }, { createOnly: true });
 const rawLink = db.getEnquiryRaw(linkEnq.enquiry_no);
-rawLink.correspondence = { mails: [{ outlook_url: "https://example.com/delete-me", web_url: "https://example.com/delete-me", title: "Correspondance link" }] };
+rawLink.correspondence = { mails: [{ outlook_url: "https://example.com/keep-me", web_url: "https://example.com/keep-me", title: "Correspondance link" }] };
 db.saveEnquiryRecord(rawLink);
 const withLink = db.getEnquiry("#2501");
 assert.strictEqual(withLink.deliverables.length, 1);
 assert.strictEqual(withLink.deliverables[0].kind, "correspondence_1");
-db.deleteEnquiryAttachment("#2501", "correspondence_1");
-assert.strictEqual(db.getEnquiry("#2501").deliverables.length, 0);
+assert.strictEqual(withLink.deliverables[0].href, "https://example.com/keep-me");
 
 db.deleteAllEnquiries();
 assert.strictEqual(db.nextEnquiryNo(), "#1996");
