@@ -17,7 +17,7 @@
     .msg.error { color:#b42318; }
     .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
-    button.ghost { background:#fff; color:#1d2939; }
+    button.ghost { background:#fff; color:#1d2939; pointer-events:auto; position:static; }
     button:disabled { opacity:.45; cursor:not-allowed; }
     .tabs { display:flex; gap:4px; }
     .tabs a { padding:7px 12px; font-size:13px; font-weight:600; color:#344054; text-decoration:none; border-radius:6px; border:1px solid transparent; }
@@ -78,7 +78,7 @@
     .crumb .here { font-size:13px; font-weight:700; color:var(--ink); }
     .crumb .kind-filter { display:flex; flex-direction:row; flex-wrap:wrap; align-items:center; gap:8px; flex:1 1 100%; margin:4px 0 0; min-height:34px; }
     .kind-filter-label { font-size:12px; font-weight:700; color:var(--muted); }
-    .crumb .kind-filter button { position:static; float:none; flex:0 0 auto; font-size:12px; padding:7px 12px; min-height:34px; }
+    .crumb .kind-filter button { position:static; float:none; flex:0 0 auto; font-size:12px; padding:7px 12px; min-height:34px; pointer-events:auto; z-index:1; }
     .crumb .kind-filter button.on { background:#1d2939; color:#fff; }
     body.office-app .crumb .kind-filter button.on { background:var(--sd-brass) !important; color:var(--sd-steel) !important; border-color:var(--sd-brass) !important; }
     body.office-app .crumb { background: var(--sd-linen, #f3efe8); }
@@ -154,8 +154,8 @@
     .event.paint { cursor:default; }
     .event.other { font-style:normal; }
     .event .kill { position:absolute; top:2px; right:4px; border:0; background:transparent; color:inherit; padding:0 2px; font-size:14px; line-height:1; cursor:pointer; }
-    .event.dragging, .event.ghost { opacity:.55; cursor:grabbing; }
-    .ghost { position:fixed; z-index:50; pointer-events:none; min-width:120px; box-shadow:0 8px 24px rgba(16,24,40,.18); }
+    .event.dragging, .event.drag-ghost { opacity:.55; cursor:grabbing; }
+    .drag-ghost { position:fixed; z-index:50; pointer-events:none; min-width:120px; box-shadow:0 8px 24px rgba(16,24,40,.18); }
     .compare-a { box-shadow: inset 3px 0 0 #2563eb; }
     .compare-b { box-shadow: inset 3px 0 0 #c2410c; }
     .board h2 { font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
