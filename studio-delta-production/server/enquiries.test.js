@@ -317,6 +317,21 @@ assert.strictEqual(
 );
 assert.throws(() => db.deleteEnquiry("#2400"), /not found/);
 
+const linkEnq = db.upsertEnquiry({
+  enquiry_no: "#2501",
+  date_enquired: "10/09/2026",
+  client_name: "Link Delete",
+  product: "Air Chair"
+}, { createOnly: true });
+const rawLink = db.getEnquiryRaw(linkEnq.enquiry_no);
+rawLink.correspondence = { mails: [{ outlook_url: "https://example.com/delete-me", web_url: "https://example.com/delete-me", title: "Correspondance link" }] };
+db.saveEnquiryRecord(rawLink);
+const withLink = db.getEnquiry("#2501");
+assert.strictEqual(withLink.deliverables.length, 1);
+assert.strictEqual(withLink.deliverables[0].kind, "correspondence_1");
+db.deleteEnquiryAttachment("#2501", "correspondence_1");
+assert.strictEqual(db.getEnquiry("#2501").deliverables.length, 0);
+
 db.deleteAllEnquiries();
 assert.strictEqual(db.nextEnquiryNo(), "#1996");
 const onboarded = db.upsertEnquiry({

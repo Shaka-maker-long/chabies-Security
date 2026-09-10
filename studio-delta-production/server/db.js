@@ -1648,7 +1648,7 @@ function normalizeOutlookMail(from, index) {
     entry_id: entry,
     web_url: pasted,
     outlook_url: "",
-    kind: String(src.kind || "").trim(),
+    kind: String(src.kind || "").trim() || ("correspondence_" + (Number(index) + 1 || 1)),
     stored_as: String(src.stored_as || "").trim(),
     filename: String(src.filename || "").trim(),
     mime: src.mime || ""
@@ -1920,13 +1920,13 @@ function listEnquiryDeliverables(row) {
   const src = row && typeof row === "object" ? row : {};
   const items = [];
   const mails = normalizeCorrespondence(src).mails || [];
-  mails.forEach((mail) => {
+  mails.forEach((mail, i) => {
     items.push({
       group: "correspondence",
       label: "CORRESPONDANCE",
       title: "Correspondance link",
       filename: "Correspondance link",
-      kind: mail.kind || "",
+      kind: mail.kind || ("correspondence_" + (i + 1)),
       from: mail.from || mail.from_email || "",
       order_no: mail.order_no || "",
       open: !!(mail.kind && mail.stored_as) || !!(mail.outlook_url || mail.web_url),
