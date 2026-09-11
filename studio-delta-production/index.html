@@ -544,6 +544,69 @@
     .btn-close { filter: var(--bs-btn-close-white-filter, none); }
     [data-theme="dark"] .btn-close { filter: invert(1) grayscale(1); }
 
+    /* Keep START TIMER on screen when the product description is long (phones). */
+    #startModal.show {
+      display: flex !important;
+      align-items: center;
+      padding: 0.5rem;
+    }
+    #startModal .modal-dialog {
+      margin: 0 auto;
+      width: 100%;
+      max-width: min(520px, calc(100vw - 1rem));
+      max-height: calc(100dvh - 1rem);
+      max-height: calc(100svh - 1rem);
+      display: flex;
+      flex-direction: column;
+    }
+    #startModal .modal-content {
+      max-height: calc(100dvh - 1rem);
+      max-height: calc(100svh - 1rem);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding: 0;
+    }
+    #startModal .modal-header {
+      flex-shrink: 0;
+      align-items: flex-start;
+      border-bottom: 1px solid var(--border);
+      padding: 1.1rem 1.25rem 0.7rem;
+    }
+    #startModal .modal-header h3 {
+      margin: 0 0 0.2rem;
+    }
+    #startModal .modal-header h1 {
+      font-size: 1.45rem;
+      margin: 0;
+    }
+    #startModal .modal-body {
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      min-height: 0;
+      flex: 1 1 auto;
+      padding: 0.85rem 1.25rem 1rem;
+    }
+    #startModal .modal-footer {
+      flex-shrink: 0;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.75rem;
+      padding: 0.85rem 1.25rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+      border-top: 1px solid var(--border);
+      background: var(--bg-surface);
+    }
+    #startModal .modal-footer .form-check,
+    #startModal .modal-footer label {
+      margin: 0;
+    }
+    #startModal #startTimerBtn {
+      width: 100%;
+    }
+    @media (max-width: 576px) {
+      #startModal .start-product-shot img { max-height: 140px; }
+    }
+
     /* =====================================================
        LOADER
        ===================================================== */
@@ -1855,7 +1918,27 @@
 
   <div class="modal fade" id="passModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="mb-3">Access Code</h3><p class="text-muted" id="passPromptName">Enter code</p><input type="password" id="inputPass" class="form-control text-center mb-3"><button class="btn btn-primary w-100" onclick="submitPass()">ENTER</button></div></div></div>
   <div class="modal fade" id="changePassModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4"><h3 class="mb-2">Change access code</h3><label class="form-label">Name</label><input id="changePassName" class="form-control mb-2" autocomplete="username"><label class="form-label">Current access code</label><input type="password" id="changePassCurrent" class="form-control mb-2" autocomplete="current-password"><label class="form-label">New access code</label><input type="password" id="changePassNext" class="form-control mb-3" autocomplete="new-password"><p class="text-danger small mb-2" id="changePassErr"></p><button class="btn btn-dark w-100" onclick="submitChangePassword()">SAVE ACCESS CODE</button></div></div></div>
-  <div class="modal fade" id="startModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content p-4"><h3 class="brand-font mb-2 text-center">Start Order</h3><h1 class="fw-bold text-primary mb-3 text-center" id="startModalOrder">...</h1><div id="startConfirmBox" class="text-start small mb-3"></div><button class="btn btn-primary btn-lg w-100 mt-2" id="startTimerBtn" onclick="confirmStart()" disabled>START TIMER</button></div></div></div>
+  <div class="modal fade" id="startModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div class="w-100 text-center pe-2">
+            <h3 class="brand-font mb-1">Start Order</h3>
+            <h1 class="fw-bold text-primary mb-0" id="startModalOrder">...</h1>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-start small" id="startConfirmBox"></div>
+        <div class="modal-footer">
+          <label class="d-flex gap-2 align-items-start">
+            <input type="checkbox" id="startUnderstood" onchange="syncStartTimerBtn()">
+            <span>I understand the type, variation, description, and dimensions.</span>
+          </label>
+          <button class="btn btn-primary btn-lg" id="startTimerBtn" onclick="confirmStart()" disabled>START TIMER</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="modal fade" id="batchWorkModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content p-4 text-center">
@@ -4626,11 +4709,12 @@
       html += '<div class="mb-2"><strong>Variation</strong><div>' + (brief.variation || '—') + '</div></div>';
       html += '<div class="mb-2"><strong>Dimensions</strong><div>' + (brief.dimensions || '—') + '</div></div>';
       html += '<div class="mb-2"><strong>Description</strong><div>' + renderMarkedDescription(brief.description || '') + '</div></div>';
-      html += '<label class="d-flex gap-2 align-items-start mb-2"><input type="checkbox" id="startUnderstood" onchange="syncStartTimerBtn()"><span>I understand the type, variation, description, and dimensions.</span></label>';
       highlights.forEach((h) => {
         html += '<label class="d-flex gap-2 align-items-start mb-2"><input type="checkbox" class="start-highlight" data-text="' + String(h).replace(/"/g, '&quot;') + '" onchange="syncStartTimerBtn()"><span>I saw this important note: <mark>' + h + '</mark></span></label>';
       });
       document.getElementById('startConfirmBox').innerHTML = html;
+      const understood = document.getElementById('startUnderstood');
+      if (understood) understood.checked = false;
       syncStartTimerBtn();
     }
 

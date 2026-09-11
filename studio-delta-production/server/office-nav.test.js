@@ -539,6 +539,13 @@ assert.ok(floor.indexOf("openStationWork") !== -1, "tapping your station opens t
 assert.ok(floor.indexOf("myTaskStops") !== -1, "workers pick the task they are doing");
 assert.ok(floor.indexOf("What are you doing now?") !== -1);
 assert.ok(floor.indexOf("start-product-shot") !== -1, "start confirm shows the product image");
+const startModalHtml = floor.slice(floor.indexOf('id="startModal"'), floor.indexOf('id="batchWorkModal"'));
+assert.ok(startModalHtml.indexOf('id="startConfirmBox"') !== -1, "start confirm details live in the modal body");
+assert.ok(startModalHtml.indexOf("modal-body") !== -1 && startModalHtml.indexOf("modal-footer") !== -1, "start modal has a scrolling body and pinned footer");
+assert.ok(startModalHtml.indexOf('id="startUnderstood"') > startModalHtml.indexOf("modal-footer"), "understand tick stays with START TIMER");
+assert.ok(startModalHtml.indexOf('id="startTimerBtn"') > startModalHtml.indexOf("modal-footer"), "START TIMER stays in the footer on small screens");
+assert.ok(floor.indexOf("#startModal .modal-footer") !== -1, "start modal CSS pins the timer button");
+assert.ok(floor.indexOf("html += '<label class=\"d-flex gap-2 align-items-start mb-2\"><input type=\"checkbox\" id=\"startUnderstood\"") === -1, "understand tick is not rebuilt inside the scrolling description");
 assert.ok(floor.indexOf("productShotHtml") !== -1, "floor cards show the product image");
 assert.ok(floor.indexOf("hasFloorTask('Paint Preparation')") !== -1, "Ready for Assembly can go to paint prep");
 assert.ok(floor.indexOf("hasFloorTask('Assembly')") !== -1, "Ready for Assembly can go to assembly");
