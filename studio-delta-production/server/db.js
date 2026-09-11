@@ -1463,27 +1463,7 @@ function createOrderDraftFromEnquiry(enquiryNo, now) {
   };
 }
 
-function createOrdersFromEnquiryForm(enquiryNo, body) {
-  const enquiry = getEnquiry(enquiryNo);
-  if (!enquiry) throw new Error("Enquiry not found");
-  if (!enquiry.ready_for_orders) {
-    throw new Error("Attach proof of payment, and the drawing if this order needs one, before creating an Orders row");
-  }
-  const existing = ordersLinkedToEnquiry(enquiry);
-  if (existing.length) {
-    const raw = getEnquiryRaw(enquiry.enquiry_no);
-    if (raw && !raw.order_number) {
-      raw.order_number = existing[0].order_number;
-      saveEnquiryRecord(raw);
-    }
-    return {
-      existing: true,
-      rows: existing.map((o) => decorateMoney(o)),
-      enquiry: getEnquiry(enquiry.enquiry_no)
-    };
-  }
-  const others = listOrders();
-  const plan = fromEnquiry.planCreate(enquiry, body || {}, others);
+function savePlannedOrders(plan) {
   const month = formatMonthOfSale(nowIso());
   const rows = plan.units.map((unit) => {
     const pair = vatPair(unit.price_incl_vat, "");
@@ -1520,6 +1500,30 @@ function createOrdersFromEnquiryForm(enquiryNo, body) {
     if (sched) setScheduleCell(sched.id, plan.delivery.date, plan.delivery.scheduleCode, false);
   });
   save();
+  return rows;
+}
+
+function createOrdersFromEnquiryForm(enquiryNo, body) {
+  const enquiry = getEnquiry(enquiryNo);
+  if (!enquiry) throw new Error("Enquiry not found");
+  if (!enquiry.ready_for_orders) {
+    throw new Error("Attach proof of payment, and the drawing if this order needs one, before creating an Orders row");
+  }
+  const existing = ordersLinkedToEnquiry(enquiry);
+  if (existing.length) {
+    const raw = getEnquiryRaw(enquiry.enquiry_no);
+    if (raw && !raw.order_number) {
+      raw.order_number = existing[0].order_number;
+      saveEnquiryRecord(raw);
+    }
+    return {
+      existing: true,
+      rows: existing.map((o) => decorateMoney(o)),
+      enquiry: getEnquiry(enquiry.enquiry_no)
+    };
+  }
+  const plan = fromEnquiry.planCreate(enquiry, body || {}, listOrders());
+  const rows = savePlannedOrders(plan);
   const raw = getEnquiryRaw(enquiry.enquiry_no);
   if (raw) {
     raw.order_number = rows[0].order_number;
@@ -1529,6 +1533,24 @@ function createOrdersFromEnquiryForm(enquiryNo, body) {
     existing: false,
     rows,
     enquiry: getEnquiry(enquiry.enquiry_no),
+    delivery: plan.delivery
+  };
+}
+
+function createBlankOrderDraft(now) {
+  return {
+    ...fromEnquiry.buildBlankDraft(nextStudioOrderNumber(), now),
+    dropdowns: listDropdowns(),
+    vatRate: VAT_RATE
+  };
+}
+
+function createOrdersStandalone(body) {
+  const plan = fromEnquiry.planCreate(null, body || {}, listOrders());
+  const rows = savePlannedOrders(plan);
+  return {
+    existing: false,
+    rows,
     delivery: plan.delivery
   };
 }
@@ -2912,6 +2934,8 @@ module.exports = {
   createOrderFromEnquiry,
   createOrderDraftFromEnquiry,
   createOrdersFromEnquiryForm,
+  createBlankOrderDraft,
+  createOrdersStandalone,
   onboardExistingOrder,
   pasteOrdersFromSheet,
   SHOP_STATUSES,

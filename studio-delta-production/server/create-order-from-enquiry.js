@@ -351,6 +351,43 @@ function buildDraft(enquiry, nextOrderNumber, now) {
   };
 }
 
+function buildBlankDraft(nextOrderNumber, now) {
+  const products = [{
+    category: "",
+    product: "",
+    type: "Standard",
+    variation: "",
+    doors: "",
+    detailed_description: "",
+    dimensions: "",
+    powder_coating: "",
+    price_incl_vat: "",
+    amount_paid: "",
+    quantity: 1
+  }];
+  return {
+    enquiry_no: "",
+    quote_number: "",
+    order_number: nextOrderNumber,
+    shared: {
+      client_name: "",
+      client_number: "",
+      email: "",
+      address: "",
+      province: "",
+      city: "",
+      source: ""
+    },
+    products,
+    delivery: estimateDelivery({
+      types: ["Standard"],
+      province: "",
+      now
+    }),
+    standalone: true
+  };
+}
+
 function planUnits(products) {
   const units = [];
   (products || []).forEach((p) => {
@@ -392,6 +429,7 @@ function assertProductReady(product, index) {
   const qty = Math.floor(Number(product && product.quantity) || 0);
   if (qty < 1) return;
   const label = String((product && product.product) || "").trim() || ("product " + (index + 1));
+  requireText(product && product.product, "Product is required for " + label);
   const incl = lineInclVat(product);
   const excl = String((product && product.price_excl_vat) || "").trim();
   if (!incl && !excl) throw new Error("Price excl VAT is required for " + label);
@@ -434,8 +472,8 @@ function planCreate(enquiry, body, existingOrders) {
   const total = units.length;
   return {
     base,
-    quote_number: (enquiry && enquiry.quote_no) || "",
-    enquiry_no: (enquiry && enquiry.enquiry_no) || "",
+    quote_number: String((body && body.quote_number) || (enquiry && enquiry.quote_no) || "").trim(),
+    enquiry_no: String((body && body.enquiry_no) || (enquiry && enquiry.enquiry_no) || "").trim(),
     shared: {
       client_name: client,
       client_number: String(sharedIn.client_number || "").trim(),
@@ -480,6 +518,7 @@ module.exports = {
   deliveryExplanation,
   estimateDelivery,
   buildDraft,
+  buildBlankDraft,
   planUnits,
   planCreate
 };

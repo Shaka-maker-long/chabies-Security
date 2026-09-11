@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Studio Delta — Create orders from enquiry</title>
+  <title>Studio Delta — New order</title>
   <script src="/sd-pwa.js?v=pwa"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <style>
@@ -46,6 +46,9 @@
     .split ol { margin:8px 0 0; padding-left:20px; }
     .product { border:1px solid var(--line); border-radius:10px; padding:14px; margin:0 0 12px; }
     .product h3 { margin:0 0 12px; font-size:14px; }
+    .product-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin:0 0 12px; }
+    .product-head h3 { margin:0; }
+    .add-item { margin:0 0 12px; }
     .foot { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
     .done { display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
     .done a { color:#175cd3; }
@@ -69,15 +72,15 @@
         <a href="/orders/cost">Cost</a>
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
-      <h1>Create orders from enquiry</h1>
-      <p class="lede">One enquiry form. Quantity splits into A, B, C across the whole order. Tick Paid in full if they paid the price incl VAT for that quantity — only type an amount if they still owe. Address, city, shop details, and a confirmed quantity and exclusive VAT are required. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
+      <h1 id="pageTitle">Create orders from enquiry</h1>
+      <p class="lede" id="pageLede">One form. Quantity and extra items split into A, B, C across the whole order. Tick Paid in full if they paid the price incl VAT for that quantity — only type an amount if they still owe. Address, city, shop details, and a confirmed quantity and exclusive VAT are required. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
     </div>
     <div class="tools">
-      <a href="/enquiries"><button class="ghost" type="button">Back to Enquiries</button></a>
+      <a href="/orders" id="backLink"><button class="ghost" type="button" id="backBtn">Back to Orders</button></a>
     </div>
   </header>
   <div class="page" id="page">
-    <div class="load" id="boot">Loading the enquiry…</div>
+    <div class="load" id="boot">Loading the order form…</div>
   </div>
   <script src="/office-auth.js?v=plain-copy"></script>
   <script>
@@ -85,7 +88,8 @@
     const LEAD = { Standard: { g: 5, o: 7 }, Custom: { g: 7, o: 8 }, "New Design": { g: 8, o: 10 } };
     const VAT = 0.15;
     const params = new URLSearchParams(location.search);
-    const enquiryNo = params.get("enquiry") || "";
+    const standalone = location.pathname.replace(/\/$/, "") === "/orders/new";
+    const enquiryNo = standalone ? "" : (params.get("enquiry") || "");
     let draft = null;
     let dropdowns = {};
     let dateTouched = false;
@@ -230,8 +234,8 @@
         const incl = el.querySelector("[data-f=price_incl_vat]").value;
         const excl = el.querySelector("[data-f=price_excl_vat]").value;
         return {
-          category: el.getAttribute("data-category") || "",
-          product: el.getAttribute("data-name") || "",
+          category: ((el.querySelector("[data-f=category]") || {}).value) || el.getAttribute("data-category") || "",
+          product: ((el.querySelector("[data-f=product]") || {}).value) || el.getAttribute("data-name") || "",
           type: el.querySelector("[data-f=type]").value,
           variation: el.querySelector("[data-f=variation]").value,
           doors: el.querySelector("[data-f=doors]").value,
@@ -248,6 +252,7 @@
       });
       return {
         order_number: document.getElementById("f_order_number").value,
+        quote_number: (document.getElementById("f_quote_number") || {}).value || "",
         shared: {
           client_name: document.getElementById("f_client_name").value,
           client_number: document.getElementById("f_client_number").value,
@@ -262,11 +267,13 @@
         dateTouched
       };
     }
+    function draftKind() { return standalone ? "new-order" : "from-enquiry"; }
+    function draftId() { return standalone ? "new" : enquiryNo; }
     function persist() {
-      if (!enquiryNo || !document.getElementById("form")) return;
+      if (!document.getElementById("form")) return;
       const data = collect();
       data.dateTouched = dateTouched;
-      sdWriteFormDraft("from-enquiry", enquiryNo, data);
+      sdWriteFormDraft(draftKind(), draftId(), data);
     }
     function plannedNumbers(orderNumber, products) {
       const base = String(orderNumber || "").trim().toUpperCase().replace(/\s+[A-Z]+$/, "");
@@ -406,6 +413,98 @@
       box.selectionEnd = end + 2;
       persist();
     }
+    function emptyProduct() {
+      return {
+        category: "",
+        product: "",
+        type: "Standard",
+        variation: "",
+        doors: "",
+        detailed_description: "",
+        dimensions: "",
+        powder_coating: "",
+        price_incl_vat: "",
+        price_excl_vat: "",
+        amount_paid: "",
+        quantity: 1,
+        paid_in_full: false,
+        qty_price_confirmed: false
+      };
+    }
+    function productCardHtml(p, i, locked, count) {
+      const d = (locked && draft && draft.products[i]) ? draft.products[i] : p;
+      const name = d.product || p.product || "";
+      const category = d.category || p.category || "";
+      const title = category ? category + " · " + name : (name || ("Item " + (i + 1)));
+      const remove = standalone && count > 1
+        ? "<button type=\"button\" class=\"ghost\" data-remove-item>Remove this item</button>"
+        : "";
+      const head = locked
+        ? "<div class=\"product-head\"><h3>" + esc(title) + "</h3>" + remove + "</div>"
+        : "<div class=\"product-head\"><h3>" + esc(name || ("Item " + (i + 1))) + "</h3>" + remove + "</div>";
+      const identity = locked
+        ? "<input type=\"hidden\" data-f=\"product\" value=\"" + esc(name) + "\">" +
+          "<input type=\"hidden\" data-f=\"category\" value=\"" + esc(category) + "\">"
+        : "<div class=\"grid four\">" +
+            "<label>CATERGORY<select data-f=\"category\">" + options(dropdowns.category, p.category || category) + "</select></label>" +
+            "<label>Product *<select data-f=\"product\" required>" + options(dropdowns.product, p.product || name) + "</select></label>" +
+            "<label>Type<select data-f=\"type\">" + typeOptions(p.type || d.type) + "</select></label>" +
+            "<label>Quantity *<input data-f=\"quantity\" type=\"number\" min=\"1\" step=\"1\" value=\"" + esc(p.quantity || 1) + "\" required></label>" +
+          "</div>";
+      const typeQty = locked
+        ? "<div class=\"grid four\">" +
+            "<label>Type<select data-f=\"type\">" + typeOptions(p.type || d.type) + "</select></label>" +
+            "<label>Quantity *<input data-f=\"quantity\" type=\"number\" min=\"1\" step=\"1\" value=\"" + esc(p.quantity || 1) + "\" required></label>" +
+            "<label>Price incl VAT<input data-f=\"price_incl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_incl_vat || "") + "\"></label>" +
+            "<label>Price excl VAT *<input data-f=\"price_excl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_excl_vat || exclFromIncl(p.price_incl_vat)) + "\" required></label>" +
+          "</div>"
+        : "<div class=\"grid four\" style=\"margin-top:12px\">" +
+            "<label>Price incl VAT<input data-f=\"price_incl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_incl_vat || "") + "\"></label>" +
+            "<label>Price excl VAT *<input data-f=\"price_excl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_excl_vat || exclFromIncl(p.price_incl_vat)) + "\" required></label>" +
+          "</div>";
+      return "<article class=\"product\" data-product data-name=\"" + esc(name) + "\" data-category=\"" + esc(category) + "\">" +
+        head + identity + typeQty +
+        "<label class=\"confirm\"><input data-f=\"qty_price_confirmed\" type=\"checkbox\"" + (p.qty_price_confirmed ? " checked" : "") + ">" +
+          "<span>Quantity and price excl VAT are correct<span class=\"hint\">Tick this after you check both. If either needs to change, change it first, then tick.</span></span></label>" +
+        "<label class=\"confirm\"><input data-f=\"paid_in_full\" type=\"checkbox\"" + (p.paid_in_full ? " checked" : "") + ">" +
+          "<span>Paid in full<span class=\"hint\">Tick this if they paid the price incl VAT for this quantity. Qty 2 of R 29,322.00 is R 14,661.00 on each unit. Type an amount only if they still owe.</span></span></label>" +
+        "<div class=\"grid four\" style=\"margin-top:12px\">" +
+          "<label>Amount paid (Incl VAT)<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "") + "\"" + (p.paid_in_full ? " readonly" : " required") + "><span class=\"hint\">Including 15% VAT for this quantity. Owing is price incl VAT minus this.</span></label>" +
+          "<label>Variation *<select data-f=\"variation\" required>" + options(dropdowns.variation, p.variation) + "</select></label>" +
+          "<label>Doors *<select data-f=\"doors\" required>" + options(dropdowns.doors, p.doors) + "</select></label>" +
+          "<label>Powder coating *<select data-f=\"powder_coating\" required>" + options(dropdowns.powder_coating, p.powder_coating) + "</select></label>" +
+        "</div>" +
+        "<div class=\"grid\" style=\"margin-top:12px\">" +
+          "<label>Dimensions *<input data-f=\"dimensions\" value=\"" + esc(p.dimensions || "") + "\" required></label>" +
+          "<label>Detailed description *<textarea data-f=\"detailed_description\" placeholder=\"Finish, glass, extras\" required>" + esc(p.detailed_description || "") + "</textarea>" +
+            "<span class=\"hint\">Type this for the shop. Select the words production must not miss (for example additional shelf), then mark them as important.</span>" +
+            "<button type=\"button\" class=\"ghost\" data-mark-important style=\"margin-top:6px;width:auto\">Mark selected as important</button></label>" +
+        "</div>" +
+      "</article>";
+    }
+    function paintProducts(products) {
+      const box = document.getElementById("products");
+      if (!box) return;
+      const locked = !standalone;
+      box.innerHTML = products.map((p, i) => productCardHtml(p, i, locked, products.length)).join("")
+        || "<p class=\"msg\">Add a product to turn into an order.</p>";
+      box.querySelectorAll("[data-product]").forEach((card) => syncPaidInFull(card));
+    }
+    function addProductItem() {
+      const data = collect();
+      const next = (data.products && data.products.length ? data.products : []).concat([emptyProduct()]);
+      paintProducts(next);
+      refreshDeliveryCopy();
+    }
+    function removeProductItem(card) {
+      const cards = [...document.querySelectorAll("[data-product]")];
+      if (cards.length < 2) return;
+      const data = collect();
+      const idx = cards.indexOf(card);
+      data.products.splice(idx, 1);
+      paintProducts(data.products);
+      refreshDeliveryCopy();
+    }
     function renderExisting(rows) {
       const page = document.getElementById("page");
       const nos = rows.map((r) => r.order_number).filter(Boolean);
@@ -418,26 +517,36 @@
     }
     function renderForm() {
       const page = document.getElementById("page");
-      const saved = sdReadFormDraft("from-enquiry", enquiryNo) || {};
+      const draftKey = standalone ? "new" : enquiryNo;
+      const saved = sdReadFormDraft(draftKind(), draftKey) || {};
       const shared = Object.assign({}, draft.shared, saved.shared || {});
-      const products = blankEnquiryPrefill(
-        (saved.products && saved.products.length === (draft.products || []).length)
-          ? saved.products
-          : (draft.products || [])
-      );
+      const products = standalone
+        ? ((saved.products && saved.products.length) ? saved.products : (draft.products || [emptyProduct()]))
+        : blankEnquiryPrefill(
+          (saved.products && saved.products.length === (draft.products || []).length)
+            ? saved.products
+            : (draft.products || [])
+        );
       const orderNo = saved.order_number || draft.order_number;
       dateTouched = !!saved.dateTouched;
       const deliveryDate = saved.delivery_date || (draft.delivery && draft.delivery.date) || "";
+      const quoteBlock = standalone
+        ? "<label>Quote number<input id=\"f_quote_number\" value=\"" + esc(saved.quote_number || draft.quote_number || "") + "\" autocomplete=\"off\"><span class=\"hint\">Optional. Status starts as Not Yet Started on every unit.</span></label>"
+        : "<div class=\"locked\">Quote number (from the enquiry)<b id=\"quoteNo\">" + esc(draft.quote_number || "—") + "</b>" +
+          "<span class=\"hint\">Locked. Status starts as Not Yet Started on every unit.</span></div>";
+      const heading = standalone ? "New order" : ("Enquiry " + esc(enquiryNo));
+      const productHint = standalone
+        ? "Add each product on this order. Quantity 2 of the same chair becomes A and B. A chair plus a stool becomes A and B with different products. Letters run across the whole order. Tick Paid in full if they paid the price incl VAT for that quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required."
+        : "Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.";
       page.innerHTML =
         "<form class=\"card\" id=\"form\">" +
-          "<h2>Enquiry " + esc(enquiryNo) + "</h2>" +
+          "<h2>" + heading + "</h2>" +
           "<div class=\"grid\">" +
             "<label>Order number *" +
               "<input id=\"f_order_number\" value=\"" + esc(orderNo) + "\" autocomplete=\"off\">" +
               "<span class=\"hint\">Next Studio number fills in. You can change it. One number on this form — split letters are added on save.</span>" +
             "</label>" +
-            "<div class=\"locked\">Quote number (from the enquiry)<b id=\"quoteNo\">" + esc(draft.quote_number || "—") + "</b>" +
-              "<span class=\"hint\">Locked. Status starts as Not Yet Started on every unit.</span></div>" +
+            quoteBlock +
           "</div>" +
         "</form>" +
         "<div class=\"card\">" +
@@ -465,7 +574,8 @@
         "</div>" +
         "<div class=\"card\">" +
           "<h2>Products</h2>" +
-          "<p class=\"hint\">Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.</p>" +
+          "<p class=\"hint\">" + productHint + "</p>" +
+          (standalone ? "<button type=\"button\" class=\"ghost add-item\" id=\"addItem\">Add another item</button>" : "") +
           "<div id=\"products\"></div>" +
           "<div class=\"split\" id=\"splitBox\"></div>" +
         "</div>" +
@@ -473,35 +583,7 @@
           "<button type=\"button\" id=\"saveBtn\">Create orders</button>" +
           "<span class=\"msg\" id=\"formMsg\">Progress stays on this device if you leave the page. Save to clear it.</span>" +
         "</div>";
-      const box = document.getElementById("products");
-      box.innerHTML = products.map((p, i) => {
-        const d = draft.products[i] || p;
-        return "<article class=\"product\" data-product data-name=\"" + esc(d.product) + "\" data-category=\"" + esc(d.category) + "\">" +
-          "<h3>" + esc(d.category ? d.category + " · " + d.product : d.product) + "</h3>" +
-          "<div class=\"grid four\">" +
-            "<label>Type<select data-f=\"type\">" + typeOptions(p.type || d.type) + "</select></label>" +
-            "<label>Quantity *<input data-f=\"quantity\" type=\"number\" min=\"1\" step=\"1\" value=\"" + esc(p.quantity || 1) + "\" required></label>" +
-            "<label>Price incl VAT<input data-f=\"price_incl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_incl_vat || "") + "\"></label>" +
-            "<label>Price excl VAT *<input data-f=\"price_excl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_excl_vat || exclFromIncl(p.price_incl_vat)) + "\" required></label>" +
-          "</div>" +
-          "<label class=\"confirm\"><input data-f=\"qty_price_confirmed\" type=\"checkbox\"" + (p.qty_price_confirmed ? " checked" : "") + ">" +
-            "<span>Quantity and price excl VAT are correct<span class=\"hint\">Tick this after you check both. If either needs to change, change it first, then tick.</span></span></label>" +
-          "<label class=\"confirm\"><input data-f=\"paid_in_full\" type=\"checkbox\"" + (p.paid_in_full ? " checked" : "") + ">" +
-            "<span>Paid in full<span class=\"hint\">Tick this if they paid the price incl VAT for this quantity. Qty 2 of R 29,322.00 is R 14,661.00 on each unit. Type an amount only if they still owe.</span></span></label>" +
-          "<div class=\"grid four\" style=\"margin-top:12px\">" +
-            "<label>Amount paid (Incl VAT)<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "") + "\"" + (p.paid_in_full ? " readonly" : " required") + "><span class=\"hint\">Including 15% VAT for this quantity. Owing is price incl VAT minus this.</span></label>" +
-            "<label>Variation *<select data-f=\"variation\" required>" + options(dropdowns.variation, p.variation) + "</select></label>" +
-            "<label>Doors *<select data-f=\"doors\" required>" + options(dropdowns.doors, p.doors) + "</select></label>" +
-            "<label>Powder coating *<select data-f=\"powder_coating\" required>" + options(dropdowns.powder_coating, p.powder_coating) + "</select></label>" +
-          "</div>" +
-          "<div class=\"grid\" style=\"margin-top:12px\">" +
-            "<label>Dimensions *<input data-f=\"dimensions\" value=\"" + esc(p.dimensions || "") + "\" required></label>" +
-            "<label>Detailed description *<textarea data-f=\"detailed_description\" placeholder=\"Finish, glass, extras\" required>" + esc(p.detailed_description || "") + "</textarea>" +
-              "<span class=\"hint\">Type this for the shop. Select the words production must not miss (for example additional shelf), then mark them as important.</span>" +
-              "<button type=\"button\" class=\"ghost\" data-mark-important style=\"margin-top:6px;width:auto\">Mark selected as important</button></label>" +
-          "</div>" +
-        "</article>";
-      }).join("") || "<p class=\"msg\">This enquiry has no products to turn into orders.</p>";
+      paintProducts(products);
       const formRoot = document.getElementById("page");
       formRoot.addEventListener("input", (e) => {
         if (e.target && e.target.id === "f_delivery") dateTouched = true;
@@ -519,6 +601,17 @@
           syncPaidInFull(e.target.closest("[data-product]"));
         }
         if (field === "paid_in_full") syncPaidInFull(e.target.closest("[data-product]"));
+        if (field === "product" || field === "category") {
+          const card = e.target.closest("[data-product]");
+          if (card) {
+            const cat = ((card.querySelector("[data-f=category]") || {}).value) || "";
+            const prod = ((card.querySelector("[data-f=product]") || {}).value) || "";
+            const h3 = card.querySelector("h3");
+            if (h3) h3.textContent = cat && prod ? cat + " · " + prod : (prod || cat || "Item");
+            card.setAttribute("data-name", prod);
+            card.setAttribute("data-category", cat);
+          }
+        }
         if (e.target && (e.target.id === "f_province" || field === "type") && !dateTouched) {
           refreshDeliveryCopy();
           return;
@@ -527,6 +620,17 @@
         persist();
       });
       formRoot.addEventListener("click", (e) => {
+        if (e.target && e.target.closest && e.target.closest("#addItem")) {
+          e.preventDefault();
+          addProductItem();
+          return;
+        }
+        const remove = e.target && e.target.closest && e.target.closest("[data-remove-item]");
+        if (remove) {
+          e.preventDefault();
+          removeProductItem(remove.closest("[data-product]"));
+          return;
+        }
         const btn = e.target && e.target.closest && e.target.closest("[data-mark-important]");
         if (!btn) return;
         e.preventDefault();
@@ -575,6 +679,11 @@
       }
       for (const p of data.products) {
         const label = p.product || "this product";
+        if (standalone && !String(p.product || "").trim()) {
+          msg.textContent = "Product is required on every item.";
+          msg.className = "msg bad";
+          return;
+        }
         if (Math.floor(Number(p.quantity) || 0) < 1) {
           msg.textContent = "Quantity is required for " + label + ".";
           msg.className = "msg bad";
@@ -642,7 +751,10 @@
       msg.textContent = "";
       msg.className = "msg";
       try {
-        const r = await sdOfficeFetch("/api/office/enquiries/" + encodeURIComponent(enquiryNo) + "/create-orders", {
+        const url = standalone
+          ? "/api/office/orders/create"
+          : "/api/office/enquiries/" + encodeURIComponent(enquiryNo) + "/create-orders";
+        const r = await sdOfficeFetch(url, {
           method: "POST",
           body: JSON.stringify(data)
         });
@@ -652,7 +764,7 @@
           msg.className = "msg bad";
           return;
         }
-        sdDropFormDraft("from-enquiry", enquiryNo);
+        sdDropFormDraft(draftKind(), draftId());
         const nos = (j.rows || []).map((row) => row.order_number).join(", ");
         document.getElementById("page").innerHTML = "<div class=\"card done\">" +
           "<h2>Orders created</h2>" +
@@ -672,8 +784,44 @@
         }
       }
     }
+    function setPageChrome() {
+      const title = document.getElementById("pageTitle");
+      const lede = document.getElementById("pageLede");
+      const backLink = document.getElementById("backLink");
+      const backBtn = document.getElementById("backBtn");
+      if (standalone) {
+        document.title = "Studio Delta — New order";
+        if (title) title.textContent = "New order";
+        if (lede) lede.textContent = "Pick products, set quantity, add extra items. One Studio number on this form — two chairs plus a stool become A, B, and C. Status starts as Not Yet Started. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).";
+        if (backLink) backLink.href = "/orders";
+        if (backBtn) backBtn.textContent = "Back to Orders";
+        return;
+      }
+      document.title = "Studio Delta — Create orders from enquiry";
+      if (title) title.textContent = "Create orders from enquiry";
+      if (backLink) backLink.href = enquiryLink();
+      if (backBtn) backBtn.textContent = "Back to Enquiries";
+    }
     async function boot() {
       const page = document.getElementById("page");
+      setPageChrome();
+      if (standalone) {
+        try {
+          const r = await sdOfficeFetch("/api/office/orders/create-draft");
+          const j = await r.json();
+          if (!j.ok) {
+            page.innerHTML = "<div class=\"err\">" + esc(j.error || "Could not load the order form") +
+              "</div><p class=\"empty\"><a href=\"/orders\">Back to Orders</a></p>";
+            return;
+          }
+          draft = j;
+          dropdowns = j.dropdowns || {};
+          renderForm();
+        } catch (e) {
+          page.innerHTML = "<div class=\"err\">" + esc((e && e.message) || "Could not load the order form") + "</div>";
+        }
+        return;
+      }
       if (!enquiryNo) {
         page.innerHTML = "<div class=\"err\">Open this form from an enquiry that is ready for Orders.</div>";
         return;
