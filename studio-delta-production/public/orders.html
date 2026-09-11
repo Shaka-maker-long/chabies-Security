@@ -126,7 +126,7 @@
       <button class="ghost" type="button" onclick="location.href='/orders/job-card'">Generate job card</button>
       <button class="ghost" type="button" onclick="location.href='/orders/onboard'">Add existing order</button>
       <button class="ghost" type="button" onclick="location.href='/orders/paste'">Paste orders</button>
-      <button class="ghost" type="button" onclick="openForm()">New order</button>
+      <button class="ghost" type="button" onclick="location.href='/orders/new'">New order</button>
       <button class="danger" type="button" id="clearAllBtn" style="display:none" onclick="openClearAll()">Clear all orders</button>
     </div>
   </header>
@@ -490,7 +490,7 @@
       });
       if (!shown) {
         html += "<tr><td class=\"empty\" colspan=\"" + HEADERS.length + "\">" +
-          (rows.length && q ? "No orders match that search." : "No orders yet. New order opens a form. Enquiries that are ready still create an order from the enquiry.") +
+          (rows.length && q ? "No orders match that search." : "No orders yet. New order lets you add quantity and extra items on one order — split letters are added on save. Enquiries that are ready still create an order from the enquiry.") +
           "</td></tr>";
       }
       html += "</tbody>";

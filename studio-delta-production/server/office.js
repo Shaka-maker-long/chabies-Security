@@ -37,6 +37,8 @@ const {
   createOrderFromEnquiry,
   createOrderDraftFromEnquiry,
   createOrdersFromEnquiryForm,
+  createBlankOrderDraft,
+  createOrdersStandalone,
   onboardExistingOrder,
   pasteOrdersFromSheet,
   SHOP_STATUSES,
@@ -985,6 +987,23 @@ function mountOffice(app) {
   app.post("/api/office/enquiries/:enquiryNo/create-orders", requireOffice, (req, res) => {
     try {
       const out = createOrdersFromEnquiryForm(req.params.enquiryNo, req.body || {});
+      res.json({ ok: true, ...out });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/orders/create-draft", requireOffice, (_req, res) => {
+    try {
+      res.json({ ok: true, ...createBlankOrderDraft() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/orders/create", requireOffice, (req, res) => {
+    try {
+      const out = createOrdersStandalone(req.body || {});
       res.json({ ok: true, ...out });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });

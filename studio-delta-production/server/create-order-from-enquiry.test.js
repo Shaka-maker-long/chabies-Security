@@ -154,6 +154,40 @@ assert.strictEqual(planned.delivery.scheduleCode, "LD");
 assert.strictEqual(planned.delivery.date, "2026-10-15");
 assert.strictEqual(planned.quote_number, "SOQ88");
 
+const standalonePlan = fromEnquiry.planCreate(
+  null,
+  {
+    order_number: "S260600",
+    quote_number: "SOQ99",
+    delivery_date: "2026-10-15",
+    shared: { client_name: "Walk-in", province: "Gauteng", address: "9 Loop Street", city: "Johannesburg" },
+    products: [
+      shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "2000" }),
+      shopFields({ product: "Air Bar Stool", category: "Chair", type: "Custom", quantity: 1, price_incl_vat: "5000", amount_paid: "0" })
+    ]
+  },
+  []
+);
+assert.strictEqual(standalonePlan.units.length, 3);
+assert.deepStrictEqual(standalonePlan.units.map((u) => u.order_number), ["S260600 A", "S260600 B", "S260600 C"]);
+assert.strictEqual(standalonePlan.units[0].product, "Air Chair");
+assert.strictEqual(standalonePlan.units[2].product, "Air Bar Stool");
+assert.strictEqual(standalonePlan.quote_number, "SOQ99");
+assert.strictEqual(standalonePlan.enquiry_no, "");
+assert.throws(
+  () => fromEnquiry.planCreate(
+    null,
+    {
+      order_number: "S260601",
+      delivery_date: "2026-10-15",
+      shared: { client_name: "No Product", province: "Gauteng", address: "9 Loop Street", city: "Johannesburg" },
+      products: [shopFields({ product: "", quantity: 1, price_incl_vat: "1000" })]
+    },
+    []
+  ),
+  /Product is required/
+);
+
 const single = fromEnquiry.planCreate(
   { enquiry_no: "#5002", quote_no: "SOQ89" },
   {
@@ -435,6 +469,36 @@ assert.strictEqual(winelands.rows[0].owing, "R 0.00");
 assert.strictEqual(winelands.rows[1].owing, "R 0.00");
 assert.ok(!db.listDebtors().some((o) => String(o.order_number).indexOf("S260001") === 0));
 
+const blank = db.createBlankOrderDraft(now);
+assert.ok(/^S\d+$/.test(blank.order_number));
+assert.strictEqual(blank.products.length, 1);
+assert.ok(blank.dropdowns.product);
+assert.ok(blank.dropdowns.category);
+
+const stand = db.createOrdersStandalone({
+  order_number: "S260700",
+  quote_number: "SOQ70",
+  delivery_date: "2026-10-15",
+  shared: { client_name: "Walk-in", province: "Gauteng", address: "9 Loop Street", city: "Johannesburg" },
+  products: [
+    shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "2000", detailed_description: "Pair" }),
+    shopFields({ product: "Air Bar Stool", category: "Chair", type: "Custom", quantity: 1, price_incl_vat: "5000", amount_paid: "0", detailed_description: "Stool" })
+  ]
+});
+assert.strictEqual(stand.rows.length, 3);
+assert.deepStrictEqual(stand.rows.map((r) => r.order_number), ["S260700 A", "S260700 B", "S260700 C"]);
+assert.strictEqual(stand.rows[0].status, "Not Yet Started");
+assert.strictEqual(stand.rows[0].quote_number, "SOQ70");
+assert.strictEqual(stand.rows[0].enquiry_no, "");
+assert.strictEqual(stand.rows[0].product, "Air Chair");
+assert.strictEqual(stand.rows[2].product, "Air Bar Stool");
+const standItems = db.listDeliveryItems().items.filter((it) => String(it.order_number).indexOf("S260700") === 0);
+assert.strictEqual(standItems.length, 3);
+standItems.forEach((it) => {
+  assert.strictEqual(it.day, "2026-10-15");
+  assert.strictEqual(it.code, "LD");
+});
+
 const page = fs.readFileSync(path.join(__dirname, "../public/orders-from-enquiry.html"), "utf8");
 assert.ok(page.indexOf("Create orders from enquiry") !== -1);
 assert.ok(page.indexOf("f_order_number") !== -1);
@@ -445,6 +509,11 @@ assert.ok(page.indexOf("Latest Delivery") !== -1);
 assert.ok(page.indexOf("Latest Courier") !== -1);
 assert.ok(page.indexOf("/api/office/enquiries/") !== -1);
 assert.ok(page.indexOf("create-orders") !== -1);
+assert.ok(page.indexOf("standalone") !== -1);
+assert.ok(page.indexOf("/orders/new") !== -1);
+assert.ok(page.indexOf("Add another item") !== -1);
+assert.ok(page.indexOf("/api/office/orders/create") !== -1);
+assert.ok(page.indexOf("CATERGORY") !== -1);
 assert.ok(page.indexOf("data-f=\\\"quantity\\\"") !== -1);
 assert.ok(page.indexOf("Address *") !== -1);
 assert.ok(page.indexOf("City *") !== -1);
@@ -460,5 +529,7 @@ assert.ok(page.indexOf("Office schedule") === -1);
 const officeJs = fs.readFileSync(path.join(__dirname, "office.js"), "utf8");
 assert.ok(officeJs.indexOf("/create-order-draft") !== -1);
 assert.ok(officeJs.indexOf("createOrdersFromEnquiryForm") !== -1);
+assert.ok(officeJs.indexOf("/api/office/orders/create-draft") !== -1);
+assert.ok(officeJs.indexOf("createOrdersStandalone") !== -1);
 
 console.log("create-order-from-enquiry.test.js ok");
