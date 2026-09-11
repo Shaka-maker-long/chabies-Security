@@ -1292,11 +1292,40 @@ function captureFieldsChanged(existing, payload) {
   return false;
 }
 
+function drawingStillNeeded(row) {
+  const drawing = row && row.drawing;
+  if (!drawing || drawing.required !== true) return false;
+  return !(drawing.file && drawing.file.stored_as);
+}
+
+function enquiryReadyForOrders(row) {
+  if (!row) return false;
+  if (String(row.status || "").trim() !== "Ordered") return !!row.ready_for_orders;
+  if (drawingStillNeeded(row)) return false;
+  return true;
+}
+
+function orderedAtFromRow(row, events) {
+  const list = events && events.length ? events : normalizeEnquiryEvents(row);
+  const ev = list.filter((e) => e && (e.kind === "complete_order" || e.status === "Ordered")).slice(-1)[0];
+  if (ev && ev.at) return ev;
+  if (String((row && row.status) || "").trim() !== "Ordered") return null;
+  const outcome = (row && row.client_outcome) || {};
+  const at = (outcome.kind === "approved" && outcome.decided_at) || (row && row.updated_at) || "";
+  if (!at) return null;
+  return {
+    kind: "complete_order",
+    status: "Ordered",
+    at,
+    at_label: formatSastDateTime(at) || at
+  };
+}
+
 function enquiryLifespan(row, events) {
   const list = events && events.length ? events : normalizeEnquiryEvents(row);
   const first = list[0];
   const start = first && first.at ? Date.parse(first.at) : Date.parse(row && row.created_at || "");
-  const ordered = list.filter((ev) => ev.kind === "complete_order" || ev.status === "Ordered").slice(-1)[0];
+  const ordered = orderedAtFromRow(row, list);
   const closed = list.filter((ev) => ev.kind === "close" || ev.kind === "complete_reject" || /Rejected|Not Interested|Not within scope/.test(ev.status)).slice(-1)[0];
   const endEvent = ordered || closed;
   const end = endEvent && endEvent.at ? Date.parse(endEvent.at) : Date.now();
@@ -2314,7 +2343,7 @@ function decorateEnquiry(row) {
     date_quoted: quoteSheet.date_quoted,
     has_quote_pdf: hasPdf,
     quote_pdf_name: hasPdf ? (row.quote_pdf_name || "quote.pdf") : "",
-    ready_for_orders: !!row.ready_for_orders,
+    ready_for_orders: enquiryReadyForOrders(row),
     open_task_count: openTasks.length,
     assigned_to: openTasks.map((t) => t.assignee).filter(Boolean).join(", "),
     custom_specs: customSpecs,
@@ -2887,6 +2916,8 @@ module.exports = {
   pasteOrdersFromSheet,
   SHOP_STATUSES,
   ordersLinkedToEnquiry,
+  drawingStillNeeded,
+  enquiryReadyForOrders,
   listEnquiriesWaitingForOrders,
   listEnquiries,
   getEnquiry,

@@ -881,7 +881,7 @@
     if (action.id === "complete_order") {
       return quoteOptionSelect(row) +
         fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "") +
-        "<label>Requires drawing?<select name=\"drawing_required\"><option value=\"\"></option><option value=\"no\">No — ready for Orders</option><option value=\"yes\">Yes — assign drawing</option></select></label>" +
+        "<label>Requires drawing?<select name=\"drawing_required\" required><option value=\"\" disabled selected>Choose</option><option value=\"no\">No — ready for Orders</option><option value=\"yes\">Yes — assign drawing</option></select></label>" +
         "<label>Drawing assigned to</label>" + assigneeSelect();
     }
     if (action.id === "complete_drawing") {

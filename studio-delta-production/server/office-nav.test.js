@@ -147,6 +147,7 @@ assert.ok(processJs.indexOf("Value incl VAT") !== -1);
 assert.ok(processJs.indexOf("sd-quote-totals") !== -1);
 assert.ok(processJs.indexOf("delivery_incl_vat") !== -1);
 assert.ok(processJs.indexOf('complete_cost_sheet') !== -1);
+assert.ok(/name=\\"drawing_required\\" required/.test(processJs), "POP form must choose whether a drawing is needed");
 assert.ok(!/complete_cost_sheet[\s\S]{0,200}valuesTable/.test(processJs), "cost sheet must not ask for product values");
 assert.ok(processJs.indexOf("Add another cost sheet") !== -1);
 assert.ok(processJs.indexOf("cost_sheets") !== -1);

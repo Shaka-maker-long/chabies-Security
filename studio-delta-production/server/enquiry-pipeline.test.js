@@ -378,6 +378,18 @@ assert.throws(
   /reason/
 );
 
+assert.throws(
+  () => pipeline.applyAction("#1996", "Quoter", {
+    action: "complete_order",
+    file_base64: pdfB64,
+    file_name: "pop.pdf",
+    file_confirmed: true
+  }),
+  /drawing/i
+);
+assert.strictEqual(db.getEnquiry("#1996").status, "Followed Up", "missing drawing choice must not mark the enquiry Ordered");
+assert.strictEqual(db.getEnquiry("#1996").ready_for_orders, false);
+
 const ordered = pipeline.applyAction("#1996", "Quoter", {
   action: "complete_order",
   file_base64: pdfB64,
@@ -1294,6 +1306,24 @@ const optionDraft = db.createOrderDraftFromEnquiry("#4100");
 assert.strictEqual(optionDraft.quote_number, "SOQ4101");
 assert.strictEqual(optionDraft.products[0].variation, "With extra shelf");
 assert.strictEqual(optionDraft.chosen_option, "B");
+
+const leaked = db.upsertEnquiry({
+  date_enquired: "08/09/2026",
+  client_name: "Aphrodite Gogakis",
+  product: "Ella Arched Cabinet",
+  category: "Cabinet",
+  status: "New"
+});
+const leakedRaw = db.getEnquiryRaw(leaked.enquiry_no);
+leakedRaw.status = "Ordered";
+leakedRaw.ready_for_orders = false;
+leakedRaw.drawing = null;
+leakedRaw.client_outcome = { kind: "approved", decided_at: db.nowIso(), decided_by: "Quoter" };
+leakedRaw.updated_at = db.nowIso();
+const repaired = db.getEnquiry(leaked.enquiry_no);
+assert.strictEqual(repaired.ready_for_orders, true, "Ordered with POP and no drawing is ready for the Orders box");
+assert.ok(repaired.ordered_at, "dashboard ordered date comes from POP when the complete_order event is missing");
+assert.ok(db.listEnquiriesWaitingForOrders().some((r) => r.enquiry_no === leaked.enquiry_no));
 
 const keptOrder = db.upsertOrder({
   order_number: "9001",

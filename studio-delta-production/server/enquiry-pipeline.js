@@ -458,10 +458,10 @@ function availableActions(row) {
     actions.push({ id: "complete_order", label: "Client approved — attach POP" });
     actions.push({ id: "complete_reject", label: "Client rejected" });
   }
-  if (status === "Ordered" && row.drawing && row.drawing.required && !(row.drawing.file && row.drawing.file.stored_as)) {
+  if (status === "Ordered" && db.drawingStillNeeded(row)) {
     actions.push({ id: "complete_drawing", label: "Upload drawing" });
   }
-  if (status === "Ordered" && row.drawing && row.drawing.required === false && !row.ready_for_orders) {
+  if (status === "Ordered" && db.enquiryReadyForOrders(row) && !row.ready_for_orders) {
     row.ready_for_orders = true;
   }
   return actions;
@@ -1348,9 +1348,22 @@ function completeReject(row, actor, body) {
 function completeOrder(row, actor, body) {
   if (!statusAllows(row, ["Quoted", "Followed Up"])) throw new Error("Attach proof of payment after the client approves the quote");
   const live = quoteOptions.liveQuoteOptions(row.quotes);
+  let pick = null;
   if (live.length > 1) {
-    const pick = quoteOptions.findLiveOption(row.quotes, (body && (body.quote_option || body.chosen_quote_no)) || "");
+    pick = quoteOptions.findLiveOption(row.quotes, (body && (body.quote_option || body.chosen_quote_no)) || "");
     if (!pick) throw new Error("Choose which quote option the client accepted (A, B, or C)");
+  }
+  const filename = body.file_name || "pop.pdf";
+  const fileRaw = requireFile(body, "Upload proof of payment (screenshot or PDF)");
+  if (!isImage(filename, "") && !isPdf(filename, "", null)) {
+    throw new Error("Proof of payment must be a screenshot or PDF");
+  }
+  const drawingRaw = body && body.drawing_required;
+  const needsDrawing = drawingRaw === true || drawingRaw === "yes" || drawingRaw === "true";
+  const noDrawing = drawingRaw === false || drawingRaw === "no" || drawingRaw === "false";
+  if (!needsDrawing && !noDrawing) throw new Error("Say whether this order requires a drawing");
+  const drawingAssignee = needsDrawing ? requireAssignee(body.assignee) : "";
+  if (pick) {
     quoteOptions.applyQuoteSnapshot(row, pick);
     row.chosen_option = pick.option;
     row.chosen_quote_no = pick.quote_no;
@@ -1358,12 +1371,7 @@ function completeOrder(row, actor, body) {
     row.chosen_option = live[0].option;
     row.chosen_quote_no = live[0].quote_no;
   }
-  const filename = body.file_name || "pop.pdf";
-  const raw = requireFile(body, "Upload proof of payment (screenshot or PDF)");
-  if (!isImage(filename, "") && !isPdf(filename, "", null)) {
-    throw new Error("Proof of payment must be a screenshot or PDF");
-  }
-  const file = db.saveEnquiryAttachment(row.enquiry_no, "pop", raw, filename);
+  const file = db.saveEnquiryAttachment(row.enquiry_no, "pop", fileRaw, filename);
   row.status = "Ordered";
   row.client_outcome = {
     kind: "approved",
@@ -1374,18 +1382,14 @@ function completeOrder(row, actor, body) {
   };
   cancelOpenKind(row, "follow_up");
   closeOpenKind(row, "pop", actor);
-  const drawingRaw = body.drawing_required;
-  const needsDrawing = drawingRaw === true || drawingRaw === "yes" || drawingRaw === "true";
-  const noDrawing = drawingRaw === false || drawingRaw === "no" || drawingRaw === "false";
-  if (!needsDrawing && !noDrawing) throw new Error("Say whether this order requires a drawing");
   if (!needsDrawing) {
     row.drawing = { required: false, file: null };
     row.ready_for_orders = true;
     return;
   }
-  row.drawing = { required: true, file: null, assignee: requireAssignee(body.assignee) };
+  row.drawing = { required: true, file: null, assignee: drawingAssignee };
   row.ready_for_orders = false;
-  addTask(row, "drawing", row.drawing.assignee);
+  addTask(row, "drawing", drawingAssignee);
 }
 
 function completeDrawing(row, actor, body) {
