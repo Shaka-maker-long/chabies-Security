@@ -87,7 +87,7 @@ const rows = [
   {
     enquiry_no: "#1999",
     status: "Rejected",
-    created_at: daysAgo(8),
+    created_at: "2026-08-25T08:00:00.000Z",
     date_enquired: "25/08/2026",
     enquiry_source: "Walk-in",
     enquiry_type: "Inexss",
@@ -391,6 +391,32 @@ try {
   assert.ok(drillSepW2.rows.some((r) => r.enquiry_no === "#2005"));
   assert.ok(!drillSepW2.rows.some((r) => r.enquiry_no === "#2006"));
   rows.pop();
+  rows.pop();
+
+  rows.push({
+    enquiry_no: "#421",
+    status: "Ordered",
+    created_at: daysAgo(3),
+    date_enquired: "08/09/2026",
+    client_name: "Aphrodite Gogakis",
+    enquiry_source: "Whatsapp",
+    enquiry_type: "Custom",
+    category: "Cabinet",
+    product: "Ella Arched Cabinet",
+    products: [{ product: "Ella Arched Cabinet", category: "Cabinet", value_excl_vat: "9416.52" }],
+    quote_total_excl_vat: "9416.52",
+    ready_for_orders: false,
+    client_outcome: { kind: "approved", decided_at: daysAgo(0) },
+    events: [
+      { kind: "created", at: daysAgo(3) },
+      { kind: "complete_quote", at: daysAgo(2), status: "Quoted" }
+    ],
+    tasks: [],
+    correspondence: { mails: [] }
+  });
+  const popOnly = dash.buildDashboard({ grain: "month", range: "6m" });
+  assert.ok(popOnly.kpis.orderedInPeriod >= 2, "POP without a complete_order event still counts as ordered");
+  assert.ok(popOnly.money.orderedExclVat >= 21416, "ordered value includes the POP-only enquiry");
   rows.pop();
 } finally {
   db.listEnquiries = orig;

@@ -272,10 +272,22 @@ function parseWhen(row, field) {
   if (field === "ordered") {
     if (row.ordered_at) {
       const t = Date.parse(row.ordered_at);
-      if (Number.isFinite(t)) return t;
+      if (Number.isFinite(t) && t > 0) return t;
     }
     const ev = (row.events || []).filter((e) => e.kind === "complete_order" || e.status === "Ordered").slice(-1)[0];
-    return ev && ev.at ? Date.parse(ev.at) : 0;
+    if (ev && ev.at) {
+      const t = Date.parse(ev.at);
+      if (Number.isFinite(t)) return t;
+    }
+    const outcome = row.client_outcome || {};
+    if (String(row.status || "").trim() === "Ordered") {
+      const decided = (outcome.kind === "approved" && outcome.decided_at) || row.updated_at || "";
+      if (decided) {
+        const t = Date.parse(decided);
+        if (Number.isFinite(t)) return t;
+      }
+    }
+    return 0;
   }
   return 0;
 }
