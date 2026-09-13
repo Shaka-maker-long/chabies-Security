@@ -69,7 +69,9 @@ seed("SD-RFW", "Ready for Welding");
 seed("SD-WELD", "Welding");
 seed("SD-NYS", "Not Yet Started");
 seed("SD-CUT", "Profile Cutting");
-seed("SD-GRIND", "Ready for Grinding");
+  seed("SD-GRIND", "Ready for Grinding");
+  seed("SD-PRE", "Ready for Pre-Powder Coating");
+  seed("SD-ASM", "Ready for Assembly");
 
 (async () => {
   const listed = await callShopFunction("pollFloor", ["Plate Cutting", "Thabile"]);
@@ -80,6 +82,11 @@ seed("SD-GRIND", "Ready for Grinding");
   assert.ok(nums.indexOf("SD-NYS") === -1, "Not Yet Started must not show");
   assert.ok(nums.indexOf("SD-CUT") === -1, "Profile Cutting must not show");
   assert.ok(nums.indexOf("SD-GRIND") === -1, "Ready for Grinding must not show");
+
+  const assembly = await callShopFunction("pollFloor", ["Assembly", "Thabile"]);
+  const asmNums = ((assembly && assembly.orders) || []).map((o) => o.order);
+  assert.ok(asmNums.indexOf("SD-ASM") !== -1, "Ready for Assembly belongs on Assembly");
+  assert.ok(asmNums.indexOf("SD-PRE") === -1, "Ready for Pre-Powder Coating must not appear on Assembly");
 
   const marked = await callShopFunction("markOrderNoPlate", ["SD-TAG", "Thabile"]);
   assert.ok(marked.success, JSON.stringify(marked));
