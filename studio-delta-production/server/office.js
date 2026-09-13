@@ -55,6 +55,7 @@ const paintShop = require("./powder-shop");
 const glassPo = require("./glass-po");
 const glassRates = require("./glass-rates");
 const steelRates = require("./steel-rates");
+const backboardRates = require("./backboard-rates");
 const productionCost = require("./production-cost");
 const floorPlanning = require("./floor-planning");
 const orderLife = require("./order-life");
@@ -417,6 +418,28 @@ function mountOffice(app) {
     try {
       steelRates.deleteRate(req.params.id);
       res.json({ ok: true, ...steelRates.snapshotRates() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/backboard-rates", requireOffice, (_req, res) => {
+    res.json({ ok: true, ...backboardRates.snapshotRates() });
+  });
+
+  app.post("/api/office/backboard-rates", requireOffice, (req, res) => {
+    try {
+      const row = backboardRates.upsertRate(req.body || {});
+      res.json({ ok: true, rate: row, ...backboardRates.snapshotRates() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.delete("/api/office/backboard-rates/:id", requireOffice, (req, res) => {
+    try {
+      backboardRates.deleteRate(req.params.id);
+      res.json({ ok: true, ...backboardRates.snapshotRates() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

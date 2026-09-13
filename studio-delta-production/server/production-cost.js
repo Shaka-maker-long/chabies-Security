@@ -4,6 +4,7 @@ const { getBook, persistWorkbook } = require("./workbook-store");
 const { listOrders, parseMoney, money, formatRand } = require("./db");
 const catalog = require("./product-catalog");
 const steelRates = require("./steel-rates");
+const backboardRates = require("./backboard-rates");
 const { FLOOR_TASKS } = require("./staff");
 
 const TASKS = ["Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding", "Assembly"];
@@ -510,13 +511,14 @@ async function getAppData(query) {
   readBackboardUsage().forEach((row) => {
     const ts = row.timestamp;
     const month = ts ? monthKey(ts) : "unknown";
+    const priced = backboardRates.costUsage(row.type, row.size);
     addMaterial(order(row.orderNum), {
       type: "backboard",
       item: row.type || "Backboard",
       qty: String(row.size == null ? "" : row.size),
-      cost: 0,
+      cost: priced.cost,
       month,
-      rateMissing: true,
+      rateMissing: priced.rateMissing,
       worker: row.worker,
       process: row.process
     });
@@ -663,6 +665,7 @@ async function getAppData(query) {
     warningCount: orders.filter((o) => o.warnings && o.warnings.length).length,
     labourRates: snapshotLabourRates(),
     steelRates: steelRates.snapshotRates(),
+    backboardRates: backboardRates.snapshotRates(),
     missingEmployeeRates: Object.keys(missingEmployeeRates)
   };
 }
