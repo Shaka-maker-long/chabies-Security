@@ -16,6 +16,7 @@ const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const staff = require("./staff");
 const db = require("./db");
 const steelRates = require("./steel-rates");
+const backboardRates = require("./backboard-rates");
 const cost = require("./production-cost");
 const { mountOffice } = require("./office");
 
@@ -78,6 +79,16 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   assert.ok((order.materialEntries || []).some((e) => e.type === "wood" && /Oak/.test(e.item) && e.rateMissing));
   assert.strictEqual(order.woodCost, 0);
   assert.strictEqual(order.backboardCost, 0);
+
+  backboardRates.upsertRate({ type: "MDF", ratePerM2: "40" });
+  assert.strictEqual(backboardRates.costUsage("MDF", "2.5 m²").cost, 100);
+  assert.strictEqual(backboardRates.costUsage("Standard - MDF", "2.5 m²").cost, 100);
+  const pricedBoard = await cost.getAppData({ mode: "all" });
+  const boardOrder = pricedBoard.orders.find((o) => o.orderNum === "S-COST-1");
+  assert.ok(boardOrder, "backboard rate must allocate onto the same order");
+  assert.ok(Math.abs(boardOrder.backboardCost - 100) < 0.02, "backboard " + boardOrder.backboardCost);
+  assert.ok(Math.abs(boardOrder.materialCost - 340) < 0.02, "materials include steel + backboard " + boardOrder.materialCost);
+  assert.ok((boardOrder.materialEntries || []).some((e) => e.type === "backboard" && !e.rateMissing && Math.abs((e.cost || 0) - 100) < 0.02));
   assert.ok(order.staff.Willard);
   assert.ok(Math.abs(order.tasks.Welding.h - 2) < 0.05);
   assert.ok(Math.abs(order.overheadCost - 800) < 0.05, "overhead " + order.overheadCost);
@@ -134,7 +145,7 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   });
   const snapJson = await snap.json();
   assert.ok(snapJson.ok, JSON.stringify(snapJson));
-  assert.ok((snapJson.orders || []).some((o) => o.orderNum === "S-COST-1" && o.materialCost === 240));
+  assert.ok((snapJson.orders || []).some((o) => o.orderNum === "S-COST-1" && Math.abs((o.materialCost || 0) - 340) < 0.02));
   const saved = await fetch(base + "/api/office/labour-rates", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-sd-token": session.token },
@@ -151,6 +162,14 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   });
   const steelJson = await steel.json();
   assert.ok(steelJson.ok, JSON.stringify(steelJson));
+  const board = await fetch(base + "/api/office/backboard-rates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": session.token },
+    body: JSON.stringify({ type: "MDF", ratePerM2: "40" })
+  });
+  const boardJson = await board.json();
+  assert.ok(boardJson.ok, JSON.stringify(boardJson));
+  assert.ok((boardJson.rates || []).some((r) => r.type === "MDF" && Number(r.ratePerM2) === 40));
 
   const runningStart = new Date("2026-09-09T09:00:00.000Z");
   book.getSheetByName("Production_Log").appendRow([
@@ -229,6 +248,7 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const leftover = (afterJson.orders || []).find((o) => o.orderNum === "S-COST-1");
   assert.ok(leftover, "priced orders stay on Cost after labour and steel are cleared");
   assert.ok(!(leftover.laborCost > 0) && !(leftover.steelCost > 0), "cleared labour and steel must drop off the totals");
+  assert.ok(Math.abs((leftover.backboardCost || 0) - 100) < 0.02, "backboard stays on the order after steel and labour are cleared");
   const keptMats = (afterJson.orders || []).find((o) => o.orderNum === "S-COST-2");
   assert.ok(keptMats, "received glass and powder stay after labour and steel are cleared");
   assert.ok(Math.abs(keptMats.glassCost - 125.5) < 0.02);

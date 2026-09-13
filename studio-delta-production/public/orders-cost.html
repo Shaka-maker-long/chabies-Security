@@ -190,7 +190,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Production cost</h1>
-      <p class="lede">Labour from shop-floor time (shift and together-time) × that person's hourly rate. Materials are steel metres × the steel rate, glass and powder actuals typed when the load is received, plus wood and backboard logged on the floor. Wood and backboard rand stay R0 until those lines have a rate or actual.</p>
+      <p class="lede">Labour from shop-floor time (shift and together-time) × that person's hourly rate. Materials are steel metres × the steel rate, glass and powder actuals typed when the load is received, plus wood and backboard logged on the floor. Backboard size × the backboard rate is allocated onto that order. Wood rand stay R0 until those lines have a rate or actual.</p>
     </div>
     <div class="nav-controls">
       <span class="msg" id="status"></span>
@@ -222,7 +222,7 @@
       <div id="ratesWarn" class="warn" hidden>Hours can still show. Rand stay R0 until that person has a rate.</div>
       <div id="costEmpty" class="empty-card" hidden>
         <h2>Cost is live — nothing to total in this period</h2>
-        <p>This page totals finished shop clocks × that person's hourly rate, plus materials: steel metres × the steel rate, glass / powder actuals typed when a load is received, and wood / backboard logged on the floor. Running clocks and zero-minute starts stay off the matrix.</p>
+        <p>This page totals finished shop clocks × that person's hourly rate, plus materials: steel metres × the steel rate, glass / powder actuals typed when a load is received, backboard size × the backboard rate, and wood logged on the floor. Running clocks and zero-minute starts stay off the matrix.</p>
         <p>If the shop has already finished work, switch the filter to All time. To start costing, save labour and steel rates, then finish a job on the floor.</p>
         <button type="button" onclick="switchTab('rates')">Open Rates</button>
       </div>
@@ -329,6 +329,22 @@
               </label>
               <button type="submit">Save steel rate</button>
               <span class="msg" id="steelMsg"></span>
+            </form>
+          </section>
+          <section class="card">
+            <h2>Backboard rates</h2>
+            <p class="hint">R per m² of the size logged at the end of Assembly or Final QC. That rand is allocated onto the same order's material cost.</p>
+            <div id="backboardRateList"></div>
+            <form class="add" id="backboardForm">
+              <label>Backboard type
+                <select id="backboardType"></select>
+                <input id="backboardTypeCustom" placeholder="Or type e.g. MDF">
+              </label>
+              <label>Rate per m² (R)
+                <input id="backboardRate" inputmode="decimal" required placeholder="e.g. 180">
+              </label>
+              <button type="submit">Save backboard rate</button>
+              <span class="msg" id="backboardMsg"></span>
             </form>
           </section>
         </div>
@@ -637,7 +653,7 @@
       const colors = labels.map((_, i) => "hsl(211,100%," + (30 + (i / Math.max(labels.length - 1, 1)) * 45) + "%)");
       document.getElementById("steelDataList").innerHTML = labels.length
         ? labels.map((l, i) => "<div class='chart-data-item'><span><span class='color-dot' style='background:" + colors[i] + "'></span>" + esc(l) + "</span><span>" + formatMoney(s[l]) + "</span></div>").join("")
-        : "<div class='empty'>No material cost in this period. Add steel rates, receive glass / powder with an actual, or log wood and backboard on the floor.</div>";
+        : "<div class='empty'>No material cost in this period. Add steel or backboard rates, receive glass / powder with an actual, or log wood on the floor.</div>";
       const cvs = document.getElementById("steelChart");
       if (steelChartInstance) steelChartInstance.destroy();
       if (!labels.length) { steelChartInstance = null; return; }
@@ -676,6 +692,17 @@
         : "<div class='empty'>No steel rates yet. Add R per metre for each profile.</div>";
       document.querySelectorAll("[data-steel]").forEach((btn) => {
         btn.onclick = () => removeSteel(btn.getAttribute("data-steel"));
+      });
+      const backboard = (appData.backboardRates && appData.backboardRates.rates) || [];
+      const boardTypes = (appData.backboardRates && appData.backboardRates.types) || [];
+      fillSelect("backboardType", boardTypes, "Choose type");
+      document.getElementById("backboardRateList").innerHTML = backboard.length
+        ? "<table><thead><tr><th>Backboard type</th><th>Rate</th><th></th></tr></thead><tbody>" +
+          backboard.map((r) => "<tr><td>" + esc(r.type) + "</td><td>" + esc(r.rateLabel) + "</td><td><button class='danger' type='button' data-backboard=\"" + esc(r.id) + "\">Delete</button></td></tr>").join("") +
+          "</tbody></table>"
+        : "<div class='empty'>No backboard rates yet. Add R per m² for each board logged on the floor.</div>";
+      document.querySelectorAll("[data-backboard]").forEach((btn) => {
+        btn.onclick = () => removeBackboard(btn.getAttribute("data-backboard"));
       });
     }
     function renderAll() {
@@ -742,6 +769,15 @@
       renderRates();
       load();
     }
+    async function removeBackboard(id) {
+      if (!confirm("Delete this backboard rate?")) return;
+      const r = await sdOfficeFetch("/api/office/backboard-rates/" + encodeURIComponent(id), { method: "DELETE" });
+      const j = await r.json();
+      if (!j.ok) { setMsg("backboardMsg", j.error || "Could not delete", true); return; }
+      appData.backboardRates = j;
+      renderRates();
+      load();
+    }
     document.getElementById("labourForm").onsubmit = async (e) => {
       e.preventDefault();
       const employee = String(document.getElementById("labourEmployeeCustom").value || "").trim() || document.getElementById("labourEmployee").value;
@@ -764,6 +800,18 @@
       document.getElementById("steelTypeCustom").value = "";
       document.getElementById("steelRate").value = "";
       setMsg("steelMsg", "Saved " + type + ".");
+      load();
+    };
+    document.getElementById("backboardForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const type = String(document.getElementById("backboardTypeCustom").value || "").trim() || document.getElementById("backboardType").value;
+      const ratePerM2 = document.getElementById("backboardRate").value;
+      const r = await sdOfficeFetch("/api/office/backboard-rates", { method: "POST", body: JSON.stringify({ type, ratePerM2 }) });
+      const j = await r.json();
+      if (!j.ok) { setMsg("backboardMsg", j.error || "Could not save", true); return; }
+      document.getElementById("backboardTypeCustom").value = "";
+      document.getElementById("backboardRate").value = "";
+      setMsg("backboardMsg", "Saved " + type + ".");
       load();
     };
     document.addEventListener("click", (e) => {

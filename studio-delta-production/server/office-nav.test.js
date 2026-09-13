@@ -495,6 +495,7 @@ assert.ok(indexJs.indexOf("/orders/cost") !== -1);
 assert.ok(officeJs.indexOf("/api/office/production-cost") !== -1);
 assert.ok(officeJs.indexOf("/api/office/labour-rates") !== -1);
 assert.ok(officeJs.indexOf("/api/office/steel-rates") !== -1);
+assert.ok(officeJs.indexOf("/api/office/backboard-rates") !== -1);
 const costHtml = fs.readFileSync(path.join(__dirname, "../public/orders-cost.html"), "utf8");
 assert.ok(costHtml.indexOf("Production matrix") !== -1);
 assert.ok(costHtml.indexOf("cost-matrix") !== -1);
@@ -527,6 +528,8 @@ assert.ok(costHtml.indexOf("Powder actual") === -1, "powder is inside Materials,
 assert.ok(costHtml.indexOf("wood and backboard") !== -1);
 assert.ok(costHtml.indexOf("o.materialCost") !== -1);
 assert.ok(costHtml.indexOf("Steel rates") !== -1);
+assert.ok(costHtml.indexOf("Backboard rates") !== -1);
+assert.ok(costHtml.indexOf("/api/office/backboard-rates") !== -1);
 assert.ok(costHtml.indexOf("Labour rates") !== -1);
 assert.ok(costHtml.indexOf("Employee Name") !== -1);
 assert.ok(costHtml.indexOf("Hourly Rate") !== -1);
