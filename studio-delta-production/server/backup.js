@@ -347,7 +347,7 @@ function explainDriveError(raw, email) {
   const bot = email || googleServiceAccountEmail() || "the service account";
   if (/storage quota|do not have storage quota/i.test(msg)) {
     return "Google will not let " + bot +
-      " own files in an ordinary My Drive folder (service accounts have no storage). Put the backup folder in a Shared drive and add that email as Content manager. Or set BACKUP_DRIVE_IMPERSONATE to a Workspace mailbox after an admin enables domain-wide delegation.";
+      " own files in an ordinary My Drive folder (service accounts have no storage). Move that folder into a Shared drive and add that email as Content manager. The folder ID stays the same — do not change Railway.";
   }
   return msg;
 }
@@ -409,7 +409,7 @@ function probeDriveFolder(folderId, email) {
   if (!impersonateEmail() && !meta.driveId) {
     throw new Error(
       "This folder is in ordinary My Drive. Google will not let " + (email || "the service account") +
-      " store files there (no storage quota). In Drive: New → Shared drive, add that email as Content manager, put the backup folder inside the Shared drive, then set BACKUP_DRIVE_FOLDER_ID to that folder. Or set BACKUP_DRIVE_IMPERSONATE to a Workspace mailbox."
+      " store files there (no storage quota). In Drive: Shared drives → New, add that email as Content manager, then move this same folder into that Shared drive. The folder ID stays the same — do not change Railway. Then click Send test file to Drive."
     );
   }
   return meta;
@@ -694,6 +694,9 @@ function info() {
     backupServiceAccount: googleServiceAccountEmail(),
     backupDriveFolderSet: !!configuredFolderId(),
     backupDriveFolderId: configuredFolderId() || null,
+    backupDriveFolderUrl: configuredFolderId()
+      ? "https://drive.google.com/drive/folders/" + configuredFolderId()
+      : null,
     backupDriveImpersonate: impersonateEmail() || null,
     backupEmail: mailTo() || null,
     backupVerified: !!(last && last.ok && last.verified),
