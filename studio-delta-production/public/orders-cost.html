@@ -190,7 +190,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Production cost</h1>
-      <p class="lede">Labour from shop-floor time (shift and together-time) × the hourly rate for that process. Steel is metres logged × the rate for that profile. Glass and powder coating are the actuals typed when the load is received — not estimates. Wood comes later.</p>
+      <p class="lede">Labour from shop-floor time (shift and together-time) × that person's hourly rate. Steel is metres logged × the rate for that profile. Glass and powder coating are the actuals typed when the load is received — not estimates. Wood comes later.</p>
     </div>
     <div class="nav-controls">
       <span class="msg" id="status"></span>
@@ -221,10 +221,10 @@
         <div class="s-card"><div class="s-label">Top performer</div><div class="s-val" id="stat-top" style="font-size:16px;">—</div></div>
         <div class="s-card" id="warning-summary" style="display:none;border-color:#DC2626"><div class="s-label" style="color:#DC2626">Warnings</div><div class="s-val" id="stat-warnings" style="color:#DC2626;font-size:18px">0</div></div>
       </div>
-      <div id="ratesWarn" class="warn" hidden>No labour rates yet. Hours can still show; rand cost stays R0 until you save a rate on Rates.</div>
+      <div id="ratesWarn" class="warn" hidden>Hours can still show. Rand stay R0 until that person has a rate.</div>
       <div id="costEmpty" class="empty-card" hidden>
         <h2>Cost is live — nothing to total in this period</h2>
-        <p>This page totals finished shop clocks × the hourly rate for that process, steel metres × the steel rate, and glass / powder actuals typed when a load is received. Running clocks and zero-minute starts stay off the matrix.</p>
+        <p>This page totals finished shop clocks × that person's hourly rate, steel metres × the steel rate, and glass / powder actuals typed when a load is received. Running clocks and zero-minute starts stay off the matrix.</p>
         <p>If the shop has already finished work, switch the filter to All time. To start costing, save labour and steel rates, then finish a job on the floor.</p>
         <button type="button" onclick="switchTab('rates')">Open Rates</button>
       </div>
@@ -303,17 +303,17 @@
         <div class="rates">
           <section class="card">
             <h2>Labour rates</h2>
-            <p class="hint">R per hour by shop process. Time on an order uses the rate for that process.</p>
+            <p class="hint">R per hour per person. Time on an order uses that person's rate wherever they work — not the workstation (Welding, Cutting, and so on).</p>
             <div id="labourList"></div>
             <form class="add" id="labourForm">
-              <label>Process
-                <select id="labourProcess"></select>
-                <input id="labourProcessCustom" placeholder="Or type another process">
+              <label>Employee Name
+                <select id="labourEmployee"></select>
+                <input id="labourEmployeeCustom" placeholder="Or type another name">
               </label>
-              <label>Rate per hour (R)
-                <input id="labourRate" inputmode="decimal" required placeholder="e.g. 180">
+              <label>Hourly Rate (R)
+                <input id="labourRate" inputmode="decimal" required placeholder="e.g. 65.16">
               </label>
-              <button type="submit">Save labour rate</button>
+              <button type="submit">Save employee rate</button>
               <span class="msg" id="labourMsg"></span>
             </form>
           </section>
@@ -482,8 +482,19 @@
       if (emptyBox) emptyBox.hidden = !!orders.length;
       if (logsBoard) logsBoard.style.display = orders.length ? "flex" : "none";
       const rates = ((appData.labourRates && appData.labourRates.rates) || []);
+      const missingPeople = appData.missingEmployeeRates || [];
       const ratesWarn = document.getElementById("ratesWarn");
-      if (ratesWarn) ratesWarn.hidden = !!rates.length;
+      if (ratesWarn) {
+        if (missingPeople.length) {
+          ratesWarn.hidden = false;
+          ratesWarn.textContent = "Hours can still show. Rand stay R0 until " + missingPeople.join(", ") + " " + (missingPeople.length === 1 ? "has" : "have") + " a rate.";
+        } else if (!rates.length) {
+          ratesWarn.hidden = false;
+          ratesWarn.textContent = "Hours can still show. Rand stay R0 until that person has a rate.";
+        } else {
+          ratesWarn.hidden = true;
+        }
+      }
       if (!orders.length) {
         metaBody.innerHTML = "";
         body.innerHTML = "";
@@ -650,13 +661,16 @@
     }
     function renderRates() {
       const labour = (appData.labourRates && appData.labourRates.rates) || [];
-      const processes = (appData.labourRates && appData.labourRates.processes) || TASKS;
-      fillSelect("labourProcess", processes, "Choose process");
+      const employees = (appData.labourRates && (appData.labourRates.employees || appData.labourRates.processes)) || [];
+      fillSelect("labourEmployee", employees, "Choose employee");
       document.getElementById("labourList").innerHTML = labour.length
-        ? "<table><thead><tr><th>Process</th><th>Rate</th><th></th></tr></thead><tbody>" +
-          labour.map((r) => "<tr><td>" + esc(r.process) + "</td><td>" + esc(r.rateLabel) + "</td><td><button class='danger' type='button' data-labour=\"" + esc(r.process) + "\">Delete</button></td></tr>").join("") +
+        ? "<table><thead><tr><th>Employee Name</th><th>Hourly Rate</th><th></th></tr></thead><tbody>" +
+          labour.map((r) => {
+            const name = r.employee || r.process;
+            return "<tr><td>" + esc(name) + "</td><td>" + esc(r.rateLabel) + "</td><td><button class='danger' type='button' data-labour=\"" + esc(name) + "\">Delete</button></td></tr>";
+          }).join("") +
           "</tbody></table>"
-        : "<div class='empty'>No labour rates yet. Add the hourly rate for each process.</div>";
+        : "<div class='empty'>No employee rates yet. Add the hourly rate for each person.</div>";
       document.querySelectorAll("[data-labour]").forEach((btn) => {
         btn.onclick = () => removeLabour(btn.getAttribute("data-labour"));
       });
@@ -718,9 +732,9 @@
         setMsg("status", (e && e.message) || "Could not load", true);
       }
     }
-    async function removeLabour(process) {
-      if (!confirm("Delete this labour rate?")) return;
-      const r = await sdOfficeFetch("/api/office/labour-rates/" + encodeURIComponent(process), { method: "DELETE" });
+    async function removeLabour(employee) {
+      if (!confirm("Delete this employee rate?")) return;
+      const r = await sdOfficeFetch("/api/office/labour-rates/" + encodeURIComponent(employee), { method: "DELETE" });
       const j = await r.json();
       if (!j.ok) { setMsg("labourMsg", j.error || "Could not delete", true); return; }
       appData.labourRates = j;
@@ -738,14 +752,14 @@
     }
     document.getElementById("labourForm").onsubmit = async (e) => {
       e.preventDefault();
-      const process = String(document.getElementById("labourProcessCustom").value || "").trim() || document.getElementById("labourProcess").value;
+      const employee = String(document.getElementById("labourEmployeeCustom").value || "").trim() || document.getElementById("labourEmployee").value;
       const ratePerHour = document.getElementById("labourRate").value;
-      const r = await sdOfficeFetch("/api/office/labour-rates", { method: "POST", body: JSON.stringify({ process, ratePerHour }) });
+      const r = await sdOfficeFetch("/api/office/labour-rates", { method: "POST", body: JSON.stringify({ employee, ratePerHour }) });
       const j = await r.json();
       if (!j.ok) { setMsg("labourMsg", j.error || "Could not save", true); return; }
-      document.getElementById("labourProcessCustom").value = "";
+      document.getElementById("labourEmployeeCustom").value = "";
       document.getElementById("labourRate").value = "";
-      setMsg("labourMsg", "Saved " + process + ".");
+      setMsg("labourMsg", "Saved " + employee + ".");
       load();
     };
     document.getElementById("steelForm").onsubmit = async (e) => {

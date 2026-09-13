@@ -18,7 +18,7 @@ const SEED_TABS = {
     "Pause Start", "Pause Mins", "Pause Reason", "Meta"
   ]],
   Overview: [["ID", "Order #", "Worker", "Status", "Start", "End", "Duration"]],
-  Rates: [["Process", "Rate"]],
+  Rates: [["Employee Name", "Hourly Rate"]],
   Steel_Profiles: [["Category", "Profile Name"]],
   Steel_Usage: [["Timestamp", "Order #", "Worker", "Process", "Profile Type", "Size / Length"]],
   Backboards: [["Category", "Profile Name"]],

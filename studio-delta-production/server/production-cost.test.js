@@ -36,7 +36,12 @@ db.upsertOrder({
   price_excl_vat: "2000.00"
 });
 
-cost.upsertLabourRate({ process: "Welding", ratePerHour: "200" });
+const seededRates = cost.snapshotLabourRates();
+assert.ok((seededRates.rates || []).some((r) => r.employee === "Willard" && Number(r.ratePerHour) === 110));
+assert.ok((seededRates.rates || []).some((r) => r.employee === "John" && Number(r.ratePerHour) === 65.16));
+assert.ok((seededRates.rates || []).some((r) => r.employee === "Thabile" && Number(r.ratePerHour) === 39.56));
+assert.ok((seededRates.employees || []).indexOf("Willard") !== -1);
+cost.upsertLabourRate({ process: "Welding", ratePerHour: "999" });
 steelRates.upsertRate({ type: "25x25x2", ratePerM: "80" });
 assert.strictEqual(steelRates.costUsage("Tube - 25x25x2", 3).cost, 240);
 
@@ -60,7 +65,8 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const order = data.orders.find((o) => o.orderNum === "S-COST-1");
   assert.ok(order, JSON.stringify(data.orders));
   assert.ok(Math.abs(order.totalHours - 2) < 0.05, "hours " + order.totalHours);
-  assert.ok(Math.abs(order.laborCost - 400) < 0.05, "labour " + order.laborCost);
+  assert.ok(Math.abs(order.laborCost - 220) < 0.05, "labour uses Willard R110 not the Welding station " + order.laborCost);
+  assert.ok(Math.abs(order.staff.Willard.c - 220) < 0.05);
   assert.strictEqual(order.materialCost, 240);
   assert.ok(order.staff.Willard);
   assert.ok(Math.abs(order.tasks.Welding.h - 2) < 0.05);
@@ -122,11 +128,12 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const saved = await fetch(base + "/api/office/labour-rates", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-sd-token": session.token },
-    body: JSON.stringify({ process: "Profile Cutting", ratePerHour: "150" })
+    body: JSON.stringify({ employee: "John", ratePerHour: "65.16" })
   });
   const savedJson = await saved.json();
   assert.ok(savedJson.ok, JSON.stringify(savedJson));
-  assert.ok((savedJson.rates || []).some((r) => r.process === "Profile Cutting"));
+  assert.ok((savedJson.rates || []).some((r) => r.employee === "John" && Number(r.ratePerHour) === 65.16));
+  assert.ok((savedJson.employees || []).indexOf("John") !== -1);
   const steel = await fetch(base + "/api/office/steel-rates", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-sd-token": session.token },
