@@ -216,8 +216,6 @@
         <div class="s-card"><div class="s-label">Total labour cost</div><div class="s-val" id="stat-labor">R0</div></div>
         <div class="s-card"><div class="s-label" id="stat-profit-label">Net profit</div><div class="s-val" id="stat-profit">R0</div></div>
         <div class="s-card"><div class="s-label">Materials</div><div class="s-val" id="stat-steel">R0</div></div>
-        <div class="s-card"><div class="s-label">Glass actual</div><div class="s-val" id="stat-glass">R0</div></div>
-        <div class="s-card"><div class="s-label">Powder actual</div><div class="s-val" id="stat-powder">R0</div></div>
         <div class="s-card"><div class="s-label">Top performer</div><div class="s-val" id="stat-top" style="font-size:16px;">—</div></div>
         <div class="s-card" id="warning-summary" style="display:none;border-color:#DC2626"><div class="s-label" style="color:#DC2626">Warnings</div><div class="s-val" id="stat-warnings" style="color:#DC2626;font-size:18px">0</div></div>
       </div>
@@ -502,12 +500,10 @@
         document.getElementById("stat-labor").textContent = "R0";
         document.getElementById("stat-profit").textContent = "R0";
         document.getElementById("stat-steel").textContent = "R0";
-        document.getElementById("stat-glass").textContent = "R0";
-        document.getElementById("stat-powder").textContent = "R0";
         document.getElementById("stat-top").textContent = "—";
         return;
       }
-      const grand = { h: 0, c: 0, m: 0, g: 0, pw: 0, oh: 0, s: 0, p: 0 };
+      const grand = { h: 0, c: 0, m: 0, oh: 0, s: 0, p: 0 };
       metaBody.innerHTML = orders.map((o) => {
         return "<tr><td class='col-order'><b>" + esc(o.orderNum) + "</b></td>" +
           "<td class='col-product tooltip'><span class='product-clip'>" + esc(o.product || "—") + "</span>" +
@@ -518,7 +514,6 @@
         const sale = o.displaySale != null ? o.displaySale : o.sellingPrice;
         const margin = sale - (o.laborCost || 0) - (o.materialCost || 0) - ohCost;
         grand.h += o.totalHours || 0; grand.c += o.laborCost || 0; grand.m += o.materialCost || 0;
-        grand.g += o.glassCost || 0; grand.pw += o.powderCost || 0;
         grand.oh += ohCost; grand.s += sale || 0; grand.p += margin;
         let row = "<tr>";
         TASKS.forEach((t) => {
@@ -537,8 +532,6 @@
       document.getElementById("stat-labor").textContent = formatMoney(grand.c);
       document.getElementById("stat-profit").textContent = formatMoney(grand.p);
       document.getElementById("stat-steel").textContent = formatMoney(grand.m);
-      document.getElementById("stat-glass").textContent = formatMoney(grand.g);
-      document.getElementById("stat-powder").textContent = formatMoney(grand.pw);
       document.getElementById("stat-top").textContent = appData.topPerformer || "—";
       const warns = appData.warningCount || 0;
       document.getElementById("warning-summary").style.display = warns ? "" : "none";
