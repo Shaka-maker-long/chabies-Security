@@ -297,7 +297,7 @@ function mountOffice(app) {
   app.post("/api/office/glass-po/clear", requireOffice, (req, res) => {
     const confirm = String((req.body && (req.body.confirm || req.body.confirmation)) || "").trim();
     if (confirm.toUpperCase() !== "CLEAR") {
-      res.status(400).json({ ok: false, error: "Type CLEAR to delete every generated glass purchase order." });
+      res.status(400).json({ ok: false, error: "Type CLEAR to delete every glass purchase order and every glass line on To order." });
       return;
     }
     try {
