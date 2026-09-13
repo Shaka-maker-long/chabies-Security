@@ -7,7 +7,7 @@ const SHOP_STATUSES = [
   "Ready for Welding", "Welding",
   "Ready for Grinding", "Grinding",
   "Ready for Pre-Powder Coating", "Pre-Powder Coating",
-  "Ready for Powder Coating", "Sent to Paint Shop", "Powder Coating",
+  "Ready for Powder Coating", "Sent to Paint Shop", "Paint Shop", "Powder Coating",
   "Ready for Assembly", "Assembly", "Paint Preparation", "Ready for Painting", "Painting",
   "Ready for Final QC", "Final QC",
   "Ready for Delivery", "Out for Delivery",
@@ -23,10 +23,21 @@ const PLANNED_PROCESSES = [
   "Assembly"
 ];
 
+const STATUS_ALIASES = {
+  "paint shop": "Paint Shop",
+  "at paint shop": "Paint Shop",
+  "at the paint shop": "Paint Shop",
+  "paintshop": "Paint Shop",
+  "powder coaters": "Paint Shop",
+  "at powder coaters": "Paint Shop",
+  "at the powder coaters": "Paint Shop"
+};
+
 function normalizeShopStatus(status) {
   const raw = String(status == null ? "" : status).trim();
   if (!raw) return "";
   const compact = raw.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (STATUS_ALIASES[compact]) return STATUS_ALIASES[compact];
   const hit = SHOP_STATUSES.find((name) => name.toLowerCase() === compact);
   return hit || raw;
 }
@@ -63,11 +74,18 @@ function isShopStatus(status) {
   return SHOP_STATUSES.indexOf(normalizeShopStatus(status)) !== -1;
 }
 
+function isAtPaintShop(status) {
+  const s = normalizeShopStatus(status);
+  return s === "Paint Shop" || s === "Sent to Paint Shop";
+}
+
 module.exports = {
   SHOP_STATUSES,
   PLANNED_PROCESSES,
+  STATUS_ALIASES,
   normalizeShopStatus,
   shopStatusIndex,
   remainingPlanForStatus,
-  isShopStatus
+  isShopStatus,
+  isAtPaintShop
 };

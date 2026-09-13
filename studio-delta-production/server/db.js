@@ -11,7 +11,7 @@ const {
 const { getBook, persistWorkbook, ORDER_HEADERS, dataDir } = require("./workbook-store");
 const fromEnquiry = require("./create-order-from-enquiry");
 const quoteOptions = require("./quote-options");
-const { SHOP_STATUSES, isShopStatus } = require("./shop-status");
+const { SHOP_STATUSES, isShopStatus, normalizeShopStatus } = require("./shop-status");
 
 const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
@@ -1563,7 +1563,7 @@ function onboardExistingOrder(body) {
   if (listOrders().some((o) => formatOrderId(o.order_number) === orderNumber)) {
     throw new Error(orderNumber + " is already on Orders.");
   }
-  const status = String(row.status || "").trim();
+  const status = normalizeShopStatus(row.status);
   if (!isShopStatus(status)) throw new Error("Pick where this order is on the floor now.");
   const product = String(row.product || "").trim();
   if (!product) throw new Error("Product is required");

@@ -227,6 +227,17 @@ assert.notStrictEqual(later.invoiceId, recv.invoiceId);
   const savedJson = await savedRate.json();
   assert.ok(savedJson.ok, JSON.stringify(savedJson));
   assert.ok((savedJson.rates || []).some((r) => r.type === "Clear" && r.thickness === "8mm"));
+  const cleared = await fetch(base + "/api/office/glass-po/clear", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": session.token },
+    body: JSON.stringify({ confirm: "CLEAR" })
+  });
+  const clearedJson = await cleared.json();
+  assert.ok(clearedJson.ok, JSON.stringify(clearedJson));
+  assert.ok((clearedJson.removed || 0) >= 1, "test purchase orders must be deleted");
+  assert.ok(!(clearedJson.pos || []).length, "purchase history must be empty after clear");
+  assert.ok((clearedJson.toOrder || []).some((l) => l.id === "g-api-1"), "received glass returns to To order");
+  assert.ok((clearedJson.toOrder || []).some((l) => l.id === "g-api-2"), "outstanding glass returns to To order");
   server.close();
   console.log("glass-po.test.js ok");
 })().catch((err) => {

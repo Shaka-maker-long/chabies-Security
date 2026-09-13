@@ -63,7 +63,7 @@
         <a class="on" href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Paint shop</h1>
-      <p class="lede">Mark Ready for Powder Coating orders when they leave for the paint shop. When a load comes back, tick only the orders that arrived, put a cost on each one, and attach one invoice for that received batch. Orders still at the shop stay here until you receive them.</p>
+      <p class="lede">Every order with status <b>Paint Shop</b> or <b>Sent to Paint Shop</b> is listed here — that is the powder coaters. Ready for Powder Coating is waiting to go. When a load comes back, tick only the orders that arrived, put a cost on each one, and attach one invoice for that received batch.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -83,7 +83,7 @@
       </section>
       <section class="card">
         <h2>At the paint shop</h2>
-        <p class="hint">Receive only what came back. Cost is required on each received order. One invoice covers this received batch.</p>
+        <p class="hint">These orders are at the powder coaters (Paint Shop). Receive only what came back. Cost is required on each received order. One invoice covers this received batch.</p>
         <div id="sentBox"><div class="load">Loading…</div></div>
         <div class="foot">
           <label class="file">Invoice for this received batch
@@ -140,14 +140,15 @@
     function renderSent() {
       const box = document.getElementById("sentBox");
       if (!data.sent.length) {
-        box.innerHTML = '<div class="empty">No orders are at the paint shop.</div>';
+        box.innerHTML = '<div class="empty">No orders have status Paint Shop or Sent to Paint Shop.</div>';
         document.getElementById("recvBtn").disabled = true;
         return;
       }
-      box.innerHTML = "<table><thead><tr><th></th><th>Order</th><th>Product</th><th>Sent</th><th>Cost (R)</th></tr></thead><tbody>" +
+      box.innerHTML = "<table><thead><tr><th></th><th>Order</th><th>Product</th><th>Status</th><th>Sent</th><th>Cost (R)</th></tr></thead><tbody>" +
         data.sent.map((o) => "<tr><td><input class='sent-chk' type='checkbox' value=\"" + esc(o.order_number) + "\"></td>" +
           "<td><b>" + esc(o.order_number) + "</b><div class='msg'>" + esc(o.powder_coating) + "</div></td>" +
-          "<td>" + esc(o.product) + "</td><td>" + esc(when(o.sentAt)) + (o.sentBy ? "<div class='msg'>" + esc(o.sentBy) + "</div>" : "") + "</td>" +
+          "<td>" + esc(o.product) + "</td><td><span class='pill sent'>" + esc(o.status) + "</span></td>" +
+          "<td>" + esc(when(o.sentAt) || "On the sheet") + (o.sentBy ? "<div class='msg'>" + esc(o.sentBy) + "</div>" : "") + "</td>" +
           "<td><input class='cost' data-order=\"" + esc(o.order_number) + "\" inputmode='decimal' placeholder='Required' disabled></td></tr>").join("") +
         "</tbody></table>";
       box.querySelectorAll(".sent-chk").forEach((el) => { el.onchange = syncButtons; });

@@ -19,6 +19,7 @@
     .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#b42318; border-color:#b42318; }
     button:disabled { opacity:.55; cursor:not-allowed; }
     .page { padding:18px 16px 40px; display:flex; flex-direction:column; gap:16px; }
     .subtabs { display:flex; gap:8px; }
@@ -89,6 +90,7 @@
       <span class="msg" id="status"></span>
       <button class="ghost" type="button" onclick="load()">Refresh</button>
       <button class="ghost" type="button" onclick="window.print()">Print list</button>
+      <button class="danger" type="button" id="clearPoBtn" style="display:none" onclick="clearPurchaseOrders()">Clear purchase orders</button>
     </div>
   </header>
   <div class="page">
@@ -304,8 +306,21 @@
       const j = await r.json();
       if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
       data = j;
+      const manage = !!(j.canManageUsers || (typeof sdOfficeProfile === "function" && sdOfficeProfile() && sdOfficeProfile().canManageUsers));
+      const clearBtn = document.getElementById("clearPoBtn");
+      if (clearBtn) clearBtn.style.display = manage ? "" : "none";
       render();
       setMsg("status", (j.toOrderCount || 0) + " to put on a PO · " + (j.outstandingCount || 0) + " outstanding");
+    }
+    async function clearPurchaseOrders() {
+      const typed = window.prompt("This deletes every generated glass purchase order and invoice, and puts those glass lines back on To order. Type CLEAR to confirm.");
+      if (String(typed || "").trim().toUpperCase() !== "CLEAR") return;
+      const r = await sdOfficeFetch("/api/office/glass-po/clear", { method: "POST", body: JSON.stringify({ confirm: "CLEAR" }) });
+      const j = await r.json();
+      if (!j.ok) { setMsg("status", j.error || "Could not clear purchase orders", true); return; }
+      data = j;
+      render();
+      setMsg("status", "Cleared " + (j.removed || 0) + " purchase order" + ((j.removed === 1) ? "" : "s") + ". " + (j.toOrderCount || 0) + " to put on a PO.");
     }
     function closePoReview() {
       const mask = document.getElementById("poMask");
