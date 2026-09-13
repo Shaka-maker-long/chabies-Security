@@ -4478,6 +4478,10 @@
           const cardId = `card-${o.rowIndex}`;
           const existingCard = document.getElementById(cardId);
           const productLine = o.productName ? `<div class="product-sub">${o.productName}</div>` : '';
+          const dueLine = (o.delivery_code && o.delivery_day)
+            ? `<div class="product-sub">Due first: ${o.delivery_code} ${o.delivery_day}</div>`
+            : '';
+          const plannedBadge = o.planned ? `<span class="badge bg-info text-dark me-2">Planned</span>` : '';
           const productShot = productShotHtml(o);
 
           let innerBtn = '';
@@ -4574,7 +4578,8 @@
                         ${o.order}
                       </h4>
                       ${productLine}
-                      <div>${statusBadge}<span class="badge bg-dark">${o.status}</span></div>
+                      ${dueLine}
+                      <div>${plannedBadge}${statusBadge}<span class="badge bg-dark">${o.status}</span></div>
                     </div>
                     ${productShot}
                     ${countdownHtml(o)}
@@ -4590,7 +4595,8 @@
                   <div class="d-flex justify-content-between align-items-center mb-2">
                     <h4 class="m-0">${o.order}</h4>
                     ${productLine}
-                    <div>${statusBadge}<span class="badge bg-dark">${o.status}</span></div>
+                    ${dueLine}
+                    <div>${plannedBadge}${statusBadge}<span class="badge bg-dark">${o.status}</span></div>
                   </div>
                     ${productShot}
                     ${countdownHtml(o)}
@@ -4607,6 +4613,19 @@
             else av.appendChild(newEl);
           }
         });
+        function placeDueFirst(container, wantProgress) {
+          orders.forEach((o) => {
+            const isMine = o.assigned === session.name;
+            const isLocked = !WORK_LOCKS_DISABLED && o.assigned && !isMine;
+            const showInProgress = isMine || (o.status === 'In Progress' && !isLocked);
+            if (!!showInProgress !== !!wantProgress) return;
+            const liveCard = document.getElementById('card-' + o.rowIndex);
+            const wrap = liveCard && (liveCard.closest('.checkbox-wrapper-16') || liveCard);
+            if (wrap) container.appendChild(wrap);
+          });
+        }
+        placeDueFirst(pr, true);
+        placeDueFirst(av, false);
 
         filterDashboard();
         tickCountdowns(); 

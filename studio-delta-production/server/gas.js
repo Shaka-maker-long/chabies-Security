@@ -363,6 +363,13 @@ async function callShopFunction(fnName, args) {
     lookupProductImage: function (name) {
       const found = catalog.lookupProduct(name);
       return (found && found.imageUrl) || "";
+    },
+    planningFloorHints: function (role) {
+      try {
+        return require("./floor-planning").floorActivityHints(role);
+      } catch (e) {
+        return {};
+      }
     }
   };
 

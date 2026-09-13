@@ -1109,8 +1109,43 @@ function getOrdersForRole(role, workerName, skipCache) {
       }));
     }
   }
+  applyPlanningHints_(role, relevantOrders);
   floorCachePut(cacheKey, relevantOrders, CACHE_TTL_FLOOR);
   return relevantOrders;
+}
+
+function applyPlanningHints_(role, orders) {
+  if (!orders || !orders.length) return orders;
+  if (typeof planningFloorHints !== "function") return orders;
+  var hints = planningFloorHints(role) || {};
+  function hintFor(num) {
+    var raw = String(num || "").trim();
+    if (hints[raw]) return hints[raw];
+    var keys = Object.keys(hints);
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      if (String(keys[i]).toLowerCase() === raw.toLowerCase()) return hints[keys[i]];
+    }
+    return {};
+  }
+  var i;
+  for (i = 0; i < orders.length; i++) {
+    var o = orders[i];
+    var hint = hintFor(o.order);
+    o.delivery_day = hint.deliveryDay || "";
+    o.delivery_code = hint.deliveryCode || "";
+    if (!o.assigned && hint.worker) {
+      o.assigned = hint.worker;
+      o.planned = true;
+    }
+  }
+  orders.sort(function (a, b) {
+    var da = a.delivery_day || "9999-99-99";
+    var db = b.delivery_day || "9999-99-99";
+    if (da !== db) return da < db ? -1 : 1;
+    return String(a.order || "").localeCompare(String(b.order || ""));
+  });
+  return orders;
 }
 
 function hoursFromDurationCell(raw, header) {

@@ -179,6 +179,7 @@ first.blocks.forEach((b) => {
 
 assert.ok(!byProcess["Quality Control"] && !byProcess["Paint Preparation"] && !byProcess.Painting, "skip QC and in-house paint");
 assert.ok(byProcess["Profile Cutting"]);
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260100 A").status, "Profile Cutting", "assigned current station goes in progress");
 assert.strictEqual(byProcess["Profile Cutting"][0].start, "2026-09-08T07:45:00+02:00");
 assert.strictEqual(byProcess["Profile Cutting"][0].end, "2026-09-08T08:45:00+02:00");
 assert.strictEqual(byProcess.Tagging[0].start, "2026-09-08T08:45:00+02:00");
