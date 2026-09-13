@@ -295,10 +295,6 @@ function mountOffice(app) {
   });
 
   app.post("/api/office/glass-po/clear", requireOffice, (req, res) => {
-    if (!staff.canManageUsers(req.office)) {
-      res.status(403).json({ ok: false, error: "Only the Manager can clear purchase orders." });
-      return;
-    }
     const confirm = String((req.body && (req.body.confirm || req.body.confirmation)) || "").trim();
     if (confirm.toUpperCase() !== "CLEAR") {
       res.status(400).json({ ok: false, error: "Type CLEAR to delete every generated glass purchase order." });
