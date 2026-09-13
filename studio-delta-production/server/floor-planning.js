@@ -94,6 +94,7 @@ function save(store) {
     assignments: (store && store.assignments) || {}
   }, null, 2));
   fs.renameSync(tmp, file);
+  try { require("./gas").clearShopCache(); } catch (e) {}
   return store;
 }
 
@@ -1099,6 +1100,73 @@ function findOrder(orderNumber) {
   return listOrders().find((o) => formatOrderId(o.order_number) === want) || null;
 }
 
+function deliveryByOrder() {
+  const out = {};
+  try {
+    require("./db").listLiveDeliveries().forEach((d) => {
+      out[formatOrderId(d.order_number)] = d;
+    });
+  } catch (e) {}
+  return out;
+}
+
+function plannedWorkerForProcess(store, orderId, process) {
+  const id = formatOrderId(orderId);
+  const assign = (store.assignments || {})[id] || {};
+  const named = String(assign[process] || "").trim();
+  if (named) return named;
+  let who = "";
+  let start = "";
+  (store.blocks || []).forEach((b) => {
+    if (!b || formatOrderId(b.orderId) !== id || String(b.process || "") !== process) return;
+    if (b.kind === "paint" || namesEqual(b.workerId, PAINT_WORKER_ID)) return;
+    const name = String(b.workerName || b.workerId || "").trim();
+    if (!name) return;
+    if (!who || String(b.start || "") < start) {
+      who = name;
+      start = String(b.start || "");
+    }
+  });
+  return who;
+}
+
+function floorActivityHints(role) {
+  const process = String(role || "").trim();
+  const due = deliveryByOrder();
+  const store = load();
+  const out = {};
+  listOrders().forEach((o) => {
+    const id = formatOrderId(o.order_number);
+    const delivery = due[id];
+    const worker = process ? plannedWorkerForProcess(store, id, process) : "";
+    out[id] = {
+      worker,
+      deliveryDay: delivery ? delivery.day : "",
+      deliveryCode: delivery ? delivery.code : ""
+    };
+    if (String(o.order_number || "").trim() !== id) {
+      out[String(o.order_number || "").trim()] = out[id];
+    }
+  });
+  return out;
+}
+
+function advanceAssignedCurrentProcess(orderIds) {
+  const db = require("./db");
+  const store = load();
+  (orderIds || []).forEach((raw) => {
+    const order = findOrder(raw);
+    if (!order) return;
+    const remaining = remainingPlanForStatus(order.status);
+    const first = remaining.processes[0];
+    if (!first || first === "Plate Cutting") return;
+    const who = plannedWorkerForProcess(store, order.order_number, first);
+    if (!who) return;
+    if (String(order.status || "").trim() === first) return;
+    db.upsertOrder(Object.assign({}, order, { status: first }));
+  });
+}
+
 function scheduleSelected(body) {
   const ids = Array.isArray(body && body.orderIds) ? body.orderIds.map(formatOrderId).filter(Boolean) : [];
   if (!ids.length) throw new Error("Tick at least one order.");
@@ -1122,6 +1190,7 @@ function scheduleSelected(body) {
     store.assignments[id] = Object.assign({}, store.assignments[id] || {}, assignments[id] || {});
   });
   save(store);
+  advanceAssignedCurrentProcess(ids);
   return { blocks: created, count: created.length };
 }
 
@@ -1191,6 +1260,7 @@ function autoPlanFromDeliveries(opts) {
   }
   store.blocks = keep.concat(created);
   save(store);
+  advanceAssignedCurrentProcess(ids);
   return { count: created.length, orders: jobs.length };
 }
 
@@ -1754,5 +1824,7 @@ module.exports = {
   matchJourneyProcess,
   productImageUrl,
   remainingPlanForStatus,
-  QUEUE_STATUSES
+  QUEUE_STATUSES,
+  floorActivityHints,
+  advanceAssignedCurrentProcess
 };

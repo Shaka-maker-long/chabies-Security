@@ -677,12 +677,15 @@ assert.ok(planningHtml.indexOf("Add hours on Task times first, then schedule") !
 assert.ok(planningHtml.indexOf("Not Yet Started") !== -1);
 assert.ok(planningHtml.indexOf("Ready for Steelwork") !== -1);
 assert.ok(planningHtml.indexOf("station they are on now") !== -1, "Planning must book the current in-progress station");
+assert.ok(planningHtml.indexOf("can still skip") !== -1, "activity lists stay due-first but people can skip");
 assert.ok(planningHtml.indexOf("Paint shop") !== -1 || planningHtml.indexOf("paintShop") !== -1);
 assert.ok(planningHtml.indexOf("Office schedule") === -1);
 assert.ok(indexJs.indexOf('"/planning"') !== -1 || indexJs.indexOf("/planning") !== -1);
 assert.ok(officeJs.indexOf("/api/office/planning") !== -1);
 assert.ok(floor.indexOf('href="/planning"') !== -1);
 assert.ok(floor.indexOf("Planning") !== -1);
+assert.ok(floor.indexOf("Due first:") !== -1, "shop activity cards show the due-first date");
+assert.ok(floor.indexOf("placeDueFirst") !== -1, "shop activity lists keep due-first order");
 assert.ok(floor.indexOf("sd-qc-draft") !== -1, "QC forms keep a per-worker draft");
 assert.ok(floor.indexOf("persistQcDraft") !== -1);
 assert.ok(floor.indexOf("dropQcDraft") !== -1);
