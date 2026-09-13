@@ -59,7 +59,7 @@ staff.setDurations([
 ]);
 
 const weld = remainingPlanForStatus("Welding");
-assert.deepStrictEqual(weld.processes, ["Plate Cutting", "Grinding", "Assembly"]);
+assert.deepStrictEqual(weld.processes, ["Plate Cutting", "Welding", "Grinding", "Assembly"]);
 assert.strictEqual(weld.paintWait, true);
 assert.ok(remainingPlanForStatus("Ready for Welding").processes.indexOf("Welding") !== -1);
 assert.ok(remainingPlanForStatus("Ready for Assembly").processes.indexOf("Assembly") !== -1);
@@ -112,18 +112,20 @@ assert.strictEqual(locked.status, "Welding", "ordinary office edits must not mov
 const queue = plan.queueOrders();
 const q = queue.find((row) => row.order_number === "S260400");
 assert.ok(q, "in-progress orders stay in Planning for remaining work");
-assert.ok(!q.processes.some((p) => p.process === "Profile Cutting" || p.process === "Welding"));
+assert.ok(!q.processes.some((p) => p.process === "Profile Cutting" || p.process === "Tagging"));
+assert.ok(q.processes.some((p) => p.process === "Welding"), "Welding in progress still gets a welding slot");
 assert.ok(q.processes.some((p) => p.process === "Grinding"));
 
 plan.save({ blocks: [] });
 const booked = plan.scheduleSelected({
   orderIds: ["S260400"],
   assignments: {
-    S260400: { "Plate Cutting": "Willard", Assembly: "Nomsa" }
+    S260400: { "Plate Cutting": "Willard", Welding: "Thabo", Assembly: "Nomsa" }
   },
   from: "2026-09-08T07:45:00+02:00"
 });
-assert.ok(!booked.blocks.some((b) => b.process === "Profile Cutting" || b.process === "Tagging" || b.process === "Welding"));
+assert.ok(!booked.blocks.some((b) => b.process === "Profile Cutting" || b.process === "Tagging"));
+assert.ok(booked.blocks.some((b) => b.process === "Welding"), "in-progress welding is booked");
 assert.ok(booked.blocks.some((b) => b.process === "Grinding"), "remaining grinding is auto-booked");
 assert.ok(booked.blocks.some((b) => b.process === "Powder coating"));
 assert.ok(booked.blocks.some((b) => b.process === "Assembly"));

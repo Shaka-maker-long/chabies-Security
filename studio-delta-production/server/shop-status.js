@@ -23,8 +23,16 @@ const PLANNED_PROCESSES = [
   "Assembly"
 ];
 
+function normalizeShopStatus(status) {
+  const raw = String(status == null ? "" : status).trim();
+  if (!raw) return "";
+  const compact = raw.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  const hit = SHOP_STATUSES.find((name) => name.toLowerCase() === compact);
+  return hit || raw;
+}
+
 function shopStatusIndex(status) {
-  const i = SHOP_STATUSES.indexOf(String(status || "").trim());
+  const i = SHOP_STATUSES.indexOf(normalizeShopStatus(status));
   return i < 0 ? 0 : i;
 }
 
@@ -33,29 +41,32 @@ function atOrAfter(status, name) {
 }
 
 function remainingPlanForStatus(status) {
-  const s = String(status || "").trim() || "Not Yet Started";
+  const s = normalizeShopStatus(status) || "Not Yet Started";
   const skip = {};
   function done() {
     Array.prototype.forEach.call(arguments, (name) => { skip[name] = true; });
   }
-  if (s === "Profile Cutting" || atOrAfter(s, "Ready for Tagging")) done("Profile Cutting");
-  if (s === "Tagging" || atOrAfter(s, "Ready for Welding")) done("Tagging");
-  if (s === "Welding" || atOrAfter(s, "Ready for Grinding")) done("Welding");
+  // Only skip a station after the floor has left it. The current
+  // in-progress status (Welding, Assembly, …) still needs a plan.
+  if (atOrAfter(s, "Ready for Tagging")) done("Profile Cutting");
+  if (atOrAfter(s, "Ready for Welding")) done("Tagging");
+  if (atOrAfter(s, "Ready for Grinding")) done("Welding");
   if (atOrAfter(s, "Ready for Grinding")) done("Plate Cutting");
-  if (s === "Grinding" || atOrAfter(s, "Ready for Pre-Powder Coating")) done("Grinding");
-  if (s === "Assembly" || atOrAfter(s, "Paint Preparation")) done("Assembly");
+  if (atOrAfter(s, "Ready for Pre-Powder Coating")) done("Grinding");
+  if (atOrAfter(s, "Paint Preparation")) done("Assembly");
   const processes = PLANNED_PROCESSES.filter((p) => !skip[p]);
   const paintWait = processes.indexOf("Assembly") !== -1 && !atOrAfter(s, "Ready for Powder Coating");
   return { processes, paintWait, status: s };
 }
 
 function isShopStatus(status) {
-  return SHOP_STATUSES.indexOf(String(status || "").trim()) !== -1;
+  return SHOP_STATUSES.indexOf(normalizeShopStatus(status)) !== -1;
 }
 
 module.exports = {
   SHOP_STATUSES,
   PLANNED_PROCESSES,
+  normalizeShopStatus,
   shopStatusIndex,
   remainingPlanForStatus,
   isShopStatus

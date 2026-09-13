@@ -127,10 +127,10 @@ assert.strictEqual(again.skipped.length, 4);
 assert.ok(again.skipped.every((row) => /already on Orders/.test(row.reason)));
 
 const weld = remainingPlanForStatus(saved["S260228 A"].status);
-assert.deepStrictEqual(weld.processes, ["Plate Cutting", "Grinding", "Assembly"]);
+assert.deepStrictEqual(weld.processes, ["Plate Cutting", "Welding", "Grinding", "Assembly"]);
 const q = plan.queueOrders().find((row) => row.order_number === "S260228 A");
 assert.ok(q, "pasted in-progress orders stay in Planning for remaining work");
-assert.ok(!q.processes.some((p) => p.process === "Welding"));
+assert.ok(q.processes.some((p) => p.process === "Welding"), "pasted Welding status still plans welding");
 assert.ok(q.processes.some((p) => p.process === "Grinding"));
 
 const bed = plan.queueOrders().find((row) => row.order_number === "S260227");

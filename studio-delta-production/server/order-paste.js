@@ -1,7 +1,7 @@
 "use strict";
 
 const { ORDER_FIELDS, parseMoney, money, formatOrderId } = require("./db");
-const { SHOP_STATUSES, isShopStatus } = require("./shop-status");
+const { SHOP_STATUSES, isShopStatus, normalizeShopStatus } = require("./shop-status");
 const { ORDER_TYPES } = require("./create-order-from-enquiry");
 
 const PROVINCES = [
@@ -303,7 +303,7 @@ function normalizePastedRow(raw, paidInFull) {
   row.client_name = String(row.client_name || "").trim();
   const typed = matchType(row.type);
   row.type = typed || (row.product ? "Standard" : "");
-  const status = String(row.status || "").trim();
+  const status = normalizeShopStatus(row.status);
   row.status = isShopStatus(status) ? status : "Not Yet Started";
   row.month_of_sale = parseMonthOfSale(row.month_of_sale);
   row.payment_date = parseSheetDate(row.payment_date, row.month_of_sale);
