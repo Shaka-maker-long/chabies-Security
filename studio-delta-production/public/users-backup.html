@@ -52,7 +52,7 @@
   <div class="wrap">
     <section class="card">
       <h2>Archive</h2>
-      <p class="help">A complete <b>.tgz</b> is written every night at 02:00 Johannesburg and when you click <b>Backup now</b>. That file packs <b>everything the shop writes on the Railway volume</b>: SQLite (orders, enquiries, users, production logs, schedule, rates, to-order lists, payments), JSON sidecars, quotes, drawings, proofs of payment, paint and glass invoices, job cards and images, glass PDF images, showroom bookings, email-reply templates, and the Home floor layout. It is opened and integrity-checked before it is kept.</p>
+      <p class="help">The nightly copy <b>on this Railway volume is already working</b>. A complete <b>.tgz</b> is written every night at 02:00 Johannesburg and when you click <b>Backup now</b>. That file packs <b>everything the shop writes on the volume</b>: SQLite (orders, enquiries, users, production logs, schedule, rates, to-order lists, payments), JSON sidecars, quotes, drawings, proofs of payment, paint and glass invoices, job cards and images, glass PDF images, showroom bookings, email-reply templates, and the Home floor layout. It is opened and integrity-checked before it is kept.</p>
       <p class="help" id="volumeLine"></p>
       <p class="help" id="backupDetail"></p>
       <p class="help warn" id="driveError" hidden></p>
@@ -66,16 +66,16 @@
       </div>
     </section>
     <section class="card">
-      <h2>Turn on Google Drive</h2>
-      <p class="help">A service account has <b>no Drive storage</b>. Sharing an ordinary My Drive folder is not enough — Google will reject the upload with a storage quota error. The folder must live in a <b>Shared drive</b> (Google Workspace), or Railway must impersonate a real Workspace mailbox.</p>
+      <h2>Turn on Google Drive (still off)</h2>
+      <p class="help">This is the only backup piece still off. A service account has <b>no Drive storage</b>. Sharing an ordinary My Drive folder is not enough. The folder already on Railway must be <b>moved into a Shared drive</b>. The folder ID stays the same — you do not change Railway if you move that folder.</p>
       <ol class="steps">
-        <li>Keep <code>GOOGLE_SERVICE_ACCOUNT_JSON</code>. Copy <code>client_email</code> (ends in <code>.iam.gserviceaccount.com</code>).</li>
-        <li>In Google Drive (a Workspace account, not a personal gmail.com): <b>Shared drives</b> → <b>New</b> → name it e.g. Studio Delta ERP backups.</li>
-        <li>Open that Shared drive → <b>Manage members</b> → add the <code>client_email</code> as <b>Content manager</b> (not Viewer).</li>
-        <li>Create a folder inside the Shared drive if you want. Open it. The URL looks like <code>https://drive.google.com/drive/folders/THIS_PART</code>. Put <code>THIS_PART</code> on Railway as <code>BACKUP_DRIVE_FOLDER_ID</code>.</li>
-        <li>Optional: <code>BACKUP_DRIVE_IMPERSONATE</code> or <code>GMAIL_SENDER</code> set to a Workspace user (e.g. willard@…) if an admin has enabled domain-wide delegation. Then a Shared drive is not required.</li>
-        <li>After Railway picks up the variables, click <b>Send test file to Drive</b>, then <b>Backup now</b>. Success must say sent to Google Drive.</li>
+        <li>Open the current folder (link appears below once you are logged in). Confirm it is the backup folder.</li>
+        <li>In Google Drive on a <b>Workspace</b> account (not a personal gmail.com): <b>Shared drives</b> → <b>New</b> → name it e.g. Studio Delta ERP backups.</li>
+        <li>Open that Shared drive → <b>Manage members</b> → add <span id="driveEmailStep">the service account email</span> as <b>Content manager</b> (not Viewer).</li>
+        <li>Move the existing backup folder into that Shared drive (right-click → <b>Organize</b> → <b>Move</b>). Do not make a new empty folder unless you want a new ID.</li>
+        <li>Come back here and click <b>Send test file to Drive</b>, then <b>Backup now</b>.</li>
       </ol>
+      <p class="help" id="driveNow"></p>
       <p class="help">QC photos taken on the tablet go into Google Docs. They are not files on this volume, so they are not inside the .tgz. Everything under <code>/app/data</code> is.</p>
     </section>
     <section class="card">
@@ -285,10 +285,25 @@
       const acct = document.getElementById("driveAccount");
       if (acct) {
         const bits = [];
-        if (j.backupServiceAccount) bits.push("Share the Drive folder with this email as Editor: " + j.backupServiceAccount);
+        if (j.backupServiceAccount) bits.push("Add this email as Content manager on the Shared drive: " + j.backupServiceAccount);
         if (j.backupDriveFolderId) bits.push("Folder ID on Railway: " + j.backupDriveFolderId);
         else bits.push("BACKUP_DRIVE_FOLDER_ID is not set on Railway.");
         acct.textContent = bits.join(" ");
+      }
+      const emailStep = document.getElementById("driveEmailStep");
+      if (emailStep && j.backupServiceAccount) emailStep.textContent = j.backupServiceAccount;
+      const now = document.getElementById("driveNow");
+      if (now) {
+        if (j.backupOffsite) {
+          now.className = "help ok";
+          now.textContent = "Drive is receiving the nightly copy.";
+        } else if (j.backupDriveFolderUrl) {
+          now.innerHTML = "Open the current folder and move it into the Shared drive: <a href=\"" +
+            esc(j.backupDriveFolderUrl) + "\" target=\"_blank\" rel=\"noopener\">" +
+            esc(j.backupDriveFolderUrl) + "</a>";
+        } else {
+          now.textContent = "";
+        }
       }
       const body = document.getElementById("backupBody");
       if (!body) return;

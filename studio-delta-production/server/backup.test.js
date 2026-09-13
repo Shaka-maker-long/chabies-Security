@@ -71,6 +71,13 @@ assert.strictEqual(info.backupVerified, true);
 assert.strictEqual(info.backupOffsite, false);
 assert.strictEqual(info.backupPackedAll, true);
 assert.ok(info.backupLocalCount >= 1);
+assert.strictEqual(info.backupDriveFolderUrl, null);
+process.env.BACKUP_DRIVE_FOLDER_ID = "1b7xSa9QW5PA-joeGcxmb-pQ7jzZI-f3k";
+assert.strictEqual(
+  backup.info().backupDriveFolderUrl,
+  "https://drive.google.com/drive/folders/1b7xSa9QW5PA-joeGcxmb-pQ7jzZI-f3k"
+);
+delete process.env.BACKUP_DRIVE_FOLDER_ID;
 
 const complete = path.join(backup.backupsDir(), status.complete);
 const inspected = backup.inspectSource(complete);

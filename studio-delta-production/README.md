@@ -53,7 +53,7 @@ Those local copies are still on the same Railway disk. **Off-site** is Google Dr
 1. Keep `GOOGLE_SERVICE_ACCOUNT_JSON` on the Railway service. Copy `client_email` (ends in `.iam.gserviceaccount.com`).
 2. In Google Drive on a **Workspace** account: **Shared drives** → **New**.
 3. **Manage members** → add `client_email` as **Content manager**.
-4. Open the Shared drive (or a folder inside it). Set `BACKUP_DRIVE_FOLDER_ID` to the ID from `…/folders/THIS_PART`.
+4. If Railway already has `BACKUP_DRIVE_FOLDER_ID`, **move that same folder** into the Shared drive. The ID stays the same — do not change Railway. Only set a new ID if you create a new empty folder.
 5. Optional: `BACKUP_DRIVE_IMPERSONATE` or `GMAIL_SENDER` as a Workspace mailbox if domain-wide delegation is enabled — then My Drive of that user also works.
 6. Users → **Backup** → **Send test file to Drive**, then **Backup now**. `GET /health` should show `"backupOffsite": true`.
 
