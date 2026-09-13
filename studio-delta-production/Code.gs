@@ -1008,7 +1008,7 @@ function getOrdersForRole(role, workerName, skipCache) {
     'Grinding': ['Ready for Grinding', 'Grinding'],
     'Quality Control': [
       'Ready for Pre-Powder Coating', 'Pre-Powder Coating', 
-      'Ready for Powder Coating', 'Sent to Paint Shop', 'Powder Coating', 
+      'Ready for Powder Coating', 'Sent to Paint Shop', 'Paint Shop', 'Powder Coating', 
       'Ready for Final QC', 'Final QC',
       'Ready for Delivery', 'Out for Delivery'
     ],
@@ -1678,7 +1678,7 @@ function getFloorTaskCounts() {
     "Ready for Pre-Powder Coating", "Pre-Powder Coating"
   ]);
   out["Powder Coating"] = tallyFloorCounts(qc, [
-    "Ready for Powder Coating", "Sent to Paint Shop", "Powder Coating"
+    "Ready for Powder Coating", "Sent to Paint Shop", "Paint Shop", "Powder Coating"
   ]);
   out["Final QC"] = tallyFloorCounts(qc, [
     "Ready for Final QC", "Final QC"
@@ -1936,7 +1936,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       var orderNum = orderRow[1];
       var currentStatus = orderRow[2];
 
-      if (String(currentStatus || "").trim().toLowerCase() === "sent to paint shop") {
+      if (isAtPaintShopStatus_(currentStatus)) {
         return { success: false, message: "This order is at the paint shop. Receive it on Paint shop before shop-floor work." };
       }
 
@@ -2697,6 +2697,11 @@ function getAdminDashboardData() {
 }
 
 // --- UTILS ---
+function isAtPaintShopStatus_(status) {
+  var s = String(status || "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  return s === "sent to paint shop" || s === "paint shop" || s === "at paint shop" || s === "at the paint shop" || s === "paintshop";
+}
+
 function getNextStatus(current) {
   var currentTrimmed = String(current).trim();
   var currentLower = currentTrimmed.toLowerCase();
@@ -2809,7 +2814,7 @@ function isAllowedStatus(status) {
     "ready for grinding", "grinding", 
     // Powder Coating
     "ready for pre-powder coating", "pre-powder coating",
-    "ready for powder coating", "sent to paint shop", "powder coating", 
+    "ready for powder coating", "sent to paint shop", "paint shop", "powder coating", 
     // Assembly, painting & QC
     "ready for assembly", "assembly", "paint preparation", "ready for painting", "painting", 
     "ready for final qc", "final qc",

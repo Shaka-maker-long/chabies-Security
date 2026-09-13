@@ -33,4 +33,13 @@ assert.deepStrictEqual(remainingPlanForStatus("Final QC").processes, []);
 
 assert.ok(remainingPlanForStatus("welding").processes.indexOf("Welding") !== -1);
 
+assert.strictEqual(normalizeShopStatus("Paint Shop"), "Paint Shop");
+assert.strictEqual(normalizeShopStatus("paint shop"), "Paint Shop");
+assert.strictEqual(normalizeShopStatus("at the paint shop"), "Paint Shop");
+assert.strictEqual(normalizeShopStatus("Sent to Paint Shop"), "Sent to Paint Shop");
+assert.ok(isShopStatus("Paint Shop"));
+assert.ok(!remainingPlanForStatus("Paint Shop").paintWait);
+assert.ok(!remainingPlanForStatus("Sent to Paint Shop").paintWait);
+assert.ok(remainingPlanForStatus("Paint Shop").processes.indexOf("Assembly") !== -1);
+
 console.log("shop-status.test.js ok");

@@ -264,7 +264,8 @@ function mountOffice(app) {
         pos: glass.pos,
         purchaseHistory: glass.purchaseHistory,
         toOrderCount: glass.toOrderCount,
-        outstandingCount: glass.outstandingCount
+        outstandingCount: glass.outstandingCount,
+        canManageUsers: staff.canManageUsers(_req.office)
       });
     } catch (e) {
       res.status(500).json({ ok: false, error: e.message || String(e) });
@@ -288,6 +289,23 @@ function mountOffice(app) {
     try {
       const result = glassPo.receiveGlass(req.body || {}, req.office && req.office.name);
       res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/glass-po/clear", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can clear purchase orders." });
+      return;
+    }
+    const confirm = String((req.body && (req.body.confirm || req.body.confirmation)) || "").trim();
+    if (confirm.toUpperCase() !== "CLEAR") {
+      res.status(400).json({ ok: false, error: "Type CLEAR to delete every generated glass purchase order." });
+      return;
+    }
+    try {
+      res.json({ ok: true, ...glassPo.clearAllPurchaseOrders() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

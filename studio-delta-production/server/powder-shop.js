@@ -5,6 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { dataDir } = require("./workbook-store");
 const { listOrders, upsertOrder, formatOrderId, parseMoney, money, formatRand } = require("./db");
+const { isAtPaintShop } = require("./shop-status");
 
 const READY_STATUS = "Ready for Powder Coating";
 const SENT_STATUS = "Sent to Paint Shop";
@@ -71,7 +72,7 @@ function isReadyForPowder(status) {
 }
 
 function isSentToPaintShop(status) {
-  return statusKey(status) === statusKey(SENT_STATUS);
+  return isAtPaintShop(status) || statusKey(status) === statusKey(SENT_STATUS);
 }
 
 function findOrder(orderNumber) {

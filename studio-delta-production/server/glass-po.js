@@ -734,6 +734,36 @@ async function buildPurchaseOrderPdf(poId) {
   };
 }
 
+function resetGlassLinesOffPurchaseOrders() {
+  const sheet = glassSheet();
+  if (sheet.getLastRow() < 2) return 0;
+  const lastCol = Math.max(sheet.getLastColumn(), HEADERS.length);
+  const grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues();
+  let n = 0;
+  for (let i = 0; i < grid.length; i++) {
+    const status = String(grid[i][10] || "").trim();
+    if (isOutstanding(status) || isReceived(status)) {
+      grid[i][10] = TO_ORDER;
+      n += 1;
+    }
+  }
+  if (n) {
+    sheet.getRange(2, 1, grid.length, lastCol).setValues(grid);
+    persistWorkbook();
+    try { require("./gas").clearShopCache(); } catch (e) {}
+  }
+  return n;
+}
+
+function clearAllPurchaseOrders() {
+  const store = loadStore();
+  const removed = (store.pos || []).length;
+  const linesReset = resetGlassLinesOffPurchaseOrders();
+  saveStore(emptyStore());
+  try { fs.rmSync(invoicesDir(), { recursive: true, force: true }); } catch (e) {}
+  return { removed, linesReset, ...snapshot() };
+}
+
 function formatArea(area) {
   if (!(Number(area) > 0)) return "0";
   return (Math.round(Number(area) * 10000) / 10000).toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
@@ -750,5 +780,6 @@ module.exports = {
   readGlassLines,
   findPo,
   buildPurchaseOrderPdf,
-  applyLinePatch
+  applyLinePatch,
+  clearAllPurchaseOrders
 };

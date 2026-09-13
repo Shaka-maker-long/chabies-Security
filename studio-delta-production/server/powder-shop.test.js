@@ -152,6 +152,19 @@ const invoice = {
   assert.strictEqual(blocked.success, false, JSON.stringify(blocked));
   assert.ok(/paint shop/i.test(blocked.message || ""), blocked.message);
 
+  seed("SD-COAT-1", "Paint Shop");
+  seed("SD-COAT-2", "at the paint shop");
+  const listed = paint.snapshot();
+  assert.ok(listed.sent.some((o) => o.order_number === "SD-COAT-1"), "Paint Shop status must appear on Paint shop");
+  assert.ok(listed.sent.some((o) => o.order_number === "SD-COAT-2"), "at the paint shop alias must appear on Paint shop");
+  const receivedLegacy = paint.receiveFromPaintShop({
+    orders: [{ orderNumber: "SD-COAT-1", cost: "80" }],
+    invoice
+  }, "Office Boss");
+  assert.ok(receivedLegacy.orderNumbers.indexOf("SD-COAT-1") !== -1);
+  assert.strictEqual(db.listOrders().find((o) => o.order_number === "SD-COAT-1").status, "Ready for Assembly");
+  assert.ok(paint.snapshot().sent.some((o) => o.order_number === "SD-COAT-2"));
+
   const app = express();
   app.use(express.json({ limit: "8mb" }));
   mountOffice(app);

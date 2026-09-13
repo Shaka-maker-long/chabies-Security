@@ -5,7 +5,7 @@ const SD_ORDER_STATUSES = [
   "Ready for Welding", "Welding",
   "Ready for Grinding", "Grinding",
   "Ready for Pre-Powder Coating", "Pre-Powder Coating",
-  "Ready for Powder Coating", "Sent to Paint Shop", "Powder Coating",
+  "Ready for Powder Coating", "Sent to Paint Shop", "Paint Shop", "Powder Coating",
   "Ready for Assembly", "Assembly", "Paint Preparation", "Ready for Painting", "Painting",
   "Ready for Final QC", "Final QC",
   "Ready for Delivery", "Out for Delivery",
