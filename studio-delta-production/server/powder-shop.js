@@ -5,7 +5,8 @@ const path = require("path");
 const crypto = require("crypto");
 const { dataDir } = require("./workbook-store");
 const { listOrders, upsertOrder, formatOrderId, parseMoney, money, formatRand } = require("./db");
-const { isAtPaintShop } = require("./shop-status");
+const { isAtPaintShop, normalizeShopStatus } = require("./shop-status");
+const AT_SHOP_STATUS = "Paint Shop";
 
 const READY_STATUS = "Ready for Powder Coating";
 const SENT_STATUS = "Sent to Paint Shop";
@@ -73,6 +74,12 @@ function isReadyForPowder(status) {
 
 function isSentToPaintShop(status) {
   return isAtPaintShop(status) || statusKey(status) === statusKey(SENT_STATUS);
+}
+
+function canMarkAtPaintShop(status) {
+  if (isSentToPaintShop(status) || isReadyForPowder(status)) return false;
+  const s = normalizeShopStatus(status);
+  return !s || s === "Not Yet Started";
 }
 
 function findOrder(orderNumber) {
@@ -158,6 +165,7 @@ function snapshot() {
   const byNumber = {};
   orders.forEach((o) => { byNumber[formatOrderId(o.order_number)] = o; });
   const ready = orders.filter((o) => isReadyForPowder(o.status)).map((o) => publicOrder(o));
+  const misplaced = orders.filter((o) => canMarkAtPaintShop(o.status)).map((o) => publicOrder(o));
   const sent = orders.filter((o) => isSentToPaintShop(o.status)).map((o) => {
     const meta = shop.orders[formatOrderId(o.order_number)] || {};
     return publicOrder(o, {
@@ -189,9 +197,11 @@ function snapshot() {
   });
   return {
     ready,
+    misplaced,
     sent,
     received,
     readyCount: ready.length,
+    misplacedCount: misplaced.length,
     sentCount: sent.length
   };
 }
@@ -228,6 +238,48 @@ function sendToPaintShop(orderNumbers, actor) {
     updated.push(num);
   });
   shop.sends.push({ id: sendId, sentAt, sentBy, orderNumbers: updated });
+  saveShop(shop);
+  try { require("./gas").clearShopCache(); } catch (e) {}
+  return { sendId, sentAt, sentBy, orderNumbers: updated, ...snapshot() };
+}
+
+function markAlreadyAtPaintShop(orderNumbers, actor) {
+  const nums = (Array.isArray(orderNumbers) ? orderNumbers : [])
+    .map((n) => formatOrderId(n))
+    .filter(Boolean);
+  const unique = [];
+  nums.forEach((n) => { if (unique.indexOf(n) === -1) unique.push(n); });
+  if (!unique.length) throw new Error("Tick the orders that are already at the powder coaters.");
+  const shop = loadShop();
+  const sentAt = nowIso();
+  const sentBy = String(actor || "Admin").trim() || "Admin";
+  const sendId = newId("had");
+  const updated = [];
+  unique.forEach((num) => {
+    const order = findOrder(num);
+    if (!order) throw new Error("Order " + num + " was not found.");
+    if (isSentToPaintShop(order.status)) {
+      updated.push(num);
+      return;
+    }
+    if (!canMarkAtPaintShop(order.status)) {
+      throw new Error(num + " is " + (order.status || "not on the sheet") + " and cannot be moved to Paint Shop.");
+    }
+    upsertOrder(Object.assign({}, order, { status: AT_SHOP_STATUS }));
+    shop.orders[num] = Object.assign({}, shop.orders[num] || {}, {
+      sendId,
+      sentAt,
+      sentBy,
+      adopted: true,
+      receiveId: "",
+      receivedAt: "",
+      receivedBy: "",
+      cost: "",
+      invoiceId: ""
+    });
+    updated.push(num);
+  });
+  shop.sends.push({ id: sendId, sentAt, sentBy, adopted: true, orderNumbers: updated });
   saveShop(shop);
   try { require("./gas").clearShopCache(); } catch (e) {}
   return { sendId, sentAt, sentBy, orderNumbers: updated, ...snapshot() };
@@ -319,7 +371,9 @@ module.exports = {
   isSentToPaintShop,
   snapshot,
   sendToPaintShop,
+  markAlreadyAtPaintShop,
   receiveFromPaintShop,
   readInvoiceFile,
-  loadShop
+  loadShop,
+  canMarkAtPaintShop
 };

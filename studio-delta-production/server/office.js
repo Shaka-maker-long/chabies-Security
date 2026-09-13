@@ -1346,6 +1346,18 @@ function mountOffice(app) {
     }
   });
 
+  app.post("/api/office/paint-shop/adopt", requireOffice, (req, res) => {
+    try {
+      const result = paintShop.markAlreadyAtPaintShop(
+        (req.body && (req.body.orderNumbers || req.body.orders)) || [],
+        req.office && req.office.name
+      );
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.post("/api/office/paint-shop/receive", requireOffice, (req, res) => {
     try {
       const result = paintShop.receiveFromPaintShop(req.body || {}, req.office && req.office.name);
