@@ -4,7 +4,8 @@ const assert = require("assert");
 const {
   normalizeShopStatus,
   remainingPlanForStatus,
-  isShopStatus
+  isShopStatus,
+  waitingStatusIfProfileCuttingIdle
 } = require("./shop-status");
 
 assert.strictEqual(normalizeShopStatus("welding"), "Welding");
@@ -32,6 +33,8 @@ assert.deepStrictEqual(remainingPlanForStatus("Paint Preparation").processes, []
 assert.deepStrictEqual(remainingPlanForStatus("Final QC").processes, []);
 
 assert.ok(remainingPlanForStatus("welding").processes.indexOf("Welding") !== -1);
+assert.strictEqual(waitingStatusIfProfileCuttingIdle("Profile Cutting", false), "Ready for Steelwork");
+assert.strictEqual(waitingStatusIfProfileCuttingIdle("profile cutting", true), "Profile Cutting");
 
 assert.strictEqual(normalizeShopStatus("Paint Shop"), "Paint Shop");
 assert.strictEqual(normalizeShopStatus("paint shop"), "Paint Shop");

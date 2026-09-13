@@ -559,6 +559,7 @@ function mountOffice(app) {
   });
 
   app.get("/api/office/orders", requireOffice, (_req, res) => {
+    try { require("./in-progress-status").reconcile(); } catch (e) {}
     const noPlates = require("./no-plates");
     const rows = listOrders().map((o) => {
       const copy = decorateMoney(o);

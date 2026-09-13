@@ -990,7 +990,17 @@ function verifyGlobalLogin(name, password) {
   return { success: false, error: "Incorrect Name or Access Code" };
 }
 
+function reconcileProfileCuttingStatuses_() {
+  if (typeof applyInProgressStatusReconcile === "function") {
+    try {
+      var rec = applyInProgressStatusReconcile();
+      if (rec && rec.updated) bumpFloorCache();
+    } catch (e) {}
+  }
+}
+
 function getOrdersForRole(role, workerName, skipCache) {
+  reconcileProfileCuttingStatuses_();
   if (workerName && role && role !== "Admin" && !workerCanPerformTask(workerName, role) && !workLocksDisabled()) {
     return [];
   }
@@ -1724,7 +1734,13 @@ function getFloorTaskCounts() {
   ];
   var out = {};
   for (var i = 0; i < tasks.length; i++) {
-    out[tasks[i]] = tallyFloorCounts(getOrdersForRole(tasks[i], "", true), null);
+    if (tasks[i] === "Profile Cutting") {
+      out[tasks[i]] = tallyFloorCounts(getOrdersForRole(tasks[i], "", true), [
+        "Ready for Steelwork", "Profile Cutting"
+      ]);
+    } else {
+      out[tasks[i]] = tallyFloorCounts(getOrdersForRole(tasks[i], "", true), null);
+    }
   }
   var qc = getOrdersForRole("Quality Control", "", true);
   out["Pre-Powder Coating QC"] = tallyFloorCounts(qc, [
@@ -1765,6 +1781,7 @@ function floorReadyPileId(status) {
 }
 
 function getFloorLayout() {
+  reconcileProfileCuttingStatuses_();
   var ss = getSpreadsheet();
   var grid = getSheetGrid(ss, TAB_ORDERS, 3);
   var pack = getLogPack(ss);

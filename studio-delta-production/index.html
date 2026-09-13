@@ -4550,7 +4550,7 @@
             }
             // Update status badge text
             const badge = liveCard.querySelector('.badge.bg-dark');
-            if (badge) badge.innerText = o.status;
+            if (badge) badge.innerText = displayShopStatus(o);
             // Update action button
             const btnContainer = liveCard.querySelector('.card-body');
             if (btnContainer) {
@@ -4585,7 +4585,7 @@
                       </h4>
                       ${productLine}
                       ${dueLine}
-                      <div>${plannedBadge}${statusBadge}<span class="badge bg-dark">${o.status}</span></div>
+                      <div>${plannedBadge}${statusBadge}<span class="badge bg-dark">${displayShopStatus(o)}</span></div>
                     </div>
                     ${productShot}
                     ${countdownHtml(o)}
@@ -4602,7 +4602,7 @@
                     <h4 class="m-0">${o.order}</h4>
                     ${productLine}
                     ${dueLine}
-                    <div>${plannedBadge}${statusBadge}<span class="badge bg-dark">${o.status}</span></div>
+                    <div>${plannedBadge}${statusBadge}<span class="badge bg-dark">${displayShopStatus(o)}</span></div>
                   </div>
                     ${productShot}
                     ${countdownHtml(o)}
@@ -4657,11 +4657,29 @@
       return session.role === 'Plate Cutting';
     }
 
+    function displayShopStatus(o) {
+      const s = String(o && o.status || '').trim();
+      const live = !!(o && o.logId && o.assigned);
+      if (/^profile cutting$/i.test(s) && !live) return 'Ready for Steelwork';
+      return s;
+    }
+
     function ordersForCurrentBoard(orders) {
       const list = Array.isArray(orders) ? orders : [];
       const role = session.role;
+      const label = String(session.roadLabel || '').toLowerCase();
+      const st = (o) => String(o && o.status || '').toLowerCase();
+      const live = (o) => !!(o && o.logId && o.assigned);
+      if (role === 'Profile Cutting') {
+        if (label === 'new orders') {
+          return list.filter((o) => !st(o) || st(o) === 'not yet started');
+        }
+        if (label.indexOf('steelwork') !== -1) {
+          return list.filter((o) => st(o) === 'ready for steelwork');
+        }
+        return list.filter((o) => st(o) === 'ready for steelwork' || (st(o) === 'profile cutting' && live(o)));
+      }
       const allow = {
-        'Profile Cutting': ['not yet started', 'ready for steelwork', 'profile cutting'],
         'Tagging': ['ready for tagging', 'tagging'],
         'Welding': ['ready for welding', 'welding'],
         'Grinding': ['ready for grinding', 'grinding'],
@@ -4670,7 +4688,7 @@
         'Painting': ['ready for painting', 'painting']
       }[role];
       if (!allow) return list;
-      return list.filter((o) => allow.indexOf(String(o.status || '').toLowerCase()) !== -1);
+      return list.filter((o) => allow.indexOf(st(o)) !== -1);
     }
 
     function noPlateButton(o) {

@@ -360,6 +360,7 @@ async function callShopFunction(fnName, args) {
     decodeURIComponent,
     Error,
     Buffer,
+    process: process,
     lookupProductImage: function (name) {
       const found = catalog.lookupProduct(name);
       return (found && found.imageUrl) || "";
@@ -376,6 +377,9 @@ async function callShopFunction(fnName, args) {
     },
     noPlatesMark: function (orderNumber, actor) {
       return require("./no-plates").markNoPlate(orderNumber, actor);
+    },
+    applyInProgressStatusReconcile: function () {
+      return require("./in-progress-status").reconcile();
     }
   };
 

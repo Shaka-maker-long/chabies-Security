@@ -79,13 +79,28 @@ function isAtPaintShop(status) {
   return s === "Paint Shop" || s === "Sent to Paint Shop";
 }
 
+const PROFILE_CUTTING_WAITING = "Ready for Steelwork";
+
+function isProfileCuttingInProgress(status, hasOpenProfileClock) {
+  return normalizeShopStatus(status) === "Profile Cutting" && !!hasOpenProfileClock;
+}
+
+function waitingStatusIfProfileCuttingIdle(status, hasOpenProfileClock) {
+  if (normalizeShopStatus(status) !== "Profile Cutting") return normalizeShopStatus(status) || status;
+  if (hasOpenProfileClock) return "Profile Cutting";
+  return PROFILE_CUTTING_WAITING;
+}
+
 module.exports = {
   SHOP_STATUSES,
   PLANNED_PROCESSES,
   STATUS_ALIASES,
+  PROFILE_CUTTING_WAITING,
   normalizeShopStatus,
   shopStatusIndex,
   remainingPlanForStatus,
   isShopStatus,
-  isAtPaintShop
+  isAtPaintShop,
+  isProfileCuttingInProgress,
+  waitingStatusIfProfileCuttingIdle
 };
