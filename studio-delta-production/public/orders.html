@@ -332,6 +332,7 @@
     let operators = [];
     let nextOrderNumber = "S1";
     let canManage = false;
+    let canMarkNoPlate = false;
     let editingIndex = -1;
     let printedByOrder = {};
 
@@ -478,7 +479,10 @@
             html += "<td class=\"" + colClass(k, freeze, "") + "\" style=\"" + colStyle(k, colWidths[c], freeze) + "\">" +
               "<div class=\"row-actions-cell\">" +
               "<button type=\"button\" class=\"ghost icon-btn\" title=\"Edit order\" aria-label=\"Edit order\" data-edit-order=\"" + i + "\"><i class=\"bi bi-pencil\"></i></button>" +
-              (printed && printed.has_pdf
+              (canMarkNoPlate
+                ? "<label class=\"hint\" style=\"display:inline-flex;align-items:center;gap:4px;margin:0;white-space:nowrap\" title=\"No plates\" onclick=\"event.stopPropagation()\"><input type=\"checkbox\" data-no-plate=\"" + esc(row.order_number) + "\"" + (row.no_plate ? " checked" : "") + "> No plates</label>"
+                : (row.no_plate ? "<span class=\"hint\" style=\"margin:0\">No plates</span>" : "")) +
+              (printed && printed.has_pdf)
                 ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Open / print job card\" aria-label=\"Open / print job card\" data-open-job-card=\"" + esc(printed.pdf_url) + "\"><i class=\"bi bi-printer\"></i></button>"
                 : (canCard ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Generate job card\" aria-label=\"Generate job card\" data-job-card=\"" + esc(row.order_number) + "\"><i class=\"bi bi-file-earmark-pdf\"></i></button>" : "")) +
               "</div></td>";
@@ -802,6 +806,7 @@
         if (card && card.order_number) printedByOrder[card.order_number] = card;
       });
       if (j.canManageUsers != null) canManage = !!j.canManageUsers;
+      canMarkNoPlate = !!(j.canMarkNoPlate || (typeof sdOfficeProfile === "function" && sdOfficeProfile() && (sdOfficeProfile().canMarkNoPlate || sdOfficeProfile().canManageUsers)));
       const clearBtn = document.getElementById("clearAllBtn");
       if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       document.getElementById("status").textContent = rows.length + " orders";
@@ -842,6 +847,12 @@
     window.confirmClearAll = confirmClearAll;
 
     document.getElementById("grid").onclick = (e) => {
+      const noPlate = e.target.closest("[data-no-plate]");
+      if (noPlate) {
+        e.stopPropagation();
+        toggleNoPlate(noPlate.getAttribute("data-no-plate"), noPlate.checked);
+        return;
+      }
       const printed = e.target.closest("[data-open-job-card]");
       if (printed) {
         window.open(printed.getAttribute("data-open-job-card"), "_blank", "noopener");
@@ -904,9 +915,26 @@
       box.selectionStart = start;
       box.selectionEnd = end + 2;
     };
+    async function toggleNoPlate(orderNumber, on) {
+      const r = await sdOfficeFetch("/api/office/orders/no-plate", {
+        method: "POST",
+        body: JSON.stringify({ order_number: orderNumber, no_plate: !!on })
+      });
+      const j = await r.json().catch(function () { return {}; });
+      if (!j.ok) {
+        document.getElementById("status").textContent = j.error || "Could not save no plates";
+        await load();
+        return;
+      }
+      const row = rows.find((o) => o.order_number === orderNumber);
+      if (row) row.no_plate = !!j.no_plate;
+      document.getElementById("status").textContent = orderNumber + (j.no_plate ? " marked no plates." : " plates needed again.");
+    }
+
     sdRequireOffice("orders").then((p) => {
       if (!p) return;
       canManage = !!p.canManageUsers;
+      canMarkNoPlate = !!(p.canMarkNoPlate || p.canManageUsers);
       const clearBtn = document.getElementById("clearAllBtn");
       if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       load();

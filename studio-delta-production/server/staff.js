@@ -390,6 +390,10 @@ function setSoleManager(name) {
   sheet.getRange(2, 1, last - 1, USER_HEADERS.length).setValues(grid);
 }
 
+function canMarkNoPlate(profile) {
+  return require("./no-plates").canMarkNoPlate(profile);
+}
+
 function canManageUsers(profile) {
   if (!profile || !profile.name) return false;
   const live = listUsers().find((u) => String(u.name).toLowerCase() === String(profile.name).toLowerCase());
@@ -646,6 +650,7 @@ module.exports = {
   changeOwnPassword,
   setUserPassword,
   canManageUsers,
+  canMarkNoPlate,
   canSeeIdleAlerts,
   isProductionFloorUser,
   isManagerTitle,

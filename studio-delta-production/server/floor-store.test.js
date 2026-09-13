@@ -36,7 +36,7 @@ const cutOrder = db.upsertOrder({
 });
 const plateOrder = db.upsertOrder({
   order_number: "SD-PLATE",
-  status: "Ready for Steelwork",
+  status: "Ready for Welding",
   product: "Gate",
   client_name: "Test Client"
 });

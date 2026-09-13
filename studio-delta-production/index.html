@@ -4505,7 +4505,7 @@
              else if(isLocked) innerBtn = `<button class="btn btn-secondary w-100 position-relative" style="z-index: 10;" disabled>LOCKED BY ${o.assigned}</button>`;
              else innerBtn = availableStartButtons(o);
           }
-          let btn = `<div class="action-btn-container w-100">${innerBtn}</div>`;
+          let btn = `<div class="action-btn-container w-100">${innerBtn}${noPlateButton(o)}</div>`;
 
           let statusBadge = o.isPlateOrder ? `<span class="badge bg-warning text-dark me-2">Plate Cutting</span>` : '';
           if (o.isBatched) statusBadge += `<span class="badge badge-batch me-2">Together</span>`;
@@ -4646,6 +4646,32 @@
       const tasks = session.tasks || [];
       if (tasks.indexOf(name) !== -1) return true;
       return session.role === name;
+    }
+
+    function canShowNoPlateTick() {
+      if (session.role === 'Plate Cutting') return true;
+      const title = String(session.jobTitle || session.role || '').trim().toLowerCase();
+      return title === 'manager' || title === 'production manager' || !!session.canManageUsers;
+    }
+
+    function noPlateButton(o) {
+      if (!canShowNoPlateTick() || !o || !o.order || o.noPlate) return '';
+      const num = String(o.order).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      return `<button type="button" class="btn btn-outline-dark w-100 mt-1 position-relative" style="z-index: 10;" onclick="event.stopPropagation(); event.preventDefault(); markOrderNoPlates('${num}')">NO PLATES</button>`;
+    }
+
+    function markOrderNoPlates(order) {
+      if (!order) return;
+      if (!confirm(order + " has no plates? It will leave the plate cutting list.")) return;
+      google.script.run.withSuccessHandler(function (res) {
+        if (!res || !res.success) {
+          showAlert((res && (res.error || res.message)) || "Could not mark no plates.");
+          return;
+        }
+        loadDashboard();
+      }).withFailureHandler(function (err) {
+        showAlert((err && err.message) || "Could not mark no plates.");
+      }).markOrderNoPlate(order, session.name);
     }
 
     function availableStartButtons(o) {
