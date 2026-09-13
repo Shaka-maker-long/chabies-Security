@@ -90,7 +90,7 @@
       <span class="msg" id="status"></span>
       <button class="ghost" type="button" onclick="load()">Refresh</button>
       <button class="ghost" type="button" onclick="window.print()">Print list</button>
-      <button class="danger" type="button" id="clearPoBtn" style="display:none" onclick="clearPurchaseOrders()">Clear purchase orders</button>
+      <button class="danger" type="button" id="clearPoBtn" onclick="clearPurchaseOrders()">Clear purchase orders</button>
     </div>
   </header>
   <div class="page">
@@ -99,6 +99,14 @@
       <button type="button" id="tabWood" class="off" onclick="showKind('wood')">Wood</button>
     </div>
     <div id="glassView">
+      <section class="card" id="clearPoCard">
+        <h2>Clear old purchase orders</h2>
+        <p class="hint">Use this for the test POs. It deletes every generated glass purchase order and invoice on this page. Those glass lines go back to <b>To put on a PO</b>. Type <b>CLEAR</b> when asked.</p>
+        <div class="foot">
+          <button class="danger" type="button" onclick="clearPurchaseOrders()">Clear purchase orders</button>
+          <span class="msg" id="clearPoMsg"></span>
+        </div>
+      </section>
       <div class="cols">
         <section class="card">
           <h2>To put on a PO</h2>
@@ -306,21 +314,26 @@
       const j = await r.json();
       if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
       data = j;
-      const manage = !!(j.canManageUsers || (typeof sdOfficeProfile === "function" && sdOfficeProfile() && sdOfficeProfile().canManageUsers));
-      const clearBtn = document.getElementById("clearPoBtn");
-      if (clearBtn) clearBtn.style.display = manage ? "" : "none";
       render();
       setMsg("status", (j.toOrderCount || 0) + " to put on a PO · " + (j.outstandingCount || 0) + " outstanding");
     }
     async function clearPurchaseOrders() {
       const typed = window.prompt("This deletes every generated glass purchase order and invoice, and puts those glass lines back on To order. Type CLEAR to confirm.");
       if (String(typed || "").trim().toUpperCase() !== "CLEAR") return;
+      setMsg("clearPoMsg", "Clearing…");
       const r = await sdOfficeFetch("/api/office/glass-po/clear", { method: "POST", body: JSON.stringify({ confirm: "CLEAR" }) });
       const j = await r.json();
-      if (!j.ok) { setMsg("status", j.error || "Could not clear purchase orders", true); return; }
+      if (!j.ok) {
+        const err = j.error || "Could not clear purchase orders";
+        setMsg("status", err, true);
+        setMsg("clearPoMsg", err, true);
+        return;
+      }
       data = j;
       render();
-      setMsg("status", "Cleared " + (j.removed || 0) + " purchase order" + ((j.removed === 1) ? "" : "s") + ". " + (j.toOrderCount || 0) + " to put on a PO.");
+      const done = "Cleared " + (j.removed || 0) + " purchase order" + ((j.removed === 1) ? "" : "s") + ". " + (j.toOrderCount || 0) + " to put on a PO.";
+      setMsg("status", done);
+      setMsg("clearPoMsg", done);
     }
     function closePoReview() {
       const mask = document.getElementById("poMask");
