@@ -216,6 +216,16 @@ function readSteelUsage() {
   }).filter((row) => row.orderNum);
 }
 
+function parseSoldAt(order) {
+  const month = String((order && order.month_of_sale) || "").trim();
+  const m = month.match(/^(\d{4})-(\d{2})/);
+  if (m) return sastDate(m[1], m[2], 15, 12, 0, 0);
+  const pay = String((order && order.payment_date) || "").slice(0, 10);
+  const p = pay.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (p) return sastDate(p[1], p[2], p[3], 12, 0, 0);
+  return null;
+}
+
 function orderMeta() {
   const byId = {};
   listOrders().forEach((order) => {
@@ -225,14 +235,15 @@ function orderMeta() {
     byId[id] = {
       product: order.product || "Unknown product",
       sellingPrice: parseMoney(order.price_excl_vat) || 0,
-      img: (found && found.imageUrl) || ""
+      img: (found && found.imageUrl) || "",
+      soldAt: parseSoldAt(order)
     };
   });
   return byId;
 }
 
 function emptyOrder(id, meta) {
-  const info = meta[id] || { product: "Unknown product", sellingPrice: 0, img: "" };
+  const info = meta[id] || { product: "Unknown product", sellingPrice: 0, img: "", soldAt: null };
   const tasks = {};
   TASKS.forEach((t) => { tasks[t] = { h: 0, c: 0 }; });
   return {
@@ -251,7 +262,8 @@ function emptyOrder(id, meta) {
     warnings: [],
     monthHours: {},
     monthCosts: {},
-    monthMaterials: {}
+    monthMaterials: {},
+    soldAt: info.soldAt || null
   };
 }
 
@@ -386,6 +398,8 @@ async function getAppData(query) {
   addGlassActuals(order);
   addPowderActuals(order);
 
+  Object.keys(meta).forEach((id) => { order(id); });
+
   const startMonth = range.start ? monthKey(range.start) : "";
 
   const orders = Object.keys(byId).map((id) => {
@@ -459,6 +473,11 @@ async function getAppData(query) {
       Object.keys(monthlyBreakdown).forEach((m) => { if (m < startMonth) pastCosts += monthlyBreakdown[m]; });
     }
 
+    const hasWork = Math.round(fLabor || 0) !== 0 || Math.round(fMat || 0) !== 0 || (fHours || 0) >= 0.05;
+    const priced = (o.sellingPrice || 0) > 0;
+    const soldInRange = !range.start || inRange(o.soldAt, range);
+    if (!hasWork && !(priced && (range.kind === "all" || soldInRange))) return null;
+
     return {
       orderNum: o.orderNum,
       product: o.product,
@@ -482,7 +501,7 @@ async function getAppData(query) {
       monthMaterials: prunedMonthMaterials,
       monthlyBreakdown
     };
-  }).filter((o) => Math.round(o.laborCost || 0) !== 0 || Math.round(o.materialCost || 0) !== 0 || (o.totalHours || 0) >= 0.05);
+  }).filter(Boolean);
 
   const staffHours = {};
   orders.forEach((o) => {

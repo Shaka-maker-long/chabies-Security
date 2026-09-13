@@ -5509,10 +5509,12 @@ function listCostingLogs() {
   for (var i = 0; i < logData.length; i++) {
     var row = logData[i];
     var orderNum = String(row[1] || "").trim();
-    var task = String(row[4] || "").trim();
+    var process = String(row[3] || "").trim();
+    var status = String(row[4] || "").trim();
+    var task = process || status;
     if (!orderNum || !task) continue;
     var low = task.toLowerCase();
-    if (low === "pre-powder coating" || low === "final qc") continue;
+    if (low === "indirect" || low === "pre-powder coating" || low === "final qc") continue;
     var start = row[5] ? new Date(row[5]) : null;
     if (start && isNaN(start.getTime())) start = null;
     var end = row[6] ? new Date(row[6]) : null;

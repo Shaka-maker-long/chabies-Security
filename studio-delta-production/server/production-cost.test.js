@@ -72,6 +72,34 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const jan = await cost.getAppData({ mode: "month", from: "2026-01" });
   assert.ok(!jan.orders.some((o) => o.laborCost > 0 && o.orderNum === "S-COST-1") || jan.orders.length === 0);
 
+  db.upsertOrder({
+    order_number: "S-COST-STATUS",
+    product: "Stool",
+    status: "Welding",
+    price_excl_vat: "1000.00"
+  });
+  book.getSheetByName("Production_Log").appendRow([
+    "log_status_1", "S-COST-STATUS", "Willard", "Welding", "Completed", start, end, "", "", "", 0, "", ""
+  ]);
+  persistWorkbook();
+  const byStatus = await cost.getAppData({ mode: "all" });
+  const statusRow = byStatus.orders.find((o) => o.orderNum === "S-COST-STATUS");
+  assert.ok(statusRow, "finished clocks use Process even when Status is Completed");
+  assert.ok(Math.abs((statusRow.tasks.Welding && statusRow.tasks.Welding.h) - 2) < 0.05);
+
+  db.upsertOrder({
+    order_number: "S-COST-SHEET",
+    product: "Air Chair",
+    status: "Not Yet Started",
+    price_excl_vat: "1500.00",
+    month_of_sale: "2026-09"
+  });
+  const priced = await cost.getAppData({ mode: "all" });
+  const sheetRow = priced.orders.find((o) => o.orderNum === "S-COST-SHEET");
+  assert.ok(sheetRow, "priced orders appear on Cost before the floor finishes a clock");
+  assert.strictEqual(sheetRow.sellingPrice, 1500);
+  assert.strictEqual(sheetRow.laborCost, 0);
+
   const app = express();
   app.use(express.json({ limit: "2mb" }));
   mountOffice(app);
@@ -182,7 +210,8 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const afterJson = await after.json();
   assert.ok(afterJson.ok);
   const leftover = (afterJson.orders || []).find((o) => o.orderNum === "S-COST-1");
-  assert.ok(!leftover, "cleared labour and steel must leave the cost matrix");
+  assert.ok(leftover, "priced orders stay on Cost after labour and steel are cleared");
+  assert.ok(!(leftover.laborCost > 0) && !(leftover.steelCost > 0), "cleared labour and steel must drop off the totals");
   const keptMats = (afterJson.orders || []).find((o) => o.orderNum === "S-COST-2");
   assert.ok(keptMats, "received glass and powder stay after labour and steel are cleared");
   assert.ok(Math.abs(keptMats.glassCost - 125.5) < 0.02);
