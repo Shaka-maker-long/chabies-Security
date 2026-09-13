@@ -7,6 +7,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sdp-shift-"));
 process.env.DATA_DIR = dir;
 process.env.OFFICE_DB_PATH = path.join(dir, "studio-delta.json");
 process.env.TZ = "Africa/Johannesburg";
+process.env.WORK_LOCKS_DISABLED = "false";
 delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 

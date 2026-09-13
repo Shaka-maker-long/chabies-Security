@@ -1540,7 +1540,7 @@
         </div>
         <button id="btnSwitchTask" class="btn btn-outline-dark btn-sm d-none" onclick="showProductionTasks()">Switch task</button>
       </div>
-      <p id="workLockOffNote" class="small text-muted mb-3">Work lock is off for testing. Start and finish stay available after 16:00, and a job already on someone else can still be opened.</p>
+      <p id="workLockOffNote" class="small text-muted mb-3">The floor locks after 16:00, on weekends, and after 8 hours. A job already on someone else stays locked. Admin is look-only. Grant overtime on Workers.</p>
       
       <div class="row mb-3">
         <div class="col-md-6 mb-2 mb-md-0">
@@ -1638,7 +1638,7 @@
         <hr>
         </div>
         <h5 class="brand-font">Overtime</h5>
-        <p class="small text-muted">Work lock is off for testing. After 16:00 and weekend lock, and the 8-hour cap, stay off until WORK_LOCKS_DISABLED is set back to false.</p>
+        <p class="small text-muted">After 16:00, weekends, and 8 hours, grant overtime here for today. If a name is missing from the list, add that person on Users and tick the shop tasks they do.</p>
         <div class="d-flex gap-2 flex-wrap mb-2">
           <select id="otWorker" class="form-select form-select-sm" style="max-width:220px"></select>
           <button type="button" class="btn btn-sm btn-dark" onclick="grantSelectedOvertime()">Grant overtime today</button>
@@ -2455,7 +2455,7 @@
     };
 
     // --- PHOTO REQUIREMENTS ---
-    const WORK_LOCKS_DISABLED = true;
+    const WORK_LOCKS_DISABLED = false;
     const PHOTO_REQS = {
       'Quality Control': ['Front', 'Left Side', 'Right Side', 'Back', 'Open', 'Top (Optional)', 'Level 1', 'Level 2 (Optional)'],
       // Assembly now has NO photos

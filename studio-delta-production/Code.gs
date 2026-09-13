@@ -33,9 +33,14 @@ var RESUME_CHASE_MINS = 8 * 60;
 var IDLE_GRACE_MINS = 15;
 var TAB_OVERTIME = "Overtime_Grants";
 var TAB_RESUME_CHASE = "Resume_Chase";
-// Set false to bring back assignment lock, Admin look-only, and after-16:00 lock.
-var WORK_LOCKS_DISABLED = true;
+// false = assignment lock, Admin look-only, after-16:00 / weekend / 8-hour lock.
+var WORK_LOCKS_DISABLED = false;
 function workLocksDisabled() {
+  try {
+    if (typeof process !== "undefined" && process.env && process.env.WORK_LOCKS_DISABLED != null && String(process.env.WORK_LOCKS_DISABLED) !== "") {
+      return /^(1|true|yes)$/i.test(String(process.env.WORK_LOCKS_DISABLED));
+    }
+  } catch (e) {}
   return WORK_LOCKS_DISABLED === true;
 }
 var TAB_GLASS_TYPES = "Glass_Types";
