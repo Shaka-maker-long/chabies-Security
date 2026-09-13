@@ -570,6 +570,13 @@ assert.ok(floor.indexOf("function canShowNoPlateTick") !== -1);
 assert.ok(/canShowNoPlateTick\(\) \{\s*return session\.role === 'Plate Cutting';/.test(floor), "No plates tick is only on Plate Cutting");
 assert.ok(officeJs.indexOf("/api/office/orders/no-plate") !== -1);
 assert.ok(ordersHtml.indexOf("No plates") !== -1);
+assert.ok(ordersHtml.indexOf("((printed && printed.has_pdf)") !== -1, "job-card ternary must be parenthesized after No plates");
+{
+  const start = ordersHtml.indexOf("<script>", ordersHtml.indexOf("office-auth.js"));
+  const end = ordersHtml.indexOf("</script>", start);
+  assert.ok(start !== -1 && end !== -1, "Orders page must have an inline script");
+  assert.doesNotThrow(() => new Function(ordersHtml.slice(start + 8, end)), "Orders page script must parse");
+}
 assert.ok(floor.indexOf("Use existing glass specification") !== -1);
 assert.ok(floor.indexOf("woodRequired") !== -1);
 assert.ok(floor.indexOf("openStationWork") !== -1, "tapping your station opens that task board");

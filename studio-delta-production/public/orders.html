@@ -482,7 +482,7 @@
               (canMarkNoPlate
                 ? "<label class=\"hint\" style=\"display:inline-flex;align-items:center;gap:4px;margin:0;white-space:nowrap\" title=\"No plates\" onclick=\"event.stopPropagation()\"><input type=\"checkbox\" data-no-plate=\"" + esc(row.order_number) + "\"" + (row.no_plate ? " checked" : "") + "> No plates</label>"
                 : (row.no_plate ? "<span class=\"hint\" style=\"margin:0\">No plates</span>" : "")) +
-              (printed && printed.has_pdf)
+              ((printed && printed.has_pdf)
                 ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Open / print job card\" aria-label=\"Open / print job card\" data-open-job-card=\"" + esc(printed.pdf_url) + "\"><i class=\"bi bi-printer\"></i></button>"
                 : (canCard ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Generate job card\" aria-label=\"Generate job card\" data-job-card=\"" + esc(row.order_number) + "\"><i class=\"bi bi-file-earmark-pdf\"></i></button>" : "")) +
               "</div></td>";
