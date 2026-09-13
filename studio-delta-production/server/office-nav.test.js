@@ -567,6 +567,8 @@ assert.ok(floor.indexOf("This order has no glass") !== -1);
 assert.ok(floor.indexOf("NO PLATES") !== -1);
 assert.ok(floor.indexOf("markOrderNoPlate") !== -1);
 assert.ok(floor.indexOf("function canShowNoPlateTick") !== -1);
+assert.ok(floor.indexOf("function displayShopStatus") !== -1, "Profile Cutting badge is only for a live clock");
+assert.ok(floor.indexOf("st(o) === 'ready for steelwork' || (st(o) === 'profile cutting' && live(o))") !== -1);
 assert.ok(/canShowNoPlateTick\(\) \{\s*return session\.role === 'Plate Cutting';/.test(floor), "No plates tick is only on Plate Cutting");
 assert.ok(officeJs.indexOf("/api/office/orders/no-plate") !== -1);
 assert.ok(ordersHtml.indexOf("No plates") !== -1);
