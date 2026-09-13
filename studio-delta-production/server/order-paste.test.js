@@ -90,6 +90,14 @@ assert.strictEqual(headed.rows[0].status, "Not Yet Started");
 assert.strictEqual(headed.rows[0].price_incl_vat, "1150.00");
 assert.strictEqual(headed.rows[0].amount_paid, "1150.00");
 
+const paintPaste = parseOrderPaste(
+  "QUOTE NUMBER\tORDER NUMBER\tSTATUS\tASSIGNED OPERATOR\tTYPE\tCATERGORY\tPRODUCT\tVARIATION\tDOORS\tDETAILED DESCRIPTION\tDIMENSIONS\tPOWDER COATING\tCLIENT NAME\tCLIENT NUMBER\tEMAIL ADDRESS\tPAYMENT DATE\tADDRESS\tPROVINCE\tPRICE (Excl VAT)\tPRICE (Incl VAT)\tAMOUNT PAID\tMONTH OF SALE\tSOURCE\tCITY\n" +
+  "SOQ2\tS260401\tPaint Shop\t\tStandard\tChair\tAir Chair\t\t\tA chair\tStandard\tBlack\tBea\t011\tbea@test.com\t2026-09-01\t1 Road\tGauteng\t1000\t1150\t\tSeptember 2026\tWebsite\tJohannesburg",
+  { paidInFull: true }
+);
+assert.strictEqual(paintPaste.rows.length, 1, paintPaste.errors.join(" · "));
+assert.strictEqual(paintPaste.rows[0].status, "Paint Shop", "Paint Shop must not fall back to Not Yet Started");
+
 const spaced = parseOrderPaste(
   "SOQ8  S260320  Welding  Willard  Standard  Chair  Air Chair  N/A  N/A  A chair  Standard  Black  Pat  012  pat@test.com  05-Sep  1 Road    Gauteng  R1,150.00  R1,000.00   Sep 2026  Website  Pretoria",
   { paidInFull: true }

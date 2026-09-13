@@ -165,6 +165,17 @@ const invoice = {
   assert.strictEqual(db.listOrders().find((o) => o.order_number === "SD-COAT-1").status, "Ready for Assembly");
   assert.ok(paint.snapshot().sent.some((o) => o.order_number === "SD-COAT-2"));
 
+  seed("SD-WAS-NYS", "Not Yet Started");
+  seed("SD-STILL-WELD", "Welding");
+  const beforeAdopt = paint.snapshot();
+  assert.ok(beforeAdopt.misplaced.some((o) => o.order_number === "SD-WAS-NYS"));
+  assert.ok(!beforeAdopt.misplaced.some((o) => o.order_number === "SD-STILL-WELD"), "live shop jobs stay off the NYS adopt list");
+  const adopted = paint.markAlreadyAtPaintShop(["SD-WAS-NYS"], "Office Boss");
+  assert.ok(adopted.orderNumbers.indexOf("SD-WAS-NYS") !== -1);
+  assert.strictEqual(db.listOrders().find((o) => o.order_number === "SD-WAS-NYS").status, "Paint Shop");
+  assert.ok(paint.snapshot().sent.some((o) => o.order_number === "SD-WAS-NYS"));
+  assert.ok(!paint.snapshot().misplaced.some((o) => o.order_number === "SD-WAS-NYS"));
+
   const app = express();
   app.use(express.json({ limit: "8mb" }));
   mountOffice(app);
