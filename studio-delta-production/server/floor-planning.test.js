@@ -287,7 +287,8 @@ assert.ok(board.queue.some((q) => q.order_number === "S260100 A" && q.scheduled)
 assert.ok(board.queue.some((q) => q.order_number === "S260100 B"));
 const weldQ = board.queue.find((q) => q.order_number === "S260199");
 assert.ok(weldQ, "in-progress orders stay in the queue for remaining work");
-assert.ok(!weldQ.processes.some((p) => p.process === "Profile Cutting" || p.process === "Tagging" || p.process === "Welding"));
+assert.ok(!weldQ.processes.some((p) => p.process === "Profile Cutting" || p.process === "Tagging"));
+assert.ok(weldQ.processes.some((p) => p.process === "Welding"), "Welding in progress still needs a welding slot");
 assert.ok(weldQ.processes.some((p) => p.process === "Grinding"));
 const productA = board.queue.find((q) => q.order_number === "S260100 A");
 assert.ok(!productA.processes.some((p) => p.process === "Quality Control"));
@@ -622,6 +623,15 @@ plan.save({
   }],
   assignments: { S260900: { Assembly: "Nomsa" } }
 });
+db.upsertOrder({
+  order_number: "S260198",
+  status: "Assembly",
+  product: "Product A"
+});
+const assemblyQ = plan.queueOrders().find((q) => q.order_number === "S260198");
+assert.ok(assemblyQ, "assembly in progress stays in Planning");
+assert.deepStrictEqual(assemblyQ.remaining, ["Assembly"]);
+
 db.deleteAllOrders();
 assert.strictEqual(plan.load().blocks.length, 0, "clearing orders also clears planning");
 assert.deepStrictEqual(plan.load().assignments, {});
