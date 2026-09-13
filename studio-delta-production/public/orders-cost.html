@@ -190,7 +190,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Production cost</h1>
-      <p class="lede">Labour from shop-floor time (shift and together-time) × that person's hourly rate. Steel is metres logged × the rate for that profile. Glass and powder coating are the actuals typed when the load is received — not estimates. Wood comes later.</p>
+      <p class="lede">Labour from shop-floor time (shift and together-time) × that person's hourly rate. Materials are steel metres × the steel rate, glass and powder actuals typed when the load is received, plus wood and backboard logged on the floor. Wood and backboard rand stay R0 until those lines have a rate or actual.</p>
     </div>
     <div class="nav-controls">
       <span class="msg" id="status"></span>
@@ -215,7 +215,7 @@
       <div class="summary-grid" id="mainSummaryCards">
         <div class="s-card"><div class="s-label">Total labour cost</div><div class="s-val" id="stat-labor">R0</div></div>
         <div class="s-card"><div class="s-label" id="stat-profit-label">Net profit</div><div class="s-val" id="stat-profit">R0</div></div>
-        <div class="s-card"><div class="s-label">Steel cost</div><div class="s-val" id="stat-steel">R0</div></div>
+        <div class="s-card"><div class="s-label">Materials</div><div class="s-val" id="stat-steel">R0</div></div>
         <div class="s-card"><div class="s-label">Glass actual</div><div class="s-val" id="stat-glass">R0</div></div>
         <div class="s-card"><div class="s-label">Powder actual</div><div class="s-val" id="stat-powder">R0</div></div>
         <div class="s-card"><div class="s-label">Top performer</div><div class="s-val" id="stat-top" style="font-size:16px;">—</div></div>
@@ -224,14 +224,14 @@
       <div id="ratesWarn" class="warn" hidden>Hours can still show. Rand stay R0 until that person has a rate.</div>
       <div id="costEmpty" class="empty-card" hidden>
         <h2>Cost is live — nothing to total in this period</h2>
-        <p>This page totals finished shop clocks × that person's hourly rate, steel metres × the steel rate, and glass / powder actuals typed when a load is received. Running clocks and zero-minute starts stay off the matrix.</p>
+        <p>This page totals finished shop clocks × that person's hourly rate, plus materials: steel metres × the steel rate, glass / powder actuals typed when a load is received, and wood / backboard logged on the floor. Running clocks and zero-minute starts stay off the matrix.</p>
         <p>If the shop has already finished work, switch the filter to All time. To start costing, save labour and steel rates, then finish a job on the floor.</p>
         <button type="button" onclick="switchTab('rates')">Open Rates</button>
       </div>
       <div class="subtabs">
         <button type="button" class="on" id="tabBtnLogs" onclick="switchTab('logs')">Production matrix</button>
         <button type="button" id="tabBtnMonthly" onclick="switchTab('monthly')">Monthly order matrix</button>
-        <button type="button" id="tabBtnSteel" onclick="switchTab('steel')">Steel cost</button>
+        <button type="button" id="tabBtnSteel" onclick="switchTab('steel')">Materials</button>
         <button type="button" id="tabBtnRates" onclick="switchTab('rates')">Rates</button>
       </div>
       <div id="tab-logs">
@@ -258,13 +258,13 @@
                   <th colspan="2">Profile</th><th colspan="2">Plate</th><th colspan="2">Tagging</th>
                   <th colspan="2">Welding</th><th colspan="2">Grinding</th><th colspan="2">Assembly</th>
                   <th colspan="2" style="background:#D1D5DB">Totals</th>
-                  <th id="finHeader" colspan="6">Financials</th>
+                  <th id="finHeader" colspan="4">Financials</th>
                 </tr>
                 <tr>
                   <th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th>
                   <th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th>
                   <th class="col-hrs">Hrs</th><th class="col-c">Cost</th>
-                  <th class="col-money">Steel</th><th class="col-money">Glass</th><th class="col-money">Powder</th><th id="ohHeader" class="col-money">Overhead</th>
+                  <th class="col-money">Materials</th><th id="ohHeader" class="col-money">Overhead</th>
                   <th class="col-money">Sale</th><th id="profitHeader" class="col-money">PROFIT</th>
                 </tr>
               </thead>
@@ -292,7 +292,7 @@
       <div id="tab-steel" style="display:none">
         <div class="charts-grid">
           <div class="chart-card">
-            <h3>Steel</h3>
+            <h3>Materials</h3>
             <div class="chart-container"><canvas id="steelChart"></canvas></div>
             <div class="chart-total">Total: <span id="steelTotal">R0</span></div>
             <div id="steelDataList"></div>
@@ -455,13 +455,14 @@
       let rows = o.materialEntries || [];
       if (month) rows = rows.filter((m) => m.month === month);
       if (type) rows = rows.filter((m) => m.type === type);
-      const label = type === "glass" ? "GLASS ACTUAL" : type === "powder" ? "POWDER ACTUAL" : type === "steel" ? "STEEL" : "MATERIALS";
+      const label = type === "glass" ? "GLASS ACTUAL" : type === "powder" ? "POWDER ACTUAL" : type === "steel" ? "STEEL" : type === "wood" ? "WOOD" : type === "backboard" ? "BACKBOARD" : "MATERIALS";
       let html = orderHeader(o) + "<strong>" + label + "</strong><hr style='border:0;border-top:1px solid #4B5563;margin:6px 0'>";
       if (!rows.length) html += "<div>No " + (type || "material") + " actual yet</div>";
       rows.forEach((m) => {
         const kind = String(m.type || "steel").toUpperCase();
         const qty = m.type === "steel" ? (esc(m.qty) + " m") : esc(m.qty || "");
-        html += "<div style='display:flex;justify-content:space-between;margin:6px 0;border-bottom:1px dashed #374151;padding-bottom:4px'><span><b style='color:#60A5FA'>" + kind + "</b><br>" + esc(m.item) + (qty ? " · " + qty : "") + (m.rateMissing ? "<br><small style='color:#FCA5A5'>No rate</small>" : "") + "</span><span>" + formatMoney(m.cost) + "</span></div>";
+        const missing = m.rateMissing ? "<br><small style='color:#FCA5A5'>No rate yet — rand stay R0</small>" : "";
+        html += "<div style='display:flex;justify-content:space-between;margin:6px 0;border-bottom:1px dashed #374151;padding-bottom:4px'><span><b style='color:#60A5FA'>" + kind + "</b><br>" + esc(m.item) + (qty ? " · " + qty : "") + missing + "</span><span>" + formatMoney(m.cost) + "</span></div>";
       });
       return html;
     }
@@ -473,7 +474,7 @@
       document.getElementById("profitHeader").textContent = includeOH ? "PROFIT" : "GROSS MARGIN";
       document.getElementById("stat-profit-label").textContent = includeOH ? "Net profit" : "Gross margin";
       document.getElementById("ohHeader").style.display = includeOH ? "" : "none";
-      document.getElementById("finHeader").setAttribute("colspan", includeOH ? "6" : "5");
+      document.getElementById("finHeader").setAttribute("colspan", includeOH ? "4" : "3");
       const metaBody = document.getElementById("logMetaBody");
       const body = document.getElementById("logBody");
       const orders = appData.orders || [];
@@ -516,7 +517,7 @@
         const ohCost = includeOH ? (o.overheadCost || 0) : 0;
         const sale = o.displaySale != null ? o.displaySale : o.sellingPrice;
         const margin = sale - (o.laborCost || 0) - (o.materialCost || 0) - ohCost;
-        grand.h += o.totalHours || 0; grand.c += o.laborCost || 0; grand.m += o.steelCost || 0;
+        grand.h += o.totalHours || 0; grand.c += o.laborCost || 0; grand.m += o.materialCost || 0;
         grand.g += o.glassCost || 0; grand.pw += o.powderCost || 0;
         grand.oh += ohCost; grand.s += sale || 0; grand.p += margin;
         let row = "<tr>";
@@ -527,9 +528,7 @@
         });
         row += "<td class='col-hrs' style='background:#F9FAFB;font-weight:700'>" + (o.totalHours || 0).toFixed(1) + "h</td>" +
           "<td class='col-c tooltip' style='background:#F9FAFB;font-weight:700'>" + formatMoney(o.laborCost) + "<div class='tooltiptext'>" + staffTip(o) + "</div></td>" +
-          "<td class='col-money tooltip' style='font-weight:700'>" + formatMoney(o.steelCost || 0) + "<div class='tooltiptext'>" + materialTip(o, "", "steel") + "</div></td>" +
-          "<td class='col-money tooltip' style='font-weight:700'>" + formatMoney(o.glassCost || 0) + "<div class='tooltiptext'>" + materialTip(o, "", "glass") + "</div></td>" +
-          "<td class='col-money tooltip' style='font-weight:700'>" + formatMoney(o.powderCost || 0) + "<div class='tooltiptext'>" + materialTip(o, "", "powder") + "</div></td>";
+          "<td class='col-money tooltip' style='font-weight:700'>" + formatMoney(o.materialCost || 0) + "<div class='tooltiptext'>" + materialTip(o) + "</div></td>";
         if (includeOH) row += "<td class='col-money'>" + formatMoney(o.overheadCost) + "</td>";
         row += "<td class='col-money' style='background:#F9FAFB;font-weight:700'>" + formatMoney(sale) + "</td>" +
           "<td class='col-money' style='font-weight:800;background:#E5E7EB;color:" + (margin < 0 ? "#DC2626" : "inherit") + "'>" + formatMoney(margin) + "</td></tr>";
@@ -556,7 +555,7 @@
         metaHead.innerHTML = "<tr><th class='col-order'>Order #</th><th class='col-product'>Product</th></tr><tr><th class='col-order'></th><th class='col-product'></th></tr>";
         metaBody.innerHTML = "";
         thead.innerHTML = "";
-        tbody.innerHTML = "<tr><td class='empty'>No monthly labour or steel in this period.</td></tr>";
+        tbody.innerHTML = "<tr><td class='empty'>No monthly labour or materials in this period.</td></tr>";
         return;
       }
       const months = [];
@@ -572,11 +571,11 @@
       months.forEach((m) => {
         const label = new Date(m + "-01T12:00:00").toLocaleString("en-ZA", { month: "short", year: "numeric" });
         tr1 += "<th colspan='" + colSpan + "'>" + label + "</th>";
-        tr2 += "<th>Hrs</th><th>Cost</th><th>Steel</th>";
+        tr2 += "<th>Hrs</th><th>Cost</th><th>Materials</th>";
         if (includeOH) tr2 += "<th>Overhead</th>";
       });
-      tr1 += "<th colspan='" + colSpan + "' style='background:#D1D5DB'>TOTALS</th><th rowspan='2'>Selling price</th><th rowspan='2'>" + (includeOH ? "PROFIT" : "MARGIN") + "</th><th rowspan='2'>40% test<br><small>(Lab+Steel)/Sale</small></th></tr>";
-      tr2 += "<th>Hrs</th><th>Cost</th><th>Steel</th>";
+      tr1 += "<th colspan='" + colSpan + "' style='background:#D1D5DB'>TOTALS</th><th rowspan='2'>Selling price</th><th rowspan='2'>" + (includeOH ? "PROFIT" : "MARGIN") + "</th><th rowspan='2'>40% test<br><small>(Lab+Materials)/Sale</small></th></tr>";
+      tr2 += "<th>Hrs</th><th>Cost</th><th>Materials</th>";
       if (includeOH) tr2 += "<th>Overhead</th>";
       tr2 += "</tr>";
       thead.innerHTML = tr1 + tr2;
@@ -645,7 +644,7 @@
       const colors = labels.map((_, i) => "hsl(211,100%," + (30 + (i / Math.max(labels.length - 1, 1)) * 45) + "%)");
       document.getElementById("steelDataList").innerHTML = labels.length
         ? labels.map((l, i) => "<div class='chart-data-item'><span><span class='color-dot' style='background:" + colors[i] + "'></span>" + esc(l) + "</span><span>" + formatMoney(s[l]) + "</span></div>").join("")
-        : "<div class='empty'>No steel cost in this period. Add steel rates, then log steel on the floor.</div>";
+        : "<div class='empty'>No material cost in this period. Add steel rates, receive glass / powder with an actual, or log wood and backboard on the floor.</div>";
       const cvs = document.getElementById("steelChart");
       if (steelChartInstance) steelChartInstance.destroy();
       if (!labels.length) { steelChartInstance = null; return; }

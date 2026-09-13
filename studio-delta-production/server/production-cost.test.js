@@ -54,6 +54,12 @@ book.getSheetByName("Production_Log").appendRow([
 book.getSheetByName("Steel_Usage").appendRow([
   start, "S-COST-1", "Willard", "Welding", "Tube - 25x25x2", 3
 ]);
+book.getSheetByName("Backboard_Usage").appendRow([
+  start, "S-COST-1", "Admire", "Assembly", "MDF", "2.5 m²"
+]);
+book.getSheetByName("Wood_To_Order").appendRow([
+  "wood_cost_1", start, "S-COST-1", "Thabile", "Shelf", "Oak", "16mm", 800, 400, 1, "To order"
+]);
 persistWorkbook();
 
 assert.strictEqual(cost.matchTask("Welding"), "Welding");
@@ -68,6 +74,10 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   assert.ok(Math.abs(order.laborCost - 220) < 0.05, "labour uses Willard R110 not the Welding station " + order.laborCost);
   assert.ok(Math.abs(order.staff.Willard.c - 220) < 0.05);
   assert.strictEqual(order.materialCost, 240);
+  assert.ok((order.materialEntries || []).some((e) => e.type === "backboard" && e.item === "MDF" && e.rateMissing));
+  assert.ok((order.materialEntries || []).some((e) => e.type === "wood" && /Oak/.test(e.item) && e.rateMissing));
+  assert.strictEqual(order.woodCost, 0);
+  assert.strictEqual(order.backboardCost, 0);
   assert.ok(order.staff.Willard);
   assert.ok(Math.abs(order.tasks.Welding.h - 2) < 0.05);
   assert.ok(Math.abs(order.overheadCost - 800) < 0.05, "overhead " + order.overheadCost);

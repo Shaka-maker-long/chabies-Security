@@ -279,6 +279,46 @@ function readSteelUsage() {
   }).filter((row) => row.orderNum);
 }
 
+function readBackboardUsage() {
+  const sheet = getBook().getSheetByName("Backboard_Usage");
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues().map((row) => {
+    const ts = row[0] ? new Date(row[0]) : null;
+    return {
+      timestamp: ts && !isNaN(ts.getTime()) ? ts : null,
+      orderNum: String(row[1] || "").trim(),
+      worker: String(row[2] || "").trim(),
+      process: String(row[3] || "").trim(),
+      type: String(row[4] || "").trim(),
+      size: row[5]
+    };
+  }).filter((row) => row.orderNum);
+}
+
+function readWoodUsage() {
+  const sheet = getBook().getSheetByName("Wood_To_Order");
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const lastCol = Math.max(sheet.getLastColumn(), 11);
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues().map((row) => {
+    const ts = row[1] ? new Date(row[1]) : null;
+    const type = String(row[5] || "").trim();
+    const orderNum = String(row[2] || "").trim();
+    if (!orderNum || !type) return null;
+    return {
+      timestamp: ts && !isNaN(ts.getTime()) ? ts : null,
+      orderNum,
+      worker: String(row[3] || "").trim(),
+      component: String(row[4] || "").trim(),
+      type,
+      thickness: String(row[6] || "").trim(),
+      height: row[7],
+      width: row[8],
+      quantity: row[9],
+      status: String(row[10] || "").trim()
+    };
+  }).filter(Boolean);
+}
+
 function parseSoldAt(order) {
   const month = String((order && order.month_of_sale) || "").trim();
   const m = month.match(/^(\d{4})-(\d{2})/);
@@ -319,6 +359,8 @@ function emptyOrder(id, meta) {
     materialCost: 0,
     glassCost: 0,
     powderCost: 0,
+    woodCost: 0,
+    backboardCost: 0,
     materialEntries: [],
     tasks,
     staff: {},
@@ -348,6 +390,8 @@ function addMaterial(rec, entry) {
   rec.materialCost += entry.cost;
   if (entry.type === "glass") rec.glassCost += entry.cost;
   if (entry.type === "powder") rec.powderCost += entry.cost;
+  if (entry.type === "wood") rec.woodCost += entry.cost;
+  if (entry.type === "backboard") rec.backboardCost += entry.cost;
   if (entry.month && entry.month !== "unknown") {
     rec.monthMaterials[entry.month] = (rec.monthMaterials[entry.month] || 0) + entry.cost;
   }
@@ -463,6 +507,39 @@ async function getAppData(query) {
   addGlassActuals(order);
   addPowderActuals(order);
 
+  readBackboardUsage().forEach((row) => {
+    const ts = row.timestamp;
+    const month = ts ? monthKey(ts) : "unknown";
+    addMaterial(order(row.orderNum), {
+      type: "backboard",
+      item: row.type || "Backboard",
+      qty: String(row.size == null ? "" : row.size),
+      cost: 0,
+      month,
+      rateMissing: true,
+      worker: row.worker,
+      process: row.process
+    });
+  });
+
+  readWoodUsage().forEach((row) => {
+    const ts = row.timestamp;
+    const month = ts ? monthKey(ts) : "unknown";
+    const qty = [row.height, row.width].filter((v) => v !== "" && v != null).join(" × ")
+      + (row.quantity ? " × " + row.quantity : "")
+      + (row.thickness ? " · " + row.thickness : "");
+    addMaterial(order(row.orderNum), {
+      type: "wood",
+      item: [row.type, row.component].filter(Boolean).join(" ") || "Wood",
+      qty,
+      cost: 0,
+      month,
+      rateMissing: true,
+      worker: row.worker,
+      status: row.status
+    });
+  });
+
   Object.keys(meta).forEach((id) => { order(id); });
 
   const startMonth = range.start ? monthKey(range.start) : "";
@@ -539,9 +616,10 @@ async function getAppData(query) {
     }
 
     const hasWork = Math.round(fLabor || 0) !== 0 || Math.round(fMat || 0) !== 0 || (fHours || 0) >= 0.05;
+    const hasMaterials = prunedMats.length > 0;
     const priced = (o.sellingPrice || 0) > 0;
     const soldInRange = !range.start || inRange(o.soldAt, range);
-    if (!hasWork && !(priced && (range.kind === "all" || soldInRange))) return null;
+    if (!hasWork && !hasMaterials && !(priced && (range.kind === "all" || soldInRange))) return null;
 
     return {
       orderNum: o.orderNum,
@@ -556,6 +634,8 @@ async function getAppData(query) {
       glassCost: prunedMats.filter((e) => e.type === "glass").reduce((s, e) => s + (e.cost || 0), 0),
       powderCost: prunedMats.filter((e) => e.type === "powder").reduce((s, e) => s + (e.cost || 0), 0),
       steelCost: prunedMats.filter((e) => e.type === "steel").reduce((s, e) => s + (e.cost || 0), 0),
+      woodCost: prunedMats.filter((e) => e.type === "wood").reduce((s, e) => s + (e.cost || 0), 0),
+      backboardCost: prunedMats.filter((e) => e.type === "backboard").reduce((s, e) => s + (e.cost || 0), 0),
       overheadCost: displayOH,
       materialEntries: prunedMats,
       tasks: o.tasks,
