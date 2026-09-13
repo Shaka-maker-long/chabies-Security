@@ -1137,6 +1137,7 @@ function applyPlanningHints_(role, orders) {
     o.plannedWorker = hint.worker || "";
     o.planned = !!hint.worker;
     // Planning names stay on Available. In Progress is only a live clock.
+    if (!o.logId) o.assigned = "";
   }
   orders.sort(function (a, b) {
     var da = a.delivery_day || "9999-99-99";

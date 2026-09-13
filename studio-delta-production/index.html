@@ -4473,7 +4473,8 @@
           if (o.logId && o.assigned === session.name) session.logIds[o.order] = o.logId;
         });
         orders.forEach(o => {
-          const isMine = o.assigned === session.name;
+          // In Progress is a live Production_Log clock only. A planning name is not a start.
+          const isMine = !!(o.logId && o.assigned === session.name);
           const isLocked = !WORK_LOCKS_DISABLED && o.assigned && !isMine;
           const cardId = `card-${o.rowIndex}`;
           const existingCard = document.getElementById(cardId);
@@ -4615,7 +4616,7 @@
         });
         function placeDueFirst(container, wantProgress) {
           orders.forEach((o) => {
-            const isMine = o.assigned === session.name;
+            const isMine = !!(o.logId && o.assigned === session.name);
             const isLocked = !WORK_LOCKS_DISABLED && o.assigned && !isMine;
             const showInProgress = isMine;
             if (!!showInProgress !== !!wantProgress) return;
@@ -4778,6 +4779,7 @@
     function myRunningOrders(exceptRows) {
       const except = new Set((exceptRows || []).map(n => parseInt(n, 10)));
       return (appData.currentOrders || []).filter(o =>
+        o.logId &&
         o.assigned === session.name &&
         !o.isPaused &&
         !except.has(o.rowIndex)
