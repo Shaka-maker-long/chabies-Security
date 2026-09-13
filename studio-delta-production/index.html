@@ -4363,6 +4363,10 @@
       if (sw) sw.classList.remove('d-none');
       const tabEl = document.querySelector('#dashTabs button[data-bs-target="#pane-available"]');
       if(tabEl) new bootstrap.Tab(tabEl).show();
+      const av = document.getElementById('container-available');
+      const pr = document.getElementById('container-progress');
+      if (av) av.innerHTML = '';
+      if (pr) pr.innerHTML = '';
       loadDashboard(false);
       startAutoRefresh();
     }
@@ -4397,7 +4401,8 @@
       }
       google.script.run.withSuccessHandler(payload => {
         dashInFlight = false;
-        const orders = (payload && payload.orders) ? payload.orders : (Array.isArray(payload) ? payload : []);
+        const rawOrders = (payload && payload.orders) ? payload.orders : (Array.isArray(payload) ? payload : []);
+        const orders = session.role === 'Plate Cutting' ? rawOrders : ordersForCurrentBoard(rawOrders);
         if (payload && payload.notice && payload.notice.resumedOrder) showSwitchBanner(payload.notice);
         appData.currentOrders = orders;
         
@@ -4649,9 +4654,23 @@
     }
 
     function canShowNoPlateTick() {
-      if (session.role === 'Plate Cutting') return true;
-      const title = String(session.jobTitle || session.role || '').trim().toLowerCase();
-      return title === 'manager' || title === 'production manager' || !!session.canManageUsers;
+      return session.role === 'Plate Cutting';
+    }
+
+    function ordersForCurrentBoard(orders) {
+      const list = Array.isArray(orders) ? orders : [];
+      const role = session.role;
+      const allow = {
+        'Profile Cutting': ['not yet started', 'ready for steelwork', 'profile cutting'],
+        'Tagging': ['ready for tagging', 'tagging'],
+        'Welding': ['ready for welding', 'welding'],
+        'Grinding': ['ready for grinding', 'grinding'],
+        'Assembly': ['ready for assembly', 'assembly'],
+        'Paint Preparation': ['ready for assembly', 'paint preparation'],
+        'Painting': ['ready for painting', 'painting']
+      }[role];
+      if (!allow) return list;
+      return list.filter((o) => allow.indexOf(String(o.status || '').toLowerCase()) !== -1);
     }
 
     function noPlateButton(o) {

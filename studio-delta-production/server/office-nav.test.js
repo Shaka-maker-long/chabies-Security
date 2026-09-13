@@ -566,6 +566,8 @@ assert.ok(floor.indexOf("Add another glass") !== -1);
 assert.ok(floor.indexOf("This order has no glass") !== -1);
 assert.ok(floor.indexOf("NO PLATES") !== -1);
 assert.ok(floor.indexOf("markOrderNoPlate") !== -1);
+assert.ok(floor.indexOf("function canShowNoPlateTick") !== -1);
+assert.ok(/canShowNoPlateTick\(\) \{\s*return session\.role === 'Plate Cutting';/.test(floor), "No plates tick is only on Plate Cutting");
 assert.ok(officeJs.indexOf("/api/office/orders/no-plate") !== -1);
 assert.ok(ordersHtml.indexOf("No plates") !== -1);
 assert.ok(floor.indexOf("Use existing glass specification") !== -1);
