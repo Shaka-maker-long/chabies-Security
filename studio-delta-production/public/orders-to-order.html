@@ -101,7 +101,7 @@
     <div id="glassView">
       <section class="card" id="clearPoCard">
         <h2>Clear old purchase orders</h2>
-        <p class="hint">Use this for the test POs. It deletes every generated glass purchase order and invoice on this page. Those glass lines go back to <b>To put on a PO</b>. Type <b>CLEAR</b> when asked.</p>
+        <p class="hint">Use this for the test POs. It deletes every generated glass purchase order, invoice, and every glass line on this page — including To put on a PO. Type <b>CLEAR</b> when asked.</p>
         <div class="foot">
           <button class="danger" type="button" onclick="clearPurchaseOrders()">Clear purchase orders</button>
           <span class="msg" id="clearPoMsg"></span>
@@ -318,7 +318,7 @@
       setMsg("status", (j.toOrderCount || 0) + " to put on a PO · " + (j.outstandingCount || 0) + " outstanding");
     }
     async function clearPurchaseOrders() {
-      const typed = window.prompt("This deletes every generated glass purchase order and invoice, and puts those glass lines back on To order. Type CLEAR to confirm.");
+      const typed = window.prompt("This deletes every generated glass purchase order, invoice, and every glass line on To order. Type CLEAR to confirm.");
       if (String(typed || "").trim().toUpperCase() !== "CLEAR") return;
       setMsg("clearPoMsg", "Clearing…");
       const r = await sdOfficeFetch("/api/office/glass-po/clear", { method: "POST", body: JSON.stringify({ confirm: "CLEAR" }) });
@@ -331,7 +331,10 @@
       }
       data = j;
       render();
-      const done = "Cleared " + (j.removed || 0) + " purchase order" + ((j.removed === 1) ? "" : "s") + ". " + (j.toOrderCount || 0) + " to put on a PO.";
+      setMsg("poMsg", "");
+      const lines = j.linesRemoved != null ? j.linesRemoved : 0;
+      const done = "Cleared " + (j.removed || 0) + " purchase order" + ((j.removed === 1) ? "" : "s") +
+        " and " + lines + " glass line" + (lines === 1 ? "" : "s") + ".";
       setMsg("status", done);
       setMsg("clearPoMsg", done);
     }

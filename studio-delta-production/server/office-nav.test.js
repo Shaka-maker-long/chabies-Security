@@ -542,6 +542,7 @@ assert.ok(officeJs.indexOf("/api/office/glass-po/:poId/pdf") !== -1);
 assert.ok(officeJs.indexOf("/api/office/glass-po/clear") !== -1);
 assert.ok(toOrderHtml.indexOf("Clear purchase orders") !== -1);
 assert.ok(toOrderHtml.indexOf("Clear old purchase orders") !== -1);
+assert.ok(toOrderHtml.indexOf("every glass line") !== -1);
 assert.ok(toOrderHtml.indexOf("id=\"clearPoCard\"") !== -1);
 assert.ok(!/id=\"clearPoBtn\"[^>]*display:none/.test(toOrderHtml), "Clear purchase orders must stay visible on To order");
 const glassRatesHtml = fs.readFileSync(path.join(__dirname, "../public/orders-glass-rates.html"), "utf8");

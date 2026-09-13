@@ -236,8 +236,9 @@ assert.notStrictEqual(later.invoiceId, recv.invoiceId);
   assert.ok(clearedJson.ok, JSON.stringify(clearedJson));
   assert.ok((clearedJson.removed || 0) >= 1, "test purchase orders must be deleted");
   assert.ok(!(clearedJson.pos || []).length, "purchase history must be empty after clear");
-  assert.ok((clearedJson.toOrder || []).some((l) => l.id === "g-api-1"), "received glass returns to To order");
-  assert.ok((clearedJson.toOrder || []).some((l) => l.id === "g-api-2"), "outstanding glass returns to To order");
+  assert.ok(!(clearedJson.toOrder || []).length, "glass lines must be deleted, not put back on To order");
+  assert.ok(!(clearedJson.outstanding || []).length);
+  assert.ok(!(clearedJson.received || []).length);
   server.close();
   console.log("glass-po.test.js ok");
 })().catch((err) => {
