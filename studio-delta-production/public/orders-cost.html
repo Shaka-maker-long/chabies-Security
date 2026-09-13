@@ -122,6 +122,11 @@
     .sheet input { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; font: inherit; }
     .sheet .hint { margin: 0; color: #6B7280; font-size: 13px; }
     .loader, .empty, .err { text-align: center; padding: 48px 16px; color: #6B7280; font-weight: 600; }
+    .empty-card { background: #fff; border: 1px solid var(--border-color); border-radius: 10px; padding: 28px 22px; max-width: 720px; }
+    .empty-card h2 { margin: 0 0 8px; font-size: 18px; }
+    .empty-card p { margin: 0 0 10px; color: #4B5563; font-size: 14px; line-height: 1.5; }
+    .empty-card button { border: 1px solid #1d2939; background: #1d2939; color: #fff; border-radius: 6px; padding: 8px 12px; font-weight: 600; cursor: pointer; font: inherit; font-size: 13px; }
+    .warn { background: #FFF7ED; border: 1px solid #FDBA74; color: #9A3412; border-radius: 8px; padding: 10px 12px; margin: 0 0 14px; font-size: 13px; font-weight: 600; }
     .err { color: var(--bad); }
     .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 18px; }
     .chart-card { background: #fff; border: 1px solid var(--border-color); border-radius: 8px; padding: 18px; }
@@ -185,7 +190,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Production cost</h1>
-      <p class="lede">Labour from shop-floor time (shift and together-time) × the hourly rate for that process. Steel is metres logged × the rate for that profile. Glass and powder coating are the actuals typed when the load is received — not estimates. Wood comes later.</p>
+      <p class="lede">Labour from shop-floor time (shift and together-time) × that person's hourly rate. Materials are steel metres × the steel rate, glass and powder actuals typed when the load is received, plus wood and backboard logged on the floor. Wood and backboard rand stay R0 until those lines have a rate or actual.</p>
     </div>
     <div class="nav-controls">
       <span class="msg" id="status"></span>
@@ -193,13 +198,13 @@
       <button type="button" class="danger" id="clearLogBtn" style="display:none" onclick="openClear('log')">Clear production log</button>
       <button type="button" class="on" id="overheadToggle" data-on="1" onclick="toggleOverheads()">Overheads on</button>
       <select id="filterMode" onchange="changeFilterType()">
+        <option value="all" selected>All time</option>
         <option value="month">Monthly</option>
         <option value="custom">Custom date range</option>
-        <option value="all">All time</option>
         <option value="day">Daily</option>
         <option value="week">Weekly</option>
       </select>
-      <input type="month" id="dateFilter" onchange="load()">
+      <input type="month" id="dateFilter" onchange="load()" style="display:none">
       <span id="rangeToLabel" style="display:none">to</span>
       <input type="date" id="dateFilterEnd" onchange="load()" style="display:none">
     </div>
@@ -210,16 +215,21 @@
       <div class="summary-grid" id="mainSummaryCards">
         <div class="s-card"><div class="s-label">Total labour cost</div><div class="s-val" id="stat-labor">R0</div></div>
         <div class="s-card"><div class="s-label" id="stat-profit-label">Net profit</div><div class="s-val" id="stat-profit">R0</div></div>
-        <div class="s-card"><div class="s-label">Steel cost</div><div class="s-val" id="stat-steel">R0</div></div>
-        <div class="s-card"><div class="s-label">Glass actual</div><div class="s-val" id="stat-glass">R0</div></div>
-        <div class="s-card"><div class="s-label">Powder actual</div><div class="s-val" id="stat-powder">R0</div></div>
+        <div class="s-card"><div class="s-label">Materials</div><div class="s-val" id="stat-steel">R0</div></div>
         <div class="s-card"><div class="s-label">Top performer</div><div class="s-val" id="stat-top" style="font-size:16px;">—</div></div>
         <div class="s-card" id="warning-summary" style="display:none;border-color:#DC2626"><div class="s-label" style="color:#DC2626">Warnings</div><div class="s-val" id="stat-warnings" style="color:#DC2626;font-size:18px">0</div></div>
+      </div>
+      <div id="ratesWarn" class="warn" hidden>Hours can still show. Rand stay R0 until that person has a rate.</div>
+      <div id="costEmpty" class="empty-card" hidden>
+        <h2>Cost is live — nothing to total in this period</h2>
+        <p>This page totals finished shop clocks × that person's hourly rate, plus materials: steel metres × the steel rate, glass / powder actuals typed when a load is received, and wood / backboard logged on the floor. Running clocks and zero-minute starts stay off the matrix.</p>
+        <p>If the shop has already finished work, switch the filter to All time. To start costing, save labour and steel rates, then finish a job on the floor.</p>
+        <button type="button" onclick="switchTab('rates')">Open Rates</button>
       </div>
       <div class="subtabs">
         <button type="button" class="on" id="tabBtnLogs" onclick="switchTab('logs')">Production matrix</button>
         <button type="button" id="tabBtnMonthly" onclick="switchTab('monthly')">Monthly order matrix</button>
-        <button type="button" id="tabBtnSteel" onclick="switchTab('steel')">Steel cost</button>
+        <button type="button" id="tabBtnSteel" onclick="switchTab('steel')">Materials</button>
         <button type="button" id="tabBtnRates" onclick="switchTab('rates')">Rates</button>
       </div>
       <div id="tab-logs">
@@ -246,13 +256,13 @@
                   <th colspan="2">Profile</th><th colspan="2">Plate</th><th colspan="2">Tagging</th>
                   <th colspan="2">Welding</th><th colspan="2">Grinding</th><th colspan="2">Assembly</th>
                   <th colspan="2" style="background:#D1D5DB">Totals</th>
-                  <th id="finHeader" colspan="6">Financials</th>
+                  <th id="finHeader" colspan="4">Financials</th>
                 </tr>
                 <tr>
                   <th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th>
                   <th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th><th class="col-h">H</th><th class="col-c">C</th>
                   <th class="col-hrs">Hrs</th><th class="col-c">Cost</th>
-                  <th class="col-money">Steel</th><th class="col-money">Glass</th><th class="col-money">Powder</th><th id="ohHeader" class="col-money">Overhead</th>
+                  <th class="col-money">Materials</th><th id="ohHeader" class="col-money">Overhead</th>
                   <th class="col-money">Sale</th><th id="profitHeader" class="col-money">PROFIT</th>
                 </tr>
               </thead>
@@ -280,7 +290,7 @@
       <div id="tab-steel" style="display:none">
         <div class="charts-grid">
           <div class="chart-card">
-            <h3>Steel</h3>
+            <h3>Materials</h3>
             <div class="chart-container"><canvas id="steelChart"></canvas></div>
             <div class="chart-total">Total: <span id="steelTotal">R0</span></div>
             <div id="steelDataList"></div>
@@ -291,17 +301,17 @@
         <div class="rates">
           <section class="card">
             <h2>Labour rates</h2>
-            <p class="hint">R per hour by shop process. Time on an order uses the rate for that process.</p>
+            <p class="hint">R per hour per person. Time on an order uses that person's rate wherever they work — not the workstation (Welding, Cutting, and so on).</p>
             <div id="labourList"></div>
             <form class="add" id="labourForm">
-              <label>Process
-                <select id="labourProcess"></select>
-                <input id="labourProcessCustom" placeholder="Or type another process">
+              <label>Employee Name
+                <select id="labourEmployee"></select>
+                <input id="labourEmployeeCustom" placeholder="Or type another name">
               </label>
-              <label>Rate per hour (R)
-                <input id="labourRate" inputmode="decimal" required placeholder="e.g. 180">
+              <label>Hourly Rate (R)
+                <input id="labourRate" inputmode="decimal" required placeholder="e.g. 65.16">
               </label>
-              <button type="submit">Save labour rate</button>
+              <button type="submit">Save employee rate</button>
               <span class="msg" id="labourMsg"></span>
             </form>
           </section>
@@ -342,7 +352,15 @@
       el.textContent = text || "";
       el.classList.toggle("bad", !!bad);
     }
-    function changeFilterType() {
+    function sastYmd(d) {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Africa/Johannesburg",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(d || new Date());
+    }
+    function applyFilterChrome() {
       const mode = document.getElementById("filterMode").value;
       const d1 = document.getElementById("dateFilter");
       const d2 = document.getElementById("dateFilterEnd");
@@ -355,6 +373,9 @@
         d1.style.display = "inline-block"; d1.type = mode === "month" ? "month" : "date";
         d2.style.display = "none"; label.style.display = "none";
       }
+    }
+    function changeFilterType() {
+      applyFilterChrome();
       load();
     }
     function includeOverheads() {
@@ -375,6 +396,8 @@
         if (btn) btn.classList.toggle("on", tab === id);
       });
       document.getElementById("mainSummaryCards").style.display = tab === "steel" || tab === "rates" ? "none" : "grid";
+      const emptyBox = document.getElementById("costEmpty");
+      if (emptyBox) emptyBox.hidden = tab === "rates" || tab === "steel" || !!(appData.orders || []).length;
       if (tab === "steel") setTimeout(renderSteelChart, 80);
       if (tab === "logs") requestAnimationFrame(() => alignFreezeRows("logsMeta", "logsGrid"));
       if (tab === "monthly") requestAnimationFrame(() => alignFreezeRows("monthlyMeta", "monthlyGrid"));
@@ -430,13 +453,14 @@
       let rows = o.materialEntries || [];
       if (month) rows = rows.filter((m) => m.month === month);
       if (type) rows = rows.filter((m) => m.type === type);
-      const label = type === "glass" ? "GLASS ACTUAL" : type === "powder" ? "POWDER ACTUAL" : type === "steel" ? "STEEL" : "MATERIALS";
+      const label = type === "glass" ? "GLASS ACTUAL" : type === "powder" ? "POWDER ACTUAL" : type === "steel" ? "STEEL" : type === "wood" ? "WOOD" : type === "backboard" ? "BACKBOARD" : "MATERIALS";
       let html = orderHeader(o) + "<strong>" + label + "</strong><hr style='border:0;border-top:1px solid #4B5563;margin:6px 0'>";
       if (!rows.length) html += "<div>No " + (type || "material") + " actual yet</div>";
       rows.forEach((m) => {
         const kind = String(m.type || "steel").toUpperCase();
         const qty = m.type === "steel" ? (esc(m.qty) + " m") : esc(m.qty || "");
-        html += "<div style='display:flex;justify-content:space-between;margin:6px 0;border-bottom:1px dashed #374151;padding-bottom:4px'><span><b style='color:#60A5FA'>" + kind + "</b><br>" + esc(m.item) + (qty ? " · " + qty : "") + (m.rateMissing ? "<br><small style='color:#FCA5A5'>No rate</small>" : "") + "</span><span>" + formatMoney(m.cost) + "</span></div>";
+        const missing = m.rateMissing ? "<br><small style='color:#FCA5A5'>No rate yet — rand stay R0</small>" : "";
+        html += "<div style='display:flex;justify-content:space-between;margin:6px 0;border-bottom:1px dashed #374151;padding-bottom:4px'><span><b style='color:#60A5FA'>" + kind + "</b><br>" + esc(m.item) + (qty ? " · " + qty : "") + missing + "</span><span>" + formatMoney(m.cost) + "</span></div>";
       });
       return html;
     }
@@ -448,22 +472,38 @@
       document.getElementById("profitHeader").textContent = includeOH ? "PROFIT" : "GROSS MARGIN";
       document.getElementById("stat-profit-label").textContent = includeOH ? "Net profit" : "Gross margin";
       document.getElementById("ohHeader").style.display = includeOH ? "" : "none";
-      document.getElementById("finHeader").setAttribute("colspan", includeOH ? "6" : "5");
+      document.getElementById("finHeader").setAttribute("colspan", includeOH ? "4" : "3");
       const metaBody = document.getElementById("logMetaBody");
       const body = document.getElementById("logBody");
       const orders = appData.orders || [];
+      const emptyBox = document.getElementById("costEmpty");
+      const logsBoard = document.getElementById("logsBoard");
+      if (emptyBox) emptyBox.hidden = !!orders.length;
+      if (logsBoard) logsBoard.style.display = orders.length ? "flex" : "none";
+      const rates = ((appData.labourRates && appData.labourRates.rates) || []);
+      const missingPeople = appData.missingEmployeeRates || [];
+      const ratesWarn = document.getElementById("ratesWarn");
+      if (ratesWarn) {
+        if (missingPeople.length) {
+          ratesWarn.hidden = false;
+          ratesWarn.textContent = "Hours can still show. Rand stay R0 until " + missingPeople.join(", ") + " " + (missingPeople.length === 1 ? "has" : "have") + " a rate.";
+        } else if (!rates.length) {
+          ratesWarn.hidden = false;
+          ratesWarn.textContent = "Hours can still show. Rand stay R0 until that person has a rate.";
+        } else {
+          ratesWarn.hidden = true;
+        }
+      }
       if (!orders.length) {
         metaBody.innerHTML = "";
-        body.innerHTML = "<tr><td colspan='22' class='empty'>No labour, steel, or received glass / powder actuals in this period.</td></tr>";
+        body.innerHTML = "";
         document.getElementById("stat-labor").textContent = "R0";
         document.getElementById("stat-profit").textContent = "R0";
         document.getElementById("stat-steel").textContent = "R0";
-        document.getElementById("stat-glass").textContent = "R0";
-        document.getElementById("stat-powder").textContent = "R0";
         document.getElementById("stat-top").textContent = "—";
         return;
       }
-      const grand = { h: 0, c: 0, m: 0, g: 0, pw: 0, oh: 0, s: 0, p: 0 };
+      const grand = { h: 0, c: 0, m: 0, oh: 0, s: 0, p: 0 };
       metaBody.innerHTML = orders.map((o) => {
         return "<tr><td class='col-order'><b>" + esc(o.orderNum) + "</b></td>" +
           "<td class='col-product tooltip'><span class='product-clip'>" + esc(o.product || "—") + "</span>" +
@@ -473,8 +513,7 @@
         const ohCost = includeOH ? (o.overheadCost || 0) : 0;
         const sale = o.displaySale != null ? o.displaySale : o.sellingPrice;
         const margin = sale - (o.laborCost || 0) - (o.materialCost || 0) - ohCost;
-        grand.h += o.totalHours || 0; grand.c += o.laborCost || 0; grand.m += o.steelCost || 0;
-        grand.g += o.glassCost || 0; grand.pw += o.powderCost || 0;
+        grand.h += o.totalHours || 0; grand.c += o.laborCost || 0; grand.m += o.materialCost || 0;
         grand.oh += ohCost; grand.s += sale || 0; grand.p += margin;
         let row = "<tr>";
         TASKS.forEach((t) => {
@@ -484,9 +523,7 @@
         });
         row += "<td class='col-hrs' style='background:#F9FAFB;font-weight:700'>" + (o.totalHours || 0).toFixed(1) + "h</td>" +
           "<td class='col-c tooltip' style='background:#F9FAFB;font-weight:700'>" + formatMoney(o.laborCost) + "<div class='tooltiptext'>" + staffTip(o) + "</div></td>" +
-          "<td class='col-money tooltip' style='font-weight:700'>" + formatMoney(o.steelCost || 0) + "<div class='tooltiptext'>" + materialTip(o, "", "steel") + "</div></td>" +
-          "<td class='col-money tooltip' style='font-weight:700'>" + formatMoney(o.glassCost || 0) + "<div class='tooltiptext'>" + materialTip(o, "", "glass") + "</div></td>" +
-          "<td class='col-money tooltip' style='font-weight:700'>" + formatMoney(o.powderCost || 0) + "<div class='tooltiptext'>" + materialTip(o, "", "powder") + "</div></td>";
+          "<td class='col-money tooltip' style='font-weight:700'>" + formatMoney(o.materialCost || 0) + "<div class='tooltiptext'>" + materialTip(o) + "</div></td>";
         if (includeOH) row += "<td class='col-money'>" + formatMoney(o.overheadCost) + "</td>";
         row += "<td class='col-money' style='background:#F9FAFB;font-weight:700'>" + formatMoney(sale) + "</td>" +
           "<td class='col-money' style='font-weight:800;background:#E5E7EB;color:" + (margin < 0 ? "#DC2626" : "inherit") + "'>" + formatMoney(margin) + "</td></tr>";
@@ -495,8 +532,6 @@
       document.getElementById("stat-labor").textContent = formatMoney(grand.c);
       document.getElementById("stat-profit").textContent = formatMoney(grand.p);
       document.getElementById("stat-steel").textContent = formatMoney(grand.m);
-      document.getElementById("stat-glass").textContent = formatMoney(grand.g);
-      document.getElementById("stat-powder").textContent = formatMoney(grand.pw);
       document.getElementById("stat-top").textContent = appData.topPerformer || "—";
       const warns = appData.warningCount || 0;
       document.getElementById("warning-summary").style.display = warns ? "" : "none";
@@ -513,7 +548,7 @@
         metaHead.innerHTML = "<tr><th class='col-order'>Order #</th><th class='col-product'>Product</th></tr><tr><th class='col-order'></th><th class='col-product'></th></tr>";
         metaBody.innerHTML = "";
         thead.innerHTML = "";
-        tbody.innerHTML = "<tr><td class='empty'>No monthly labour or steel in this period.</td></tr>";
+        tbody.innerHTML = "<tr><td class='empty'>No monthly labour or materials in this period.</td></tr>";
         return;
       }
       const months = [];
@@ -529,11 +564,11 @@
       months.forEach((m) => {
         const label = new Date(m + "-01T12:00:00").toLocaleString("en-ZA", { month: "short", year: "numeric" });
         tr1 += "<th colspan='" + colSpan + "'>" + label + "</th>";
-        tr2 += "<th>Hrs</th><th>Cost</th><th>Steel</th>";
+        tr2 += "<th>Hrs</th><th>Cost</th><th>Materials</th>";
         if (includeOH) tr2 += "<th>Overhead</th>";
       });
-      tr1 += "<th colspan='" + colSpan + "' style='background:#D1D5DB'>TOTALS</th><th rowspan='2'>Selling price</th><th rowspan='2'>" + (includeOH ? "PROFIT" : "MARGIN") + "</th><th rowspan='2'>40% test<br><small>(Lab+Steel)/Sale</small></th></tr>";
-      tr2 += "<th>Hrs</th><th>Cost</th><th>Steel</th>";
+      tr1 += "<th colspan='" + colSpan + "' style='background:#D1D5DB'>TOTALS</th><th rowspan='2'>Selling price</th><th rowspan='2'>" + (includeOH ? "PROFIT" : "MARGIN") + "</th><th rowspan='2'>40% test<br><small>(Lab+Materials)/Sale</small></th></tr>";
+      tr2 += "<th>Hrs</th><th>Cost</th><th>Materials</th>";
       if (includeOH) tr2 += "<th>Overhead</th>";
       tr2 += "</tr>";
       thead.innerHTML = tr1 + tr2;
@@ -602,7 +637,7 @@
       const colors = labels.map((_, i) => "hsl(211,100%," + (30 + (i / Math.max(labels.length - 1, 1)) * 45) + "%)");
       document.getElementById("steelDataList").innerHTML = labels.length
         ? labels.map((l, i) => "<div class='chart-data-item'><span><span class='color-dot' style='background:" + colors[i] + "'></span>" + esc(l) + "</span><span>" + formatMoney(s[l]) + "</span></div>").join("")
-        : "<div class='empty'>No steel cost in this period. Add steel rates, then log steel on the floor.</div>";
+        : "<div class='empty'>No material cost in this period. Add steel rates, receive glass / powder with an actual, or log wood and backboard on the floor.</div>";
       const cvs = document.getElementById("steelChart");
       if (steelChartInstance) steelChartInstance.destroy();
       if (!labels.length) { steelChartInstance = null; return; }
@@ -618,13 +653,16 @@
     }
     function renderRates() {
       const labour = (appData.labourRates && appData.labourRates.rates) || [];
-      const processes = (appData.labourRates && appData.labourRates.processes) || TASKS;
-      fillSelect("labourProcess", processes, "Choose process");
+      const employees = (appData.labourRates && (appData.labourRates.employees || appData.labourRates.processes)) || [];
+      fillSelect("labourEmployee", employees, "Choose employee");
       document.getElementById("labourList").innerHTML = labour.length
-        ? "<table><thead><tr><th>Process</th><th>Rate</th><th></th></tr></thead><tbody>" +
-          labour.map((r) => "<tr><td>" + esc(r.process) + "</td><td>" + esc(r.rateLabel) + "</td><td><button class='danger' type='button' data-labour=\"" + esc(r.process) + "\">Delete</button></td></tr>").join("") +
+        ? "<table><thead><tr><th>Employee Name</th><th>Hourly Rate</th><th></th></tr></thead><tbody>" +
+          labour.map((r) => {
+            const name = r.employee || r.process;
+            return "<tr><td>" + esc(name) + "</td><td>" + esc(r.rateLabel) + "</td><td><button class='danger' type='button' data-labour=\"" + esc(name) + "\">Delete</button></td></tr>";
+          }).join("") +
           "</tbody></table>"
-        : "<div class='empty'>No labour rates yet. Add the hourly rate for each process.</div>";
+        : "<div class='empty'>No employee rates yet. Add the hourly rate for each person.</div>";
       document.querySelectorAll("[data-labour]").forEach((btn) => {
         btn.onclick = () => removeLabour(btn.getAttribute("data-labour"));
       });
@@ -658,31 +696,37 @@
       let from = document.getElementById("dateFilter").value;
       const to = document.getElementById("dateFilterEnd").value;
       if (mode !== "all" && !from) {
-        const now = new Date();
-        from = mode === "month" ? now.toISOString().slice(0, 7) : now.toISOString().slice(0, 10);
+        const today = sastYmd(new Date());
+        from = mode === "month" ? today.slice(0, 7) : today;
         document.getElementById("dateFilter").value = from;
       }
       if (mode === "custom" && (!from || !to)) return;
       document.getElementById("loading").style.display = "block";
+      document.getElementById("loading").textContent = "Loading production cost…";
       document.getElementById("app").style.display = "none";
       setMsg("status", "Loading…");
-      const q = new URLSearchParams({ mode, from: from || "", to: to || "" });
-      const r = await sdOfficeFetch("/api/office/production-cost?" + q.toString());
-      const j = await r.json();
-      if (!j.ok) {
-        document.getElementById("loading").innerHTML = "<div class='err'>" + esc(j.error || "Could not load") + "</div>";
-        setMsg("status", j.error || "Could not load", true);
-        return;
+      try {
+        const q = new URLSearchParams({ mode, from: from || "", to: to || "" });
+        const r = await sdOfficeFetch("/api/office/production-cost?" + q.toString());
+        const j = await r.json();
+        if (!j.ok) {
+          document.getElementById("loading").innerHTML = "<div class='err'>" + esc(j.error || "Could not load") + "</div>";
+          setMsg("status", j.error || "Could not load", true);
+          return;
+        }
+        appData = j;
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("app").style.display = "block";
+        renderAll();
+        setMsg("status", (j.orders || []).length + " order" + ((j.orders || []).length === 1 ? "" : "s"));
+      } catch (e) {
+        document.getElementById("loading").innerHTML = "<div class='err'>" + esc((e && e.message) || "Could not load production cost") + "</div>";
+        setMsg("status", (e && e.message) || "Could not load", true);
       }
-      appData = j;
-      document.getElementById("loading").style.display = "none";
-      document.getElementById("app").style.display = "block";
-      renderAll();
-      setMsg("status", (j.orders || []).length + " order" + ((j.orders || []).length === 1 ? "" : "s"));
     }
-    async function removeLabour(process) {
-      if (!confirm("Delete this labour rate?")) return;
-      const r = await sdOfficeFetch("/api/office/labour-rates/" + encodeURIComponent(process), { method: "DELETE" });
+    async function removeLabour(employee) {
+      if (!confirm("Delete this employee rate?")) return;
+      const r = await sdOfficeFetch("/api/office/labour-rates/" + encodeURIComponent(employee), { method: "DELETE" });
       const j = await r.json();
       if (!j.ok) { setMsg("labourMsg", j.error || "Could not delete", true); return; }
       appData.labourRates = j;
@@ -700,14 +744,14 @@
     }
     document.getElementById("labourForm").onsubmit = async (e) => {
       e.preventDefault();
-      const process = String(document.getElementById("labourProcessCustom").value || "").trim() || document.getElementById("labourProcess").value;
+      const employee = String(document.getElementById("labourEmployeeCustom").value || "").trim() || document.getElementById("labourEmployee").value;
       const ratePerHour = document.getElementById("labourRate").value;
-      const r = await sdOfficeFetch("/api/office/labour-rates", { method: "POST", body: JSON.stringify({ process, ratePerHour }) });
+      const r = await sdOfficeFetch("/api/office/labour-rates", { method: "POST", body: JSON.stringify({ employee, ratePerHour }) });
       const j = await r.json();
       if (!j.ok) { setMsg("labourMsg", j.error || "Could not save", true); return; }
-      document.getElementById("labourProcessCustom").value = "";
+      document.getElementById("labourEmployeeCustom").value = "";
       document.getElementById("labourRate").value = "";
-      setMsg("labourMsg", "Saved " + process + ".");
+      setMsg("labourMsg", "Saved " + employee + ".");
       load();
     };
     document.getElementById("steelForm").onsubmit = async (e) => {

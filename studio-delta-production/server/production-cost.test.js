@@ -36,7 +36,12 @@ db.upsertOrder({
   price_excl_vat: "2000.00"
 });
 
-cost.upsertLabourRate({ process: "Welding", ratePerHour: "200" });
+const seededRates = cost.snapshotLabourRates();
+assert.ok((seededRates.rates || []).some((r) => r.employee === "Willard" && Number(r.ratePerHour) === 110));
+assert.ok((seededRates.rates || []).some((r) => r.employee === "John" && Number(r.ratePerHour) === 65.16));
+assert.ok((seededRates.rates || []).some((r) => r.employee === "Thabile" && Number(r.ratePerHour) === 39.56));
+assert.ok((seededRates.employees || []).indexOf("Willard") !== -1);
+cost.upsertLabourRate({ process: "Welding", ratePerHour: "999" });
 steelRates.upsertRate({ type: "25x25x2", ratePerM: "80" });
 assert.strictEqual(steelRates.costUsage("Tube - 25x25x2", 3).cost, 240);
 
@@ -49,6 +54,12 @@ book.getSheetByName("Production_Log").appendRow([
 book.getSheetByName("Steel_Usage").appendRow([
   start, "S-COST-1", "Willard", "Welding", "Tube - 25x25x2", 3
 ]);
+book.getSheetByName("Backboard_Usage").appendRow([
+  start, "S-COST-1", "Admire", "Assembly", "MDF", "2.5 m²"
+]);
+book.getSheetByName("Wood_To_Order").appendRow([
+  "wood_cost_1", start, "S-COST-1", "Thabile", "Shelf", "Oak", "16mm", 800, 400, 1, "To order"
+]);
 persistWorkbook();
 
 assert.strictEqual(cost.matchTask("Welding"), "Welding");
@@ -60,8 +71,13 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const order = data.orders.find((o) => o.orderNum === "S-COST-1");
   assert.ok(order, JSON.stringify(data.orders));
   assert.ok(Math.abs(order.totalHours - 2) < 0.05, "hours " + order.totalHours);
-  assert.ok(Math.abs(order.laborCost - 400) < 0.05, "labour " + order.laborCost);
+  assert.ok(Math.abs(order.laborCost - 220) < 0.05, "labour uses Willard R110 not the Welding station " + order.laborCost);
+  assert.ok(Math.abs(order.staff.Willard.c - 220) < 0.05);
   assert.strictEqual(order.materialCost, 240);
+  assert.ok((order.materialEntries || []).some((e) => e.type === "backboard" && e.item === "MDF" && e.rateMissing));
+  assert.ok((order.materialEntries || []).some((e) => e.type === "wood" && /Oak/.test(e.item) && e.rateMissing));
+  assert.strictEqual(order.woodCost, 0);
+  assert.strictEqual(order.backboardCost, 0);
   assert.ok(order.staff.Willard);
   assert.ok(Math.abs(order.tasks.Welding.h - 2) < 0.05);
   assert.ok(Math.abs(order.overheadCost - 800) < 0.05, "overhead " + order.overheadCost);
@@ -71,6 +87,34 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   assert.ok(sept.orders.some((o) => o.orderNum === "S-COST-1"));
   const jan = await cost.getAppData({ mode: "month", from: "2026-01" });
   assert.ok(!jan.orders.some((o) => o.laborCost > 0 && o.orderNum === "S-COST-1") || jan.orders.length === 0);
+
+  db.upsertOrder({
+    order_number: "S-COST-STATUS",
+    product: "Stool",
+    status: "Welding",
+    price_excl_vat: "1000.00"
+  });
+  book.getSheetByName("Production_Log").appendRow([
+    "log_status_1", "S-COST-STATUS", "Willard", "Welding", "Completed", start, end, "", "", "", 0, "", ""
+  ]);
+  persistWorkbook();
+  const byStatus = await cost.getAppData({ mode: "all" });
+  const statusRow = byStatus.orders.find((o) => o.orderNum === "S-COST-STATUS");
+  assert.ok(statusRow, "finished clocks use Process even when Status is Completed");
+  assert.ok(Math.abs((statusRow.tasks.Welding && statusRow.tasks.Welding.h) - 2) < 0.05);
+
+  db.upsertOrder({
+    order_number: "S-COST-SHEET",
+    product: "Air Chair",
+    status: "Not Yet Started",
+    price_excl_vat: "1500.00",
+    month_of_sale: "2026-09"
+  });
+  const priced = await cost.getAppData({ mode: "all" });
+  const sheetRow = priced.orders.find((o) => o.orderNum === "S-COST-SHEET");
+  assert.ok(sheetRow, "priced orders appear on Cost before the floor finishes a clock");
+  assert.strictEqual(sheetRow.sellingPrice, 1500);
+  assert.strictEqual(sheetRow.laborCost, 0);
 
   const app = express();
   app.use(express.json({ limit: "2mb" }));
@@ -94,11 +138,12 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const saved = await fetch(base + "/api/office/labour-rates", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-sd-token": session.token },
-    body: JSON.stringify({ process: "Profile Cutting", ratePerHour: "150" })
+    body: JSON.stringify({ employee: "John", ratePerHour: "65.16" })
   });
   const savedJson = await saved.json();
   assert.ok(savedJson.ok, JSON.stringify(savedJson));
-  assert.ok((savedJson.rates || []).some((r) => r.process === "Profile Cutting"));
+  assert.ok((savedJson.rates || []).some((r) => r.employee === "John" && Number(r.ratePerHour) === 65.16));
+  assert.ok((savedJson.employees || []).indexOf("John") !== -1);
   const steel = await fetch(base + "/api/office/steel-rates", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-sd-token": session.token },
@@ -182,7 +227,8 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const afterJson = await after.json();
   assert.ok(afterJson.ok);
   const leftover = (afterJson.orders || []).find((o) => o.orderNum === "S-COST-1");
-  assert.ok(!leftover, "cleared labour and steel must leave the cost matrix");
+  assert.ok(leftover, "priced orders stay on Cost after labour and steel are cleared");
+  assert.ok(!(leftover.laborCost > 0) && !(leftover.steelCost > 0), "cleared labour and steel must drop off the totals");
   const keptMats = (afterJson.orders || []).find((o) => o.orderNum === "S-COST-2");
   assert.ok(keptMats, "received glass and powder stay after labour and steel are cleared");
   assert.ok(Math.abs(keptMats.glassCost - 125.5) < 0.02);

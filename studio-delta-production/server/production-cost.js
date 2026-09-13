@@ -8,6 +8,16 @@ const { FLOOR_TASKS } = require("./staff");
 
 const TASKS = ["Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding", "Assembly"];
 const OVERHEAD_PCT = 0.4;
+const RATES_HEADER = ["Employee Name", "Hourly Rate"];
+const DEFAULT_EMPLOYEE_RATES = [
+  { employee: "Willard", ratePerHour: 110 },
+  { employee: "John", ratePerHour: 65.16 },
+  { employee: "Admire", ratePerHour: 49.41 },
+  { employee: "Uriah", ratePerHour: 32.97 },
+  { employee: "Sam", ratePerHour: 46.16 },
+  { employee: "Thabile", ratePerHour: 39.56 }
+];
+const STATION_NAMES = new Set(TASKS.concat(FLOOR_TASKS).map((name) => name.toLowerCase()));
 
 function sastYmd(date) {
   if (!date || isNaN(date.getTime())) return "";
@@ -73,78 +83,133 @@ function matchTask(task) {
   return TASKS.find((name) => s.indexOf(name.toLowerCase().split(" ")[0]) !== -1) || "";
 }
 
-function readLabourRates() {
+function employeeNameFromBody(body) {
+  return String((body && (body.employee || body.name || body.process)) || "").trim();
+}
+
+function looksLikeStationRateSheet(rows) {
+  if (!rows.length) return true;
+  return rows.every((row) => STATION_NAMES.has(String(row.employee || "").toLowerCase()));
+}
+
+function writeRatesHeader(sheet, force) {
+  if (!force) {
+    const header = sheet.getRange(1, 1, 1, 2).getValues()[0] || [];
+    if (String(header[0] || "").trim() === RATES_HEADER[0] && String(header[1] || "").trim() === RATES_HEADER[1]) {
+      return false;
+    }
+  }
+  sheet.getRange(1, 1, 1, 2).setValues([RATES_HEADER]);
+  return true;
+}
+
+function getOrCreateRatesSheet() {
   const book = getBook();
   let sheet = book.getSheetByName("Rates");
   if (!sheet) {
     sheet = book.insertSheet("Rates");
-    sheet.appendRow(["Process", "Rate"]);
+    writeRatesHeader(sheet);
     persistWorkbook();
   }
-  const byProcess = {};
+  return sheet;
+}
+
+function readLabourRates(opts) {
+  if (!opts || !opts.skipEnsure) ensureDefaultEmployeeRates();
+  const sheet = getOrCreateRatesSheet();
+  const byEmployee = {};
   const rows = [];
   if (sheet.getLastRow() >= 2) {
     sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues().forEach((row, i) => {
-      const process = String(row[0] || "").trim();
-      if (!process) return;
+      const employee = String(row[0] || "").trim();
+      if (!employee) return;
       const rate = parseMoney(row[1]);
-      byProcess[process.toLowerCase()] = Number.isFinite(rate) ? rate : 0;
+      byEmployee[employee.toLowerCase()] = Number.isFinite(rate) ? rate : 0;
       rows.push({
         id: "lrate_" + (i + 2),
-        process,
+        employee,
+        process: employee,
         ratePerHour: money(rate || 0),
         rateLabel: formatRand(rate || 0) + " / h",
         row: i + 2
       });
     });
   }
-  return { byProcess, rows };
+  return { byEmployee, byProcess: byEmployee, rows };
+}
+
+function knownEmployees(rateRows) {
+  const seen = {};
+  const out = [];
+  function add(name) {
+    const n = String(name || "").trim();
+    if (!n) return;
+    const key = n.toLowerCase();
+    if (seen[key] || STATION_NAMES.has(key)) return;
+    seen[key] = true;
+    out.push(n);
+  }
+  DEFAULT_EMPLOYEE_RATES.forEach((row) => add(row.employee));
+  (rateRows || []).forEach((row) => add(row.employee));
+  try {
+    require("./staff").listUsers().forEach((user) => add(user.name));
+  } catch (e) {}
+  return out;
+}
+
+function ensureDefaultEmployeeRates() {
+  const { rows } = readLabourRates({ skipEnsure: true });
+  const sheet = getOrCreateRatesSheet();
+  if (rows.length && !looksLikeStationRateSheet(rows)) {
+    if (writeRatesHeader(sheet)) persistWorkbook();
+    return;
+  }
+  writeRatesHeader(sheet);
+  for (let r = sheet.getLastRow(); r >= 2; r--) sheet.deleteRow(r);
+  DEFAULT_EMPLOYEE_RATES.forEach((row) => {
+    sheet.appendRow([row.employee, Number(money(row.ratePerHour))]);
+  });
+  persistWorkbook();
+  try { require("./gas").clearShopCache(); } catch (e) {}
 }
 
 function snapshotLabourRates() {
   const { rows } = readLabourRates();
-  const known = {};
-  rows.forEach((row) => { known[row.process] = true; });
-  const processes = TASKS.slice();
-  FLOOR_TASKS.forEach((name) => { if (processes.indexOf(name) === -1) processes.push(name); });
-  rows.forEach((row) => { if (processes.indexOf(row.process) === -1) processes.push(row.process); });
-  return { rates: rows, processes };
+  const employees = knownEmployees(rows);
+  return { rates: rows, employees, processes: employees };
 }
 
 function upsertLabourRate(body) {
-  const process = String((body && body.process) || "").trim();
-  if (!process) throw new Error("Process is required.");
+  const employee = employeeNameFromBody(body);
+  if (!employee) throw new Error("Employee name is required.");
   if (body == null || body.ratePerHour === "" || body.ratePerHour == null) {
     throw new Error("Hourly rate is required.");
   }
   const rate = parseMoney(body.ratePerHour);
   if (!Number.isFinite(rate) || rate < 0) throw new Error("Hourly rate must be 0 or more.");
-  const book = getBook();
-  let sheet = book.getSheetByName("Rates");
-  if (!sheet) {
-    sheet = book.insertSheet("Rates");
-    sheet.appendRow(["Process", "Rate"]);
-  }
+  ensureDefaultEmployeeRates();
+  const sheet = getOrCreateRatesSheet();
+  writeRatesHeader(sheet);
   if (sheet.getLastRow() >= 2) {
     const grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
     for (let i = 0; i < grid.length; i++) {
-      if (String(grid[i][0] || "").trim().toLowerCase() === process.toLowerCase()) {
-        sheet.getRange(i + 2, 1).setValue(process);
+      if (String(grid[i][0] || "").trim().toLowerCase() === employee.toLowerCase()) {
+        sheet.getRange(i + 2, 1).setValue(employee);
         sheet.getRange(i + 2, 2).setValue(Number(money(rate)));
         persistWorkbook();
         try { require("./gas").clearShopCache(); } catch (e) {}
-        return { process, ratePerHour: money(rate) };
+        return { employee, process: employee, ratePerHour: money(rate) };
       }
     }
   }
-  sheet.appendRow([process, Number(money(rate))]);
+  sheet.appendRow([employee, Number(money(rate))]);
   persistWorkbook();
   try { require("./gas").clearShopCache(); } catch (e) {}
-  return { process, ratePerHour: money(rate) };
+  return { employee, process: employee, ratePerHour: money(rate) };
 }
 
-function deleteLabourRate(process) {
-  const want = String(process || "").trim().toLowerCase();
+function deleteLabourRate(employee) {
+  const want = String(employee || "").trim().toLowerCase();
   if (!want) throw new Error("Rate not found.");
   const sheet = getBook().getSheetByName("Rates");
   if (!sheet || sheet.getLastRow() < 2) throw new Error("Rate not found.");
@@ -192,12 +257,10 @@ function clearFinishedProductionLogs() {
   return clearProductionLogs();
 }
 
-function hourlyRate(byProcess, role, task) {
-  const keys = [role, task, matchTask(task)].filter(Boolean).map((s) => String(s).toLowerCase());
-  for (let i = 0; i < keys.length; i++) {
-    if (byProcess[keys[i]] != null) return byProcess[keys[i]];
-  }
-  return 0;
+function hourlyRate(byEmployee, worker) {
+  const key = String(worker || "").trim().toLowerCase();
+  if (!key) return 0;
+  return byEmployee[key] != null ? byEmployee[key] : 0;
 }
 
 function readSteelUsage() {
@@ -216,6 +279,56 @@ function readSteelUsage() {
   }).filter((row) => row.orderNum);
 }
 
+function readBackboardUsage() {
+  const sheet = getBook().getSheetByName("Backboard_Usage");
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues().map((row) => {
+    const ts = row[0] ? new Date(row[0]) : null;
+    return {
+      timestamp: ts && !isNaN(ts.getTime()) ? ts : null,
+      orderNum: String(row[1] || "").trim(),
+      worker: String(row[2] || "").trim(),
+      process: String(row[3] || "").trim(),
+      type: String(row[4] || "").trim(),
+      size: row[5]
+    };
+  }).filter((row) => row.orderNum);
+}
+
+function readWoodUsage() {
+  const sheet = getBook().getSheetByName("Wood_To_Order");
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const lastCol = Math.max(sheet.getLastColumn(), 11);
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues().map((row) => {
+    const ts = row[1] ? new Date(row[1]) : null;
+    const type = String(row[5] || "").trim();
+    const orderNum = String(row[2] || "").trim();
+    if (!orderNum || !type) return null;
+    return {
+      timestamp: ts && !isNaN(ts.getTime()) ? ts : null,
+      orderNum,
+      worker: String(row[3] || "").trim(),
+      component: String(row[4] || "").trim(),
+      type,
+      thickness: String(row[6] || "").trim(),
+      height: row[7],
+      width: row[8],
+      quantity: row[9],
+      status: String(row[10] || "").trim()
+    };
+  }).filter(Boolean);
+}
+
+function parseSoldAt(order) {
+  const month = String((order && order.month_of_sale) || "").trim();
+  const m = month.match(/^(\d{4})-(\d{2})/);
+  if (m) return sastDate(m[1], m[2], 15, 12, 0, 0);
+  const pay = String((order && order.payment_date) || "").slice(0, 10);
+  const p = pay.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (p) return sastDate(p[1], p[2], p[3], 12, 0, 0);
+  return null;
+}
+
 function orderMeta() {
   const byId = {};
   listOrders().forEach((order) => {
@@ -225,14 +338,15 @@ function orderMeta() {
     byId[id] = {
       product: order.product || "Unknown product",
       sellingPrice: parseMoney(order.price_excl_vat) || 0,
-      img: (found && found.imageUrl) || ""
+      img: (found && found.imageUrl) || "",
+      soldAt: parseSoldAt(order)
     };
   });
   return byId;
 }
 
 function emptyOrder(id, meta) {
-  const info = meta[id] || { product: "Unknown product", sellingPrice: 0, img: "" };
+  const info = meta[id] || { product: "Unknown product", sellingPrice: 0, img: "", soldAt: null };
   const tasks = {};
   TASKS.forEach((t) => { tasks[t] = { h: 0, c: 0 }; });
   return {
@@ -245,13 +359,16 @@ function emptyOrder(id, meta) {
     materialCost: 0,
     glassCost: 0,
     powderCost: 0,
+    woodCost: 0,
+    backboardCost: 0,
     materialEntries: [],
     tasks,
     staff: {},
     warnings: [],
     monthHours: {},
     monthCosts: {},
-    monthMaterials: {}
+    monthMaterials: {},
+    soldAt: info.soldAt || null
   };
 }
 
@@ -273,6 +390,8 @@ function addMaterial(rec, entry) {
   rec.materialCost += entry.cost;
   if (entry.type === "glass") rec.glassCost += entry.cost;
   if (entry.type === "powder") rec.powderCost += entry.cost;
+  if (entry.type === "wood") rec.woodCost += entry.cost;
+  if (entry.type === "backboard") rec.backboardCost += entry.cost;
   if (entry.month && entry.month !== "unknown") {
     rec.monthMaterials[entry.month] = (rec.monthMaterials[entry.month] || 0) + entry.cost;
   }
@@ -320,9 +439,10 @@ function addPowderActuals(order) {
 async function getAppData(query) {
   const q = query || {};
   const range = parseFilterRange(q.mode, q.from || q.value, q.to || q.end);
-  const { byProcess } = readLabourRates();
+  const { byEmployee } = readLabourRates();
   const meta = orderMeta();
   const byId = {};
+  const missingEmployeeRates = {};
 
   function order(id) {
     if (!byId[id]) byId[id] = emptyOrder(id, meta);
@@ -337,11 +457,12 @@ async function getAppData(query) {
     const hours = (Number(log.minutes) || 0) / 60;
     if (!(hours > 0)) return;
     const month = monthKey(start);
-    const rate = hourlyRate(byProcess, log.role, log.task);
+    const rate = hourlyRate(byEmployee, log.worker);
     const cost = hours * rate;
     const rec = order(log.orderNum);
     addHours(rec, month, hours, cost);
     const name = log.worker || "Unknown";
+    if (!(rate > 0) && name && name !== "Unknown") missingEmployeeRates[name] = true;
     if (range.kind === "all" || inRange(start, range)) {
       if (!rec.staff[name]) rec.staff[name] = { h: 0, c: 0 };
       rec.staff[name].h += hours;
@@ -385,6 +506,41 @@ async function getAppData(query) {
 
   addGlassActuals(order);
   addPowderActuals(order);
+
+  readBackboardUsage().forEach((row) => {
+    const ts = row.timestamp;
+    const month = ts ? monthKey(ts) : "unknown";
+    addMaterial(order(row.orderNum), {
+      type: "backboard",
+      item: row.type || "Backboard",
+      qty: String(row.size == null ? "" : row.size),
+      cost: 0,
+      month,
+      rateMissing: true,
+      worker: row.worker,
+      process: row.process
+    });
+  });
+
+  readWoodUsage().forEach((row) => {
+    const ts = row.timestamp;
+    const month = ts ? monthKey(ts) : "unknown";
+    const qty = [row.height, row.width].filter((v) => v !== "" && v != null).join(" × ")
+      + (row.quantity ? " × " + row.quantity : "")
+      + (row.thickness ? " · " + row.thickness : "");
+    addMaterial(order(row.orderNum), {
+      type: "wood",
+      item: [row.type, row.component].filter(Boolean).join(" ") || "Wood",
+      qty,
+      cost: 0,
+      month,
+      rateMissing: true,
+      worker: row.worker,
+      status: row.status
+    });
+  });
+
+  Object.keys(meta).forEach((id) => { order(id); });
 
   const startMonth = range.start ? monthKey(range.start) : "";
 
@@ -459,6 +615,12 @@ async function getAppData(query) {
       Object.keys(monthlyBreakdown).forEach((m) => { if (m < startMonth) pastCosts += monthlyBreakdown[m]; });
     }
 
+    const hasWork = Math.round(fLabor || 0) !== 0 || Math.round(fMat || 0) !== 0 || (fHours || 0) >= 0.05;
+    const hasMaterials = prunedMats.length > 0;
+    const priced = (o.sellingPrice || 0) > 0;
+    const soldInRange = !range.start || inRange(o.soldAt, range);
+    if (!hasWork && !hasMaterials && !(priced && (range.kind === "all" || soldInRange))) return null;
+
     return {
       orderNum: o.orderNum,
       product: o.product,
@@ -472,6 +634,8 @@ async function getAppData(query) {
       glassCost: prunedMats.filter((e) => e.type === "glass").reduce((s, e) => s + (e.cost || 0), 0),
       powderCost: prunedMats.filter((e) => e.type === "powder").reduce((s, e) => s + (e.cost || 0), 0),
       steelCost: prunedMats.filter((e) => e.type === "steel").reduce((s, e) => s + (e.cost || 0), 0),
+      woodCost: prunedMats.filter((e) => e.type === "wood").reduce((s, e) => s + (e.cost || 0), 0),
+      backboardCost: prunedMats.filter((e) => e.type === "backboard").reduce((s, e) => s + (e.cost || 0), 0),
       overheadCost: displayOH,
       materialEntries: prunedMats,
       tasks: o.tasks,
@@ -482,7 +646,7 @@ async function getAppData(query) {
       monthMaterials: prunedMonthMaterials,
       monthlyBreakdown
     };
-  }).filter((o) => Math.round(o.laborCost || 0) !== 0 || Math.round(o.materialCost || 0) !== 0 || (o.totalHours || 0) >= 0.05);
+  }).filter(Boolean);
 
   const staffHours = {};
   orders.forEach((o) => {
@@ -498,13 +662,15 @@ async function getAppData(query) {
     topPerformer: topName,
     warningCount: orders.filter((o) => o.warnings && o.warnings.length).length,
     labourRates: snapshotLabourRates(),
-    steelRates: steelRates.snapshotRates()
+    steelRates: steelRates.snapshotRates(),
+    missingEmployeeRates: Object.keys(missingEmployeeRates)
   };
 }
 
 module.exports = {
   TASKS,
   OVERHEAD_PCT,
+  DEFAULT_EMPLOYEE_RATES,
   parseFilterRange,
   matchTask,
   snapshotLabourRates,
