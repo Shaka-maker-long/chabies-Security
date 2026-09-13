@@ -268,7 +268,7 @@ const ALLOWED = new Set([
   "getActivityReport", "getScheduleBoard", "generateWorkerSchedule", "insertScheduleTask", "clearWorkerScheduleFrom",
   "checkIdleWorkers", "enforceShiftHours", "lazySetup", "getTaskDuration", "getTaskTimeEstimate", "getMyCompletedWork", "updateCompletedSteelUsage",
   "getGlassTypes", "getWoodTypes", "listMaterialsToOrder", "markMaterialOrdered",
-  "listCostingLogs"
+  "listCostingLogs", "markOrderNoPlate"
 ]);
 
 let scriptSource = null;
@@ -370,6 +370,12 @@ async function callShopFunction(fnName, args) {
       } catch (e) {
         return {};
       }
+    },
+    noPlatesIs: function (orderNumber) {
+      return require("./no-plates").isNoPlate(orderNumber);
+    },
+    noPlatesMark: function (orderNumber, actor) {
+      return require("./no-plates").markNoPlate(orderNumber, actor);
     }
   };
 

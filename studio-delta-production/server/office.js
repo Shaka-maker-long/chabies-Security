@@ -174,7 +174,12 @@ function mountOffice(app) {
     }
     const session = staff.createSession(profile);
     res.setHeader("Set-Cookie", officeCookie(session.token));
-    res.json({ ok: true, canManageUsers: staff.canManageUsers(profile), ...session });
+    res.json({
+      ok: true,
+      canManageUsers: staff.canManageUsers(profile),
+      canMarkNoPlate: staff.canMarkNoPlate(profile),
+      ...session
+    });
   });
 
   app.post("/api/office/logout", (req, res) => {
@@ -189,7 +194,13 @@ function mountOffice(app) {
       res.status(401).json({ ok: false, error: "Log in as Admin first." });
       return;
     }
-    res.json({ ok: true, profile: Object.assign({}, profile, { canManageUsers: staff.canManageUsers(profile) }) });
+    res.json({
+      ok: true,
+      profile: Object.assign({}, profile, {
+        canManageUsers: staff.canManageUsers(profile),
+        canMarkNoPlate: staff.canMarkNoPlate(profile)
+      })
+    });
   });
 
   app.get("/api/office/users", requireOffice, (req, res) => {
@@ -548,9 +559,11 @@ function mountOffice(app) {
   });
 
   app.get("/api/office/orders", requireOffice, (_req, res) => {
+    const noPlates = require("./no-plates");
     const rows = listOrders().map((o) => {
       const copy = decorateMoney(o);
       delete copy.payments;
+      copy.no_plate = noPlates.isNoPlate(copy.order_number);
       return copy;
     });
     res.json({
@@ -561,6 +574,7 @@ function mountOffice(app) {
       nextOrderNumber: nextStudioOrderNumber(),
       operators: staff.listUsers().map((u) => u.name).filter(Boolean),
       canManageUsers: staff.canManageUsers(_req.office),
+      canMarkNoPlate: noPlates.canMarkNoPlate(_req.office),
       readyEnquiries: listEnquiriesWaitingForOrders().map((row) => ({
         enquiry_no: row.enquiry_no,
         client_name: row.client_name || "",
@@ -569,6 +583,24 @@ function mountOffice(app) {
         quote_no: row.quote_no || ""
       }))
     });
+  });
+
+  app.post("/api/office/orders/no-plate", requireOffice, (req, res) => {
+    const noPlates = require("./no-plates");
+    if (!noPlates.canMarkNoPlate(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the plate cutter, Manager, or Production Manager can mark no plates." });
+      return;
+    }
+    try {
+      const orderNumber = formatOrderId((req.body && (req.body.order_number || req.body.orderNumber)) || "");
+      if (!orderNumber) throw new Error("Order number is required.");
+      const raw = req.body && (req.body.no_plate != null ? req.body.no_plate : req.body.noPlate);
+      const on = raw === true || raw === "true" || raw === 1 || raw === "yes";
+      const rec = on ? noPlates.markNoPlate(orderNumber, req.office && req.office.name) : noPlates.clearNoPlate(orderNumber);
+      res.json({ ok: true, order_number: orderNumber, no_plate: !!rec.noPlate });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.put("/api/office/orders", requireOffice, (req, res) => {

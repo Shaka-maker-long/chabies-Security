@@ -1018,10 +1018,9 @@ function getOrdersForRole(role, workerName, skipCache) {
   };
 
   var plateCuttingStages = [
-    'not yet started', 
-    'ready for steelwork', 'profile cutting', 
-    'ready for tagging', 'tagging', 
-    'ready for welding', 'welding'
+    'tagging',
+    'ready for welding',
+    'welding'
   ];
 
   for (var i = 1; i < data.length; i++) {
@@ -1042,6 +1041,7 @@ function getOrdersForRole(role, workerName, skipCache) {
     var isBatched = assignment ? assignment.isBatched : false;
 
     if (role === 'Plate Cutting') {
+      if (orderHasNoPlate_(orderNum)) continue;
       var plateInfo = plateMap[String(orderNum)] || emptyPlateStatus();
       var isStageValid = plateCuttingStages.indexOf(mainStatusLower) > -1;
       var isAlreadyActive = plateInfo.status === 'Plate Cutting';
@@ -1629,6 +1629,54 @@ function updateCompletedSteelUsage(workerName, orderNum, process, steelUsageData
   }
 }
 
+function orderHasNoPlate_(orderNum) {
+  try {
+    if (typeof noPlatesIs === "function") return !!noPlatesIs(String(orderNum || ""));
+  } catch (ignoreNoPlate) {}
+  return false;
+}
+
+function userHasPlateCuttingTask_(workerName) {
+  var needle = String(workerName || "").trim().toLowerCase();
+  if (!needle) return false;
+  var ss = getSpreadsheet();
+  var data = getSheetGrid(ss, TAB_USERS, 8);
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0] || "").trim().toLowerCase() !== needle) continue;
+    var parts = String(data[i][3] || "").split(/[,/&+|]+/);
+    for (var p = 0; p < parts.length; p++) {
+      if (canonicalTaskName(parts[p]) === "Plate Cutting") return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+function canActorMarkNoPlate_(workerName) {
+  var profile = getUserProfileByName(workerName);
+  if (!profile) return false;
+  var title = String(profile.jobTitle || profile.role || "").trim().toLowerCase();
+  if (title === "manager" || title === "production manager") return true;
+  if (profile.canManageUsers) return true;
+  return userHasPlateCuttingTask_(workerName);
+}
+
+function markOrderNoPlate(orderNumber, workerName) {
+  try {
+    if (!canActorMarkNoPlate_(workerName)) {
+      return { success: false, error: "Only the plate cutter, Manager, or Production Manager can mark no plates." };
+    }
+    if (typeof noPlatesMark !== "function") {
+      return { success: false, error: "Could not save no plates." };
+    }
+    noPlatesMark(orderNumber, workerName);
+    try { bumpFloorCache(); } catch (ignoreBump) {}
+    return { success: true, order: String(orderNumber || ""), noPlate: true };
+  } catch (e) {
+    return { success: false, error: e.message || String(e) };
+  }
+}
+
 function pollFloor(role, workerName) {
   try { enforceShiftHours(); } catch (ignoreShift) {}
   return {
@@ -1944,6 +1992,14 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
 
       if (role === 'Plate Cutting') {
         var plateInfo = plateMap[String(orderNum)] || emptyPlateStatus();
+        if (orderHasNoPlate_(orderNum)) {
+          return { success: false, message: "This order has no plates." };
+        }
+        var plateStatusLower = String(currentStatus || "").trim().toLowerCase();
+        var plateStageOk = plateStatusLower === "tagging" || plateStatusLower === "ready for welding" || plateStatusLower === "welding";
+        if (!plateStageOk && plateInfo.status !== "Plate Cutting") {
+          return { success: false, message: "Plate cutting is only for Tagging, Ready for Welding, and Welding." };
+        }
         if (plateInfo.assigned !== "" && plateInfo.assigned !== workerName && !workLocksDisabled()) {
           throw new Error("Plate Cutting is already being done by " + plateInfo.assigned);
         }
