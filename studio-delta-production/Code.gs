@@ -1134,10 +1134,9 @@ function applyPlanningHints_(role, orders) {
     var hint = hintFor(o.order);
     o.delivery_day = hint.deliveryDay || "";
     o.delivery_code = hint.deliveryCode || "";
-    if (!o.assigned && hint.worker) {
-      o.assigned = hint.worker;
-      o.planned = true;
-    }
+    o.plannedWorker = hint.worker || "";
+    o.planned = !!hint.worker;
+    // Planning names stay on Available. In Progress is only a live clock.
   }
   orders.sort(function (a, b) {
     var da = a.delivery_day || "9999-99-99";

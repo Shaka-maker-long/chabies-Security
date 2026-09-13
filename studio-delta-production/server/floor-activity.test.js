@@ -32,7 +32,7 @@ staff.setDurations([
 
 db.upsertOrder({
   order_number: "S260801",
-  status: "Welding",
+  status: "Ready for Welding",
   product: "Air Chair",
   client_name: "Late"
 });
@@ -69,8 +69,8 @@ clearShopCache();
   assert.ok(ids.indexOf("S260801") !== -1, "later due order stays on Welding");
   assert.ok(ids.indexOf("S260802") < ids.indexOf("S260801"), "due-first order is listed first: " + ids.join(","));
   const earlyCard = orders.find((o) => String(o.order) === "S260802");
-  assert.strictEqual(earlyCard.assigned, "Willard");
-  assert.ok(earlyCard.planned || earlyCard.assigned === "Willard", "assigned person sees the job as theirs");
+  assert.ok(!earlyCard.assigned, "Ready/Welding without a live clock stays off In Progress");
+  assert.strictEqual(earlyCard.plannedWorker, "Willard");
   assert.strictEqual(earlyCard.delivery_code, "LD");
   console.log("floor-activity.test.js ok");
 })().catch((e) => {
