@@ -1151,21 +1151,6 @@ function floorActivityHints(role) {
   return out;
 }
 
-function advanceAssignedCurrentProcess(orderIds) {
-  const db = require("./db");
-  const store = load();
-  (orderIds || []).forEach((raw) => {
-    const order = findOrder(raw);
-    if (!order) return;
-    const remaining = remainingPlanForStatus(order.status);
-    const first = remaining.processes[0];
-    if (!first || first === "Plate Cutting") return;
-    const who = plannedWorkerForProcess(store, order.order_number, first);
-    if (!who) return;
-    if (String(order.status || "").trim() === first) return;
-    db.upsertOrder(Object.assign({}, order, { status: first }));
-  });
-}
 
 function scheduleSelected(body) {
   const ids = Array.isArray(body && body.orderIds) ? body.orderIds.map(formatOrderId).filter(Boolean) : [];
@@ -1190,7 +1175,6 @@ function scheduleSelected(body) {
     store.assignments[id] = Object.assign({}, store.assignments[id] || {}, assignments[id] || {});
   });
   save(store);
-  advanceAssignedCurrentProcess(ids);
   return { blocks: created, count: created.length };
 }
 
@@ -1260,7 +1244,6 @@ function autoPlanFromDeliveries(opts) {
   }
   store.blocks = keep.concat(created);
   save(store);
-  advanceAssignedCurrentProcess(ids);
   return { count: created.length, orders: jobs.length };
 }
 
@@ -1825,6 +1808,5 @@ module.exports = {
   productImageUrl,
   remainingPlanForStatus,
   QUEUE_STATUSES,
-  floorActivityHints,
-  advanceAssignedCurrentProcess
+  floorActivityHints
 };

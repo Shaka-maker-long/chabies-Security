@@ -676,7 +676,7 @@ assert.ok(officeJs.indexOf("/api/office/planning/other") !== -1);
 assert.ok(planningHtml.indexOf("Add hours on Task times first, then schedule") !== -1);
 assert.ok(planningHtml.indexOf("Not Yet Started") !== -1);
 assert.ok(planningHtml.indexOf("Ready for Steelwork") !== -1);
-assert.ok(planningHtml.indexOf("station they are on now") !== -1, "Planning must book the current in-progress station");
+assert.ok(planningHtml.indexOf("Ready for Welding stays on Available") !== -1, "Ready jobs must not sit in In Progress");
 assert.ok(planningHtml.indexOf("can still skip") !== -1, "activity lists stay due-first but people can skip");
 assert.ok(planningHtml.indexOf("Paint shop") !== -1 || planningHtml.indexOf("paintShop") !== -1);
 assert.ok(planningHtml.indexOf("Office schedule") === -1);

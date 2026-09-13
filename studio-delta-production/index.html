@@ -4554,7 +4554,7 @@
             syncCardCountdown(liveCard, o);
             syncCardProductShot(liveCard, o);
             // Move card to correct container if assignment changed
-            const showInProgress = isMine || (o.status === 'In Progress' && !isLocked);
+            const showInProgress = isMine;
             const targetContainer = showInProgress ? pr : av;
             const currentContainer = liveCard.closest('#container-available, #container-progress');
             if (currentContainer && currentContainer !== targetContainer) {
@@ -4605,7 +4605,7 @@
               </div>`;
             }
 
-            const showInProgress = isMine || (o.status === 'In Progress' && !isLocked);
+            const showInProgress = isMine;
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = html;
             const newEl = tempDiv.firstElementChild;
@@ -4617,7 +4617,7 @@
           orders.forEach((o) => {
             const isMine = o.assigned === session.name;
             const isLocked = !WORK_LOCKS_DISABLED && o.assigned && !isMine;
-            const showInProgress = isMine || (o.status === 'In Progress' && !isLocked);
+            const showInProgress = isMine;
             if (!!showInProgress !== !!wantProgress) return;
             const liveCard = document.getElementById('card-' + o.rowIndex);
             const wrap = liveCard && (liveCard.closest('.checkbox-wrapper-16') || liveCard);
