@@ -1,0 +1,125 @@
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const assert = require("assert");
+
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sd-idle-"));
+process.env.DATA_DIR = dir;
+process.env.OFFICE_DB_PATH = path.join(dir, "studio-delta.json");
+process.env.TZ = "Africa/Johannesburg";
+delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
+
+const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
+const staff = require("./staff");
+const { callShopFunction, clearShopCache } = require("./gas");
+const { coerceRead } = require("./sheets");
+
+initWorkbook();
+
+staff.upsertUser({
+  name: "Siya",
+  access: "Admin",
+  role: "Admin",
+  password: "siya",
+  seeDebtors: "Yes"
+});
+staff.upsertUser({
+  name: "Site Manager",
+  access: "Admin",
+  role: "Manager",
+  password: "mgr",
+  seeDebtors: "Yes"
+});
+staff.upsertUser({
+  name: "Uriah",
+  access: "Production",
+  role: "Assembler",
+  password: "1234",
+  tasks: ["Assembly"]
+});
+staff.upsertUser({
+  name: "Willard",
+  access: "Production",
+  role: "Welder",
+  password: "1234",
+  tasks: ["Welding"]
+});
+
+function todayStamp() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Johannesburg",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+}
+
+function idleSheet() {
+  return getBook().getSheetByName("Idle_Alerts");
+}
+
+function openHole(worker, dateCell) {
+  const sheet = idleSheet();
+  sheet.appendRow([
+    dateCell,
+    worker,
+    "Assembler",
+    new Date("2026-09-14T06:03:00.000Z"),
+    new Date("2026-09-14T06:18:00.000Z"),
+    "Open",
+    "",
+    "",
+    ""
+  ]);
+  persistWorkbook();
+}
+
+(async function main() {
+  const today = todayStamp();
+  openHole("Uriah", today);
+
+  const blocked = await callShopFunction("assignIndirectTask", [
+    "Uriah", "Other", "Willard", "wrapping order S260200"
+  ]);
+  assert.strictEqual(blocked.success, false);
+  assert.ok(/Siya or the Manager/i.test(blocked.message), JSON.stringify(blocked));
+
+  const missingNote = await callShopFunction("assignIndirectTask", [
+    "Uriah", "Other", "Siya", ""
+  ]);
+  assert.strictEqual(missingNote.success, false);
+
+  const listed = await callShopFunction("getIdleWorkers", []);
+  assert.ok((listed.workers || []).some((w) => w.worker === "Uriah"), JSON.stringify(listed));
+
+  const saved = await callShopFunction("assignIndirectTask", [
+    "Uriah", "Other", "Siya", "wrapping order S260200"
+  ]);
+  assert.strictEqual(saved.success, true, JSON.stringify(saved));
+  assert.ok(String(saved.task).indexOf("wrapping order S260200") !== -1);
+
+  const after = await callShopFunction("getIdleWorkers", []);
+  assert.ok(!(after.workers || []).some((w) => w.worker === "Uriah"), "assigned idle hole must leave the list");
+
+  const logs = getBook().getSheetByName("Production_Log").getDataRange().getValues();
+  const indirect = logs.find((row) => String(row[1]) === "INDIRECT" && String(row[2]) === "Uriah");
+  assert.ok(indirect, "Other task must write an indirect production log");
+  assert.ok(String(indirect[4]).indexOf("wrapping order S260200") !== -1);
+
+  clearShopCache();
+  openHole("Uriah", coerceRead(today));
+  const listedDate = await callShopFunction("getIdleWorkers", []);
+  assert.ok((listedDate.workers || []).some((w) => w.worker === "Uriah"), "Date cells must still count as today");
+  const savedDate = await callShopFunction("assignIndirectTask", [
+    "Uriah", "Cleaning", "Site Manager", ""
+  ]);
+  assert.strictEqual(savedDate.success, true, JSON.stringify(savedDate));
+  const gone = await callShopFunction("getIdleWorkers", []);
+  assert.ok(!(gone.workers || []).some((w) => w.worker === "Uriah"));
+
+  console.log("idle-assign.test.js ok");
+})().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

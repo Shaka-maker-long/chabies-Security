@@ -4591,13 +4591,26 @@ function lastActivityMs(logs, workerName) {
   return latest;
 }
 
+function idleDayStamp(value) {
+  if (value instanceof Date && !isNaN(value.getTime())) return sastDayStamp(value);
+  var s = String(value == null ? "" : value).trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) return sastDayStamp(d);
+  return s;
+}
+
+function idleRowIsOpenToday(row, today) {
+  today = today || sastDayStamp(new Date());
+  return idleDayStamp(row && row[0]) === today && String((row && row[5]) || "").toLowerCase() === "open";
+}
+
 function alreadyAlertedToday(idleSheet, workerName) {
   var today = sastDayStamp(new Date());
   var data = idleSheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).trim() === String(workerName).trim() &&
-        String(data[i][0]) === today &&
-        String(data[i][5]).toLowerCase() === "open") {
+    if (String(data[i][1]).trim() === String(workerName).trim() && idleRowIsOpenToday(data[i], today)) {
       return true;
     }
   }
@@ -4625,8 +4638,7 @@ function stampOpenIdleUntil(idleSheet, logs, workerName, now) {
   var data = idleSheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
     if (String(data[i][1]).trim() !== String(workerName).trim()) continue;
-    if (String(data[i][0]) !== today) continue;
-    if (String(data[i][5]).toLowerCase() !== "open") continue;
+    if (!idleRowIsOpenToday(data[i], today)) continue;
     if (data[i][7]) continue;
     idleSheet.getRange(i + 1, 8).setValue(new Date(until));
   }
@@ -4872,7 +4884,7 @@ function getIdleWorkers() {
   var today = sastDayStamp(new Date());
   var list = [];
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === today && String(data[i][5]).toLowerCase() === "open") {
+    if (idleRowIsOpenToday(data[i], today)) {
       list.push({
         row: i + 1,
         worker: data[i][1],
@@ -4931,61 +4943,66 @@ function assignIndirectTask(workerName, taskName, assignedBy, taskNote) {
   if (task.toLowerCase() === "other" && !note) {
     return { success: false, message: "If it is Other, specify what they did." };
   }
-  var label = task.toLowerCase() === "other" ? ("Other — " + note) : task;
-  var ss = getSpreadsheet();
-  var logSheet = getSheetOrDie(ss, TAB_LOGS);
-  var logs = getLogPack(ss).values;
-  var idleSheet = getIdleAlertSheet(ss);
-  var data = idleSheet.getDataRange().getValues();
-  var today = sastDayStamp(new Date());
-  var holeStart = null;
-  var holeEnd = null;
-  var r;
-  for (r = 1; r < data.length; r++) {
-    if (String(data[r][1]).trim() === String(workerName).trim() &&
-        String(data[r][0]) === today &&
-        String(data[r][5]).toLowerCase() === "open") {
-      holeStart = data[r][3] ? new Date(data[r][3]) : null;
-      holeEnd = data[r][7] ? new Date(data[r][7]) : null;
-      break;
+  try {
+    var label = task.toLowerCase() === "other" ? ("Other — " + note) : task;
+    var ss = getSpreadsheet();
+    var logSheet = getSheetOrDie(ss, TAB_LOGS);
+    var logs = getLogPack(ss).values;
+    var idleSheet = getIdleAlertSheet(ss);
+    var data = idleSheet.getDataRange().getValues();
+    var today = sastDayStamp(new Date());
+    var holeStart = null;
+    var holeEnd = null;
+    var found = false;
+    var r;
+    for (r = 1; r < data.length; r++) {
+      if (String(data[r][1]).trim() === String(workerName).trim() && idleRowIsOpenToday(data[r], today)) {
+        holeStart = data[r][3] ? new Date(data[r][3]) : null;
+        holeEnd = data[r][7] ? new Date(data[r][7]) : null;
+        found = true;
+        break;
+      }
     }
-  }
-  var now = new Date();
-  var live = workerHasRunningJob(logs, workerName);
-  if (!live) closeIndirectTasksForWorker(ss, workerName);
-
-  var uniqueId = Utilities.getUuid();
-  var meta = defaultLogMeta();
-  meta.entryType = "indirect";
-  meta.idleFill = true;
-  logSheet.appendRow([
-    uniqueId,
-    "INDIRECT",
-    workerName,
-    "Indirect",
-    label,
-    holeStart || now,
-    live || holeEnd ? (holeEnd || now) : "",
-    "",
-    "",
-    "",
-    "",
-    "",
-    JSON.stringify(meta)
-  ]);
-
-  for (r = 1; r < data.length; r++) {
-    if (String(data[r][1]).trim() === String(workerName).trim() &&
-        String(data[r][0]) === today &&
-        String(data[r][5]).toLowerCase() === "open") {
-      idleSheet.getRange(r + 1, 6).setValue("Assigned");
-      idleSheet.getRange(r + 1, 7).setValue(label);
-      if (!data[r][7]) idleSheet.getRange(r + 1, 8).setValue(holeEnd || now);
-      idleSheet.getRange(r + 1, 9).setValue(note);
+    if (!found) {
+      return { success: false, message: "No open idle hole for " + workerName + " today." };
     }
+    var now = new Date();
+    var live = workerHasRunningJob(logs, workerName);
+    if (!live) closeIndirectTasksForWorker(ss, workerName);
+
+    var uniqueId = Utilities.getUuid();
+    var meta = defaultLogMeta();
+    meta.entryType = "indirect";
+    meta.idleFill = true;
+    logSheet.appendRow([
+      uniqueId,
+      "INDIRECT",
+      workerName,
+      "Indirect",
+      label,
+      holeStart || now,
+      live || holeEnd ? (holeEnd || now) : "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      JSON.stringify(meta)
+    ]);
+
+    for (r = 1; r < data.length; r++) {
+      if (String(data[r][1]).trim() === String(workerName).trim() && idleRowIsOpenToday(data[r], today)) {
+        idleSheet.getRange(r + 1, 6).setValue("Assigned");
+        idleSheet.getRange(r + 1, 7).setValue(label);
+        if (!data[r][7]) idleSheet.getRange(r + 1, 8).setValue(holeEnd || now);
+        idleSheet.getRange(r + 1, 9).setValue(note);
+      }
+    }
+    bumpFloorCache();
+    return { success: true, worker: workerName, task: label };
+  } catch (e) {
+    return { success: false, message: (e && e.message) ? e.message : "Assign failed" };
   }
-  bumpFloorCache();
-  return { success: true };
 }
 
 function getActivityReport(period, refDateMs, workerFilter) {
