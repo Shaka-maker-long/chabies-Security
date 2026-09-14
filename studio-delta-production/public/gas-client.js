@@ -27,6 +27,7 @@
           var args = Array.prototype.slice.call(arguments);
           fetch("/api/run", {
             method: "POST",
+            credentials: "same-origin",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ fn: prop, args: args })
           })

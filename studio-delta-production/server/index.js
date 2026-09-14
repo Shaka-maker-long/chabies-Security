@@ -238,6 +238,7 @@ try {
   console.error("[boot] Outlook add-in failed", e && e.stack ? e.stack : e);
 }
 app.get("/", (_req, res) => {
+  noStore(res);
   res.sendFile(indexHtml);
 });
 

@@ -2240,6 +2240,7 @@
         </div>
         <div class="modal-body p-3">
           <div id="idleAlertList"></div>
+          <p class="small mb-0 mt-2" id="idlePopupAssignMsg" role="status"></p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" onclick="dismissIdleAlertModal()">Later</button>
@@ -2321,6 +2322,7 @@
                 var args = Array.prototype.slice.call(arguments);
                 fetch("/api/run", {
                   method: "POST",
+                  credentials: "same-origin",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ fn: prop, args: args })
                 })
@@ -2750,6 +2752,7 @@
           isAdmin: session.isAdmin,
           canSeeOffice: session.canSeeOffice,
           canSeeDebtors: session.canSeeDebtors,
+          canSeeIdleAlerts: !!session.canSeeIdleAlerts,
           canManageUsers: session.canManageUsers,
           access: session.access,
           isQcOnly: session.isQcOnly,
@@ -3116,11 +3119,13 @@
       session.isAdmin = !!res.isAdmin;
       session.canSeeOffice = !!res.canSeeOffice;
       session.canSeeDebtors = !!res.canSeeDebtors;
+      session.canSeeIdleAlerts = !!res.canSeeIdleAlerts;
       session.canManageUsers = !!res.canManageUsers;
       try {
         const office = JSON.parse(sessionStorage.getItem('sd-office') || 'null');
         if (office && (office.jobTitle || office.role)) session.jobTitle = office.jobTitle || office.role;
         if (office && office.canManageUsers) session.canManageUsers = true;
+        if (office && office.canSeeIdleAlerts) session.canSeeIdleAlerts = true;
       } catch (e) {}
       session.access = res.access || (session.canSeeOffice ? 'Admin' : 'Production');
       session.isQcOnly = !!res.isQcOnly;
@@ -3909,14 +3914,20 @@
       return fetch('/api/office/logout', { method: 'POST', credentials: 'same-origin' }).catch(function () {});
     }
     function adoptSavedSession() {
+      let office = null;
+      try { office = JSON.parse(sessionStorage.getItem('sd-office') || 'null'); } catch (e) {}
+      const view = requestedView();
+      const shopOfficeView = view === 'workers' || view === 'production' || view === 'metrics' || view === 'qc' || view === 'activity' || view === 'schedule' || view === 'production-tasks';
+      if (shopOfficeView && officeLooksLoggedIn(office)) {
+        applyLoginProfile(Object.assign({ success: true, canSeeOffice: true }, office));
+        return true;
+      }
       let floor = null;
       try { floor = JSON.parse(sessionStorage.getItem('sd-session') || 'null'); } catch (e) {}
       if (floor && floor.name) {
         applyLoginProfile(floor);
         return true;
       }
-      let office = null;
-      try { office = JSON.parse(sessionStorage.getItem('sd-office') || 'null'); } catch (e) {}
       if (officeLooksLoggedIn(office)) {
         applyLoginProfile(Object.assign({ success: true, canSeeOffice: true }, office));
         return true;
@@ -8186,14 +8197,14 @@
         ? 'was idle ' + since + '–' + until + ' — now on a job'
         : 'idle since ' + since;
       const nameAttr = String(w.worker || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-      const nameJs = JSON.stringify(String(w.worker || ''));
       return `<div class="d-flex flex-wrap gap-2 align-items-center mb-2" data-idle-worker="${nameAttr}">
             <strong>${nameAttr}</strong>
             <span class="badge bg-light text-dark border">${w.role || ''}</span>
             <span class="small text-muted">${when}</span>
             <select class="form-select form-select-sm" style="max-width:220px" id="${idPrefix}${w.row}" onchange="toggleIdleOther('${idPrefix}', ${w.row})">${opts}</select>
             <input class="form-control form-control-sm" style="max-width:220px;display:none" id="${idPrefix}note-${w.row}" placeholder="If Other, specify what they did">
-            <button type="button" class="btn btn-sm btn-dark" data-idle-assign="${nameAttr}" onclick="assignIdleTask(${nameJs}, ${w.row}, '${idPrefix}', this)">ASSIGN TASK</button>
+            <button type="button" class="btn btn-sm btn-dark" data-idle-assign="1" data-idle-worker="${nameAttr}" data-idle-row="${w.row}" data-idle-prefix="${idPrefix}">ASSIGN TASK</button>
+            <span class="small idle-row-msg" data-idle-msg></span>
           </div>`;
     }
 
@@ -8204,12 +8215,36 @@
       note.style.display = String(sel.value || '').toLowerCase() === 'other' ? '' : 'none';
     }
 
+    function idleManagerTitle(title) {
+      const t = String(title || '').trim().toLowerCase();
+      return t === 'manager' || t === 'production manager' || t === 'site manager';
+    }
+
     function sessionSeesIdleAlerts() {
       if (!session.name) return false;
       if (session.canSeeIdleAlerts) return true;
-      const title = String(session.jobTitle || session.role || '').trim().toLowerCase();
-      if (title === 'manager') return true;
+      if (idleManagerTitle(session.jobTitle || session.role)) return true;
       return String(session.name || '').trim().toLowerCase() === 'siya';
+    }
+
+    function idleAssignerName() {
+      try {
+        const office = JSON.parse(sessionStorage.getItem('sd-office') || 'null');
+        if (office && office.name && (office.canSeeOffice || office.isAdmin || office.canSeeIdleAlerts)) {
+          return String(office.name).trim();
+        }
+      } catch (e) {}
+      return String(session.name || '').trim();
+    }
+
+    function idleAssignBusy() {
+      return !!document.querySelector('[data-idle-assign][disabled]');
+    }
+
+    function idleAssignFormDirty() {
+      const el = document.activeElement;
+      if (!el || !el.closest) return false;
+      return !!el.closest('#idleWorkersList, #idleAlertList');
     }
 
     function startIdleAlertPolling() {
@@ -8238,7 +8273,7 @@
         const tasks = (res && res.tasks) || [];
         const workersPage = document.getElementById('idleWorkersList');
         if (workersPage && document.getElementById('view-admin-workers') && !document.getElementById('view-admin-workers').classList.contains('d-none-view')) {
-          loadIdleWorkers();
+          if (!idleAssignBusy() && !idleAssignFormDirty()) loadIdleWorkers();
         }
         showIdleAlertPopup(workers, tasks);
       }).withFailureHandler(() => {}).pollIdleAlerts(session.name);
@@ -8268,51 +8303,64 @@
       if (idleAlertModal) idleAlertModal.hide();
     }
 
-    function setIdleAssignMsg(text, isError) {
-      const el = document.getElementById('idleAssignMsg');
-      if (el) {
-        el.className = 'small mb-0 ' + (isError ? 'text-danger' : 'text-success');
+    function setIdleAssignMsg(text, isError, btn) {
+      const rowMsg = btn && btn.parentElement ? btn.parentElement.querySelector('[data-idle-msg]') : null;
+      const els = [
+        document.getElementById('idleAssignMsg'),
+        document.getElementById('idlePopupAssignMsg'),
+        rowMsg
+      ];
+      els.forEach((el) => {
+        if (!el) return;
+        el.className = (el === rowMsg ? 'small idle-row-msg ' : 'small mb-0 ') + (isError ? 'text-danger' : 'text-success');
         el.textContent = text || '';
-      }
-      if (text && isError) showAlert(text);
+      });
     }
 
-    function assignIdleTask(worker, row, idPrefix, btn) {
-      const prefix = idPrefix || 'idle-task-';
+    function assignIdleTask(btn) {
+      if (!btn || !btn.getAttribute) return;
+      const worker = btn.getAttribute('data-idle-worker') || '';
+      const row = Number(btn.getAttribute('data-idle-row') || 0);
+      const prefix = btn.getAttribute('data-idle-prefix') || 'idle-task-';
       const sel = document.getElementById(prefix + row);
       const noteEl = document.getElementById(prefix + 'note-' + row);
       const task = sel ? sel.value : 'Other';
       const note = noteEl ? String(noteEl.value || '').trim() : '';
-      if (String(task).toLowerCase() === 'other' && !note) {
-        setIdleAssignMsg('If it is Other, specify what they did.', true);
+      const assignedBy = idleAssignerName();
+      if (!assignedBy) {
+        setIdleAssignMsg('Log in as Siya or the Manager first.', true, btn);
         return;
       }
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Saving…';
+      if (String(task).toLowerCase() === 'other' && !note) {
+        setIdleAssignMsg('If it is Other, specify what they did.', true, btn);
+        return;
       }
-      setIdleAssignMsg('Saving ' + worker + '…');
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+      setIdleAssignMsg('Saving ' + worker + '…', false, btn);
       google.script.run.withSuccessHandler(res => {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'ASSIGN TASK';
-        }
+        btn.disabled = false;
+        btn.textContent = 'ASSIGN TASK';
         if (!res || !res.success) {
-          setIdleAssignMsg((res && res.message) || 'Assign failed', true);
+          setIdleAssignMsg((res && res.message) || 'Assign failed', true, btn);
           return;
         }
-        setIdleAssignMsg('Saved — ' + worker + ' · ' + (String(task).toLowerCase() === 'other' ? note : task));
+        setIdleAssignMsg('Saved — ' + worker + ' · ' + (String(task).toLowerCase() === 'other' ? note : task), false, btn);
         loadIdleWorkers();
         pollIdleAlertsNow();
       }).withFailureHandler(err => {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'ASSIGN TASK';
-        }
-        setIdleAssignMsg(err || 'Assign failed', true);
-      }).assignIndirectTask(worker, task, session.name, note);
+        btn.disabled = false;
+        btn.textContent = 'ASSIGN TASK';
+        setIdleAssignMsg(err || 'Assign failed', true, btn);
+      }).assignIndirectTask(worker, task, assignedBy, note, row);
     }
     window.assignIdleTask = assignIdleTask;
+    document.addEventListener('click', function (e) {
+      const btn = e.target && e.target.closest && e.target.closest('[data-idle-assign]');
+      if (!btn) return;
+      e.preventDefault();
+      assignIdleTask(btn);
+    });
 
     let activityLoadTimer = null;
     let fillingActivityWorkers = false;

@@ -369,6 +369,8 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   assert.strictEqual(staff.canSeeIdleAlerts(siya), true);
   assert.strictEqual(staff.isProductionFloorUser(siya), false);
   assert.strictEqual(staff.canSeeIdleAlerts({ name: "QC Pat", role: "Quality Control", access: "Production" }), false);
+  assert.strictEqual(staff.canSeeIdleAlerts({ name: "Sipho", jobTitle: "Production Manager", role: "Production Manager", access: "Admin" }), true);
+  assert.strictEqual(staff.canSeeIdleAlerts({ name: "Shabana", jobTitle: "Clients Relations Manager", access: "Admin" }), false);
 
   const bossPut = await fetch(base + "/api/office/users", {
     method: "PUT",
