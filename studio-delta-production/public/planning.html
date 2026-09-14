@@ -124,6 +124,14 @@
     table.grid td.slot { min-width:52px; padding:4px 2px; font-weight:700; }
     table.grid .chip { display:inline-block; min-width:22px; padding:2px 6px; border-radius:4px; border:1px solid transparent; cursor:grab; }
     table.grid .chip.actual { cursor:default; }
+    table.grid .chip.paused {
+      cursor: default;
+      background: repeating-linear-gradient(-45deg, #e4e7ec, #e4e7ec 3px, #f8fafc 3px, #f8fafc 7px) !important;
+      color: #475467 !important;
+      border-color: #667085 !important;
+      border-style: dashed;
+      font-weight: 700;
+    }
     table.grid .chip.other-actual { cursor:pointer; }
     table.grid tr.order-start td { border-top:2px solid #d0d5dd; }
     table.grid tr.actual td { background:#f8fafc; }
@@ -382,12 +390,15 @@
       }
       const processes = (board && board.processes ? board.processes.slice() : []).concat(["Powder coating"]);
       const bands = (board && board.bands) || [];
+      const extra = view === "journey"
+        ? "<span><i style='background:repeating-linear-gradient(-45deg,#e4e7ec,#e4e7ec 3px,#f8fafc 3px,#f8fafc 7px);border-color:#667085'></i>Paused actual //</span>"
+        : "";
       box.innerHTML = processes.map((p) => {
         const c = color(p);
         return "<span><i style='background:" + c.bg + ";border-color:" + c.border + "'></i>" + esc(p) + "</span>";
       }).concat(view === "people" ? bands.map((b) => {
         return "<span><i style='background:" + b.bg + "'></i>" + esc(b.label) + "</span>";
-      }).concat(["<span><i style='background:" + color("", "other").bg + ";border-color:" + color("", "other").border + "'></i>Other task</span>"]) : []).join("");
+      }).concat(["<span><i style='background:" + color("", "other").bg + ";border-color:" + color("", "other").border + "'></i>Other task</span>"]) : []).join("") + extra;
     }
     function renderQueue() {
       const q = String(document.getElementById("q").value || "").trim().toLowerCase();
@@ -455,28 +466,71 @@
     }
     function chipHtml(item) {
       const other = !!(item.otherDetail || item.code === "O");
-      const c = color(item.process, other ? "other" : "");
+      const paused = !!item.paused;
+      const c = paused ? { bg: "#e4e7ec", fg: "#475467", border: "#667085" } : color(item.process, other ? "other" : "");
       const actual = item.kind === "actual";
       const blockAttr = actual || !item.blockId ? "" : " data-block=\"" + esc(item.blockId) + "\"";
       const kind = actual ? "actual" : "work";
-      const title = other
+      const title = paused
+        ? "Paused · " + (item.process || "") + (item.reason ? " · " + item.reason : "") + (item.workerName ? " · " + item.workerName : "")
+        : other
         ? "O · click for what was done" + (item.workerName ? " · " + item.workerName : "")
         : item.process + " · " + (actual ? "Actual" : "Plan") + (item.workerName ? " · " + item.workerName : "");
       const otherAttr = item.otherDetail
         ? " data-other=\"" + esc(JSON.stringify(item.otherDetail)) + "\""
         : "";
-      return "<span class='chip" + (actual ? " actual" : "") + (other ? " other-actual" : "") + "'" + blockAttr + otherAttr + " data-kind='" + kind + "' title=\"" + esc(title) + "\" style='background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" + esc(item.code) + "</span>";
+      const code = paused ? "//" : item.code;
+      return "<span class='chip" + (actual ? " actual" : "") + (paused ? " paused" : "") + (other ? " other-actual" : "") + "'" + blockAttr + otherAttr + " data-kind='" + kind + "' title=\"" + esc(title) + "\" style='background:" + c.bg + ";color:" + c.fg + ";border-color:" + c.border + "'>" + esc(code) + "</span>";
     }
     function chipFromPair(pair, seg) {
       const src = pair.kind === "actual" ? (pair.row.actual || {}) : pair.row;
+      const paused = !!(seg && seg.kind === "pause");
       return chipHtml({
         code: pair.row.code || codeOf(pair.row.process),
         process: pair.row.process,
         blockId: pair.kind === "actual" ? "" : ((seg && seg.blockId) || pair.row.blockId),
         workerName: src.workerName || pair.person.name,
         kind: pair.kind,
-        otherDetail: pair.row.otherDetail
+        otherDetail: pair.row.otherDetail,
+        paused: paused,
+        reason: paused ? (seg.reason || "") : ""
       });
+    }
+    function actualBoutsOnDay(row, dayIso) {
+      const act = (row && row.actual) || {};
+      const bouts = act.bouts || [];
+      if (bouts.length) return bouts.filter((bout) => srcCoversDay(bout, dayIso));
+      if ((act.days || []).indexOf(dayIso) !== -1 || srcCoversDay(act, dayIso)) {
+        return [{ start: act.start, end: act.end, kind: "work" }];
+      }
+      return [];
+    }
+    function actualChipsForDay(pair, dayIso) {
+      const bouts = actualBoutsOnDay(pair.row, dayIso);
+      if (!bouts.length) return "";
+      const hasWork = bouts.some((b) => b.kind !== "pause");
+      const pause = bouts.find((b) => b.kind === "pause");
+      let html = "";
+      if (hasWork) html += chipFromPair(pair);
+      if (pause) html += chipFromPair(pair, pause);
+      return html;
+    }
+    function coveringActualBout(row, dayIso, min) {
+      const act = (row && row.actual) || {};
+      const bouts = act.bouts || [];
+      if (bouts.length) return bouts.find((bout) => srcCoversSlot(bout, dayIso, min)) || null;
+      if (srcCoversSlot(act, dayIso, min)) return { start: act.start, end: act.end, kind: "work" };
+      return null;
+    }
+    function srcCoversDay(src, dayIso) {
+      if (!src || !src.start) return false;
+      const startIso = dateOf(src.start);
+      const endIso = dateOf(src.end);
+      const days = src.days || [];
+      if (days.length) return days.indexOf(dayIso) !== -1;
+      if (dayIso < startIso || dayIso > endIso) return false;
+      if (endIso === dayIso && minutesOf(src.end) === 0 && startIso !== dayIso) return false;
+      return true;
     }
     function processRank(process) {
       const list = ((board && board.processes) || []).concat(["Powder coating"]);
@@ -491,7 +545,7 @@
       items.sort((a, b) => processRank(a.process) - processRank(b.process) || String(a.start || "").localeCompare(String(b.start || "")));
       return items.map((row) => {
         const src = kind === "actual" ? (row.actual || {}) : row;
-        return chipHtml({
+        let html = chipHtml({
           code: row.code || codeOf(row.process),
           process: row.process,
           blockId: kind === "actual" ? "" : row.blockId,
@@ -499,6 +553,22 @@
           kind: kind,
           otherDetail: row.otherDetail
         });
+        if (kind === "actual") {
+          const pause = ((row.actual && row.actual.bouts) || []).find((bout) =>
+            bout.kind === "pause" && weekIsos.some((iso) => srcCoversDay(bout, iso))
+          );
+          if (pause) {
+            html += chipHtml({
+              code: row.code || codeOf(row.process),
+              process: row.process,
+              workerName: src.workerName || row.workerName,
+              kind: "actual",
+              paused: true,
+              reason: pause.reason || ""
+            });
+          }
+        }
+        return html;
       }).join("");
     }
     function weekKindEntries(orders, isos) {
@@ -853,7 +923,7 @@
         return pairRow(entries, i, cells, { names: false });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. O is an idle / other actual — click O for who, the slot, and what they did. On this week grid each order has one Plan row and one Actual row — tasks stay together. Letters for that week sit in the same cell (C T P W), not on separate task rows. Plan is the booked slot. Actual is the production clock — if Cutting ran in week 2, the C sits on Actual in that week. Empty Actual means it has not been clocked yet. Use Both, Planned, or Actual to show one or both. The frozen Order column is the number and the product. Hover the product name for the catalog photo. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
+        "<p class='help'>C profile cutting, T tagging, P plate, W welding, G grinding, PC paint shop, A assembly. O is an idle / other actual — click O for who, the slot, and what they did. On this week grid each order has one Plan row and one Actual row — tasks stay together. Letters for that week sit in the same cell (C T P W), not on separate task rows. Plan is the booked slot. Actual is the production clock on the day it ran — if you booked Monday and clocked today, the letter sits on Actual today. // is paused clock time; after resume the process letter continues. Empty Actual means it has not been clocked yet. Use Both, Planned, or Actual to show one or both. The frozen Order column is the number and the product. Hover the product name for the catalog photo. Twenty shop weeks from This week, not Week 1 / 2 / 3. Orders are listed by who starts first. Names are not on this view — they show on the day grid and the 15-minute grid. Click a week for Monday–Friday. Click an order number for that job’s timeline.</p>" +
         "<div class='sheet-wrap'><table class='grid freeze-order'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function renderJourneyDays() {
@@ -880,12 +950,13 @@
       const body = pairs.map((pair, i) => {
         const cells = days.map((d) => {
           const hit = pairOnDays(pair, [d.iso]);
-          return "<td data-day=\"" + esc(d.iso) + "\" data-worker=\"" + esc(pair.person.id) + "\">" + (hit ? chipFromPair(pair) : "") + "</td>";
+          const chip = !hit ? "" : (pair.kind === "actual" ? actualChipsForDay(pair, d.iso) : chipFromPair(pair));
+          return "<td data-day=\"" + esc(d.iso) + "\" data-worker=\"" + esc(pair.person.id) + "\">" + chip + "</td>";
         }).join("");
         return pairRow(pairs, i, cells, { names: true, namePick: true });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Each process has a Plan row and an Actual row under it so you can compare the booked slot with the shop clock. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders this week. Name and Order swap while filtered. ← Everyone puts Order first again. Names within an order follow who does the task first. O is an idle / other actual — click O for who, the slot, and what they did. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a Plan letter to another free day. Actual letters stay put.</p>" +
+        "<p class='help'>Each process has a Plan row and an Actual row under it so you can compare the booked slot with the shop clock. Actual letters sit on the day the clock ran, even if Plan was another day. // is paused time; after resume the process letter continues. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders this week. Name and Order swap while filtered. ← Everyone puts Order first again. Names within an order follow who does the task first. O is an idle / other actual — click O for who, the slot, and what they did. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a Plan letter to another free day. Actual letters stay put.</p>" +
         "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
     }
     function timeSlots() {
@@ -921,14 +992,14 @@
         slots.map((m) => "<th>" + esc(pad2(Math.floor(m / 60)) + ":" + pad2(m % 60)) + "</th>").join("");
       const body = pairs.map((pair, i) => {
         const cells = slots.map((m) => {
-          const hit = pairCoversSlot(pair, dayIso, m);
-          const seg = pair.kind === "plan" ? coveringPlanSegment(pair.row, dayIso, m) : null;
+          const seg = pair.kind === "plan" ? coveringPlanSegment(pair.row, dayIso, m) : coveringActualBout(pair.row, dayIso, m);
+          const hit = pair.kind === "plan" ? !!seg : !!seg;
           return "<td class='slot' data-day=\"" + esc(dayIso) + "\" data-min=\"" + m + "\" data-worker=\"" + esc(pair.person.id) + "\" data-slot='1'>" + (hit ? chipFromPair(pair, seg) : "") + "</td>";
         }).join("");
         return pairRow(pairs, i, cells, { names: true, namePick: true });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Plan is the booked 15-minute slot. Actual is when the clock ran. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders on this day. Name and Order swap while filtered. ← Everyone puts Order first again. ← Week view and ← Day view go back. O is an idle / other actual — click O for who, the slot, and what they did. Drag a Plan letter to a free time. That person cannot overlap. Actual letters are not draggable.</p>" +
+        "<p class='help'>Plan is the booked 15-minute slot. Actual is when the clock ran on this day. // is paused time on Actual; after resume the process letter fills the later slots. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders on this day. Name and Order swap while filtered. ← Everyone puts Order first again. ← Week view and ← Day view go back. O is an idle / other actual — click O for who, the slot, and what they did. Drag a Plan letter to a free time. That person cannot overlap. Actual letters are not draggable.</p>" +
         "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function orderWorkDays(order) {
@@ -970,7 +1041,8 @@
         const body = pairs.map((pair, i) => {
           const cells = days.map((iso) => {
             const hit = pairOnDays(pair, [iso]);
-            return "<td data-day=\"" + esc(iso) + "\" data-worker=\"" + esc(pair.person.id) + "\">" + (hit ? chipFromPair(pair) : "") + "</td>";
+            const chip = !hit ? "" : (pair.kind === "actual" ? actualChipsForDay(pair, iso) : chipFromPair(pair));
+            return "<td data-day=\"" + esc(iso) + "\" data-worker=\"" + esc(pair.person.id) + "\">" + chip + "</td>";
           }).join("");
           return pairRow(pairs, i, cells, { names: true });
         }).join("");
@@ -985,19 +1057,26 @@
           "<span class='who'>" + esc(row.workerName || row.workerId || "") + "</span>" +
           "<span class='when'>" + esc(prettyDate(row.start) + " " + hhmm(row.start) + "–" + hhmm(row.end)) + "</span></li>";
         const act = row.actual || {};
-        const actualWhen = act.start
-          ? prettyDate(act.start) + " " + hhmm(act.start) + "–" + hhmm(act.end)
-          : "Not clocked yet";
-        const actualLine = "<li class='actual'>" + code + "<span class='kind'>Actual</span><span>" + esc(row.process) + "</span>" +
-          "<span class='who'>" + esc(act.workerName || act.workerId || "—") + "</span>" +
-          "<span class='when'>" + esc(actualWhen) + "</span></li>";
+        const bouts = (act.bouts && act.bouts.length) ? act.bouts : (act.start ? [{ start: act.start, end: act.end, kind: "work" }] : []);
+        const actualLine = bouts.length
+          ? bouts.map((bout) => {
+            const paused = bout.kind === "pause";
+            const label = paused ? (row.process + " paused") : row.process;
+            const when = prettyDate(bout.start) + " " + hhmm(bout.start) + "–" + hhmm(bout.end);
+            const extra = paused && bout.reason ? " · " + bout.reason : "";
+            return "<li class='actual'>" + code + "<span class='kind'>" + (paused ? "Paused" : "Actual") + "</span><span>" + esc(label + extra) + "</span>" +
+              "<span class='who'>" + esc(act.workerName || act.workerId || "—") + "</span>" +
+              "<span class='when'>" + esc(when) + "</span></li>";
+          }).join("")
+          : "<li class='actual'>" + code + "<span class='kind'>Actual</span><span>" + esc(row.process) + "</span>" +
+            "<span class='who'>—</span><span class='when'>Not clocked yet</span></li>";
         const filter = kindFilter();
         if (filter === "plan") return planLine;
         if (filter === "actual") return actualLine;
         return planLine + actualLine;
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Plan vs Actual for " + title + " is the shop booking and clock. The Journey list under that is the same order from enquiry through materials, paint, and delivery. Both, Planned, and Actual filter the grid. Same order number is merged across the people on this job. ← Week view and ← Day view go back. Click a day for the 15-minute plan. Drag a Plan letter to a free slot — only later tasks on this order move.</p>" +
+        "<p class='help'>Plan vs Actual for " + title + " is the shop booking and clock. Actual sits on the day the clock ran. Paused time is listed separately; after resume the next production bout shows on its own. The Journey list under that is the same order from enquiry through materials, paint, and delivery. Both, Planned, and Actual filter the grid. Same order number is merged across the people on this job. ← Week view and ← Day view go back. Click a day for the 15-minute plan. Drag a Plan letter to a free slot — only later tasks on this order move.</p>" +
         table +
         "<div class='timeline'><h3>Planning</h3>" +
         (items ? "<ol>" + items + "</ol>" : "<p class='help'>No processes are booked on this order.</p>") +
