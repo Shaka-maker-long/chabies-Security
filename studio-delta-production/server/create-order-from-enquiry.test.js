@@ -583,6 +583,29 @@ db.upsertEnquiry({
 }, { fromPipeline: true, fromMigrate: true });
 assert.ok(db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#440"));
 
+db.upsertEnquiry({
+  enquiry_no: "#441",
+  status: "Ordered",
+  client_name: "Needs Drawing",
+  quote_no: "SOQ2952",
+  products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "11500.00" }],
+  drawing: { required: true, file: null },
+  ready_for_orders: true
+}, { fromPipeline: true, fromMigrate: true });
+const drawingCreated = db.createOrdersFromEnquiryForm("#441", {
+  order_number: "S260442",
+  delivery_date: "2026-10-15",
+  shared: {
+    client_name: "Needs Drawing",
+    province: "Gauteng",
+    city: "Sandton",
+    address: "12 Main Road"
+  },
+  products: [shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 1, price_incl_vat: "11500" })]
+});
+assert.strictEqual(drawingCreated.rows[0].status, "Waiting for drawing");
+assert.strictEqual(db.getEnquiry("#441").ready_for_orders, true);
+
 const officeJs = fs.readFileSync(path.join(__dirname, "office.js"), "utf8");
 assert.ok(officeJs.indexOf("/create-order-draft") !== -1);
 assert.ok(officeJs.indexOf("createOrdersFromEnquiryForm") !== -1);

@@ -11,11 +11,16 @@ const {
 assert.strictEqual(normalizeShopStatus("welding"), "Welding");
 assert.strictEqual(normalizeShopStatus("READY FOR TAGGING"), "Ready for Tagging");
 assert.ok(isShopStatus("assembly"));
+assert.ok(isShopStatus("Waiting for drawing"));
 assert.ok(!isShopStatus("In Progress"));
 
 assert.deepStrictEqual(
   remainingPlanForStatus("Not Yet Started").processes,
   ["Profile Cutting", "Tagging", "Plate Cutting", "Welding", "Grinding", "Assembly"]
+);
+assert.deepStrictEqual(
+  remainingPlanForStatus("Waiting for drawing").processes,
+  remainingPlanForStatus("Not Yet Started").processes
 );
 
 assert.ok(remainingPlanForStatus("Profile Cutting").processes.indexOf("Profile Cutting") !== -1);

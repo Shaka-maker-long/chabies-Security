@@ -86,6 +86,8 @@ assert.strictEqual(reparsed.wood.length, parsed.wood.length);
 
 assert.strictEqual(jobCard.jobCardEligibility("Not Yet Started").mode, "create");
 assert.strictEqual(jobCard.jobCardEligibility("").mode, "create");
+assert.strictEqual(jobCard.jobCardEligibility("Waiting for drawing").ok, false);
+assert.ok(/drawing/i.test(jobCard.jobCardEligibility("Waiting for drawing").error));
 assert.strictEqual(jobCard.jobCardEligibility("Ready for Steelwork").mode, "regenerate");
 assert.strictEqual(jobCard.jobCardEligibility("Profile Cutting").mode, "regenerate");
 assert.strictEqual(jobCard.jobCardEligibility("Ready for Tagging").ok, false);

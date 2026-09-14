@@ -166,7 +166,7 @@
           </label>
           <label>Status
             <input id="f_status" readonly>
-            <span class="hint">New orders start as Not Yet Started. Generating a job card moves it to Ready for Steelwork. The shop floor updates it after that unless you correct it below.</span>
+            <span class="hint">Orders that need a drawing start as Waiting for drawing until Erin uploads it, then Not Yet Started. Generating a job card moves it to Ready for Steelwork. The shop floor updates it after that unless you correct it below.</span>
           </label>
           <label>Assigned operator
             <select id="f_assigned_operator"></select>
@@ -308,7 +308,7 @@
     </div>
   </div>
 
-  <script src="/office-auth.js?v=plain-copy"></script>
+  <script src="/office-auth.js?v=drawing-wait"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 56, true],
@@ -993,6 +993,6 @@
       load();
     });
   </script>
-  <script src="/enquiry-process.js?v=corr-links"></script>
+  <script src="/enquiry-process.js?v=drawing-erin"></script>
 </body>
 </html>

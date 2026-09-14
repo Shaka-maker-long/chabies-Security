@@ -296,6 +296,13 @@ function suggestedCuttingFor(target, allOrders, records) {
 
 function jobCardEligibility(status) {
   const s = String(status || "").trim();
+  if (s === "Waiting for drawing") {
+    return {
+      ok: false,
+      mode: "blocked",
+      error: "Upload the drawing before generating a job card. The order stays Waiting for drawing until Erin attaches it."
+    };
+  }
   if (FIRST_STATUSES.has(s)) return { ok: true, mode: "create" };
   if (REGENERATE_STATUSES.has(s)) return { ok: true, mode: "regenerate" };
   return {

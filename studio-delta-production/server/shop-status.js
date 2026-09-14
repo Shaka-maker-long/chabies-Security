@@ -1,6 +1,9 @@
 "use strict";
 
+const WAITING_FOR_DRAWING = "Waiting for drawing";
+
 const SHOP_STATUSES = [
+  WAITING_FOR_DRAWING,
   "Not Yet Started",
   "Ready for Steelwork", "Profile Cutting",
   "Ready for Tagging", "Tagging",
@@ -51,8 +54,13 @@ function atOrAfter(status, name) {
   return shopStatusIndex(status) >= shopStatusIndex(name);
 }
 
+function isWaitingForDrawing(status) {
+  return normalizeShopStatus(status) === WAITING_FOR_DRAWING;
+}
+
 function remainingPlanForStatus(status) {
-  const s = normalizeShopStatus(status) || "Not Yet Started";
+  const raw = normalizeShopStatus(status) || "Not Yet Started";
+  const s = isWaitingForDrawing(raw) ? "Not Yet Started" : raw;
   const skip = {};
   function done() {
     Array.prototype.forEach.call(arguments, (name) => { skip[name] = true; });
@@ -67,7 +75,7 @@ function remainingPlanForStatus(status) {
   if (atOrAfter(s, "Paint Preparation")) done("Assembly");
   const processes = PLANNED_PROCESSES.filter((p) => !skip[p]);
   const paintWait = processes.indexOf("Assembly") !== -1 && !atOrAfter(s, "Ready for Powder Coating");
-  return { processes, paintWait, status: s };
+  return { processes, paintWait, status: raw };
 }
 
 function isShopStatus(status) {
@@ -96,11 +104,13 @@ module.exports = {
   PLANNED_PROCESSES,
   STATUS_ALIASES,
   PROFILE_CUTTING_WAITING,
+  WAITING_FOR_DRAWING,
   normalizeShopStatus,
   shopStatusIndex,
   remainingPlanForStatus,
   isShopStatus,
   isAtPaintShop,
+  isWaitingForDrawing,
   isProfileCuttingInProgress,
   waitingStatusIfProfileCuttingIdle
 };

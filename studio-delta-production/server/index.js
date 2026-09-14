@@ -275,6 +275,11 @@ async function boot() {
       try {
         console.log("[boot] users", require("./staff").listUsers().length);
       } catch (err) {}
+      try {
+        require("./enquiry-pipeline").syncDrawingQueue();
+      } catch (err) {
+        console.error("[boot] drawing queue", err && err.message ? err.message : err);
+      }
     } catch (e) {
       console.error("[persist] could not read storage info", e && e.message ? e.message : e);
     }

@@ -505,13 +505,11 @@
           <label>Does this order need a drawing?
             <select id="ob_drawing">
               <option value="">Choose</option>
-              <option value="no">No — ready for Orders</option>
-              <option value="yes">Yes</option>
+              <option value="no">No — production can start as Not Yet Started</option>
+              <option value="yes">Yes — Erin uploads the drawing</option>
             </select>
           </label>
-          <label>Drawing assignee
-            <select id="ob_drawing_who"></select>
-          </label>
+          <p class="hint">Not every order needs a drawing. If yes, Erin gets Upload drawing on My tasks. The order can still go onto Orders as Waiting for drawing until the file is on.</p>
         </div>
         <div class="enq-dup" id="onboardDup" hidden></div>
         <div class="form-foot">
@@ -533,8 +531,8 @@
       <div class="body" id="viewBody"></div>
     </div>
   </div>
-  <script src="/office-auth.js?v=plain-copy"></script>
-  <script src="/enquiry-process.js?v=corr-links"></script>
+  <script src="/office-auth.js?v=drawing-wait"></script>
+  <script src="/enquiry-process.js?v=drawing-erin"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 112, true],
@@ -2314,7 +2312,6 @@
         coster: document.getElementById("ob_coster").value,
         quoter: document.getElementById("ob_quoter").value,
         approver: document.getElementById("ob_approver").value,
-        drawing_who: document.getElementById("ob_drawing_who").value,
         products: (onboard.products || []).map((l) => Object.assign({}, l)),
         specs: (onboard.specs || []).map((s) => Object.assign({}, s)),
         quoteBase64: onboard.quoteBase64 || "",
@@ -2452,7 +2449,6 @@
       fillAssigneeSelect("ob_coster", enquiryRoles.costing, me);
       fillAssigneeSelect("ob_quoter", enquiryRoles.quoting, me);
       fillAssigneeSelect("ob_approver", enquiryRoles.approval, "");
-      fillAssigneeSelect("ob_drawing_who", me);
     }
     function applyOnboardDraft(d) {
       if (!d) return false;
@@ -2488,7 +2484,6 @@
       fillAssigneeSelect("ob_coster", d.coster || enquiryRoles.costing, me);
       fillAssigneeSelect("ob_quoter", d.quoter || enquiryRoles.quoting, me);
       fillAssigneeSelect("ob_approver", d.approver || enquiryRoles.approval, "");
-      fillAssigneeSelect("ob_drawing_who", d.drawing_who || me);
       if (onboard.quoteBase64) document.getElementById("ob_quote_preview").src = onboard.quoteBase64;
       return true;
     }
@@ -2547,7 +2542,6 @@
         approval_needed: document.getElementById("ob_approval_needed").checked,
         follow_ups_done: Number(document.getElementById("ob_follow_done").value || 0),
         drawing_required: document.getElementById("ob_drawing").value,
-        drawing_assignee: document.getElementById("ob_drawing_who").value,
         products: onboard.products.map((l) => ({
           product: String(l.product || "").trim(),
           category: String(l.category || "").trim(),
