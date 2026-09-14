@@ -8125,6 +8125,7 @@
       });
       if (!box) return;
       google.script.run.withSuccessHandler(data => {
+        if (idleAssignFormDirty()) return;
         const idle = (data && data.idle) || data || {};
         const workers = idle.workers || [];
         const tasks = idle.tasks || [];
@@ -8242,9 +8243,21 @@
     }
 
     function idleAssignFormDirty() {
+      if (idleAssignBusy()) return true;
+      const roots = document.querySelectorAll('#idleWorkersList, #idleAlertList');
+      for (let i = 0; i < roots.length; i++) {
+        const notes = roots[i].querySelectorAll('input');
+        for (let n = 0; n < notes.length; n++) {
+          if (String(notes[n].value || '').trim()) return true;
+        }
+        const sels = roots[i].querySelectorAll('select');
+        for (let s = 0; s < sels.length; s++) {
+          if (String(sels[s].value || '').toLowerCase() === 'other') return true;
+        }
+      }
       const el = document.activeElement;
-      if (!el || !el.closest) return false;
-      return !!el.closest('#idleWorkersList, #idleAlertList');
+      if (el && el.closest && el.closest('#idleWorkersList, #idleAlertList, #idleAlertModal')) return true;
+      return false;
     }
 
     function startIdleAlertPolling() {
@@ -8269,11 +8282,12 @@
     function pollIdleAlertsNow() {
       if (!session.name || !sessionSeesIdleAlerts()) return;
       google.script.run.withSuccessHandler(res => {
+        if (idleAssignFormDirty()) return;
         const workers = (res && res.alerts) || [];
         const tasks = (res && res.tasks) || [];
         const workersPage = document.getElementById('idleWorkersList');
         if (workersPage && document.getElementById('view-admin-workers') && !document.getElementById('view-admin-workers').classList.contains('d-none-view')) {
-          if (!idleAssignBusy() && !idleAssignFormDirty()) loadIdleWorkers();
+          loadIdleWorkers();
         }
         showIdleAlertPopup(workers, tasks);
       }).withFailureHandler(() => {}).pollIdleAlerts(session.name);
@@ -8293,6 +8307,8 @@
       const alreadyOpen = idleEl && idleEl.classList.contains('show');
       const otherModalOpen = !!document.querySelector('.modal.show') && !alreadyOpen;
       if (otherModalOpen) return;
+      if (alreadyOpen && (idleAssignFormDirty() || box.getAttribute('data-idle-key') === key)) return;
+      box.setAttribute('data-idle-key', key);
       box.innerHTML = workers.map(w => idleWorkerRowHtml(w, tasks, 'idle-popup-task-')).join('');
       if (idleAlertModal && !alreadyOpen) idleAlertModal.show();
     }
