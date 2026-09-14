@@ -141,9 +141,14 @@ function isManagerTitle(role) {
   return String(role || "").trim().toLowerCase() === "manager";
 }
 
+function isIdleManagerTitle(role) {
+  const t = String(role || "").trim().toLowerCase();
+  return t === "manager" || t === "production manager" || t === "site manager";
+}
+
 function canSeeIdleAlerts(profile) {
   if (!profile) return false;
-  if (isManagerTitle(profile.jobTitle || profile.role)) return true;
+  if (isIdleManagerTitle(profile.jobTitle || profile.role)) return true;
   return String(profile.name || "").trim().toLowerCase() === "siya";
 }
 

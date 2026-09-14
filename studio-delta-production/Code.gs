@@ -4647,7 +4647,7 @@ function stampOpenIdleUntil(idleSheet, logs, workerName, now) {
 function userManagesIdle(profile) {
   if (!profile) return false;
   var title = String(profile.jobTitle || profile.role || "").trim().toLowerCase();
-  if (title === "manager") return true;
+  if (title === "manager" || title === "production manager" || title === "site manager") return true;
   return String(profile.name || "").trim().toLowerCase() === "siya";
 }
 
@@ -4933,7 +4933,7 @@ function pollIdleAlerts(workerName) {
   };
 }
 
-function assignIndirectTask(workerName, taskName, assignedBy, taskNote) {
+function assignIndirectTask(workerName, taskName, assignedBy, taskNote, rowNum) {
   if (!userSeesIdleAlerts(assignedBy)) {
     return { success: false, message: "Only Siya or the Manager can assign idle tasks." };
   }
@@ -4954,13 +4954,24 @@ function assignIndirectTask(workerName, taskName, assignedBy, taskNote) {
     var holeStart = null;
     var holeEnd = null;
     var found = false;
+    var wantRow = Number(rowNum || 0);
     var r;
-    for (r = 1; r < data.length; r++) {
+    if (wantRow > 1 && wantRow <= data.length) {
+      r = wantRow - 1;
       if (String(data[r][1]).trim() === String(workerName).trim() && idleRowIsOpenToday(data[r], today)) {
         holeStart = data[r][3] ? new Date(data[r][3]) : null;
         holeEnd = data[r][7] ? new Date(data[r][7]) : null;
         found = true;
-        break;
+      }
+    }
+    if (!found) {
+      for (r = 1; r < data.length; r++) {
+        if (String(data[r][1]).trim() === String(workerName).trim() && idleRowIsOpenToday(data[r], today)) {
+          holeStart = data[r][3] ? new Date(data[r][3]) : null;
+          holeEnd = data[r][7] ? new Date(data[r][7]) : null;
+          found = true;
+          break;
+        }
       }
     }
     if (!found) {

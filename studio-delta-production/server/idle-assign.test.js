@@ -45,6 +45,13 @@ staff.upsertUser({
   password: "1234",
   tasks: ["Welding"]
 });
+staff.upsertUser({
+  name: "Sipho",
+  access: "Admin",
+  role: "Production Manager",
+  password: "sipho",
+  seeDebtors: "Yes"
+});
 
 function todayStamp() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -117,6 +124,18 @@ function openHole(worker, dateCell) {
   assert.strictEqual(savedDate.success, true, JSON.stringify(savedDate));
   const gone = await callShopFunction("getIdleWorkers", []);
   assert.ok(!(gone.workers || []).some((w) => w.worker === "Uriah"));
+
+  clearShopCache();
+  openHole("Uriah", today);
+  const listedPm = await callShopFunction("getIdleWorkers", []);
+  const hole = (listedPm.workers || []).find((w) => w.worker === "Uriah");
+  assert.ok(hole && hole.row, JSON.stringify(listedPm));
+  const savedPm = await callShopFunction("assignIndirectTask", [
+    "Uriah", "Other", "Sipho", "wrapping order S260200", hole.row
+  ]);
+  assert.strictEqual(savedPm.success, true, JSON.stringify(savedPm));
+  const gonePm = await callShopFunction("getIdleWorkers", []);
+  assert.ok(!(gonePm.workers || []).some((w) => w.worker === "Uriah"), "Production Manager must be able to assign idle tasks");
 
   console.log("idle-assign.test.js ok");
 })().catch((e) => {
