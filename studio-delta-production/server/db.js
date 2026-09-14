@@ -1432,16 +1432,42 @@ function listEnquiriesWaitingForOrders() {
   });
 }
 
+function enquiryNosMatch(a, b) {
+  const sa = String(a || "").trim();
+  const sb = String(b || "").trim();
+  if (sa && sb && sa === sb) return true;
+  const na = enquiryNumberValue(sa);
+  const nb = enquiryNumberValue(sb);
+  return !!(na && nb && na === nb);
+}
+
+function enquiryQuoteKeys(enquiry) {
+  const keys = new Set();
+  function add(raw) {
+    const q = normalizeQuoteNo(raw, { allowEmpty: true });
+    if (q) keys.add(q);
+  }
+  add(enquiry && enquiry.quote_no);
+  add(enquiry && enquiry.chosen_quote_no);
+  const quotes = Array.isArray(enquiry && enquiry.quotes) ? enquiry.quotes : [];
+  quotes.forEach((q) => add(q && q.quote_no));
+  const options = Array.isArray(enquiry && enquiry.quote_options) ? enquiry.quote_options : [];
+  options.forEach((q) => add(q && q.quote_no));
+  return keys;
+}
+
 function ordersLinkedToEnquiry(enquiry) {
   const no = String((enquiry && enquiry.enquiry_no) || "").trim();
   const linked = String((enquiry && enquiry.order_number) || "").trim();
+  const quoteKeys = enquiryQuoteKeys(enquiry);
+  const linkedBase = fromEnquiry.normalizeBaseOrderNumber(linked);
   return listOrders().filter((o) => {
     if (!o) return false;
-    if (linked && fromEnquiry.normalizeBaseOrderNumber(o.order_number) === fromEnquiry.normalizeBaseOrderNumber(linked)) {
-      return true;
-    }
+    if (linkedBase && fromEnquiry.normalizeBaseOrderNumber(o.order_number) === linkedBase) return true;
     if (linked && formatOrderId(o.order_number) === formatOrderId(linked)) return true;
-    return no && String(o.enquiry_no || "").trim() === no;
+    if (no && enquiryNosMatch(o.enquiry_no, no)) return true;
+    const oq = normalizeQuoteNo(o.quote_number, { allowEmpty: true });
+    return !!(oq && quoteKeys.has(oq));
   });
 }
 

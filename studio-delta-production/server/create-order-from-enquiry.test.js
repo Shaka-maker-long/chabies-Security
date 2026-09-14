@@ -526,6 +526,63 @@ assert.ok(page.indexOf("Mark selected as important") !== -1);
 assert.ok(page.indexOf("does not copy from the enquiry") !== -1);
 assert.ok(page.indexOf("Office schedule") === -1);
 
+db.upsertEnquiry({
+  enquiry_no: "#437",
+  status: "Ordered",
+  client_name: "Martine Solomon",
+  quote_no: "SOQ2944",
+  product: "Maria Desk",
+  category: "Desk",
+  ready_for_orders: true
+}, { fromPipeline: true, fromMigrate: true });
+assert.ok(db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#437"), "ordered enquiry with no Orders row is ready to add");
+db.upsertOrder({
+  order_number: "S260241 A",
+  quote_number: "SOQ 2944",
+  status: "Profile Cutting",
+  product: "Maria Desk",
+  client_name: "Martine Solomon"
+});
+db.upsertOrder({
+  order_number: "S260241 B",
+  quote_number: "SOQ2944",
+  status: "Ready for Steelwork",
+  product: "Maria Desk"
+});
+assert.ok(
+  !db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#437"),
+  "an enquiry whose quote is already on Orders must leave Ready to add"
+);
+assert.ok(db.ordersLinkedToEnquiry(db.getEnquiry("#437")).some((o) => o.order_number === "S260241 A"));
+
+db.upsertEnquiry({
+  enquiry_no: "#439",
+  status: "Ordered",
+  client_name: "Hash Client",
+  quote_no: "SOQ2950",
+  ready_for_orders: true
+}, { fromPipeline: true, fromMigrate: true });
+db.upsertOrder({
+  order_number: "S260250",
+  enquiry_no: "439",
+  quote_number: "SOQ2950",
+  status: "Not Yet Started",
+  product: "Air Chair"
+});
+assert.ok(
+  !db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#439"),
+  "enquiry #439 matches order enquiry_no 439"
+);
+
+db.upsertEnquiry({
+  enquiry_no: "#440",
+  status: "Ordered",
+  client_name: "Still Waiting",
+  quote_no: "SOQ2951",
+  ready_for_orders: true
+}, { fromPipeline: true, fromMigrate: true });
+assert.ok(db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#440"));
+
 const officeJs = fs.readFileSync(path.join(__dirname, "office.js"), "utf8");
 assert.ok(officeJs.indexOf("/create-order-draft") !== -1);
 assert.ok(officeJs.indexOf("createOrdersFromEnquiryForm") !== -1);
