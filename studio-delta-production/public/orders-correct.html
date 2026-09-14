@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Fix status</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; --run:#fff7ed; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:860px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    input[type=search], select { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-size:13px; }
+    .page { padding:16px; }
+    .hint { color:var(--muted); font-size:13px; line-height:1.45; margin:0 0 12px; }
+    .confirm { display:flex; gap:8px; align-items:flex-start; font-size:13px; font-weight:600; margin:0 0 12px; }
+    .confirm input { margin-top:3px; }
+    .confirm .hint { display:block; font-weight:400; margin:2px 0 0; }
+    .msg { font-size:13px; color:var(--muted); }
+    .msg.bad { color:var(--bad); }
+    .msg.ok { color:var(--ok); }
+    .wrap { overflow:auto; background:#fff; border:1px solid var(--line); border-radius:10px; }
+    table { border-collapse:separate; border-spacing:0; width:100%; min-width:860px; font-size:13px; }
+    th, td { border-bottom:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:middle; }
+    th { background:var(--head); position:sticky; top:0; font-size:11px; letter-spacing:.03em; }
+    tr.dirty td { background:#f0f9ff; }
+    tr.running td { background:var(--run); }
+    tr.running.dirty td { background:#ffedd5; }
+    .live { display:inline-block; font-size:11px; font-weight:700; color:#9a3412; background:#ffedd5; border-radius:999px; padding:2px 8px; }
+    .empty, .load, .err { padding:36px 16px; text-align:center; color:var(--muted); font-weight:600; }
+    .err { color:var(--bad); }
+    .foot { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; }
+    @media (max-width: 720px) {
+      .tools { width:100%; margin-left:0; }
+      table { min-width: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a class="on" href="/orders/correct">Fix status</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/glass-rates">Glass rates</a>
+        <a href="/orders/cost">Cost</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Fix status</h1>
+      <p class="lede">Change the shop status and assigned person on many orders at once. A job that is already clocked stays clocked — it continues with the person and task you pick. A waiting status closes that clock.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <input type="search" id="q" placeholder="Search order, product, person">
+      <select id="filterRun">
+        <option value="all">All orders</option>
+        <option value="running">Running now</option>
+        <option value="waiting">Not running</option>
+      </select>
+    </div>
+  </header>
+  <div class="page">
+    <p class="hint">Set the right status and person on each row that is wrong. Profile Cutting only stays if that job is running. Save writes only the rows you changed. Planning slots are cleared on a status change so you can book the work that is left.</p>
+    <label class="confirm">
+      <input type="checkbox" id="confirm">
+      <span>These are the right status and person.<span class="hint">Required before save.</span></span>
+    </label>
+    <div class="wrap">
+      <div class="load" id="boot">Loading orders…</div>
+      <table id="grid" hidden>
+        <thead>
+          <tr>
+            <th>Order</th>
+            <th>Product</th>
+            <th>Now</th>
+            <th>Clock</th>
+            <th>Move to status</th>
+            <th>Assigned person</th>
+          </tr>
+        </thead>
+        <tbody id="body"></tbody>
+      </table>
+    </div>
+    <div class="foot">
+      <button type="button" id="saveBtn" onclick="save()">Save changes</button>
+      <span class="msg" id="saveMsg"></span>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=plain-copy"></script>
+  <script>
+    let rows = [];
+    let operators = [];
+    let shopStatuses = [];
+    const draft = {};
+
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+    }
+    function setMsg(id, text, kind) {
+      const el = document.getElementById(id);
+      el.textContent = text || "";
+      el.className = "msg" + (kind ? " " + kind : "");
+    }
+    function keyOf(row) { return String(row.order_number || ""); }
+    function currentOf(row) {
+      const d = draft[keyOf(row)] || {};
+      return {
+        status: d.status != null ? d.status : (row.status || "Not Yet Started"),
+        assigned_operator: d.assigned_operator != null ? d.assigned_operator : (row.assigned_operator || "")
+      };
+    }
+    function isDirty(row) {
+      const cur = currentOf(row);
+      return cur.status !== String(row.status || "") || cur.assigned_operator !== String(row.assigned_operator || "");
+    }
+    function opts(list, chosen, first) {
+      const items = first ? [first].concat(list) : list;
+      return items.map((item) => {
+        const v = item && item.value != null ? item.value : item;
+        const label = item && item.label != null ? item.label : v;
+        return "<option value=\"" + esc(v) + "\"" + (String(v) === String(chosen) ? " selected" : "") + ">" + esc(label || "—") + "</option>";
+      }).join("");
+    }
+    function filtered() {
+      const q = String(document.getElementById("q").value || "").trim().toLowerCase();
+      const run = document.getElementById("filterRun").value;
+      return rows.filter((row) => {
+        if (run === "running" && !row.running) return false;
+        if (run === "waiting" && row.running) return false;
+        if (!q) return true;
+        const blob = [row.order_number, row.product, row.status, row.assigned_operator, row.running_worker, row.running_task].join(" ").toLowerCase();
+        return blob.indexOf(q) !== -1;
+      });
+    }
+    function render() {
+      const body = document.getElementById("body");
+      const shown = filtered();
+      if (!rows.length) {
+        document.getElementById("boot").hidden = false;
+        document.getElementById("boot").className = "empty";
+        document.getElementById("boot").textContent = "No orders on the sheet yet.";
+        document.getElementById("grid").hidden = true;
+        return;
+      }
+      document.getElementById("boot").hidden = true;
+      document.getElementById("grid").hidden = false;
+      body.innerHTML = shown.map((row) => {
+        const cur = currentOf(row);
+        const dirty = isDirty(row);
+        const live = row.running
+          ? "<span class='live'>" + (row.running_paused ? "Paused" : "Running") + " · " + esc(row.running_worker || "—") + " · " + esc(row.running_task || "") + "</span>"
+          : "—";
+        return "<tr class='" + (row.running ? "running" : "") + (dirty ? " dirty" : "") + "' data-order=\"" + esc(keyOf(row)) + "\">" +
+          "<td><b>" + esc(row.order_number) + "</b></td>" +
+          "<td>" + esc(row.product || "—") + "</td>" +
+          "<td>" + esc(row.status || "—") + (row.assigned_operator ? " · " + esc(row.assigned_operator) : "") + "</td>" +
+          "<td>" + live + "</td>" +
+          "<td><select data-field='status'>" + opts(shopStatuses, cur.status) + "</select></td>" +
+          "<td><select data-field='assigned_operator'>" + opts(operators, cur.assigned_operator, { value: "", label: "—" }) + "</select></td>" +
+          "</tr>";
+      }).join("");
+      body.querySelectorAll("select").forEach((sel) => {
+        sel.onchange = () => {
+          const tr = sel.closest("tr");
+          const id = tr.getAttribute("data-order");
+          if (!draft[id]) draft[id] = {};
+          draft[id][sel.getAttribute("data-field")] = sel.value;
+          const row = rows.find((r) => keyOf(r) === id);
+          tr.classList.toggle("dirty", !!(row && isDirty(row)));
+          countDirty();
+        };
+      });
+      countDirty();
+    }
+    function countDirty() {
+      const n = rows.filter(isDirty).length;
+      setMsg("status", n ? n + " order" + (n === 1 ? "" : "s") + " changed" : rows.length + " orders");
+    }
+    async function load() {
+      document.getElementById("boot").hidden = false;
+      document.getElementById("boot").className = "load";
+      document.getElementById("boot").textContent = "Loading orders…";
+      setMsg("saveMsg", "");
+      try {
+        const r = await sdOfficeFetch("/api/office/orders");
+        const j = await r.json();
+        if (!j.ok) {
+          document.getElementById("boot").className = "err";
+          document.getElementById("boot").textContent = j.error || "Could not load orders";
+          return;
+        }
+        rows = j.rows || [];
+        operators = j.operators || [];
+        shopStatuses = j.shopStatuses || [];
+        render();
+      } catch (e) {
+        document.getElementById("boot").className = "err";
+        document.getElementById("boot").textContent = (e && e.message) || "Could not load orders";
+      }
+    }
+    async function save() {
+      const changed = rows.filter(isDirty).map((row) => {
+        const cur = currentOf(row);
+        return {
+          order_number: row.order_number,
+          status: cur.status,
+          assigned_operator: cur.assigned_operator
+        };
+      });
+      if (!changed.length) {
+        setMsg("saveMsg", "Nothing has changed.", "bad");
+        return;
+      }
+      if (!document.getElementById("confirm").checked) {
+        setMsg("saveMsg", "Tick that these are the right status and person.", "bad");
+        return;
+      }
+      const btn = document.getElementById("saveBtn");
+      btn.disabled = true;
+      setMsg("saveMsg", "Saving " + changed.length + "…");
+      try {
+        const r = await sdOfficeFetch("/api/office/orders/correct-status", {
+          method: "POST",
+          body: JSON.stringify({ confirmed: true, rows: changed })
+        });
+        const j = await r.json();
+        if (!j.ok) { setMsg("saveMsg", j.error || "Could not save", "bad"); return; }
+        Object.keys(draft).forEach((k) => { delete draft[k]; });
+        document.getElementById("confirm").checked = false;
+        await load();
+        const bits = [j.updated + " order" + (j.updated === 1 ? "" : "s") + " updated"];
+        if (j.transferred) bits.push(j.transferred + " running clock" + (j.transferred === 1 ? "" : "s") + " moved");
+        if (j.closedLogs) bits.push(j.closedLogs + " clock" + (j.closedLogs === 1 ? "" : "s") + " closed");
+        setMsg("saveMsg", bits.join(". ") + ".", "ok");
+      } catch (e) {
+        setMsg("saveMsg", (e && e.message) || "Could not save", "bad");
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    document.getElementById("q").oninput = render;
+    document.getElementById("filterRun").onchange = render;
+    sdRequireOffice("orders").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>
