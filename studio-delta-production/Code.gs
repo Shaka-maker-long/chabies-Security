@@ -1545,10 +1545,23 @@ function replaceSteelUsageForJob_(ss, orderNum, workerName, process, processLabe
   appendSteelUsageItems_(ss, usageSheet, orderNum, workerName, processLabel, items);
 }
 
-function getMyCompletedWork(workerName) {
+function userOverseesFloor(workerName) {
+  return userManagesIdle(getUserProfileByName(workerName));
+}
+
+function completedProcessMatches_(role, wantProcess) {
+  var want = canonicalTaskName(wantProcess) || String(wantProcess || "").trim();
+  if (!want) return true;
+  var got = canonicalTaskName(role) || String(role || "").trim();
+  return got.toLowerCase() === want.toLowerCase();
+}
+
+function getMyCompletedWork(workerName, process) {
   var want = String(workerName || "").trim();
   var items = [];
   if (!want) return { worker: want, items: items };
+  var oversees = userOverseesFloor(want);
+  var wantProcess = String(process || "").trim();
   var ss = getSpreadsheet();
   var pack = getLogPack(ss);
   var products = orderProductMap(ss);
@@ -1556,11 +1569,13 @@ function getMyCompletedWork(workerName) {
   for (var i = 1; i < pack.values.length; i++) {
     var row = pack.values[i];
     if (!row[6]) continue;
-    if (String(row[2] || "").trim() !== want) continue;
+    var logWorker = String(row[2] || "").trim();
+    if (!oversees && logWorker !== want) continue;
     var meta = parseLogMeta(row.length > 12 ? row[12] : "");
     if (meta.entryType === "indirect") continue;
     var role = String(row[3] || "").trim();
     if (role === "Indirect") continue;
+    if (oversees && !completedProcessMatches_(role, wantProcess)) continue;
     var orderNum = String(row[1] || "").trim();
     var product = products[orderNum] || "";
     var actual = calculateWorkMinutesFromLog(row);
@@ -1570,6 +1585,7 @@ function getMyCompletedWork(workerName) {
     var item = {
       logId: String(row[0] || ""),
       order: orderNum,
+      worker: logWorker,
       product: product,
       process: role,
       status: String(row[4] || ""),
@@ -1584,7 +1600,7 @@ function getMyCompletedWork(workerName) {
       actualLabel: formatSpokenDuration(actual) || formatDurationServer(actual)
     };
     if (isCuttingSteelProcess_(role) || isCuttingSteelProcess_(item.status)) {
-      var steelKey = steelUsageIndexKey_(want, orderNum, isCuttingSteelProcess_(role) ? role : item.status);
+      var steelKey = steelUsageIndexKey_(logWorker, orderNum, isCuttingSteelProcess_(role) ? role : item.status);
       item.steelUsage = steelIndex[steelKey] ? steelIndex[steelKey].slice() : [];
       item.canEditSteel = true;
     }
@@ -1593,7 +1609,7 @@ function getMyCompletedWork(workerName) {
   items.sort(function (a, b) {
     return String(b.end || "").localeCompare(String(a.end || ""));
   });
-  return { worker: want, items: items };
+  return { worker: want, process: wantProcess, oversees: oversees, items: items };
 }
 
 function updateCompletedSteelUsage(workerName, orderNum, process, steelUsageData) {

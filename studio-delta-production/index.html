@@ -1596,7 +1596,7 @@
         <div>
           <p class="sd-page-kicker">Studio Delta · Shop floor</p>
           <h2>Completed work</h2>
-          <p class="text-muted mb-0">Pauses do not count. A trophy means you finished within the time on the task sheet. The alarm means you went overtime.</p>
+          <p class="text-muted mb-0" id="completedWorkBlurb">Pauses do not count. A trophy means you finished within the time on the task sheet. The alarm means you went overtime.</p>
         </div>
         <button type="button" class="btn btn-outline-dark btn-sm" onclick="loadCompletedWork()">Refresh</button>
       </div>
@@ -4227,11 +4227,47 @@
       if (isNaN(d.getTime())) return '';
       return d.toLocaleString('en-ZA', { timeZone: 'Africa/Johannesburg', dateStyle: 'medium', timeStyle: 'short' });
     }
+    function floorOverseesTasks() {
+      return sessionSeesIdleAlerts();
+    }
+    function cardShowsInProgress(o) {
+      if (!(o && o.logId && o.assigned)) return false;
+      if (floorOverseesTasks()) return true;
+      return o.assigned === session.name;
+    }
+    function onItLineHtml(o) {
+      if (!floorOverseesTasks() || !cardShowsInProgress(o) || !o.assigned) return '';
+      const label = o.isPaused ? 'Paused · ' : 'On it: ';
+      return '<div class="product-sub on-it-line">' + floorEsc(label + o.assigned) + '</div>';
+    }
+    function syncCardOnIt(liveCard, o) {
+      if (!liveCard) return;
+      const html = onItLineHtml(o);
+      let el = liveCard.querySelector('.on-it-line');
+      if (!html) {
+        if (el) el.remove();
+        return;
+      }
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const next = tmp.firstElementChild;
+      if (el) {
+        el.replaceWith(next);
+        return;
+      }
+      const head = liveCard.querySelector('.card-body > .d-flex');
+      if (head) head.after(next);
+    }
     function completedWorkHtml(res) {
       if (!res || !res.items) {
         return '<div class="completed-error">Could not load completed work.</div>';
       }
+      const showWho = floorOverseesTasks() || !!res.oversees;
       if (!res.items.length) {
+        if (showWho) {
+          const task = session.role ? (' for ' + session.role) : '';
+          return '<div class="completed-empty">No completed work' + floorEsc(task) + ' yet.</div>';
+        }
         return '<div class="completed-empty">No completed work yet. Finish an order and it will show here. Pauses do not count toward the time.</div>';
       }
       window._completedSteelByKey = {};
@@ -4250,7 +4286,7 @@
         const canEditSteel = item.canEditSteel || item.process === 'Profile Cutting' || item.process === 'Plate Cutting';
         let steelHtml = '';
         if (canEditSteel) {
-          const key = String(item.order || '') + '\t' + String(item.process || '');
+          const key = String(item.order || '') + '\t' + String(item.process || '') + '\t' + String(item.worker || '');
           window._completedSteelByKey[key] = item.steelUsage || [];
           const lines = item.steelUsage || [];
           steelHtml = '<div class="completed-steel"><p class="completed-steel-label">Steel logged</p>';
@@ -4265,11 +4301,12 @@
             steelHtml += '<p class="completed-steel-empty">No steel usage was found for this job.</p>';
           }
           steelHtml += '<button type="button" class="btn btn-sm btn-outline-dark" onclick=\'openEditCompletedSteel(' +
-            JSON.stringify(item.order || '') + ',' + JSON.stringify(item.process || '') + ')\'>Edit steel usage</button></div>';
+            JSON.stringify(item.order || '') + ',' + JSON.stringify(item.process || '') + ',' + JSON.stringify(item.worker || '') + ')\'>Edit steel usage</button></div>';
         }
+        const who = (showWho && item.worker) ? (floorEsc(item.worker) + ' · ') : '';
         return '<article class="completed-card">' + icon +
           '<div class="completed-body"><h3>' + floorEsc(item.order || '') + (item.product ? ' · ' + floorEsc(item.product) : '') + '</h3>' +
-          '<p>' + floorEsc(item.process || '') + (item.end ? ' · ' + formatCompletedWhen(item.end) : '') + '</p>' +
+          '<p>' + who + floorEsc(item.process || '') + (item.end ? ' · ' + formatCompletedWhen(item.end) : '') + '</p>' +
           '<p>' + est + (took ? ' · ' + took : '') + '</p>' +
           '<p>' + verdict + '</p>' + steelHtml + '</div></article>';
       }).join('');
@@ -4293,18 +4330,26 @@
         paintCompletedWork({ items: [] });
         return;
       }
-      google.script.run.withSuccessHandler(paintCompletedWork).withFailureHandler(() => {
+      const runner = google.script.run.withSuccessHandler(paintCompletedWork).withFailureHandler(() => {
         paintCompletedWork(null);
-      }).getMyCompletedWork(session.name);
+      });
+      if (floorOverseesTasks()) runner.getMyCompletedWork(session.name, session.role || '');
+      else runner.getMyCompletedWork(session.name);
     }
     function openCompletedWork() {
+      const blurb = document.getElementById('completedWorkBlurb');
+      if (blurb) {
+        blurb.textContent = floorOverseesTasks()
+          ? 'Finished jobs on this task. Pauses do not count toward the time.'
+          : 'Pauses do not count. A trophy means you finished within the time on the task sheet. The alarm means you went overtime.';
+      }
       navTo('view-completed');
       loadCompletedWork();
     }
-    function openEditCompletedSteel(orderNum, process) {
-      session.editingCompletedSteel = { order: orderNum, process: process };
+    function openEditCompletedSteel(orderNum, process, workerName) {
+      session.editingCompletedSteel = { order: orderNum, process: process, worker: workerName || session.name };
       session.steelRowTargetId = 'editSteelRowsContainer';
-      const key = String(orderNum || '') + '\t' + String(process || '');
+      const key = String(orderNum || '') + '\t' + String(process || '') + '\t' + String(workerName || session.name || '');
       const usage = (window._completedSteelByKey && window._completedSteelByKey[key]) || [];
       const container = document.getElementById('editSteelRowsContainer');
       if (container) container.innerHTML = '';
@@ -4365,7 +4410,7 @@
           }
           showAlert('Error: ' + err);
         })
-        .updateCompletedSteelUsage(session.name, ctx.order, ctx.process, collected);
+        .updateCompletedSteelUsage(ctx.worker || session.name, ctx.order, ctx.process, collected);
     }
     function enterDashboard() {
       navTo('view-dashboard');
@@ -4493,6 +4538,7 @@
           // In Progress is a live Production_Log clock only. A planning name is not a start.
           const isMine = !!(o.logId && o.assigned === session.name);
           const isLocked = !WORK_LOCKS_DISABLED && o.assigned && !isMine;
+          const inProgress = cardShowsInProgress(o);
           const cardId = `card-${o.rowIndex}`;
           const existingCard = document.getElementById(cardId);
           const productLine = o.productName ? `<div class="product-sub">${o.productName}</div>` : '';
@@ -4558,7 +4604,7 @@
             // Update status bar colour
             const statusBar = liveCard.querySelector('.status-bar');
             if (statusBar) {
-              statusBar.className = 'status-bar ' + (isMine ? 'bar-running' : (isLocked ? 'bar-locked' : 'bar-ready'));
+              statusBar.className = 'status-bar ' + (inProgress ? 'bar-running' : (isLocked ? 'bar-locked' : 'bar-ready'));
             }
             // Update status badge text
             const badge = liveCard.querySelector('.badge.bg-dark');
@@ -4571,8 +4617,9 @@
             }
             syncCardCountdown(liveCard, o);
             syncCardProductShot(liveCard, o);
+            syncCardOnIt(liveCard, o);
             // Move card to correct container if assignment changed
-            const showInProgress = isMine;
+            const showInProgress = inProgress;
             const targetContainer = showInProgress ? pr : av;
             const currentContainer = liveCard.closest('#container-available, #container-progress');
             if (currentContainer && currentContainer !== targetContainer) {
@@ -4588,7 +4635,7 @@
               <label class="checkbox-wrapper-16 animate-card" id="wrapper-${cardId}">
                 <input class="checkbox-input batch-select" type="checkbox" value="${o.rowIndex}" data-order="${o.order}" data-status="${lowerStatus}" onchange="toggleBatchButtons()">
                 <div class="card checkbox-tile h-100 m-0" id="${cardId}">
-                  <div class="status-bar ${isMine?'bar-running':'bar-ready'}"></div>
+                  <div class="status-bar ${inProgress?'bar-running':'bar-ready'}"></div>
                   <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-2">
                       <h4 class="d-flex align-items-center m-0">
@@ -4599,6 +4646,7 @@
                       ${dueLine}
                       <div>${plannedBadge}${statusBadge}<span class="badge bg-dark">${displayShopStatus(o)}</span></div>
                     </div>
+                    ${onItLineHtml(o)}
                     ${productShot}
                     ${countdownHtml(o)}
                     ${btn}
@@ -4608,7 +4656,7 @@
             } else {
               html = `
               <div class="card mb-3 animate-card" id="${cardId}">
-                <div class="status-bar ${isMine?'bar-running':(isLocked?'bar-locked':'bar-ready')}"></div>
+                <div class="status-bar ${inProgress?'bar-running':(isLocked?'bar-locked':'bar-ready')}"></div>
                 <div class="card-body">
                   <div class="d-flex justify-content-between align-items-center mb-2">
                     <h4 class="m-0">${o.order}</h4>
@@ -4616,6 +4664,7 @@
                     ${dueLine}
                     <div>${plannedBadge}${statusBadge}<span class="badge bg-dark">${displayShopStatus(o)}</span></div>
                   </div>
+                    ${onItLineHtml(o)}
                     ${productShot}
                     ${countdownHtml(o)}
                     ${btn}
@@ -4623,7 +4672,7 @@
               </div>`;
             }
 
-            const showInProgress = isMine;
+            const showInProgress = inProgress;
             const tempDiv = document.createElement('div');
             tempDiv.innerHTML = html;
             const newEl = tempDiv.firstElementChild;
@@ -4633,9 +4682,7 @@
         });
         function placeDueFirst(container, wantProgress) {
           orders.forEach((o) => {
-            const isMine = !!(o.logId && o.assigned === session.name);
-            const isLocked = !WORK_LOCKS_DISABLED && o.assigned && !isMine;
-            const showInProgress = isMine;
+            const showInProgress = cardShowsInProgress(o);
             if (!!showInProgress !== !!wantProgress) return;
             const liveCard = document.getElementById('card-' + o.rowIndex);
             const wrap = liveCard && (liveCard.closest('.checkbox-wrapper-16') || liveCard);
