@@ -37,7 +37,7 @@ assert.strictEqual(safe.nested[0], 0);
 [
   "verifyGlobalLogin", "pollFloor", "getFloorTaskCounts", "getFloorLayout", "getStartStatusForRole", "startOrder", "getAdminDashboardData",
   "getScheduleBoard", "generateWorkerSchedule", "checkIdleWorkers", "enforceShiftHours", "grantOvertime", "getTaskDuration",
-  "getMyCompletedWork", "updateCompletedSteelUsage"
+  "getMyCompletedWork", "getWorkerDayWork", "facilityShiftState", "updateCompletedSteelUsage"
 ].forEach((fn) => assert.ok(ALLOWED.has(fn), fn));
 assert.ok(!ALLOWED.has("eval"));
 

@@ -106,6 +106,8 @@ const CONFIRM = { understood: true, highlights: [] };
 
   const layout = await callShopFunction("getFloorLayout", []);
   assert.ok(layout && layout.office, "shop floor layout");
+  assert.ok(layout.shift && layout.shift.id, "facility shift on layout");
+  assert.ok(layout.shift.label, "facility shift label");
   assert.ok(layout.office.some((o) => o.order === "S-HOPPER-1"), "Not Yet Started sits in the office");
   assert.ok(layout.office.some((o) => o.order === "S-HOPPER-2"), "blank status sits in the office");
   assert.ok(layout.workers.Thabo && layout.workers.Thabo.some((o) => o.order === "S-2001" && !o.paused), "live job is on the worker");

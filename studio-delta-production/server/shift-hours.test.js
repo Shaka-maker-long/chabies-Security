@@ -149,6 +149,23 @@ const CONFIRM = { understood: true, highlights: [] };
   ]);
   assert.ok(noUnderstand.needsJobConfirm, JSON.stringify(noUnderstand));
 
+  const meeting = await callShopFunction("facilityShiftState", [new Date("2026-09-14T07:50:00+02:00")]);
+  assert.strictEqual(meeting.id, "meeting", JSON.stringify(meeting));
+  assert.strictEqual(meeting.label, "Production Meeting");
+  const working = await callShopFunction("facilityShiftState", [new Date("2026-09-14T09:00:00+02:00")]);
+  assert.strictEqual(working.id, "working", JSON.stringify(working));
+  const lunchState = await callShopFunction("facilityShiftState", [new Date("2026-09-14T12:10:00+02:00")]);
+  assert.strictEqual(lunchState.id, "lunch", JSON.stringify(lunchState));
+  const cleaning = await callShopFunction("facilityShiftState", [new Date("2026-09-14T15:20:00+02:00")]);
+  assert.strictEqual(cleaning.id, "cleaning", JSON.stringify(cleaning));
+  const ended = await callShopFunction("facilityShiftState", [new Date("2026-09-14T16:00:00+02:00")]);
+  assert.strictEqual(ended.id, "end", JSON.stringify(ended));
+  assert.strictEqual(ended.label, "End of shift");
+  const sat = await callShopFunction("facilityShiftState", [new Date("2026-09-12T10:00:00+02:00")]);
+  assert.strictEqual(sat.id, "end", JSON.stringify(sat));
+  const before = await callShopFunction("facilityShiftState", [new Date("2026-09-14T07:00:00+02:00")]);
+  assert.strictEqual(before.id, "end", JSON.stringify(before));
+
   console.log("shift-hours.test.js ok");
 })().catch((e) => {
   console.error(e && e.stack ? e.stack : e);

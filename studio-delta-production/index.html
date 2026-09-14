@@ -1118,6 +1118,49 @@
     }
     .floor-count-btn.is-live { background: #175cd3; color: #fff; border-color: #0c3d91; }
     .floor-count-btn.is-paused { background: #f79009; color: #fff; border-color: #b54708; }
+    .floor-shift-banner {
+      position: absolute;
+      z-index: 6;
+      top: 10px;
+      left: 10px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid #1c1917;
+      background: #fff;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: #1c1917;
+      box-shadow: 0 1px 4px rgba(28,25,23,.2);
+      pointer-events: none;
+    }
+    .floor-shift-banner.is-meeting { background: #fde68a; color: #92400e; }
+    .floor-shift-banner.is-working { background: #dbeafe; color: #1d4ed8; }
+    .floor-shift-banner.is-lunch { background: #e5e7eb; color: #374151; }
+    .floor-shift-banner.is-cleaning { background: #a7f3d0; color: #065f46; }
+    .floor-shift-banner.is-end { background: #1c1917; color: #fafafa; }
+    .floor-shift-tag {
+      display: block;
+      margin: 2px auto 0;
+      padding: 1px 6px;
+      width: max-content;
+      max-width: 92px;
+      font-size: 8px;
+      font-weight: 800;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+      line-height: 1.2;
+      border-radius: 999px;
+      background: #e5e7eb;
+      color: #374151;
+      box-shadow: 0 1px 3px rgba(28,25,23,.18);
+    }
+    .floor-shift-tag.is-meeting { background: #fde68a; color: #92400e; }
+    .floor-shift-tag.is-working { background: #dbeafe; color: #1d4ed8; }
+    .floor-shift-tag.is-lunch { background: #e5e7eb; color: #374151; }
+    .floor-shift-tag.is-cleaning { background: #a7f3d0; color: #065f46; }
+    .floor-shift-tag.is-end { background: #1c1917; color: #fafafa; }
     .job-cart {
       display: inline-flex;
       align-items: center;
@@ -1167,12 +1210,19 @@
       transform-origin: 50% 100%;
     }
     .twin-actor svg { width: 100%; height: 100%; display: block; overflow: visible; }
-    .twin-actor .twin-body, .twin-actor .twin-arm-r, .twin-actor .twin-torch, .twin-actor .twin-spark, .twin-actor .twin-arc, .twin-actor .twin-disc, .twin-actor .twin-blade, .twin-actor .twin-spray, .twin-actor .twin-check, .twin-actor .twin-box-a, .twin-actor .twin-box-b {
+    .twin-actor .twin-body, .twin-actor .twin-arm-r, .twin-actor .twin-torch, .twin-actor .twin-spark, .twin-actor .twin-arc, .twin-actor .twin-disc, .twin-actor .twin-blade, .twin-actor .twin-spray, .twin-actor .twin-check, .twin-actor .twin-box-a, .twin-actor .twin-box-b, .twin-actor .twin-broom, .twin-actor .twin-broom-head {
       transform-box: fill-box;
     }
     .twin-actor.is-idle .twin-body { animation: twin-idle 2.6s ease-in-out infinite; }
     .twin-actor.is-paused { opacity: .72; filter: grayscale(.25); }
     .twin-actor.is-paused .twin-body { animation: twin-idle 3.2s ease-in-out infinite; }
+    .twin-actor.is-meeting .twin-body { animation: twin-meet 1.8s ease-in-out infinite; }
+    .twin-actor.is-cleaning .twin-broom { transform-origin: 85% 8%; animation: twin-sweep 1.05s ease-in-out infinite; }
+    .twin-actor.is-cleaning .twin-body { animation: twin-clean-lean 1.05s ease-in-out infinite; }
+    .twin-actor.is-lunch { opacity: .86; }
+    .twin-actor.is-lunch .twin-body { animation: twin-idle 3.8s ease-in-out infinite; }
+    .twin-actor.is-end { opacity: .78; filter: grayscale(.4); }
+    .twin-actor.is-end .twin-body { animation: none; }
     .twin-actor.is-weld { filter: drop-shadow(0 0 8px rgba(255,176,70,.7)); }
     .twin-actor.is-weld .twin-body { animation: twin-weld-lean .9s ease-in-out infinite; }
     .twin-actor.is-weld .twin-arm-r { transform-origin: 8% 20%; animation: twin-weld-arm .38s ease-in-out infinite; }
@@ -1244,6 +1294,18 @@
       0%, 100% { transform: scale(1); }
       50% { transform: scale(1.2); }
     }
+    @keyframes twin-meet {
+      0%, 100% { transform: rotate(-4deg); }
+      50% { transform: rotate(5deg); }
+    }
+    @keyframes twin-sweep {
+      0%, 100% { transform: rotate(-18deg); }
+      50% { transform: rotate(22deg); }
+    }
+    @keyframes twin-clean-lean {
+      0%, 100% { transform: rotate(-3deg); }
+      50% { transform: rotate(4deg); }
+    }
     .floor-pop {
       position: absolute;
       z-index: 8;
@@ -1256,6 +1318,7 @@
       text-align: left;
       color: #1c1917;
     }
+    .floor-pop.is-wide { width: 252px; }
     .floor-pop.is-off { display: none; }
     .floor-pop-kicker {
       display: block;
@@ -1290,6 +1353,14 @@
       color: #1c1917;
     }
     .floor-pop-list button:hover { color: #175cd3; }
+    .floor-pop-order { display: block; }
+    .floor-pop-meta {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: #667085;
+    }
+    .floor-pop-job { padding: 2px 0; }
     .floor-pop-more { display: block; margin-top: 6px; font-size: 12px; color: #98a2b3; }
     #view-roles.container { max-width: 1240px; }
     .dash-head {
@@ -2372,10 +2443,12 @@
     let insertScheduleModal = null;
     let refreshInterval = null;
     let floorTwinInterval = null;
+    let floorTwinShiftTimer = null;
     let floorTwinSig = '';
     let floorTwinBusy = false;
     let floorTwinLayout = null;
     let floorTwinDragging = false;
+    let floorTwinShiftId = '';
     const FLOOR_POS_KEY = 'sd-floor-pos';
     let floorPos = {};
     let floorPosSaveTimer = null;
@@ -2892,6 +2965,8 @@
     const LUNCH_END_MINS = 12 * 60 + 30;
     const SHIFT_START_MINS = 7 * 60 + 45;
     const SHIFT_END_MINS = 15 * 60 + 45;
+    const MEETING_END_MINS = 8 * 60;
+    const CLEANING_START_MINS = 15 * 60 + 15;
     function asSast(date) { return new Date(date.getTime() + 2 * 60 * 60 * 1000); }
     function sastMinsOfDay(date) {
       const d = asSast(date);
@@ -2909,6 +2984,19 @@
       const m = String(d.getUTCMonth() + 1).padStart(2, '0');
       const day = String(d.getUTCDate()).padStart(2, '0');
       return y + '-' + m + '-' + day;
+    }
+    function facilityShiftState(now) {
+      now = now ? new Date(now) : new Date();
+      if (isNaN(now.getTime())) now = new Date();
+      const dow = sastDayOfWeek(now);
+      const mins = sastMinsOfDay(now);
+      if (dow === 0 || dow === 6) return { id: 'end', label: 'End of shift' };
+      if (mins < SHIFT_START_MINS) return { id: 'end', label: 'End of shift' };
+      if (mins < MEETING_END_MINS) return { id: 'meeting', label: 'Production Meeting' };
+      if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) return { id: 'lunch', label: 'Lunch' };
+      if (mins >= CLEANING_START_MINS && mins < SHIFT_END_MINS) return { id: 'cleaning', label: 'Cleaning' };
+      if (mins >= SHIFT_END_MINS) return { id: 'end', label: 'End of shift' };
+      return { id: 'working', label: 'Working' };
     }
     function formatEstimateClock(date) {
       if (!date || isNaN(date.getTime())) return '';
@@ -3357,11 +3445,25 @@
       if (p === 'quality control') return 'qc';
       return 'idle';
     }
-    function rowsAnim(rows) {
+    function rowsAnim(rows, shift) {
       const live = (rows || []).filter((r) => !r.paused);
       if (live.length) return animForProcess(live[0].process);
+      const id = shift && shift.id;
+      if (id === 'meeting') return 'meeting';
+      if (id === 'cleaning') return 'cleaning';
+      if (id === 'lunch') return 'lunch';
+      if (id === 'end') return 'end';
       if ((rows || []).length) return 'paused';
       return 'idle';
+    }
+    function stationShiftTag(rows, shift) {
+      const live = (rows || []).filter((r) => !r.paused);
+      if (live.length) return { id: 'working', label: 'Working' };
+      return shift || { id: 'working', label: 'Working' };
+    }
+    function stationShiftTagHtml(rows, shift) {
+      const tag = stationShiftTag(rows, shift);
+      return '<span class="floor-shift-tag is-' + floorEsc(tag.id) + '">' + floorEsc(tag.label) + '</span>';
     }
     function twinPileHtml() {
       return '<span class="twin-pile" aria-hidden="true"><span class="twin-pile-deck"></span><span class="twin-pile-box twin-pile-box-a"></span><span class="twin-pile-box twin-pile-box-b"></span></span>';
@@ -3405,6 +3507,21 @@
         prop = '<g class="twin-job"><path d="M48 42 h10 l8 10" stroke="#1c1917" stroke-width="2.2" fill="none"></path><ellipse class="twin-spray" cx="64" cy="54" rx="9" ry="11" fill="#93c5fd"></ellipse></g>';
       } else if (k === 'qc') {
         prop = '<g class="twin-job"><rect x="50" y="38" width="12" height="16" rx="1" fill="#fff" stroke="#1c1917"></rect><path class="twin-check" d="M52 46 l3 3 6 -7" stroke="#067647" stroke-width="2" fill="none"></path></g>';
+      } else if (k === 'meeting') {
+        prop = '<g class="twin-job">' +
+          '<rect x="50" y="38" width="12" height="16" rx="1" fill="#fff" stroke="#1c1917"></rect>' +
+          '<path d="M52 43 h8 M52 47 h8 M52 51 h5" stroke="#b08948" stroke-width="1.5"></path>' +
+          '</g>';
+      } else if (k === 'cleaning') {
+        prop = '<g class="twin-job">' +
+          '<path class="twin-broom" d="M58 34 L49 64" stroke="#92400e" stroke-width="2.4" stroke-linecap="round"></path>' +
+          '<rect class="twin-broom-head" x="42" y="62" width="18" height="5" rx="1.5" fill="#067647"></rect>' +
+          '</g>';
+      } else if (k === 'lunch') {
+        prop = '<g class="twin-job">' +
+          '<rect x="52" y="44" width="8" height="11" rx="1" fill="#fff" stroke="#1c1917"></rect>' +
+          '<path d="M60 47 q5 2 5 5 q0 3 -5 5" stroke="#1c1917" fill="none" stroke-width="1.6"></path>' +
+          '</g>';
       }
       const face = (k === 'weld')
         ? '<path d="M26 20 q10 -12 20 0 v3 q-10 8 -20 0 z" fill="#1c1917"></path><path class="twin-visor" d="M28 20 h16 a5 5 0 0 1 0 11 H28 z" fill="#0b0b0c" opacity=".95"></path>'
@@ -3558,18 +3675,31 @@
       const pop = document.getElementById('floorPopover');
       if (pop) pop.classList.add('is-off');
     }
-    function showFloorPopover(anchor, kicker, title, orders, opener) {
+    function showFloorPopover(anchor, kicker, title, orders, opener, opts) {
       const atlas = document.querySelector('.floor-atlas');
       const pop = document.getElementById('floorPopover');
       if (!atlas || !pop) return;
+      opts = opts || {};
       const rows = orders || [];
-      const cap = 5;
+      const cap = opts.wide ? 12 : 5;
       const shown = rows.slice(0, cap);
       const extra = rows.length - shown.length;
+      pop.classList.toggle('is-wide', !!opts.wide);
       pop.querySelector('.floor-pop-kicker').textContent = kicker || '';
       pop.querySelector('.floor-pop-title').textContent = title || '';
       const list = pop.querySelector('.floor-pop-list');
-      if (!rows.length) {
+      if (opts.html) {
+        list.innerHTML = opts.html;
+        list.querySelectorAll('[data-floor-order]').forEach((btn) => {
+          btn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            if (opener) opener({
+              order: btn.getAttribute('data-floor-order'),
+              process: btn.getAttribute('data-floor-process')
+            });
+          });
+        });
+      } else if (!rows.length) {
         list.innerHTML = '<li class="text-muted">No orders on this person right now. Tap the numbered pile for work waiting to start, or tap your own station.</li>';
       } else {
         list.innerHTML = shown.map((row, i) =>
@@ -3584,18 +3714,72 @@
         });
       }
       const more = pop.querySelector('.floor-pop-more');
-      more.textContent = extra > 0 ? '+' + extra + ' more' : '';
+      more.textContent = opts.more || (extra > 0 ? '+' + extra + ' more' : '');
       pop.classList.remove('is-off');
       const ar = atlas.getBoundingClientRect();
       const br = anchor.getBoundingClientRect();
-      let left = br.left - ar.left + br.width / 2 - 84;
+      const popW = pop.classList.contains('is-wide') ? 252 : 168;
+      let left = br.left - ar.left + br.width / 2 - popW / 2;
       let top = br.top - ar.top - 8;
-      left = Math.max(8, Math.min(left, ar.width - 176));
+      left = Math.max(8, Math.min(left, ar.width - popW - 8));
       if (top < 8) top = br.bottom - ar.top + 8;
       else top = top - pop.offsetHeight;
       if (top < 8) top = br.bottom - ar.top + 8;
       pop.style.left = left + 'px';
       pop.style.top = top + 'px';
+    }
+    function dayWorkItemHtml(item) {
+      const label = floorEsc(item.order) + (item.process ? ' · ' + floorEsc(item.process) : '');
+      const dur = floorEsc(item.actualLabel || '') + (item.open ? ' (still on this)' : '');
+      return '<li><button type="button" data-floor-order="' + floorEsc(item.order) + '" data-floor-process="' + floorEsc(item.process) + '">' +
+        '<span class="floor-pop-order">' + label + '</span>' +
+        '<span class="floor-pop-meta">' + dur + '</span></button></li>';
+    }
+    function showFloorDayWork(anchor, name, currentRows, opener) {
+      showFloorPopover(anchor, 'End of shift', name, [], opener, {
+        wide: true,
+        html: '<li class="text-muted">Loading today\'s work…</li>'
+      });
+      google.script.run.withSuccessHandler(function (pack) {
+        const pop = document.getElementById('floorPopover');
+        if (!pop || pop.classList.contains('is-off')) return;
+        const items = (pack && pack.items) || [];
+        const seen = {};
+        const rows = [];
+        items.forEach((item) => {
+          const key = String(item.order || '') + '|' + String(item.process || '');
+          seen[key] = true;
+          rows.push(item);
+        });
+        (currentRows || []).forEach((row) => {
+          const key = String(row.order || '') + '|' + String(row.process || '');
+          if (seen[key]) return;
+          seen[key] = true;
+          rows.push({
+            order: row.order,
+            process: row.process,
+            open: true,
+            actualLabel: row.paused ? 'Paused' : 'On this now'
+          });
+        });
+        let html = '';
+        if (!rows.length) {
+          html = '<li class="text-muted">No shop work recorded today.</li>';
+        } else {
+          html = rows.slice(0, 12).map(dayWorkItemHtml).join('');
+        }
+        const total = (pack && pack.totalLabel) ? 'Today: ' + pack.totalLabel : '';
+        showFloorPopover(anchor, 'End of shift', name, [], opener, {
+          wide: true,
+          html: html,
+          more: total
+        });
+      }).withFailureHandler(function () {
+        showFloorPopover(anchor, 'End of shift', name, currentRows, opener, {
+          wide: true,
+          html: '<li class="text-muted">Could not load today\'s work.</li>'
+        });
+      }).getWorkerDayWork(name);
     }
     function bindSpot(el, kicker, title, rows, opener) {
       if (!el) return;
@@ -3614,10 +3798,13 @@
       grid.className = 'road-map';
       const data = layout || { office: [], piles: {}, workers: {} };
       floorTwinLayout = data;
+      const shift = facilityShiftState();
+      floorTwinShiftId = shift.id;
       const office = data.office || [];
       const placed = {};
       const officePos = posFor('office', 'office', FLOOR_OFFICE);
       let html = '<div class="floor-atlas">';
+      html += '<div class="floor-shift-banner is-' + floorEsc(shift.id) + '">' + floorEsc(shift.label) + '</div>';
       html += '<button type="button" class="floor-spot is-office" style="left:' + officePos.x + '%;top:' + officePos.y + '%" data-floor="office">' +
         '<span class="job-cart" aria-hidden="true"><i class="bi bi-cart3"></i></span>' +
         '<span class="floor-spot-title">Office</span>' +
@@ -3643,8 +3830,9 @@
         });
         const at = posFor('station', st.name, st);
         html += '<button type="button" class="floor-spot is-station" style="left:' + at.x + '%;top:' + at.y + '%" data-floor-worker="' + floorEsc(st.name) + '">' +
-          twinActorHtml(rowsAnim(rows)) +
+          twinActorHtml(rowsAnim(rows, shift)) +
           '<span class="floor-spot-title">' + floorEsc(st.name) + '</span>' +
+          stationShiftTagHtml(rows, shift) +
           countBadge(rows) +
           '</button>';
       });
@@ -3659,8 +3847,9 @@
         });
         extraI += 1;
         html += '<button type="button" class="floor-spot is-station" style="left:' + bay.x + '%;top:' + bay.y + '%" data-floor-worker="' + floorEsc(name) + '">' +
-          twinActorHtml(rowsAnim(rows)) +
+          twinActorHtml(rowsAnim(rows, shift)) +
           '<span class="floor-spot-title">' + floorEsc(name) + '</span>' +
+          stationShiftTagHtml(rows, shift) +
           countBadge(rows) +
           '</button>';
       });
@@ -3698,17 +3887,35 @@
           if (mine) {
             if (openStationWork(worker, rows)) return;
           }
-          showFloorPopover(btn, 'Station', pin ? pin.name : worker, rows, function (row) {
+          const shift = facilityShiftState();
+          const opener = function (row) {
             const step = processToRoadStep(row && row.process);
             openFloorBoard(step.role, step.id, step.qcFilter || '');
-          });
+          };
+          if (shift.id === 'end') {
+            showFloorDayWork(btn, pin ? pin.name : worker, rows, opener);
+            return;
+          }
+          showFloorPopover(btn, shift.label || 'Station', pin ? pin.name : worker, rows, opener);
         });
       });
     }
     function stopFloorTwin() {
       if (floorTwinInterval) clearInterval(floorTwinInterval);
       floorTwinInterval = null;
+      if (floorTwinShiftTimer) clearInterval(floorTwinShiftTimer);
+      floorTwinShiftTimer = null;
       floorTwinBusy = false;
+    }
+    function maybeFlipFloorShift() {
+      if (document.hidden) return;
+      if (floorTwinDragging) return;
+      const pop = document.getElementById('floorPopover');
+      if (pop && !pop.classList.contains('is-off')) return;
+      if (!floorTwinLayout) return;
+      const next = facilityShiftState();
+      if (floorTwinShiftId === next.id) return;
+      renderFloorPlan(floorTwinLayout);
     }
     function refreshFloorTwin(force) {
       if (document.hidden) return;
@@ -3720,7 +3927,7 @@
       google.script.run.withSuccessHandler(function (layout) {
         floorTwinBusy = false;
         const raw = JSON.stringify(layout || {});
-        if (!force && raw === floorTwinSig) return;
+        if (!force && raw === floorTwinSig && floorTwinShiftId === facilityShiftState().id) return;
         floorTwinSig = raw;
         renderFloorPlan(layout);
       }).withFailureHandler(function () { floorTwinBusy = false; }).getFloorLayout();
@@ -3731,6 +3938,7 @@
       pullFloorPos(function () {
         refreshFloorTwin(true);
         floorTwinInterval = setInterval(function () { refreshFloorTwin(false); }, 8000);
+        floorTwinShiftTimer = setInterval(function () { maybeFlipFloorShift(); }, 15000);
       });
     }
     function setFloorView(view) {
