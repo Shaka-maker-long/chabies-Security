@@ -340,7 +340,7 @@ assert.strictEqual(board.journeyWeeks[0].start, board.weekStart, "journey weeks 
 assert.ok(/Sep/.test(board.journeyWeeks[0].label), "week headers are real dates, not Week 1");
 assert.ok(board.journeyWeeks.every((w) => !/^Week \d+$/.test(w.label)), "week headers are date ranges, not Week 1 / 2 / 3");
 assert.ok(board.firstPlannedWeek, "board can jump to the first week that has planned work");
-assert.strictEqual(board.firstPlannedWeek, plan.weekMondayIso(trip.start));
+assert.strictEqual(board.firstPlannedWeek, plan.weekMondayIso(String(trip.start).slice(0, 10)));
 assert.strictEqual(plan.processCode("Profile Cutting"), "C");
 assert.strictEqual(plan.processCode("Powder coating"), "PC");
 assert.ok(trip.rows.find((r) => r.process === "Profile Cutting").code === "C");
@@ -493,6 +493,79 @@ assert.ok(cutPlan.days.indexOf("2026-09-08") !== -1, "plan stays on the booked M
 assert.ok(cutPlan.actual.days.indexOf("2026-09-15") !== -1, "actual Cutting lands in the week it was clocked");
 assert.ok(String(cutPlan.actual.start).indexOf("2026-09-15T07:45") === 0);
 assert.ok(compared.rows.find((r) => r.process === "Tagging").actual.days.length === 0, "other processes stay empty until clocked");
+
+const pauseStart = plan.toMs("2026-09-14T07:45:00+02:00");
+const pauseEnd = plan.toMs("2026-09-14T15:45:00+02:00");
+const splitBouts = plan.boutsFromLogTimes(pauseStart, pauseEnd, [{
+  start: plan.toMs("2026-09-14T10:00:00+02:00"),
+  end: plan.toMs("2026-09-14T14:00:00+02:00"),
+  reason: "Waiting for steel"
+}]);
+assert.strictEqual(splitBouts.length, 3, "work, pause, then work after resume");
+assert.strictEqual(splitBouts[0].kind, "work");
+assert.strictEqual(splitBouts[1].kind, "pause");
+assert.strictEqual(splitBouts[1].reason, "Waiting for steel");
+assert.strictEqual(splitBouts[2].kind, "work");
+assert.ok(String(splitBouts[0].end).indexOf("T10:00") !== -1);
+assert.ok(String(splitBouts[2].start).indexOf("T14:00") !== -1);
+
+getBook().getSheetByName("Production_Log").appendRow([
+  "log_weld_today",
+  "S260100 A",
+  "Thabo",
+  "Welding",
+  "Done",
+  new Date("2026-09-14T05:45:00.000Z"),
+  new Date("2026-09-14T13:45:00.000Z"),
+  "",
+  "",
+  "",
+  0,
+  "",
+  JSON.stringify({
+    pauses: [{
+      start: "2026-09-14T10:00:00+02:00",
+      end: "2026-09-14T14:00:00+02:00",
+      reason: "Waiting for steel"
+    }]
+  })
+]);
+const weldToday = plan.getBoard("2026-09-08").journey.orders.find((o) => o.orderId === "S260100 A");
+const weldPlan = weldToday.rows.find((r) => r.process === "Welding");
+assert.ok(weldPlan.days.indexOf("2026-09-08") !== -1, "plan welding stays on the booked day");
+assert.ok(weldPlan.actual.days.indexOf("2026-09-14") !== -1, "actual welding lands on the day it was clocked");
+assert.ok(weldPlan.actual.days.indexOf("2026-09-08") === -1, "actual does not stick to the plan day");
+assert.strictEqual(weldPlan.actual.bouts.length, 3);
+assert.strictEqual(weldPlan.actual.bouts[0].kind, "work");
+assert.strictEqual(weldPlan.actual.bouts[1].kind, "pause");
+assert.strictEqual(weldPlan.actual.bouts[2].kind, "work");
+assert.ok(String(weldPlan.actual.bouts[2].start).indexOf("T14:00") !== -1, "production after resume is its own bout");
+
+db.upsertOrder({
+  order_number: "S260941",
+  status: "Welding",
+  product: "Product A"
+});
+getBook().getSheetByName("Production_Log").appendRow([
+  "log_unplanned_weld",
+  "S260941",
+  "Thabo",
+  "Welding",
+  "Done",
+  new Date("2026-09-14T07:00:00.000Z"),
+  new Date("2026-09-14T08:00:00.000Z"),
+  "",
+  "",
+  "",
+  0,
+  "",
+  JSON.stringify({ pauses: [] })
+]);
+const clockOnly = plan.buildJourney([]).orders.find((o) => o.orderId === "S260941");
+assert.ok(clockOnly, "clocked work shows on Journey Actual even with no plan");
+assert.strictEqual(clockOnly.rows[0].process, "Welding");
+assert.strictEqual(clockOnly.rows[0].days.length, 0);
+assert.ok(clockOnly.rows[0].actual.days.indexOf("2026-09-14") !== -1);
 
 const catalog = require("./product-catalog");
 const talithaUrl = catalog.lookupProduct("Talitha Bookshelf").imageUrl;

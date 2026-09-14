@@ -699,7 +699,11 @@ assert.ok(planningHtml.indexOf(">Plan<") !== -1 && planningHtml.indexOf(">Actual
 assert.ok(planningHtml.indexOf("function chipsForWeek") !== -1 && planningHtml.indexOf("function weekKindEntries") !== -1, "week view keeps an order’s tasks together on one Plan row and one Actual row");
 assert.ok(planningHtml.indexOf("not on separate task rows") !== -1, "week-view help says tasks stay in the same cell");
 assert.ok(planningHtml.indexOf('getAttribute("data-kind") === "actual"') !== -1, "Actual chips are marked so they are not dragged");
-assert.ok(planningHtml.indexOf("if Cutting ran in week 2") !== -1, "Actual can sit in a later week than Plan");
+assert.ok(planningHtml.indexOf("if you booked Monday and clocked today") !== -1, "Actual can sit on a later day than Plan");
+assert.ok(planningHtml.indexOf("// is paused") !== -1, "Actual shows paused clock time as //");
+assert.ok(planningHtml.indexOf("after resume the process letter") !== -1, "resumed production shows again after a pause");
+assert.ok(planningHtml.indexOf("chip.paused") !== -1, "paused actual chips have a distinct style");
+assert.ok(planningHtml.indexOf("coveringActualBout") !== -1, "15-minute actual uses each work and pause bout");
 assert.ok(planningHtml.indexOf("class='product") !== -1, "Journey shows the product under the order number");
 assert.ok(planningHtml.indexOf("data-product-shot") !== -1 && planningHtml.indexOf("id=\"productShot\"") !== -1, "hover the product name to see the catalog photo");
 assert.ok(planningHtml.indexOf("Hover the product name") !== -1, "week view tells you to hover the product");

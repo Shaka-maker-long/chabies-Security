@@ -493,6 +493,101 @@ function occupiedWorkdays(block) {
 function emptyActual() {
   return { start: "", end: "", days: [], workerId: "", workerName: "", bouts: [] };
 }
+
+function parseProductionLogMeta(cell) {
+  if (cell && typeof cell === "object" && !Array.isArray(cell)) {
+    return { pauses: Array.isArray(cell.pauses) ? cell.pauses : [] };
+  }
+  const s = String(cell || "").trim();
+  if (!s) return { pauses: [] };
+  try {
+    const parsed = JSON.parse(s);
+    if (!parsed || typeof parsed !== "object") return { pauses: [] };
+    return { pauses: Array.isArray(parsed.pauses) ? parsed.pauses : [] };
+  } catch (e) {
+    return { pauses: [] };
+  }
+}
+
+function mergePauseIntervals(pauses) {
+  const sorted = (pauses || [])
+    .filter((p) => p && Number.isFinite(p.start) && Number.isFinite(p.end) && p.end > p.start)
+    .sort((a, b) => a.start - b.start);
+  const out = [];
+  sorted.forEach((p) => {
+    const last = out[out.length - 1];
+    if (last && p.start <= last.end) {
+      if (p.end > last.end) last.end = p.end;
+      if (!last.reason && p.reason) last.reason = p.reason;
+      return;
+    }
+    out.push({ start: p.start, end: p.end, reason: p.reason || "" });
+  });
+  return out;
+}
+
+function pauseIntervalsFromLog(row, logStartMs, logEndMs, nowMs) {
+  const meta = parseProductionLogMeta(row[12]);
+  let raw = Array.isArray(meta.pauses) ? meta.pauses.slice() : [];
+  if (!raw.length && row[9]) {
+    raw.push({ start: row[9], end: "", reason: String(row[11] || "") });
+  }
+  const clipped = [];
+  raw.forEach((p) => {
+    const start = toMs(p && p.start);
+    if (!Number.isFinite(start)) return;
+    let end = toMs(p && p.end);
+    if (!Number.isFinite(end) || end <= start) end = nowMs;
+    const lo = Math.max(start, logStartMs);
+    const hi = Math.min(end, logEndMs);
+    if (hi > lo) clipped.push({ start: lo, end: hi, reason: String((p && p.reason) || "") });
+  });
+  return mergePauseIntervals(clipped);
+}
+
+function boutsFromLogTimes(startMs, endMs, pauses) {
+  const bouts = [];
+  let cursor = startMs;
+  (pauses || []).forEach((p) => {
+    if (p.start > cursor) {
+      bouts.push({ kind: "work", start: isoFromMs(cursor), end: isoFromMs(p.start), reason: "" });
+    }
+    bouts.push({ kind: "pause", start: isoFromMs(p.start), end: isoFromMs(p.end), reason: p.reason || "" });
+    if (p.end > cursor) cursor = p.end;
+  });
+  if (cursor < endMs) {
+    bouts.push({ kind: "work", start: isoFromMs(cursor), end: isoFromMs(endMs), reason: "" });
+  }
+  return bouts;
+}
+
+function actualFromGroup(act) {
+  return {
+    start: act.start,
+    end: act.end,
+    days: (act.days || []).slice(),
+    workerId: act.workerId,
+    workerName: act.workerName,
+    bouts: (act.bouts || []).map((b) => ({
+      start: b.start,
+      end: b.end,
+      kind: b.kind === "pause" ? "pause" : "work",
+      reason: b.reason || ""
+    }))
+  };
+}
+
+function lookupOrderProduct(orderId) {
+  const id = formatOrderId(orderId);
+  const hit = (listOrders() || []).find((o) => formatOrderId(o.order_number) === id);
+  const product = hit ? String(hit.product || "") : "";
+  return { product, imageUrl: productImageUrl(product) };
+}
+
+function sortJourneyProcessRows(rows) {
+  (rows || []).sort((a, b) => (JOURNEY_PROCESS_ORDER[a.process] || 99) - (JOURNEY_PROCESS_ORDER[b.process] || 99));
+  return rows;
+}
 function productImageUrl(product) {
   const found = catalog.lookupProduct(product);
   return (found && found.imageUrl) || "";
@@ -524,15 +619,17 @@ function readProductionActuals() {
       if (!Number.isFinite(startMs)) continue;
       let endMs = toMs(row[6]);
       if (!Number.isFinite(endMs) || endMs <= startMs) endMs = nowMs;
-      const bout = { start: isoFromMs(startMs), end: isoFromMs(endMs) };
+      const pauses = pauseIntervalsFromLog(row, startMs, endMs, nowMs);
+      const bouts = boutsFromLogTimes(startMs, endMs, pauses);
+      if (!bouts.length) continue;
       out.push({
         orderId,
         process,
         workerId: String(row[2] || "").trim(),
         workerName: String(row[2] || "").trim(),
-        start: bout.start,
-        end: bout.end,
-        bouts: [bout]
+        start: isoFromMs(startMs),
+        end: isoFromMs(endMs),
+        bouts
       });
     }
     return out;
@@ -564,8 +661,13 @@ function groupProductionActuals(logs) {
       g.workerId = log.workerId;
       g.workerName = log.workerName;
     }
-    (log.bouts || [{ start: log.start, end: log.end }]).forEach((bout) => {
-      g.bouts.push({ start: bout.start, end: bout.end });
+    (log.bouts || [{ start: log.start, end: log.end, kind: "work" }]).forEach((bout) => {
+      g.bouts.push({
+        start: bout.start,
+        end: bout.end,
+        kind: bout.kind === "pause" ? "pause" : "work",
+        reason: bout.reason || ""
+      });
       occupiedWorkdays(bout).forEach((iso) => { g.daySet[iso] = true; });
     });
   });
@@ -619,22 +721,52 @@ function readIdleActuals() {
 
 function attachActuals(journey) {
   const groups = groupProductionActuals(readProductionActuals());
+  const used = {};
   ((journey && journey.orders) || []).forEach((o) => {
     (o.rows || []).forEach((row) => {
       const key = formatOrderId(row.orderId || o.orderId) + "||" + String(row.process || "");
       const act = groups[key];
-      row.actual = act
-        ? {
-          start: act.start,
-          end: act.end,
-          days: act.days.slice(),
-          workerId: act.workerId,
-          workerName: act.workerName,
-          bouts: act.bouts.map((b) => ({ start: b.start, end: b.end }))
-        }
-        : emptyActual();
+      row.actual = act ? actualFromGroup(act) : emptyActual();
+      if (act) used[key] = true;
     });
   });
+  Object.keys(groups).forEach((key) => {
+    if (used[key]) return;
+    const act = groups[key];
+    const orderId = formatOrderId(act.orderId);
+    let order = ((journey && journey.orders) || []).find((o) => formatOrderId(o.orderId) === orderId);
+    if (!order) {
+      const meta = lookupOrderProduct(orderId);
+      order = {
+        orderId,
+        product: meta.product,
+        imageUrl: meta.imageUrl,
+        start: act.start,
+        end: act.end,
+        rows: []
+      };
+      journey.orders.push(order);
+    }
+    order.rows.push({
+      orderId,
+      product: order.product,
+      process: act.process,
+      code: processCode(act.process),
+      workerId: act.workerId,
+      workerName: act.workerName,
+      start: "",
+      end: "",
+      days: [],
+      segments: [],
+      actual: actualFromGroup(act)
+    });
+    sortJourneyProcessRows(order.rows);
+    if (act.start && (!order.start || act.start < order.start)) order.start = act.start;
+    if (act.end && (!order.end || act.end > order.end)) order.end = act.end;
+  });
+  if (journey && Array.isArray(journey.orders)) {
+    journey.orders.sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")) || String(a.orderId).localeCompare(String(b.orderId)));
+  }
   if (journey) journey.otherActuals = readIdleActuals();
   const bounds = journeyDayBounds(journey);
   if (journey) {
@@ -1804,6 +1936,8 @@ module.exports = {
   USER_ASSIGNED_PROCESSES,
   weekStartingOrders,
   attachActuals,
+  parseProductionLogMeta,
+  boutsFromLogTimes,
   matchJourneyProcess,
   productImageUrl,
   remainingPlanForStatus,
