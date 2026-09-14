@@ -93,6 +93,64 @@ function requireAssignee(name) {
   return hit;
 }
 
+const DRAWING_OWNER = "Erin";
+
+function drawingAssignee() {
+  const hit = officeAssignees().find((x) => namesMatch(x, DRAWING_OWNER));
+  if (!hit) throw new Error("Erin must be on Users to receive drawing tasks");
+  return hit;
+}
+
+function ensureOpenDrawingTask(row) {
+  if (!db.drawingStillNeeded(row)) return false;
+  const erin = drawingAssignee();
+  let dirty = false;
+  if (!row.drawing || typeof row.drawing !== "object") {
+    row.drawing = { required: true, file: null, assignee: erin };
+    dirty = true;
+  }
+  if (row.drawing.required !== true) {
+    row.drawing.required = true;
+    dirty = true;
+  }
+  if (!namesMatch(row.drawing.assignee, erin)) {
+    row.drawing.assignee = erin;
+    dirty = true;
+  }
+  const open = openOfKind(row, "drawing");
+  if (!open) {
+    addTask(row, "drawing", erin);
+    dirty = true;
+  } else if (!namesMatch(open.assignee, erin)) {
+    open.assignee = erin;
+    dirty = true;
+  }
+  if (!row.ready_for_orders) {
+    row.ready_for_orders = true;
+    dirty = true;
+  }
+  return dirty;
+}
+
+function syncDrawingQueue() {
+  let n = 0;
+  db.listEnquiries().forEach((row) => {
+    const raw = db.getEnquiryRaw(row.enquiry_no);
+    if (!raw) return;
+    if (db.drawingStillNeeded(raw)) {
+      try {
+        if (ensureOpenDrawingTask(raw)) {
+          raw.updated_at = db.nowIso();
+          db.saveEnquiryRecord(raw);
+          n += 1;
+        }
+      } catch (e) {}
+    }
+    if (raw.drawing && raw.drawing.required) db.applyDrawingShopStatus(raw);
+  });
+  return n;
+}
+
 function namesMatch(a, b) {
   return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
 }
@@ -468,6 +526,7 @@ function availableActions(row) {
 }
 
 function listMyTasks(userName, opts) {
+  syncDrawingQueue();
   const me = String(userName || "").trim();
   const all = !!(opts && opts.all) && isManagerName(me);
   const out = [];
@@ -721,7 +780,7 @@ function eventLabel(action, row, fromStatus, body) {
   if (action === "complete_order") {
     return row.drawing && row.drawing.required ? "POP saved — drawing required" : "POP saved — ready for Orders";
   }
-  if (action === "complete_drawing") return "Drawing uploaded — ready for Orders";
+  if (action === "complete_drawing") return "Drawing uploaded — Not Yet Started";
   if (action === "close") return "Closed: " + status;
   if (action === "reassign") return "Task reassigned";
   return action;
@@ -1362,7 +1421,6 @@ function completeOrder(row, actor, body) {
   const needsDrawing = drawingRaw === true || drawingRaw === "yes" || drawingRaw === "true";
   const noDrawing = drawingRaw === false || drawingRaw === "no" || drawingRaw === "false";
   if (!needsDrawing && !noDrawing) throw new Error("Say whether this order requires a drawing");
-  const drawingAssignee = needsDrawing ? requireAssignee(body.assignee) : "";
   if (pick) {
     quoteOptions.applyQuoteSnapshot(row, pick);
     row.chosen_option = pick.option;
@@ -1385,11 +1443,13 @@ function completeOrder(row, actor, body) {
   if (!needsDrawing) {
     row.drawing = { required: false, file: null };
     row.ready_for_orders = true;
+    db.applyDrawingShopStatus(row);
     return;
   }
-  row.drawing = { required: true, file: null, assignee: drawingAssignee };
-  row.ready_for_orders = false;
-  addTask(row, "drawing", drawingAssignee);
+  row.drawing = { required: true, file: null, assignee: drawingAssignee() };
+  row.ready_for_orders = true;
+  ensureOpenDrawingTask(row);
+  db.applyDrawingShopStatus(row);
 }
 
 function completeDrawing(row, actor, body) {
@@ -1406,6 +1466,7 @@ function completeDrawing(row, actor, body) {
   row.drawing.uploaded_by = actor;
   closeOpenKind(row, "drawing", actor);
   row.ready_for_orders = true;
+  db.applyDrawingShopStatus(row);
 }
 
 function closeEnquiry(row, actor, body) {
@@ -1425,12 +1486,17 @@ function reassignTask(row, _actor, body) {
   const id = String(body.task_id || "").trim();
   const task = (row.tasks || []).find((t) => t.id === id && t.status === "open");
   if (!task) throw new Error("Open task not found");
+  if (task.kind === "drawing") {
+    const erin = drawingAssignee();
+    task.assignee = erin;
+    if (row.drawing) row.drawing.assignee = erin;
+    return;
+  }
   const next = requireAssignee(body.assignee);
   if (!namesMatch(task.assignee, next)) access.cancelKind(row, task.kind);
   task.assignee = next;
   if (task.kind === "follow_up") row.follow_up_assignee = task.assignee;
   if (task.kind === "quote") row.quote_assignee = task.assignee;
-  if (task.kind === "drawing" && row.drawing) row.drawing.assignee = task.assignee;
 }
 
 const ONBOARD_STATUSES = [
@@ -1600,7 +1666,7 @@ function seedOnboardTasks(row, actor, body, status) {
     addTask(row, "pop", requireAssignee(quoter), { title: "Record client outcome" });
   }
   if (status === "Ordered" && row.drawing && row.drawing.required && !(row.drawing.file && row.drawing.file.stored_as)) {
-    addTask(row, "drawing", requireAssignee(row.drawing.assignee || body.drawing_assignee || actor));
+    ensureOpenDrawingTask(row);
   }
 }
 
@@ -1770,8 +1836,8 @@ function onboardEnquiry(actorName, body) {
       raw.drawing = { required: false, file: null };
       raw.ready_for_orders = true;
     } else {
-      raw.drawing = { required: true, file: null, assignee: requireAssignee(incoming.drawing_assignee || incoming.assignee || actor) };
-      raw.ready_for_orders = false;
+      raw.drawing = { required: true, file: null, assignee: drawingAssignee() };
+      raw.ready_for_orders = true;
       const drawItem = incoming.drawing_file || {
         file_base64: incoming.drawing_file_base64 || incoming.drawing_base64,
         file_name: incoming.drawing_file_name,
@@ -1797,6 +1863,7 @@ function onboardEnquiry(actorName, body) {
   }
 
   seedOnboardTasks(raw, actor, incoming, status);
+  if (raw.drawing && raw.drawing.required) db.applyDrawingShopStatus(raw);
   db.appendEnquiryEvent(raw, {
     kind: "onboard",
     actor,
@@ -1836,5 +1903,8 @@ module.exports = {
   actionKind,
   ONBOARD_STATUSES,
   onboardEnquiry,
-  isActionableOpenTask
+  isActionableOpenTask,
+  drawingAssignee,
+  syncDrawingQueue,
+  DRAWING_OWNER
 };

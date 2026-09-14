@@ -881,8 +881,8 @@
     if (action.id === "complete_order") {
       return quoteOptionSelect(row) +
         fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "") +
-        "<label>Requires drawing?<select name=\"drawing_required\" required><option value=\"\" disabled selected>Choose</option><option value=\"no\">No — ready for Orders</option><option value=\"yes\">Yes — assign drawing</option></select></label>" +
-        "<label>Drawing assigned to</label>" + assigneeSelect();
+        "<label>Requires drawing?<select name=\"drawing_required\" required><option value=\"\" disabled selected>Choose</option><option value=\"no\">No — production can start as Not Yet Started</option><option value=\"yes\">Yes — Erin uploads the drawing</option></select></label>" +
+        "<p class=\"sd-process-sub\">Not every order needs a drawing. If yes, Erin gets Upload drawing on My tasks. The order can still go onto Orders as Waiting for drawing. Production becomes Not Yet Started after the file is on.</p>";
     }
     if (action.id === "complete_drawing") {
       return fileBlock("application/pdf,.pdf,image/*,.png,.jpg,.jpeg,.webp", "");
@@ -1106,6 +1106,8 @@
       (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_options_label ? " · " + esc(row.quote_options_label) : (row.quote_no ? " · " + esc(row.quote_no) : "")) +
         ((row.quotes || []).length > 1 ? " · " + (row.quotes.length) + " quotes" : "") + "</span>" : "") +
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +
+      (row.drawing && row.drawing.required && !(row.drawing.file && row.drawing.file.stored_as)
+        ? "<span>Waiting for drawing</span>" : "") +
       (row.lifespan_label ? "<span class=\"sd-life\">Lifespan <b>" + esc(row.lifespan_label) + "</b></span>" : "") +
       "</div>";
     html += journeyHtml(enquiryFallbackEvents(row), "");
@@ -1118,6 +1120,9 @@
       html += "<p class=\"sd-process-sub\">No open assigned task.</p>";
     }
     if (row.ready_for_orders) {
+      if (row.drawing && row.drawing.required && !(row.drawing.file && row.drawing.file.stored_as)) {
+        html += "<p class=\"sd-process-sub\">Erin still needs to upload the drawing. The order can go onto Orders as Waiting for drawing. Production becomes Not Yet Started after the file is on.</p>";
+      }
       html += (row.order_number
           ? "<p class=\"sd-process-sub\">Order <b>" + esc(row.order_number) + "</b> is already on Orders.</p>" +
             "<a href=\"/orders\"><button type=\"button\" class=\"ghost sd-create-order\">Open Orders</button></a>"

@@ -2019,6 +2019,9 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       if (isAtPaintShopStatus_(currentStatus)) {
         return { success: false, message: "This order is at the paint shop. Receive it on Paint shop before shop-floor work." };
       }
+      if (String(currentStatus || "").trim().toLowerCase() === "waiting for drawing") {
+        return { success: false, message: "This order is waiting for a drawing. Production starts after Erin uploads it." };
+      }
 
       var nextStatus = getStartStatusForRole(currentStatus, role);
 

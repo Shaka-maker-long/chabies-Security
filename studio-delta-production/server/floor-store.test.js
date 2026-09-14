@@ -206,6 +206,16 @@ async function main() {
   assert.ok(siyaWeld.oversees, "production manager oversees shop completed work");
   assert.ok((siyaWeld.items || []).some((i) => i.order === "SD-WELD" && i.worker === "Sipho"), "production manager sees Sipho weld");
 
+  const waitingDraw = db.upsertOrder({
+    order_number: "SD-DRAW",
+    status: "Waiting for drawing",
+    product: "Gate",
+    client_name: "Test Client"
+  });
+  const blockedDraw = await callShopFunction("startOrder", [waitingDraw.id, "Sipho", "Profile Cutting", [], "", false, null, CONFIRM]);
+  assert.strictEqual(blockedDraw.success, false, JSON.stringify(blockedDraw));
+  assert.ok(/drawing/i.test(String(blockedDraw.message || "")), JSON.stringify(blockedDraw));
+
   const steelGrid = book.getSheetByName("Steel_Usage").getDataRange().getValues();
   const weldRows = steelGrid.filter((row, i) => i > 0 && String(row[1]) === "SD-WELD");
   assert.ok(weldRows.length >= 1, "welder steel must stay after profile edit");

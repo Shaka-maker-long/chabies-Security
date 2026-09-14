@@ -20,6 +20,7 @@ initWorkbook();
 staff.upsertUser({ name: "Coster", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes" });
 staff.upsertUser({ name: "Approver", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes" });
 staff.upsertUser({ name: "Quoter", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes" });
+staff.upsertUser({ name: "Erin", access: "Admin", role: "Interior Designer", password: "x", seeDebtors: "Yes" });
 staff.upsertUser({ name: "Welder", access: "Production", role: "Welding", password: "x", tasks: ["Welding"] });
 
 assert.ok(pipeline.officeAssignees().indexOf("Coster") >= 0);
@@ -399,10 +400,12 @@ const ordered = pipeline.applyAction("#1996", "Quoter", {
   assignee: "Coster"
 });
 assert.strictEqual(ordered.row.status, "Ordered");
-assert.strictEqual(ordered.row.ready_for_orders, false);
-assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "drawing"));
+assert.strictEqual(ordered.row.ready_for_orders, true);
+assert.strictEqual(ordered.row.drawing.assignee, "Erin");
+assert.ok(pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing"));
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "drawing"));
 
-const drawn = pipeline.applyAction("#1996", "Coster", {
+const drawn = pipeline.applyAction("#1996", "Erin", {
   action: "complete_drawing",
   file_base64: pdfB64,
   file_name: "drawing.pdf",
@@ -1324,6 +1327,80 @@ const repaired = db.getEnquiry(leaked.enquiry_no);
 assert.strictEqual(repaired.ready_for_orders, true, "Ordered with POP and no drawing is ready for the Orders box");
 assert.ok(repaired.ordered_at, "dashboard ordered date comes from POP when the complete_order event is missing");
 assert.ok(db.listEnquiriesWaitingForOrders().some((r) => r.enquiry_no === leaked.enquiry_no));
+
+const drawWait = db.upsertEnquiry({
+  date_enquired: "10/09/2026",
+  client_name: "Drawing Wait Client",
+  product: "Air Chair",
+  category: "Chair",
+  status: "Ordered",
+  quote_no: "SOQDRAW1",
+  products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "11500.00" }],
+  drawing: { required: true, file: null, assignee: "Coster" },
+  ready_for_orders: false,
+  client_outcome: { kind: "approved", decided_at: db.nowIso(), decided_by: "Quoter" }
+}, { fromPipeline: true, fromMigrate: true });
+assert.strictEqual(db.getEnquiry(drawWait.enquiry_no).ready_for_orders, true, "drawing still needed must not block Add to Orders");
+pipeline.syncDrawingQueue();
+assert.ok(pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
+assert.strictEqual(db.getEnquiry(drawWait.enquiry_no).drawing.assignee, "Erin");
+
+const waitingRows = db.createOrdersFromEnquiryForm(drawWait.enquiry_no, {
+  order_number: "S260410",
+  delivery_date: "2026-10-15",
+  shared: {
+    client_name: "Drawing Wait Client",
+    province: "Gauteng",
+    city: "Sandton",
+    address: "1 Drawing Road"
+  },
+  products: [{
+    product: "Air Chair",
+    category: "Chair",
+    type: "Standard",
+    quantity: 1,
+    price_incl_vat: "11500",
+    amount_paid: "0",
+    variation: "Black",
+    doors: "None",
+    powder_coating: "Matt Black",
+    dimensions: "800x400x400",
+    detailed_description: "Needs drawing",
+    qty_price_confirmed: true
+  }]
+});
+assert.strictEqual(waitingRows.rows[0].status, "Waiting for drawing");
+
+const alreadyOnShop = db.upsertOrder({
+  order_number: "S260411",
+  enquiry_no: drawWait.enquiry_no,
+  client_name: "Drawing Wait Client",
+  status: "Not Yet Started"
+});
+pipeline.syncDrawingQueue();
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").status, "Waiting for drawing");
+
+const weldingKeep = db.upsertOrder({
+  order_number: "S260412",
+  enquiry_no: drawWait.enquiry_no,
+  client_name: "Drawing Wait Client",
+  status: "Welding"
+});
+pipeline.syncDrawingQueue();
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260412").status, "Welding");
+
+const pdfDraw = pdfB64;
+pipeline.applyAction(drawWait.enquiry_no, "Erin", {
+  action: "complete_drawing",
+  file_base64: pdfDraw,
+  file_name: "drawing.pdf",
+  file_confirmed: true
+});
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Not Yet Started");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").status, "Not Yet Started");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260412").status, "Welding");
+assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
 
 const keptOrder = db.upsertOrder({
   order_number: "9001",

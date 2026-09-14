@@ -11,7 +11,7 @@ const {
 const { getBook, persistWorkbook, ORDER_HEADERS, dataDir } = require("./workbook-store");
 const fromEnquiry = require("./create-order-from-enquiry");
 const quoteOptions = require("./quote-options");
-const { SHOP_STATUSES, isShopStatus, normalizeShopStatus } = require("./shop-status");
+const { SHOP_STATUSES, isShopStatus, normalizeShopStatus, WAITING_FOR_DRAWING, isWaitingForDrawing } = require("./shop-status");
 
 const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
@@ -1301,8 +1301,38 @@ function drawingStillNeeded(row) {
 function enquiryReadyForOrders(row) {
   if (!row) return false;
   if (String(row.status || "").trim() !== "Ordered") return !!row.ready_for_orders;
-  if (drawingStillNeeded(row)) return false;
   return true;
+}
+
+function initialOrderStatus(enquiry) {
+  return drawingStillNeeded(enquiry) ? WAITING_FOR_DRAWING : "Not Yet Started";
+}
+
+function canRewindForDrawing(status) {
+  const s = normalizeShopStatus(status) || String(status || "").trim();
+  return !s || s === "Not Yet Started" || s === WAITING_FOR_DRAWING;
+}
+
+function applyDrawingShopStatus(enquiry) {
+  if (!enquiry) return [];
+  const linked = ordersLinkedToEnquiry(enquiry);
+  if (!linked.length) return [];
+  const need = drawingStillNeeded(enquiry);
+  const changed = [];
+  linked.forEach((order) => {
+    const st = normalizeShopStatus(order.status) || String(order.status || "").trim();
+    if (need) {
+      if (!canRewindForDrawing(st) || st === WAITING_FOR_DRAWING) return;
+      upsertOrder(Object.assign({}, order, { status: WAITING_FOR_DRAWING }));
+      changed.push(order.order_number);
+      return;
+    }
+    if (isWaitingForDrawing(st)) {
+      upsertOrder(Object.assign({}, order, { status: "Not Yet Started" }));
+      changed.push(order.order_number);
+    }
+  });
+  return changed;
 }
 
 function orderedAtFromRow(row, events) {
@@ -1475,7 +1505,7 @@ function createOrderDraftFromEnquiry(enquiryNo, now) {
   const enquiry = getEnquiry(enquiryNo);
   if (!enquiry) throw new Error("Enquiry not found");
   if (!enquiry.ready_for_orders) {
-    throw new Error("Attach proof of payment, and the drawing if this order needs one, before creating an Orders row");
+    throw new Error("Attach proof of payment before creating an Orders row");
   }
   const existing = ordersLinkedToEnquiry(enquiry);
   return {
@@ -1491,6 +1521,8 @@ function createOrderDraftFromEnquiry(enquiryNo, now) {
 
 function savePlannedOrders(plan) {
   const month = formatMonthOfSale(nowIso());
+  const enquiry = plan.enquiry_no ? (getEnquiry(plan.enquiry_no) || getEnquiryRaw(plan.enquiry_no)) : null;
+  const status = initialOrderStatus(enquiry);
   const rows = plan.units.map((unit) => {
     const pair = vatPair(unit.price_incl_vat, "");
     const paid = parseMoney(unit.amount_paid);
@@ -1498,7 +1530,7 @@ function savePlannedOrders(plan) {
       enquiry_no: plan.enquiry_no,
       quote_number: plan.quote_number,
       order_number: unit.order_number,
-      status: "Not Yet Started",
+      status,
       type: unit.type,
       category: unit.category,
       product: unit.product,
@@ -1533,7 +1565,7 @@ function createOrdersFromEnquiryForm(enquiryNo, body) {
   const enquiry = getEnquiry(enquiryNo);
   if (!enquiry) throw new Error("Enquiry not found");
   if (!enquiry.ready_for_orders) {
-    throw new Error("Attach proof of payment, and the drawing if this order needs one, before creating an Orders row");
+    throw new Error("Attach proof of payment before creating an Orders row");
   }
   const existing = ordersLinkedToEnquiry(enquiry);
   if (existing.length) {
@@ -1544,7 +1576,9 @@ function createOrdersFromEnquiryForm(enquiryNo, body) {
     }
     return {
       existing: true,
-      rows: existing.map((o) => decorateMoney(o)),
+      rows: applyDrawingShopStatus(enquiry).length
+        ? ordersLinkedToEnquiry(enquiry).map((o) => decorateMoney(o))
+        : existing.map((o) => decorateMoney(o)),
       enquiry: getEnquiry(enquiry.enquiry_no)
     };
   }
@@ -1716,7 +1750,7 @@ function createOrderFromEnquiry(enquiryNo) {
   const enquiry = getEnquiry(enquiryNo);
   if (!enquiry) throw new Error("Enquiry not found");
   if (!enquiry.ready_for_orders) {
-    throw new Error("Attach proof of payment, and the drawing if this order needs one, before creating an Orders row");
+    throw new Error("Attach proof of payment before creating an Orders row");
   }
   const existing = listOrders().find((o) => {
     if (!o) return false;
@@ -1740,7 +1774,7 @@ function createOrderFromEnquiry(enquiryNo) {
     enquiry_no: enquiry.enquiry_no,
     quote_number: enquiry.quote_no || "",
     order_number: nextStudioOrderNumber(),
-    status: "Not Yet Started",
+    status: initialOrderStatus(enquiry),
     type: enquiry.enquiry_type || "",
     category: enquiry.category || "",
     product: enquiry.product || "",
@@ -2968,6 +3002,9 @@ module.exports = {
   ordersLinkedToEnquiry,
   drawingStillNeeded,
   enquiryReadyForOrders,
+  initialOrderStatus,
+  applyDrawingShopStatus,
+  WAITING_FOR_DRAWING,
   listEnquiriesWaitingForOrders,
   listEnquiries,
   getEnquiry,

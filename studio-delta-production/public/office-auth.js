@@ -1,4 +1,5 @@
 const SD_ORDER_STATUSES = [
+  "Waiting for drawing",
   "Not Yet Started",
   "Ready for Steelwork", "Profile Cutting",
   "Ready for Tagging", "Tagging",
