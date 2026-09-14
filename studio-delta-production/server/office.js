@@ -57,6 +57,7 @@ const glassRates = require("./glass-rates");
 const steelRates = require("./steel-rates");
 const backboardRates = require("./backboard-rates");
 const productionCost = require("./production-cost");
+const orderCorrect = require("./order-correct");
 const floorPlanning = require("./floor-planning");
 const orderLife = require("./order-life");
 const fs = require("fs");
@@ -597,6 +598,7 @@ function mountOffice(app) {
       vatRate: VAT_RATE,
       nextOrderNumber: nextStudioOrderNumber(),
       operators: staff.listUsers().map((u) => u.name).filter(Boolean),
+      shopStatuses: SHOP_STATUSES.slice(),
       canManageUsers: staff.canManageUsers(_req.office),
       canMarkNoPlate: noPlates.canMarkNoPlate(_req.office),
       readyEnquiries: listEnquiriesWaitingForOrders().map((row) => ({
@@ -633,6 +635,15 @@ function mountOffice(app) {
       const existing = listOrders().find((o) => o.order_number === formatOrderId(body.order_number)) || null;
       const row = upsertOrder(jobCard.applyOfficeOrderStatusLock(body, existing));
       res.json({ ok: true, row });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/orders/correct-status", requireOffice, (req, res) => {
+    try {
+      const result = orderCorrect.correctOrderShop(req.body || {});
+      res.json({ ok: true, ...result });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
