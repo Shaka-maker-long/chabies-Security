@@ -625,7 +625,7 @@
             start: bout.start,
             end: bout.end,
             kind: bout.kind || "work",
-            otherDetail: item
+            otherDetail: Object.assign({}, item, { start: bout.start, end: bout.end })
           });
         });
       });
