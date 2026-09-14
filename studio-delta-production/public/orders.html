@@ -165,10 +165,24 @@
           </label>
           <label>Status
             <input id="f_status" readonly>
-            <span class="hint">Status starts as Not Yet Started. Generating a job card moves it to Ready for Steelwork. The shop floor updates it after that.</span>
+            <span class="hint">New orders start as Not Yet Started. Generating a job card moves it to Ready for Steelwork. The shop floor updates it after that unless you correct it below.</span>
           </label>
           <label>Assigned operator
             <select id="f_assigned_operator"></select>
+          </label>
+        </div>
+        <div class="link-box" id="correctBox" hidden>
+          <div style="flex:1 1 100%">
+            <b>Correct shop status</b>
+            <p class="hint">Use this when the order was started on the wrong task. Pick where it should be and who it is assigned to. A running clock on this order is closed so the floor is not stuck on the old task. Planning slots for this order are cleared so you can book the work that is left.</p>
+          </div>
+          <label style="flex:1 1 220px">Move to status
+            <select id="f_correct_status"></select>
+            <span class="hint">Profile Cutting only stays if someone is clocked on it. Otherwise it becomes Ready for Steelwork.</span>
+          </label>
+          <label class="confirm" style="flex:1 1 100%">
+            <input type="checkbox" id="f_correct_confirm">
+            <span>This is where the order is now, and this is the assigned person.<span class="hint">Required when you change the status.</span></span>
           </label>
         </div>
         <div class="stack-grid four">
@@ -330,6 +344,7 @@
     let rows = [];
     let dropdowns = {};
     let operators = [];
+    let shopStatuses = [];
     let nextOrderNumber = "S1";
     let canManage = false;
     let canMarkNoPlate = false;
@@ -572,6 +587,17 @@
       const paid = parseMoney(existing && existing.amount_paid);
       document.getElementById("f_paid_in_full").checked = !!(total > 0 && Math.round((total - paid) * 100) <= 1);
       document.getElementById("f_status").value = existing ? (existing.status || "Not Yet Started") : "Not Yet Started";
+      const correctBox = document.getElementById("correctBox");
+      if (correctBox) correctBox.hidden = !existing;
+      const correctSel = document.getElementById("f_correct_status");
+      if (correctSel) {
+        const current = existing ? (existing.status || "Not Yet Started") : "Not Yet Started";
+        const list = shopStatuses.length ? shopStatuses.slice() : [current];
+        if (current && list.indexOf(current) === -1) list.unshift(current);
+        correctSel.innerHTML = list.map((s) => "<option" + (s === current ? " selected" : "") + ">" + esc(s) + "</option>").join("");
+      }
+      const confirmEl = document.getElementById("f_correct_confirm");
+      if (confirmEl) confirmEl.checked = false;
       DROP_FIELDS.forEach((k) => fillSelect("f_" + k, k, existing ? existing[k] : ""));
       const restored = applyOrderDraft(orderDraftId());
       document.getElementById("formFootHint").textContent = restored
@@ -631,8 +657,33 @@
         document.getElementById("f_client_name").focus();
         return;
       }
+      const existing = editingIndex >= 0 ? rows[editingIndex] : null;
+      const nextStatus = String((document.getElementById("f_correct_status") || {}).value || payload.status || "").trim();
+      const confirmed = !!(document.getElementById("f_correct_confirm") && document.getElementById("f_correct_confirm").checked);
+      const statusChanged = !!(existing && nextStatus && nextStatus !== String(existing.status || "").trim());
+      if (statusChanged && !confirmed) {
+        setFormErr("Tick that this is where the order is now before changing the status.");
+        const box = document.getElementById("correctBox");
+        if (box) box.scrollIntoView({ block: "nearest" });
+        return;
+      }
       document.getElementById("saveBtn").disabled = true;
       try {
+        if (existing && (statusChanged || confirmed)) {
+          const fix = await sdOfficeFetch("/api/office/orders/correct-status", {
+            method: "POST",
+            body: JSON.stringify({
+              order_number: payload.order_number,
+              status: nextStatus,
+              assigned_operator: payload.assigned_operator,
+              confirmed: true
+            })
+          });
+          const fixed = await fix.json();
+          if (!fixed.ok) { setFormErr(fixed.error || "Could not correct status"); return; }
+          payload.status = (fixed.row && fixed.row.status) || nextStatus;
+          document.getElementById("f_status").value = payload.status;
+        }
         const r = await sdOfficeFetch("/api/office/orders", { method: "PUT", body: JSON.stringify(payload) });
         const j = await r.json();
         if (!j.ok) { setFormErr(j.error || "Save failed"); return; }
@@ -800,6 +851,7 @@
       rows = j.rows || [];
       dropdowns = d.dropdowns || {};
       operators = j.operators || [];
+      shopStatuses = j.shopStatuses || [];
       nextOrderNumber = j.nextOrderNumber || "S1";
       printedByOrder = {};
       (cards.ok && cards.rows ? cards.rows : []).forEach((card) => {
