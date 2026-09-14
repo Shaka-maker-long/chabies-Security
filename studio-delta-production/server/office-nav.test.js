@@ -638,6 +638,7 @@ assert.ok(floor.indexOf('type="button"') !== -1 && floor.indexOf("data-idle-assi
 assert.ok(floor.indexOf("id=\"idleAssignMsg\"") !== -1, "Assign task writes a status line");
 assert.ok(floor.indexOf("idleAssignerName") !== -1, "Assign task uses the office login name");
 assert.ok(floor.indexOf("alreadyOpen && (idleAssignFormDirty()") !== -1, "Idle popup must not wipe Other while someone is filling it");
+assert.ok(floor.indexOf("idleForceRefresh") !== -1, "Assign task refreshes the idle list after save");
 assert.ok(codeGs.indexOf("var WORK_LOCKS_DISABLED = false") !== -1);
 assert.ok(floor.indexOf("const WORK_LOCKS_DISABLED = false") !== -1);
 assert.ok(codeGs.indexOf("function workLocksDisabled") !== -1);
