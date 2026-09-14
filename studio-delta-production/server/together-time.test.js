@@ -13,7 +13,7 @@ delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const db = require("./db");
 const staff = require("./staff");
-const { callShopFunction } = require("./gas");
+const { callShopFunction, clearShopCache } = require("./gas");
 
 initWorkbook();
 const book = getBook();
@@ -156,6 +156,38 @@ const CONFIRM = { understood: true, highlights: [] };
   assert.ok(doneA && doneB, "both together logs closed");
   assert.ok(Number(JSON.parse(String(doneA[12] || "{}")).batchShare) >= 2, "finished S-2001 keeps split share");
   assert.ok(Number(JSON.parse(String(doneB[12] || "{}")).batchShare) >= 2, "finished S-2002 keeps split share");
+
+  const cutStartB = new Date("2026-09-14T10:58:43.015Z");
+  const cutStartC = new Date("2026-09-14T10:59:02.727Z");
+  const cutEndB = new Date("2026-09-14T12:01:47.099Z");
+  const cutEndC = new Date("2026-09-14T12:02:38.082Z");
+  function togetherMeta(extra) {
+    return JSON.stringify(Object.assign({
+      entryType: "production",
+      batchId: "batch-split-bc",
+      batchShare: 2,
+      pauses: []
+    }, extra));
+  }
+  closed.appendRow([
+    "log-split-b", "S-SPLIT-B", "Thabo", "Profile Cutting", "Profile Cutting",
+    cutStartB, cutEndB, "Complete", "", "", "", "",
+    togetherMeta({ batchJoinedAt: cutStartC.getTime(), batchSplitAt: cutEndB.getTime() })
+  ]);
+  closed.appendRow([
+    "log-split-c", "S-SPLIT-C", "Thabo", "Profile Cutting", "Profile Cutting",
+    cutStartC, cutEndC, "Complete", "", "", "", "",
+    togetherMeta({ batchSplitAt: cutEndC.getTime() })
+  ]);
+  persistWorkbook();
+  clearShopCache();
+  const splitDone = await callShopFunction("getMyCompletedWork", ["Thabo"]);
+  const splitB = (splitDone.items || []).find((i) => i.order === "S-SPLIT-B");
+  const splitC = (splitDone.items || []).find((i) => i.order === "S-SPLIT-C");
+  assert.ok(splitB && splitC, "together completed share rows missing");
+  assert.ok(splitB.actualMinutes > 28 && splitB.actualMinutes < 35, "first together order share: " + splitB.actualMinutes);
+  assert.ok(splitC.actualMinutes > 28 && splitC.actualMinutes < 35, "second together order must not keep the full clock: " + splitC.actualMinutes);
+  assert.ok(Math.abs(splitB.actualMinutes - splitC.actualMinutes) < 2, "together shares must match: " + splitB.actualMinutes + " vs " + splitC.actualMinutes);
 
   const startC = await callShopFunction("startOrder", [c.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
   assert.strictEqual(startC.success, true, JSON.stringify(startC));
