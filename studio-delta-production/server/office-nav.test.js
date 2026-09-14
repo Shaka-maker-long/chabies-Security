@@ -731,6 +731,9 @@ assert.ok(planningHtml.indexOf("rowspan") !== -1, "same order numbers are merged
 assert.ok(planningHtml.indexOf("C profile cutting") !== -1);
 assert.ok(planningHtml.indexOf("O is an idle") !== -1, "Journey help explains the O letter");
 assert.ok(planningHtml.indexOf("does not overlap a production clock") !== -1, "Other actuals must not sit on production time");
+assert.ok(planningHtml.indexOf("Paused clock time with no other live order") !== -1, "Other actuals fill pause holes with no live order");
+assert.ok(planningHtml.indexOf("other-unknown") !== -1, "unassigned idle O chips are marked");
+assert.ok(planningHtml.indexOf("Not filled") !== -1, "clicking an unassigned O explains the hole");
 assert.ok(planningHtml.indexOf("processMatchesWorker(row, \"actual\")") !== -1, "Actual name filter uses who clocked");
 assert.ok(planningHtml.indexOf("processMatchesWorker(row, \"plan\")") !== -1, "Planned name filter uses who was booked");
 assert.ok(planningHtml.indexOf("Actual shows that person") !== -1, "Actual names the person who did the job");

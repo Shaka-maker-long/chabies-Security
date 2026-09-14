@@ -521,14 +521,21 @@ function subtractIsoSpans(startIso, endIso, blockers) {
   return out;
 }
 
+function isPaintShopWorker(name) {
+  const w = workerKey(name);
+  return w === workerKey(PAINT_WORKER_NAME) || w === workerKey(PAINT_WORKER_ID);
+}
+
 function coverageByWorker(logs) {
   const cover = {};
   (logs || []).forEach((log) => {
     const w = workerKey(log.workerName || log.workerId);
     if (!w) return;
     if (!cover[w]) cover[w] = [];
-    (log.bouts || [{ start: log.start, end: log.end }]).forEach((bout) => {
-      if (bout && bout.start && bout.end) cover[w].push({ start: bout.start, end: bout.end });
+    (log.bouts || [{ start: log.start, end: log.end, kind: "work" }]).forEach((bout) => {
+      if (!bout || !bout.start || !bout.end) return;
+      if (bout.kind === "pause") return;
+      cover[w].push({ start: bout.start, end: bout.end });
     });
   });
   return cover;
@@ -794,6 +801,90 @@ function readIdleActuals() {
   }
 }
 
+const UNASSIGNED_IDLE_TITLE = "Unassigned";
+
+function assignedIdleBlockers(items) {
+  const cover = {};
+  (items || []).forEach((item) => {
+    const w = workerKey(item.workerName || item.workerId);
+    if (!w) return;
+    if (!cover[w]) cover[w] = [];
+    (item.bouts || [{ start: item.start, end: item.end }]).forEach((bout) => {
+      if (bout && bout.start && bout.end) cover[w].push({ start: bout.start, end: bout.end });
+    });
+  });
+  return cover;
+}
+
+function paidWindowsUntil(iso, nowMs) {
+  const parts = String(iso || "").split("-").map(Number);
+  if (parts.length < 3 || !parts[0]) return [];
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  return workWindowsOnDay(parts[0], parts[1], parts[2]).map((win) => {
+    if (now < win.start) return null;
+    const end = Math.min(win.end, now);
+    if (end <= win.start) return null;
+    return { start: isoFromMs(win.start), end: isoFromMs(end) };
+  }).filter(Boolean);
+}
+
+function unknownIdleActuals(logs, assignedItems, nowMs) {
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  const workCover = coverageByWorker(logs);
+  const assignedCover = assignedIdleBlockers(assignedItems);
+  const workers = {};
+  (logs || []).forEach((log) => {
+    const name = String(log.workerName || log.workerId || "").trim();
+    if (!name || isPaintShopWorker(name)) return;
+    const w = workerKey(name);
+    if (!workers[w]) {
+      workers[w] = { workerId: log.workerId || name, workerName: name, daySet: {} };
+    }
+    (log.bouts || [{ start: log.start, end: log.end }]).forEach((bout) => {
+      if (!bout || !bout.start || !bout.end) return;
+      occupiedWorkdays(bout).forEach((iso) => { workers[w].daySet[iso] = true; });
+    });
+  });
+  const out = [];
+  Object.keys(workers).forEach((w) => {
+    const info = workers[w];
+    const blockers = (workCover[w] || []).concat(assignedCover[w] || []);
+    const leftover = [];
+    Object.keys(info.daySet).sort().forEach((iso) => {
+      paidWindowsUntil(iso, now).forEach((win) => {
+        leftover.push.apply(leftover, subtractIsoSpans(win.start, win.end, blockers));
+      });
+    });
+    const spans = leftover.filter((span) => toMs(span.end) - toMs(span.start) >= 60 * 1000);
+    if (!spans.length) return;
+    const days = [];
+    const seen = {};
+    spans.forEach((span) => {
+      occupiedWorkdays(span).forEach((iso) => {
+        if (seen[iso]) return;
+        seen[iso] = true;
+        days.push(iso);
+      });
+    });
+    days.sort();
+    out.push({
+      id: "idle-unknown-" + w,
+      workerId: info.workerId,
+      workerName: info.workerName,
+      title: UNASSIGNED_IDLE_TITLE,
+      note: "Paused or not on an order — we do not know what they did",
+      process: UNASSIGNED_IDLE_TITLE,
+      code: "O",
+      unassigned: true,
+      start: spans[0].start,
+      end: spans[spans.length - 1].end,
+      days,
+      bouts: spans.map((span) => ({ start: span.start, end: span.end, kind: "work" }))
+    });
+  });
+  return out;
+}
+
 function attachActuals(journey) {
   const logs = readProductionActuals();
   const groups = groupProductionActuals(logs);
@@ -843,7 +934,10 @@ function attachActuals(journey) {
   if (journey && Array.isArray(journey.orders)) {
     journey.orders.sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")) || String(a.orderId).localeCompare(String(b.orderId)));
   }
-  if (journey) journey.otherActuals = clipIdleActuals(readIdleActuals(), logs);
+  if (journey) {
+    const assigned = clipIdleActuals(readIdleActuals(), logs);
+    journey.otherActuals = assigned.concat(unknownIdleActuals(logs, assigned));
+  }
   const bounds = journeyDayBounds(journey);
   if (journey) {
     journey.days = bounds.min && bounds.max ? workdaysFromTo(bounds.min, bounds.max) : [];
@@ -2013,6 +2107,7 @@ module.exports = {
   weekStartingOrders,
   attachActuals,
   clipIdleActuals,
+  unknownIdleActuals,
   subtractIsoSpans,
   parseProductionLogMeta,
   boutsFromLogTimes,
