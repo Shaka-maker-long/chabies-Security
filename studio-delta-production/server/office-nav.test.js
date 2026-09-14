@@ -698,6 +698,10 @@ assert.ok(planningHtml.indexOf("← Week view") !== -1 && planningHtml.indexOf("
 assert.ok(planningHtml.indexOf("rowspan") !== -1, "same order numbers are merged across people");
 assert.ok(planningHtml.indexOf("C profile cutting") !== -1);
 assert.ok(planningHtml.indexOf("O is an idle") !== -1, "Journey help explains the O letter");
+assert.ok(planningHtml.indexOf("does not overlap a production clock") !== -1, "Other actuals must not sit on production time");
+assert.ok(planningHtml.indexOf("processMatchesWorker(row, \"actual\")") !== -1, "Actual name filter uses who clocked");
+assert.ok(planningHtml.indexOf("processMatchesWorker(row, \"plan\")") !== -1, "Planned name filter uses who was booked");
+assert.ok(planningHtml.indexOf("Actual shows that person") !== -1, "Actual names the person who did the job");
 assert.ok(planningHtml.indexOf("data-other") !== -1, "O chips open idle / other detail");
 assert.ok(planningHtml.indexOf("id=\"otherDetailMask\"") !== -1);
 assert.ok(planningHtml.indexOf("otherJourneyOrder") !== -1);

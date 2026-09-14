@@ -665,12 +665,14 @@
       return daysOf(row, "plan").some((iso) => isos.indexOf(iso) !== -1) ||
         daysOf(row, "actual").some((iso) => isos.indexOf(iso) !== -1);
     }
-    function processMatchesWorker(row) {
+    function processMatchesWorker(row, kind) {
       if (!journeyWorkerId) return true;
-      const planId = String(row.workerId || row.workerName || "");
-      const act = row.actual || {};
-      const actId = String(act.workerId || act.workerName || "");
-      return planId === String(journeyWorkerId) || actId === String(journeyWorkerId);
+      const want = String(journeyWorkerId);
+      if (kind === "actual") {
+        const act = row.actual || {};
+        return String(act.workerId || act.workerName || "") === want;
+      }
+      return String(row.workerId || row.workerName || "") === want;
     }
     function earliestStart(order, rowMatch) {
       let min = "";
@@ -695,15 +697,16 @@
       const filter = kindFilter();
       const pairs = [];
       sortByStart(orders, (row) => {
-        if (filter === "plan") return windowMatch(row, "plan");
-        if (filter === "actual") return windowMatch(row, "actual");
-        return windowMatch(row, "plan") || windowMatch(row, "actual");
+        if (filter === "plan") return windowMatch(row, "plan") && processMatchesWorker(row, "plan");
+        if (filter === "actual") return windowMatch(row, "actual") && processMatchesWorker(row, "actual");
+        return (windowMatch(row, "plan") && processMatchesWorker(row, "plan")) ||
+          (windowMatch(row, "actual") && processMatchesWorker(row, "actual"));
       }).forEach((o) => {
         (o.rows || []).forEach((row) => {
           if (o.other) {
             const actualHit = windowMatch(row, "actual");
             if (!actualHit || filter === "plan") return;
-            if (!processMatchesWorker(row)) return;
+            if (!processMatchesWorker(row, "actual")) return;
             const act = row.actual || {};
             pairs.push({
               order: o,
@@ -713,27 +716,19 @@
             });
             return;
           }
-          if (!processMatchesWorker(row)) return;
           const planHit = windowMatch(row, "plan");
           const actualHit = windowMatch(row, "actual");
           const planPerson = { id: row.workerId, name: row.workerName || row.workerId };
           const act = row.actual || {};
           const actualPerson = (act.workerId || act.workerName)
             ? { id: act.workerId || act.workerName, name: act.workerName || act.workerId }
-            : planPerson;
-          if (filter === "plan") {
-            if (!planHit) return;
+            : null;
+          if ((filter === "plan" || filter === "both") && planHit && processMatchesWorker(row, "plan")) {
             pairs.push({ order: o, person: planPerson, row: row, kind: "plan" });
-            return;
           }
-          if (filter === "actual") {
-            if (!actualHit) return;
+          if ((filter === "actual" || filter === "both") && actualHit && actualPerson && processMatchesWorker(row, "actual")) {
             pairs.push({ order: o, person: actualPerson, row: row, kind: "actual" });
-            return;
           }
-          if (!planHit && !actualHit) return;
-          pairs.push({ order: o, person: planPerson, row: row, kind: "plan" });
-          pairs.push({ order: o, person: actualPerson, row: row, kind: "actual" });
         });
       });
       return pairs;
@@ -956,7 +951,7 @@
         return pairRow(pairs, i, cells, { names: true, namePick: true });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Each process has a Plan row and an Actual row under it so you can compare the booked slot with the shop clock. Actual letters sit on the day the clock ran, even if Plan was another day. // is paused time; after resume the process letter continues. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders this week. Name and Order swap while filtered. ← Everyone puts Order first again. Names within an order follow who does the task first. O is an idle / other actual — click O for who, the slot, and what they did. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a Plan letter to another free day. Actual letters stay put.</p>" +
+        "<p class='help'>Each process has a Plan row and an Actual row under it so you can compare the booked slot with the shop clock. Actual letters sit on the day the clock ran, even if Plan was another day. // is paused time; after resume the process letter continues. Both, Planned, and Actual filter those rows. Click a name to see only that person: Planned is what was booked for them, Actual is what they clocked. If another person did a booked job, Actual shows that person, not the booked name. Name and Order swap while filtered. ← Everyone puts Order first again. Names within an order follow who does the task first. O is idle / other actual time that does not overlap a production clock. Click O for who, the slot, and what they did. Click a day for the 15-minute grid. Click an order number for its timeline. Drag a Plan letter to another free day. Actual letters stay put.</p>" +
         "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead>" + head + "</thead><tbody>" + body + "</tbody></table></div>";
     }
     function timeSlots() {
@@ -999,7 +994,7 @@
         return pairRow(pairs, i, cells, { names: true, namePick: true });
       }).join("");
       box.innerHTML = renderJourneyCrumb() +
-        "<p class='help'>Plan is the booked 15-minute slot. Actual is when the clock ran on this day. // is paused time on Actual; after resume the process letter fills the later slots. Both, Planned, and Actual filter those rows. Click a name to see only that person’s orders on this day. Name and Order swap while filtered. ← Everyone puts Order first again. ← Week view and ← Day view go back. O is an idle / other actual — click O for who, the slot, and what they did. Drag a Plan letter to a free time. That person cannot overlap. Actual letters are not draggable.</p>" +
+        "<p class='help'>Plan is the booked 15-minute slot. Actual is when the clock ran on this day. // is paused time on Actual; after resume the process letter fills the later slots. Both, Planned, and Actual filter those rows. Click a name to see only that person: Planned is what was booked for them, Actual is what they clocked. If another person did a booked job, Actual shows that person, not the booked name. Name and Order swap while filtered. ← Everyone puts Order first again. ← Week view and ← Day view go back. O is idle / other actual time that does not overlap a production clock. Click O for who, the slot, and what they did. Drag a Plan letter to a free time. That person cannot overlap. Actual letters are not draggable.</p>" +
         "<div class='sheet-wrap'><table class='" + namesGridClass() + "'><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
     }
     function orderWorkDays(order) {
