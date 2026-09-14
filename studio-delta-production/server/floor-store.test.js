@@ -193,6 +193,17 @@ async function main() {
   const siphoOnly = await callShopFunction("getMyCompletedWork", ["Sipho"]);
   assert.ok((siphoOnly.items || []).every((i) => i.worker === "Sipho"), "floor worker still sees only own completed");
 
+  const dayWork = await callShopFunction("getWorkerDayWork", ["Sipho"]);
+  assert.strictEqual(dayWork.worker, "Sipho");
+  assert.ok(dayWork.shift && dayWork.shift.id, "day work includes facility shift");
+  assert.ok((dayWork.items || []).some((i) => i.order === "SD-WELD" && i.process === "Welding"), JSON.stringify(dayWork));
+  assert.ok((dayWork.items || []).some((i) => i.order === "SD-CUT"), JSON.stringify(dayWork));
+  assert.ok(typeof dayWork.totalMinutes === "number");
+  const adminDay = await callShopFunction("getWorkerDayWork", ["Admin"]);
+  assert.ok(!(adminDay.items || []).some((i) => i.order === "SD-WELD"), "manager click must not use overseer completed list");
+  const siyaDay = await callShopFunction("getWorkerDayWork", ["Siya"]);
+  assert.ok(!(siyaDay.items || []).some((i) => i.order === "SD-WELD"), "production manager click must not use overseer completed list");
+
   const managerAll = await callShopFunction("getMyCompletedWork", ["Admin"]);
   assert.ok(managerAll.oversees, "manager oversees shop completed work");
   assert.ok((managerAll.items || []).some((i) => i.order === "SD-WELD" && i.worker === "Sipho"), "manager sees Sipho weld");

@@ -25,6 +25,8 @@ var STANDARD_DAY_MINS = 7 * 60 + 30; // paid shift: 07:45-15:45 minus 30 min lun
 var SHIFT_START_MINS = 7 * 60 + 45;
 var SHIFT_END_MINS = 15 * 60 + 45;
 var SHIFT_LOCK_MINS = SHIFT_END_MINS;
+var MEETING_END_MINS = 8 * 60;
+var CLEANING_START_MINS = 15 * 60 + 15;
 var LUNCH_START_MINS = 12 * 60;
 var LUNCH_END_MINS = 12 * 60 + 30;
 var SHIFT_DURATION = STANDARD_DAY_MINS;
@@ -1606,6 +1608,61 @@ function getMyCompletedWork(workerName, process) {
   return { worker: want, process: wantProcess, oversees: oversees, items: items };
 }
 
+function getWorkerDayWork(workerName, now) {
+  var want = String(workerName || "").trim();
+  var at = now ? new Date(now) : new Date();
+  if (isNaN(at.getTime())) at = new Date();
+  var shift = facilityShiftState(at);
+  var day = sastDayStamp(at);
+  var items = [];
+  var total = 0;
+  if (!want) {
+    return { worker: want, day: day, shift: shift, items: items, totalMinutes: 0, totalLabel: "" };
+  }
+  var ss = getSpreadsheet();
+  var pack = getLogPack(ss);
+  for (var i = 1; i < pack.values.length; i++) {
+    var row = pack.values[i];
+    var logWorker = String(row[2] || "").trim();
+    if (logWorker !== want) continue;
+    var meta = parseLogMeta(row.length > 12 ? row[12] : "");
+    if (meta.entryType === "indirect") continue;
+    var role = String(row[3] || "").trim();
+    if (role === "Indirect") continue;
+    var started = row[5] ? new Date(row[5]) : null;
+    if (started && isNaN(started.getTime())) started = null;
+    var ended = row[6] ? new Date(row[6]) : null;
+    if (ended && isNaN(ended.getTime())) ended = null;
+    var open = !ended;
+    var endedToday = !!(ended && sastDayStamp(ended) === day);
+    var startedToday = !!(started && sastDayStamp(started) === day);
+    if (!endedToday && !(open && (startedToday || started))) continue;
+    var actual = calculateWorkMinutesFromLog(row);
+    total += actual;
+    items.push({
+      order: String(row[1] || "").trim(),
+      process: role,
+      open: open,
+      actualMinutes: Math.round(actual * 10) / 10,
+      actualLabel: formatSpokenDuration(actual) || formatDurationServer(actual),
+      start: started ? started.toISOString() : "",
+      end: ended ? ended.toISOString() : ""
+    });
+  }
+  items.sort(function (a, b) {
+    if (a.open !== b.open) return a.open ? -1 : 1;
+    return String(b.end || b.start || "").localeCompare(String(a.end || a.start || ""));
+  });
+  return {
+    worker: want,
+    day: day,
+    shift: shift,
+    items: items,
+    totalMinutes: Math.round(total * 10) / 10,
+    totalLabel: formatSpokenDuration(total) || formatDurationServer(total) || ""
+  };
+}
+
 function updateCompletedSteelUsage(workerName, orderNum, process, steelUsageData) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
@@ -1844,7 +1901,7 @@ function getFloorLayout() {
       paused: !!info.isPaused
     });
   }
-  return { office: office, piles: piles, workers: workers };
+  return { office: office, piles: piles, workers: workers, shift: facilityShiftState() };
 }
 
 function uniqueOrderNums(arr) {
@@ -3818,6 +3875,20 @@ function paidWindowState(now) {
   if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) return { inPaid: false, reason: "Lunch", kind: "lunch" };
   if (mins >= SHIFT_LOCK_MINS) return { inPaid: false, reason: "End of shift", kind: "end" };
   return { inPaid: true, reason: "", kind: "paid" };
+}
+
+function facilityShiftState(now) {
+  now = now ? new Date(now) : new Date();
+  if (isNaN(now.getTime())) now = new Date();
+  var dow = sastDayOfWeek(now);
+  var mins = sastMinsOfDay(now);
+  if (dow === 0 || dow === 6) return { id: "end", label: "End of shift" };
+  if (mins < SHIFT_START_MINS) return { id: "end", label: "End of shift" };
+  if (mins < MEETING_END_MINS) return { id: "meeting", label: "Production Meeting" };
+  if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) return { id: "lunch", label: "Lunch" };
+  if (mins >= CLEANING_START_MINS && mins < SHIFT_END_MINS) return { id: "cleaning", label: "Cleaning" };
+  if (mins >= SHIFT_END_MINS) return { id: "end", label: "End of shift" };
+  return { id: "working", label: "Working" };
 }
 
 function isOvertimeStartAllowed(now, workerName) {
