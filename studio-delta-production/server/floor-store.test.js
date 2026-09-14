@@ -20,6 +20,7 @@ book.getSheetByName("Users").appendRow([
   "Sipho", "Welder Tagger", "1234", "Welding, Profile Cutting, Plate Cutting, Assembly", "Production", "No"
 ]);
 book.getSheetByName("Users").appendRow(["Admin", "Manager", "admin", "", "Admin", "Yes"]);
+book.getSheetByName("Users").appendRow(["Siya", "Production Manager", "siya", "", "Admin", "Yes"]);
 persistWorkbook();
 
 const weldOrder = db.upsertOrder({
@@ -187,6 +188,23 @@ async function main() {
   assert.strictEqual((plateDone2.steelUsage || []).length, 1);
   assert.ok(String(plateDone2.steelUsage[0].type).indexOf("6mm") >= 0);
   assert.ok(String(plateDone2.steelUsage[0].type).indexOf("4.5mm") === -1);
+  assert.strictEqual(plateDone2.worker, "Sipho");
+
+  const siphoOnly = await callShopFunction("getMyCompletedWork", ["Sipho"]);
+  assert.ok((siphoOnly.items || []).every((i) => i.worker === "Sipho"), "floor worker still sees only own completed");
+
+  const managerAll = await callShopFunction("getMyCompletedWork", ["Admin"]);
+  assert.ok(managerAll.oversees, "manager oversees shop completed work");
+  assert.ok((managerAll.items || []).some((i) => i.order === "SD-WELD" && i.worker === "Sipho"), "manager sees Sipho weld");
+  assert.ok((managerAll.items || []).some((i) => i.order === "SD-CUT"), "manager sees cutting completed");
+
+  const managerWeld = await callShopFunction("getMyCompletedWork", ["Admin", "Welding"]);
+  assert.ok((managerWeld.items || []).some((i) => i.order === "SD-WELD"), "manager welding board shows weld");
+  assert.ok(!(managerWeld.items || []).some((i) => i.order === "SD-CUT" || i.order === "SD-PLATE" || i.order === "SD-ASM"), "manager welding board hides other processes");
+
+  const siyaWeld = await callShopFunction("getMyCompletedWork", ["Siya", "Welding"]);
+  assert.ok(siyaWeld.oversees, "production manager oversees shop completed work");
+  assert.ok((siyaWeld.items || []).some((i) => i.order === "SD-WELD" && i.worker === "Sipho"), "production manager sees Sipho weld");
 
   const steelGrid = book.getSheetByName("Steel_Usage").getDataRange().getValues();
   const weldRows = steelGrid.filter((row, i) => i > 0 && String(row[1]) === "SD-WELD");
