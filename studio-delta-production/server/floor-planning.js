@@ -578,17 +578,30 @@ function clipIdleActuals(items, logs) {
 
 function parseProductionLogMeta(cell) {
   if (cell && typeof cell === "object" && !Array.isArray(cell)) {
-    return { pauses: Array.isArray(cell.pauses) ? cell.pauses : [] };
+    return {
+      pauses: Array.isArray(cell.pauses) ? cell.pauses : [],
+      entryType: cell.entryType || "production"
+    };
   }
   const s = String(cell || "").trim();
-  if (!s) return { pauses: [] };
+  if (!s) return { pauses: [], entryType: "production" };
   try {
     const parsed = JSON.parse(s);
-    if (!parsed || typeof parsed !== "object") return { pauses: [] };
-    return { pauses: Array.isArray(parsed.pauses) ? parsed.pauses : [] };
+    if (!parsed || typeof parsed !== "object") return { pauses: [], entryType: "production" };
+    return {
+      pauses: Array.isArray(parsed.pauses) ? parsed.pauses : [],
+      entryType: parsed.entryType || "production"
+    };
   } catch (e) {
-    return { pauses: [] };
+    return { pauses: [], entryType: "production" };
   }
+}
+
+function isIndirectLogRow(row) {
+  const order = String((row && row[1]) || "").trim().toLowerCase();
+  const process = String((row && row[3]) || "").trim().toLowerCase();
+  if (order === "indirect" || process === "indirect") return true;
+  return String(parseProductionLogMeta(row && row[12]).entryType || "").toLowerCase() === "indirect";
 }
 
 function mergePauseIntervals(pauses) {
@@ -682,6 +695,78 @@ function matchJourneyProcess(task) {
   if (/powder coating|paint shop/.test(s)) return "Powder coating";
   const names = PLANNED_PROCESSES.concat(["Powder coating"]);
   return names.find((name) => s.indexOf(name.toLowerCase().split(" ")[0]) !== -1) || "";
+}
+
+function otherTitleFromLog(row) {
+  const title = String((row && row[4]) || "Other").trim() || "Other";
+  const note = title.replace(/^other\s*[—–-]\s*/i, "").trim();
+  return {
+    title,
+    note: note && note.toLowerCase() !== title.toLowerCase() ? note : String((row && row[8]) || "").trim()
+  };
+}
+
+function readIndirectActuals() {
+  try {
+    const sheet = getBook().getSheetByName("Production_Log");
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    const lastCol = Math.max(sheet.getLastColumn(), 13);
+    const grid = sheet.getRange(1, 1, sheet.getLastRow(), lastCol).getValues();
+    const nowMs = Date.now();
+    const out = [];
+    for (let i = 1; i < grid.length; i++) {
+      const row = grid[i] || [];
+      if (!isIndirectLogRow(row)) continue;
+      const name = String(row[2] || "").trim();
+      if (!name || isPaintShopWorker(name)) continue;
+      const startMs = toMs(row[5]);
+      if (!Number.isFinite(startMs)) continue;
+      const rawEnd = toMs(row[6]);
+      if (Number.isFinite(rawEnd) && rawEnd <= startMs) continue;
+      const endMs = Number.isFinite(rawEnd) ? rawEnd : nowMs;
+      if (endMs <= startMs) continue;
+      const pauses = pauseIntervalsFromLog(row, startMs, endMs, nowMs);
+      const workBouts = boutsFromLogTimes(startMs, endMs, pauses).filter((bout) => bout.kind !== "pause");
+      if (!workBouts.length) continue;
+      const label = otherTitleFromLog(row);
+      const days = [];
+      const seen = {};
+      workBouts.forEach((bout) => {
+        occupiedWorkdays(bout).forEach((iso) => {
+          if (seen[iso]) return;
+          seen[iso] = true;
+          days.push(iso);
+        });
+      });
+      days.sort();
+      out.push({
+        id: "indirect-" + (i + 1),
+        workerId: name,
+        workerName: name,
+        title: label.title,
+        note: label.note,
+        process: label.title,
+        code: "O",
+        start: workBouts[0].start,
+        end: workBouts[workBouts.length - 1].end,
+        days,
+        bouts: workBouts.map((bout) => ({ start: bout.start, end: bout.end, kind: "work" }))
+      });
+    }
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
+function logsFromOtherActuals(items) {
+  return (items || []).map((item) => ({
+    workerId: item.workerId,
+    workerName: item.workerName,
+    bouts: (item.bouts && item.bouts.length)
+      ? item.bouts
+      : [{ start: item.start, end: item.end, kind: "work" }]
+  }));
 }
 
 function readProductionActuals() {
@@ -935,8 +1020,10 @@ function attachActuals(journey) {
     journey.orders.sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")) || String(a.orderId).localeCompare(String(b.orderId)));
   }
   if (journey) {
-    const assigned = clipIdleActuals(readIdleActuals(), logs);
-    journey.otherActuals = assigned.concat(unknownIdleActuals(logs, assigned));
+    const indirect = readIndirectActuals();
+    const coverLogs = logs.concat(logsFromOtherActuals(indirect));
+    const alerts = clipIdleActuals(readIdleActuals(), coverLogs);
+    journey.otherActuals = indirect.concat(alerts).concat(unknownIdleActuals(coverLogs, alerts));
   }
   const bounds = journeyDayBounds(journey);
   if (journey) {
@@ -2092,6 +2179,7 @@ module.exports = {
   queueOrders,
   buildJourney,
   readIdleActuals,
+  readIndirectActuals,
   workdaysFromTo,
   occupiedWorkdays,
   formatDayHeader,
