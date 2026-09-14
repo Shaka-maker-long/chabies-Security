@@ -494,6 +494,81 @@ function emptyActual() {
   return { start: "", end: "", days: [], workerId: "", workerName: "", bouts: [] };
 }
 
+function workerKey(name) {
+  return String(name || "").trim().toLowerCase();
+}
+
+function actualGroupKey(orderId, process, worker) {
+  return formatOrderId(orderId) + "||" + String(process || "") + "||" + workerKey(worker);
+}
+
+function subtractIsoSpans(startIso, endIso, blockers) {
+  const start = toMs(startIso);
+  const end = toMs(endIso);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return [];
+  const cuts = (blockers || [])
+    .map((b) => ({ start: toMs(b.start), end: toMs(b.end) }))
+    .filter((b) => Number.isFinite(b.start) && Number.isFinite(b.end) && b.end > b.start)
+    .sort((a, b) => a.start - b.start);
+  const out = [];
+  let cursor = start;
+  cuts.forEach((b) => {
+    if (b.end <= cursor || b.start >= end) return;
+    if (b.start > cursor) out.push({ start: isoFromMs(cursor), end: isoFromMs(Math.min(b.start, end)) });
+    if (b.end > cursor) cursor = Math.min(end, b.end);
+  });
+  if (cursor < end) out.push({ start: isoFromMs(cursor), end: isoFromMs(end) });
+  return out;
+}
+
+function coverageByWorker(logs) {
+  const cover = {};
+  (logs || []).forEach((log) => {
+    const w = workerKey(log.workerName || log.workerId);
+    if (!w) return;
+    if (!cover[w]) cover[w] = [];
+    (log.bouts || [{ start: log.start, end: log.end }]).forEach((bout) => {
+      if (bout && bout.start && bout.end) cover[w].push({ start: bout.start, end: bout.end });
+    });
+  });
+  return cover;
+}
+
+function clipIdleActuals(items, logs) {
+  const cover = coverageByWorker(logs);
+  const out = [];
+  (items || []).forEach((item) => {
+    const w = workerKey(item.workerName || item.workerId);
+    const leftover = subtractIsoSpans(item.start, item.end, cover[w] || []);
+    if (!leftover.length) return;
+    const days = [];
+    const seen = {};
+    leftover.forEach((span) => {
+      occupiedWorkdays(span).forEach((iso) => {
+        if (seen[iso]) return;
+        seen[iso] = true;
+        days.push(iso);
+      });
+    });
+    days.sort();
+    if (!days.length) return;
+    out.push({
+      id: item.id,
+      workerId: item.workerId,
+      workerName: item.workerName,
+      title: item.title,
+      note: item.note,
+      process: item.process,
+      code: item.code || "O",
+      start: leftover[0].start,
+      end: leftover[leftover.length - 1].end,
+      days,
+      bouts: leftover.map((span) => ({ start: span.start, end: span.end, kind: "work" }))
+    });
+  });
+  return out;
+}
+
 function parseProductionLogMeta(cell) {
   if (cell && typeof cell === "object" && !Array.isArray(cell)) {
     return { pauses: Array.isArray(cell.pauses) ? cell.pauses : [] };
@@ -641,7 +716,7 @@ function readProductionActuals() {
 function groupProductionActuals(logs) {
   const groups = {};
   (logs || []).forEach((log) => {
-    const key = log.orderId + "||" + log.process;
+    const key = actualGroupKey(log.orderId, log.process, log.workerName || log.workerId);
     if (!groups[key]) {
       groups[key] = {
         orderId: log.orderId,
@@ -720,11 +795,12 @@ function readIdleActuals() {
 }
 
 function attachActuals(journey) {
-  const groups = groupProductionActuals(readProductionActuals());
+  const logs = readProductionActuals();
+  const groups = groupProductionActuals(logs);
   const used = {};
   ((journey && journey.orders) || []).forEach((o) => {
     (o.rows || []).forEach((row) => {
-      const key = formatOrderId(row.orderId || o.orderId) + "||" + String(row.process || "");
+      const key = actualGroupKey(row.orderId || o.orderId, row.process, row.workerId || row.workerName);
       const act = groups[key];
       row.actual = act ? actualFromGroup(act) : emptyActual();
       if (act) used[key] = true;
@@ -767,7 +843,7 @@ function attachActuals(journey) {
   if (journey && Array.isArray(journey.orders)) {
     journey.orders.sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")) || String(a.orderId).localeCompare(String(b.orderId)));
   }
-  if (journey) journey.otherActuals = readIdleActuals();
+  if (journey) journey.otherActuals = clipIdleActuals(readIdleActuals(), logs);
   const bounds = journeyDayBounds(journey);
   if (journey) {
     journey.days = bounds.min && bounds.max ? workdaysFromTo(bounds.min, bounds.max) : [];
@@ -1936,6 +2012,8 @@ module.exports = {
   USER_ASSIGNED_PROCESSES,
   weekStartingOrders,
   attachActuals,
+  clipIdleActuals,
+  subtractIsoSpans,
   parseProductionLogMeta,
   boutsFromLogTimes,
   matchJourneyProcess,

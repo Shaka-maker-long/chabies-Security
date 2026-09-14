@@ -614,6 +614,69 @@ assert.ok((idleJourney.otherActuals || []).some((row) => row.code === "O" && row
 assert.ok((idleJourney.otherActuals || []).every((row) => String(row.workerName) !== "Sipho"), "open idle holes are not Journey actuals yet");
 assert.strictEqual(plan.PROCESS_CODES.Other, "O");
 
+getBook().getSheetByName("Production_Log").appendRow([
+  "log_willard_over_other",
+  "S260951",
+  "Willard",
+  "Welding",
+  "Done",
+  new Date("2026-09-10T06:15:00.000Z"),
+  new Date("2026-09-10T07:00:00.000Z"),
+  "",
+  "",
+  "",
+  0,
+  "",
+  JSON.stringify({ pauses: [] })
+]);
+persistWorkbook();
+const clippedIdle = plan.buildJourney([]);
+const willardOther = (clippedIdle.otherActuals || []).filter((row) => String(row.workerName) === "Willard" && row.title === "Cleaning");
+assert.ok(willardOther.length, "clipped Other still shows the idle gap before the clock");
+assert.ok(willardOther.every((row) => String(row.end) <= "2026-09-10T08:15:00+02:00"), JSON.stringify(willardOther));
+assert.ok(willardOther.every((row) => (row.bouts || []).every((b) => String(b.end) <= "2026-09-10T08:15:00+02:00")));
+
+db.upsertOrder({
+  order_number: "S260952",
+  status: "Assembly",
+  product: "Product A"
+});
+getBook().getSheetByName("Production_Log").appendRow([
+  "log_admire_did_nomsa_job",
+  "S260952",
+  "Admire",
+  "Assembly",
+  "Done",
+  new Date("2026-09-14T06:15:00.000Z"),
+  new Date("2026-09-14T08:15:00.000Z"),
+  "",
+  "",
+  "",
+  0,
+  "",
+  JSON.stringify({ pauses: [] })
+]);
+persistWorkbook();
+const whoDid = plan.buildJourney([{
+  id: "plan-uriah-assembly",
+  orderId: "S260952",
+  product: "Product A",
+  process: "Assembly",
+  workerId: "Nomsa",
+  workerName: "Nomsa",
+  start: "2026-09-14T07:45:00+02:00",
+  end: "2026-09-14T09:45:00+02:00",
+  kind: "work"
+}]);
+const swappedOrder = whoDid.orders.find((o) => o.orderId === "S260952");
+assert.ok(swappedOrder);
+const plannedNomsa = swappedOrder.rows.find((r) => r.workerName === "Nomsa" && r.process === "Assembly");
+const clockedAdmire = swappedOrder.rows.find((r) => r.workerName === "Admire" && r.process === "Assembly");
+assert.ok(plannedNomsa && plannedNomsa.days.length, "Planned keeps the booked person");
+assert.ok(!(plannedNomsa.actual && plannedNomsa.actual.start), "the booked person does not keep someone else's clock");
+assert.ok(clockedAdmire && clockedAdmire.actual && clockedAdmire.actual.workerName === "Admire", "Actual is the person who clocked");
+assert.ok(!(clockedAdmire.days && clockedAdmire.days.length), "the person who clocked is not shown as planned");
+
 const split = plan.buildJourney([
   {
     id: "cut-am",
@@ -638,7 +701,7 @@ const split = plan.buildJourney([
     kind: "work"
   }
 ]);
-const splitCut = split.orders[0].rows.find((r) => r.process === "Profile Cutting");
+const splitCut = split.orders.find((o) => o.orderId === "S260214 B").rows.find((r) => r.process === "Profile Cutting");
 assert.strictEqual(splitCut.segments.length, 2, "split cutting stays as separate booked slots");
 assert.strictEqual(splitCut.start, "2026-09-10T08:45:00+02:00");
 assert.strictEqual(splitCut.end, "2026-09-10T13:15:00+02:00");
