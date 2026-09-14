@@ -8118,14 +8118,16 @@
       }).leaveBatchForOrder(session.name, orderNum);
     }
 
-    function loadIdleWorkers() {
+    let idleForceRefresh = false;
+
+    function loadIdleWorkers(force) {
       const box = document.getElementById('idleWorkersList');
       document.querySelectorAll('#idleWorkersPanel .idle-only').forEach((el) => {
         el.hidden = !sessionSeesIdleAlerts();
       });
       if (!box) return;
       google.script.run.withSuccessHandler(data => {
-        if (idleAssignFormDirty()) return;
+        if (!force && !idleForceRefresh && idleAssignFormDirty()) return;
         const idle = (data && data.idle) || data || {};
         const workers = idle.workers || [];
         const tasks = idle.tasks || [];
@@ -8282,7 +8284,7 @@
     function pollIdleAlertsNow() {
       if (!session.name || !sessionSeesIdleAlerts()) return;
       google.script.run.withSuccessHandler(res => {
-        if (idleAssignFormDirty()) return;
+        if (!idleForceRefresh && idleAssignFormDirty()) return;
         const workers = (res && res.alerts) || [];
         const tasks = (res && res.tasks) || [];
         const workersPage = document.getElementById('idleWorkersList');
@@ -8290,6 +8292,7 @@
           loadIdleWorkers();
         }
         showIdleAlertPopup(workers, tasks);
+        idleForceRefresh = false;
       }).withFailureHandler(() => {}).pollIdleAlerts(session.name);
     }
 
@@ -8362,7 +8365,8 @@
           return;
         }
         setIdleAssignMsg('Saved — ' + worker + ' · ' + (String(task).toLowerCase() === 'other' ? note : task), false, btn);
-        loadIdleWorkers();
+        idleForceRefresh = true;
+        loadIdleWorkers(true);
         pollIdleAlertsNow();
       }).withFailureHandler(err => {
         btn.disabled = false;
