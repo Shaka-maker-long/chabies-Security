@@ -2066,6 +2066,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       var meta = defaultLogMeta();
       meta.batchId = batchId;
       meta.batchShare = batchShare;
+      if (batchShare > 1 && batchId) meta.batchJoinedAt = startTime.getTime();
       meta.entryType = "production";
       meta.targetMinutes = getTaskDurationMinutes(String(orderRow[6] || "").trim(), role);
       meta.countdownStartedAt = startTime.getTime();
@@ -4123,7 +4124,9 @@ function calculateWorkMinutesMeta(start, end, taskName, meta, legacyPausedMins) 
   }
 
   var net = netWorkMinutesInWindow(start, actualEnd, pauses, taskName, allowAfterShift);
-  if (!splitMs && share > 1 && meta.batchId) return net / share;
+  // Finishing stamps batchSplitAt at the end time. That still means together until the end,
+  // so keep dividing. Only a split strictly before the end is handled above as solo time after.
+  if (share > 1 && meta.batchId) return net / share;
   return net;
 }
 
