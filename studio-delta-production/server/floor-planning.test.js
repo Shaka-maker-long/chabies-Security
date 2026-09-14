@@ -769,6 +769,74 @@ const assemblyQ = plan.queueOrders().find((q) => q.order_number === "S260198");
 assert.ok(assemblyQ, "assembly in progress stays in Planning");
 assert.deepStrictEqual(assemblyQ.remaining, ["Assembly"]);
 
+function idleBoutsOverlap(rows, start, end) {
+  return (rows || []).some((row) => (row.bouts || []).some((b) => String(b.start) < end && String(b.end) > start));
+}
+
+db.upsertOrder({
+  order_number: "S260224",
+  status: "Assembly",
+  product: "Oakland Sideboard"
+});
+getBook().getSheetByName("Production_Log").appendRow([
+  "log_uriah_pause_gap",
+  "S260224",
+  "Uriah",
+  "Assembly",
+  "In Progress",
+  new Date("2026-09-14T06:15:00.000Z"),
+  new Date("2026-09-14T11:00:00.000Z"),
+  "",
+  "",
+  "",
+  0,
+  "",
+  JSON.stringify({
+    pauses: [{
+      start: "2026-09-14T08:45:00+02:00",
+      end: "2026-09-14T11:00:00+02:00",
+      reason: "No materials"
+    }]
+  })
+]);
+persistWorkbook();
+const pauseIdle = plan.buildJourney([]);
+const uriahUnknown = (pauseIdle.otherActuals || []).filter((row) => String(row.workerName) === "Uriah" && row.unassigned);
+assert.ok(uriahUnknown.length, "paused time with no other order becomes Other O");
+assert.ok(
+  idleBoutsOverlap(uriahUnknown, "2026-09-14T08:45:00+02:00", "2026-09-14T11:00:00+02:00"),
+  JSON.stringify(uriahUnknown)
+);
+assert.ok(!idleBoutsOverlap(uriahUnknown, "2026-09-14T08:15:00+02:00", "2026-09-14T08:45:00+02:00"), "live assembly is not idle");
+assert.ok(!idleBoutsOverlap(uriahUnknown, "2026-09-14T11:00:00+02:00", "2026-09-14T13:00:00+02:00"), "resumed assembly is not idle");
+assert.ok(!idleBoutsOverlap(uriahUnknown, "2026-09-14T12:00:00+02:00", "2026-09-14T12:30:00+02:00"), "lunch is not unknown idle");
+
+db.upsertOrder({
+  order_number: "S260212",
+  status: "Assembly",
+  product: "Violet Sideboard 3-Door"
+});
+getBook().getSheetByName("Production_Log").appendRow([
+  "log_uriah_other_job",
+  "S260212",
+  "Uriah",
+  "Assembly",
+  "Done",
+  new Date("2026-09-14T07:00:00.000Z"),
+  new Date("2026-09-14T08:30:00.000Z"),
+  "",
+  "",
+  "",
+  0,
+  "",
+  JSON.stringify({ pauses: [] })
+]);
+persistWorkbook();
+const otherJobIdle = (plan.buildJourney([]).otherActuals || []).filter((row) => String(row.workerName) === "Uriah" && row.unassigned);
+assert.ok(!idleBoutsOverlap(otherJobIdle, "2026-09-14T09:00:00+02:00", "2026-09-14T10:30:00+02:00"), "a second live order during the pause is not idle");
+assert.ok(idleBoutsOverlap(otherJobIdle, "2026-09-14T08:45:00+02:00", "2026-09-14T09:00:00+02:00"), "pause before the second order stays unknown");
+assert.ok(idleBoutsOverlap(otherJobIdle, "2026-09-14T10:30:00+02:00", "2026-09-14T11:00:00+02:00"), "pause after the second order stays unknown");
+
 db.deleteAllOrders();
 assert.strictEqual(plan.load().blocks.length, 0, "clearing orders also clears planning");
 assert.deepStrictEqual(plan.load().assignments, {});
