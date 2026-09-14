@@ -1635,6 +1635,7 @@
         </div>
         <p class="small text-muted mb-2">Production people idle more than 15 minutes stay here until Siya or the Manager records what they actually did. If they clock on again, the hole stays open. Other needs a reason.</p>
         <div id="idleWorkersList"><span class="text-muted small">Loading…</span></div>
+        <p class="small mb-0" id="idleAssignMsg" role="status"></p>
         <hr>
         </div>
         <h5 class="brand-font">Overtime</h5>
@@ -8192,7 +8193,7 @@
             <span class="small text-muted">${when}</span>
             <select class="form-select form-select-sm" style="max-width:220px" id="${idPrefix}${w.row}" onchange="toggleIdleOther('${idPrefix}', ${w.row})">${opts}</select>
             <input class="form-control form-control-sm" style="max-width:220px;display:none" id="${idPrefix}note-${w.row}" placeholder="If Other, specify what they did">
-            <button class="btn btn-sm btn-dark" onclick="assignIdleTask(${nameJs}, ${w.row}, '${idPrefix}')">ASSIGN TASK</button>
+            <button type="button" class="btn btn-sm btn-dark" data-idle-assign="${nameAttr}" onclick="assignIdleTask(${nameJs}, ${w.row}, '${idPrefix}', this)">ASSIGN TASK</button>
           </div>`;
     }
 
@@ -8267,22 +8268,51 @@
       if (idleAlertModal) idleAlertModal.hide();
     }
 
-    function assignIdleTask(worker, row, idPrefix) {
+    function setIdleAssignMsg(text, isError) {
+      const el = document.getElementById('idleAssignMsg');
+      if (el) {
+        el.className = 'small mb-0 ' + (isError ? 'text-danger' : 'text-success');
+        el.textContent = text || '';
+      }
+      if (text && isError) showAlert(text);
+    }
+
+    function assignIdleTask(worker, row, idPrefix, btn) {
       const prefix = idPrefix || 'idle-task-';
       const sel = document.getElementById(prefix + row);
       const noteEl = document.getElementById(prefix + 'note-' + row);
       const task = sel ? sel.value : 'Other';
       const note = noteEl ? String(noteEl.value || '').trim() : '';
       if (String(task).toLowerCase() === 'other' && !note) {
-        showAlert('If it is Other, specify what they did.');
+        setIdleAssignMsg('If it is Other, specify what they did.', true);
         return;
       }
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+      }
+      setIdleAssignMsg('Saving ' + worker + '…');
       google.script.run.withSuccessHandler(res => {
-        if (!res.success) showAlert(res.message || 'Assign failed');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'ASSIGN TASK';
+        }
+        if (!res || !res.success) {
+          setIdleAssignMsg((res && res.message) || 'Assign failed', true);
+          return;
+        }
+        setIdleAssignMsg('Saved — ' + worker + ' · ' + (String(task).toLowerCase() === 'other' ? note : task));
         loadIdleWorkers();
         pollIdleAlertsNow();
+      }).withFailureHandler(err => {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'ASSIGN TASK';
+        }
+        setIdleAssignMsg(err || 'Assign failed', true);
       }).assignIndirectTask(worker, task, session.name, note);
     }
+    window.assignIdleTask = assignIdleTask;
 
     let activityLoadTimer = null;
     let fillingActivityWorkers = false;
