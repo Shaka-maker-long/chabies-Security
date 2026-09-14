@@ -378,6 +378,13 @@ assert.ok(ordersHtml.indexOf("f_paid_in_full") !== -1);
 assert.ok(ordersHtml.indexOf("cents <= 1") !== -1);
 assert.ok(ordersHtml.indexOf("price_incl_vat: document.getElementById(\"f_price_incl_vat\")") !== -1);
 assert.ok(ordersHtml.indexOf("data-edit-order") !== -1);
+assert.ok(ordersHtml.indexOf("data-open-drawing") !== -1);
+assert.ok(ordersHtml.indexOf("data-open-qc") !== -1);
+assert.ok(ordersHtml.indexOf("Waiting for drawing") !== -1);
+assert.ok(ordersHtml.indexOf("sheet-stack") !== -1, "Orders grid fills the leftover viewport so the horizontal scrollbar stays on screen");
+assert.ok(ordersHtml.indexOf("calc(100vh - 58px)") === -1, "Orders wrap must not use a short header height that hides the scrollbar");
+assert.ok(ordersHtml.indexOf("data-no-plate") === -1, "No plates is marked on Plate Cutting, not the Orders sheet");
+assert.ok(ordersHtml.indexOf("No plates") === -1, "No plates label stays off the Orders sheet");
 assert.ok(ordersHtml.indexOf("wrap-text") === -1);
 assert.ok(enquiriesHtml.indexOf("wrap-text") === -1, "enquiry sheet rows must not wrap");
 assert.ok(enquiriesHtml.indexOf("height:36px") !== -1);
@@ -608,8 +615,8 @@ assert.ok(floor.indexOf("function displayShopStatus") !== -1, "Profile Cutting b
 assert.ok(floor.indexOf("st(o) === 'ready for steelwork' || (st(o) === 'profile cutting' && live(o))") !== -1);
 assert.ok(/canShowNoPlateTick\(\) \{\s*return session\.role === 'Plate Cutting';/.test(floor), "No plates tick is only on Plate Cutting");
 assert.ok(officeJs.indexOf("/api/office/orders/no-plate") !== -1);
-assert.ok(ordersHtml.indexOf("No plates") !== -1);
-assert.ok(ordersHtml.indexOf("((printed && printed.has_pdf)") !== -1, "job-card ternary must be parenthesized after No plates");
+assert.ok(officeJs.indexOf("attachOrderDocs") !== -1);
+assert.ok(ordersHtml.indexOf("((printed && printed.has_pdf)") !== -1, "job-card ternary must be parenthesized");
 {
   const start = ordersHtml.indexOf("<script>", ordersHtml.indexOf("office-auth.js"));
   const end = ordersHtml.indexOf("</script>", start);

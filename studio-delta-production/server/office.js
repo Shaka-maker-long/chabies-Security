@@ -60,6 +60,7 @@ const productionCost = require("./production-cost");
 const orderCorrect = require("./order-correct");
 const floorPlanning = require("./floor-planning");
 const orderLife = require("./order-life");
+const orderDocs = require("./order-docs");
 const fs = require("fs");
 const express = require("express");
 const sqlite = require("./sqlite-store");
@@ -591,6 +592,7 @@ function mountOffice(app) {
       copy.no_plate = noPlates.isNoPlate(copy.order_number);
       return copy;
     }));
+    orderDocs.attachOrderDocs(rows);
     res.json({
       ok: true,
       rows,
