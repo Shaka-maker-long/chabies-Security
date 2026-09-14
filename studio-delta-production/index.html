@@ -1540,7 +1540,7 @@
         </div>
         <button id="btnSwitchTask" class="btn btn-outline-dark btn-sm d-none" onclick="showProductionTasks()">Switch task</button>
       </div>
-      <p id="workLockOffNote" class="small text-muted mb-3">The floor locks after 16:00, on weekends, and after 8 hours. A job already on someone else stays locked. Admin is look-only. Grant overtime on Workers.</p>
+      <p id="workLockOffNote" class="small text-muted mb-3">The floor locks after 15:45, on weekends, and after 8 hours. A job already on someone else stays locked. Admin is look-only. Grant overtime on Workers.</p>
       
       <div class="row mb-3">
         <div class="col-md-6 mb-2 mb-md-0">
@@ -1639,7 +1639,7 @@
         <hr>
         </div>
         <h5 class="brand-font">Overtime</h5>
-        <p class="small text-muted">After 16:00, weekends, and 8 hours, grant overtime here for today. If a name is missing from the list, add that person on Users and tick the shop tasks they do.</p>
+        <p class="small text-muted">After 15:45, weekends, and 8 hours, grant overtime here for today. If a name is missing from the list, add that person on Users and tick the shop tasks they do.</p>
         <div class="d-flex gap-2 flex-wrap mb-2">
           <select id="otWorker" class="form-select form-select-sm" style="max-width:220px"></select>
           <button type="button" class="btn btn-sm btn-dark" onclick="grantSelectedOvertime()">Grant overtime today</button>
@@ -1818,7 +1818,7 @@
     
     <div id="view-admin-activity" class="view-section container d-none-view">
       <h2 class="brand-font mb-3">Employee Activity</h2>
-      <p class="text-muted">Paid hours are 07:45–12:00 and 12:30–15:45. Clocks auto-pause at lunch and at 16:00. After 16:00 and on weekends the floor is locked unless Admin grants overtime. Regular time cannot go past 8 hours without overtime. Overnight jobs stay paused — workers resume themselves.</p>
+      <p class="text-muted">Paid hours are 07:45–12:00 and 12:30–15:45. Clocks auto-pause at lunch and at 15:45. After 15:45 and on weekends the floor is locked unless Admin grants overtime. Regular time cannot go past 8 hours without overtime. Overnight jobs stay paused — workers resume themselves.</p>
       <div class="row g-2 mb-3">
         <div class="col-md-3">
           <select id="activityPeriod" class="form-select border-dark" onchange="scheduleActivityReport()">
@@ -2890,11 +2890,14 @@
     }
     const LUNCH_START_MINS = 12 * 60;
     const LUNCH_END_MINS = 12 * 60 + 30;
+    const SHIFT_START_MINS = 7 * 60 + 45;
+    const SHIFT_END_MINS = 15 * 60 + 45;
     function asSast(date) { return new Date(date.getTime() + 2 * 60 * 60 * 1000); }
     function sastMinsOfDay(date) {
       const d = asSast(date);
       return d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60;
     }
+    function sastDayOfWeek(date) { return asSast(date).getUTCDay(); }
     function sastWallToDate(date, hours, minutes) {
       const d = asSast(date);
       return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hours - 2, minutes, 0, 0));
@@ -2917,23 +2920,46 @@
       if (day === sastDayStamp(addSastDays(now, 1))) return 'tomorrow ' + stamp;
       return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][sast.getUTCDay()] + ' ' + stamp;
     }
+    function nextWorkInstant(date) {
+      let cursor = new Date(date.getTime());
+      let safety = 0;
+      while (safety++ < 30) {
+        const dow = sastDayOfWeek(cursor);
+        if (dow === 0) {
+          cursor = sastWallToDate(addSastDays(cursor, 1), 7, 45);
+          continue;
+        }
+        if (dow === 6) {
+          cursor = sastWallToDate(addSastDays(cursor, 2), 7, 45);
+          continue;
+        }
+        const mins = sastMinsOfDay(cursor);
+        if (mins < SHIFT_START_MINS) return sastWallToDate(cursor, 7, 45);
+        if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) return sastWallToDate(cursor, 12, 30);
+        if (mins >= SHIFT_END_MINS) {
+          cursor = sastWallToDate(addSastDays(cursor, 1), 7, 45);
+          continue;
+        }
+        return cursor;
+      }
+      return date;
+    }
+    function workWindowEnd(date) {
+      const mins = sastMinsOfDay(date);
+      if (mins < LUNCH_START_MINS) return sastWallToDate(date, 12, 0);
+      return sastWallToDate(date, 15, 45);
+    }
     function estimateCompletionAt(startDate, workMinutes) {
       let cursor = startDate instanceof Date ? startDate : new Date(startDate);
       let remaining = Number(workMinutes);
       if (isNaN(cursor.getTime()) || !(remaining > 0)) return null;
       let safety = 0;
-      while (remaining > 0 && safety++ < 20000) {
-        const mins = sastMinsOfDay(cursor);
-        if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) {
-          cursor = sastWallToDate(cursor, 12, 30);
-          continue;
-        }
-        const chunkEnd = mins < LUNCH_START_MINS
-          ? sastWallToDate(cursor, 12, 0)
-          : sastWallToDate(addSastDays(cursor, 1), 12, 0);
-        const avail = (chunkEnd.getTime() - cursor.getTime()) / 60000;
-        if (avail <= 0) {
-          cursor = new Date(cursor.getTime() + 1000);
+      while (remaining > 0 && safety++ < 80) {
+        cursor = nextWorkInstant(cursor);
+        const winEnd = workWindowEnd(cursor);
+        const avail = (winEnd.getTime() - cursor.getTime()) / 60000;
+        if (avail < 0.5) {
+          cursor = new Date(winEnd.getTime() + 60000);
           continue;
         }
         const take = Math.min(remaining, avail);

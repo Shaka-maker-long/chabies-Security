@@ -24,7 +24,7 @@ var SAST_OFFSET_MS = 2 * 60 * 60 * 1000; // South Africa has no DST
 var STANDARD_DAY_MINS = 7 * 60 + 30; // paid shift: 07:45-15:45 minus 30 min lunch
 var SHIFT_START_MINS = 7 * 60 + 45;
 var SHIFT_END_MINS = 15 * 60 + 45;
-var SHIFT_LOCK_MINS = 16 * 60;
+var SHIFT_LOCK_MINS = SHIFT_END_MINS;
 var LUNCH_START_MINS = 12 * 60;
 var LUNCH_END_MINS = 12 * 60 + 30;
 var SHIFT_DURATION = STANDARD_DAY_MINS;
@@ -33,7 +33,7 @@ var RESUME_CHASE_MINS = 8 * 60;
 var IDLE_GRACE_MINS = 15;
 var TAB_OVERTIME = "Overtime_Grants";
 var TAB_RESUME_CHASE = "Resume_Chase";
-// false = assignment lock, Admin look-only, after-16:00 / weekend / 8-hour lock.
+// false = assignment lock, Admin look-only, after-15:45 / weekend / 8-hour lock.
 var WORK_LOCKS_DISABLED = false;
 function workLocksDisabled() {
   try {
@@ -1262,18 +1262,12 @@ function estimateCompletionAt(startDate, workMinutes) {
   var remaining = Number(workMinutes);
   if (!cursor || !(remaining > 0)) return null;
   var safety = 0;
-  while (remaining > 0 && safety++ < 20000) {
-    var mins = sastMinsOfDay(cursor);
-    if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) {
-      cursor = sastWallToDate(cursor, 12, 30);
-      continue;
-    }
-    var chunkEnd = mins < LUNCH_START_MINS
-      ? sastWallToDate(cursor, 12, 0)
-      : sastWallToDate(addSastDays(cursor, 1), 12, 0);
-    var avail = (chunkEnd.getTime() - cursor.getTime()) / 60000;
-    if (avail <= 0) {
-      cursor = new Date(cursor.getTime() + 1000);
+  while (remaining > 0 && safety++ < 80) {
+    cursor = nextWorkInstant(cursor);
+    var winEnd = workWindowEnd(cursor);
+    var avail = (winEnd.getTime() - cursor.getTime()) / 60000;
+    if (avail < 0.5) {
+      cursor = new Date(winEnd.getTime() + 60000);
       continue;
     }
     var take = Math.min(remaining, avail);
@@ -3943,7 +3937,7 @@ function floorChangeGate(workerName, action) {
       locked: true,
       message: state.kind === "weekend"
         ? "Weekend work needs overtime from Admin."
-        : "The floor is closed after 16:00 unless Admin grants overtime."
+        : "The floor is closed after 15:45 unless Admin grants overtime."
     };
   }
   if ((action === "start" || action === "resume") && !ot && workerMinutesToday(workerName) >= MAX_REGULAR_MINS) {
