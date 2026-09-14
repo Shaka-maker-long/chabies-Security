@@ -97,6 +97,44 @@ assert.ok(overviewEnd, "overview end must be written");
 const leftoverPlan = (plan.load().blocks || []).some((b) => b.orderId === "S-FIX-1");
 assert.ok(!leftoverPlan, "planning for the corrected order must be empty");
 
+db.upsertOrder({
+  order_number: "S-FIX-2",
+  product: "Air Chair",
+  status: "Welding",
+  assigned_operator: "Willard",
+  client_name: "Keep Clock",
+  type: "Standard",
+  price_excl_vat: "1000.00"
+});
+book.getSheetByName("Production_Log").appendRow([
+  "log_fix_2", "S-FIX-2", "Willard", "Welding", "Welding", start, "", "", "", "", "", "", JSON.stringify({ pauses: [] })
+]);
+persistWorkbook();
+const kept = correct.correctOrderShop({
+  order_number: "S-FIX-2",
+  status: "Tagging",
+  assigned_operator: "Sam",
+  confirmed: true
+});
+assert.strictEqual(kept.row.status, "Tagging");
+assert.strictEqual(kept.row.assigned_operator, "Sam");
+assert.strictEqual(kept.transferred, 1);
+assert.strictEqual(kept.closedLogs, 0);
+const live = book.getSheetByName("Production_Log").getDataRange().getValues().find((r) => r[0] === "log_fix_2");
+assert.ok(live, "running log stays");
+assert.strictEqual(String(live[2]), "Sam");
+assert.strictEqual(String(live[3]), "Tagging");
+assert.strictEqual(String(live[4]), "Tagging");
+assert.ok(!live[6], "running clock must not be ended");
+
+const stillCut = correct.correctOrderShop({
+  order_number: "S-FIX-2",
+  status: "Profile Cutting",
+  assigned_operator: "Sam",
+  confirmed: true
+});
+assert.strictEqual(stillCut.row.status, "Profile Cutting", "a moved clock on Profile Cutting stays Profile Cutting");
+
 const idleCut = correct.correctOrderShop({
   order_number: "S-FIX-1",
   status: "Profile Cutting",
@@ -175,6 +213,23 @@ assert.strictEqual(locked.status, "Ready for Steelwork", "ordinary office edits 
   assert.ok(putJson.ok);
   assert.strictEqual(putJson.row.status, "Ready for Assembly");
   assert.strictEqual(putJson.row.assigned_operator, "Willard");
+
+  const bulk = await fetch(base + "/api/office/orders/correct-status", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": session.token },
+    body: JSON.stringify({
+      confirmed: true,
+      rows: [
+        { order_number: "S-FIX-1", status: "Ready for Welding", assigned_operator: "Willard" },
+        { order_number: "S-FIX-2", status: "Welding", assigned_operator: "Willard" }
+      ]
+    })
+  });
+  const bulkJson = await bulk.json();
+  assert.ok(bulkJson.ok, JSON.stringify(bulkJson));
+  assert.strictEqual(bulkJson.updated, 2);
+  assert.ok((bulkJson.rows || []).some((o) => o.order_number === "S-FIX-1" && o.status === "Ready for Welding"));
+  assert.ok((bulkJson.rows || []).some((o) => o.order_number === "S-FIX-2" && o.status === "Welding" && o.assigned_operator === "Willard"));
 
   server.close();
   console.log("order-correct.test.js ok");

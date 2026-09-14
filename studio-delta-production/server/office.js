@@ -585,12 +585,12 @@ function mountOffice(app) {
   app.get("/api/office/orders", requireOffice, (_req, res) => {
     try { require("./in-progress-status").reconcile(); } catch (e) {}
     const noPlates = require("./no-plates");
-    const rows = listOrders().map((o) => {
+    const rows = orderCorrect.annotateOrders(listOrders().map((o) => {
       const copy = decorateMoney(o);
       delete copy.payments;
       copy.no_plate = noPlates.isNoPlate(copy.order_number);
       return copy;
-    });
+    }));
     res.json({
       ok: true,
       rows,
@@ -642,7 +642,10 @@ function mountOffice(app) {
 
   app.post("/api/office/orders/correct-status", requireOffice, (req, res) => {
     try {
-      const result = orderCorrect.correctOrderShop(req.body || {});
+      const body = req.body || {};
+      const result = Array.isArray(body.rows)
+        ? orderCorrect.correctManyOrders(body)
+        : orderCorrect.correctOrderShop(body);
       res.json({ ok: true, ...result });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });

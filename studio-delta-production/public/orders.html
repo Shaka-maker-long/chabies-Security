@@ -110,6 +110,7 @@
     <div>
       <nav class="tabs" aria-label="Orders views">
         <a class="on" href="/orders">Sheet</a>
+        <a href="/orders/correct">Fix status</a>
         <a href="/orders/schedule">Production schedule</a>
         <a href="/orders/delivery">Delivery summary</a>
         <a href="/orders/job-card">Job card</a>
@@ -174,7 +175,7 @@
         <div class="link-box" id="correctBox" hidden>
           <div style="flex:1 1 100%">
             <b>Correct shop status</b>
-            <p class="hint">Use this when the order was started on the wrong task. Pick where it should be and who it is assigned to. A running clock on this order is closed so the floor is not stuck on the old task. Planning slots for this order are cleared so you can book the work that is left.</p>
+            <p class="hint">Use this when the order was started on the wrong task or person. A running clock stays running — it moves onto the person and task you pick. A waiting status (Ready for…) closes the clock. To fix many orders at once, use Fix status.</p>
           </div>
           <label style="flex:1 1 220px">Move to status
             <select id="f_correct_status"></select>
