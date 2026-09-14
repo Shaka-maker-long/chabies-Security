@@ -81,6 +81,10 @@ const CONFIRM = { understood: true, highlights: [] };
   assert.strictEqual(afterLunch.resumed, 1, JSON.stringify(afterLunch));
   assert.ok(readMeta().pauses[0].end, "lunch pause closed");
 
+  const stillPaid = await callShopFunction("enforceShiftHours", [new Date("2026-09-07T15:44:00+02:00")]);
+  assert.strictEqual(stillPaid.kind, "paid", JSON.stringify(stillPaid));
+  assert.strictEqual(stillPaid.paused, 0, "must stay open until 15:45: " + JSON.stringify(stillPaid));
+
   const otSheet = book.getSheetByName("Overtime_Grants");
   if (otSheet && otSheet.getLastRow() > 1) {
     const n = otSheet.getLastRow() - 1;
@@ -90,7 +94,7 @@ const CONFIRM = { understood: true, highlights: [] };
     persistWorkbook();
   }
 
-  const endShift = await callShopFunction("enforceShiftHours", [new Date("2026-09-07T16:00:00+02:00")]);
+  const endShift = await callShopFunction("enforceShiftHours", [new Date("2026-09-07T15:45:00+02:00")]);
   assert.strictEqual(endShift.kind, "end");
   assert.strictEqual(endShift.paused, 1, JSON.stringify(endShift));
   assert.strictEqual(readMeta().pauses[readMeta().pauses.length - 1].reason, "End of shift");

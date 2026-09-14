@@ -99,6 +99,9 @@ assert.ok(floor.indexOf("loadHomeScore") !== -1);
 assert.ok(floor.indexOf("Your duration for this order is") !== -1);
 assert.ok(floor.indexOf("Estimated finish") !== -1);
 assert.ok(floor.indexOf("lunch is not counted") !== -1);
+assert.ok(floor.indexOf("locks after 15:45") !== -1);
+assert.ok(floor.indexOf("auto-pause at lunch and at 15:45") !== -1);
+assert.ok(floor.indexOf("locks after 16:00") === -1, "floor lock copy must not say 16:00");
 assert.ok(floor.indexOf("Time left") !== -1);
 assert.ok(floor.indexOf("data-priorworkms") !== -1);
 assert.ok(floor.indexOf("estimateCompletionAt") !== -1);
@@ -627,6 +630,8 @@ assert.ok(floor.indexOf("WORK_LOCKS_DISABLED") !== -1, "work lock flag stays in 
 assert.ok(floor.indexOf("Grant overtime on Workers") !== -1);
 assert.ok(floor.indexOf("If a name is missing from the list, add that person on Users") !== -1);
 const codeGs = fs.readFileSync(path.join(__dirname, "../Code.gs"), "utf8");
+assert.ok(codeGs.indexOf("SHIFT_LOCK_MINS = SHIFT_END_MINS") !== -1, "auto lock must be 15:45");
+assert.ok(codeGs.indexOf("closed after 15:45") !== -1);
 assert.ok(codeGs.indexOf("if (!start || !end) continue;") !== -1, "costing skips unfinished production logs");
 assert.ok(codeGs.indexOf("var IDLE_GRACE_MINS = 15") !== -1, "idle holes start after 15 minutes");
 assert.ok(codeGs.indexOf("function userManagesIdle") !== -1);

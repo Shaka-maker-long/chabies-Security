@@ -72,6 +72,12 @@ function seedDuration(product, process, minutes) {
   const duringLunch = await callShopFunction("getTaskTimeEstimate", ["2026-09-07T12:10:00+02:00", 30]);
   assert.strictEqual(Date.parse(duringLunch.etaAt), Date.parse("2026-09-07T13:00:00+02:00"), JSON.stringify(duringLunch));
 
+  const pastShift = await callShopFunction("getTaskTimeEstimate", ["2026-09-07T14:00:00+02:00", 180]);
+  assert.strictEqual(Date.parse(pastShift.etaAt), Date.parse("2026-09-08T09:00:00+02:00"), "ETA must stop at 15:45 and continue tomorrow: " + JSON.stringify(pastShift));
+
+  const fridayOverflow = await callShopFunction("getTaskTimeEstimate", ["2026-09-11T15:00:00+02:00", 120]);
+  assert.strictEqual(Date.parse(fridayOverflow.etaAt), Date.parse("2026-09-14T09:00:00+02:00"), "Friday leftover must skip the weekend: " + JSON.stringify(fridayOverflow));
+
   const spoken = await callShopFunction("getTaskDuration", ["Slider", "Welding"]);
   assert.strictEqual(spoken.minutes, 0);
   assert.strictEqual(spoken.durationLabel, "");
