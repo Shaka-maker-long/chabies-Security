@@ -810,6 +810,22 @@ function mountOffice(app) {
     }
   });
 
+  app.get("/api/office/orders/dashboard", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...require("./order-dashboard").buildDashboard(req.query || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/orders/dashboard/drill", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...require("./order-dashboard").buildDrill(req.query || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.get("/api/office/enquiries/dashboard", requireOffice, (req, res) => {
     try {
       res.json({ ok: true, ...require("./enquiry-dashboard").buildDashboard(req.query || {}) });

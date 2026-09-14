@@ -57,6 +57,7 @@ const pages = [
   "public/enquiries-bookings.html",
   "public/tasks.html",
   "public/orders.html",
+  "public/orders-dashboard.html",
   "public/orders-schedule.html",
   "public/orders-delivery.html",
   "public/job-card.html",
