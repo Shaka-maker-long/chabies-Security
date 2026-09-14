@@ -75,6 +75,10 @@ const indexHtml = path.join(__dirname, "..", "index.html");
 app.get("/orders", (_req, res) => {
   res.sendFile(path.join(publicDir, "orders.html"));
 });
+app.get("/orders/dashboard", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "orders-dashboard.html"));
+});
 app.get("/orders/schedule", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "orders-schedule.html"));

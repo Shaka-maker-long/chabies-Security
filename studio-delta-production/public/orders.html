@@ -119,6 +119,7 @@
     <div>
       <nav class="tabs" aria-label="Orders views">
         <a class="on" href="/orders">Sheet</a>
+        <a href="/orders/dashboard">Dashboard</a>
         <a href="/orders/correct">Fix status</a>
         <a href="/orders/schedule">Production schedule</a>
         <a href="/orders/delivery">Delivery summary</a>
@@ -883,6 +884,10 @@
         }
       } catch (e) {}
       renderReadyEnquiries(j.readyEnquiries || []);
+      try {
+        const q0 = new URLSearchParams(location.search).get("q");
+        if (q0) document.getElementById("q").value = q0;
+      } catch (e) {}
       render();
     }
     function openClearAll() {
