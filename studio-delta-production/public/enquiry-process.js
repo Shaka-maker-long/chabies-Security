@@ -792,6 +792,15 @@
       return "<label>Waiting on<select name=\"waiting_status\">" + waiting + "</select></label>" +
         "<label>Assign to</label>" + assigneeSelect();
     }
+    if (action.id === "set_status") {
+      const statuses = (state.snap.manualStatuses || []).map((s) => {
+        return "<option" + (s === (row.status || "") ? " selected" : "") + ">" + esc(s) + "</option>";
+      }).join("");
+      return "<h3>Correct status</h3><p class=\"sd-process-sub\">Only the Manager can move an enquiry off the wrong status. Use this when someone picked Waiting on supplier but the client still needs to send product information — that is a chase, not a supplier quotation.</p>" +
+        "<label>Status<select name=\"status\">" + statuses + "</select></label>" +
+        "<label>Assign the next task to</label>" +
+        assigneeSelect(openAssignee(row, "chase_info") || openAssignee(row, "cost_sheet") || openAssignee(row, "supplier") || rolePerson("costing"));
+    }
     if (action.id === "assign_costing") {
       const recost = /Quoted|Followed Up/.test(row.status || "");
       const coster = openAssignee(row, "cost_sheet") || rolePerson("costing");
@@ -976,6 +985,7 @@
       body.quote_option = field(form, "quote_option");
     }
     if (action.id === "close") body.status = field(form, "status");
+    if (action.id === "set_status") body.status = field(form, "status");
     if (action.id === "complete_quote") Object.assign(body, readValues(form, row));
     if (action.id === "complete_cost_sheet") {
       body.cost_sheets = namedLines(row).map((l) => {

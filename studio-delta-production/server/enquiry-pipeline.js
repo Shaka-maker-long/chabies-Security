@@ -24,6 +24,18 @@ const WAITING_STATUSES = [
 
 const CLOSED_STATUSES = ["Not within scope", "Not Interested", "Rejected"];
 
+const MANUAL_STATUSES = [
+  "New",
+  "Waiting on clients personal details",
+  "Waiting on clients specifictions",
+  "Waiting on productions confirmation",
+  "Costing",
+  "Re-Cost",
+  "Waiting on Supplier",
+  "Not within scope",
+  "Not Interested"
+];
+
 const TASK_TITLES = {
   chase_info: "Chase missing information",
   cost_sheet: "Complete costing",
@@ -419,8 +431,9 @@ function actionOwner(row, actionId) {
 }
 
 function canAct(row, actor, actionId) {
-  if (!DELIVERABLE_ACTIONS[actionId]) return true;
   const who = String(actor || "").trim();
+  if (actionId === "set_status") return isManagerName(who);
+  if (!DELIVERABLE_ACTIONS[actionId]) return true;
   if (!who) return false;
   if (actionId === "complete_followup") {
     if (isManagerName(who)) return true;
@@ -437,6 +450,9 @@ function canAct(row, actor, actionId) {
 }
 
 function assertCanAct(row, actor, actionId) {
+  if (actionId === "set_status" && !isManagerName(actor)) {
+    throw new Error("Only the Manager can change enquiry status by hand.");
+  }
   if (canAct(row, actor, actionId)) return;
   const owner = actionOwner(row, actionId) || "the assigned person";
   throw new Error(
@@ -445,7 +461,11 @@ function assertCanAct(row, actor, actionId) {
 }
 
 function decorateActions(row, actor) {
-  return availableActions(row).map((action) => {
+  const list = availableActions(row);
+  if (isManagerName(actor)) {
+    list.push({ id: "set_status", label: "Correct status" });
+  }
+  return list.map((action) => {
     const kind = actionKind(action.id);
     const owner = actionOwner(row, action.id);
     const locked = !!(kind && owner);
@@ -629,6 +649,7 @@ function processSnapshot(enquiryNo, actorName) {
     actions: decorateActions(row, actor),
     access: access.snapshotFor(row, actor, manager),
     waitingStatuses: WAITING_STATUSES,
+    manualStatuses: MANUAL_STATUSES.slice(),
     closedStatuses: CLOSED_STATUSES.filter((s) => s !== "Rejected"),
     followUpDays: FOLLOW_UP_DAYS,
     followUpMax: MAX_FOLLOW_UPS,
@@ -704,7 +725,8 @@ function applyAction(enquiryNo, actorName, body) {
     complete_order: completeOrder,
     complete_drawing: completeDrawing,
     close: closeEnquiry,
-    reassign: reassignTask
+    reassign: reassignTask,
+    set_status: applyManualStatus
   };
   const fn = handlers[action];
   if (!fn) throw new Error("Unknown process action");
@@ -783,6 +805,7 @@ function eventLabel(action, row, fromStatus, body) {
   if (action === "complete_drawing") return "Drawing uploaded — Not Yet Started";
   if (action === "close") return "Closed: " + status;
   if (action === "reassign") return "Task reassigned";
+  if (action === "set_status") return "Status corrected: " + (fromStatus || "") + " → " + status;
   return action;
 }
 
@@ -829,6 +852,58 @@ function assignCosting(row, actor, body) {
   access.cancelKind(row, "cost_sheet");
   row.status = "Costing";
   addTask(row, "cost_sheet", assignee);
+}
+
+function cancelOpenProcessKinds(row) {
+  ["chase_info", "cost_sheet", "supplier", "approval", "quote", "follow_up", "pop"].forEach((kind) => {
+    cancelOpenKind(row, kind);
+    access.cancelKind(row, kind);
+  });
+}
+
+function applyManualStatus(row, actor, body) {
+  if (!isManagerName(actor)) {
+    throw new Error("Only the Manager can change enquiry status by hand.");
+  }
+  const wanted = String((body && body.status) || "").trim();
+  const status = MANUAL_STATUSES.find((s) => s === wanted)
+    || MANUAL_STATUSES.find((s) => namesMatch(s, wanted));
+  if (!status) {
+    throw new Error("Choose a capture, waiting, costing, or supplier status. Quoted and Ordered stay on the quote and POP steps.");
+  }
+  if (CLOSED_STATUSES.indexOf(status) >= 0) {
+    cancelOpenProcessKinds(row);
+    row.status = status;
+    row.client_outcome = {
+      kind: "closed",
+      reason: String((body && (body.reason || body.comments)) || "Status corrected by Manager").trim(),
+      decided_at: db.nowIso(),
+      decided_by: actor
+    };
+    return;
+  }
+  const assignee = optionalAssignee(body && body.assignee)
+    || lastAssignee(row, "chase_info")
+    || lastAssignee(row, "cost_sheet")
+    || lastAssignee(row, "supplier")
+    || actor;
+  cancelOpenProcessKinds(row);
+  row.status = status;
+  if (status === "New") return;
+  if (WAITING_STATUSES.indexOf(status) >= 0) {
+    addTask(row, "chase_info", requireAssignee(assignee), { note: status });
+    return;
+  }
+  if (status === "Costing" || status === "Re-Cost") {
+    if (!namedProducts(row).length) throw new Error("Add at least one product name before moving this to costing");
+    addTask(row, "cost_sheet", requireRoleAssignee("Costing", body && body.assignee, lastAssignee(row, "cost_sheet") || assignee));
+    return;
+  }
+  if (status === "Waiting on Supplier") {
+    addTask(row, "supplier", requireAssignee(assignee), {
+      note: "Status corrected by Manager"
+    });
+  }
 }
 
 function hasCorrespondence(row) {
@@ -955,35 +1030,85 @@ function isAutoCaptureStatus(status) {
     || s === "Waiting on clients specifictions";
 }
 
+function parseEnoughForCosting(value) {
+  const s = String(value || "").trim().toLowerCase();
+  if (s === "yes" || s === "true" || s === "1") return "yes";
+  if (s === "no" || s === "false" || s === "0") return "no";
+  return "";
+}
+
 function classifyCapture(row) {
   if (!hasClientDetails(row)) return "Waiting on clients personal details";
   if (!hasSpecifications(row)) return "Waiting on clients specifictions";
   return "Costing";
 }
 
-function applyCaptureRoute(enquiryNo, actorName) {
+function applyCaptureRoute(enquiryNo, actorName, body) {
   const actor = String(actorName || "").trim();
+  const incoming = body || {};
   const raw = db.getEnquiryRaw(enquiryNo);
   if (!raw) throw new Error("Enquiry not found. Save the enquiry first.");
+  const enough = parseEnoughForCosting(incoming.enough_for_costing);
+  if (enough) raw.enough_for_costing = enough;
   if (!isAutoCaptureStatus(raw.status || "New")) {
+    if (enough) {
+      raw.updated_at = db.nowIso();
+      db.saveEnquiryRecord(raw);
+    }
     return processSnapshot(enquiryNo, actor);
   }
-  const suggested = classifyCapture(raw);
+  if (enough === "no") {
+    const suggested = !hasClientDetails(raw)
+      ? "Waiting on clients personal details"
+      : (WAITING_STATUSES.find((s) => s === incoming.waiting_status)
+        || WAITING_STATUSES.find((s) => namesMatch(s, incoming.waiting_status))
+        || "Waiting on clients specifictions");
+    const chase = openOfKind(raw, "chase_info");
+    if ((raw.status || "New") === suggested && chase) {
+      raw.updated_at = db.nowIso();
+      db.saveEnquiryRecord(raw);
+      return processSnapshot(enquiryNo, actor);
+    }
+    return applyAction(enquiryNo, actor, {
+      action: "assign_waiting",
+      waiting_status: suggested,
+      assignee: incoming.chase_assignee || incoming.assignee || (chase && chase.assignee) || actor
+    });
+  }
+  const suggested = enough === "yes"
+    ? (!hasClientDetails(raw)
+      ? "Waiting on clients personal details"
+      : (namedProducts(raw).length ? "Costing" : "Waiting on clients specifictions"))
+    : classifyCapture(raw);
   if (suggested === "Costing") {
     if (raw.status === "Costing" && openOfKind(raw, "cost_sheet")) {
+      if (enough) {
+        raw.updated_at = db.nowIso();
+        db.saveEnquiryRecord(raw);
+      }
       return processSnapshot(enquiryNo, actor);
     }
     const coster = staff.defaultEnquiryAssignee("Costing") || actor;
-    return applyAction(enquiryNo, actor, { action: "assign_costing", assignee: coster });
+    return applyAction(enquiryNo, actor, {
+      action: "assign_costing",
+      assignee: incoming.costing_assignee || incoming.assignee || coster,
+      correspondence_links: incoming.correspondence_links || incoming.correspondenceLinks,
+      correspondence_mails: incoming.correspondence_mails,
+      correspondence_files: incoming.correspondence_files
+    });
   }
   const chase = openOfKind(raw, "chase_info");
   if ((raw.status || "New") === suggested && chase) {
+    if (enough) {
+      raw.updated_at = db.nowIso();
+      db.saveEnquiryRecord(raw);
+    }
     return processSnapshot(enquiryNo, actor);
   }
   return applyAction(enquiryNo, actor, {
     action: "assign_waiting",
     waiting_status: suggested,
-    assignee: (chase && chase.assignee) || actor
+    assignee: incoming.chase_assignee || incoming.assignee || (chase && chase.assignee) || actor
   });
 }
 
@@ -1888,6 +2013,7 @@ module.exports = {
   followUpsExhausted,
   WAITING_STATUSES,
   CLOSED_STATUSES,
+  MANUAL_STATUSES,
   officeAssignees,
   listMyTasks,
   listMyCompletedTasks,
@@ -1895,6 +2021,7 @@ module.exports = {
   processSnapshot,
   applyAction,
   classifyCapture,
+  parseEnoughForCosting,
   isAutoCaptureStatus,
   applyCaptureRoute,
   availableActions,

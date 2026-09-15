@@ -1402,6 +1402,93 @@ assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").sta
 assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260412").status, "Welding");
 assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
 
+const customNeed = db.upsertEnquiry({
+  date_enquired: "15/09/2026",
+  client_name: "Custom More Info",
+  client_email: "custominfo@example.com",
+  province: "Gauteng",
+  enquiry_type: "Custom",
+  products: [{ product: "Air Chair", category: "Chair" }]
+});
+const chasedCustom = pipeline.applyCaptureRoute(customNeed.enquiry_no, "Coster", {
+  enough_for_costing: "no",
+  chase_assignee: "Coster",
+  waiting_status: "Waiting on clients specifictions"
+});
+assert.strictEqual(chasedCustom.row.status, "Waiting on clients specifictions");
+assert.strictEqual(chasedCustom.row.enough_for_costing, "no");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "chase_info" && t.enquiry_no === customNeed.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === customNeed.enquiry_no));
+
+const customReady = db.upsertEnquiry({
+  date_enquired: "15/09/2026",
+  client_name: "Custom Enough",
+  client_email: "customenough@example.com",
+  province: "Gauteng",
+  enquiry_type: "Custom",
+  products: [{ product: "Air Chair", category: "Chair" }]
+});
+pipeline.applyAction(customReady.enquiry_no, "Coster", {
+  action: "add_correspondence",
+  correspondence_links: "https://files.example/custom-enough"
+});
+const enoughYes = pipeline.applyCaptureRoute(customReady.enquiry_no, "Coster", {
+  enough_for_costing: "yes"
+});
+assert.strictEqual(enoughYes.row.status, "Costing");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === customReady.enquiry_no));
+
+const wrongSupplier = db.upsertEnquiry({
+  date_enquired: "15/09/2026",
+  client_name: "Wrong Supplier Status",
+  client_email: "wrongsup@example.com",
+  province: "Gauteng",
+  enquiry_type: "Custom",
+  products: [{ product: "Air Chair", category: "Chair" }]
+});
+pipeline.applyAction(wrongSupplier.enquiry_no, "Coster", {
+  action: "assign_costing",
+  assignee: "Coster",
+  correspondence_links: "https://files.example/wrong-sup"
+});
+pipeline.applyAction(wrongSupplier.enquiry_no, "Coster", {
+  action: "supplier_wait",
+  assignee: "Coster"
+});
+assert.strictEqual(db.getEnquiry(wrongSupplier.enquiry_no).status, "Waiting on Supplier");
+const asCoster = pipeline.processSnapshot(wrongSupplier.enquiry_no, "Coster");
+assert.ok(!asCoster.actions.some((a) => a.id === "set_status"));
+assert.throws(
+  () => pipeline.applyAction(wrongSupplier.enquiry_no, "Coster", {
+    action: "set_status",
+    status: "Waiting on clients specifictions",
+    assignee: "Coster"
+  }),
+  /Only the Manager/
+);
+staff.upsertUser({ name: "Siya", access: "Admin", role: "Production Manager", password: "x", seeDebtors: "Yes" });
+assert.ok(!staff.canManageUsers({ name: "Siya" }));
+assert.ok(!pipeline.processSnapshot(wrongSupplier.enquiry_no, "Siya").actions.some((a) => a.id === "set_status"));
+assert.throws(
+  () => pipeline.applyAction(wrongSupplier.enquiry_no, "Siya", {
+    action: "set_status",
+    status: "Waiting on clients specifictions",
+    assignee: "Coster"
+  }),
+  /Only the Manager/
+);
+const asManager = pipeline.processSnapshot(wrongSupplier.enquiry_no, "Lesedi");
+assert.ok(asManager.actions.some((a) => a.id === "set_status" && a.can_act));
+const corrected = pipeline.applyAction(wrongSupplier.enquiry_no, "Lesedi", {
+  action: "set_status",
+  status: "Waiting on clients specifictions",
+  assignee: "Coster"
+});
+assert.strictEqual(corrected.row.status, "Waiting on clients specifictions");
+assert.ok(corrected.row.events.some((ev) => ev.kind === "set_status" && /Status corrected/.test(ev.label || "")));
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "chase_info" && t.enquiry_no === wrongSupplier.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "supplier" && t.enquiry_no === wrongSupplier.enquiry_no));
+
 const keptOrder = db.upsertOrder({
   order_number: "9001",
   client_name: "Keep Me",

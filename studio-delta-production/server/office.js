@@ -1082,7 +1082,7 @@ function mountOffice(app) {
         });
       }
       const row = actor && pipeline.isAutoCaptureStatus(saved.status)
-        ? pipeline.applyCaptureRoute(saved.enquiry_no, actor).row
+        ? pipeline.applyCaptureRoute(saved.enquiry_no, actor, incoming).row
         : saved;
       res.json({
         ok: true,

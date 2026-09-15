@@ -100,6 +100,11 @@
     .onboard-file { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#f8fafc; display:flex; flex-direction:column; gap:8px; }
     .onboard-file iframe { width:100%; height:220px; border:1px solid var(--line); border-radius:6px; background:#fff; }
     .capture-correspondence { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#f8fafc; }
+    .enough-box { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#fff; }
+    .enough-box > p { margin:0 0 8px; font-weight:600; color:#1d2939; font-size:13px; }
+    .enough-opts { display:flex; flex-direction:column; gap:6px; }
+    .enough-opts label { font-weight:400; display:flex; flex-direction:row; gap:8px; align-items:flex-start; }
+    #capChaseWrap { margin-top:10px; display:flex; flex-direction:column; gap:10px; }
     .capture-correspondence .hint { margin:6px 0 0; }
     .corr-links { display:flex; flex-direction:column; gap:10px; }
     .corr-link-row textarea.corr-link { min-height:56px; }
@@ -330,6 +335,25 @@
             <button class="ghost" type="button" onclick="addCaptureLine()">Add product</button>
           </div>
         </div>
+        <div class="enough-box" id="captureEnoughBox">
+          <p>Is there enough information to move this to costing?</p>
+          <div class="enough-opts">
+            <label><input type="radio" name="cap_enough" value="yes" onchange="syncCaptureEnough()"> Yes — continue to costing</label>
+            <label><input type="radio" name="cap_enough" value="no" onchange="syncCaptureEnough()"> No — allocate someone to chase the missing information</label>
+          </div>
+          <div id="capChaseWrap" hidden>
+            <label>Who should chase this?
+              <select id="cap_chase"></select>
+            </label>
+            <label>Waiting on
+              <select id="cap_waiting">
+                <option>Waiting on clients specifictions</option>
+                <option>Waiting on clients personal details</option>
+                <option>Waiting on productions confirmation</option>
+              </select>
+            </label>
+          </div>
+        </div>
         <div id="captureCustomBlock" style="display:none">
           <p class="hint" style="margin:0 0 8px;color:#1d2939;font-weight:600">Custom specification</p>
           <div id="captureSpecList" class="spec-grid"></div>
@@ -532,7 +556,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=drawing-wait"></script>
-  <script src="/enquiry-process.js?v=drawing-erin"></script>
+  <script src="/enquiry-process.js?v=enough-costing"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 112, true],
@@ -1766,11 +1790,32 @@
       const files = Array.isArray(row.deliverables) ? row.deliverables : [];
       return files.filter((f) => f && f.group === "correspondence").length;
     }
+    function captureEnoughChoice() {
+      const el = document.querySelector("#captureEnoughBox input[name=\"cap_enough\"]:checked");
+      return el ? String(el.value || "").trim() : "";
+    }
+    function syncCaptureEnough() {
+      const wrap = document.getElementById("capChaseWrap");
+      if (wrap) wrap.hidden = captureEnoughChoice() !== "no";
+    }
+    function setCaptureEnough(value) {
+      const want = String(value || "").trim().toLowerCase();
+      document.querySelectorAll("#captureEnoughBox input[name=\"cap_enough\"]").forEach((el) => {
+        el.checked = el.value === want;
+      });
+      syncCaptureEnough();
+    }
+    function showCaptureEnough(existing) {
+      const box = document.getElementById("captureEnoughBox");
+      if (!box) return;
+      box.hidden = !!(existing && !isAutoCaptureStatus(existing.status));
+    }
     function isAutoCaptureStatus(status) {
       const s = String(status || "New").trim() || "New";
       return s === "New" || s === "Waiting on clients personal details" || s === "Waiting on clients specifictions";
     }
     function captureWouldCost(payload, existing) {
+      if (captureEnoughChoice() === "no") return false;
       if (!isAutoCaptureStatus(existing ? existing.status : "New")) return false;
       const name = String((payload && payload.client_name) || "").trim();
       const email = String((payload && payload.client_email) || "").trim();
@@ -1780,6 +1825,7 @@
       const type = String((payload && payload.enquiry_type) || "").trim();
       const named = (payload && payload.products || []).filter((p) => String(p.product || "").trim());
       if (!type || !named.length) return false;
+      if (captureEnoughChoice() === "yes") return true;
       if (type === "Custom") {
         return (payload.custom_specs || []).some((s) => {
           const kind = String((s && s.kind) || "").trim();
@@ -1819,6 +1865,11 @@
         fillCaptureSelect("cap_enquiry_type", "enquiry_type", existing.enquiry_type || "");
         fillCaptureSelect("cap_source", "source", existing.source || "");
         fillCaptureSelect("cap_province", "province", existing.province || "");
+        setCaptureEnough(existing.enough_for_costing || "");
+        showCaptureEnough(existing);
+        fillAssigneeSelect("cap_chase", existing.chase_assignee || (existing.tasks || []).filter((t) => t.kind === "chase_info" && t.status === "open").map((t) => t.assignee)[0] || me);
+        const waitEl = document.getElementById("cap_waiting");
+        if (waitEl && /Waiting on/.test(existing.status || "")) waitEl.value = existing.status;
       } else {
         bumpNext();
         capture.products = [emptyLine()];
@@ -1837,6 +1888,9 @@
         fillCaptureSelect("cap_enquiry_type", "enquiry_type", "");
         fillCaptureSelect("cap_source", "source", "");
         fillCaptureSelect("cap_province", "province", "");
+        setCaptureEnough("");
+        showCaptureEnough(null);
+        fillAssigneeSelect("cap_chase", me);
       }
       setCorrespondenceValues("capture", [""], "cap_correspondence");
     }
@@ -1856,6 +1910,9 @@
       fillCaptureSelect("cap_enquiry_type", "enquiry_type", d.enquiry_type || "");
       fillCaptureSelect("cap_source", "source", d.source || "");
       fillCaptureSelect("cap_province", "province", d.province || "");
+      if (d.enough_for_costing) setCaptureEnough(d.enough_for_costing);
+      if (d.chase_assignee) fillAssigneeSelect("cap_chase", d.chase_assignee, me);
+      if (d.waiting_status && document.getElementById("cap_waiting")) document.getElementById("cap_waiting").value = d.waiting_status;
       return true;
     }
     function openCapture(index, skipRestore) {
@@ -1975,6 +2032,7 @@
         }));
       };
     });
+    window.syncCaptureEnough = syncCaptureEnough;
     async function saveCapture() {
       if (capture.saving) return;
       hideTakenActions("capture");
@@ -2022,6 +2080,23 @@
           value_incl_vat: prev && prev.value_incl_vat ? prev.value_incl_vat : ""
         };
       }).filter((l) => l.product || l.category);
+      const namedProducts = payload.products.filter((l) => String(l.product || "").trim());
+      if (isAutoCaptureStatus(existing ? existing.status : "New") && namedProducts.length) {
+        const enough = captureEnoughChoice();
+        if (!enough) {
+          setSheetError("captureErr", "Say whether there is enough information to move this to costing.");
+          return;
+        }
+        payload.enough_for_costing = enough;
+        if (enough === "no") {
+          payload.chase_assignee = (document.getElementById("cap_chase") || {}).value || me;
+          payload.waiting_status = (document.getElementById("cap_waiting") || {}).value || "Waiting on clients specifictions";
+          if (!payload.chase_assignee) {
+            setSheetError("captureErr", "Choose who should chase the missing information.", "cap_chase");
+            return;
+          }
+        }
+      }
       payload.custom_specs = [];
       payload.design_description = existing ? (existing.design_description || "") : "";
       if (!existing) payload.design_description = "";
@@ -2283,7 +2358,10 @@
         correspondence: readCorrespondenceLinks("capture"),
         design_description: document.getElementById("captureDesignDesc").value,
         products: (capture.products || []).map((l) => Object.assign({}, l)),
-        specs: (capture.specs || []).map((s) => Object.assign({}, s))
+        specs: (capture.specs || []).map((s) => Object.assign({}, s)),
+        enough_for_costing: captureEnoughChoice(),
+        chase_assignee: (document.getElementById("cap_chase") || {}).value || "",
+        waiting_status: (document.getElementById("cap_waiting") || {}).value || ""
       };
       writeDraft("capture", captureDraftId(), data);
     }
