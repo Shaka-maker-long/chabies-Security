@@ -1247,16 +1247,16 @@
     .twin-actor.is-assemble .twin-arm-r { animation: twin-reach 1.45s ease-in-out infinite; animation-delay: var(--twin-delay); }
     .twin-actor.is-assemble .twin-glass { animation: twin-glass-set 1.8s ease-in-out infinite; animation-delay: var(--twin-delay); }
     .twin-actor.is-grind .twin-arm-r { animation: twin-grind-arm .5s ease-in-out infinite; animation-delay: var(--twin-delay); }
-    .twin-actor.is-grind .twin-disc { transform-origin: 50% 50%; animation: twin-spin .22s linear infinite; }
+    .twin-actor.is-grind .twin-disc { transform-box: fill-box; transform-origin: 50% 50%; animation: twin-spin .22s linear infinite; }
     .twin-actor.is-grind .twin-spark { animation: twin-spark-fly .36s linear infinite; }
     .twin-actor.is-grind { filter: drop-shadow(0 0 6px rgba(255,200,80,.45)); }
-    .twin-actor.is-cut .twin-blade { transform-origin: 50% 50%; animation: twin-spin .16s linear infinite; }
-    .twin-actor.is-cut .twin-saw-arm { transform-origin: 12% 18%; animation: twin-chop .95s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-cut .twin-blade { transform-box: fill-box; transform-origin: 50% 50%; animation: twin-spin .16s linear infinite; }
+    .twin-actor.is-cut .twin-saw-arm { transform-box: view-box; transform-origin: 86px 26px; animation: twin-chop .95s ease-in-out infinite; animation-delay: var(--twin-delay); }
     .twin-actor.is-cut .twin-arm-r { animation: twin-saw-arm .95s ease-in-out infinite; animation-delay: var(--twin-delay); }
     .twin-actor.is-cut .twin-tube { animation: twin-tube-feed 1.6s ease-in-out infinite; animation-delay: var(--twin-delay); }
     .twin-actor.is-plate { filter: drop-shadow(0 0 6px rgba(255,200,80,.4)); }
     .twin-actor.is-plate .twin-arm-r { animation: twin-grind-arm .45s ease-in-out infinite; animation-delay: var(--twin-delay); }
-    .twin-actor.is-plate .twin-disc { transform-origin: 50% 50%; animation: twin-spin .16s linear infinite; }
+    .twin-actor.is-plate .twin-disc { transform-box: fill-box; transform-origin: 50% 50%; animation: twin-spin .16s linear infinite; }
     .twin-actor.is-plate .twin-spark { animation: twin-spark-fly .32s linear infinite; }
     .twin-actor.is-plate .s1 { animation-delay: .08s; }
     .twin-actor.is-plate .s2 { animation-delay: .16s; }
@@ -1321,8 +1321,8 @@
       50% { transform: rotate(7deg); }
     }
     @keyframes twin-chop {
-      0%, 100% { transform: rotate(-20deg); }
-      50% { transform: rotate(10deg); }
+      0%, 100% { transform: rotate(-8deg); }
+      50% { transform: rotate(6deg); }
     }
     @keyframes twin-tube-feed {
       0%, 100% { transform: translateX(0); }
@@ -3598,41 +3598,45 @@
         prop = '<g class="twin-job">' +
           twinCabinetMark('') +
           '<g class="twin-arm-r">' +
-          '<path d="M46 36 q12 6 16 16" stroke="' + shirt + '" stroke-width="5" fill="none" stroke-linecap="round"></path>' +
-          '<circle cx="62" cy="52" r="2.4" fill="' + skin + '"></circle>' +
+          '<path d="M46 36 q18 10 24 20" stroke="' + shirt + '" stroke-width="5" fill="none" stroke-linecap="round"></path>' +
+          '<circle cx="70" cy="56" r="2.4" fill="' + skin + '"></circle>' +
           '</g>' +
-          '<circle class="twin-disc" cx="72" cy="56" r="8" fill="#57534e" stroke="#e7e5e4" stroke-width="2"></circle>' +
-          '<circle cx="72" cy="56" r="1.6" fill="#b08948"></circle>' +
-          '<circle class="twin-spark s0" cx="80" cy="48" r="1.5" fill="#fbbf24"></circle>' +
-          '<circle class="twin-spark s2" cx="82" cy="52" r="1.2" fill="#fff4c2"></circle>' +
+          '<g class="twin-disc">' +
+          '<circle cx="76" cy="58" r="7.5" fill="#57534e" stroke="#e7e5e4" stroke-width="2"></circle>' +
+          '<circle cx="76" cy="58" r="1.5" fill="#b08948"></circle>' +
+          '</g>' +
+          '<circle class="twin-spark s0" cx="84" cy="50" r="1.5" fill="#fbbf24"></circle>' +
+          '<circle class="twin-spark s2" cx="86" cy="54" r="1.2" fill="#fff4c2"></circle>' +
           '</g>';
       } else if (k === 'cut') {
         prop = '<g class="twin-job">' +
-          '<rect x="50" y="70" width="46" height="6" rx="1" fill="#57534e" stroke="#1c1917"></rect>' +
-          '<rect x="54" y="66" width="10" height="5" fill="#44403c"></rect>' +
+          '<rect x="54" y="72" width="48" height="6" rx="1" fill="#57534e" stroke="#1c1917"></rect>' +
+          '<rect x="70" y="68" width="12" height="5" fill="#44403c"></rect>' +
           '<g class="twin-tube">' +
-          '<rect x="48" y="61" width="50" height="6" rx="3" fill="#9ca3af" stroke="#1c1917"></rect>' +
-          '<ellipse cx="48" cy="64" rx="3" ry="3.2" fill="#d6d3d1" stroke="#1c1917"></ellipse>' +
-          '<ellipse cx="98" cy="64" rx="3" ry="3.2" fill="#78716c" stroke="#1c1917"></ellipse>' +
+          '<rect x="52" y="63" width="52" height="6" rx="3" fill="#9ca3af" stroke="#1c1917"></rect>' +
+          '<ellipse cx="52" cy="66" rx="3" ry="3.2" fill="#d6d3d1" stroke="#1c1917"></ellipse>' +
+          '<ellipse cx="104" cy="66" rx="3" ry="3.2" fill="#78716c" stroke="#1c1917"></ellipse>' +
           '</g>' +
           '<g class="twin-saw-arm">' +
-          '<path d="M68 28 L74 58" stroke="#1c1917" stroke-width="3.2" stroke-linecap="round"></path>' +
+          '<path d="M86 26 L90 58" stroke="#1c1917" stroke-width="3.2" stroke-linecap="round"></path>' +
           '<g class="twin-blade">' +
-          '<circle cx="74" cy="60" r="11" fill="#d6d3d1" stroke="#1c1917" stroke-width="1.4"></circle>' +
-          '<circle cx="74" cy="60" r="8.2" fill="none" stroke="#78716c" stroke-width="1.1" stroke-dasharray="1.6 1.4"></circle>' +
-          '<circle cx="74" cy="60" r="2.1" fill="#b08948" stroke="#1c1917"></circle>' +
+          '<circle cx="90" cy="62" r="10" fill="#d6d3d1" stroke="#1c1917" stroke-width="1.4"></circle>' +
+          '<circle cx="90" cy="62" r="7.4" fill="none" stroke="#78716c" stroke-width="1.1" stroke-dasharray="1.6 1.4"></circle>' +
+          '<circle cx="90" cy="62" r="2" fill="#b08948" stroke="#1c1917"></circle>' +
           '</g>' +
           '</g>' +
           '</g>';
       } else if (k === 'plate') {
         prop = '<g class="twin-job">' +
-          '<path class="twin-sheet" d="M48 52 L102 44 L108 78 L54 88 Z" fill="#9ca3af" stroke="#1c1917" stroke-width="1.2"></path>' +
-          '<path d="M56 58 L96 51 M60 68 L98 62 M58 78 L94 72" stroke="#78716c" stroke-width=".6" opacity=".45"></path>' +
-          '<circle class="twin-disc" cx="78" cy="64" r="8" fill="#57534e" stroke="#e7e5e4" stroke-width="2"></circle>' +
-          '<circle cx="78" cy="64" r="1.5" fill="#b08948"></circle>' +
-          '<circle class="twin-spark s0" cx="86" cy="56" r="1.6" fill="#fbbf24"></circle>' +
-          '<circle class="twin-spark s1" cx="88" cy="60" r="1.3" fill="#fff4c2"></circle>' +
-          '<circle class="twin-spark s2" cx="84" cy="54" r="1.1" fill="#fb923c"></circle>' +
+          '<path class="twin-sheet" d="M50 54 L104 46 L110 80 L56 90 Z" fill="#9ca3af" stroke="#1c1917" stroke-width="1.2"></path>' +
+          '<path d="M58 60 L98 53 M62 70 L100 64 M60 80 L96 74" stroke="#78716c" stroke-width=".6" opacity=".45"></path>' +
+          '<g class="twin-disc">' +
+          '<circle cx="82" cy="68" r="7.5" fill="#57534e" stroke="#e7e5e4" stroke-width="2"></circle>' +
+          '<circle cx="82" cy="68" r="1.5" fill="#b08948"></circle>' +
+          '</g>' +
+          '<circle class="twin-spark s0" cx="90" cy="60" r="1.6" fill="#fbbf24"></circle>' +
+          '<circle class="twin-spark s1" cx="92" cy="64" r="1.3" fill="#fff4c2"></circle>' +
+          '<circle class="twin-spark s2" cx="88" cy="58" r="1.1" fill="#fb923c"></circle>' +
           '</g>';
       } else if (k === 'paint') {
         prop = '<g class="twin-job"><path d="M48 42 h10 l8 10" stroke="#1c1917" stroke-width="2.2" fill="none"></path><ellipse class="twin-spray" cx="64" cy="54" rx="9" ry="11" fill="#93c5fd"></ellipse></g>';
