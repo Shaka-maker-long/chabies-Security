@@ -7,6 +7,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sd-idle-"));
 process.env.DATA_DIR = dir;
 process.env.OFFICE_DB_PATH = path.join(dir, "studio-delta.json");
 process.env.TZ = "Africa/Johannesburg";
+process.env.WORK_LOCKS_DISABLED = "false";
 delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
@@ -136,6 +137,63 @@ function openHole(worker, dateCell) {
   assert.strictEqual(savedPm.success, true, JSON.stringify(savedPm));
   const gonePm = await callShopFunction("getIdleWorkers", []);
   assert.ok(!(gonePm.workers || []).some((w) => w.worker === "Uriah"), "Production Manager must be able to assign idle tasks");
+
+  const pauseAt = new Date("2026-09-15T10:15:00+02:00");
+  const checkAt = new Date("2026-09-15T10:40:00+02:00");
+  const liveStart = new Date("2026-09-15T12:30:00+02:00");
+  const logsSheet = getBook().getSheetByName("Production_Log");
+  logsSheet.appendRow([
+    "log-willard-pause",
+    "S-IDLE-1",
+    "Willard",
+    "Welding",
+    "Welding",
+    new Date("2026-09-15T07:45:00+02:00"),
+    "",
+    "",
+    "",
+    pauseAt,
+    0,
+    "No materials",
+    JSON.stringify({
+      pauses: [{ start: pauseAt.getTime(), end: null, reason: "No materials" }]
+    })
+  ]);
+  persistWorkbook();
+  clearShopCache();
+  await callShopFunction("checkIdleWorkers", [checkAt]);
+  const willardHole = (idleSheet().getDataRange().getValues() || []).find((row, i) => i > 0 && String(row[1]) === "Willard" && String(row[5] || "").toLowerCase() === "open");
+  assert.ok(willardHole, "paused job must open an idle hole");
+  const holeStart = new Date(willardHole[3]).getTime();
+  assert.ok(Math.abs(holeStart - pauseAt.getTime()) < 60 * 1000, "Other hole starts at the pause, not the job start: " + willardHole[3]);
+
+  logsSheet.appendRow([
+    "log-willard-live",
+    "S-IDLE-2",
+    "Willard",
+    "Welding",
+    "Welding",
+    liveStart,
+    "",
+    "",
+    "",
+    "",
+    0,
+    "",
+    JSON.stringify({ pauses: [] })
+  ]);
+  persistWorkbook();
+  clearShopCache();
+  const savedLive = await callShopFunction("assignIndirectTask", [
+    "Willard", "Other", "Siya", "wrapping order S260200"
+  ]);
+  assert.strictEqual(savedLive.success, true, JSON.stringify(savedLive));
+  const willardIndirect = getBook().getSheetByName("Production_Log").getDataRange().getValues()
+    .find((row) => String(row[1]) === "INDIRECT" && String(row[2]) === "Willard");
+  assert.ok(willardIndirect, "Other must write a log");
+  const otherEnd = willardIndirect[6] ? new Date(willardIndirect[6]).getTime() : 0;
+  assert.ok(otherEnd, "Other over a live job must close");
+  assert.ok(Math.abs(otherEnd - liveStart.getTime()) < 60 * 1000, "Other must stop when the next job starts, not keep counting: " + willardIndirect[6]);
 
   console.log("idle-assign.test.js ok");
 })().catch((e) => {

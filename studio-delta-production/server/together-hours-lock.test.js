@@ -20,6 +20,7 @@ const users = book.getSheetByName("Users");
 users.appendRow(["Sam", "Welding", "1234", "Welding", "Production", "No"]);
 users.appendRow(["John", "Welding", "1234", "Welding", "Production", "No"]);
 users.appendRow(["Willard", "Welding", "1234", "Welding", "Production", "No"]);
+users.appendRow(["Admire", "Welding", "1234", "Welding", "Production", "No"]);
 persistWorkbook();
 
 const morning = new Date("2026-09-15T07:45:00+02:00");
@@ -81,6 +82,16 @@ logs.appendRow([
   morning, eightHoursEnd, "Complete", "", "", "", "",
   soloMeta({ overtimeContinue: true })
 ]);
+logs.appendRow([
+  "log-admire-weld", "S-OTHER-W", "Admire", "Welding", "Welding",
+  morning, lunch, "Complete", "", "", "", "",
+  soloMeta()
+]);
+logs.appendRow([
+  "log-admire-other", "INDIRECT", "Admire", "Indirect", "Other — wrapping",
+  morning, eightHoursEnd, "Complete", "", "", "", "",
+  JSON.stringify({ entryType: "indirect", idleFill: true, pauses: [] })
+]);
 persistWorkbook();
 clearShopCache();
 
@@ -104,6 +115,11 @@ clearShopCache();
   const willardGate = await callShopFunction("floorChangeGate", ["Willard", "start", afternoon]);
   assert.strictEqual(willardGate.ok, false, JSON.stringify(willardGate));
   assert.ok(/8 hours/i.test(willardGate.message || ""), JSON.stringify(willardGate));
+
+  const admireMins = await callShopFunction("workerMinutesToday", ["Admire", afternoon]);
+  assert.ok(admireMins > 430 && admireMins < 470, "Other leftover after welding is one afternoon: " + admireMins);
+  const admireGate = await callShopFunction("floorChangeGate", ["Admire", "start", afternoon]);
+  assert.strictEqual(admireGate.ok, true, "Other overlapping welding must not lock the next start: " + JSON.stringify(admireGate));
 
   console.log("together-hours-lock.test.js ok");
 })().catch((e) => {

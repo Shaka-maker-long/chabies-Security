@@ -546,8 +546,15 @@ function clipIdleActuals(items, logs) {
   const out = [];
   (items || []).forEach((item) => {
     const w = workerKey(item.workerName || item.workerId);
-    const leftover = subtractIsoSpans(item.start, item.end, cover[w] || []);
+    const source = (item.bouts && item.bouts.length)
+      ? item.bouts
+      : [{ start: item.start, end: item.end }];
+    const leftover = [];
+    source.forEach((bout) => {
+      leftover.push.apply(leftover, subtractIsoSpans(bout.start, bout.end, cover[w] || []));
+    });
     if (!leftover.length) return;
+    leftover.sort((a, b) => String(a.start).localeCompare(String(b.start)));
     const days = [];
     const seen = {};
     leftover.forEach((span) => {
@@ -567,6 +574,7 @@ function clipIdleActuals(items, logs) {
       note: item.note,
       process: item.process,
       code: item.code || "O",
+      unassigned: !!item.unassigned,
       start: leftover[0].start,
       end: leftover[leftover.length - 1].end,
       days,
@@ -1020,7 +1028,7 @@ function attachActuals(journey) {
     journey.orders.sort((a, b) => String(a.start || "").localeCompare(String(b.start || "")) || String(a.orderId).localeCompare(String(b.orderId)));
   }
   if (journey) {
-    const indirect = readIndirectActuals();
+    const indirect = clipIdleActuals(readIndirectActuals(), logs);
     const coverLogs = logs.concat(logsFromOtherActuals(indirect));
     const alerts = clipIdleActuals(readIdleActuals(), coverLogs);
     journey.otherActuals = indirect.concat(alerts).concat(unknownIdleActuals(coverLogs, alerts));
