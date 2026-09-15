@@ -100,8 +100,11 @@ app.get("/orders/to-order", (_req, res) => {
   res.sendFile(path.join(publicDir, "orders-to-order.html"));
 });
 app.get("/orders/consumables", (_req, res) => {
+  res.redirect(302, "/inventory");
+});
+app.get("/inventory", (_req, res) => {
   noStore(res);
-  res.sendFile(path.join(publicDir, "orders-consumables.html"));
+  res.sendFile(path.join(publicDir, "inventory.html"));
 });
 app.get("/orders/glass-rates", (_req, res) => {
   noStore(res);

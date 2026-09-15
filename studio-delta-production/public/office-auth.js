@@ -185,6 +185,7 @@ function sdMountOfficeShell(active) {
   const items = [
     ["/", "home", "bi-house-door", "Home"],
     ["/orders", "orders", "bi-table", "Orders"],
+    ["/inventory", "inventory", "bi-box-seam", "Inventory Management"],
     ["/enquiries", "enquiries", "bi-journal-text", "Enquiries"],
     ["/tasks", "tasks", "bi-check2-square", "My tasks"],
     ["/dropdowns", "dropdowns", "bi-list-ul", "Dropdowns"],
