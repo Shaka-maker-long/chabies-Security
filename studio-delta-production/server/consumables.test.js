@@ -26,6 +26,9 @@ staff.upsertUser({
   seeDebtors: "Yes"
 });
 
+const catalog = require("./consumables-catalog");
+assert.ok(catalog.length >= 150);
+
 const hinge = consumables.upsertItem({
   name: "  Bullet hinge  ",
   unit: "pcs",
@@ -36,6 +39,13 @@ assert.strictEqual(hinge.name, "Bullet hinge");
 assert.strictEqual(hinge.stock, 40);
 assert.strictEqual(hinge.minThreshold, 20);
 assert.strictEqual(hinge.low, false);
+
+const windowCleaner = consumables.upsertItem({
+  name: "WINDOW CLEANER",
+  unit: "pcs",
+  openingStock: "99"
+}, "Office Boss");
+assert.strictEqual(windowCleaner.stock, 99);
 
 let dupFailed = false;
 try {
@@ -86,11 +96,17 @@ const po = consumables.createPurchase({
 }, "Office Boss");
 assert.strictEqual(po.status, "Ordered");
 assert.strictEqual(po.lines.length, 2);
-assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 14, "ordering does not add stock yet");
+const orderedSnap = consumables.snapshot();
+const orderedHinge = orderedSnap.items.find((row) => row.id === hinge.id);
+assert.strictEqual(orderedHinge.stock, 14, "ordering does not add stock yet");
+assert.strictEqual(orderedHinge.orderedQty, 50);
+assert.strictEqual(orderedHinge.orderedLabel, "50");
+assert.strictEqual(orderedSnap.items.find((row) => row.id === screw.id).orderedQty, 4);
 
 const received = consumables.receivePurchase(po.id, "Shaka");
 assert.strictEqual(received.status, "Received");
 assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 64);
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).orderedQty, 0, "received PO is no longer ordered");
 assert.strictEqual(consumables.snapshot().items.find((row) => row.id === screw.id).stock, 5);
 assert.strictEqual(consumables.snapshot().items.find((row) => row.id === screw.id).low, false);
 
@@ -123,11 +139,40 @@ const snap = consumables.snapshot();
 assert.ok(snap.units.indexOf("pcs") !== -1);
 assert.ok(snap.movements.some((row) => row.type === "usage" && row.orderNumber === "S260100"));
 assert.ok(snap.movements.some((row) => row.type === "purchase_receive"));
-assert.ok(snap.items.every((row) => !/steel|glass|wood/i.test(row.name)));
+assert.ok(snap.itemCount >= catalog.length);
+const catalogHinges = snap.items.find((row) => row.name === "BULLET HINGES - 12mm x 70mm");
+assert.ok(catalogHinges);
+assert.strictEqual(catalogHinges.stock, 75);
+assert.strictEqual(catalogHinges.minThreshold, 0);
+assert.strictEqual(catalogHinges.low, false, "ROP 0 does not flag low stock");
+const bumper = snap.items.find((row) => row.name === "BUMPER SPRAY");
+assert.ok(bumper);
+assert.strictEqual(bumper.stock, 13);
+assert.strictEqual(bumper.unitPrice, 272.27);
+assert.ok(bumper.priceLabel.indexOf("272.27") !== -1);
+const ears = snap.items.find((row) => row.name === "RE-USABLE EAR PLUGS");
+assert.ok(ears);
+assert.strictEqual(ears.stock, 63);
+assert.strictEqual(ears.minThreshold, 10);
+assert.strictEqual(ears.low, false);
+const drywall = snap.items.find((row) => row.name === "35mm DRYWALL SCREWS");
+assert.ok(drywall);
+assert.strictEqual(drywall.stock, 152);
+assert.strictEqual(drywall.minThreshold, 50);
+assert.strictEqual(drywall.low, false);
+const goggles = snap.items.find((row) => row.name === "CLEAR SAFETY GOGGLES");
+assert.ok(goggles);
+assert.strictEqual(goggles.stock, 0);
+assert.strictEqual(goggles.minThreshold, 0);
+assert.strictEqual(goggles.low, false);
+const seededWindow = snap.items.find((row) => row.name === "WINDOW CLEANER");
+assert.ok(seededWindow);
+assert.strictEqual(seededWindow.stock, 99, "catalog seed does not overwrite existing stock");
+assert.strictEqual(snap.items.filter((row) => row.name === "WINDOW CLEANER").length, 1);
 
 const sticker = consumables.upsertItem({ name: "Powder colour sticker", unit: "pcs", minThreshold: 0 }, "Office Boss");
 assert.strictEqual(sticker.stock, 0);
-assert.strictEqual(sticker.low, true);
+assert.strictEqual(sticker.low, false);
 consumables.deleteItem(sticker.id);
 assert.ok(!consumables.snapshot().items.some((row) => row.id === sticker.id));
 

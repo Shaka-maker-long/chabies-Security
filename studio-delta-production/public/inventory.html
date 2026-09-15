@@ -13,6 +13,9 @@
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
     header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
     .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:780px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; margin:8px 0 0; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
     .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
@@ -50,6 +53,8 @@
     .search { min-width:180px; }
     .low-box { background:#fff8f7; border-color:#fda29b; }
     .span2 { grid-column:1 / -1; }
+    #matList tbody tr { cursor:pointer; }
+    #matList tbody tr:hover { background:#f8fafc; }
     @media (max-width: 900px) {
       .grid { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
@@ -61,7 +66,12 @@
   <header>
     <div>
       <h1>Inventory Management</h1>
-      <p class="lede">Hinges, bullets, screws, stickers, and other hardware. On-hand drops when you log usage against a shop order. Receive walk-in stock or mark a purchase received. Steel, glass, wood, powder, and backboards stay on To order, Cost, and Paint shop.</p>
+      <nav class="tabs" aria-label="Inventory">
+        <a id="tab-cons" href="/inventory">Consumables</a>
+        <a id="tab-steel" href="/inventory/steel">Steel</a>
+        <a id="tab-glass" href="/inventory/glass">Glass</a>
+      </nav>
+      <p class="lede" id="lede">Hinges, bullets, screws, stickers, and other hardware. Current stock, ordered stock, ROP, and unit price. Steel and glass have their own tabs. Wood, powder, and backboards stay on To order, Cost, and Paint shop.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -69,7 +79,7 @@
       <button class="ghost" type="button" onclick="load()">Refresh</button>
     </div>
   </header>
-  <div class="page">
+  <div class="page" id="consPage">
     <div class="kpis">
       <div class="kpi"><span>Items</span><b id="kpiItems">0</b></div>
       <div class="kpi alert"><span>Low stock</span><b id="kpiLow">0</b></div>
@@ -77,13 +87,13 @@
     </div>
     <div class="grid">
       <section class="card" id="lowCard" hidden>
-        <h2>Below minimum</h2>
-        <p class="hint">Stock is at or under the threshold. Raise a purchase or receive stock.</p>
+        <h2>Below ROP</h2>
+        <p class="hint">Stock is at or under the reorder point. Raise a purchase or receive stock.</p>
         <div id="lowList"></div>
       </section>
       <section class="card span2">
         <h2>On hand</h2>
-        <p class="hint">Name, current stock, and minimum only — no height × width. Add the hardware you buy in bulk.</p>
+        <p class="hint">Name, current stock, ordered stock, ROP (reorder point), and unit price.</p>
         <div id="itemList"><div class="empty">Loading…</div></div>
         <form class="add" id="addForm">
           <label>Item name
@@ -92,8 +102,11 @@
           <label>Unit
             <select id="itemUnit"></select>
           </label>
-          <label>Minimum
+          <label>ROP
             <input id="itemMin" inputmode="decimal" placeholder="e.g. 20" value="0">
+          </label>
+          <label>Unit price (R)
+            <input id="itemPrice" inputmode="decimal" placeholder="optional">
           </label>
           <label>Opening stock
             <input id="itemOpen" inputmode="decimal" placeholder="optional">
@@ -203,6 +216,36 @@
       </section>
     </div>
   </div>
+  <div class="page" id="matPage" hidden>
+    <div class="kpis">
+      <div class="kpi"><span>Items</span><b id="matItems">0</b></div>
+      <div class="kpi alert"><span>Low stock</span><b id="matLow">0</b></div>
+    </div>
+    <section class="card">
+      <h2 id="matTitle">Steel</h2>
+      <p class="hint" id="matHint"></p>
+      <div id="matList"><div class="empty">Loading…</div></div>
+      <form class="add" id="matForm">
+        <label>Name
+          <input id="matName" required placeholder="Profile or glass type" autocomplete="off">
+        </label>
+        <label>Current stock
+          <input id="matStock" inputmode="decimal" placeholder="0">
+        </label>
+        <label>Ordered
+          <input id="matOrdered" inputmode="decimal" placeholder="0">
+        </label>
+        <label>ROP
+          <input id="matRop" inputmode="decimal" placeholder="0">
+        </label>
+        <label>Unit price (R)
+          <input id="matPrice" inputmode="decimal" placeholder="optional">
+        </label>
+        <button type="submit">Save line</button>
+        <span class="msg" id="matMsg"></span>
+      </form>
+    </section>
+  </div>
   <datalist id="orderList"></datalist>
   <script src="/office-auth.js?v=drawing-wait"></script>
   <script>
@@ -273,15 +316,16 @@
         box.innerHTML = '<div class="empty">No items match that search.</div>';
         return;
       }
-      box.innerHTML = "<table><thead><tr><th>Name</th><th class='r'>Current stock</th><th class='r'>Minimum</th><th>Status</th><th></th></tr></thead><tbody>" +
+      box.innerHTML = "<table><thead><tr><th>Name</th><th class='r'>Current stock</th><th class='r'>Ordered stock</th><th class='r'>ROP</th><th class='r'>Unit price</th><th></th></tr></thead><tbody>" +
         rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\"><td>" + esc(row.name) +
-          "</td><td class='r'>" + esc(row.stockLabel) + " " + esc(row.unit) +
-          "</td><td class='r'>" + esc(row.minLabel) +
-          "</td><td><span class='pill " + (row.low ? "low" : "ok") + "'>" + esc(row.status) + "</span></td>" +
-          "<td class='actions'>" +
+          "</td><td class='r'>" + esc(row.stockLabel) +
+          "</td><td class='r'>" + esc(row.orderedLabel) +
+          "</td><td class='r'>" + esc(row.ropLabel) +
+          "</td><td class='r'>" + esc(row.priceLabel) +
+          "</td><td class='actions'>" +
           "<button class='ghost' type='button' data-use=\"" + esc(row.id) + "\">Use</button>" +
           "<button class='ghost' type='button' data-recv=\"" + esc(row.id) + "\">Receive</button>" +
-          "<button class='ghost' type='button' data-edit=\"" + esc(row.id) + "\">Edit min</button>" +
+          "<button class='ghost' type='button' data-edit=\"" + esc(row.id) + "\">Edit</button>" +
           "<button class='danger' type='button' data-del=\"" + esc(row.id) + "\">Delete</button>" +
           "</td></tr>").join("") + "</tbody></table>";
       box.querySelectorAll("[data-use]").forEach((btn) => {
@@ -358,11 +402,13 @@
     async function editMin(id) {
       const row = (data.items || []).find((item) => item.id === id);
       if (!row) return;
-      const next = window.prompt("Minimum threshold for " + row.name, String(row.minThreshold));
+      const next = window.prompt("ROP (reorder point) for " + row.name, String(row.minThreshold));
       if (next == null) return;
+      const price = window.prompt("Unit price in Rand for " + row.name + " (leave blank for none)", row.unitPrice == null ? "" : String(row.unitPrice));
+      if (price == null) return;
       const r = await sdOfficeFetch("/api/office/consumables", {
         method: "POST",
-        body: JSON.stringify({ id: row.id, name: row.name, unit: row.unit, minThreshold: next })
+        body: JSON.stringify({ id: row.id, name: row.name, unit: row.unit, minThreshold: next, unitPrice: price })
       });
       const j = await r.json();
       if (!j.ok) { setMsg("status", j.error || "Could not save", true); return; }
@@ -404,6 +450,7 @@
           name: document.getElementById("itemName").value,
           unit: document.getElementById("itemUnit").value,
           minThreshold: document.getElementById("itemMin").value,
+          unitPrice: document.getElementById("itemPrice").value,
           openingStock: document.getElementById("itemOpen").value
         })
       });
@@ -411,6 +458,7 @@
       if (!j.ok) { setMsg("addMsg", j.error || "Could not save", true); return; }
       document.getElementById("itemName").value = "";
       document.getElementById("itemMin").value = "0";
+      document.getElementById("itemPrice").value = "";
       document.getElementById("itemOpen").value = "";
       applySnapshot(j);
       setMsg("addMsg", "Added " + (j.item && j.item.name ? j.item.name : "item") + ".");
@@ -498,8 +546,95 @@
       setMsg("poMsg", "Saved as Ordered.");
     };
     document.getElementById("addPoLine").onclick = () => addPoLine();
-    document.getElementById("q").oninput = () => renderItems();
-    sdRequireOffice("inventory").then((p) => { if (p) load(); });
+    document.getElementById("q").oninput = () => { renderItems(); renderMat(); };
+    const tab = location.pathname.indexOf("/inventory/steel") === 0 ? "steel" : (location.pathname.indexOf("/inventory/glass") === 0 ? "glass" : "cons");
+    const matKind = tab === "steel" || tab === "glass" ? tab : "";
+    document.getElementById("tab-cons").classList.toggle("on", tab === "cons");
+    document.getElementById("tab-steel").classList.toggle("on", tab === "steel");
+    document.getElementById("tab-glass").classList.toggle("on", tab === "glass");
+    document.getElementById("consPage").hidden = tab !== "cons";
+    document.getElementById("matPage").hidden = !matKind;
+    if (tab === "steel") {
+      document.getElementById("lede").textContent = "Steel profiles from Cost rates and Steel_Profiles. Set current stock, ordered stock, ROP, and unit price here. Usage at cutting still writes Steel_Usage.";
+      document.getElementById("matTitle").textContent = "Steel";
+      document.getElementById("matHint").textContent = "Name, current stock, ordered stock, ROP, unit price (from the steel rate per metre unless you type another price).";
+    }
+    if (tab === "glass") {
+      document.getElementById("lede").textContent = "Glass types from Glass rates. Ordered stock is outstanding To order / purchase-order quantity. Receive and purchase orders stay on To order.";
+      document.getElementById("matTitle").textContent = "Glass";
+      document.getElementById("matHint").textContent = "Name, current stock, ordered stock, ROP, unit price (from the glass rate per m² unless you type another price).";
+    }
+    let matData = { items: [] };
+    function filteredMat() {
+      const needle = q();
+      return (matData.items || []).filter((row) => !needle || String(row.name).toLowerCase().indexOf(needle) !== -1);
+    }
+    function fillMat(row) {
+      document.getElementById("matName").value = row.name;
+      document.getElementById("matStock").value = row.stockLabel;
+      document.getElementById("matOrdered").value = row.orderedLabel;
+      document.getElementById("matRop").value = row.ropLabel;
+      document.getElementById("matPrice").value = row.unitPrice == null ? "" : String(row.unitPrice);
+    }
+    function renderMat() {
+      if (!matKind) return;
+      const rows = filteredMat();
+      const box = document.getElementById("matList");
+      document.getElementById("matItems").textContent = String(matData.itemCount || 0);
+      document.getElementById("matLow").textContent = String(matData.lowCount || 0);
+      if (!(matData.items || []).length) {
+        box.innerHTML = '<div class="empty">No lines yet. Add a name below, or save a rate on Cost / Glass rates.</div>';
+        return;
+      }
+      if (!rows.length) {
+        box.innerHTML = '<div class="empty">No items match that search.</div>';
+        return;
+      }
+      box.innerHTML = "<table><thead><tr><th>Name</th><th class='r'>Current stock</th><th class='r'>Ordered stock</th><th class='r'>ROP</th><th class='r'>Unit price</th></tr></thead><tbody>" +
+        rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-name=\"" + esc(row.name) + "\"><td>" + esc(row.name) +
+          "</td><td class='r'>" + esc(row.stockLabel) +
+          "</td><td class='r'>" + esc(row.orderedLabel) +
+          "</td><td class='r'>" + esc(row.ropLabel) +
+          "</td><td class='r'>" + esc(row.priceLabel) + "</td></tr>").join("") + "</tbody></table>";
+      box.querySelectorAll("tbody tr").forEach((tr) => {
+        tr.onclick = () => {
+          const row = (matData.items || []).find((item) => item.name === tr.getAttribute("data-name"));
+          if (row) fillMat(row);
+        };
+      });
+    }
+    async function loadMat() {
+      setMsg("status", "Loading…");
+      const r = await sdOfficeFetch("/api/office/inventory/" + matKind);
+      const j = await r.json();
+      if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
+      matData = j;
+      renderMat();
+      setMsg("status", (j.itemCount || 0) + " item" + ((j.itemCount || 0) === 1 ? "" : "s"));
+    }
+    document.getElementById("matForm").onsubmit = async (e) => {
+      e.preventDefault();
+      setMsg("matMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/inventory/" + matKind, {
+        method: "POST",
+        body: JSON.stringify({
+          name: document.getElementById("matName").value,
+          stock: document.getElementById("matStock").value,
+          orderedQty: document.getElementById("matOrdered").value,
+          minThreshold: document.getElementById("matRop").value,
+          unitPrice: document.getElementById("matPrice").value
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("matMsg", j.error || "Could not save", true); return; }
+      matData = j;
+      renderMat();
+      const savedName = String(document.getElementById("matName").value || "").replace(/\s+/g, " ").trim().toLowerCase();
+      const saved = (j.items || []).find((item) => String(item.name).toLowerCase() === savedName);
+      if (saved) fillMat(saved);
+      setMsg("matMsg", "Saved.");
+    };
+    sdRequireOffice("inventory").then((p) => { if (p) { if (matKind) loadMat(); else load(); } });
   </script>
 </body>
 </html>

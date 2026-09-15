@@ -4,8 +4,10 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { dataDir } = require("./workbook-store");
+const { parseMoney, money, formatRand } = require("./db");
+const CATALOG = require("./consumables-catalog");
 
-const UNITS = ["pcs", "box", "pack", "roll", "pair", "set"];
+const UNITS = ["pcs", "box", "pack", "roll", "pair", "set", "ℓ"];
 
 function storePath() {
   return path.join(dataDir(), "consumables.json");
@@ -85,7 +87,7 @@ function parseThreshold(raw) {
   const s = String(raw == null ? "" : raw).replace(/,/g, "").trim();
   if (s === "") return 0;
   const n = Number(s);
-  if (!Number.isFinite(n) || n < 0) throw new Error("Minimum threshold must be 0 or more.");
+  if (!Number.isFinite(n) || n < 0) throw new Error("ROP must be 0 or more.");
   return Math.round(n * 1000) / 1000;
 }
 
@@ -133,18 +135,44 @@ function shopOrderNumbers() {
   }
 }
 
-function decorateItem(row) {
+function orderedQtyFor(store, itemId) {
+  let n = 0;
+  (store && store.purchases ? store.purchases : []).forEach((po) => {
+    if (po.status !== "Ordered") return;
+    (po.lines || []).forEach((line) => {
+      if (line.itemId === itemId) n += Number(line.qty) || 0;
+    });
+  });
+  return Math.round(n * 1000) / 1000;
+}
+
+function parsePrice(raw) {
+  const s = String(raw == null ? "" : raw).trim();
+  if (s === "") return null;
+  const n = parseMoney(s);
+  if (!Number.isFinite(n) || n < 0) throw new Error("Unit price must be 0 or more.");
+  return Number(money(n));
+}
+
+function decorateItem(row, store) {
   const stock = Number(row.stock) || 0;
   const minThreshold = Number(row.minThreshold) || 0;
-  const low = stock <= minThreshold;
+  const orderedQty = orderedQtyFor(store, row.id);
+  const unitPrice = row.unitPrice == null || row.unitPrice === "" ? null : Number(row.unitPrice);
+  const low = minThreshold > 0 && stock <= minThreshold;
   return {
     id: row.id,
     name: row.name,
     unit: row.unit || "pcs",
     stock,
     stockLabel: formatQty(stock),
+    orderedQty,
+    orderedLabel: formatQty(orderedQty),
     minThreshold,
     minLabel: formatQty(minThreshold),
+    ropLabel: formatQty(minThreshold),
+    unitPrice,
+    priceLabel: unitPrice == null ? "" : formatRand(unitPrice),
     low,
     status: low ? "Low" : "OK",
     createdAt: row.createdAt || "",
@@ -210,9 +238,33 @@ function addMovement(store, row) {
   if (store.movements.length > 2000) store.movements = store.movements.slice(0, 2000);
 }
 
-function snapshot() {
+function seedCatalog() {
   const store = loadStore();
-  const items = store.items.slice().sort((a, b) => String(a.name).localeCompare(String(b.name))).map(decorateItem);
+  let added = 0;
+  const at = nowIso();
+  CATALOG.forEach((row) => {
+    const name = normalizeName(row && row.name);
+    if (!name || findItemByName(store, name)) return;
+    store.items.push({
+      id: newId("citem"),
+      name,
+      unit: "pcs",
+      stock: Number(row.stock) || 0,
+      minThreshold: Number(row.min) || 0,
+      unitPrice: row.price == null || row.price === "" ? null : Number(row.price),
+      createdAt: at,
+      updatedAt: at
+    });
+    added += 1;
+  });
+  if (added) saveStore(store);
+  return added;
+}
+
+function snapshot() {
+  seedCatalog();
+  const store = loadStore();
+  const items = store.items.slice().sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" })).map((row) => decorateItem(row, store));
   const low = items.filter((row) => row.low);
   const purchases = store.purchases.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).map(decoratePurchase);
   const openPurchases = purchases.filter((row) => row.status === "Ordered");
@@ -253,6 +305,7 @@ function upsertItem(body, actor) {
       unit,
       stock: 0,
       minThreshold,
+      unitPrice: body && Object.prototype.hasOwnProperty.call(body, "unitPrice") ? parsePrice(body.unitPrice) : null,
       createdAt: at,
       updatedAt: at
     };
@@ -277,8 +330,11 @@ function upsertItem(body, actor) {
     row.minThreshold = minThreshold;
     row.updatedAt = at;
   }
+  if (body && Object.prototype.hasOwnProperty.call(body, "unitPrice")) {
+    row.unitPrice = parsePrice(body.unitPrice);
+  }
   saveStore(store);
-  return decorateItem(row);
+  return decorateItem(row, store);
 }
 
 function deleteItem(id) {
@@ -323,7 +379,7 @@ function logUsage(body, actor) {
     note
   });
   saveStore(store);
-  return decorateItem(row);
+  return decorateItem(row, store);
 }
 
 function receiveStock(body, actor) {
@@ -349,7 +405,7 @@ function receiveStock(body, actor) {
     supplier
   });
   saveStore(store);
-  return decorateItem(row);
+  return decorateItem(row, store);
 }
 
 function countStock(body, actor) {
@@ -377,7 +433,7 @@ function countStock(body, actor) {
     note
   });
   saveStore(store);
-  return decorateItem(row);
+  return decorateItem(row, store);
 }
 
 function createPurchase(body, actor) {
@@ -487,6 +543,7 @@ function cancelPurchase(id, actor) {
 module.exports = {
   UNITS,
   snapshot,
+  seedCatalog,
   upsertItem,
   deleteItem,
   logUsage,

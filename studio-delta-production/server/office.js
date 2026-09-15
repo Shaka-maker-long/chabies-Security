@@ -55,6 +55,7 @@ const paintShop = require("./powder-shop");
 const glassPo = require("./glass-po");
 const glassRates = require("./glass-rates");
 const consumables = require("./consumables");
+const inventoryMaterials = require("./inventory-materials");
 const steelRates = require("./steel-rates");
 const backboardRates = require("./backboard-rates");
 const productionCost = require("./production-cost");
@@ -444,6 +445,30 @@ function mountOffice(app) {
     try {
       const purchase = consumables.cancelPurchase(req.params.id, req.office && req.office.name);
       res.json({ ok: true, purchase, ...consumables.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/inventory/steel", requireOffice, (_req, res) => {
+    res.json({ ok: true, ...inventoryMaterials.snapshotSteel() });
+  });
+
+  app.post("/api/office/inventory/steel", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...inventoryMaterials.upsertSteel(req.body || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/inventory/glass", requireOffice, (_req, res) => {
+    res.json({ ok: true, ...inventoryMaterials.snapshotGlass() });
+  });
+
+  app.post("/api/office/inventory/glass", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...inventoryMaterials.upsertGlass(req.body || {}) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
