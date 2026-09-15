@@ -6,10 +6,6 @@ const sched = require("./office-schedule");
 const noPlates = require("./no-plates");
 
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
-];
 
 const AGE_BUCKETS = [
   { id: "0-3d", maxDays: 3 },
@@ -175,21 +171,8 @@ function resolveWindow(query) {
   };
 }
 
-function parseMonthOfSale(v) {
-  const s = String(v || "").trim();
-  if (!s) return null;
-  const named = s.match(/^([A-Za-z]+) (\d{4})$/);
-  if (named) {
-    const mi = MONTH_NAMES.findIndex((n) => n.toLowerCase() === named[1].toLowerCase());
-    if (mi >= 0) return new Date(Date.UTC(Number(named[2]), mi, 1) - SAST_OFFSET_MS);
-  }
-  return db.asDate(v);
-}
-
 function saleDate(row) {
-  const paid = db.asDate(row && row.payment_date);
-  if (paid) return paid;
-  return parseMonthOfSale(row && row.month_of_sale);
+  return db.asDate(row && row.payment_date);
 }
 
 function saleMs(row) {

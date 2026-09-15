@@ -117,7 +117,7 @@
       <div class="grid">
         <section class="card span2">
           <h2 id="trendTitle">Income per month</h2>
-          <p class="hint">Amount paid (Incl VAT) by payment date, or month of sale if there is no payment date. Sale value is the order price Incl VAT.</p>
+          <p class="hint">Amount paid (Incl VAT) by payment date — the day the order was placed. Sale value is the order price Incl VAT. Orders with no payment date are left off these charts.</p>
           <canvas id="trend"></canvas>
         </section>
         <section class="card">
@@ -147,7 +147,7 @@
         </section>
         <section class="card">
           <h2>Stuck / ageing</h2>
-          <p class="hint">Days since sale or payment on open jobs.</p>
+          <p class="hint">Days since the payment date on open jobs.</p>
           <canvas id="ageing"></canvas>
         </section>
         <section class="card">
@@ -167,7 +167,7 @@
         </section>
         <section class="card span2">
           <h2>Throughput</h2>
-          <p class="hint">Booked is the sale / payment date. Delivered is jobs now marked Delivered, counted in the week or month they were sold — the sheet has no delivered-on date.</p>
+          <p class="hint">Booked is the payment date (the day the order was placed). Delivered is jobs now marked Delivered, counted in the week or month of that payment date — the sheet has no delivered-on date.</p>
           <canvas id="throughput"></canvas>
         </section>
       </div>
@@ -423,7 +423,7 @@
       const rows = list || [];
       const host = document.getElementById("stuckTable");
       if (!rows.length) {
-        host.innerHTML = "<p class=\"hint\">No open jobs with a sale or payment date.</p>";
+        host.innerHTML = "<p class=\"hint\">No open jobs with a payment date.</p>";
         return;
       }
       host.innerHTML = "<table class=\"mini\"><thead><tr><th>Order</th><th>Product</th><th>Status</th><th class=\"r\">Days</th></tr></thead><tbody>"
