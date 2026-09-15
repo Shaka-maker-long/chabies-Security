@@ -288,6 +288,7 @@ assert.ok(enquiriesHtml.indexOf("Is there enough information to move this to cos
 assert.ok(enquiriesHtml.indexOf("allocate someone to chase") !== -1);
 assert.ok(enquiriesHtml.indexOf("cap_enough") !== -1);
 assert.ok(enquiriesHtml.indexOf("capChaseWrap") !== -1);
+assert.ok(enquiriesHtml.indexOf("#capChaseWrap[hidden]") !== -1);
 assert.ok(processJs.indexOf("Correct status") !== -1);
 assert.ok(processJs.indexOf("set_status") !== -1);
 assert.ok(processJs.indexOf("Only the Manager can move an enquiry off the wrong status") !== -1);
