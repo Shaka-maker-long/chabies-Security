@@ -1208,103 +1208,161 @@
       margin: 0 auto;
       position: relative;
       transform-origin: 50% 100%;
+      --twin-delay: 0s;
     }
     .twin-actor svg { width: 100%; height: 100%; display: block; overflow: visible; }
-    .twin-actor .twin-body, .twin-actor .twin-arm-r, .twin-actor .twin-torch, .twin-actor .twin-spark, .twin-actor .twin-arc, .twin-actor .twin-disc, .twin-actor .twin-blade, .twin-actor .twin-spray, .twin-actor .twin-check, .twin-actor .twin-box-a, .twin-actor .twin-box-b, .twin-actor .twin-broom, .twin-actor .twin-broom-head {
+    .twin-actor .twin-body, .twin-actor .twin-head, .twin-actor .twin-arm-l, .twin-actor .twin-arm-r, .twin-actor .twin-leg-l, .twin-actor .twin-leg-r, .twin-actor .twin-torch, .twin-actor .twin-spark, .twin-actor .twin-arc, .twin-actor .twin-disc, .twin-actor .twin-blade, .twin-actor .twin-spray, .twin-actor .twin-check, .twin-actor .twin-box-a, .twin-actor .twin-box-b, .twin-actor .twin-broom, .twin-actor .twin-broom-head {
       transform-box: fill-box;
     }
-    .twin-actor.is-idle .twin-body { animation: twin-idle 2.6s ease-in-out infinite; }
+    .twin-actor .twin-leg-l, .twin-actor .twin-leg-r { transform-origin: 50% 0%; }
+    .twin-actor .twin-arm-l, .twin-actor .twin-arm-r { transform-origin: 50% 0%; }
+    .twin-actor .twin-head { transform-origin: 50% 80%; }
+    .twin-actor.is-idle .twin-body { animation: twin-idle 3.4s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-idle .twin-leg-l { animation: twin-weight-l 3.4s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-idle .twin-leg-r { animation: twin-weight-r 3.4s ease-in-out infinite; animation-delay: var(--twin-delay); }
     .twin-actor.is-paused { opacity: .72; filter: grayscale(.25); }
-    .twin-actor.is-paused .twin-body { animation: twin-idle 3.2s ease-in-out infinite; }
-    .twin-actor.is-meeting .twin-body { animation: twin-meet 1.8s ease-in-out infinite; }
-    .twin-actor.is-cleaning .twin-broom { transform-origin: 85% 8%; animation: twin-sweep 1.05s ease-in-out infinite; }
-    .twin-actor.is-cleaning .twin-body { animation: twin-clean-lean 1.05s ease-in-out infinite; }
+    .twin-actor.is-paused .twin-body { animation: twin-idle 4.2s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-meeting .twin-body { animation: twin-idle 3.6s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-meeting .twin-head { animation: twin-nod 2.4s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-cleaning .twin-broom { transform-origin: 85% 8%; animation: twin-sweep 1.15s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-cleaning .twin-arm-r { animation: twin-sweep-arm 1.15s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-cleaning .twin-body { animation: twin-clean-lean 1.15s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-cleaning .twin-leg-l { animation: twin-weight-l 1.15s ease-in-out infinite; animation-delay: var(--twin-delay); }
     .twin-actor.is-lunch { opacity: .86; }
-    .twin-actor.is-lunch .twin-body { animation: twin-idle 3.8s ease-in-out infinite; }
+    .twin-actor.is-lunch .twin-body { animation: twin-idle 4.6s ease-in-out infinite; animation-delay: var(--twin-delay); }
     .twin-actor.is-end { opacity: .78; filter: grayscale(.4); }
     .twin-actor.is-end .twin-body { animation: none; }
     .twin-actor.is-weld { filter: drop-shadow(0 0 8px rgba(255,176,70,.7)); }
-    .twin-actor.is-weld .twin-body { animation: twin-weld-lean .9s ease-in-out infinite; }
-    .twin-actor.is-weld .twin-arm-r { transform-origin: 8% 20%; animation: twin-weld-arm .38s ease-in-out infinite; }
-    .twin-actor.is-weld .twin-torch { transform-origin: 0% 50%; animation: twin-torch .38s ease-in-out infinite; }
-    .twin-actor.is-weld .twin-arc { animation: twin-arc .12s linear infinite; }
-    .twin-actor.is-weld .twin-spark { animation: twin-spark-fly .42s linear infinite; }
-    .twin-actor.is-weld .s1 { animation-delay: .07s; }
-    .twin-actor.is-weld .s2 { animation-delay: .14s; }
-    .twin-actor.is-weld .s3 { animation-delay: .21s; }
-    .twin-actor.is-weld .s4 { animation-delay: .28s; }
-    .twin-actor.is-weld .s5 { animation-delay: .35s; }
-    .twin-actor.is-assemble .twin-body { animation: twin-assemble-bend 1.15s ease-in-out infinite; }
-    .twin-actor.is-assemble .twin-box-a { animation: twin-fit 1.15s ease-in-out infinite; }
-    .twin-actor.is-assemble .twin-box-b { animation: twin-fit 1.15s ease-in-out infinite reverse; }
-    .twin-actor.is-grind .twin-disc { transform-origin: 50% 50%; animation: twin-spin .28s linear infinite; }
-    .twin-actor.is-grind .twin-spark { animation: twin-spark-fly .32s linear infinite; }
+    .twin-actor.is-weld .twin-body { animation: twin-weld-lean 2.2s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-weld .twin-arm-r { transform-origin: 8% 20%; animation: twin-weld-arm 1.15s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-weld .twin-torch { transform-origin: 0% 50%; animation: twin-torch .7s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-weld .twin-arc { animation: twin-arc .14s linear infinite; }
+    .twin-actor.is-weld .twin-spark { animation: twin-spark-fly .48s linear infinite; }
+    .twin-actor.is-weld .s1 { animation-delay: .08s; }
+    .twin-actor.is-weld .s2 { animation-delay: .16s; }
+    .twin-actor.is-weld .s3 { animation-delay: .24s; }
+    .twin-actor.is-weld .s4 { animation-delay: .32s; }
+    .twin-actor.is-weld .s5 { animation-delay: .4s; }
+    .twin-actor.is-assemble .twin-body { animation: twin-assemble-bend 1.45s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-assemble .twin-arm-r { animation: twin-reach 1.45s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-assemble .twin-box-a { animation: twin-fit 1.45s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-assemble .twin-box-b { animation: twin-fit 1.45s ease-in-out infinite reverse; animation-delay: var(--twin-delay); }
+    .twin-actor.is-grind .twin-arm-r { animation: twin-grind-arm .5s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-grind .twin-disc { transform-origin: 50% 50%; animation: twin-spin .22s linear infinite; }
+    .twin-actor.is-grind .twin-spark { animation: twin-spark-fly .36s linear infinite; }
     .twin-actor.is-grind { filter: drop-shadow(0 0 6px rgba(255,200,80,.45)); }
-    .twin-actor.is-cut .twin-blade { transform-origin: 20% 50%; animation: twin-snip .28s ease-in-out infinite; }
-    .twin-actor.is-paint .twin-spray { animation: twin-spray .55s ease-in-out infinite; }
-    .twin-actor.is-qc .twin-body { animation: twin-qc-walk 1.6s ease-in-out infinite; }
+    .twin-actor.is-cut .twin-blade { transform-origin: 20% 50%; animation: twin-saw .4s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-cut .twin-arm-r { animation: twin-saw-arm .4s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-paint .twin-arm-r { animation: twin-paint-arm 1.25s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-paint .twin-spray { animation: twin-spray .7s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-qc .twin-body { animation: twin-walk-bob .62s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-qc .twin-leg-l { animation: twin-step-l .62s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-qc .twin-leg-r { animation: twin-step-r .62s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-qc .twin-arm-l { animation: twin-step-r .62s ease-in-out infinite; animation-delay: var(--twin-delay); }
+    .twin-actor.is-qc .twin-arm-r { animation: twin-step-l .62s ease-in-out infinite; animation-delay: var(--twin-delay); }
     .twin-actor.is-qc .twin-check { animation: twin-check 1.2s ease-in-out infinite; }
     @keyframes twin-idle {
-      0%, 100% { transform: translateY(0) rotate(-1deg); }
-      50% { transform: translateY(-3px) rotate(2deg); }
+      0%, 100% { transform: translate(0, 0) rotate(-1deg); }
+      50% { transform: translate(0.4px, -1px) rotate(1.2deg); }
+    }
+    @keyframes twin-weight-l {
+      0%, 100% { transform: rotate(3deg); }
+      50% { transform: rotate(-2deg); }
+    }
+    @keyframes twin-weight-r {
+      0%, 100% { transform: rotate(-2deg); }
+      50% { transform: rotate(3deg); }
     }
     @keyframes twin-weld-lean {
-      0%, 100% { transform: translate(0,0) rotate(4deg); }
-      50% { transform: translate(1px, 1px) rotate(7deg); }
+      0%, 100% { transform: translate(1px, 2px) rotate(6deg); }
+      50% { transform: translate(2px, 3px) rotate(8deg); }
     }
     @keyframes twin-weld-arm {
-      0%, 100% { transform: rotate(-12deg); }
-      50% { transform: rotate(10deg); }
+      0%, 100% { transform: rotate(-3deg); }
+      50% { transform: rotate(4deg); }
     }
     @keyframes twin-torch {
-      0%, 100% { transform: rotate(-6deg); }
-      50% { transform: rotate(8deg); }
+      0%, 100% { transform: rotate(-2deg) translate(0, 0); }
+      25% { transform: rotate(2deg) translate(0.5px, 0.4px); }
+      50% { transform: rotate(-1deg) translate(-0.5px, 0.6px); }
+      75% { transform: rotate(1.5deg) translate(0.3px, -0.2px); }
     }
     @keyframes twin-arc {
-      0%, 100% { opacity: .25; transform: scale(.55); }
-      35% { opacity: 1; transform: scale(1.35); }
-      55% { opacity: .15; transform: scale(.4); }
+      0%, 100% { opacity: .2; transform: scale(.5); }
+      30% { opacity: 1; transform: scale(1.25); }
+      55% { opacity: .12; transform: scale(.35); }
     }
     @keyframes twin-spark-fly {
       0% { opacity: 1; transform: translate(0,0) scale(1); }
-      100% { opacity: 0; transform: translate(16px, -24px) scale(.15); }
+      100% { opacity: 0; transform: translate(14px, -22px) scale(.12); }
     }
     @keyframes twin-assemble-bend {
-      0%, 100% { transform: translateY(0) rotate(0); }
-      50% { transform: translateY(2px) rotate(-3deg); }
+      0%, 100% { transform: translateY(0) rotate(-2deg); }
+      50% { transform: translateY(3px) rotate(3deg); }
+    }
+    @keyframes twin-reach {
+      0%, 100% { transform: rotate(-10deg); }
+      50% { transform: rotate(16deg); }
     }
     @keyframes twin-fit {
       0%, 100% { transform: translateX(0); }
-      50% { transform: translateX(5px); }
+      50% { transform: translateX(4px); }
     }
     @keyframes twin-spin { to { transform: rotate(360deg); } }
-    @keyframes twin-snip {
-      0%, 100% { transform: rotate(-22deg); }
-      50% { transform: rotate(16deg); }
+    @keyframes twin-grind-arm {
+      0%, 100% { transform: rotate(-5deg); }
+      50% { transform: rotate(7deg); }
     }
-    @keyframes twin-spray {
-      0%, 100% { opacity: .15; transform: scale(.7); }
-      50% { opacity: .85; transform: scale(1.15); }
-    }
-    @keyframes twin-qc-walk {
+    @keyframes twin-saw {
       0%, 100% { transform: translateX(-4px); }
       50% { transform: translateX(5px); }
     }
+    @keyframes twin-saw-arm {
+      0%, 100% { transform: rotate(-8deg); }
+      50% { transform: rotate(10deg); }
+    }
+    @keyframes twin-spray {
+      0%, 100% { opacity: .12; transform: scale(.65); }
+      50% { opacity: .8; transform: scale(1.12); }
+    }
+    @keyframes twin-paint-arm {
+      0%, 100% { transform: rotate(-12deg); }
+      50% { transform: rotate(14deg); }
+    }
+    @keyframes twin-walk-bob {
+      0%, 100% { transform: translate(-3px, 0); }
+      25% { transform: translate(0, -1.5px); }
+      50% { transform: translate(3px, 0); }
+      75% { transform: translate(0, -1.5px); }
+    }
+    @keyframes twin-step-l {
+      0%, 100% { transform: rotate(12deg); }
+      50% { transform: rotate(-14deg); }
+    }
+    @keyframes twin-step-r {
+      0%, 100% { transform: rotate(-14deg); }
+      50% { transform: rotate(12deg); }
+    }
     @keyframes twin-check {
       0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.2); }
+      50% { transform: scale(1.15); }
     }
-    @keyframes twin-meet {
-      0%, 100% { transform: rotate(-4deg); }
-      50% { transform: rotate(5deg); }
+    @keyframes twin-nod {
+      0%, 68%, 100% { transform: rotate(0); }
+      76% { transform: rotate(9deg); }
+      84% { transform: rotate(-2deg); }
     }
     @keyframes twin-sweep {
-      0%, 100% { transform: rotate(-18deg); }
-      50% { transform: rotate(22deg); }
+      0%, 100% { transform: rotate(-16deg); }
+      50% { transform: rotate(20deg); }
+    }
+    @keyframes twin-sweep-arm {
+      0%, 100% { transform: rotate(-14deg); }
+      50% { transform: rotate(18deg); }
     }
     @keyframes twin-clean-lean {
-      0%, 100% { transform: rotate(-3deg); }
-      50% { transform: rotate(4deg); }
+      0%, 100% { transform: rotate(-4deg) translateX(-1px); }
+      50% { transform: rotate(5deg) translateX(1px); }
     }
     .floor-pop {
       position: absolute;
@@ -3473,13 +3531,25 @@
       if (!n) return '';
       return '<span class="floor-count-btn' + floorCountClass(rows) + '">' + n + '</span>';
     }
-    function twinActorHtml(kind) {
+    function twinActorHtml(kind, who) {
       const k = kind || 'idle';
+      const skin = '#3f2314';
+      const skinLit = '#6a3d22';
+      const hair = '#120c09';
+      const shirt = '#3d4a56';
+      const pants = '#2a2d33';
+      let delay = 0;
+      const label = String(who || '');
+      for (let i = 0; i < label.length; i++) delay += label.charCodeAt(i);
+      delay = ((delay % 13) * 0.08).toFixed(2);
       let prop = '';
       if (k === 'weld') {
         prop = '<g class="twin-job">' +
           '<rect x="50" y="54" width="18" height="7" rx="1" fill="#6b7280"></rect>' +
-          '<path class="twin-arm-r" d="M46 38 q14 6 16 18" stroke="#4a5560" stroke-width="5" fill="none" stroke-linecap="round"></path>' +
+          '<g class="twin-arm-r">' +
+          '<path d="M46 38 q14 6 16 18" stroke="' + shirt + '" stroke-width="5" fill="none" stroke-linecap="round"></path>' +
+          '<circle cx="61" cy="56" r="2.5" fill="#1c1917"></circle>' +
+          '</g>' +
           '<path class="twin-torch" d="M50 48 L62 54" stroke="#b08948" stroke-width="2.6" stroke-linecap="round"></path>' +
           '<ellipse class="twin-arc" cx="62" cy="54" rx="5" ry="4" fill="#eaf6ff"></ellipse>' +
           '<circle class="twin-spark s0" cx="62" cy="52" r="1.8" fill="#fff4c2"></circle>' +
@@ -3525,19 +3595,39 @@
       }
       const face = (k === 'weld')
         ? '<path d="M26 20 q10 -12 20 0 v3 q-10 8 -20 0 z" fill="#1c1917"></path><path class="twin-visor" d="M28 20 h16 a5 5 0 0 1 0 11 H28 z" fill="#0b0b0c" opacity=".95"></path>'
-        : '<path d="M26 18 q10 -11 20 0 v3 q-10 6 -20 0 z" fill="#c4a35a"></path><circle cx="36" cy="22" r="3.1" fill="#e8b894"></circle><circle cx="34.6" cy="21.4" r=".7" fill="#1c1917"></circle><circle cx="37.5" cy="21.4" r=".7" fill="#1c1917"></circle>';
-      return '<span class="twin-actor is-' + k + '" aria-hidden="true"><svg viewBox="0 0 72 90">' +
-        '<ellipse cx="36" cy="84" rx="16" ry="5" fill="rgba(28,25,23,.28)"></ellipse>' +
+        : '<path d="M26 16 q10 -10 20 0 v4 q-10 7 -20 0 z" fill="' + hair + '"></path>' +
+          '<ellipse cx="36" cy="20" rx="5.5" ry="3.4" fill="' + skinLit + '" opacity=".45"></ellipse>' +
+          '<circle cx="33.4" cy="21.6" r="1.05" fill="#f5efe8"></circle><circle cx="33.4" cy="21.7" r=".55" fill="#1c1917"></circle>' +
+          '<circle cx="38.6" cy="21.6" r="1.05" fill="#f5efe8"></circle><circle cx="38.6" cy="21.7" r=".55" fill="#1c1917"></circle>';
+      const rightArm = (k === 'weld')
+        ? ''
+        : '<g class="twin-arm-r">' +
+          '<path d="M46 36 q11 8 12 17" stroke="' + shirt + '" stroke-width="5" fill="none" stroke-linecap="round"></path>' +
+          '<circle cx="58" cy="54" r="2.4" fill="' + skin + '"></circle>' +
+          '</g>';
+      return '<span class="twin-actor is-' + k + '" style="--twin-delay:' + delay + 's" aria-hidden="true"><svg viewBox="0 0 72 90">' +
+        '<ellipse cx="36" cy="85" rx="15" ry="4.5" fill="rgba(28,25,23,.28)"></ellipse>' +
         '<g class="twin-body">' +
-        '<path d="M30 76 q-1 7 -7 9" stroke="#1c1917" stroke-width="3.2" fill="none" stroke-linecap="round"></path>' +
-        '<path d="M42 76 q1 7 7 9" stroke="#1c1917" stroke-width="3.2" fill="none" stroke-linecap="round"></path>' +
-        '<path d="M30 52 v24" stroke="#3f3f46" stroke-width="8" stroke-linecap="round"></path>' +
-        '<path d="M42 52 v24" stroke="#3f3f46" stroke-width="8" stroke-linecap="round"></path>' +
-        '<rect x="25" y="32" width="22" height="24" rx="6" fill="#4a5560"></rect>' +
-        '<path d="M26 36 q-10 9 -8 18" stroke="#4a5560" stroke-width="5" fill="none" stroke-linecap="round"></path>' +
-        (k === 'weld' ? '' : '<path class="twin-arm-r" d="M46 36 q11 8 12 18" stroke="#4a5560" stroke-width="5" fill="none" stroke-linecap="round"></path>') +
-        '<circle cx="36" cy="22" r="8" fill="#e8b894"></circle>' +
+        '<g class="twin-leg-l">' +
+        '<path d="M30 52 v22" stroke="' + pants + '" stroke-width="7.5" stroke-linecap="round"></path>' +
+        '<path d="M30 74 q-2 7 -8 8" stroke="#1c1917" stroke-width="3.3" fill="none" stroke-linecap="round"></path>' +
+        '</g>' +
+        '<g class="twin-leg-r">' +
+        '<path d="M42 52 v22" stroke="' + pants + '" stroke-width="7.5" stroke-linecap="round"></path>' +
+        '<path d="M42 74 q2 7 8 8" stroke="#1c1917" stroke-width="3.3" fill="none" stroke-linecap="round"></path>' +
+        '</g>' +
+        '<rect x="25" y="32" width="22" height="23" rx="6" fill="' + shirt + '"></rect>' +
+        '<path d="M31 32 h10 l-5 5 z" fill="#2c3640"></path>' +
+        '<g class="twin-arm-l">' +
+        '<path d="M26 36 q-10 9 -8 17" stroke="' + shirt + '" stroke-width="5" fill="none" stroke-linecap="round"></path>' +
+        '<circle cx="18" cy="54" r="2.4" fill="' + skin + '"></circle>' +
+        '</g>' +
+        rightArm +
+        '<rect x="33.6" y="28" width="4.8" height="5.5" rx="1.6" fill="' + skin + '"></rect>' +
+        '<g class="twin-head">' +
+        '<circle cx="36" cy="22" r="8" fill="' + skin + '"></circle>' +
         face +
+        '</g>' +
         '</g>' + prop + '</svg></span>';
     }
     function floorCountClass(rows) {
@@ -3830,7 +3920,7 @@
         });
         const at = posFor('station', st.name, st);
         html += '<button type="button" class="floor-spot is-station" style="left:' + at.x + '%;top:' + at.y + '%" data-floor-worker="' + floorEsc(st.name) + '">' +
-          twinActorHtml(rowsAnim(rows, shift)) +
+          twinActorHtml(rowsAnim(rows, shift), st.name) +
           '<span class="floor-spot-title">' + floorEsc(st.name) + '</span>' +
           stationShiftTagHtml(rows, shift) +
           countBadge(rows) +
@@ -3847,7 +3937,7 @@
         });
         extraI += 1;
         html += '<button type="button" class="floor-spot is-station" style="left:' + bay.x + '%;top:' + bay.y + '%" data-floor-worker="' + floorEsc(name) + '">' +
-          twinActorHtml(rowsAnim(rows, shift)) +
+          twinActorHtml(rowsAnim(rows, shift), name) +
           '<span class="floor-spot-title">' + floorEsc(name) + '</span>' +
           stationShiftTagHtml(rows, shift) +
           countBadge(rows) +
