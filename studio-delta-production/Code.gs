@@ -3983,6 +3983,77 @@ function listOvertimeGrants(dateStamp) {
   return rows;
 }
 
+function logIsIndirect(row) {
+  if (!row) return false;
+  if (String(row[1] || "").trim().toUpperCase() === "INDIRECT") return true;
+  if (String(row[3] || "").trim() === "Indirect") return true;
+  var meta = parseLogMeta(row.length > 12 ? row[12] : "");
+  return meta.entryType === "indirect";
+}
+
+function subtractMsRanges(startMs, endMs, blockers) {
+  var holes = [{ start: startMs, end: endMs }];
+  if (!blockers || !blockers.length) return holes;
+  for (var b = 0; b < blockers.length; b++) {
+    var bs = blockers[b].start;
+    var be = blockers[b].end;
+    if (!(be > bs)) continue;
+    var next = [];
+    for (var i = 0; i < holes.length; i++) {
+      var a = holes[i].start;
+      var c = holes[i].end;
+      if (be <= a || bs >= c) {
+        next.push(holes[i]);
+        continue;
+      }
+      if (bs > a) next.push({ start: a, end: Math.min(bs, c) });
+      if (be < c) next.push({ start: Math.max(be, a), end: c });
+    }
+    holes = next.filter(function (h) { return h.end > h.start; });
+  }
+  return holes;
+}
+
+function workerProductionBlockers(pack, want, day0, day1, now) {
+  var blockers = [];
+  var until = now ? now.getTime() : Date.now();
+  for (var i = 1; i < pack.values.length; i++) {
+    if (String(pack.values[i][2] || "").trim() !== want) continue;
+    if (logIsIndirect(pack.values[i])) continue;
+    var slices = splitWorkByDay(pack.values[i], day0, day1);
+    for (var s = 0; s < slices.length; s++) {
+      if (!slices[s].start) continue;
+      var endMs = slices[s].end ? slices[s].end.getTime() : until;
+      if (endMs > slices[s].start.getTime()) blockers.push({ start: slices[s].start.getTime(), end: endMs });
+    }
+  }
+  return blockers;
+}
+
+function indirectMinutesInRange(row, day0, day1, blockers) {
+  var task = row[4];
+  var logMeta = parseLogMeta(row.length > 12 ? row[12] : "");
+  var sliceMeta = defaultLogMeta();
+  sliceMeta.overtimeContinue = !!logMeta.overtimeContinue;
+  var rangeFromMs = day0 ? day0.getTime() : 0;
+  var rangeToMs = day1 ? day1.getTime() : 0;
+  var total = 0;
+  var bouts = getWorkBoutsFromLog(row);
+  for (var b = 0; b < bouts.length; b++) {
+    var boutStartMs = bouts[b].start.getTime();
+    var boutEndMs = bouts[b].end.getTime();
+    if (rangeToMs && boutStartMs >= rangeToMs) continue;
+    if (rangeFromMs && boutEndMs <= rangeFromMs) continue;
+    if (rangeFromMs && boutStartMs < rangeFromMs) boutStartMs = rangeFromMs;
+    if (rangeToMs && boutEndMs > rangeToMs) boutEndMs = rangeToMs;
+    var leftover = subtractMsRanges(boutStartMs, boutEndMs, blockers);
+    for (var i = 0; i < leftover.length; i++) {
+      total += calculateWorkMinutesMeta(new Date(leftover[i].start), new Date(leftover[i].end), task, sliceMeta, 0);
+    }
+  }
+  return total;
+}
+
 function workerMinutesToday(workerName, now) {
   now = now || new Date();
   var want = String(workerName || "").trim();
@@ -3990,21 +4061,28 @@ function workerMinutesToday(workerName, now) {
   var pack = getLogPack(getSpreadsheet());
   var day0 = sastWallToDate(now, 0, 0);
   var day1 = addSastDays(day0, 1);
+  var blockers = workerProductionBlockers(pack, want, day0, day1, now);
   var total = 0;
   for (var i = 1; i < pack.values.length; i++) {
     if (String(pack.values[i][2] || "").trim() !== want) continue;
+    if (logIsIndirect(pack.values[i])) {
+      total += indirectMinutesInRange(pack.values[i], day0, day1, blockers);
+      continue;
+    }
     var slices = splitWorkByDay(pack.values[i], day0, day1);
     for (var s = 0; s < slices.length; s++) total += Number(slices[s].mins) || 0;
   }
   return total;
 }
 
-function floorChangeGate(workerName, action) {
+function floorChangeGate(workerName, action, now) {
   if (workLocksDisabled()) return { ok: true, unlocked: true };
+  var at = now ? new Date(now) : new Date();
+  if (isNaN(at.getTime())) at = new Date();
   var profile = getUserProfileByName(workerName);
   if (profile && String(profile.access || "").toLowerCase() === "admin") return { ok: true, admin: true };
-  var state = paidWindowState();
-  var ot = workerHasOvertime(workerName);
+  var state = paidWindowState(at);
+  var ot = workerHasOvertime(workerName, at);
   if ((state.kind === "end" || state.kind === "weekend") && !ot) {
     return {
       ok: false,
@@ -4014,7 +4092,7 @@ function floorChangeGate(workerName, action) {
         : "The floor is closed after 15:45 unless Admin grants overtime."
     };
   }
-  if ((action === "start" || action === "resume") && !ot && workerMinutesToday(workerName) >= MAX_REGULAR_MINS) {
+  if ((action === "start" || action === "resume") && !ot && workerMinutesToday(workerName, at) >= MAX_REGULAR_MINS) {
     return {
       ok: false,
       locked: true,
@@ -4194,7 +4272,14 @@ function calculateWorkMinutesMeta(start, end, taskName, meta, legacyPausedMins) 
   var net = netWorkMinutesInWindow(start, actualEnd, pauses, taskName, allowAfterShift);
   // Finishing stamps batchSplitAt at the end time. That still means together until the end,
   // so keep dividing. Only a split strictly before the end is handled above as solo time after.
-  if (share > 1 && meta.batchId) return net / share;
+  // A day slice that is entirely before join (or entirely after leave) stays undivided.
+  if (share > 1 && meta.batchId) {
+    var togetherStart = joinMs || t0;
+    var togetherEnd = (splitMs && splitMs > togetherStart) ? splitMs : t1;
+    if (t1 <= togetherStart) return net;
+    if (splitMs && t0 >= togetherEnd) return net;
+    return net / share;
+  }
   return net;
 }
 
@@ -4254,8 +4339,13 @@ function getWorkBoutsFromLog(row) {
 
 function splitWorkByDay(row, rangeFrom, rangeTo) {
   var task = row[4];
-  var emptyMeta = defaultLogMeta();
-  emptyMeta.overtimeContinue = !!parseLogMeta(row.length > 12 ? row[12] : "").overtimeContinue;
+  var logMeta = parseLogMeta(row.length > 12 ? row[12] : "");
+  var sliceMeta = defaultLogMeta();
+  sliceMeta.overtimeContinue = !!logMeta.overtimeContinue;
+  sliceMeta.batchId = logMeta.batchId;
+  sliceMeta.batchShare = logMeta.batchShare;
+  sliceMeta.batchJoinedAt = logMeta.batchJoinedAt;
+  sliceMeta.batchSplitAt = logMeta.batchSplitAt;
   var slices = [];
   var rangeFromMs = rangeFrom ? rangeFrom.getTime() : 0;
   var rangeToMs = rangeTo ? rangeTo.getTime() : 0;
@@ -4285,7 +4375,7 @@ function splitWorkByDay(row, rangeFrom, rangeTo) {
       if (sliceEndMs > sliceStartMs) {
         var sliceStart = new Date(sliceStartMs);
         var sliceEnd = new Date(sliceEndMs);
-        var mins = calculateWorkMinutesMeta(sliceStart, sliceEnd, task, emptyMeta, 0);
+        var mins = calculateWorkMinutesMeta(sliceStart, sliceEnd, task, sliceMeta, 0);
         if (mins > 0) {
           daySlices.push({
             dayStamp: dayStamp,
@@ -4666,14 +4756,27 @@ function workerHasOpenIndirect(logs, workerName) {
   return false;
 }
 
-function lastActivityMs(logs, workerName) {
+function lastActivityMs(logs, workerName, now) {
   var latest = 0;
+  var at = now ? new Date(now) : new Date();
+  if (isNaN(at.getTime())) at = new Date();
+  var day0 = sastWallToDate(at, 0, 0).getTime();
   for (var i = 1; i < logs.length; i++) {
     if (String(logs[i][2]).trim() !== String(workerName).trim()) continue;
+    if (logIsIndirect(logs[i])) continue;
     var start = logs[i][5] ? new Date(logs[i][5]).getTime() : 0;
     var end = logs[i][6] ? new Date(logs[i][6]).getTime() : 0;
-    if (start > latest) latest = start;
-    if (end > latest) latest = end;
+    if (start >= day0 && start > latest) latest = start;
+    if (end >= day0 && end > latest) latest = end;
+    var pauses = getPauseIntervalsForRow(logs[i]);
+    for (var p = 0; p < pauses.length; p++) {
+      var ps = new Date(pauses[p].start).getTime();
+      if (!isNaN(ps) && ps >= day0 && ps > latest) latest = ps;
+      if (pauses[p].end) {
+        var pe = new Date(pauses[p].end).getTime();
+        if (!isNaN(pe) && pe >= day0 && pe > latest) latest = pe;
+      }
+    }
   }
   return latest;
 }
@@ -4693,8 +4796,8 @@ function idleRowIsOpenToday(row, today) {
   return idleDayStamp(row && row[0]) === today && String((row && row[5]) || "").toLowerCase() === "open";
 }
 
-function alreadyAlertedToday(idleSheet, workerName) {
-  var today = sastDayStamp(new Date());
+function alreadyAlertedToday(idleSheet, workerName, now) {
+  var today = sastDayStamp(now || new Date());
   var data = idleSheet.getDataRange().getValues();
   for (var i = 1; i < data.length; i++) {
     if (String(data[i][1]).trim() === String(workerName).trim() && idleRowIsOpenToday(data[i], today)) {
@@ -4925,36 +5028,39 @@ function getFloorAdminDesk() {
   };
 }
 
-function checkIdleWorkers() {
-  try { enforceShiftHours(); } catch (ignoreShift) {}
+function checkIdleWorkers(now) {
+  var at = now ? new Date(now) : new Date();
+  if (isNaN(at.getTime())) at = new Date();
+  try { enforceShiftHours(at); } catch (ignoreShift) {}
   try { checkMissedResumes(); } catch (ignoreResume) {}
-  if (!isWithinShiftNow()) return;
+  if (!paidWindowState(at).inPaid) return;
   var ss = getSpreadsheet();
   var logs = getLogPack(ss).values;
   var users = getUsersAndRoles();
   var idleSheet = getIdleAlertSheet(ss);
-  var now = new Date();
   var graceMs = IDLE_GRACE_MINS * 60 * 1000;
   var alerted = [];
+  var shiftStart = sastWallToDate(at, Math.floor(SHIFT_START_MINS / 60), SHIFT_START_MINS % 60).getTime();
 
   for (var u = 0; u < users.length; u++) {
     var name = users[u].name;
     var role = users[u].role;
     if (!name) continue;
     if (users[u].isAdmin || String(users[u].access || "").toLowerCase() === "admin") continue;
-    stampOpenIdleUntil(idleSheet, logs, name, now);
+    stampOpenIdleUntil(idleSheet, logs, name, at);
     if (workerHasRunningJob(logs, name)) continue;
     if (workerHasOpenIndirect(logs, name)) continue;
-    var last = lastActivityMs(logs, name);
-    if (last && (now.getTime() - last) < graceMs) continue;
-    if (alreadyAlertedToday(idleSheet, name)) continue;
+    var last = lastActivityMs(logs, name, at);
+    if (!last) last = shiftStart;
+    if ((at.getTime() - last) < graceMs) continue;
+    if (alreadyAlertedToday(idleSheet, name, at)) continue;
 
     idleSheet.appendRow([
-      sastDayStamp(now),
+      sastDayStamp(at),
       name,
       role,
       last ? new Date(last) : "",
-      now,
+      at,
       "Open",
       "",
       "",
@@ -5067,6 +5173,11 @@ function assignIndirectTask(workerName, taskName, assignedBy, taskNote, rowNum) 
     var now = new Date();
     var live = workerHasRunningJob(logs, workerName);
     if (!live) closeIndirectTasksForWorker(ss, workerName);
+    if (!holeEnd && live) {
+      var jobStartMs = runningJobStartMs(logs, workerName);
+      holeEnd = jobStartMs ? new Date(jobStartMs) : now;
+    }
+    if (holeStart && holeEnd && holeEnd.getTime() < holeStart.getTime()) holeEnd = holeStart;
 
     var uniqueId = Utilities.getUuid();
     var meta = defaultLogMeta();
@@ -5139,6 +5250,20 @@ function getActivityReport(period, refDateMs, workerFilter) {
 
   var byWorker = {};
   var allWorkerNames = {};
+  var activityBlockers = {};
+  for (var b = 1; b < logData.length; b++) {
+    var blockerWorker = String(logData[b][2] || "").trim();
+    if (!blockerWorker || logIsIndirect(logData[b])) continue;
+    var blockerSlices = splitWorkByDay(logData[b], bounds.from, bounds.to);
+    if (!activityBlockers[blockerWorker]) activityBlockers[blockerWorker] = [];
+    for (var bs = 0; bs < blockerSlices.length; bs++) {
+      if (!blockerSlices[bs].start) continue;
+      var blockerEnd = blockerSlices[bs].end ? blockerSlices[bs].end.getTime() : Date.now();
+      if (blockerEnd > blockerSlices[bs].start.getTime()) {
+        activityBlockers[blockerWorker].push({ start: blockerSlices[bs].start.getTime(), end: blockerEnd });
+      }
+    }
+  }
   for (var i = 1; i < logData.length; i++) {
     var worker = String(logData[i][2] || "").trim();
     if (!worker) continue;
@@ -5150,6 +5275,30 @@ function getActivityReport(period, refDateMs, workerFilter) {
     if (end.getTime() <= fromMs) continue;
 
     var slices = splitWorkByDay(logData[i], bounds.from, bounds.to);
+    if (logIsIndirect(logData[i])) {
+      var rowMetaClip = parseLogMeta(logData[i].length > 12 ? logData[i][12] : "");
+      var sliceMeta = defaultLogMeta();
+      sliceMeta.overtimeContinue = !!rowMetaClip.overtimeContinue;
+      var clippedSlices = [];
+      var blockers = activityBlockers[worker] || [];
+      for (var cs = 0; cs < slices.length; cs++) {
+        if (!slices[cs].start) continue;
+        var sliceEndMs = slices[cs].end ? slices[cs].end.getTime() : Date.now();
+        var leftover = subtractMsRanges(slices[cs].start.getTime(), sliceEndMs, blockers);
+        for (var lv = 0; lv < leftover.length; lv++) {
+          var leftMins = calculateWorkMinutesMeta(new Date(leftover[lv].start), new Date(leftover[lv].end), logData[i][4], sliceMeta, 0);
+          if (leftMins <= 0) continue;
+          clippedSlices.push({
+            dayStamp: slices[cs].dayStamp,
+            start: new Date(leftover[lv].start),
+            end: new Date(leftover[lv].end),
+            mins: leftMins,
+            stopReason: slices[cs].stopReason || ""
+          });
+        }
+      }
+      slices = clippedSlices;
+    }
     var anyInRange = false;
     for (var s = 0; s < slices.length; s++) {
       if (inRangeStamp(slices[s].dayStamp)) { anyInRange = true; break; }

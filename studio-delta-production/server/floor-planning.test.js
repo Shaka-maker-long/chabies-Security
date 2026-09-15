@@ -864,7 +864,8 @@ const uriahUnknownAfter = (withIndirect.otherActuals || []).filter((row) => Stri
 assert.ok(uriahWrap.length, "INDIRECT wrapping must show as Other O");
 assert.ok(idleBoutsOverlap(uriahWrap, "2026-09-14T09:42:00+02:00", "2026-09-14T10:38:00+02:00"), JSON.stringify(uriahWrap));
 assert.ok(uriahBom.length, "INDIRECT Getting BOM must show as Other O");
-assert.ok(idleBoutsOverlap(uriahBom, "2026-09-14T10:38:00+02:00", "2026-09-14T12:00:00+02:00"), JSON.stringify(uriahBom));
+assert.ok(idleBoutsOverlap(uriahBom, "2026-09-14T10:38:00+02:00", "2026-09-14T11:00:00+02:00"), JSON.stringify(uriahBom));
+assert.ok(!idleBoutsOverlap(uriahBom, "2026-09-14T11:00:00+02:00", "2026-09-14T13:00:00+02:00"), "Other must not sit on the resumed assembly clock: " + JSON.stringify(uriahBom));
 assert.ok(!(withIndirect.otherActuals || []).some((row) => String(row.workerName) === "Uriah" && /S260200/.test(String(row.title || ""))), "inverted INDIRECT rows are skipped");
 assert.ok(!idleBoutsOverlap(uriahUnknownAfter, "2026-09-14T09:42:00+02:00", "2026-09-14T10:38:00+02:00"), "wrapping time is not unassigned");
 assert.ok(!idleBoutsOverlap(uriahUnknownAfter, "2026-09-14T10:38:00+02:00", "2026-09-14T12:00:00+02:00"), "BOM time is not unassigned");
@@ -894,6 +895,47 @@ const otherJobIdle = (plan.buildJourney([]).otherActuals || []).filter((row) => 
 assert.ok(!idleBoutsOverlap(otherJobIdle, "2026-09-14T09:00:00+02:00", "2026-09-14T10:30:00+02:00"), "a second live order during the pause is not idle");
 assert.ok(idleBoutsOverlap(otherJobIdle, "2026-09-14T08:45:00+02:00", "2026-09-14T09:00:00+02:00"), "pause before the second order stays unknown");
 assert.ok(!idleBoutsOverlap(otherJobIdle, "2026-09-14T10:30:00+02:00", "2026-09-14T11:00:00+02:00"), "INDIRECT during the remaining pause is not unassigned");
+
+db.upsertOrder({
+  order_number: "S-WELD-O",
+  status: "Welding",
+  product: "Product A"
+});
+getBook().getSheetByName("Production_Log").appendRow([
+  "log_thabo_weld_overlap",
+  "S-WELD-O",
+  "Thabo",
+  "Welding",
+  "Welding",
+  new Date("2026-09-15T07:45:00+02:00"),
+  new Date("2026-09-15T11:15:00+02:00"),
+  "",
+  "",
+  "",
+  0,
+  "",
+  JSON.stringify({ pauses: [] })
+]);
+getBook().getSheetByName("Production_Log").appendRow([
+  "log_thabo_other_overlap",
+  "INDIRECT",
+  "Thabo",
+  "Indirect",
+  "Other — wrapping",
+  new Date("2026-09-15T07:45:00+02:00"),
+  new Date("2026-09-15T15:15:00+02:00"),
+  "",
+  "",
+  "",
+  0,
+  "",
+  JSON.stringify({ entryType: "indirect", pauses: [] })
+]);
+persistWorkbook();
+const thaboOther = (plan.buildJourney([]).otherActuals || []).filter((row) => String(row.workerName) === "Thabo" && /wrapping/i.test(String(row.title || "")));
+assert.ok(thaboOther.length, "overlapping Other still shows the leftover hole");
+assert.ok(!idleBoutsOverlap(thaboOther, "2026-09-15T07:45:00+02:00", "2026-09-15T11:15:00+02:00"), "Other must not paint over welding: " + JSON.stringify(thaboOther));
+assert.ok(idleBoutsOverlap(thaboOther, "2026-09-15T12:30:00+02:00", "2026-09-15T13:00:00+02:00"), "Other keeps the idle hole after lunch: " + JSON.stringify(thaboOther));
 
 db.deleteAllOrders();
 assert.strictEqual(plan.load().blocks.length, 0, "clearing orders also clears planning");
