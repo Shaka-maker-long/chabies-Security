@@ -264,7 +264,7 @@ const ALLOWED = new Set([
   "getOrderMetrics", "getProductionTrendsData", "getWeeklyAnalyticsData",
   "generatePowderCoatingList", "getQCReportsFast", "processPdfQueue",
   "undoAutoSwitch", "leaveBatchForOrder", "getIdleWorkers", "pollIdleAlerts", "assignIndirectTask",
-  "grantOvertime", "listOvertimeGrants", "getOrderJobBrief", "noteMissedResume", "getFloorAdminDesk", "checkMissedResumes",
+  "grantOvertime", "listOvertimeGrants", "getOrderJobBrief", "noteMissedResume", "managerCorrectStart", "getFloorAdminDesk", "checkMissedResumes",
   "getActivityReport", "getScheduleBoard", "generateWorkerSchedule", "insertScheduleTask", "clearWorkerScheduleFrom",
   "checkIdleWorkers", "enforceShiftHours", "lazySetup", "getTaskDuration", "getTaskTimeEstimate", "getMyCompletedWork", "getWorkerDayWork", "facilityShiftState", "updateCompletedSteelUsage",
   "workerMinutesToday", "floorChangeGate",

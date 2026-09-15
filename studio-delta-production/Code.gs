@@ -4553,12 +4553,13 @@ function findOpenLogRow(pack, logId, orderNum, workerName) {
   return valuesIndex === -1 ? -1 : packSheetRow(pack, valuesIndex);
 }
 
-function closeIndirectTasksForWorker(ss, workerName, pack) {
+function closeIndirectTasksForWorker(ss, workerName, pack, at) {
   pack = pack || getLogPack(ss);
   var logSheet = getSheetOrDie(ss, TAB_LOGS);
   var logs = pack.values;
   var closed = 0;
-  var now = new Date();
+  var now = at ? new Date(at) : new Date();
+  if (isNaN(now.getTime())) now = new Date();
   for (var i = 1; i < logs.length; i++) {
     var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
     var isIndirect = meta.entryType === "indirect" || String(logs[i][3]).trim() === "Indirect";
@@ -4573,7 +4574,7 @@ function closeIndirectTasksForWorker(ss, workerName, pack) {
   return closed;
 }
 
-function autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, reason, exceptBatchId, pack) {
+function autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, reason, exceptBatchId, pack, at) {
   pack = pack || getLogPack(ss);
   var logSheet = getSheetOrDie(ss, TAB_LOGS);
   var logs = pack.values;
@@ -4589,25 +4590,27 @@ function autoPauseWorkerOtherJobs(ss, workerName, exceptOrders, reason, exceptBa
     if (exceptBatchId && meta.batchId && meta.batchId === exceptBatchId) continue;
     if (hasOpenPause(meta.pauses) || logs[i][9]) continue;
     var sheetRow = packSheetRow(pack, i);
-    meta = addPauseToMeta(meta, reason || "Switched job");
+    meta = addPauseToMeta(meta, reason || "Switched job", at);
     writeLogPauseState(logSheet, sheetRow, meta, logs[i][4]);
     paused.push(String(logs[i][1]));
   }
   return paused;
 }
 
-function resumeWorkerLog(ss, workerName, orderNum, pack) {
+function resumeWorkerLog(ss, workerName, orderNum, pack, at) {
   pack = pack || getLogPack(ss);
   var logSheet = getSheetOrDie(ss, TAB_LOGS);
   var logs = pack.values;
+  var when = at ? new Date(at) : new Date();
+  if (isNaN(when.getTime())) when = new Date();
   for (var i = logs.length - 1; i >= 1; i--) {
     if (String(logs[i][1]) === String(orderNum) &&
         String(logs[i][2]).trim() === String(workerName).trim() &&
         !logs[i][6]) {
       var sheetRow = packSheetRow(pack, i);
       var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
-      meta = closeOpenPauseInMeta(meta, new Date());
-      if (isOvertimeStartAllowed(null, workerName)) meta.overtimeContinue = true;
+      meta = closeOpenPauseInMeta(meta, when);
+      if (isOvertimeStartAllowed(when, workerName)) meta.overtimeContinue = true;
       writeLogPauseState(logSheet, sheetRow, meta, logs[i][4]);
       return true;
     }
@@ -4981,6 +4984,9 @@ function noteMissedResume(workerName, action, payload, adminName) {
   payload = payload || {};
   var name = String(workerName || "").trim();
   if (!name) return { success: false, message: "Choose a worker." };
+  if (!userSeesIdleAlerts(adminName)) {
+    return { success: false, message: "Only Siya or the Manager can set a start time." };
+  }
   var ss = getSpreadsheet();
   var now = new Date();
   if (action === "later") {
@@ -5016,6 +5022,130 @@ function noteMissedResume(workerName, action, payload, adminName) {
     return { success: true };
   }
   return { success: false, message: "Choose Started or Later." };
+}
+
+function parseSastHmToday(hhmm, now) {
+  now = now ? new Date(now) : new Date();
+  var raw = String(hhmm || "").trim();
+  var parts = raw.split(":");
+  var hours = Number(parts[0]);
+  var mins = Number(parts[1] || 0);
+  if (!Number.isFinite(hours) || hours < 0 || hours > 23 || !Number.isFinite(mins) || mins < 0 || mins > 59) {
+    return { ok: false, message: "Enter the actual start time (HH:MM)." };
+  }
+  var at = sastWallToDate(now, hours, mins);
+  if (at.getTime() > now.getTime()) at = now;
+  return { ok: true, at: at, hhmm: (hours < 10 ? "0" : "") + hours + ":" + (mins < 10 ? "0" : "") + mins };
+}
+
+function managerCorrectStart(adminName, workerName, orderNumber, process, actualStart, now) {
+  if (!userSeesIdleAlerts(adminName)) {
+    return { success: false, message: "Only Siya or the Manager can start someone at a set time." };
+  }
+  var worker = String(workerName || "").trim();
+  var orderNum = String(orderNumber || "").trim();
+  var role = String(process || "").trim();
+  if (!worker || !orderNum || !role) {
+    return { success: false, message: "Choose a worker, order, process, and the time they actually started." };
+  }
+  var atNow = now ? new Date(now) : new Date();
+  if (isNaN(atNow.getTime())) atNow = new Date();
+  var parsed = parseSastHmToday(actualStart, atNow);
+  if (!parsed.ok) return { success: false, message: parsed.message };
+  var at = parsed.at;
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss = getSpreadsheet();
+    var orderSheet = getSheetOrDie(ss, TAB_ORDERS);
+    var logSheet = getSheetOrDie(ss, TAB_LOGS);
+    var rowIndex = findOrderRowByNumber(orderSheet, orderNum);
+    if (rowIndex < 2) return { success: false, message: "Order " + orderNum + " was not found." };
+    var pack = getLogPack(ss);
+    var logs = pack.values;
+    var openIdx = -1;
+    for (var i = logs.length - 1; i >= 1; i--) {
+      if (String(logs[i][1]) !== orderNum) continue;
+      if (String(logs[i][2] || "").trim() !== worker) continue;
+      if (logs[i][6]) continue;
+      var openMeta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
+      if (openMeta.entryType === "indirect") continue;
+      openIdx = i;
+      break;
+    }
+    if (openIdx > 0) {
+      var sheetRow = packSheetRow(pack, openIdx);
+      var meta = parseLogMeta(logs[openIdx].length > 12 ? logs[openIdx][12] : "");
+      var paused = hasOpenPause(meta.pauses) || !!logs[openIdx][9];
+      if (paused) {
+        meta = closeOpenPauseInMeta(meta, at);
+      }
+      var currentStart = logs[openIdx][5] ? new Date(logs[openIdx][5]) : at;
+      if (isNaN(currentStart.getTime()) || currentStart.getTime() > at.getTime()) {
+        logSheet.getRange(sheetRow, 6).setValue(at);
+        meta.countdownStartedAt = at.getTime();
+      }
+      if (isOvertimeStartAllowed(at, worker)) meta.overtimeContinue = true;
+      writeLogPauseState(logSheet, sheetRow, meta, logs[openIdx][4]);
+      bumpFloorCache();
+      return {
+        success: true,
+        worker: worker,
+        order: orderNum,
+        process: String(logs[openIdx][3] || role),
+        startedAt: at.getTime(),
+        resumed: paused,
+        corrected: !paused,
+        message: worker + " is on " + orderNum + " from " + parsed.hhmm + "."
+      };
+    }
+
+    if (!workerCanPerformTask(worker, role)) {
+      return { success: false, message: worker + " is not assigned to " + role + "." };
+    }
+    closeIndirectTasksForWorker(ss, worker, pack, at);
+    autoPauseWorkerOtherJobs(ss, worker, [orderNum], "Switched job", "", pack, at);
+    var orderRow = orderSheet.getRange(rowIndex, 1, 1, 11).getValues()[0] || [];
+    var currentStatus = orderRow[2];
+    if (isAtPaintShopStatus_(currentStatus)) {
+      return { success: false, message: "This order is at the paint shop. Receive it on Paint shop before shop-floor work." };
+    }
+    if (String(currentStatus || "").trim().toLowerCase() === "waiting for drawing") {
+      return { success: false, message: "This order is waiting for a drawing." };
+    }
+    var nextStatus = getStartStatusForRole(currentStatus, role);
+    var uniqueId = Utilities.getUuid();
+    var metaNew = defaultLogMeta();
+    metaNew.entryType = "production";
+    metaNew.targetMinutes = getTaskDurationMinutes(String(orderRow[6] || "").trim(), role);
+    metaNew.countdownStartedAt = at.getTime();
+    metaNew = applyShiftWindowToMeta(metaNew, at, worker);
+    if (role !== "Plate Cutting") {
+      orderSheet.getRange(rowIndex, 3, 1, 2).setValues([[nextStatus, worker]]);
+    }
+    logSheet.appendRow([
+      uniqueId, orderNum, worker, role, nextStatus, at, "", "", "",
+      "", "", "", JSON.stringify(metaNew)
+    ]);
+    var overviewSheet = ss.getSheetByName(TAB_OVERVIEW);
+    if (overviewSheet) {
+      overviewSheet.appendRow([uniqueId, orderNum, worker, nextStatus, at, "", ""]);
+    }
+    bumpFloorCache();
+    return {
+      success: true,
+      worker: worker,
+      order: orderNum,
+      process: role,
+      startedAt: at.getTime(),
+      started: true,
+      logId: uniqueId,
+      message: worker + " is on " + orderNum + " from " + parsed.hhmm + "."
+    };
+  } finally {
+    try { bumpFloorCache(); } catch (ignoreBump) {}
+    lock.releaseLock();
+  }
 }
 
 function getFloorAdminDesk() {

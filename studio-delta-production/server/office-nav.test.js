@@ -718,8 +718,12 @@ assert.ok(roadAssembly > -1 && roadPrep > roadAssembly && roadPaint > roadPrep, 
 assert.ok(floor.indexOf("getFloorTaskCounts") !== -1);
 assert.ok(floor.indexOf("WORK_LOCKS_DISABLED") !== -1, "work lock flag stays in the floor page");
 assert.ok(floor.indexOf("Grant overtime on Workers") !== -1);
+assert.ok(floor.indexOf("Correct a clock") !== -1);
+assert.ok(floor.indexOf("managerCorrectStart") !== -1);
+assert.ok(floor.indexOf("Start at that time") !== -1);
 assert.ok(floor.indexOf("If a name is missing from the list, add that person on Users") !== -1);
 const codeGs = fs.readFileSync(path.join(__dirname, "../Code.gs"), "utf8");
+assert.ok(codeGs.indexOf("function managerCorrectStart") !== -1);
 assert.ok(codeGs.indexOf("SHIFT_LOCK_MINS = SHIFT_END_MINS") !== -1, "auto lock must be 15:45");
 assert.ok(codeGs.indexOf("closed after 15:45") !== -1);
 assert.ok(codeGs.indexOf("if (!start || !end) continue;") !== -1, "costing skips unfinished production logs");

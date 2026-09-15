@@ -1789,6 +1789,36 @@
           <button type="button" class="btn btn-sm btn-dark" onclick="grantSelectedOvertime()">Grant overtime today</button>
         </div>
         <div id="otList" class="small mb-3"></div>
+        <div class="idle-only">
+        <h5 class="brand-font">Correct a clock</h5>
+        <p class="small text-muted">If the floor missed a start (glitch, phone, or they began without tapping), Siya or the Manager can start that person at the time they actually began. Use today’s time in Johannesburg.</p>
+        <div class="d-flex gap-2 flex-wrap align-items-end mb-2">
+          <label class="small mb-0">Person
+            <select id="correctWorker" class="form-select form-select-sm" style="max-width:220px"></select>
+          </label>
+          <label class="small mb-0">Order
+            <input id="correctOrder" class="form-control form-control-sm" style="max-width:140px" placeholder="260123" autocomplete="off">
+          </label>
+          <label class="small mb-0">Job
+            <select id="correctProcess" class="form-select form-select-sm" style="max-width:200px">
+              <option>Profile Cutting</option>
+              <option>Tagging</option>
+              <option>Plate Cutting</option>
+              <option selected>Welding</option>
+              <option>Grinding</option>
+              <option>Assembly</option>
+              <option>Paint Preparation</option>
+              <option>Painting</option>
+              <option>Quality Control</option>
+            </select>
+          </label>
+          <label class="small mb-0">Actual start
+            <input id="correctStart" type="time" class="form-control form-control-sm" style="max-width:130px" value="07:45">
+          </label>
+          <button type="button" class="btn btn-sm btn-dark" id="correctStartBtn" onclick="managerCorrectClock()">Start at that time</button>
+        </div>
+        <p class="small mb-3" id="correctClockMsg" role="status"></p>
+        </div>
         <h5 class="brand-font">Did not resume by 08:00</h5>
         <p class="small text-muted">Overnight jobs do not start themselves at 07:45. If someone has not resumed by 08:00, set the time they actually started or mark that they will resume later.</p>
         <div id="resumeChaseList" class="small"></div>
@@ -8576,10 +8606,14 @@
         } else {
           box.innerHTML = '';
         }
+        const names = (data && data.workers) || [];
         const otSel = document.getElementById('otWorker');
         if (otSel) {
-          const names = (data && data.workers) || [];
           otSel.innerHTML = '<option value="">Grant overtime to…</option>' + names.map(n => '<option>' + n + '</option>').join('');
+        }
+        const corrSel = document.getElementById('correctWorker');
+        if (corrSel) {
+          corrSel.innerHTML = '<option value="">Choose a person…</option>' + names.map(n => '<option>' + n + '</option>').join('');
         }
         const otBox = document.getElementById('otList');
         if (otBox) {
@@ -8604,6 +8638,34 @@
       }).withFailureHandler(err => {
         box.innerHTML = '<span class="text-danger small">'+err+'</span>';
       }).getFloorAdminDesk();
+    }
+
+    function managerCorrectClock() {
+      const worker = (document.getElementById('correctWorker') || {}).value;
+      const order = String((document.getElementById('correctOrder') || {}).value || '').trim();
+      const process = (document.getElementById('correctProcess') || {}).value;
+      const actualStart = (document.getElementById('correctStart') || {}).value;
+      const msg = document.getElementById('correctClockMsg');
+      if (!worker || !order || !actualStart) {
+        const text = 'Pick a person, order, and the time they actually started.';
+        if (msg) msg.textContent = text;
+        else showAlert(text);
+        return;
+      }
+      if (msg) msg.textContent = 'Saving…';
+      google.script.run.withSuccessHandler(res => {
+        if (!res || !res.success) {
+          const err = (res && res.message) || 'Could not set that start time';
+          if (msg) msg.textContent = err;
+          else showAlert(err);
+          return;
+        }
+        if (msg) msg.textContent = res.message || (worker + ' is on ' + order + ' from ' + actualStart + '.');
+        loadIdleWorkers();
+      }).withFailureHandler(err => {
+        if (msg) msg.textContent = String(err || 'Could not set that start time');
+        else showAlert(err);
+      }).managerCorrectStart(idleAssignerName(), worker, order, process, actualStart);
     }
 
     function grantSelectedOvertime() {

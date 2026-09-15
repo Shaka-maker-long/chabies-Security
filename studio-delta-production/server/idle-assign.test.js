@@ -195,6 +195,112 @@ function openHole(worker, dateCell) {
   assert.ok(otherEnd, "Other over a live job must close");
   assert.ok(Math.abs(otherEnd - liveStart.getTime()) < 60 * 1000, "Other must stop when the next job starts, not keep counting: " + willardIndirect[6]);
 
+  const db = require("./db");
+  const now = new Date("2026-09-15T10:00:00+02:00");
+  const startAt = new Date("2026-09-15T07:45:00+02:00");
+  const weldOrder = db.upsertOrder({
+    order_number: "S-CORRECT-1",
+    status: "Ready for Welding",
+    type: "Gate",
+    category: "Driveway",
+    product: "Slider",
+    price_excl_vat: "100.00"
+  });
+  persistWorkbook();
+  clearShopCache();
+  const fromFloor = await callShopFunction("managerCorrectStart", [
+    "Willard", "Willard", weldOrder.order_number, "Welding", "07:45", now
+  ]);
+  assert.strictEqual(fromFloor.success, false, JSON.stringify(fromFloor));
+  assert.ok(/Siya or the Manager/i.test(fromFloor.message), JSON.stringify(fromFloor));
+
+  const started = await callShopFunction("managerCorrectStart", [
+    "Siya", "Willard", weldOrder.order_number, "Welding", "07:45", now
+  ]);
+  assert.strictEqual(started.success, true, JSON.stringify(started));
+  assert.ok(started.started, JSON.stringify(started));
+  const startedLog = getBook().getSheetByName("Production_Log").getDataRange().getValues()
+    .find((row) => String(row[1]) === weldOrder.order_number && String(row[2]) === "Willard" && !row[6]);
+  assert.ok(startedLog, "manager start must write a production log");
+  assert.strictEqual(new Date(startedLog[5]).getTime(), startAt.getTime(), "start must be 07:45, not now: " + startedLog[5]);
+  assert.strictEqual(String(startedLog[3]), "Welding");
+
+  const glitchPauseAt = new Date("2026-09-15T08:00:00+02:00");
+  const glitchResumeAt = new Date("2026-09-15T08:30:00+02:00");
+  db.upsertOrder({
+    order_number: "S-CORRECT-2",
+    status: "Welding",
+    type: "Gate",
+    category: "Driveway",
+    product: "Slider",
+    price_excl_vat: "100.00"
+  });
+  getBook().getSheetByName("Production_Log").appendRow([
+    "log-correct-pause",
+    "S-CORRECT-2",
+    "Willard",
+    "Welding",
+    "Welding",
+    startAt,
+    "",
+    "",
+    "",
+    glitchPauseAt,
+    0,
+    "Glitch",
+    JSON.stringify({
+      pauses: [{ start: glitchPauseAt.getTime(), end: null, reason: "Glitch" }]
+    })
+  ]);
+  persistWorkbook();
+  clearShopCache();
+  const resumed = await callShopFunction("managerCorrectStart", [
+    "Siya", "Willard", "S-CORRECT-2", "Welding", "08:30", now
+  ]);
+  assert.strictEqual(resumed.success, true, JSON.stringify(resumed));
+  assert.ok(resumed.resumed, JSON.stringify(resumed));
+  const pausedLog = getBook().getSheetByName("Production_Log").getDataRange().getValues()
+    .find((row) => String(row[1]) === "S-CORRECT-2" && !row[6]);
+  assert.ok(pausedLog, "paused log must still be open");
+  const pausedMeta = JSON.parse(String(pausedLog[12] || "{}"));
+  assert.ok(pausedMeta.pauses && pausedMeta.pauses[0] && pausedMeta.pauses[0].end, JSON.stringify(pausedMeta));
+  assert.strictEqual(pausedMeta.pauses[0].end, glitchResumeAt.getTime());
+
+  db.upsertOrder({
+    order_number: "S-CORRECT-3",
+    status: "Welding",
+    type: "Gate",
+    category: "Driveway",
+    product: "Slider",
+    price_excl_vat: "100.00"
+  });
+  const lateStart = new Date("2026-09-15T08:30:00+02:00");
+  getBook().getSheetByName("Production_Log").appendRow([
+    "log-correct-late",
+    "S-CORRECT-3",
+    "Willard",
+    "Welding",
+    "Welding",
+    lateStart,
+    "",
+    "",
+    "",
+    "",
+    0,
+    "",
+    JSON.stringify({ pauses: [] })
+  ]);
+  persistWorkbook();
+  clearShopCache();
+  const moved = await callShopFunction("managerCorrectStart", [
+    "Siya", "Willard", "S-CORRECT-3", "Welding", "07:45", now
+  ]);
+  assert.strictEqual(moved.success, true, JSON.stringify(moved));
+  const movedLog = getBook().getSheetByName("Production_Log").getDataRange().getValues()
+    .find((row) => String(row[1]) === "S-CORRECT-3" && !row[6]);
+  assert.ok(movedLog, "late start log must still be open");
+  assert.strictEqual(new Date(movedLog[5]).getTime(), startAt.getTime(), "late start must move back to 07:45: " + movedLog[5]);
+
   console.log("idle-assign.test.js ok");
 })().catch((e) => {
   console.error(e);
