@@ -102,6 +102,14 @@ app.get("/orders/to-order", (_req, res) => {
 app.get("/orders/consumables", (_req, res) => {
   res.redirect(302, "/inventory");
 });
+app.get("/inventory/steel", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "inventory.html"));
+});
+app.get("/inventory/glass", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "inventory.html"));
+});
 app.get("/inventory", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "inventory.html"));
