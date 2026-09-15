@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Consumables</title>
+  <script src="/sd-pwa.js?v=pwa"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#027a48; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:780px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#fff; color:var(--bad); border-color:#fecdca; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    input, select { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
+    .page { padding:18px 16px 48px; max-width:1180px; }
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+    .kpi { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    .kpi span { display:block; color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    .kpi b { display:block; margin-top:4px; font-family: Outfit, Inter, sans-serif; font-size:22px; }
+    .kpi.alert b { color:var(--bad); }
+    .grid { display:grid; grid-template-columns:1.4fr .9fr; gap:12px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:12px; }
+    .card h2 { margin:0; padding:14px 16px 0; font-size:16px; }
+    .hint { margin:6px 16px 12px; color:var(--muted); font-size:13px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-top:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; vertical-align:middle; }
+    th { background:var(--head); font-size:11px; letter-spacing:.03em; text-transform:uppercase; }
+    td.r, th.r { text-align:right; }
+    td.actions { white-space:nowrap; }
+    td.actions button { padding:6px 8px; font-size:12px; margin:0 2px 2px 0; }
+    .add { display:flex; gap:8px; flex-wrap:wrap; align-items:end; padding:12px 16px; border-top:1px solid var(--line); background:#f8fafc; }
+    .add label, .stack label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+    .add input, .add select { min-width:120px; }
+    .stack { display:flex; flex-direction:column; gap:10px; padding:0 16px 14px; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
+    .empty { padding:28px 16px; text-align:center; color:var(--muted); }
+    .msg { font-size:12px; color:var(--muted); }
+    .msg.bad { color:var(--bad); }
+    .pill { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; border-radius:999px; padding:2px 8px; }
+    .pill.ok { background:#d1fadf; color:var(--ok); }
+    .pill.low { background:#fee4e2; color:var(--bad); }
+    .pill.wait { background:#ffefc6; color:#93370d; }
+    .search { min-width:180px; }
+    .low-box { background:#fff8f7; border-color:#fda29b; }
+    .span2 { grid-column:1 / -1; }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns:1fr; }
+      .tools { width:100%; margin-left:0; }
+      td.actions { white-space:normal; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/dashboard">Dashboard</a>
+        <a href="/orders/correct">Fix status</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a class="on" href="/orders/consumables">Consumables</a>
+        <a href="/orders/glass-rates">Glass rates</a>
+        <a href="/orders/cost">Cost</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Consumables</h1>
+      <p class="lede">Hinges, bullets, screws, stickers, and other hardware. On-hand drops when you log usage against a shop order. Receive walk-in stock or mark a purchase received. Steel, glass, wood, powder, and backboards stay on To order, Cost, and Paint shop.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <input class="search" type="search" id="q" placeholder="Search items">
+      <button class="ghost" type="button" onclick="load()">Refresh</button>
+    </div>
+  </header>
+  <div class="page">
+    <div class="kpis">
+      <div class="kpi"><span>Items</span><b id="kpiItems">0</b></div>
+      <div class="kpi alert"><span>Low stock</span><b id="kpiLow">0</b></div>
+      <div class="kpi"><span>Open purchases</span><b id="kpiPo">0</b></div>
+    </div>
+    <div class="grid">
+      <section class="card" id="lowCard" hidden>
+        <h2>Below minimum</h2>
+        <p class="hint">Stock is at or under the threshold. Raise a purchase or receive stock.</p>
+        <div id="lowList"></div>
+      </section>
+      <section class="card span2">
+        <h2>On hand</h2>
+        <p class="hint">Name, current stock, and minimum only — no height × width. Add the hardware you buy in bulk.</p>
+        <div id="itemList"><div class="empty">Loading…</div></div>
+        <form class="add" id="addForm">
+          <label>Item name
+            <input id="itemName" required placeholder="e.g. Bullet hinge" autocomplete="off">
+          </label>
+          <label>Unit
+            <select id="itemUnit"></select>
+          </label>
+          <label>Minimum
+            <input id="itemMin" inputmode="decimal" placeholder="e.g. 20" value="0">
+          </label>
+          <label>Opening stock
+            <input id="itemOpen" inputmode="decimal" placeholder="optional">
+          </label>
+          <button type="submit">Add item</button>
+          <span class="msg" id="addMsg"></span>
+        </form>
+      </section>
+      <section class="card">
+        <h2>Log usage</h2>
+        <p class="hint">Deducts on-hand and writes a usage line with the person logged in. Leave the order blank for general shop use.</p>
+        <form class="stack" id="useForm">
+          <label>Item
+            <select id="useItem" required></select>
+          </label>
+          <div class="row">
+            <label>Quantity
+              <input id="useQty" inputmode="decimal" required>
+            </label>
+            <label>Shop order
+              <input id="useOrder" list="orderList" placeholder="optional" autocomplete="off">
+            </label>
+          </div>
+          <label>Note
+            <input id="useNote" placeholder="optional">
+          </label>
+          <div class="row">
+            <button type="submit">Use stock</button>
+            <span class="msg" id="useMsg"></span>
+          </div>
+        </form>
+      </section>
+      <section class="card">
+        <h2>Receive stock</h2>
+        <p class="hint">Walk-in or already paid. For a supplier list, use Create purchase first, then Receive purchase when the box arrives.</p>
+        <form class="stack" id="recvForm">
+          <label>Item
+            <select id="recvItem" required></select>
+          </label>
+          <div class="row">
+            <label>Quantity
+              <input id="recvQty" inputmode="decimal" required>
+            </label>
+            <label>Supplier
+              <input id="recvSupplier" placeholder="optional">
+            </label>
+          </div>
+          <label>Note
+            <input id="recvNote" placeholder="optional">
+          </label>
+          <div class="row">
+            <button type="submit">Receive</button>
+            <span class="msg" id="recvMsg"></span>
+          </div>
+        </form>
+      </section>
+      <section class="card">
+        <h2>Create purchase</h2>
+        <p class="hint">Marks items Ordered. Stock does not go up until you receive the purchase.</p>
+        <form class="stack" id="poForm">
+          <div class="row">
+            <label>Supplier
+              <input id="poSupplier" placeholder="optional">
+            </label>
+            <label>Note
+              <input id="poNote" placeholder="optional">
+            </label>
+          </div>
+          <div id="poLines"></div>
+          <div class="row">
+            <button class="ghost" type="button" id="addPoLine">Add line</button>
+            <button type="submit">Save as Ordered</button>
+            <span class="msg" id="poMsg"></span>
+          </div>
+        </form>
+      </section>
+      <section class="card">
+        <h2>Count</h2>
+        <p class="hint">Physical stocktake. Set the counted quantity and say why it changed.</p>
+        <form class="stack" id="countForm">
+          <label>Item
+            <select id="countItem" required></select>
+          </label>
+          <div class="row">
+            <label>Counted on hand
+              <input id="countQty" inputmode="decimal" required>
+            </label>
+            <label>Reason
+              <input id="countNote" required placeholder="e.g. Box was short">
+            </label>
+          </div>
+          <div class="row">
+            <button type="submit">Save count</button>
+            <span class="msg" id="countMsg"></span>
+          </div>
+        </form>
+      </section>
+      <section class="card span2" id="openPoCard">
+        <h2>Open purchases</h2>
+        <p class="hint">Receive adds the ordered quantity to on-hand.</p>
+        <div id="openPoList"><div class="empty">No open purchases.</div></div>
+      </section>
+      <section class="card span2">
+        <h2>Usage and receive log</h2>
+        <p class="hint">Timestamp, order, person, item, and quantity.</p>
+        <div id="moveList"><div class="empty">No movements yet.</div></div>
+      </section>
+    </div>
+  </div>
+  <datalist id="orderList"></datalist>
+  <script src="/office-auth.js?v=drawing-wait"></script>
+  <script>
+    let data = { items: [], movements: [], openPurchases: [], units: [], orderNumbers: [] };
+    let poLineN = 0;
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+    }
+    function setMsg(id, text, bad) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = text || "";
+      el.classList.toggle("bad", !!bad);
+    }
+    function itemOptions(selected) {
+      const rows = data.items || [];
+      if (!rows.length) return "<option value=\"\">Add an item first</option>";
+      return "<option value=\"\">Choose item</option>" + rows.map((row) =>
+        "<option value=\"" + esc(row.id) + "\"" + (row.id === selected ? " selected" : "") + ">" +
+        esc(row.name) + " (" + esc(row.stockLabel) + " " + esc(row.unit) + ")</option>"
+      ).join("");
+    }
+    function fillItemSelects(keep) {
+      ["useItem", "recvItem", "countItem"].forEach((id) => {
+        const el = document.getElementById(id);
+        const was = keep && el.value ? el.value : "";
+        el.innerHTML = itemOptions(was);
+      });
+      document.querySelectorAll(".po-item").forEach((el) => {
+        const was = el.value;
+        el.innerHTML = itemOptions(was);
+      });
+    }
+    function fillUnits() {
+      const el = document.getElementById("itemUnit");
+      el.innerHTML = (data.units || ["pcs"]).map((u) => "<option value=\"" + esc(u) + "\">" + esc(u) + "</option>").join("");
+    }
+    function fillOrders() {
+      document.getElementById("orderList").innerHTML = (data.orderNumbers || []).map((n) =>
+        "<option value=\"" + esc(n) + "\">"
+      ).join("");
+    }
+    function q() {
+      return String(document.getElementById("q").value || "").trim().toLowerCase();
+    }
+    function filteredItems() {
+      const needle = q();
+      return (data.items || []).filter((row) => !needle || String(row.name).toLowerCase().indexOf(needle) !== -1);
+    }
+    function renderLow() {
+      const box = document.getElementById("lowCard");
+      const low = data.low || [];
+      box.hidden = !low.length;
+      document.getElementById("lowList").innerHTML = low.length
+        ? "<table><thead><tr><th>Item</th><th class='r'>On hand</th><th class='r'>Min</th></tr></thead><tbody>" +
+          low.map((row) => "<tr><td>" + esc(row.name) + "</td><td class='r'>" + esc(row.stockLabel) + " " + esc(row.unit) +
+            "</td><td class='r'>" + esc(row.minLabel) + "</td></tr>").join("") + "</tbody></table>"
+        : "";
+    }
+    function renderItems() {
+      const rows = filteredItems();
+      const box = document.getElementById("itemList");
+      if (!(data.items || []).length) {
+        box.innerHTML = '<div class="empty">No consumables yet. Add the first hinge, screw, sticker, or other hardware below.</div>';
+        return;
+      }
+      if (!rows.length) {
+        box.innerHTML = '<div class="empty">No items match that search.</div>';
+        return;
+      }
+      box.innerHTML = "<table><thead><tr><th>Name</th><th class='r'>Current stock</th><th class='r'>Minimum</th><th>Status</th><th></th></tr></thead><tbody>" +
+        rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\"><td>" + esc(row.name) +
+          "</td><td class='r'>" + esc(row.stockLabel) + " " + esc(row.unit) +
+          "</td><td class='r'>" + esc(row.minLabel) +
+          "</td><td><span class='pill " + (row.low ? "low" : "ok") + "'>" + esc(row.status) + "</span></td>" +
+          "<td class='actions'>" +
+          "<button class='ghost' type='button' data-use=\"" + esc(row.id) + "\">Use</button>" +
+          "<button class='ghost' type='button' data-recv=\"" + esc(row.id) + "\">Receive</button>" +
+          "<button class='ghost' type='button' data-edit=\"" + esc(row.id) + "\">Edit min</button>" +
+          "<button class='danger' type='button' data-del=\"" + esc(row.id) + "\">Delete</button>" +
+          "</td></tr>").join("") + "</tbody></table>";
+      box.querySelectorAll("[data-use]").forEach((btn) => {
+        btn.onclick = () => { document.getElementById("useItem").value = btn.getAttribute("data-use"); document.getElementById("useQty").focus(); };
+      });
+      box.querySelectorAll("[data-recv]").forEach((btn) => {
+        btn.onclick = () => { document.getElementById("recvItem").value = btn.getAttribute("data-recv"); document.getElementById("recvQty").focus(); };
+      });
+      box.querySelectorAll("[data-edit]").forEach((btn) => { btn.onclick = () => editMin(btn.getAttribute("data-edit")); });
+      box.querySelectorAll("[data-del]").forEach((btn) => { btn.onclick = () => removeItem(btn.getAttribute("data-del")); });
+    }
+    function renderPurchases() {
+      const rows = data.openPurchases || [];
+      const box = document.getElementById("openPoList");
+      if (!rows.length) {
+        box.innerHTML = '<div class="empty">No open purchases.</div>';
+        return;
+      }
+      box.innerHTML = rows.map((po) => {
+        const lines = (po.lines || []).map((line) => esc(line.itemName) + " × " + esc(line.qtyLabel)).join("; ");
+        return "<table><thead><tr><th>When</th><th>Supplier</th><th>Items</th><th>Status</th><th></th></tr></thead><tbody><tr>" +
+          "<td>" + esc(po.whenLabel) + "</td><td>" + esc(po.supplier || po.employee) + "</td><td>" + lines +
+          "</td><td><span class='pill wait'>" + esc(po.status) + "</span></td>" +
+          "<td class='actions'><button type='button' data-recv-po=\"" + esc(po.id) + "\">Receive purchase</button>" +
+          "<button class='danger' type='button' data-cancel-po=\"" + esc(po.id) + "\">Cancel</button></td></tr></tbody></table>";
+      }).join("");
+      box.querySelectorAll("[data-recv-po]").forEach((btn) => { btn.onclick = () => receivePo(btn.getAttribute("data-recv-po")); });
+      box.querySelectorAll("[data-cancel-po]").forEach((btn) => { btn.onclick = () => cancelPo(btn.getAttribute("data-cancel-po")); });
+    }
+    function renderMoves() {
+      const rows = data.movements || [];
+      const box = document.getElementById("moveList");
+      if (!rows.length) {
+        box.innerHTML = '<div class="empty">No movements yet.</div>';
+        return;
+      }
+      box.innerHTML = "<table><thead><tr><th>When</th><th>Type</th><th>Item</th><th class='r'>Qty</th><th>Order</th><th>Person</th><th>Note</th></tr></thead><tbody>" +
+        rows.map((row) => "<tr><td>" + esc(row.whenLabel) + "</td><td>" + esc(row.typeLabel) + "</td><td>" + esc(row.itemName) +
+          "</td><td class='r'>" + esc(row.qtyLabel) + "</td><td>" + esc(row.orderNumber || "—") +
+          "</td><td>" + esc(row.employee) + "</td><td>" + esc(row.note) + "</td></tr>").join("") + "</tbody></table>";
+    }
+    function addPoLine() {
+      poLineN += 1;
+      const wrap = document.createElement("div");
+      wrap.className = "row po-line";
+      wrap.innerHTML = "<label>Item<select class='po-item' required>" + itemOptions("") + "</select></label>" +
+        "<label>Qty<input class='po-qty' inputmode='decimal' required></label>" +
+        "<button class='ghost' type='button'>Remove</button>";
+      wrap.querySelector("button").onclick = () => wrap.remove();
+      document.getElementById("poLines").appendChild(wrap);
+    }
+    function applySnapshot(j) {
+      data = j;
+      document.getElementById("kpiItems").textContent = String(j.itemCount || 0);
+      document.getElementById("kpiLow").textContent = String(j.lowCount || 0);
+      document.getElementById("kpiPo").textContent = String(j.openPurchaseCount || 0);
+      fillUnits();
+      fillOrders();
+      fillItemSelects(true);
+      renderLow();
+      renderItems();
+      renderPurchases();
+      renderMoves();
+      if (!document.querySelector(".po-line")) addPoLine();
+    }
+    async function load() {
+      setMsg("status", "Loading…");
+      const r = await sdOfficeFetch("/api/office/consumables");
+      const j = await r.json();
+      if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
+      applySnapshot(j);
+      setMsg("status", (j.itemCount || 0) + " item" + ((j.itemCount || 0) === 1 ? "" : "s"));
+    }
+    async function editMin(id) {
+      const row = (data.items || []).find((item) => item.id === id);
+      if (!row) return;
+      const next = window.prompt("Minimum threshold for " + row.name, String(row.minThreshold));
+      if (next == null) return;
+      const r = await sdOfficeFetch("/api/office/consumables", {
+        method: "POST",
+        body: JSON.stringify({ id: row.id, name: row.name, unit: row.unit, minThreshold: next })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("status", j.error || "Could not save", true); return; }
+      applySnapshot(j);
+      setMsg("status", "Updated " + row.name + ".");
+    }
+    async function removeItem(id) {
+      const row = (data.items || []).find((item) => item.id === id);
+      if (!row) return;
+      if (!confirm("Delete " + row.name + "? On-hand must already be 0.")) return;
+      const r = await sdOfficeFetch("/api/office/consumables/" + encodeURIComponent(id), { method: "DELETE" });
+      const j = await r.json();
+      if (!j.ok) { setMsg("status", j.error || "Could not delete", true); return; }
+      applySnapshot(j);
+      setMsg("status", "Deleted " + row.name + ".");
+    }
+    async function receivePo(id) {
+      if (!confirm("Receive this purchase and add the quantities to on-hand?")) return;
+      const r = await sdOfficeFetch("/api/office/consumables/purchases/" + encodeURIComponent(id) + "/receive", { method: "POST", body: "{}" });
+      const j = await r.json();
+      if (!j.ok) { setMsg("status", j.error || "Could not receive", true); return; }
+      applySnapshot(j);
+      setMsg("status", "Purchase received.");
+    }
+    async function cancelPo(id) {
+      if (!confirm("Cancel this purchase? Stock will not change.")) return;
+      const r = await sdOfficeFetch("/api/office/consumables/purchases/" + encodeURIComponent(id) + "/cancel", { method: "POST", body: "{}" });
+      const j = await r.json();
+      if (!j.ok) { setMsg("status", j.error || "Could not cancel", true); return; }
+      applySnapshot(j);
+      setMsg("status", "Purchase cancelled.");
+    }
+    document.getElementById("addForm").onsubmit = async (e) => {
+      e.preventDefault();
+      setMsg("addMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/consumables", {
+        method: "POST",
+        body: JSON.stringify({
+          name: document.getElementById("itemName").value,
+          unit: document.getElementById("itemUnit").value,
+          minThreshold: document.getElementById("itemMin").value,
+          openingStock: document.getElementById("itemOpen").value
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("addMsg", j.error || "Could not save", true); return; }
+      document.getElementById("itemName").value = "";
+      document.getElementById("itemMin").value = "0";
+      document.getElementById("itemOpen").value = "";
+      applySnapshot(j);
+      setMsg("addMsg", "Added " + (j.item && j.item.name ? j.item.name : "item") + ".");
+    };
+    document.getElementById("useForm").onsubmit = async (e) => {
+      e.preventDefault();
+      setMsg("useMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/consumables/use", {
+        method: "POST",
+        body: JSON.stringify({
+          itemId: document.getElementById("useItem").value,
+          qty: document.getElementById("useQty").value,
+          orderNumber: document.getElementById("useOrder").value,
+          note: document.getElementById("useNote").value
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("useMsg", j.error || "Could not use", true); return; }
+      document.getElementById("useQty").value = "";
+      document.getElementById("useNote").value = "";
+      applySnapshot(j);
+      setMsg("useMsg", "Used " + (j.item && j.item.name ? j.item.name : "stock") + ".");
+    };
+    document.getElementById("recvForm").onsubmit = async (e) => {
+      e.preventDefault();
+      setMsg("recvMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/consumables/receive", {
+        method: "POST",
+        body: JSON.stringify({
+          itemId: document.getElementById("recvItem").value,
+          qty: document.getElementById("recvQty").value,
+          supplier: document.getElementById("recvSupplier").value,
+          note: document.getElementById("recvNote").value
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("recvMsg", j.error || "Could not receive", true); return; }
+      document.getElementById("recvQty").value = "";
+      document.getElementById("recvNote").value = "";
+      applySnapshot(j);
+      setMsg("recvMsg", "Received " + (j.item && j.item.name ? j.item.name : "stock") + ".");
+    };
+    document.getElementById("countForm").onsubmit = async (e) => {
+      e.preventDefault();
+      setMsg("countMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/consumables/count", {
+        method: "POST",
+        body: JSON.stringify({
+          itemId: document.getElementById("countItem").value,
+          stock: document.getElementById("countQty").value,
+          note: document.getElementById("countNote").value
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("countMsg", j.error || "Could not count", true); return; }
+      document.getElementById("countQty").value = "";
+      document.getElementById("countNote").value = "";
+      applySnapshot(j);
+      setMsg("countMsg", "Counted " + (j.item && j.item.name ? j.item.name : "stock") + ".");
+    };
+    document.getElementById("poForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const lines = [];
+      document.querySelectorAll(".po-line").forEach((row) => {
+        lines.push({
+          itemId: row.querySelector(".po-item").value,
+          qty: row.querySelector(".po-qty").value
+        });
+      });
+      setMsg("poMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/consumables/purchases", {
+        method: "POST",
+        body: JSON.stringify({
+          supplier: document.getElementById("poSupplier").value,
+          note: document.getElementById("poNote").value,
+          lines
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("poMsg", j.error || "Could not save", true); return; }
+      document.getElementById("poSupplier").value = "";
+      document.getElementById("poNote").value = "";
+      document.getElementById("poLines").innerHTML = "";
+      applySnapshot(j);
+      setMsg("poMsg", "Saved as Ordered.");
+    };
+    document.getElementById("addPoLine").onclick = () => addPoLine();
+    document.getElementById("q").oninput = () => renderItems();
+    sdRequireOffice("orders").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

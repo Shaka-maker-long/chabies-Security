@@ -54,6 +54,7 @@ const desk = require("./enquiry-desk");
 const paintShop = require("./powder-shop");
 const glassPo = require("./glass-po");
 const glassRates = require("./glass-rates");
+const consumables = require("./consumables");
 const steelRates = require("./steel-rates");
 const backboardRates = require("./backboard-rates");
 const productionCost = require("./production-cost");
@@ -367,6 +368,82 @@ function mountOffice(app) {
     try {
       glassRates.deleteRate(req.params.id);
       res.json({ ok: true, ...glassRates.snapshotRates() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/consumables", requireOffice, (_req, res) => {
+    res.json({ ok: true, ...consumables.snapshot() });
+  });
+
+  app.post("/api/office/consumables", requireOffice, (req, res) => {
+    try {
+      const item = consumables.upsertItem(req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, item, ...consumables.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.delete("/api/office/consumables/:id", requireOffice, (req, res) => {
+    try {
+      consumables.deleteItem(req.params.id);
+      res.json({ ok: true, ...consumables.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/consumables/use", requireOffice, (req, res) => {
+    try {
+      const item = consumables.logUsage(req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, item, ...consumables.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/consumables/receive", requireOffice, (req, res) => {
+    try {
+      const item = consumables.receiveStock(req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, item, ...consumables.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/consumables/count", requireOffice, (req, res) => {
+    try {
+      const item = consumables.countStock(req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, item, ...consumables.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/consumables/purchases", requireOffice, (req, res) => {
+    try {
+      const purchase = consumables.createPurchase(req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, purchase, ...consumables.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/consumables/purchases/:id/receive", requireOffice, (req, res) => {
+    try {
+      const purchase = consumables.receivePurchase(req.params.id, req.office && req.office.name);
+      res.json({ ok: true, purchase, ...consumables.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/consumables/purchases/:id/cancel", requireOffice, (req, res) => {
+    try {
+      const purchase = consumables.cancelPurchase(req.params.id, req.office && req.office.name);
+      res.json({ ok: true, purchase, ...consumables.snapshot() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
