@@ -114,10 +114,14 @@ assert.strictEqual(year.kpis.readyOrOut, 1);
 assert.ok(year.kpis.income >= 11500);
 assert.ok(year.kpis.unpaidOpen > 0);
 
+assert.ok(dash.saleDate({ payment_date: "14/09/2026" }));
+assert.strictEqual(dash.saleDate({ month_of_sale: "September 2026" }), null);
+assert.strictEqual(dash.saleDate({ payment_date: "", month_of_sale: "September 2026" }), null);
+
 const sep = year.series.find((s) => s.key === "2026-09");
 assert.ok(sep, "September bucket exists");
-assert.strictEqual(sep.count, 3);
-assert.strictEqual(sep.income, 28500);
+assert.strictEqual(sep.count, 2);
+assert.strictEqual(sep.income, 20500);
 assert.strictEqual(sep.delivered, 0);
 
 const jul = year.series.find((s) => s.key === "2026-07");
@@ -127,8 +131,8 @@ assert.strictEqual(jul.income, 22000);
 
 const mirror = year.categories.find((c) => c.label === "Mirror");
 assert.ok(mirror);
-assert.strictEqual(mirror.count, 2);
-assert.strictEqual(mirror.income, 19500);
+assert.strictEqual(mirror.count, 1);
+assert.strictEqual(mirror.income, 11500);
 
 const website = year.sources.find((s) => s.label === "Website");
 assert.ok(website);
@@ -139,12 +143,12 @@ assert.strictEqual(topItem.label, "Driveway Gate");
 assert.strictEqual(topItem.income, 22000);
 const daphne = year.topIncome.find((p) => p.label === "Daphne Rectangular Mirror");
 assert.ok(daphne);
-assert.strictEqual(daphne.income, 19500);
-assert.strictEqual(daphne.count, 2);
+assert.strictEqual(daphne.income, 11500);
+assert.strictEqual(daphne.count, 1);
 
-const topQty = year.topQuantity[0];
-assert.strictEqual(topQty.label, "Daphne Rectangular Mirror");
-assert.strictEqual(topQty.count, 2);
+const topQty = year.topQuantity.find((p) => p.label === "Daphne Rectangular Mirror");
+assert.ok(topQty);
+assert.strictEqual(topQty.count, 1);
 
 const steel = year.pipeline.find((p) => p.id === "steelwork");
 assert.strictEqual(steel.count, 1);
@@ -170,19 +174,22 @@ const readyBlock = year.blockers.find((b) => b.id === "ready_delivery");
 assert.strictEqual(readyBlock.count, 1);
 
 const monthOnly = dash.buildDashboard({ month: "2026-09", grain: "month" });
-assert.strictEqual(monthOnly.windowCount, 3);
-assert.strictEqual(monthOnly.kpis.income, 28500);
+assert.strictEqual(monthOnly.windowCount, 2);
+assert.strictEqual(monthOnly.kpis.income, 20500);
 assert.strictEqual(monthOnly.windowLabel, "Sep 2026");
 assert.strictEqual(monthOnly.kpis.openJobs, 5, "shop KPIs stay live when a month is picked");
+assert.ok(!monthOnly.categories.some((c) => c.label === "Mirror" && c.count > 1));
 
 const week = dash.buildDashboard({ range: "year", grain: "week" });
 assert.ok(week.series.some((s) => s.key.indexOf("-W") !== -1));
 assert.ok(week.series.some((s) => s.income > 0));
 
 const catDrill = dash.buildDrill({ kind: "category", value: "Mirror", range: "year", grain: "month" });
-assert.strictEqual(catDrill.rows.length, 2);
+assert.strictEqual(catDrill.rows.length, 1);
+assert.strictEqual(catDrill.rows[0].order_number, "S260401");
 assert.ok(catDrill.title.indexOf("CATERGORY") !== -1);
-assert.strictEqual(catDrill.totals.income, 19500);
+assert.strictEqual(catDrill.totals.income, 11500);
+assert.ok(!catDrill.rows.some((r) => r.order_number === "S260403"), "month of sale is not the order date");
 
 const pipeDrill = dash.buildDrill({ kind: "pipeline", group: "drawing" });
 assert.strictEqual(pipeDrill.rows.length, 1);
@@ -227,6 +234,7 @@ assert.ok(html.indexOf("Blockers") !== -1);
 assert.ok(html.indexOf("chart.js@4.4.7") !== -1);
 assert.ok(html.indexOf("/api/office/orders/dashboard") !== -1);
 assert.ok(html.indexOf("sdOfficeFetch") !== -1);
-assert.ok(html.indexOf("/sd-pwa.js?v=pwa") !== -1);
+assert.ok(html.indexOf("payment date — the day the order was placed") !== -1);
+assert.ok(html.indexOf("month of sale if there is no payment date") === -1);
 
 console.log("order-dashboard tests ok");
