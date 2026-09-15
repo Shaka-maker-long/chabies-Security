@@ -62,6 +62,11 @@ assert.ok(floor.indexOf('id="link-floor"') === -1, "floor sidebar link must be g
 assert.ok(floor.indexOf("getFloorLayout") !== -1);
 assert.ok(floor.indexOf("startFloorTwin") !== -1);
 assert.ok(floor.indexOf("twin-actor") !== -1);
+assert.ok(floor.indexOf("#e8b894") === -1, "workers are not drawn with light peach skin");
+assert.ok(floor.indexOf("#3f2314") !== -1, "workers have black skin");
+assert.ok(floor.indexOf("twin-leg-l") !== -1, "legs animate separately");
+assert.ok(floor.indexOf("twin-walk-bob") !== -1, "QC uses a walk cycle");
+assert.ok(floor.indexOf("twin-nod") !== -1);
 assert.ok(floor.indexOf("twin-arc") !== -1, "welding uses a live arc");
 assert.ok(floor.indexOf("twin-pile") !== -1, "ready goods are pallets, not text labels on the map");
 assert.ok(floor.indexOf("floor-pop") !== -1);
