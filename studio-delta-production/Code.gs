@@ -3999,12 +3999,14 @@ function workerMinutesToday(workerName, now) {
   return total;
 }
 
-function floorChangeGate(workerName, action) {
+function floorChangeGate(workerName, action, now) {
   if (workLocksDisabled()) return { ok: true, unlocked: true };
+  var at = now ? new Date(now) : new Date();
+  if (isNaN(at.getTime())) at = new Date();
   var profile = getUserProfileByName(workerName);
   if (profile && String(profile.access || "").toLowerCase() === "admin") return { ok: true, admin: true };
-  var state = paidWindowState();
-  var ot = workerHasOvertime(workerName);
+  var state = paidWindowState(at);
+  var ot = workerHasOvertime(workerName, at);
   if ((state.kind === "end" || state.kind === "weekend") && !ot) {
     return {
       ok: false,
@@ -4014,7 +4016,7 @@ function floorChangeGate(workerName, action) {
         : "The floor is closed after 15:45 unless Admin grants overtime."
     };
   }
-  if ((action === "start" || action === "resume") && !ot && workerMinutesToday(workerName) >= MAX_REGULAR_MINS) {
+  if ((action === "start" || action === "resume") && !ot && workerMinutesToday(workerName, at) >= MAX_REGULAR_MINS) {
     return {
       ok: false,
       locked: true,
@@ -4194,7 +4196,14 @@ function calculateWorkMinutesMeta(start, end, taskName, meta, legacyPausedMins) 
   var net = netWorkMinutesInWindow(start, actualEnd, pauses, taskName, allowAfterShift);
   // Finishing stamps batchSplitAt at the end time. That still means together until the end,
   // so keep dividing. Only a split strictly before the end is handled above as solo time after.
-  if (share > 1 && meta.batchId) return net / share;
+  // A day slice that is entirely before join (or entirely after leave) stays undivided.
+  if (share > 1 && meta.batchId) {
+    var togetherStart = joinMs || t0;
+    var togetherEnd = (splitMs && splitMs > togetherStart) ? splitMs : t1;
+    if (t1 <= togetherStart) return net;
+    if (splitMs && t0 >= togetherEnd) return net;
+    return net / share;
+  }
   return net;
 }
 
@@ -4254,8 +4263,13 @@ function getWorkBoutsFromLog(row) {
 
 function splitWorkByDay(row, rangeFrom, rangeTo) {
   var task = row[4];
-  var emptyMeta = defaultLogMeta();
-  emptyMeta.overtimeContinue = !!parseLogMeta(row.length > 12 ? row[12] : "").overtimeContinue;
+  var logMeta = parseLogMeta(row.length > 12 ? row[12] : "");
+  var sliceMeta = defaultLogMeta();
+  sliceMeta.overtimeContinue = !!logMeta.overtimeContinue;
+  sliceMeta.batchId = logMeta.batchId;
+  sliceMeta.batchShare = logMeta.batchShare;
+  sliceMeta.batchJoinedAt = logMeta.batchJoinedAt;
+  sliceMeta.batchSplitAt = logMeta.batchSplitAt;
   var slices = [];
   var rangeFromMs = rangeFrom ? rangeFrom.getTime() : 0;
   var rangeToMs = rangeTo ? rangeTo.getTime() : 0;
@@ -4285,7 +4299,7 @@ function splitWorkByDay(row, rangeFrom, rangeTo) {
       if (sliceEndMs > sliceStartMs) {
         var sliceStart = new Date(sliceStartMs);
         var sliceEnd = new Date(sliceEndMs);
-        var mins = calculateWorkMinutesMeta(sliceStart, sliceEnd, task, emptyMeta, 0);
+        var mins = calculateWorkMinutesMeta(sliceStart, sliceEnd, task, sliceMeta, 0);
         if (mins > 0) {
           daySlices.push({
             dayStamp: dayStamp,
