@@ -314,6 +314,7 @@ assert.ok(board.weekStarting.some((o) => o.orderId === "S260100 A"));
 assert.ok(board.bands.some((b) => b.label === "Production Meeting"));
 assert.ok(board.bands.some((b) => b.label === "Lunch"));
 assert.ok(board.bands.some((b) => b.label === "Cleaning"));
+assert.strictEqual(board.bands.find((b) => b.id === "cleaning").startMin, 15 * 60 + 45, "cleaning band must not start before 15:45");
 assert.strictEqual(trip.rows.find((r) => r.process === "Profile Cutting").workerName, "Willard");
 assert.strictEqual(trip.rows.find((r) => r.process === "Tagging").workerName, "Sipho");
 assert.strictEqual(trip.rows.find((r) => r.process === "Welding").workerName, "Thabo");

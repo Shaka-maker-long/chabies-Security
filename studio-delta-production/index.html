@@ -3039,7 +3039,8 @@
     const SHIFT_START_MINS = 7 * 60 + 45;
     const SHIFT_END_MINS = 15 * 60 + 45;
     const MEETING_END_MINS = 8 * 60;
-    const CLEANING_START_MINS = 15 * 60 + 15;
+    const CLEANING_START_MINS = SHIFT_END_MINS;
+    const CLEANING_END_MINS = 16 * 60;
     function asSast(date) { return new Date(date.getTime() + 2 * 60 * 60 * 1000); }
     function sastMinsOfDay(date) {
       const d = asSast(date);
@@ -3067,8 +3068,8 @@
       if (mins < SHIFT_START_MINS) return { id: 'end', label: 'End of shift' };
       if (mins < MEETING_END_MINS) return { id: 'meeting', label: 'Production Meeting' };
       if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) return { id: 'lunch', label: 'Lunch' };
-      if (mins >= CLEANING_START_MINS && mins < SHIFT_END_MINS) return { id: 'cleaning', label: 'Cleaning' };
-      if (mins >= SHIFT_END_MINS) return { id: 'end', label: 'End of shift' };
+      if (mins >= CLEANING_START_MINS && mins < CLEANING_END_MINS) return { id: 'cleaning', label: 'Cleaning' };
+      if (mins >= CLEANING_END_MINS) return { id: 'end', label: 'End of shift' };
       return { id: 'working', label: 'Working' };
     }
     function formatEstimateClock(date) {
@@ -4048,7 +4049,7 @@
             const step = processToRoadStep(row && row.process);
             openFloorBoard(step.role, step.id, step.qcFilter || '');
           };
-          if (shift.id === 'end') {
+          if (shift.id === 'end' || shift.id === 'cleaning') {
             showFloorDayWork(btn, pin ? pin.name : worker, rows, opener);
             return;
           }

@@ -40,7 +40,7 @@ const OTHER_TASKS = ["Cleaning", "Production Meeting", "Maintenance", "Material"
 const DAY_BANDS = [
   { id: "meeting", label: "Production Meeting", startMin: 7 * 60 + 45, endMin: 8 * 60, bg: "#fde68a", fg: "#92400e" },
   { id: "lunch", label: "Lunch", startMin: 12 * 60, endMin: 12 * 60 + 30, bg: "#e5e7eb", fg: "#374151" },
-  { id: "cleaning", label: "Cleaning", startMin: 15 * 60 + 15, endMin: 15 * 60 + 45, bg: "#a7f3d0", fg: "#065f46" }
+  { id: "cleaning", label: "Cleaning", startMin: 15 * 60 + 45, endMin: 16 * 60, bg: "#a7f3d0", fg: "#065f46" }
 ];
 
 const WINDOWS = [

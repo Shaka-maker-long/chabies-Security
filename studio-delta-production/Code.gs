@@ -26,7 +26,8 @@ var SHIFT_START_MINS = 7 * 60 + 45;
 var SHIFT_END_MINS = 15 * 60 + 45;
 var SHIFT_LOCK_MINS = SHIFT_END_MINS;
 var MEETING_END_MINS = 8 * 60;
-var CLEANING_START_MINS = 15 * 60 + 15;
+var CLEANING_START_MINS = SHIFT_END_MINS; // 15:45 — not during paid afternoon
+var CLEANING_END_MINS = 16 * 60;
 var LUNCH_START_MINS = 12 * 60;
 var LUNCH_END_MINS = 12 * 60 + 30;
 var SHIFT_DURATION = STANDARD_DAY_MINS;
@@ -3886,8 +3887,8 @@ function facilityShiftState(now) {
   if (mins < SHIFT_START_MINS) return { id: "end", label: "End of shift" };
   if (mins < MEETING_END_MINS) return { id: "meeting", label: "Production Meeting" };
   if (mins >= LUNCH_START_MINS && mins < LUNCH_END_MINS) return { id: "lunch", label: "Lunch" };
-  if (mins >= CLEANING_START_MINS && mins < SHIFT_END_MINS) return { id: "cleaning", label: "Cleaning" };
-  if (mins >= SHIFT_END_MINS) return { id: "end", label: "End of shift" };
+  if (mins >= CLEANING_START_MINS && mins < CLEANING_END_MINS) return { id: "cleaning", label: "Cleaning" };
+  if (mins >= CLEANING_END_MINS) return { id: "end", label: "End of shift" };
   return { id: "working", label: "Working" };
 }
 
