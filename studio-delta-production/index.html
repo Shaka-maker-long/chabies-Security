@@ -1684,7 +1684,7 @@
         </div>
         <button id="btnSwitchTask" class="btn btn-outline-dark btn-sm d-none" onclick="showProductionTasks()">Switch task</button>
       </div>
-      <p id="workLockOffNote" class="small text-muted mb-3">The floor locks after 15:45, on weekends, and after 8 hours. A job already on someone else stays locked. Admin is look-only. Grant overtime on Workers.</p>
+      <p id="workLockOffNote" class="small text-muted mb-3">The floor locks after 15:45, on weekends, and after 8 hours. A job already on someone else stays locked. Admin is look-only except Quality Control when that task is ticked on Users. Grant overtime on Workers.</p>
       
       <div class="row mb-3">
         <div class="col-md-6 mb-2 mb-md-0">
@@ -4970,7 +4970,7 @@
           const productShot = productShotHtml(o);
 
           let innerBtn = '';
-          if (session.isAdmin && !WORK_LOCKS_DISABLED) {
+          if (adminIsLookOnlyOnBoard()) {
              innerBtn = `<button class="btn btn-secondary w-100 position-relative" style="z-index: 10;" disabled><i class="bi bi-eye-fill"></i> ADMIN VIEW ONLY</button>`;
           } else {
              if (isMine) {
@@ -5000,7 +5000,7 @@
           const batchStartStatuses =['ready for powder coating', 'ready for delivery'];
           const batchFinishStatuses =['powder coating', 'out for delivery'];
           let isSelectable = false;
-          if (!isLocked && (!session.isAdmin || WORK_LOCKS_DISABLED)) {
+          if (!isLocked && !adminIsLookOnlyOnBoard()) {
              if ((!isMine && batchStartStatuses.includes(lowerStatus)) || (isMine && batchFinishStatuses.includes(lowerStatus))) {
                  isSelectable = true;
              }
@@ -5131,6 +5131,17 @@
       const tasks = session.tasks || [];
       if (tasks.indexOf(name) !== -1) return true;
       return session.role === name;
+    }
+
+    function hasQcFloorAccess() {
+      return (session.tasks || []).indexOf('Quality Control') !== -1;
+    }
+
+    function adminIsLookOnlyOnBoard() {
+      if (WORK_LOCKS_DISABLED) return false;
+      if (!(session.isAdmin || session.role === 'Admin')) return false;
+      if (session.role === 'Quality Control' && hasQcFloorAccess()) return false;
+      return true;
     }
 
     function canShowNoPlateTick() {

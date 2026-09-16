@@ -21,6 +21,7 @@ book.getSheetByName("Users").appendRow([
 ]);
 book.getSheetByName("Users").appendRow(["Admin", "Manager", "admin", "", "Admin", "Yes"]);
 book.getSheetByName("Users").appendRow(["Siya", "Production Manager", "siya", "", "Admin", "Yes"]);
+book.getSheetByName("Users").appendRow(["QC Admin", "Admin", "qcadm", "Quality Control", "Admin", "Yes"]);
 persistWorkbook();
 
 const weldOrder = db.upsertOrder({
@@ -226,6 +227,40 @@ async function main() {
   const blockedDraw = await callShopFunction("startOrder", [waitingDraw.id, "Sipho", "Profile Cutting", [], "", false, null, CONFIRM]);
   assert.strictEqual(blockedDraw.success, false, JSON.stringify(blockedDraw));
   assert.ok(/drawing/i.test(String(blockedDraw.message || "")), JSON.stringify(blockedDraw));
+
+  const adminLogin = await callShopFunction("verifyGlobalLogin", ["Admin", "admin"]);
+  assert.strictEqual(adminLogin.success, true, JSON.stringify(adminLogin));
+  assert.strictEqual(adminLogin.isAdmin, true);
+  assert.ok((adminLogin.tasks || []).indexOf("Quality Control") === -1, "look-only admin must not inherit every floor task");
+
+  const qcAdminLogin = await callShopFunction("verifyGlobalLogin", ["QC Admin", "qcadm"]);
+  assert.strictEqual(qcAdminLogin.success, true, JSON.stringify(qcAdminLogin));
+  assert.strictEqual(qcAdminLogin.isAdmin, true);
+  assert.ok(qcAdminLogin.tasks.indexOf("Quality Control") !== -1, JSON.stringify(qcAdminLogin));
+
+  await callShopFunction("grantOvertime", ["QC Admin", "", "Admin", "test"]);
+  const qcOrder = db.upsertOrder({
+    order_number: "SD-QC-ADMIN",
+    status: "Ready for Final QC",
+    product: "Gate",
+    client_name: "Test Client"
+  });
+  const lookOnlyQc = await callShopFunction("startOrder", [qcOrder.id, "Admin", "Quality Control", [], "", false, null, CONFIRM]);
+  assert.strictEqual(lookOnlyQc.success, false, JSON.stringify(lookOnlyQc));
+  assert.ok(/not assigned/i.test(String(lookOnlyQc.message || lookOnlyQc.error || "")), JSON.stringify(lookOnlyQc));
+
+  const qcAdminStart = await callShopFunction("startOrder", [qcOrder.id, "QC Admin", "Quality Control", [], "", false, null, CONFIRM]);
+  assert.strictEqual(qcAdminStart.success, true, JSON.stringify(qcAdminStart));
+
+  const extraWeld = db.upsertOrder({
+    order_number: "SD-WELD-ADMIN",
+    status: "Ready for Welding",
+    product: "Gate",
+    client_name: "Test Client"
+  });
+  const qcAdminWeld = await callShopFunction("startOrder", [extraWeld.id, "QC Admin", "Welding", [], "", false, null, CONFIRM]);
+  assert.strictEqual(qcAdminWeld.success, false, JSON.stringify(qcAdminWeld));
+  assert.ok(/not assigned/i.test(String(qcAdminWeld.message || qcAdminWeld.error || "")), JSON.stringify(qcAdminWeld));
 
   const steelGrid = book.getSheetByName("Steel_Usage").getDataRange().getValues();
   const weldRows = steelGrid.filter((row, i) => i > 0 && String(row[1]) === "SD-WELD");

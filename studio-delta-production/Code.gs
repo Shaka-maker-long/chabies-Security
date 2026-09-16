@@ -36,7 +36,7 @@ var RESUME_CHASE_MINS = 8 * 60;
 var IDLE_GRACE_MINS = 15;
 var TAB_OVERTIME = "Overtime_Grants";
 var TAB_RESUME_CHASE = "Resume_Chase";
-// false = assignment lock, Admin look-only, after-15:45 / weekend / 8-hour lock.
+// false = assignment lock, Admin look-only (except Quality Control when that task is ticked), after-15:45 / weekend / 8-hour lock.
 var WORK_LOCKS_DISABLED = false;
 function workLocksDisabled() {
   try {
@@ -136,9 +136,6 @@ function parseUserTasks(roleCell, tasksCell, forceAdmin) {
   var extra = String(tasksCell || "").trim();
   var roleLower = role.toLowerCase();
   var isAdmin = !!forceAdmin || roleLower === "admin" || roleLower === "manager";
-  if (isAdmin) {
-    return { isAdmin: true, isQcOnly: false, tasks: KNOWN_FLOOR_TASKS.slice(), jobTitle: role || "Admin" };
-  }
 
   var found = [];
   function addTask(name) {
@@ -146,13 +143,14 @@ function parseUserTasks(roleCell, tasksCell, forceAdmin) {
     if (found.indexOf(name) === -1) found.push(name);
   }
 
-  var source = extra || role;
+  // Office Admin keeps the Tasks ticks they were given. An empty Tasks cell is look-only, not every shop job.
+  var source = extra || (isAdmin ? "" : role);
   var parts = String(source).split(/[,/&+|]+/);
   for (var p = 0; p < parts.length; p++) {
     addTask(canonicalTaskName(parts[p]));
   }
 
-  if (found.length === 0) {
+  if (found.length === 0 && source) {
     var blob = String(source).toLowerCase();
     var keys = Object.keys(TASK_ALIAS_MAP).sort(function(a, b) { return b.length - a.length; });
     for (var k = 0; k < keys.length; k++) {
@@ -162,16 +160,18 @@ function parseUserTasks(roleCell, tasksCell, forceAdmin) {
     }
   }
 
-  var qcOnlyRole = roleLower === "quality control" || roleLower === "qc";
-  if (qcOnlyRole) {
-    return { isAdmin: false, isQcOnly: true, tasks: ["Quality Control"], jobTitle: role || "Quality Control" };
+  if (!isAdmin) {
+    var qcOnlyRole = roleLower === "quality control" || roleLower === "qc";
+    if (qcOnlyRole) {
+      return { isAdmin: false, isQcOnly: true, tasks: ["Quality Control"], jobTitle: role || "Quality Control" };
+    }
   }
 
-  var isQcOnly = found.length === 1 && found[0] === "Quality Control";
-  if (found.length === 0 && role) {
+  var isQcOnly = !isAdmin && found.length === 1 && found[0] === "Quality Control";
+  if (found.length === 0 && role && !isAdmin) {
     addTask(canonicalTaskName(role));
   }
-  return { isAdmin: false, isQcOnly: isQcOnly, tasks: found, jobTitle: role || (found[0] || "") };
+  return { isAdmin: isAdmin, isQcOnly: isQcOnly, tasks: found, jobTitle: role || (found[0] || "") };
 }
 
 function readUserRowProfile(row) {
@@ -209,12 +209,18 @@ function getUserProfileByName(workerName) {
 function workerCanPerformTask(workerName, task) {
   var profile = getUserProfileByName(workerName);
   if (!profile) return false;
-  if (profile.isAdmin) return true;
   var want = canonicalTaskName(task) || String(task || "").trim();
   if (profile.tasks.indexOf(want) !== -1) return true;
   // Assemblers and painters may start Paint Preparation without a separate login task.
   if (want === "Paint Preparation" && (profile.tasks.indexOf("Assembly") !== -1 || profile.tasks.indexOf("Painting") !== -1)) return true;
   return false;
+}
+
+function workerCanViewRole(workerName, role) {
+  var profile = getUserProfileByName(workerName);
+  if (!profile) return false;
+  if (profile.isAdmin) return true;
+  return workerCanPerformTask(workerName, role);
 }
 
 
@@ -1004,7 +1010,7 @@ function reconcileProfileCuttingStatuses_() {
 
 function getOrdersForRole(role, workerName, skipCache) {
   reconcileProfileCuttingStatuses_();
-  if (workerName && role && role !== "Admin" && !workerCanPerformTask(workerName, role) && !workLocksDisabled()) {
+  if (workerName && role && role !== "Admin" && !workerCanViewRole(workerName, role) && !workLocksDisabled()) {
     return [];
   }
   var cacheKey = "orders:" + String(role || "");
@@ -2013,7 +2019,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
     }
 
     if (!workerCanPerformTask(workerName, role)) {
-      throw new Error(workerName + " is not assigned to " + role + ". Ask admin to add it on the Users sheet.");
+      return { success: false, message: workerName + " is not assigned to " + role + ". Ask admin to add it on the Users sheet." };
     }
 
     var exceptOrders = [];
