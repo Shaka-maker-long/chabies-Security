@@ -1028,6 +1028,11 @@ function hasSpecifications(row) {
   return true;
 }
 
+function readyToCost(row) {
+  if (!hasClientDetails(row)) return false;
+  return hasSpecifications(row);
+}
+
 function isAutoCaptureStatus(status) {
   const s = String(status || "New").trim() || "New";
   return s === "New"
@@ -1095,7 +1100,7 @@ function applyCaptureRoute(enquiryNo, actorName, body) {
   const suggested = enough === "yes"
     ? (!hasClientDetails(raw)
       ? "Waiting on clients personal details"
-      : (namedProducts(raw).length ? "Costing" : "Waiting on clients specifictions"))
+      : (readyToCost(raw) ? "Costing" : "Waiting on clients specifictions"))
     : classifyCapture(raw);
   if (suggested === "Costing") {
     if (raw.status === "Costing" && openOfKind(raw, "cost_sheet")) {
@@ -2040,6 +2045,7 @@ module.exports = {
   classifyCapture,
   parseEnoughForCosting,
   isAutoCaptureStatus,
+  readyToCost,
   applyCaptureRoute,
   availableActions,
   canAct,

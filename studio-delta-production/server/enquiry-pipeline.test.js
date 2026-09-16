@@ -1432,8 +1432,24 @@ pipeline.applyAction(customReady.enquiry_no, "Coster", {
   action: "add_correspondence",
   correspondence_links: "https://files.example/custom-enough"
 });
-const enoughYes = pipeline.applyCaptureRoute(customReady.enquiry_no, "Coster", {
+const namedNotEnough = pipeline.applyCaptureRoute(customReady.enquiry_no, "Coster", {
   enough_for_costing: "yes"
+});
+assert.strictEqual(namedNotEnough.row.status, "Waiting on clients specifictions", "a Custom product name is not the customisation");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "chase_info" && t.enquiry_no === customReady.enquiry_no));
+db.upsertEnquiry({
+  enquiry_no: customReady.enquiry_no,
+  date_enquired: "15/09/2026",
+  client_name: "Custom Enough",
+  client_email: "customenough@example.com",
+  province: "Gauteng",
+  enquiry_type: "Custom",
+  products: [{ product: "Air Chair", category: "Chair" }],
+  custom_specs: [{ kind: "Dimensions", detail: "1800 x 900 x 450" }]
+});
+const enoughYes = pipeline.applyCaptureRoute(customReady.enquiry_no, "Coster", {
+  enough_for_costing: "yes",
+  correspondence_links: "https://files.example/custom-enough"
 });
 assert.strictEqual(enoughYes.row.status, "Costing");
 assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === customReady.enquiry_no));
@@ -1507,6 +1523,16 @@ assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" &&
 pipeline.applyAction(wrongSupplier.enquiry_no, "Coster", {
   action: "add_correspondence",
   correspondence_links: "https://files.example/wrong-sup-again"
+});
+db.upsertEnquiry({
+  enquiry_no: wrongSupplier.enquiry_no,
+  date_enquired: "15/09/2026",
+  client_name: "Wrong Supplier Status",
+  client_email: "wrongsup@example.com",
+  province: "Gauteng",
+  enquiry_type: "Custom",
+  products: [{ product: "Air Chair", category: "Chair" }],
+  custom_specs: [{ kind: "Colour", detail: "matte black" }]
 });
 const laterCost = pipeline.applyCaptureRoute(wrongSupplier.enquiry_no, "Lesedi", { enough_for_costing: "yes" });
 assert.strictEqual(laterCost.row.status, "Costing");

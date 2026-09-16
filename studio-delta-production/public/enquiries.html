@@ -337,11 +337,21 @@
             <button class="ghost" type="button" onclick="addCaptureLine()">Add product</button>
           </div>
         </div>
+        <div id="captureCustomBlock" style="display:none">
+          <p class="hint" style="margin:0 0 8px;color:#1d2939;font-weight:600">Custom specification</p>
+          <div id="captureSpecList" class="spec-grid"></div>
+        </div>
+        <div id="captureDesignBlock" style="display:none">
+          <label>New design description *
+            <textarea id="captureDesignDesc" placeholder="Describe the new design: what it is, materials, size, how it will be used."></textarea>
+          </label>
+        </div>
         <div class="enough-box" id="captureEnoughBox">
           <p>Is there enough information to move this to costing?</p>
+          <p class="hint" style="margin:0 0 8px;font-weight:400">A product name is not enough if you still need to know what they want customised — size, colour, or other.</p>
           <div class="enough-opts">
-            <label><input type="radio" name="cap_enough" value="yes" onchange="syncCaptureEnough()"> Yes — continue to costing</label>
-            <label><input type="radio" name="cap_enough" value="no" onchange="syncCaptureEnough()"> No — allocate someone to chase the missing information</label>
+            <label><input type="radio" name="cap_enough" value="yes" onchange="syncCaptureEnough()"> Yes — the custom change is known, continue to costing</label>
+            <label><input type="radio" name="cap_enough" value="no" onchange="syncCaptureEnough()"> No — allocate someone to chase what they want customised</label>
           </div>
           <div id="capChaseWrap" hidden>
             <label>Who should chase this?
@@ -355,15 +365,6 @@
               </select>
             </label>
           </div>
-        </div>
-        <div id="captureCustomBlock" style="display:none">
-          <p class="hint" style="margin:0 0 8px;color:#1d2939;font-weight:600">Custom specification</p>
-          <div id="captureSpecList" class="spec-grid"></div>
-        </div>
-        <div id="captureDesignBlock" style="display:none">
-          <label>New design description *
-            <textarea id="captureDesignDesc" placeholder="Describe the new design: what it is, materials, size, how it will be used."></textarea>
-          </label>
         </div>
         <label>Comment
           <textarea id="cap_comment" placeholder="Anything costing should know"></textarea>
@@ -558,7 +559,7 @@
     </div>
   </div>
   <script src="/office-auth.js?v=drawing-wait"></script>
-  <script src="/enquiry-process.js?v=keep-waiting"></script>
+  <script src="/enquiry-process.js?v=custom-name"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 112, true],
@@ -1827,7 +1828,19 @@
       const type = String((payload && payload.enquiry_type) || "").trim();
       const named = (payload && payload.products || []).filter((p) => String(p.product || "").trim());
       if (!type || !named.length) return false;
-      if (captureEnoughChoice() === "yes") return true;
+      if (captureEnoughChoice() === "yes") {
+        if (type === "Custom") {
+          return (payload.custom_specs || []).some((s) => {
+            const kind = String((s && s.kind) || "").trim();
+            const detail = String((s && s.detail) || "").trim();
+            return !!(kind && detail && !/^other$/i.test(kind));
+          });
+        }
+        if (type === "New Design") {
+          return String((payload && (payload.design_description || payload.request)) || "").trim().length >= 20;
+        }
+        return true;
+      }
       if (type === "Custom") {
         return (payload.custom_specs || []).some((s) => {
           const kind = String((s && s.kind) || "").trim();
