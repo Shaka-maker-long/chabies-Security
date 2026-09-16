@@ -93,6 +93,39 @@
       white-space: nowrap;
       max-width: 204px;
     }
+    .product-clip[data-product-shot] {
+      cursor: zoom-in;
+      border-bottom: 1px dotted #9CA3AF;
+      width: fit-content;
+      max-width: 204px;
+    }
+    #productShot {
+      position: fixed;
+      z-index: 80;
+      width: min(280px, calc(100vw - 24px));
+      background: #fff;
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      box-shadow: 0 12px 32px rgba(16,24,40,.2);
+      padding: 8px;
+      pointer-events: none;
+    }
+    #productShot[hidden] { display: none !important; }
+    #productShot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 280px;
+      object-fit: contain;
+      background: #f8f9fc;
+      border-radius: 6px;
+    }
+    #productShot .product-shot-name {
+      margin: 8px 2px 2px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
     .col-h { width: 46px; min-width: 46px; max-width: 46px; }
     .col-c, .col-hrs, .col-money { width: 84px; min-width: 84px; max-width: 84px; }
     .total-row td { background: var(--totals-bg) !important; font-weight: 700; border-top: 2px solid #9CA3AF; }
@@ -153,11 +186,16 @@
       .col-order { width: 88px; min-width: 88px; max-width: 88px; }
       .col-product { width: 140px; min-width: 140px; max-width: 140px; }
       .product-clip { max-width: 124px; }
+      .product-clip[data-product-shot] { max-width: 124px; }
     }
   </style>
 </head>
 <body>
   <div id="modal-backdrop"></div>
+  <div id="productShot" hidden>
+    <img alt="">
+    <p class="product-shot-name"></p>
+  </div>
   <div class="mask" id="clearMask">
     <div class="sheet" role="dialog" aria-modal="true">
       <header>
@@ -192,7 +230,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Production cost</h1>
-      <p class="lede">Labour from shop-floor time (shift and together-time) × that person's hourly rate. Materials are steel metres × the steel rate, glass and powder actuals typed when the load is received, plus wood and backboard logged on the floor. Backboard size × the backboard rate is allocated onto that order. Wood rand stay R0 until those lines have a rate or actual.</p>
+      <p class="lede">Labour from shop-floor time (shift and together-time) × that person's hourly rate. Materials are steel metres × the steel rate, glass and powder actuals typed when the load is received, plus wood and backboard logged on the floor. Backboard size × the backboard rate is allocated onto that order. Wood rand stay R0 until those lines have a rate or actual. Hover a product name for the catalog photo — it sits beside the name so the hours and rands stay readable.</p>
     </div>
     <div class="nav-controls">
       <span class="msg" id="status"></span>
@@ -359,11 +397,43 @@
     let appData = { orders: [] };
     let steelChartInstance = null;
     function esc(s) {
-      return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     }
     function formatMoney(amount) {
       const n = Number(amount) || 0;
       return n < 0 ? "-R" + Math.abs(Math.round(n)).toLocaleString("en-ZA") : "R" + Math.round(n).toLocaleString("en-ZA");
+    }
+    function productCell(o) {
+      const name = o && o.product ? o.product : "—";
+      const shot = o && o.img ? " data-product-shot=\"" + esc(o.img) + "\"" : "";
+      return "<td class='col-product'><span class='product-clip'" + shot + ">" + esc(name) + "</span></td>";
+    }
+    function hideProductShot() {
+      const box = document.getElementById("productShot");
+      if (box) box.hidden = true;
+    }
+    function showProductShot(el) {
+      const url = el && el.getAttribute("data-product-shot");
+      const box = document.getElementById("productShot");
+      if (!url || !box) return;
+      const img = box.querySelector("img");
+      const name = box.querySelector(".product-shot-name");
+      const label = String(el.textContent || "").trim();
+      img.alt = label;
+      img.src = url;
+      name.textContent = label;
+      box.setAttribute("data-url", url);
+      box.hidden = false;
+      const r = el.getBoundingClientRect();
+      const w = box.offsetWidth || 280;
+      const h = box.offsetHeight || 300;
+      let left = r.right + 10;
+      let top = r.top;
+      if (left + w > window.innerWidth - 8) left = Math.max(8, r.left - w - 10);
+      if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+      if (top < 8) top = 8;
+      box.style.left = left + "px";
+      box.style.top = top + "px";
     }
     function setMsg(id, text, bad) {
       const el = document.getElementById(id);
@@ -408,6 +478,7 @@
       renderAll();
     }
     function switchTab(tab) {
+      hideProductShot();
       ["logs","monthly","steel","rates"].forEach((id) => {
         document.getElementById("tab-" + (id === "steel" ? "steel" : id)).style.display = tab === id ? "block" : "none";
         const btn = document.getElementById("tabBtn" + (id === "logs" ? "Logs" : id === "monthly" ? "Monthly" : id === "steel" ? "Steel" : "Rates"));
@@ -431,8 +502,8 @@
       const scroller = document.getElementById(scrollerId);
       if (!meta || !scroller || meta.dataset.bound) return;
       meta.dataset.bound = "1";
-      scroller.addEventListener("scroll", () => syncScrollY(scroller, meta), { passive: true });
-      meta.addEventListener("scroll", () => syncScrollY(meta, scroller), { passive: true });
+      scroller.addEventListener("scroll", () => { hideProductShot(); syncScrollY(scroller, meta); }, { passive: true });
+      meta.addEventListener("scroll", () => { hideProductShot(); syncScrollY(meta, scroller); }, { passive: true });
     }
     function alignFreezeRows(metaId, gridId) {
       const meta = document.getElementById(metaId);
@@ -523,9 +594,7 @@
       }
       const grand = { h: 0, c: 0, m: 0, oh: 0, s: 0, p: 0 };
       metaBody.innerHTML = orders.map((o) => {
-        return "<tr><td class='col-order'><b>" + esc(o.orderNum) + "</b></td>" +
-          "<td class='col-product tooltip'><span class='product-clip'>" + esc(o.product || "—") + "</span>" +
-          "<div class='tooltiptext'>" + (o.img ? "<img src=\"" + esc(o.img) + "\" style='width:100%;border-radius:4px;margin-bottom:8px'>" : "") + "<b>" + esc(o.product) + "</b></div></td></tr>";
+        return "<tr><td class='col-order'><b>" + esc(o.orderNum) + "</b></td>" + productCell(o) + "</tr>";
       }).join("");
       body.innerHTML = orders.map((o) => {
         const ohCost = includeOH ? (o.overheadCost || 0) : 0;
@@ -594,8 +663,7 @@
       const monthGrand = {};
       months.forEach((m) => { monthGrand[m] = { hrs: 0, cost: 0, mat: 0, oh: 0 }; });
       metaBody.innerHTML = orders.map((o) => {
-        return "<tr><td class='col-order'><b>" + esc(o.orderNum) + "</b></td>" +
-          "<td class='col-product'><span class='product-clip'>" + esc(o.product) + "</span></td></tr>";
+        return "<tr><td class='col-order'><b>" + esc(o.orderNum) + "</b></td>" + productCell(o) + "</tr>";
       }).join("");
       tbody.innerHTML = orders.map((o) => {
         let rowH = 0, rowC = 0, rowM = 0, rowOH = 0;
@@ -816,7 +884,19 @@
       setMsg("backboardMsg", "Saved " + type + ".");
       load();
     };
+    document.addEventListener("pointerover", (e) => {
+      const hit = e.target.closest && e.target.closest("[data-product-shot]");
+      if (hit) showProductShot(hit);
+    });
+    document.addEventListener("pointerout", (e) => {
+      const from = e.target.closest && e.target.closest("[data-product-shot]");
+      const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-product-shot]") : null;
+      if (from && from !== to) hideProductShot();
+    });
+    window.addEventListener("scroll", hideProductShot, true);
     document.addEventListener("click", (e) => {
+      if (e.target.closest && e.target.closest("[data-product-shot]")) return;
+      hideProductShot();
       const cell = e.target.closest(".tooltip");
       if (e.target.closest(".tooltiptext") && cell && cell.classList.contains("locked")) return;
       document.querySelectorAll(".tooltip").forEach((t) => t.classList.remove("locked"));
