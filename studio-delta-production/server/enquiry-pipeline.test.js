@@ -1437,6 +1437,17 @@ const enoughYes = pipeline.applyCaptureRoute(customReady.enquiry_no, "Coster", {
 });
 assert.strictEqual(enoughYes.row.status, "Costing");
 assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === customReady.enquiry_no));
+const fromCosting = pipeline.applyAction(customReady.enquiry_no, "Lesedi", {
+  action: "set_status",
+  status: "Waiting on clients specifictions",
+  assignee: "Coster"
+});
+assert.strictEqual(fromCosting.row.status, "Waiting on clients specifictions");
+assert.strictEqual(fromCosting.row.enough_for_costing, "no");
+const noBounce = pipeline.applyCaptureRoute(customReady.enquiry_no, "Lesedi");
+assert.strictEqual(noBounce.row.status, "Waiting on clients specifictions");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "chase_info" && t.enquiry_no === customReady.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === customReady.enquiry_no));
 
 const wrongSupplier = db.upsertEnquiry({
   date_enquired: "15/09/2026",
@@ -1485,9 +1496,20 @@ const corrected = pipeline.applyAction(wrongSupplier.enquiry_no, "Lesedi", {
   assignee: "Coster"
 });
 assert.strictEqual(corrected.row.status, "Waiting on clients specifictions");
+assert.strictEqual(corrected.row.enough_for_costing, "no");
 assert.ok(corrected.row.events.some((ev) => ev.kind === "set_status" && /Status corrected/.test(ev.label || "")));
 assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "chase_info" && t.enquiry_no === wrongSupplier.enquiry_no));
 assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "supplier" && t.enquiry_no === wrongSupplier.enquiry_no));
+const stayedWaiting = pipeline.applyCaptureRoute(wrongSupplier.enquiry_no, "Lesedi");
+assert.strictEqual(stayedWaiting.row.status, "Waiting on clients specifictions");
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "chase_info" && t.enquiry_no === wrongSupplier.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === wrongSupplier.enquiry_no));
+pipeline.applyAction(wrongSupplier.enquiry_no, "Coster", {
+  action: "add_correspondence",
+  correspondence_links: "https://files.example/wrong-sup-again"
+});
+const laterCost = pipeline.applyCaptureRoute(wrongSupplier.enquiry_no, "Lesedi", { enough_for_costing: "yes" });
+assert.strictEqual(laterCost.row.status, "Costing");
 
 const keptOrder = db.upsertOrder({
   order_number: "9001",

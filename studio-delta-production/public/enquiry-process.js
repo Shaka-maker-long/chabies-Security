@@ -1037,6 +1037,10 @@
     if (/Costing|Re-Cost/.test(row.status || "")) {
       return action.id === "complete_cost_sheet";
     }
+    if (/Waiting on clients|Waiting on productions/.test(row.status || "") || (row.tasks || []).some((t) => t.kind === "chase_info" && t.status === "open")) {
+      if (actions.some((a) => a.id === "complete_chase")) return action.id === "complete_chase";
+      if (actions.some((a) => a.id === "assign_waiting")) return action.id === "assign_waiting";
+    }
     if (actions.some((a) => a.id === "assign_costing") && !/Quoted|Followed Up/.test(row.status || "")) {
       return action.id === "assign_costing";
     }

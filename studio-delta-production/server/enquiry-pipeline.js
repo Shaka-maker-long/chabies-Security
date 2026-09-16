@@ -889,13 +889,18 @@ function applyManualStatus(row, actor, body) {
     || actor;
   cancelOpenProcessKinds(row);
   row.status = status;
-  if (status === "New") return;
+  if (status === "New") {
+    rawEnoughClear(row);
+    return;
+  }
   if (WAITING_STATUSES.indexOf(status) >= 0) {
+    row.enough_for_costing = "no";
     addTask(row, "chase_info", requireAssignee(assignee), { note: status });
     return;
   }
   if (status === "Costing" || status === "Re-Cost") {
     if (!namedProducts(row).length) throw new Error("Add at least one product name before moving this to costing");
+    row.enough_for_costing = "yes";
     addTask(row, "cost_sheet", requireRoleAssignee("Costing", body && body.assignee, lastAssignee(row, "cost_sheet") || assignee));
     return;
   }
@@ -1037,6 +1042,14 @@ function parseEnoughForCosting(value) {
   return "";
 }
 
+function rawEnoughClear(row) {
+  if (row && row.enough_for_costing) row.enough_for_costing = "";
+}
+
+function waitingChaseOpen(row) {
+  return WAITING_STATUSES.indexOf(row && row.status || "") >= 0 && !!openOfKind(row, "chase_info");
+}
+
 function classifyCapture(row) {
   if (!hasClientDetails(row)) return "Waiting on clients personal details";
   if (!hasSpecifications(row)) return "Waiting on clients specifictions";
@@ -1048,13 +1061,17 @@ function applyCaptureRoute(enquiryNo, actorName, body) {
   const incoming = body || {};
   const raw = db.getEnquiryRaw(enquiryNo);
   if (!raw) throw new Error("Enquiry not found. Save the enquiry first.");
-  const enough = parseEnoughForCosting(incoming.enough_for_costing);
-  if (enough) raw.enough_for_costing = enough;
+  const incomingEnough = parseEnoughForCosting(incoming.enough_for_costing);
+  if (incomingEnough) raw.enough_for_costing = incomingEnough;
+  const enough = incomingEnough || parseEnoughForCosting(raw.enough_for_costing);
   if (!isAutoCaptureStatus(raw.status || "New")) {
-    if (enough) {
+    if (incomingEnough) {
       raw.updated_at = db.nowIso();
       db.saveEnquiryRecord(raw);
     }
+    return processSnapshot(enquiryNo, actor);
+  }
+  if (!incomingEnough && enough === "no" && waitingChaseOpen(raw)) {
     return processSnapshot(enquiryNo, actor);
   }
   if (enough === "no") {
