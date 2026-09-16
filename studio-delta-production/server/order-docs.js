@@ -1,6 +1,6 @@
 "use strict";
 
-const { listEnquiries, formatOrderId } = require("./db");
+const { listEnquiries, formatOrderId, drawingIsRequired, drawingFilePresent } = require("./db");
 const { normalizeBaseOrderNumber } = require("./create-order-from-enquiry");
 const { getBook } = require("./workbook-store");
 
@@ -72,8 +72,8 @@ function findEnquiry(order, index) {
 
 function drawingDoc(enquiry) {
   if (!enquiry) return { drawing_url: "", drawing_required: false };
-  const required = !!(enquiry.drawing && enquiry.drawing.required);
-  const stored = enquiry.drawing && enquiry.drawing.file && enquiry.drawing.file.stored_as;
+  const required = drawingIsRequired(enquiry.drawing);
+  const stored = drawingFilePresent(enquiry.drawing);
   return {
     drawing_url: stored
       ? "/api/office/enquiries/" + encodeURIComponent(enquiry.enquiry_no) + "/files/drawing"

@@ -1292,10 +1292,34 @@ function captureFieldsChanged(existing, payload) {
   return false;
 }
 
+function drawingIsRequired(drawing) {
+  if (!drawing || typeof drawing !== "object") return false;
+  const v = drawing.required;
+  if (v === true || v === 1) return true;
+  const s = String(v == null ? "" : v).trim().toLowerCase();
+  return s === "yes" || s === "true" || s === "1";
+}
+
+function drawingFilePresent(drawing) {
+  return !!(drawing && drawing.file && drawing.file.stored_as);
+}
+
 function drawingStillNeeded(row) {
   const drawing = row && row.drawing;
-  if (!drawing || drawing.required !== true) return false;
-  return !(drawing.file && drawing.file.stored_as);
+  if (!drawingIsRequired(drawing)) return false;
+  return !drawingFilePresent(drawing);
+}
+
+function linkedOrdersWaitingForDrawing(enquiry) {
+  if (drawingFilePresent(enquiry && enquiry.drawing)) return [];
+  return ordersLinkedToEnquiry(enquiry).filter((o) => isWaitingForDrawing(o.status));
+}
+
+function enquiryNeedsOpenDrawingTask(enquiry) {
+  if (!enquiry) return false;
+  if (drawingFilePresent(enquiry.drawing)) return false;
+  if (drawingStillNeeded(enquiry)) return true;
+  return linkedOrdersWaitingForDrawing(enquiry).length > 0;
 }
 
 function enquiryReadyForOrders(row) {
@@ -3000,11 +3024,16 @@ module.exports = {
   pasteOrdersFromSheet,
   SHOP_STATUSES,
   ordersLinkedToEnquiry,
+  drawingIsRequired,
+  drawingFilePresent,
   drawingStillNeeded,
+  linkedOrdersWaitingForDrawing,
+  enquiryNeedsOpenDrawingTask,
   enquiryReadyForOrders,
   initialOrderStatus,
   applyDrawingShopStatus,
   WAITING_FOR_DRAWING,
+  isWaitingForDrawing,
   listEnquiriesWaitingForOrders,
   listEnquiries,
   getEnquiry,

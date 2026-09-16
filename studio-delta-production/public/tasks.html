@@ -73,8 +73,8 @@
     </nav>
   </header>
   <div class="wrap" id="list"></div>
-  <script src="/office-auth.js?v=drawing-wait"></script>
-  <script src="/enquiry-process.js?v=custom-name"></script>
+  <script src="/office-auth.js?v=drawing-erin-tasks"></script>
+  <script src="/enquiry-process.js?v=drawing-erin-tasks"></script>
   <script>
     let rows = [];
     let grants = [];
@@ -166,7 +166,7 @@
       const filtered = rows.filter((r) => {
         if (!matchesPerson(r)) return false;
         if (!matchesType(r)) return false;
-        const blob = [r.enquiry_no, r.client_name, r.product, r.title, r.type_label, r.kind, r.enquiry_status, r.assignee, r.completed_by, r.completed_at_label].join(" ").toLowerCase();
+        const blob = [r.enquiry_no, r.quote_no, r.order_label, r.client_name, r.product, r.title, r.type_label, r.kind, r.enquiry_status, r.assignee, r.completed_by, r.completed_at_label].join(" ").toLowerCase();
         return !q || blob.indexOf(q) >= 0;
       });
       const list = document.getElementById("list");
@@ -179,7 +179,7 @@
         else if (completedView) empty = "Nothing completed yet. When you finish costing, quoting, a follow-up, or a drawing, that work moves here.";
         else if (teamView) empty = "Nobody else has open work right now.";
         else if (canViewAll) empty = "Nothing is assigned to you right now.";
-        else empty = "Nothing is assigned to you right now. Capture new enquiries on the Enquiries sheet, then assign costing, quoting, follow-up, or drawing to an office Admin. That person will see the work here and update the system from the task.";
+        else empty = "Nothing is assigned to you right now. Capture new enquiries on the Enquiries sheet, then assign costing, quoting, follow-up, or drawing to an office Admin. Waiting for drawing orders (S numbers and quote numbers) show here for Erin.";
         list.innerHTML = "<div class=\"empty\">" + empty + "</div>";
         return;
       }
@@ -192,7 +192,10 @@
           return "<article class=\"card" + (overdue ? " overdue" : "") + "\">" +
             "<div class=\"grow\">" +
             "<h3>" + esc(typeHeading(row)) + "</h3>" +
-            "<p class=\"job\">" + esc(row.enquiry_no) + " · " + esc(row.client_name || "No client name yet") + "</p>" +
+            "<p class=\"job\">" + esc(row.enquiry_no) +
+            (row.quote_no ? " · " + esc(row.quote_no) : "") +
+            (row.order_label ? " · " + esc(row.order_label) : "") +
+            " · " + esc(row.client_name || "No client name yet") + "</p>" +
             (row.product ? "<p>" + esc(row.product) + "</p>" : "") +
             (row.assignee ? "<p>Assigned to <b>" + esc(row.assignee) + "</b>" +
               (completedView && row.completed_by ? " · done by " + esc(row.completed_by) : "") + "</p>" : "") +

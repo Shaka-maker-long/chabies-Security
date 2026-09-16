@@ -105,16 +105,41 @@ function requireAssignee(name) {
   return hit;
 }
 
-const DRAWING_OWNER = "Erin";
+const DRAWING_OWNER = staff.DRAWING_OWNER || "Erin";
+
+function isDrawingOwnerName(name) {
+  return staff.isDrawingOwnerName(name);
+}
 
 function drawingAssignee() {
-  const hit = officeAssignees().find((x) => namesMatch(x, DRAWING_OWNER));
-  if (!hit) throw new Error("Erin must be on Users to receive drawing tasks");
-  return hit;
+  const office = officeAssignees();
+  const exactOffice = office.find((x) => namesMatch(x, DRAWING_OWNER));
+  if (exactOffice) return exactOffice;
+  const erinOffice = office.find((x) => isDrawingOwnerName(x));
+  if (erinOffice) return erinOffice;
+  const users = staff.listUsers().filter((u) => u && u.name);
+  const exactUser = users.find((u) => namesMatch(u.name, DRAWING_OWNER));
+  if (exactUser) return exactUser.name;
+  const erinUser = users.find((u) => isDrawingOwnerName(u.name));
+  if (erinUser) return erinUser.name;
+  return DRAWING_OWNER;
+}
+
+function rawEnquiryForOrder(order) {
+  if (!order) return null;
+  const byNo = db.getEnquiryRaw(order.enquiry_no);
+  if (byNo) return byNo;
+  const quote = String(order.quote_number || "").trim().toLowerCase();
+  if (!quote) return null;
+  for (const row of db.listEnquiries()) {
+    const q = String(row.quote_no || row.quote_number || "").trim().toLowerCase();
+    if (q && q === quote) return db.getEnquiryRaw(row.enquiry_no);
+  }
+  return null;
 }
 
 function ensureOpenDrawingTask(row) {
-  if (!db.drawingStillNeeded(row)) return false;
+  if (!db.enquiryNeedsOpenDrawingTask(row)) return false;
   const erin = drawingAssignee();
   let dirty = false;
   if (!row.drawing || typeof row.drawing !== "object") {
@@ -125,7 +150,10 @@ function ensureOpenDrawingTask(row) {
     row.drawing.required = true;
     dirty = true;
   }
-  if (!namesMatch(row.drawing.assignee, erin)) {
+  if (!namesMatch(row.drawing.assignee, erin) && !isDrawingOwnerName(row.drawing.assignee)) {
+    row.drawing.assignee = erin;
+    dirty = true;
+  } else if (!row.drawing.assignee) {
     row.drawing.assignee = erin;
     dirty = true;
   }
@@ -133,7 +161,7 @@ function ensureOpenDrawingTask(row) {
   if (!open) {
     addTask(row, "drawing", erin);
     dirty = true;
-  } else if (!namesMatch(open.assignee, erin)) {
+  } else if (!namesMatch(open.assignee, erin) && !isDrawingOwnerName(open.assignee)) {
     open.assignee = erin;
     dirty = true;
   }
@@ -144,27 +172,42 @@ function ensureOpenDrawingTask(row) {
   return dirty;
 }
 
+function touchDrawingQueueRow(raw, seen) {
+  if (!raw || !raw.enquiry_no) return 0;
+  const key = String(raw.enquiry_no).trim().toLowerCase();
+  if (!key || seen.has(key)) return 0;
+  seen.add(key);
+  let n = 0;
+  if (db.enquiryNeedsOpenDrawingTask(raw) && ensureOpenDrawingTask(raw)) {
+    raw.updated_at = db.nowIso();
+    db.saveEnquiryRecord(raw);
+    n = 1;
+  }
+  if (raw.drawing && db.drawingIsRequired(raw.drawing)) db.applyDrawingShopStatus(raw);
+  return n;
+}
+
 function syncDrawingQueue() {
+  const seen = new Set();
   let n = 0;
   db.listEnquiries().forEach((row) => {
-    const raw = db.getEnquiryRaw(row.enquiry_no);
-    if (!raw) return;
-    if (db.drawingStillNeeded(raw)) {
-      try {
-        if (ensureOpenDrawingTask(raw)) {
-          raw.updated_at = db.nowIso();
-          db.saveEnquiryRecord(raw);
-          n += 1;
-        }
-      } catch (e) {}
-    }
-    if (raw.drawing && raw.drawing.required) db.applyDrawingShopStatus(raw);
+    n += touchDrawingQueueRow(db.getEnquiryRaw(row.enquiry_no), seen);
+  });
+  db.listOrders().forEach((order) => {
+    if (!db.isWaitingForDrawing(order.status)) return;
+    n += touchDrawingQueueRow(rawEnquiryForOrder(order), seen);
   });
   return n;
 }
 
 function namesMatch(a, b) {
   return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
+}
+
+function taskAssigneeIsMe(task, me) {
+  if (namesMatch(task && task.assignee, me)) return true;
+  if (task && task.kind === "drawing" && isDrawingOwnerName(task.assignee) && isDrawingOwnerName(me)) return true;
+  return false;
 }
 
 function namedProducts(row) {
@@ -445,6 +488,7 @@ function canAct(row, actor, actionId) {
   const owner = actionOwner(row, actionId);
   if (!owner) return true;
   if (namesMatch(owner, who)) return true;
+  if (actionId === "complete_drawing" && isDrawingOwnerName(who) && isDrawingOwnerName(owner)) return true;
   if (isManagerName(who)) return true;
   return access.grantedFor(row, who, actionKind(actionId));
 }
@@ -536,11 +580,11 @@ function availableActions(row) {
     actions.push({ id: "complete_order", label: "Client approved — attach POP" });
     actions.push({ id: "complete_reject", label: "Client rejected" });
   }
-  if (status === "Ordered" && db.drawingStillNeeded(row)) {
-    actions.push({ id: "complete_drawing", label: "Upload drawing" });
-  }
   if (status === "Ordered" && db.enquiryReadyForOrders(row) && !row.ready_for_orders) {
     row.ready_for_orders = true;
+  }
+  if (db.enquiryNeedsOpenDrawingTask(row)) {
+    actions.push({ id: "complete_drawing", label: "Upload drawing" });
   }
   return actions;
 }
@@ -554,7 +598,7 @@ function listMyTasks(userName, opts) {
     const tasks = Array.isArray(row.tasks) ? row.tasks : [];
     for (const task of tasks) {
       if (task.status !== "open") continue;
-      if (!all && !namesMatch(task.assignee, me)) continue;
+      if (!all && !taskAssigneeIsMe(task, me)) continue;
       if (!isActionableOpenTask(row, task)) continue;
       const dueAt = task.due_at || (task.kind === "follow_up" ? followUpDueAt(row) : "");
       out.push(decorateTask(row, task, dueAt));
@@ -603,11 +647,18 @@ function listMyTasks(userName, opts) {
 
 function decorateTask(row, task, dueAt) {
   const correspondence = db.normalizeCorrespondence(row);
+  const drawingTask = task && task.kind === "drawing";
+  const orders = drawingTask
+    ? db.ordersLinkedToEnquiry(row).map((o) => String(o.order_number || "").trim()).filter(Boolean)
+    : [];
   return {
     ...task,
     due_at: dueAt || task.due_at || "",
     overdue: isOverdue(dueAt || task.due_at),
     enquiry_no: row.enquiry_no,
+    quote_no: row.quote_no || row.chosen_quote_no || "",
+    order_numbers: orders,
+    order_label: orders.join(", "),
     client_name: row.client_name || "",
     product: row.product || "",
     enquiry_status: row.status || "",
@@ -1600,9 +1651,10 @@ function completeOrder(row, actor, body) {
 }
 
 function completeDrawing(row, actor, body) {
-  if (row.status !== "Ordered" || !row.drawing || !row.drawing.required) {
+  if (!db.enquiryNeedsOpenDrawingTask(row)) {
     throw new Error("A drawing is only required when the office said this order needs one");
   }
+  ensureOpenDrawingTask(row);
   const filename = body.file_name || "drawing.pdf";
   const raw = requireFile(body, "Upload the drawing, check the preview, then confirm it");
   if (!isImage(filename, "") && !isPdf(filename, "", null)) {
@@ -1812,7 +1864,7 @@ function seedOnboardTasks(row, actor, body, status) {
     }
     addTask(row, "pop", requireAssignee(quoter), { title: "Record client outcome" });
   }
-  if (status === "Ordered" && row.drawing && row.drawing.required && !(row.drawing.file && row.drawing.file.stored_as)) {
+  if (status === "Ordered" && db.enquiryNeedsOpenDrawingTask(row)) {
     ensureOpenDrawingTask(row);
   }
 }
@@ -2010,7 +2062,7 @@ function onboardEnquiry(actorName, body) {
   }
 
   seedOnboardTasks(raw, actor, incoming, status);
-  if (raw.drawing && raw.drawing.required) db.applyDrawingShopStatus(raw);
+  if (raw.drawing && db.drawingIsRequired(raw.drawing)) db.applyDrawingShopStatus(raw);
   db.appendEnquiryEvent(raw, {
     kind: "onboard",
     actor,
@@ -2055,6 +2107,7 @@ module.exports = {
   onboardEnquiry,
   isActionableOpenTask,
   drawingAssignee,
+  isDrawingOwnerName,
   syncDrawingQueue,
   DRAWING_OWNER
 };

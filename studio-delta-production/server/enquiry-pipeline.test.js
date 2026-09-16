@@ -1537,6 +1537,81 @@ db.upsertEnquiry({
 const laterCost = pipeline.applyCaptureRoute(wrongSupplier.enquiry_no, "Lesedi", { enough_for_costing: "yes" });
 assert.strictEqual(laterCost.row.status, "Costing");
 
+staff.upsertUser({ name: "Erin", access: "Production", role: "Interior Designer", password: "x", tasks: [] });
+assert.ok(pipeline.officeAssignees().indexOf("Erin") === -1, "Production Erin is not an office Admin picker");
+assert.strictEqual(pipeline.drawingAssignee(), "Erin");
+assert.ok(staff.isDrawingOwnerName("Erin"));
+assert.ok(staff.isDrawingOwnerName("Erin Naidoo"));
+assert.ok(!staff.isDrawingOwnerName("Coster"));
+staff.upsertUser({ name: "Erin", access: "Admin", role: "Interior Designer", password: "x", seeDebtors: "Yes" });
+
+const splitEnq = db.upsertEnquiry({
+  date_enquired: "16/09/2026",
+  client_name: "Split Drawing Client",
+  product: "Air Chair",
+  category: "Chair",
+  status: "Ordered",
+  quote_no: "SOQ2934",
+  products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "11500.00" }],
+  ready_for_orders: true,
+  client_outcome: { kind: "approved", decided_at: db.nowIso(), decided_by: "Quoter" }
+}, { fromPipeline: true, fromMigrate: true });
+const splitRaw = db.getEnquiryRaw(splitEnq.enquiry_no);
+splitRaw.drawing = { required: "yes", file: null };
+splitRaw.tasks = [];
+splitRaw.updated_at = db.nowIso();
+db.saveEnquiryRecord(splitRaw);
+db.upsertOrder({
+  order_number: "S260246 A",
+  enquiry_no: splitEnq.enquiry_no,
+  quote_number: "SOQ2934",
+  client_name: "Split Drawing Client",
+  status: "Waiting for drawing"
+});
+db.upsertOrder({
+  order_number: "S260246 B",
+  enquiry_no: splitEnq.enquiry_no,
+  quote_number: "SOQ2934",
+  client_name: "Split Drawing Client",
+  status: "Waiting for drawing"
+});
+assert.ok(db.enquiryNeedsOpenDrawingTask(db.getEnquiryRaw(splitEnq.enquiry_no)));
+const erinSplit = pipeline.listMyTasks("Erin").filter((t) => t.kind === "drawing" && t.enquiry_no === splitEnq.enquiry_no);
+assert.strictEqual(erinSplit.length, 1, "split A/B is one drawing task for Erin");
+assert.ok(String(erinSplit[0].order_label || "").indexOf("S260246 A") !== -1);
+assert.ok(String(erinSplit[0].order_label || "").indexOf("S260246 B") !== -1);
+assert.strictEqual(erinSplit[0].quote_no, "SOQ2934");
+assert.strictEqual(db.getEnquiry(splitEnq.enquiry_no).drawing.assignee, "Erin");
+assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "drawing" && t.enquiry_no === splitEnq.enquiry_no));
+
+const waitOnly = db.upsertEnquiry({
+  date_enquired: "16/09/2026",
+  client_name: "Shop Status Drawing",
+  product: "Air Chair",
+  category: "Chair",
+  status: "Ordered",
+  quote_no: "SOQWAIT1",
+  products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "9000.00" }],
+  ready_for_orders: true,
+  client_outcome: { kind: "approved", decided_at: db.nowIso(), decided_by: "Quoter" }
+}, { fromPipeline: true, fromMigrate: true });
+const waitRaw = db.getEnquiryRaw(waitOnly.enquiry_no);
+waitRaw.drawing = null;
+waitRaw.tasks = [];
+waitRaw.updated_at = db.nowIso();
+db.saveEnquiryRecord(waitRaw);
+db.upsertOrder({
+  order_number: "S260247",
+  enquiry_no: waitOnly.enquiry_no,
+  quote_number: "SOQWAIT1",
+  client_name: "Shop Status Drawing",
+  status: "Waiting for drawing"
+});
+const erinWait = pipeline.listMyTasks("Erin").filter((t) => t.kind === "drawing" && t.enquiry_no === waitOnly.enquiry_no);
+assert.strictEqual(erinWait.length, 1, "Waiting for drawing orders still queue Erin when the enquiry drawing flag was missing");
+assert.strictEqual(db.getEnquiry(waitOnly.enquiry_no).drawing.required, true);
+assert.ok(String(erinWait[0].order_label || "").indexOf("S260247") !== -1);
+
 const keptOrder = db.upsertOrder({
   order_number: "9001",
   client_name: "Keep Me",

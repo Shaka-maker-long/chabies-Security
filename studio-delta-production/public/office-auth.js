@@ -13,6 +13,19 @@ const SD_ORDER_STATUSES = [
   "Delivered"
 ];
 
+function sdIsDrawingOwner(profile) {
+  if (!profile) return false;
+  if (profile.canSeeDrawingDesk) return true;
+  const n = String(profile.name || "").trim().toLowerCase();
+  if (n === "erin") return true;
+  return String(profile.name || "").trim().split(/\s+/)[0].toLowerCase() === "erin";
+}
+function sdOfficePageAllowed(profile, page) {
+  if (!profile) return false;
+  if (profile.canSeeOffice || profile.isAdmin) return true;
+  if (sdIsDrawingOwner(profile) && (page === "tasks" || !page)) return true;
+  return false;
+}
 function sdOfficeProfile() {
   try { return JSON.parse(sessionStorage.getItem("sd-office") || "null"); } catch (e) { return null; }
 }
@@ -302,15 +315,15 @@ async function sdRequireOffice(page) {
   } else {
     profile = null;
   }
-  const hadOffice = !!(profile && profile.canSeeOffice);
-  if (!profile || !profile.canSeeOffice) {
+  const hadOffice = sdOfficePageAllowed(profile, page);
+  if (!profile || !sdOfficePageAllowed(profile, page)) {
     profile = await sdShowLogin("Log in with your name and access code.");
   }
-  if (!profile || !profile.canSeeOffice) {
+  if (!profile || !sdOfficePageAllowed(profile, page)) {
     location.replace("/");
     return null;
   }
-  if (!hadOffice) {
+  if (!hadOffice && !sdIsDrawingOwner(profile)) {
     location.replace("/");
     return null;
   }

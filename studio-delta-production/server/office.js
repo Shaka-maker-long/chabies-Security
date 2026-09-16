@@ -81,13 +81,20 @@ function officeCookie(token, clear) {
   return "sd_office=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax";
 }
 
+function canUseOfficeApi(profile) {
+  if (!profile) return false;
+  if (profile.canSeeOffice) return true;
+  if (profile.canSeeDrawingDesk || staff.isDrawingOwnerName(profile.name)) return true;
+  return false;
+}
+
 function requireOffice(req, res, next) {
   const profile = staff.readSession(req);
   if (!profile) {
     res.status(401).json({ ok: false, error: "Log in as Admin first." });
     return;
   }
-  if (!profile.canSeeOffice) {
+  if (!canUseOfficeApi(profile)) {
     res.status(403).json({ ok: false, error: "Production users can only use Production Tasks." });
     return;
   }
@@ -173,7 +180,7 @@ function mountOffice(app) {
       res.status(401).json({ ok: false, error: staff.loginFailureMessage() });
       return;
     }
-    if (!profile.canSeeOffice) {
+    if (!profile.canSeeOffice && !staff.isDrawingOwnerName(profile.name) && !profile.canSeeDrawingDesk) {
       res.status(403).json({ ok: false, error: "Production users can only use Production Tasks." });
       return;
     }

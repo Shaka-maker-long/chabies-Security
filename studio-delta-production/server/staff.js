@@ -31,6 +31,7 @@ function applySessionMap(raw) {
       jobTitle: String(row.jobTitle || row.role || "").trim(),
       isAdmin: !!row.isAdmin,
       canSeeOffice: !!row.canSeeOffice,
+      canSeeDrawingDesk: !!row.canSeeDrawingDesk || isDrawingOwnerName(row.name),
       canSeeDebtors: !!row.canSeeDebtors,
       canManageUsers: !!row.canManageUsers,
       tasks: Array.isArray(row.tasks) ? row.tasks : []
@@ -245,6 +246,15 @@ function namesEqual(a, b) {
   return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
 }
 
+const DRAWING_OWNER = "Erin";
+
+function isDrawingOwnerName(name) {
+  const n = String(name || "").trim();
+  if (!n) return false;
+  const first = n.split(/\s+/)[0];
+  return n.toLowerCase() === "erin" || first.toLowerCase() === "erin";
+}
+
 function enquiryRoleHolders(role) {
   const want = canonicalizeEnquiryRole(role) || String(role || "").trim();
   if (ENQUIRY_ROLES.indexOf(want) === -1) return [];
@@ -288,6 +298,7 @@ function rowToUser(row, id) {
     access,
     isAdmin,
     canSeeOffice: isAdmin,
+    canSeeDrawingDesk: isDrawingOwnerName(String(row[0] || "").trim()),
     canSeeDebtors: isAdmin && debtors !== "no",
     seeDebtors: isAdmin && debtors !== "no" ? "Yes" : "No",
     enquiryRoles: parseEnquiryRoles(row[6], access),
@@ -499,6 +510,7 @@ function createSession(profile) {
     jobTitle: profile.jobTitle || profile.role || "",
     isAdmin: profile.isAdmin,
     canSeeOffice: profile.canSeeOffice,
+    canSeeDrawingDesk: !!(profile.canSeeDrawingDesk || isDrawingOwnerName(profile.name)),
     canSeeDebtors: profile.canSeeDebtors,
     canManageUsers: canManageUsers(profile),
     canSeeIdleAlerts: canSeeIdleAlerts(profile),
@@ -553,11 +565,13 @@ function readSession(req) {
     row.access = live.access;
     row.isAdmin = !!live.isAdmin;
     row.canSeeOffice = !!live.canSeeOffice;
+    row.canSeeDrawingDesk = !!live.canSeeDrawingDesk || isDrawingOwnerName(live.name);
     row.canSeeDebtors = !!live.canSeeDebtors;
     row.canSeeIdleAlerts = canSeeIdleAlerts(live);
   } else {
     row.canManageUsers = canManageUsers(row);
     row.jobTitle = String(row.jobTitle || row.role || "").trim();
+    row.canSeeDrawingDesk = !!(row.canSeeDrawingDesk || isDrawingOwnerName(row.name));
     row.canSeeIdleAlerts = canSeeIdleAlerts(row);
   }
   return row;
@@ -657,6 +671,8 @@ module.exports = {
   canManageUsers,
   canMarkNoPlate,
   canSeeIdleAlerts,
+  isDrawingOwnerName,
+  DRAWING_OWNER,
   isProductionFloorUser,
   isManagerTitle,
   verifyUser,
