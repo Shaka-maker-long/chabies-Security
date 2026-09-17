@@ -234,7 +234,29 @@ assert.ok(html.indexOf("Blockers") !== -1);
 assert.ok(html.indexOf("chart.js@4.4.7") !== -1);
 assert.ok(html.indexOf("/api/office/orders/dashboard") !== -1);
 assert.ok(html.indexOf("sdOfficeFetch") !== -1);
-assert.ok(html.indexOf("payment date — the day the order was placed") !== -1);
+assert.ok(html.indexOf("grouped by the payment date") !== -1);
+assert.ok(html.indexOf("the day the order was placed") === -1);
 assert.ok(html.indexOf("month of sale if there is no payment date") === -1);
+
+db.upsertOrder({
+  order_number: "S260410",
+  status: "Not Yet Started",
+  category: "Table",
+  product: "Date Check",
+  source: "Website",
+  client_name: "Gia",
+  price_incl_vat: "100.00",
+  amount_paid: "100.00",
+  payment_date: "16-Sep",
+  month_of_sale: "January 2020"
+});
+const dated = db.listOrders().find((o) => o.order_number === "S260410");
+assert.strictEqual(dated.payment_date, "16/09/2026");
+assert.strictEqual(dated.month_of_sale, "September 2026", "month of sale is the payment month");
+assert.ok(dash.saleDate({ payment_date: "16-Sep" }));
+const schedDate = db.listSchedule().find((r) => r.order_number === "S260410");
+assert.strictEqual(schedDate.order_date_label, "16-Sep");
+const sepDash = dash.buildDashboard({ month: "2026-09", grain: "month" });
+assert.ok(sepDash.windowCount >= 3, "16-Sep payment lands in September");
 
 console.log("order-dashboard tests ok");

@@ -109,7 +109,7 @@
       ["category","CATEGORY", true, 100],
       ["product","PRODUCT", true, 168],
       ["province","PROVINCE", true, 112],
-      ["order_date","ORDER", false, 72],
+      ["order_date","ORDER", true, 72],
       ["courier","COURIER", false, 120],
       ["waybill","WAYBILL", false, 112],
       ["status","STATUS", true, 120]
@@ -298,7 +298,7 @@
           if (locked) {
             left += "<td style=\"" + colStyle(i) + "\"><span class=\"cell-text\" title=\"" + esc(v) + "\">" + esc(v) + "</span></td>";
           } else {
-            left += "<td style=\"" + colStyle(i) + "\"><input data-k=\"" + k + "\" value=\"" + esc(v) + "\"" + (k === "order_date" ? " placeholder=\"07-Jan\"" : "") + "></td>";
+            left += "<td style=\"" + colStyle(i) + "\"><input data-k=\"" + k + "\" value=\"" + esc(v) + "\"></td>";
           }
         });
         left += "</tr>";
@@ -429,14 +429,8 @@
       const row = rows.find((r) => r.id === id);
       if (!row) return;
       let value = e.target.value;
-      if (e.target.dataset.k === "order_date") {
-        value = value.trim();
-        row.order_date = value;
-        row.order_date_label = value;
-        e.target.value = value;
-      } else {
-        row[e.target.dataset.k] = value;
-      }
+      if (e.target.dataset.k === "order_date") return;
+      row[e.target.dataset.k] = value;
       await sdOfficeFetch("/api/office/schedule/row", {
         method: "PUT",
         body: JSON.stringify(row)

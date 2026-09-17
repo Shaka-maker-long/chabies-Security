@@ -1,6 +1,6 @@
 "use strict";
 
-const { ORDER_FIELDS, parseMoney, money, formatOrderId } = require("./db");
+const { ORDER_FIELDS, parseMoney, money, formatOrderId, formatMonthOfSale } = require("./db");
 const { SHOP_STATUSES, isShopStatus, normalizeShopStatus } = require("./shop-status");
 const { ORDER_TYPES } = require("./create-order-from-enquiry");
 
@@ -307,6 +307,7 @@ function normalizePastedRow(raw, paidInFull) {
   row.status = isShopStatus(status) ? status : "Not Yet Started";
   row.month_of_sale = parseMonthOfSale(row.month_of_sale);
   row.payment_date = parseSheetDate(row.payment_date, row.month_of_sale);
+  row.month_of_sale = row.payment_date ? formatMonthOfSale(row.payment_date) : "";
   const incl = parseMoney(row.price_incl_vat);
   const excl = parseMoney(row.price_excl_vat);
   if (incl > 0 && excl > 0 && incl < excl) {

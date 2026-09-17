@@ -17,8 +17,24 @@ const { callShopFunction } = require("./gas");
 assert.strictEqual(db.formatRand(1150), "R 1,150.00");
 assert.strictEqual(db.formatPaymentDate("2026-07-13T22:00:00.000Z"), "14/07/2026");
 assert.strictEqual(db.formatMonthOfSale("2026-06-30T22:00:00.000Z"), "July 2026");
+assert.strictEqual(db.formatPaymentDate("16-Sep"), "16/09/" + new Date().getFullYear());
+assert.strictEqual(db.formatMonthOfSale("16/09/2026"), "September 2026");
+assert.strictEqual(db.formatMonthOfSale("#NUM!"), "");
+assert.strictEqual(db.formatPaymentDate("#NUM!"), "");
+assert.ok(db.asDate("03-Sep-2026"));
+assert.strictEqual(db.formatMonthOfSale("Sep 2026"), "September 2026");
 assert.strictEqual(db.formatOrderId("S-1001"), "S-1001");
 assert.ok(/^\d+$/.test(db.formatOrderId(new Date("2026-06-30T22:00:00.000Z"))));
+
+const paidMonth = db.upsertOrder({
+  order_number: "S-PAY-MONTH",
+  status: "Not Yet Started",
+  client_name: "Ann",
+  payment_date: "15/09/2026",
+  month_of_sale: "January 2020"
+});
+assert.strictEqual(paidMonth.payment_date, "15/09/2026");
+assert.strictEqual(paidMonth.month_of_sale, "September 2026");
 
 const paidInclVat = db.decorateMoney({
   price_excl_vat: "10000",

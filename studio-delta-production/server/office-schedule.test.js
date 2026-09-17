@@ -77,6 +77,15 @@ const planned = db.listSchedule("2026-09-21", "2026-09-25").find((r) => r.order_
 assert.strictEqual(planned.delivery_planned, true);
 assert.ok(planned.delivery_days.indexOf("2026-09-21") !== -1);
 assert.strictEqual(planned.order_date_label, "01-Sep");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260186").month_of_sale, "September 2026");
+db.upsertScheduleRow({
+  order_number: "S260186",
+  order_date: "07-Jan",
+  courier: "TRY"
+});
+const keptDate = db.listSchedule("2026-09-21", "2026-09-25").find((r) => r.order_number === "S260186");
+assert.strictEqual(keptDate.order_date_label, "01-Sep", "schedule ORDER date stays the payment date");
+assert.strictEqual(keptDate.courier, "TRY");
 const side = db.listSchedule("2026-09-21", "2026-09-25").find((r) => r.order_number === "S260207");
 db.setScheduleCell(side.id, "2026-09-22", "LC");
 db.setScheduleCell(side.id, "2026-09-22", "LC");

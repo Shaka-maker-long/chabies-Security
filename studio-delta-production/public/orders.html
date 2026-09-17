@@ -256,7 +256,8 @@
             <input id="f_payment_date" type="date">
           </label>
           <label>Month of sale
-            <input id="f_month_of_sale" placeholder="September 2026">
+            <input id="f_month_of_sale" readonly placeholder="From the payment date">
+            <span class="hint">Filled from the payment date. You do not type this.</span>
           </label>
           <label>Price (Excl VAT)
             <input id="f_price_excl_vat" inputmode="decimal">
@@ -445,6 +446,17 @@
       if (!m) return "";
       return m[3] + "/" + m[2] + "/" + m[1];
     }
+    function syncMonthOfSale() {
+      const iso = document.getElementById("f_payment_date").value;
+      const el = document.getElementById("f_month_of_sale");
+      if (!el) return;
+      if (!iso) {
+        el.value = "";
+        return;
+      }
+      const d = new Date(iso + "T12:00:00");
+      el.value = Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-GB", { month: "long", year: "numeric" });
+    }
     function fillSelect(id, key, value) {
       const el = document.getElementById(id);
       const current = String(value || "");
@@ -565,6 +577,7 @@
       if (document.getElementById("f_paid_in_full") && document.getElementById("f_paid_in_full").checked) syncPaidInFull();
       else if (document.getElementById("f_price_incl_vat").value) updateOwing();
       else updateMoneyFields();
+      syncMonthOfSale();
       return true;
     }
     function openForm(index) {
@@ -590,7 +603,7 @@
       document.getElementById("f_city").value = (existing && existing.city) || "";
       document.getElementById("f_address").value = (existing && existing.address) || "";
       document.getElementById("f_payment_date").value = toIsoDate(existing && existing.payment_date);
-      document.getElementById("f_month_of_sale").value = (existing && existing.month_of_sale) || "";
+      syncMonthOfSale();
       document.getElementById("f_price_excl_vat").value = (existing && existing.price_excl_vat) || "";
       document.getElementById("f_amount_paid").value = (existing && existing.amount_paid) || "";
       document.getElementById("f_price_incl_vat").value = existing && existing.price_incl_vat
@@ -955,6 +968,8 @@
     document.getElementById("f_paid_in_full").onchange = syncPaidInFull;
     document.getElementById("form").addEventListener("input", persistOrderDraft);
     document.getElementById("form").addEventListener("change", persistOrderDraft);
+    document.getElementById("f_payment_date").addEventListener("input", syncMonthOfSale);
+    document.getElementById("f_payment_date").addEventListener("change", syncMonthOfSale);
     window.addEventListener("pagehide", persistOrderDraft);
     document.getElementById("formMask").addEventListener("click", (e) => {
       if (e.target.id === "formMask") closeForm();
