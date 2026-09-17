@@ -126,6 +126,8 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   assert.ok(/QC PDF:\s*\/api\/qc-pdfs\//.test(notes), notes);
   const driveNotes = String(logs.getRange(3, 8).getValue() || "");
   assert.ok(/QC PDF:\s*\/api\/qc-pdfs\//.test(driveNotes), driveNotes);
+  const linked = qcPdf.listReports().find((row) => row.order_number === "S260214");
+  assert.ok(linked && /abc123/.test(linked.drive_url || linked.url), JSON.stringify(linked));
   const again = await qcPdf.backfillFromLogs();
   assert.strictEqual(again.saved, 0, JSON.stringify(again));
 

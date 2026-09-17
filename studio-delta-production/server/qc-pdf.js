@@ -319,7 +319,6 @@ function listReports() {
     .map((rec) => ({
       id: rec.id,
       name: displayName(rec),
-      url: pdfUrlFor(rec.id),
       dateCreated: Date.parse(rec.created_at) || 0,
       order_number: rec.order_number || "",
       label: qcLabel(rec.process),
@@ -328,7 +327,9 @@ function listReports() {
       log_id: rec.log_id || "",
       process: rec.process || "",
       photo_count: Number(rec.photo_count) || 0,
-      imported: !!rec.imported
+      imported: !!rec.imported,
+      drive_url: rec.drive_url || "",
+      url: (!(Number(rec.photo_count) > 0 || rec.imported) && rec.drive_url) ? rec.drive_url : pdfUrlFor(rec.id)
     }))
     .sort((a, b) => (b.dateCreated || 0) - (a.dateCreated || 0));
 }
@@ -389,6 +390,44 @@ function driveIdsFromNotes(notes) {
 function needsPhotoRecover(rec) {
   if (!rec || rec.imported || rec.drive_import_tried) return false;
   return !(Number(rec.photo_count) > 0);
+}
+
+function attachDriveUrl(rec, urlOrId) {
+  if (!rec) return false;
+  const raw = String(urlOrId || "").trim();
+  const parsed = parseDriveFileId(raw);
+  const id = parsed || (/^[a-zA-Z0-9_-]{6,}$/.test(raw) && !/^https?:/i.test(raw) ? raw : "");
+  const url = parsed
+    ? ("https://drive.google.com/file/d/" + parsed + "/view")
+    : (/^https?:\/\//i.test(raw) ? raw : (id ? ("https://drive.google.com/file/d/" + id + "/view") : ""));
+  if (!url) return false;
+  if (rec.drive_url === url) return false;
+  rec.drive_url = url;
+  const store = loadStore();
+  const idx = store.records.findIndex((row) => row && row.id === rec.id);
+  if (idx >= 0) {
+    store.records[idx].drive_url = url;
+    saveStore(store);
+  }
+  return true;
+}
+
+function attachDriveUrlsFromLogs() {
+  const book = getBook();
+  const sheet = book.getSheetByName("Production_Log");
+  if (!sheet || sheet.getLastRow() < 2) return { saved: 0 };
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+  let saved = 0;
+  for (let i = 0; i < values.length; i++) {
+    const notes = String(values[i][7] || "");
+    const ids = driveIdsFromNotes(notes);
+    if (!ids.length) continue;
+    const rec = existingForLog(String(values[i][0] || ""), i + 2);
+    if (!rec) continue;
+    if ((Number(rec.photo_count) || 0) > 0 || rec.imported) continue;
+    if (attachDriveUrl(rec, ids[0])) saved += 1;
+  }
+  return { saved };
 }
 
 function existingForLog(logId, row) {
@@ -567,6 +606,7 @@ async function recoverPhotosForRecord(rec, signatureUrl, notes) {
     }
   }
   const noteIds = driveIdsFromNotes(noteText);
+  if (noteIds.length) attachDriveUrl(rec, noteIds[0]);
   for (let i = 0; i < noteIds.length; i++) {
     const drivePdf = downloadDriveFilePdf(noteIds[i]);
     if (drivePdf) {
@@ -666,7 +706,8 @@ async function backfillFromLogs() {
     }
   }
   const recovered = await recoverMissingPhotos();
-  return { saved: saved + (recovered.saved || 0) };
+  const linked = attachDriveUrlsFromLogs();
+  return { saved: saved + (recovered.saved || 0) + (linked.saved || 0) };
 }
 
 module.exports = {
@@ -683,6 +724,7 @@ module.exports = {
   rebuildRecordFromPhotos,
   parseDriveFileId,
   driveIdsFromNotes,
+  attachDriveUrlsFromLogs,
   toJpeg,
   packPhotos
 };

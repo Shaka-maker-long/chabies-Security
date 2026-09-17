@@ -37,17 +37,21 @@ function collectQcPdfs() {
       }
     }
   } catch (e) {}
+  const localHasPhotos = {};
   try {
     require("./qc-pdf").listReports().forEach((row) => {
       const order = formatOrderId(row.order_number);
       if (!order) return;
       if (!map[order]) map[order] = [];
       addUnique(map[order], { url: row.url, label: row.label || qcLabel(row.kind) });
+      if ((Number(row.photo_count) > 0 || row.imported) && String(row.url || "").indexOf("/api/qc-pdfs/") === 0) {
+        localHasPhotos[order] = true;
+      }
     });
   } catch (e) {}
   Object.keys(map).forEach((order) => {
     const list = map[order] || [];
-    if (list.some((row) => String(row.url || "").indexOf("/api/qc-pdfs/") === 0)) {
+    if (localHasPhotos[order] && list.some((row) => String(row.url || "").indexOf("/api/qc-pdfs/") === 0)) {
       map[order] = list.filter((row) => String(row.url || "").indexOf("/api/qc-pdfs/") === 0);
     }
   });

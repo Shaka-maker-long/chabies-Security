@@ -1562,7 +1562,10 @@ function completedProcessMatches_(role, wantProcess) {
 function pickQcPdfUrl_(logId, orderNum, processName, notes) {
   var notesStr = String(notes || "");
   var localHit = /QC PDF:\s*(\/api\/qc-pdfs\/[^\s]+)/i.exec(notesStr);
-  if (localHit) return localHit[1];
+  var driveHit = /QC PDF:\s*(https?:\/\/[^\s]+)/i.exec(notesStr);
+  var localUrl = localHit ? localHit[1] : "";
+  var driveUrl = driveHit ? driveHit[1] : "";
+  var localHasPhotos = false;
   if (typeof listLocalQcReports === "function") {
     try {
       var list = listLocalQcReports() || [];
@@ -1571,18 +1574,40 @@ function pickQcPdfUrl_(logId, orderNum, processName, notes) {
       var p = String(processName || "").toLowerCase();
       var wantKind = p.indexOf("final") !== -1 ? "final" : ((p.indexOf("pre-powder") !== -1 || p.indexOf("pre powder") !== -1) ? "pre" : "");
       var i;
+      var row;
+      var kind;
+      var n;
       for (i = 0; i < list.length; i++) {
-        if (wantLog && list[i].log_id && String(list[i].log_id) === wantLog) return list[i].url;
+        row = list[i];
+        if (!row) continue;
+        if (wantLog && row.log_id && String(row.log_id) === wantLog) {
+          n = Number(row.photo_count);
+          localHasPhotos = !!(row.imported || n > 0);
+          if (!driveUrl && row.drive_url) driveUrl = row.drive_url;
+          if (!localUrl && row.url) localUrl = row.url;
+          break;
+        }
       }
-      for (i = 0; i < list.length; i++) {
-        if (!wantOrder || String(list[i].order_number || "").trim().toLowerCase() !== wantOrder) continue;
-        var kind = String(list[i].kind || list[i].label || list[i].process || "").toLowerCase();
-        if (wantKind === "final" && kind.indexOf("final") === -1) continue;
-        if (wantKind === "pre" && kind.indexOf("pre") === -1) continue;
-        return list[i].url;
+      if (!localHasPhotos) {
+        for (i = 0; i < list.length; i++) {
+          row = list[i];
+          if (!row) continue;
+          if (!wantOrder || String(row.order_number || "").trim().toLowerCase() !== wantOrder) continue;
+          kind = String(row.kind || row.label || row.process || "").toLowerCase();
+          if (wantKind === "final" && kind.indexOf("final") === -1) continue;
+          if (wantKind === "pre" && kind.indexOf("pre") === -1) continue;
+          n = Number(row.photo_count);
+          localHasPhotos = !!(row.imported || n > 0);
+          if (!driveUrl && row.drive_url) driveUrl = row.drive_url;
+          if (!localUrl && row.url) localUrl = row.url;
+          break;
+        }
       }
     } catch (e) {}
   }
+  if (localUrl && localHasPhotos) return localUrl;
+  if (driveUrl) return driveUrl;
+  if (localUrl) return localUrl;
   var anyHit = /QC PDF:\s*(\S+)/i.exec(notesStr);
   return anyHit ? anyHit[1] : "";
 }
