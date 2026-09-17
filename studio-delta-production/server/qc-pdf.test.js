@@ -24,6 +24,11 @@ function pdfPageCount(buf) {
   return pages.filter((row) => !/\/Pages\b/.test(row)).length;
 }
 
+assert.strictEqual(qcPdf.parseDriveFileId("https://drive.google.com/file/d/abc123xyz/view"), "abc123xyz");
+assert.deepStrictEqual(
+  qcPdf.driveIdsFromNotes("QC PDF: https://drive.google.com/file/d/abc123xyz\nQC PDF: /api/qc-pdfs/local/pdf"),
+  ["abc123xyz"]
+);
 assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   "Is the frame square?: Y\nAre the overall dimensions correct?: N\n\nQC PDF: https://example/x\nError adding to PDF Queue: Drive"
 ), [
@@ -91,6 +96,16 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   assert.ok(emptyPdf && emptyPdf.buffer.slice(0, 4).toString() === "%PDF");
   assert.strictEqual(noPhotos.photo_count, 0);
   assert.ok(pdfPageCount(emptyPdf.buffer) <= 2, "Drive URL is not an image");
+  const store = JSON.parse(fs.readFileSync(path.join(dir, "qc-pdfs.json"), "utf8"));
+  const emptyRec = store.records.find((row) => row && row.id === noPhotos.id);
+  assert.ok(emptyRec);
+  const rebuilt = await qcPdf.rebuildRecordFromPhotos(emptyRec, [
+    { name: "front.jpg", mime: "image/jpeg", data: jpegB64 }
+  ], pngDataUrl);
+  assert.ok(rebuilt);
+  const rebuiltPdf = qcPdf.readPdf(noPhotos.id);
+  assert.ok(pdfPageCount(rebuiltPdf.buffer) >= 3, "saved checklist PDF can be rebuilt with photos");
+  assert.strictEqual(qcPdf.listReports().find((row) => row.id === noPhotos.id).photo_count, 1);
 
   const book = getBook();
   const logs = book.getSheetByName("Production_Log");

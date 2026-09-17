@@ -368,6 +368,29 @@ function notesHaveLocalPdf(notes) {
   return /QC PDF:\s*\/api\/qc-pdfs\//i.test(String(notes || ""));
 }
 
+function parseDriveFileId(url) {
+  const s = String(url || "");
+  const file = s.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (file) return file[1];
+  const id = s.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  return id ? id[1] : "";
+}
+
+function driveIdsFromNotes(notes) {
+  const ids = [];
+  String(notes || "").replace(/https?:\/\/[^\s]+/gi, (url) => {
+    const id = parseDriveFileId(url);
+    if (id && ids.indexOf(id) === -1) ids.push(id);
+    return url;
+  });
+  return ids;
+}
+
+function needsPhotoRecover(rec) {
+  if (!rec || rec.imported || rec.drive_import_tried) return false;
+  return !(Number(rec.photo_count) > 0);
+}
+
 function existingForLog(logId, row) {
   const wantLog = String(logId || "").trim();
   const wantRow = Number(row) || 0;
@@ -415,15 +438,57 @@ function listDriveQcPdfs() {
   return drivePdfList;
 }
 
-function downloadDriveQcPdf(orderNum, kind) {
-  const files = listDriveQcPdfs();
-  const hit = files.find((file) => matchDriveName(file && file.name, orderNum, kind));
-  if (!hit || !hit.id) return null;
-  const got = tryDrive({ op: "downloadFile", fileId: hit.id });
+function pdfBufferFromDrive(got) {
   if (!got || !got.base64) return null;
   const buf = Buffer.from(got.base64, "base64");
   if (buf.length < 100 || buf.slice(0, 4).toString() !== "%PDF") return null;
   return buf;
+}
+
+function downloadDriveFilePdf(fileId) {
+  const id = String(fileId || "").trim();
+  if (!id) return null;
+  return pdfBufferFromDrive(tryDrive({ op: "downloadFile", fileId: id }));
+}
+
+function downloadDriveQcPdf(orderNum, kind) {
+  const files = listDriveQcPdfs();
+  const hit = files.find((file) => matchDriveName(file && file.name, orderNum, kind));
+  if (!hit || !hit.id) return null;
+  return downloadDriveFilePdf(hit.id);
+}
+
+function logNotesForRecord(rec) {
+  const empty = { notes: "", signature: "" };
+  try {
+    const book = getBook();
+    const sheet = book.getSheetByName("Production_Log");
+    if (!sheet || sheet.getLastRow() < 2) return empty;
+    const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
+    const wantLog = String((rec && rec.log_id) || "").trim();
+    const wantRow = Number(rec && rec.row) || 0;
+    const wantOrder = String((rec && rec.order_number) || "").trim().toLowerCase();
+    const wantKind = String((rec && rec.kind) || (rec && rec.process) || "").toLowerCase();
+    let fallback = empty;
+    for (let i = 0; i < values.length; i++) {
+      const row = i + 2;
+      const logId = String(values[i][0] || "");
+      const order = String(values[i][1] || "").trim().toLowerCase();
+      const process = String(values[i][4] || "").toLowerCase();
+      const notes = String(values[i][7] || "");
+      const signature = String(values[i][8] || "");
+      if (wantLog && logId === wantLog) return { notes, signature };
+      if (wantRow >= 2 && row === wantRow) return { notes, signature };
+      if (wantOrder && order === wantOrder) {
+        const wantFinal = wantKind.indexOf("final") !== -1;
+        const isFinal = process.indexOf("final") !== -1;
+        if (!wantKind || wantFinal === isFinal) fallback = { notes, signature };
+      }
+    }
+    return fallback;
+  } catch (e) {
+    return empty;
+  }
 }
 
 let queueList = undefined;
@@ -464,41 +529,58 @@ function replacePdfBytes(rec, buf, meta) {
   return true;
 }
 
-async function recoverPhotosForRecord(rec, signatureUrl) {
-  if (!rec) return false;
-  if ((Number(rec.photo_count) || 0) > 0 || rec.imported || rec.drive_import_tried) return false;
+async function rebuildRecordFromPhotos(rec, filesData, signatureUrl) {
+  const photos = await packPhotos(rec.process, filesData);
+  const signatureBuf = await toJpeg(signatureUrl);
+  if (!photos.length && !signatureBuf) return false;
+  writePhotoFiles(rec.id, photos, signatureBuf);
+  await renderPdf({
+    ...rec,
+    photos,
+    signatureBuf,
+    photoAttempted: !!(filesData && filesData.some((row) => !!row))
+  }, rec.pdf_path);
+  rec.photo_count = photos.length;
+  rec.has_signature = !!signatureBuf;
+  rec.imported = false;
+  rec.drive_import_tried = true;
+  const store = loadStore();
+  const idx = store.records.findIndex((row) => row && row.id === rec.id);
+  if (idx >= 0) store.records[idx] = rec;
+  saveStore(store);
+  return photos.length > 0;
+}
+
+async function recoverPhotosForRecord(rec, signatureUrl, notes) {
+  if (!needsPhotoRecover(rec)) return false;
   if (!hasGoogleAuth()) return false;
+  const log = logNotesForRecord(rec);
+  const sig = signatureUrl || log.signature;
+  const noteText = notes || log.notes;
   rec.drive_import_tried = true;
   const queued = queuePhotosForOrder(rec.order_number);
   if (queued.length) {
     try {
-      const photos = await packPhotos(rec.process, queued);
-      const signatureBuf = await toJpeg(signatureUrl);
-      if (photos.length) {
-        writePhotoFiles(rec.id, photos, signatureBuf);
-        await renderPdf({
-          ...rec,
-          photos,
-          signatureBuf,
-          photoAttempted: true
-        }, rec.pdf_path);
-        rec.photo_count = photos.length;
-        rec.has_signature = !!signatureBuf;
-        rec.imported = false;
-        const store = loadStore();
-        const idx = store.records.findIndex((row) => row && row.id === rec.id);
-        if (idx >= 0) store.records[idx] = rec;
-        saveStore(store);
-        return true;
-      }
+      if (await rebuildRecordFromPhotos(rec, queued, sig)) return true;
     } catch (e) {
       console.error("[qc-pdf] queue recover", rec.order_number, e.message || e);
+    }
+  }
+  const noteIds = driveIdsFromNotes(noteText);
+  for (let i = 0; i < noteIds.length; i++) {
+    const drivePdf = downloadDriveFilePdf(noteIds[i]);
+    if (drivePdf) {
+      rec.imported = true;
+      rec.photo_count = -1;
+      rec.drive_import_tried = true;
+      return replacePdfBytes(rec, drivePdf, rec);
     }
   }
   const drivePdf = downloadDriveQcPdf(rec.order_number, rec.kind || rec.process);
   if (drivePdf) {
     rec.imported = true;
     rec.photo_count = -1;
+    rec.drive_import_tried = true;
     return replacePdfBytes(rec, drivePdf, rec);
   }
   const store = loadStore();
@@ -516,8 +598,8 @@ async function recoverMissingPhotos() {
   let saved = 0;
   for (const rec of store.records) {
     if (!rec || !rec.id || !rec.pdf_path || !fs.existsSync(rec.pdf_path)) continue;
-    if ((Number(rec.photo_count) || 0) > 0 || rec.imported) continue;
-    const ok = await recoverPhotosForRecord(rec, "");
+    if (!needsPhotoRecover(rec)) continue;
+    const ok = await recoverPhotosForRecord(rec);
     if (ok) saved += 1;
   }
   return { saved };
@@ -583,7 +665,8 @@ async function backfillFromLogs() {
       console.error("[qc-pdf] backfill", orderNum, e.message || e);
     }
   }
-  return { saved };
+  const recovered = await recoverMissingPhotos();
+  return { saved: saved + (recovered.saved || 0) };
 }
 
 module.exports = {
@@ -597,6 +680,9 @@ module.exports = {
   backfillFromLogs,
   parseAnswersFromNotes,
   recoverMissingPhotos,
+  rebuildRecordFromPhotos,
+  parseDriveFileId,
+  driveIdsFromNotes,
   toJpeg,
   packPhotos
 };

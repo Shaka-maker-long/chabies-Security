@@ -138,6 +138,7 @@ assert.ok(floor.indexOf('id="btnQcPdfs"') !== -1, "QC board has a QC PDFs button
 assert.ok(floor.indexOf("Production Tasks → Completed") !== -1, "QC Reports says where else to open PDFs");
 assert.ok(indexJs.indexOf("/api/qc-pdfs/") !== -1, "QC PDFs are served from the app");
 assert.ok(floor.indexOf("tablet photos") !== -1, "QC Reports says PDFs include tablet photos");
+assert.ok(floor.indexOf("saved without pictures") !== -1, "QC Reports says older PDFs are filled in from Drive when possible");
 assert.ok(floor.indexOf("function floorOverseesTasks") !== -1);
 assert.ok(floor.indexOf("getMyCompletedWork(session.name, session.role") !== -1, "task boards load completed work for the selected task");
 assert.ok(floor.indexOf("function floorCanEditCompletedActions") !== -1, "only Admin edits completed steel on others");
