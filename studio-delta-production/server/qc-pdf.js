@@ -167,7 +167,7 @@ async function packPhotos(processName, filesData) {
 }
 
 const catalog = require("./product-catalog");
-const LAYOUT = 2;
+const LAYOUT = 3;
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
 const MARGIN = 36;
@@ -262,6 +262,30 @@ function drawPhotoPageHeader(doc, record, photoName, index, total) {
   doc.save().strokeColor(BRASS).lineWidth(2).moveTo(MARGIN, MARGIN + 36).lineTo(MARGIN + inner, MARGIN + 36).stroke().restore();
 }
 
+function drawSignaturePage(doc, record, logoPath) {
+  const inner = PAGE_W - MARGIN * 2;
+  doc.addPage();
+  drawReportHeader(doc, record, logoPath);
+  let y = MARGIN + 96;
+  doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("SIGN-OFF", MARGIN, y);
+  doc.fillColor(INK).font("Helvetica-Bold").fontSize(14).text(record.worker || "—", MARGIN, y + 16);
+  doc.fillColor(MUTED).font("Helvetica").fontSize(10).text(formatWhen(record.created_at), MARGIN, y + 36);
+  y += 58;
+  const sigH = PAGE_H - y - MARGIN;
+  drawPdfBox(doc, MARGIN, y, inner, sigH);
+  doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("SIGNATURE", MARGIN + 12, y + 12);
+  if (record.signatureBuf) {
+    try {
+      doc.image(record.signatureBuf, MARGIN + 24, y + 40, { fit: [inner - 48, sigH - 72] });
+    } catch (e) {
+      doc.fillColor(MUTED).font("Helvetica").fontSize(10).text("Signature could not be placed.", MARGIN + 16, y + 40);
+    }
+  } else {
+    doc.save().strokeColor(RULE).lineWidth(0.6).moveTo(MARGIN + 24, y + sigH - 36).lineTo(MARGIN + inner - 24, y + sigH - 36).stroke().restore();
+    doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(record.worker || "Signed", MARGIN + 24, y + sigH - 28);
+  }
+}
+
 function loadStoredPhotos(id) {
   const dir = photosDir(id);
   if (!fs.existsSync(dir)) return [];
@@ -284,12 +308,13 @@ function loadStoredSignature(id) {
 async function restyleRecord(rec) {
   if (!rec || rec.imported || !rec.pdf_path) return false;
   const photos = loadStoredPhotos(rec.id);
+  if (!photos.length) return false;
   const signatureBuf = loadStoredSignature(rec.id);
   await renderPdf({
     ...rec,
     photos,
     signatureBuf,
-    photoAttempted: photos.length > 0
+    photoAttempted: true
   }, rec.pdf_path);
   rec.layout = LAYOUT;
   return true;
@@ -330,6 +355,9 @@ async function renderPdf(record, dest) {
   const logoPath = await logoPathForPdf();
   const inner = PAGE_W - MARGIN * 2;
   const photos = (record.photos || []).filter((photo) => photo && photo.buf);
+  if (!photos.length) {
+    throw new Error("QC PDF was not saved because no photos could be placed.");
+  }
   const photoSizes = [];
   for (let i = 0; i < photos.length; i++) {
     try {
@@ -388,7 +416,7 @@ async function renderPdf(record, dest) {
       const q = String(row.q || "Q" + (i + 1));
       const result = answerLabel(row.a);
       const qHeight = q.length > 72 ? 32 : 20;
-      if (y + qHeight > PAGE_H - 120) {
+      if (y + qHeight > PAGE_H - MARGIN - 16) {
         doc.addPage();
         drawReportHeader(doc, record, logoPath);
         y = MARGIN + 96;
@@ -411,32 +439,7 @@ async function renderPdf(record, dest) {
       y += 20;
     }
 
-    y += 18;
-    const sigH = 88;
-    if (y + sigH > PAGE_H - MARGIN) {
-      doc.addPage();
-      drawReportHeader(doc, record, logoPath);
-      y = MARGIN + 96;
-    }
-    drawPdfBox(doc, MARGIN, y, inner, sigH);
-    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("SIGNATURE", MARGIN + 8, y + 8);
-    if (record.signatureBuf) {
-      try {
-        doc.image(record.signatureBuf, MARGIN + 8, y + 22, { fit: [220, 56] });
-      } catch (e) {
-        doc.fillColor(MUTED).font("Helvetica").fontSize(8).text("Signature could not be placed.", MARGIN + 8, y + 40);
-      }
-    } else {
-      doc.save().strokeColor(RULE).lineWidth(0.5).moveTo(MARGIN + 8, y + 70).lineTo(MARGIN + 240, y + 70).stroke().restore();
-      doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(record.worker || "Signed", MARGIN + 8, y + 74);
-    }
-    doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(
-      "Quality Control  ·  " + (record.order_number || ""),
-      MARGIN, y + 36, { width: inner - 12, align: "right" }
-    );
-
-    const photosOnPage = photos;
-    photosOnPage.forEach((photo, i) => {
+    photos.forEach((photo, i) => {
       doc.addPage();
       drawPhotoPageHeader(doc, record, photo.name || ("Photo " + (i + 1)), i + 1, photos.length);
       const frameY = MARGIN + 48;
@@ -457,14 +460,7 @@ async function renderPdf(record, dest) {
       }
     });
 
-    if (record.photoAttempted && !photos.length) {
-      doc.addPage();
-      drawPhotoPageHeader(doc, record, "Photos", 0, 0);
-      doc.fillColor(MUTED).font("Helvetica").fontSize(10).text(
-        "Photos were sent with this QC but could not be placed on the PDF.",
-        MARGIN, MARGIN + 52, { width: inner }
-      );
-    }
+    drawSignaturePage(doc, record, logoPath);
 
     doc.end();
   });
@@ -507,6 +503,10 @@ async function saveFromFinish(job) {
   const photoAttempted = files.some((file) => !!file);
   const photos = await packPhotos(rec.process, files);
   const need = requiredPhotoCount(rec.process);
+  if (!photos.length) {
+    try { fs.rmSync(photosDir(id), { recursive: true, force: true }); } catch (e) {}
+    throw new Error("QC PDF was not saved because no photos could be placed. The job is still running.");
+  }
   if (!(job && job.allowMissingPhotos) && photos.length < need) {
     try { fs.rmSync(photosDir(id), { recursive: true, force: true }); } catch (e) {}
     throw new Error(
@@ -805,7 +805,7 @@ function replacePdfBytes(rec, buf, meta) {
 async function rebuildRecordFromPhotos(rec, filesData, signatureUrl) {
   const photos = await packPhotos(rec.process, filesData);
   const signatureBuf = await toJpeg(signatureUrl);
-  if (!photos.length && !signatureBuf) return false;
+  if (!photos.length) return false;
   writePhotoFiles(rec.id, photos, signatureBuf);
   await renderPdf({
     ...rec,

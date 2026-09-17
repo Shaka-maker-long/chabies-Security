@@ -83,13 +83,14 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   const file = qcPdf.readPdf(saved.id);
   assert.ok(file && file.buffer && file.buffer.slice(0, 4).toString() === "%PDF");
   const pages = pdfPageCount(file.buffer);
-  assert.ok(pages >= 8, "checklist page + 7 photo pages, got " + pages);
+  assert.ok(pages >= 9, "checklist + 7 photos + signature last, got " + pages);
   const latin = file.buffer.toString("latin1");
   assert.ok(/DCTDecode/.test(latin), "JPEG photos must be embedded");
   const text = pdfText(file.buffer);
   assert.ok(text.indexOf("STUDIO DELTA") !== -1, "QC PDF must use the Studio Delta header");
   assert.ok(text.indexOf("FINAL QC") !== -1, text.slice(0, 400));
   assert.ok(text.indexOf("CHECKLIST") !== -1 || text.indexOf("Checklist") !== -1, "checklist table header");
+  assert.ok(text.indexOf("SIGN-OFF") !== -1, "signature is a last-page sign-off");
   assert.ok(text.indexOf("S260184") !== -1);
   assert.ok(text.indexOf("Furniture") !== -1, "same tagline as purchase orders");
   const photoDir = path.join(dir, "qc-pdfs", saved.id);
@@ -115,32 +116,25 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   }
   assert.ok(/photos/i.test(missingThrew), missingThrew);
 
-  const noPhotos = await qcPdf.saveFromFinish({
-    orderNum: "S260212",
-    workerName: "Siya",
-    processName: "Final QC",
-    productName: "Violet Sideboard 3-Door",
-    qcData: [{ q: "Is the frame square?", a: "Y" }],
-    signatureUrl: "https://drive.google.com/file/d/abc123",
-    filesData: [],
-    rowToUpdate: 0,
-    logId: "log-empty",
-    allowMissingPhotos: true
-  });
-  const emptyPdf = qcPdf.readPdf(noPhotos.id);
-  assert.ok(emptyPdf && emptyPdf.buffer.slice(0, 4).toString() === "%PDF");
-  assert.strictEqual(noPhotos.photo_count, 0);
-  assert.ok(pdfPageCount(emptyPdf.buffer) <= 2, "Drive URL is not an image");
-  const store = JSON.parse(fs.readFileSync(path.join(dir, "qc-pdfs.json"), "utf8"));
-  const emptyRec = store.records.find((row) => row && row.id === noPhotos.id);
-  assert.ok(emptyRec);
-  const rebuilt = await qcPdf.rebuildRecordFromPhotos(emptyRec, [
-    { name: "front.jpg", mime: "image/jpeg", data: jpegB64 }
-  ], pngDataUrl);
-  assert.ok(rebuilt);
-  const rebuiltPdf = qcPdf.readPdf(noPhotos.id);
-  assert.ok(pdfPageCount(rebuiltPdf.buffer) >= 2, "saved checklist PDF can be rebuilt with photos");
-  assert.strictEqual(qcPdf.listReports().find((row) => row.id === noPhotos.id).photo_count, 1);
+  let stillThrew = "";
+  try {
+    await qcPdf.saveFromFinish({
+      orderNum: "S260212",
+      workerName: "Siya",
+      processName: "Final QC",
+      productName: "Violet Sideboard 3-Door",
+      qcData: [{ q: "Is the frame square?", a: "Y" }],
+      signatureUrl: pngDataUrl,
+      filesData: [],
+      rowToUpdate: 0,
+      logId: "log-empty",
+      allowMissingPhotos: true
+    });
+  } catch (e) {
+    stillThrew = String(e && e.message || e);
+  }
+  assert.ok(/photos/i.test(stillThrew), "must not write a QC PDF with no images even for recovery");
+  assert.ok(!qcPdf.listReports().some((row) => row.order_number === "S260212"), "no photo-less report is stored");
 
   const book = getBook();
   const logs = book.getSheetByName("Production_Log");
@@ -165,17 +159,6 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   const again = await qcPdf.backfillFromLogs();
   assert.strictEqual(again.saved, 0, JSON.stringify(again));
 
-  const blank = await qcPdf.saveFromFinish({
-    orderNum: "S260300",
-    workerName: "Siya",
-    processName: "Final QC",
-    qcData: [{ q: "Is the product level?", a: "Y" }],
-    signatureUrl: pngDataUrl,
-    filesData: [],
-    logId: "log-blank-photos",
-    allowMissingPhotos: true
-  });
-  assert.strictEqual(blank.photo_count, 0);
   const attached = await qcPdf.attachPhotos({
     logId: "log-blank-photos",
     orderNum: "S260300",
@@ -184,7 +167,8 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
     filesData: [{ name: "front.jpg", mime: "image/jpeg", data: jpegB64 }]
   });
   assert.ok(attached.photo_count >= 1, JSON.stringify(attached));
-  assert.ok(pdfPageCount(qcPdf.readPdf(attached.id).buffer) >= 2);
+  assert.ok(pdfPageCount(qcPdf.readPdf(attached.id).buffer) >= 3, "checklist + photo + signature last");
+  assert.ok(pdfText(qcPdf.readPdf(attached.id).buffer).indexOf("SIGN-OFF") !== -1);
 
   console.log("qc-pdf.test.js ok");
 })().catch((e) => {

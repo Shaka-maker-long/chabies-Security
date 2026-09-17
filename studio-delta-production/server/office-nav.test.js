@@ -138,7 +138,8 @@ assert.ok(floor.indexOf('id="btnQcPdfs"') !== -1, "QC board has a QC PDFs button
 assert.ok(floor.indexOf("Production Tasks → Completed") !== -1, "QC Reports says where else to open PDFs");
 const qcPdfJs = fs.readFileSync(path.join(__dirname, "qc-pdf.js"), "utf8");
 assert.ok(qcPdfJs.indexOf("#b08948") !== -1, "QC PDF uses the same brass rule as purchase orders");
-assert.ok(qcPdfJs.indexOf("STUDIO DELTA") !== -1, "QC PDF uses the Studio Delta letterhead");
+assert.ok(qcPdfJs.indexOf("drawSignaturePage") !== -1, "signature is drawn on its own last page");
+assert.ok(qcPdfJs.indexOf("QC PDF was not saved because no photos could be placed") !== -1, "no QC PDF without images");
 assert.ok(floor.indexOf("tablet photos") !== -1, "QC Reports says PDFs include tablet photos");
 assert.ok(floor.indexOf("saved without pictures") !== -1 || floor.indexOf("Add tablet photos") !== -1, "QC Reports says older PDFs can get tablet photos");
 assert.ok(floor.indexOf("Add tablet photos") !== -1, "completed QC cards can attach gallery photos without redoing QC");
