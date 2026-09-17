@@ -1631,10 +1631,15 @@ function getMyCompletedWork(workerName, process) {
       actualLabel: formatSpokenDuration(actual) || formatDurationServer(actual)
     };
     var notes = String(row[7] || "");
-    var pdfUrl = pickQcPdfUrl_(row[0], orderNum, row[4], notes);
-    if (pdfUrl) {
-      item.qcPdfUrl = pdfUrl;
-      item.qcPdfLabel = /final/i.test(String(row[4] || "")) ? "Open Final QC PDF" : "Open QC PDF";
+    var processName = String(row[4] || "");
+    var isQc = role === "Quality Control" || /qc/i.test(role) || /qc/i.test(processName)
+      || /pre-powder/i.test(role) || /pre-powder/i.test(processName) || /pre powder/i.test(role) || /pre powder/i.test(processName);
+    if (isQc) {
+      var pdfUrl = pickQcPdfUrl_(row[0], orderNum, processName, notes);
+      if (pdfUrl) {
+        item.qcPdfUrl = pdfUrl;
+        item.qcPdfLabel = /final/i.test(processName) || /final/i.test(role) ? "Open Final QC PDF" : "Open QC PDF";
+      }
     }
     if (isCuttingSteelProcess_(role) || isCuttingSteelProcess_(item.status)) {
       var steelKey = steelUsageIndexKey_(logWorker, orderNum, isCuttingSteelProcess_(role) ? role : item.status);
