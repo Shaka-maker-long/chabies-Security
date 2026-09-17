@@ -1684,7 +1684,7 @@
         </div>
         <button id="btnSwitchTask" class="btn btn-outline-dark btn-sm d-none" onclick="showProductionTasks()">Switch task</button>
       </div>
-      <p id="workLockOffNote" class="small text-muted mb-3">The floor locks after 15:45, on weekends, and after 8 hours. A job already on someone else stays locked. Admin is look-only except Quality Control when that task is ticked on Users. Grant overtime on Workers.</p>
+      <p id="workLockOffNote" class="small text-muted mb-3">The floor locks after 15:45, on weekends, and after 8 hours. A job already on someone else stays locked. Anyone can see completion times on this task. Start, pause, and finish stay with the person on the job. Admin is look-only except Quality Control when that task is ticked on Users. Only Admin can edit completed steel. Grant overtime on Workers.</p>
       
       <div class="row mb-3">
         <div class="col-md-6 mb-2 mb-md-0">
@@ -4659,13 +4659,14 @@
     function floorOverseesTasks() {
       return sessionSeesIdleAlerts();
     }
+    function floorCanEditCompletedActions() {
+      return !!(session.canSeeOffice || session.isAdmin);
+    }
     function cardShowsInProgress(o) {
-      if (!(o && o.logId && o.assigned)) return false;
-      if (floorOverseesTasks()) return true;
-      return o.assigned === session.name;
+      return !!(o && o.logId && o.assigned);
     }
     function onItLineHtml(o) {
-      if (!floorOverseesTasks() || !cardShowsInProgress(o) || !o.assigned) return '';
+      if (!cardShowsInProgress(o) || !o.assigned) return '';
       const label = o.isPaused ? 'Paused · ' : 'On it: ';
       return '<div class="product-sub on-it-line">' + floorEsc(label + o.assigned) + '</div>';
     }
@@ -4691,7 +4692,7 @@
       if (!res || !res.items) {
         return '<div class="completed-error">Could not load completed work.</div>';
       }
-      const showWho = floorOverseesTasks() || !!res.oversees;
+      const showWho = !!(res.viewAll || res.oversees || floorOverseesTasks() || session.role);
       if (!res.items.length) {
         if (showWho) {
           const task = session.role ? (' for ' + session.role) : '';
@@ -4712,9 +4713,10 @@
         }
         const est = item.durationLabel ? ('Estimate ' + item.durationLabel) : 'No estimate';
         const took = item.actualLabel ? ('took ' + item.actualLabel) : '';
-        const canEditSteel = item.canEditSteel || item.process === 'Profile Cutting' || item.process === 'Plate Cutting';
+        const cuttingJob = item.canEditSteel || item.process === 'Profile Cutting' || item.process === 'Plate Cutting' || (item.steelUsage && item.steelUsage.length);
+        const canEditSteel = !!(item.canEditSteel && (floorCanEditCompletedActions() || item.worker === session.name));
         let steelHtml = '';
-        if (canEditSteel) {
+        if (cuttingJob) {
           const key = String(item.order || '') + '\t' + String(item.process || '') + '\t' + String(item.worker || '');
           window._completedSteelByKey[key] = item.steelUsage || [];
           const lines = item.steelUsage || [];
@@ -4729,8 +4731,11 @@
           } else {
             steelHtml += '<p class="completed-steel-empty">No steel usage was found for this job.</p>';
           }
-          steelHtml += '<button type="button" class="btn btn-sm btn-outline-dark" onclick=\'openEditCompletedSteel(' +
-            JSON.stringify(item.order || '') + ',' + JSON.stringify(item.process || '') + ',' + JSON.stringify(item.worker || '') + ')\'>Edit steel usage</button></div>';
+          if (canEditSteel) {
+            steelHtml += '<button type="button" class="btn btn-sm btn-outline-dark" onclick=\'openEditCompletedSteel(' +
+              JSON.stringify(item.order || '') + ',' + JSON.stringify(item.process || '') + ',' + JSON.stringify(item.worker || '') + ')\'>Edit steel usage</button>';
+          }
+          steelHtml += '</div>';
         }
         const who = (showWho && item.worker) ? (floorEsc(item.worker) + ' · ') : '';
         const pdfBtn = item.qcPdfUrl
@@ -4765,14 +4770,15 @@
       const runner = google.script.run.withSuccessHandler(paintCompletedWork).withFailureHandler(() => {
         paintCompletedWork(null);
       });
-      if (floorOverseesTasks()) runner.getMyCompletedWork(session.name, session.role || '');
+      if (session.role) runner.getMyCompletedWork(session.name, session.role);
+      else if (floorOverseesTasks() || session.canSeeOffice) runner.getMyCompletedWork(session.name, session.role || '');
       else runner.getMyCompletedWork(session.name);
     }
     function openCompletedWork() {
       const blurb = document.getElementById('completedWorkBlurb');
       if (blurb) {
-        blurb.textContent = floorOverseesTasks()
-          ? 'Finished jobs on this task. Pauses do not count toward the time.'
+        blurb.textContent = session.role
+          ? 'Finished jobs on this task. Anyone can see the times. Only Admin can edit completed steel. Pauses do not count toward the time.'
           : 'Pauses do not count. A trophy means you finished within the time on the task sheet. The alarm means you went overtime.';
       }
       navTo('view-completed');
@@ -4842,7 +4848,7 @@
           }
           showAlert('Error: ' + err);
         })
-        .updateCompletedSteelUsage(ctx.worker || session.name, ctx.order, ctx.process, collected);
+        .updateCompletedSteelUsage(ctx.worker || session.name, ctx.order, ctx.process, collected, session.name);
     }
     function enterDashboard() {
       navTo('view-dashboard');

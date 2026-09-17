@@ -1587,12 +1587,25 @@ function pickQcPdfUrl_(logId, orderNum, processName, notes) {
   return anyHit ? anyHit[1] : "";
 }
 
+function userHasAdminAccess(profile) {
+  return !!(profile && profile.canSeeOffice);
+}
+
+function userCanViewAllCompletions(profile, wantProcess) {
+  if (!profile) return false;
+  if (userManagesIdle(profile) || userHasAdminAccess(profile)) return true;
+  return !!String(wantProcess || "").trim();
+}
+
 function getMyCompletedWork(workerName, process) {
   var want = String(workerName || "").trim();
   var items = [];
   if (!want) return { worker: want, items: items };
+  var viewer = getUserProfileByName(want);
   var oversees = userOverseesFloor(want);
   var wantProcess = String(process || "").trim();
+  var viewAll = userCanViewAllCompletions(viewer, wantProcess);
+  var canEditSteelLogs = userHasAdminAccess(viewer);
   var ss = getSpreadsheet();
   var pack = getLogPack(ss);
   var products = orderProductMap(ss);
@@ -1601,12 +1614,12 @@ function getMyCompletedWork(workerName, process) {
     var row = pack.values[i];
     if (!row[6]) continue;
     var logWorker = String(row[2] || "").trim();
-    if (!oversees && logWorker !== want) continue;
+    if (!viewAll && logWorker !== want) continue;
     var meta = parseLogMeta(row.length > 12 ? row[12] : "");
     if (meta.entryType === "indirect") continue;
     var role = String(row[3] || "").trim();
     if (role === "Indirect") continue;
-    if (oversees && !completedProcessMatches_(role, wantProcess)) continue;
+    if (viewAll && wantProcess && !completedProcessMatches_(role, wantProcess)) continue;
     var orderNum = String(row[1] || "").trim();
     var product = products[orderNum] || "";
     var actual = calculateWorkMinutesFromLog(row);
@@ -1644,14 +1657,14 @@ function getMyCompletedWork(workerName, process) {
     if (isCuttingSteelProcess_(role) || isCuttingSteelProcess_(item.status)) {
       var steelKey = steelUsageIndexKey_(logWorker, orderNum, isCuttingSteelProcess_(role) ? role : item.status);
       item.steelUsage = steelIndex[steelKey] ? steelIndex[steelKey].slice() : [];
-      item.canEditSteel = true;
+      item.canEditSteel = canEditSteelLogs || logWorker === want;
     }
     items.push(item);
   }
   items.sort(function (a, b) {
     return String(b.end || "").localeCompare(String(a.end || ""));
   });
-  return { worker: want, process: wantProcess, oversees: oversees, items: items };
+  return { worker: want, process: wantProcess, oversees: oversees, viewAll: viewAll, items: items };
 }
 
 function getWorkerDayWork(workerName, now) {
@@ -1709,13 +1722,18 @@ function getWorkerDayWork(workerName, now) {
   };
 }
 
-function updateCompletedSteelUsage(workerName, orderNum, process, steelUsageData) {
+function updateCompletedSteelUsage(workerName, orderNum, process, steelUsageData, actorName) {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
   try {
     workerName = String(workerName || "").trim();
     orderNum = String(orderNum || "").trim();
     process = String(process || "").trim();
+    var actor = String(actorName || workerName || "").trim();
+    var actorProfile = getUserProfileByName(actor);
+    if (!actor || (actor !== workerName && !userHasAdminAccess(actorProfile))) {
+      return { success: false, error: "Only Admin can edit someone else's completed steel usage." };
+    }
     if (!workerName || !orderNum) {
       return { success: false, error: "Missing worker or order." };
     }

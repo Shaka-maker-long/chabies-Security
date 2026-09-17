@@ -19,6 +19,7 @@ const book = getBook();
 book.getSheetByName("Users").appendRow([
   "Sipho", "Welder Tagger", "1234", "Welding, Profile Cutting, Plate Cutting, Assembly", "Production", "No"
 ]);
+book.getSheetByName("Users").appendRow(["Thabo", "Welder", "1234", "Welding", "Production", "No"]);
 book.getSheetByName("Users").appendRow(["Admin", "Manager", "admin", "", "Admin", "Yes"]);
 book.getSheetByName("Users").appendRow(["Siya", "Production Manager", "siya", "", "Admin", "Yes"]);
 book.getSheetByName("Users").appendRow(["QC Admin", "Admin", "qcadm", "Quality Control", "Admin", "Yes"]);
@@ -193,6 +194,31 @@ async function main() {
 
   const siphoOnly = await callShopFunction("getMyCompletedWork", ["Sipho"]);
   assert.ok((siphoOnly.items || []).every((i) => i.worker === "Sipho"), "floor worker still sees only own completed");
+  assert.ok(!siphoOnly.viewAll, "own completed list is not the full shop");
+
+  const siphoWeldBoard = await callShopFunction("getMyCompletedWork", ["Sipho", "Welding"]);
+  assert.ok(siphoWeldBoard.viewAll, "anyone on a task board sees every completion time for that task");
+  assert.ok((siphoWeldBoard.items || []).some((i) => i.order === "SD-WELD"), JSON.stringify(siphoWeldBoard));
+  assert.ok(!(siphoWeldBoard.items || []).some((i) => i.order === "SD-CUT" || i.order === "SD-PLATE" || i.order === "SD-ASM"), "welding board hides other processes");
+
+  const blockedSteel = await callShopFunction("updateCompletedSteelUsage", [
+    "Sipho",
+    "SD-CUT",
+    "Profile Cutting",
+    [{ category: "Round tube", type: "hack", size: "1 m", isCustom: true }],
+    "Thabo"
+  ]);
+  assert.strictEqual(blockedSteel.success, false, JSON.stringify(blockedSteel));
+  assert.ok(/admin/i.test(String(blockedSteel.error || "")), JSON.stringify(blockedSteel));
+
+  const adminSteel = await callShopFunction("updateCompletedSteelUsage", [
+    "Sipho",
+    "SD-CUT",
+    "Profile Cutting",
+    [{ category: "Round tube", type: "38x2-admin", size: "3 m", isCustom: true }],
+    "Admin"
+  ]);
+  assert.ok(adminSteel && adminSteel.success !== false, JSON.stringify(adminSteel));
 
   const dayWork = await callShopFunction("getWorkerDayWork", ["Sipho"]);
   assert.strictEqual(dayWork.worker, "Sipho");

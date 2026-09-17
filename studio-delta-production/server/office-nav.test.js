@@ -138,9 +138,13 @@ assert.ok(floor.indexOf('id="btnQcPdfs"') !== -1, "QC board has a QC PDFs button
 assert.ok(floor.indexOf("Production Tasks → Completed") !== -1, "QC Reports says where else to open PDFs");
 assert.ok(indexJs.indexOf("/api/qc-pdfs/") !== -1, "QC PDFs are served from the app");
 assert.ok(floor.indexOf("function floorOverseesTasks") !== -1);
+assert.ok(floor.indexOf("getMyCompletedWork(session.name, session.role") !== -1, "task boards load completed work for the selected task");
+assert.ok(floor.indexOf("function floorCanEditCompletedActions") !== -1, "only Admin edits completed steel on others");
+assert.ok(floor.indexOf("Anyone can see completion times") !== -1, "completion times are visible to everyone on the task");
+assert.ok(floor.indexOf("Only Admin can edit completed steel") !== -1);
 assert.ok(floor.indexOf("function cardShowsInProgress") !== -1);
+assert.ok(floor.indexOf("return !!(o && o.logId && o.assigned)") !== -1, "anyone can see live clocks and times on the board");
 assert.ok(floor.indexOf("showInProgress = isMine") === -1, "managers must not hide other people's live clocks");
-assert.ok(floor.indexOf("getMyCompletedWork(session.name, session.role") !== -1, "managers load completed work for the selected task");
 assert.ok(floor.indexOf("On it:") !== -1, "manager in-progress cards name who is on the job");
 assert.ok(floor.indexOf("ctx.worker || session.name") !== -1, "manager steel edit uses the worker who logged it");
 assert.ok(floor.indexOf("updateCompletedSteelUsage") !== -1);
