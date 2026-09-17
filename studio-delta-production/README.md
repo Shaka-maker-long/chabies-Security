@@ -37,13 +37,14 @@ The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume
 | `DATA_DIR/glass-po-invoices/` | Invoice files for received glass batches |
 | `DATA_DIR/floor-planning.json` | Planning calendars: who is booked for which order and process |
 | `DATA_DIR/job-cards.json` / `job-cards/` / `job-card-images/` | Job cards, PDFs, and product images |
+| `DATA_DIR/qc-pdfs.json` / `qc-pdfs/` | Pre-powder and Final QC PDFs (checklist, signature, photos). Open them from Shop → **QC Reports**, the clipboard icon on **Orders**, or **Open QC PDF** on Production Tasks → Completed |
 | `DATA_DIR/email-replies.json` | Outlook reply templates |
 | `DATA_DIR/showroom-bookings.json` | Showroom bookings |
 | `DATA_DIR/standard-cutting-lists.json` | Standard job-card cutting lists |
 | `DATA_DIR/floor-layout.json` | Home 3D twin layout |
 | `DATA_DIR/pdf-images/` | Images used on glass purchase-order PDFs |
 
-On Railway, `DATA_DIR` is `/app/data`. **A Volume must be mounted at `/app/data`**. Without it, every deploy wipes the database. Users → **Backup** is the way to copy and recover the shop. Nightly and “Backup now” copies pack **every file under `/app/data` except the `backups/` folder itself** (the restore pack is a new `.tgz` written into `backups/`). Production logs live in SQLite (`sheet_rows` for `Production_Log`) and are inside that `.tgz`. QC photos taken on the tablet are sent to Google Docs and are **not** stored as files on the volume, so they are not in the pack.
+On Railway, `DATA_DIR` is `/app/data`. **A Volume must be mounted at `/app/data`**. Without it, every deploy wipes the database. Users → **Backup** is the way to copy and recover the shop. Nightly and “Backup now” copies pack **every file under `/app/data` except the `backups/` folder itself** (the restore pack is a new `.tgz` written into `backups/`). Production logs live in SQLite (`sheet_rows` for `Production_Log`) and are inside that `.tgz`. QC PDFs (checklist, signature, and photos from that finish) are stored under `qc-pdfs/` on the volume and are in the pack.
 
 ### Automatic backups (volume + Google Drive)
 

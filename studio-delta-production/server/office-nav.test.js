@@ -131,7 +131,12 @@ assert.ok(floor.indexOf("locks after 16:00") === -1, "floor lock copy must not s
 assert.ok(floor.indexOf("Time left") !== -1);
 assert.ok(floor.indexOf("data-priorworkms") !== -1);
 assert.ok(floor.indexOf("estimateCompletionAt") !== -1);
-assert.ok(floor.indexOf("getMyCompletedWork") !== -1);
+assert.ok(floor.indexOf("Open QC PDF") !== -1, "completed QC cards must open the PDF");
+assert.ok(floor.indexOf("item.qcPdfUrl") !== -1, "completed work carries the QC PDF link");
+assert.ok(floor.indexOf("item.qcPdfLabel") !== -1, "completed cards use Final vs pre-powder PDF label");
+assert.ok(floor.indexOf('id="btnQcPdfs"') !== -1, "QC board has a QC PDFs button");
+assert.ok(floor.indexOf("Production Tasks → Completed") !== -1, "QC Reports says where else to open PDFs");
+assert.ok(indexJs.indexOf("/api/qc-pdfs/") !== -1, "QC PDFs are served from the app");
 assert.ok(floor.indexOf("function floorOverseesTasks") !== -1);
 assert.ok(floor.indexOf("function cardShowsInProgress") !== -1);
 assert.ok(floor.indexOf("showInProgress = isMine") === -1, "managers must not hide other people's live clocks");

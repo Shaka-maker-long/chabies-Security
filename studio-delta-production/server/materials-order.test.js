@@ -68,6 +68,7 @@ const SIG = "data:image/png;base64,aaa";
     order.id, started.logId, QC, SIG, [], "Nomsa", [], "S-PRE-GLASS", [], glass, wood
   ]);
   assert.strictEqual(finished.success, true, JSON.stringify(finished));
+  assert.ok(finished.qcPdfUrl && String(finished.qcPdfUrl).indexOf("/api/qc-pdfs/") === 0, JSON.stringify(finished));
 
   const listed = await callShopFunction("listMaterialsToOrder", []);
   assert.strictEqual(listed.glass.length, 1, JSON.stringify(listed.glass));

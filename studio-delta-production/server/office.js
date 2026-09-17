@@ -842,6 +842,16 @@ function mountOffice(app) {
     res.send(file.buffer);
   });
 
+  app.get("/api/office/qc-pdfs", requireOffice, async (_req, res) => {
+    try {
+      const qcPdf = require("./qc-pdf");
+      await qcPdf.backfillFromLogs();
+      res.json({ ok: true, reports: qcPdf.listReports() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.post("/api/office/job-cards/parse", requireOffice, (req, res) => {
     const cutting = jobCard.parsePastedCuttingList((req.body && (req.body.text || req.body.cutting_text)) || "");
     res.json({ ok: true, cutting, count: jobCard.cuttingCount(cutting) });

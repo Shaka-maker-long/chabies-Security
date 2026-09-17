@@ -373,6 +373,13 @@ async function callShopFunction(fnName, args) {
         return {};
       }
     },
+    listLocalQcReports: function () {
+      try {
+        return require("./qc-pdf").listReports();
+      } catch (e) {
+        return [];
+      }
+    },
     noPlatesIs: function (orderNumber) {
       return require("./no-plates").isNoPlate(orderNumber);
     },
@@ -396,6 +403,12 @@ async function callShopFunction(fnName, args) {
   ctx._logPackMemo = null;
   ctx._logPackFull = false;
 
+  if (fnName === "getMyCompletedWork" || fnName === "getQCReportsFast") {
+    try { await require("./qc-pdf").backfillFromLogs(); } catch (e) {
+      console.error("[qc-pdf] backfill", e && e.message ? e.message : e);
+    }
+    clearShopCache();
+  }
   const fn = ctx.__fn;
   if (typeof fn !== "function") throw new Error("Function not found: " + fnName);
   let result;
@@ -404,6 +417,41 @@ async function callShopFunction(fnName, args) {
   } catch (e) {
     await workbook.flush().catch(() => {});
     throw e;
+  }
+  if (fnName === "finishOrder" && result && result.qcPdfJob) {
+    try {
+      const qcPdf = require("./qc-pdf");
+      const saved = await qcPdf.saveFromFinish(result.qcPdfJob);
+      if (saved && saved.url) {
+        qcPdf.writeUrlOnLog(result.qcPdfJob.rowToUpdate, saved.url);
+        result.qcPdfUrl = saved.url;
+      }
+    } catch (e) {
+      console.error("[qc-pdf]", e && e.stack ? e.stack : e);
+    }
+    delete result.qcPdfJob;
+  }
+  if (fnName === "getQCReportsFast") {
+    try {
+      const qcPdf = require("./qc-pdf");
+      const local = qcPdf.listReports();
+      const have = {};
+      const merged = [];
+      (local || []).forEach((row) => {
+        if (!row || !row.url || have[row.url]) return;
+        have[row.url] = true;
+        merged.push(row);
+      });
+      (Array.isArray(result) ? result : []).forEach((row) => {
+        if (!row || !row.url || have[row.url]) return;
+        have[row.url] = true;
+        merged.push(row);
+      });
+      merged.sort((a, b) => (b.dateCreated || 0) - (a.dateCreated || 0));
+      result = merged.slice(0, 300);
+    } catch (e) {
+      console.error("[qc-pdf] reports", e && e.message ? e.message : e);
+    }
   }
   if (workbookIsDirty(workbook)) await workbook.flush();
   if (workbookCache && workbookCache.book === workbook) {

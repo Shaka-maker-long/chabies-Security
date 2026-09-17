@@ -21,21 +21,36 @@ function collectQcPdfs() {
   const map = {};
   try {
     const sheet = getBook().getSheetByName("Production_Log");
-    if (!sheet || sheet.getLastRow() < 2) return map;
-    const values = sheet.getDataRange().getValues();
-    for (let i = 1; i < values.length; i++) {
-      const order = formatOrderId(values[i][1]);
-      if (!order) continue;
-      const notes = String(values[i][7] || "");
-      const process = String(values[i][3] || "").trim();
-      const re = /QC PDF:\s*(\S+)/gi;
-      let hit;
-      while ((hit = re.exec(notes))) {
-        if (!map[order]) map[order] = [];
-        addUnique(map[order], { url: hit[1], label: qcLabel(process) });
+    if (sheet && sheet.getLastRow() >= 2) {
+      const values = sheet.getDataRange().getValues();
+      for (let i = 1; i < values.length; i++) {
+        const order = formatOrderId(values[i][1]);
+        if (!order) continue;
+        const notes = String(values[i][7] || "");
+        const process = String(values[i][3] || "").trim();
+        const re = /QC PDF:\s*(\S+)/gi;
+        let hit;
+        while ((hit = re.exec(notes))) {
+          if (!map[order]) map[order] = [];
+          addUnique(map[order], { url: hit[1], label: qcLabel(process) });
+        }
       }
     }
   } catch (e) {}
+  try {
+    require("./qc-pdf").listReports().forEach((row) => {
+      const order = formatOrderId(row.order_number);
+      if (!order) return;
+      if (!map[order]) map[order] = [];
+      addUnique(map[order], { url: row.url, label: row.label || qcLabel(row.kind) });
+    });
+  } catch (e) {}
+  Object.keys(map).forEach((order) => {
+    const list = map[order] || [];
+    if (list.some((row) => String(row.url || "").indexOf("/api/qc-pdfs/") === 0)) {
+      map[order] = list.filter((row) => String(row.url || "").indexOf("/api/qc-pdfs/") === 0);
+    }
+  });
   return map;
 }
 

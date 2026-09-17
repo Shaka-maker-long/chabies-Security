@@ -1559,6 +1559,34 @@ function completedProcessMatches_(role, wantProcess) {
   return got.toLowerCase() === want.toLowerCase();
 }
 
+function pickQcPdfUrl_(logId, orderNum, processName, notes) {
+  var notesStr = String(notes || "");
+  var localHit = /QC PDF:\s*(\/api\/qc-pdfs\/[^\s]+)/i.exec(notesStr);
+  if (localHit) return localHit[1];
+  if (typeof listLocalQcReports === "function") {
+    try {
+      var list = listLocalQcReports() || [];
+      var wantLog = String(logId || "");
+      var wantOrder = String(orderNum || "").trim().toLowerCase();
+      var p = String(processName || "").toLowerCase();
+      var wantKind = p.indexOf("final") !== -1 ? "final" : ((p.indexOf("pre-powder") !== -1 || p.indexOf("pre powder") !== -1) ? "pre" : "");
+      var i;
+      for (i = 0; i < list.length; i++) {
+        if (wantLog && list[i].log_id && String(list[i].log_id) === wantLog) return list[i].url;
+      }
+      for (i = 0; i < list.length; i++) {
+        if (!wantOrder || String(list[i].order_number || "").trim().toLowerCase() !== wantOrder) continue;
+        var kind = String(list[i].kind || list[i].label || list[i].process || "").toLowerCase();
+        if (wantKind === "final" && kind.indexOf("final") === -1) continue;
+        if (wantKind === "pre" && kind.indexOf("pre") === -1) continue;
+        return list[i].url;
+      }
+    } catch (e) {}
+  }
+  var anyHit = /QC PDF:\s*(\S+)/i.exec(notesStr);
+  return anyHit ? anyHit[1] : "";
+}
+
 function getMyCompletedWork(workerName, process) {
   var want = String(workerName || "").trim();
   var items = [];
@@ -1602,6 +1630,12 @@ function getMyCompletedWork(workerName, process) {
       durationLabel: formatSpokenDuration(target),
       actualLabel: formatSpokenDuration(actual) || formatDurationServer(actual)
     };
+    var notes = String(row[7] || "");
+    var pdfUrl = pickQcPdfUrl_(row[0], orderNum, row[4], notes);
+    if (pdfUrl) {
+      item.qcPdfUrl = pdfUrl;
+      item.qcPdfLabel = /final/i.test(String(row[4] || "")) ? "Open Final QC PDF" : "Open QC PDF";
+    }
     if (isCuttingSteelProcess_(role) || isCuttingSteelProcess_(item.status)) {
       var steelKey = steelUsageIndexKey_(logWorker, orderNum, isCuttingSteelProcess_(role) ? role : item.status);
       item.steelUsage = steelIndex[steelKey] ? steelIndex[steelKey].slice() : [];
@@ -2356,7 +2390,18 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
       onTime: targetMinutes > 0 && durationMins <= targetMinutes + 0.5,
       overtime: targetMinutes > 0 && durationMins > targetMinutes + 0.5,
       durationLabel: formatSpokenDuration(targetMinutes),
-      actualLabel: formatSpokenDuration(durationMins) || formatDurationServer(durationMins)
+      actualLabel: formatSpokenDuration(durationMins) || formatDurationServer(durationMins),
+      qcPdfJob: (role === "Quality Control" && qcData && signatureUrl && processName !== "Powder Coating") ? {
+        logId: logRow[0],
+        rowToUpdate: rowToUpdate,
+        orderNum: orderNum,
+        workerName: workerName,
+        processName: processName,
+        productName: productName,
+        qcData: qcData,
+        signatureUrl: signatureUrl,
+        filesData: filesData || []
+      } : null
     };
     
   } catch(e) {
@@ -3742,41 +3787,35 @@ function getWeeklyAnalyticsData() {
 }
 
 function getQCReportsFast() {
-  var folderId = "1pyzJ-jcgltJlrCOwjR7c8AIFxwcd2YcK"; // Your exact QC Folder ID
   var list = [];
-  
+  if (typeof listLocalQcReports === "function") {
+    try { list = listLocalQcReports() || []; } catch (e) {}
+  }
   try {
+    var folderId = "1pyzJ-jcgltJlrCOwjR7c8AIFxwcd2YcK";
     var folder = DriveApp.getFolderById(folderId);
-    
-    // 1. Instantly unlock the folder for Admins (ignores errors if you aren't the owner)
     try {
       folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    } catch(e) {}
-    
-    // 2. Get EVERY file directly from this specific folder
+    } catch (e) {}
     var files = folder.getFiles();
-    
+    var seen = {};
+    list.forEach(function (row) { if (row && row.url) seen[row.url] = true; });
     while (files.hasNext()) {
       var file = files.next();
       var name = file.getName();
-      
-      // Ensure we only grab PDFs (checking both name and file type to be safe)
-      if (name.toLowerCase().indexOf('.pdf') > -1 || file.getMimeType() === MimeType.PDF) {
+      if (name.toLowerCase().indexOf(".pdf") > -1 || file.getMimeType() === MimeType.PDF) {
+        var url = file.getUrl();
+        if (seen[url]) continue;
+        seen[url] = true;
         list.push({
-          name: name.replace('.pdf', ''),
-          url: file.getUrl(),
+          name: name.replace(".pdf", ""),
+          url: url,
           dateCreated: file.getDateCreated().getTime()
         });
       }
     }
-  } catch(e) {
-    throw new Error("Could not read folder. Error: " + e.toString());
-  }
-  
-  // 3. Sort by newest first
-  list.sort(function(a, b) { return b.dateCreated - a.dateCreated; });
-  
-  // Return the most recent 300 so the app stays fast
+  } catch (e) {}
+  list.sort(function (a, b) { return (b.dateCreated || 0) - (a.dateCreated || 0); });
   return list.slice(0, 300);
 }
 
