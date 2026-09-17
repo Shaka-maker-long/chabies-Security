@@ -2076,7 +2076,7 @@
     <div id="view-admin-qc-reports" class="view-section container d-none-view">
       <button class="btn btn-outline-dark mb-4" onclick="session.role ? navTo('view-dashboard') : navTo('view-roles')">&larr; BACK</button>
       <h2 class="brand-font mb-4">Saved QC Reports</h2>
-      <p class="text-muted mb-3">Pre-powder and Final QC PDFs live in the app and include the checklist, signature, and tablet photos. Older reports that were saved without pictures open the Google Drive copy when that file still exists (also emailed to Siya and Shaka as <strong>QC Report: order number</strong>). If Drive never received the photos, they cannot be recovered without doing QC again. Open one here, from <strong>Orders</strong> (clipboard icon on the row), or <strong>Open QC PDF</strong> on Production Tasks → Completed.</p>
+      <p class="text-muted mb-3">Pre-powder and Final QC PDFs live in the app and include the checklist, signature, and tablet photos. If a finished PDF has no pictures, open Completed and use <strong>Add tablet photos</strong> — pick the shots from the tablet gallery. The unit does not need to come back. Older Google Drive copies and emails to Siya and Shaka (<strong>QC Report: order number</strong>) may also still have the original file. Open one here, from <strong>Orders</strong> (clipboard icon on the row), or <strong>Open QC PDF</strong> on Production Tasks → Completed.</p>
       
       <div class="row mb-3">
         <div class="col-md-8 mb-2">
@@ -2164,6 +2164,24 @@
 
     <div class="mt-4"><label class="fw-bold">Signature</label><div class="border"><canvas id="sigCanvas"></canvas></div><button class="btn btn-sm btn-outline-secondary mt-2" onclick="clearSignature()">Clear</button></div>
   </div><div class="modal-footer"><button class="btn btn-primary" onclick="submitQC()">CONFIRM</button></div></div></div></div>
+  <div class="modal fade" id="qcAttachPhotosModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title brand-font">Add tablet photos</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <p class="mb-2"><strong>Order:</strong> <span id="qcAttachOrderNum"></span></p>
+          <p class="text-muted">The unit does not need to come back. Pick the pictures from this tablet’s gallery — the same Front, Level 1, Back, sides, Job Card, and Open shots taken at QC.</p>
+          <div id="qcAttachPhotoInputs"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-primary" id="qcAttachSaveBtn" onclick="submitAttachQcPhotos()">SAVE PHOTOS ON PDF</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="modal fade" id="insertScheduleModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content p-4">
@@ -2649,7 +2667,7 @@
       'Final QC': ['Front', 'Level 1', 'Back', 'Left Side', 'Right Side', 'Job Card', 'Open', 'Top (Optional)', 'Level 2 (Optional)']
     };
 
-    let passModal, changePassModal, startModal, pauseModal, qcModal, alertModal, confirmModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, editSteelModal, welderSteelModal, canvas, ctx, isDrawing = false;
+    let passModal, changePassModal, startModal, pauseModal, qcModal, qcAttachPhotosModal, alertModal, confirmModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, editSteelModal, welderSteelModal, canvas, ctx, isDrawing = false;
 
     // =====================================================
     // THEME MANAGEMENT
@@ -2707,6 +2725,7 @@
         pauseModal = bindModal('#pauseModal');
         glassCheckModal = bindModal('#glassCheckModal');
         qcModal = bindModal('#qcModal');
+        qcAttachPhotosModal = bindModal('#qcAttachPhotosModal');
         alertModal = bindModal('#alertModal');
         confirmModal = bindModal('#confirmModal');
         floorListModal = bindModal('#floorListModal');
@@ -4741,11 +4760,17 @@
         const pdfBtn = item.qcPdfUrl
           ? '<a class="btn btn-sm btn-outline-dark mt-2" href="' + floorEsc(item.qcPdfUrl) + '" target="_blank" rel="noopener">' + floorEsc(item.qcPdfLabel || 'Open QC PDF') + '</a>'
           : '';
+        const canAddPhotos = !!(item.qcPdfNeedsPhotos && (hasQcFloorAccess() || session.canSeeOffice || session.isAdmin || item.worker === session.name));
+        const addPhotosBtn = canAddPhotos
+          ? '<button type="button" class="btn btn-sm btn-dark mt-2 ms-1" onclick=\'openAttachQcPhotos(' +
+            JSON.stringify(item.logId || '') + ',' + JSON.stringify(item.order || '') + ',' + JSON.stringify(item.qcPdfProcess || item.status || item.process || '') +
+            ')\'>Add tablet photos</button>'
+          : '';
         return '<article class="completed-card">' + icon +
           '<div class="completed-body"><h3>' + floorEsc(item.order || '') + (item.product ? ' · ' + floorEsc(item.product) : '') + '</h3>' +
           '<p>' + who + floorEsc(item.process || '') + (item.end ? ' · ' + formatCompletedWhen(item.end) : '') + '</p>' +
           '<p>' + est + (took ? ' · ' + took : '') + '</p>' +
-          '<p>' + verdict + '</p>' + pdfBtn + steelHtml + '</div></article>';
+          '<p>' + verdict + '</p>' + pdfBtn + addPhotosBtn + steelHtml + '</div></article>';
       }).join('');
     }
     function paintCompletedWork(res) {
@@ -6988,6 +7013,91 @@
                   btn.disabled = false;
               }
           }
+      }
+    }
+
+    function openAttachQcPhotos(logId, orderNum, processName) {
+      session.attachQcLogId = String(logId || "");
+      session.attachQcOrder = String(orderNum || "");
+      const process = String(processName || session.role || "Final QC");
+      const qcKey = /pre/i.test(process) && !/final/i.test(process) ? "Quality Control" : "Final QC";
+      const labels = PHOTO_REQS[qcKey] || PHOTO_REQS["Final QC"];
+      const orderEl = document.getElementById("qcAttachOrderNum");
+      if (orderEl) orderEl.textContent = session.attachQcOrder || "—";
+      const wrap = document.getElementById("qcAttachPhotoInputs");
+      if (wrap) {
+        wrap.innerHTML = "";
+        labels.forEach((label, idx) => {
+          const optional = label.indexOf("Optional") !== -1;
+          wrap.innerHTML += '<div class="mb-2"><label for="qc-attach-photo-' + idx + '">' + label + '</label>' +
+            '<input type="file" id="qc-attach-photo-' + idx + '" class="form-control qc-attach-photo" accept="image/*" data-idx="' + idx + '" data-optional="' + optional + '"></div>';
+        });
+      }
+      if (qcAttachPhotosModal) qcAttachPhotosModal.show();
+    }
+
+    async function submitAttachQcPhotos() {
+      const inputs = document.querySelectorAll("#qcAttachPhotoInputs .qc-attach-photo");
+      const fileData = [];
+      let missing = false;
+      for (const input of inputs) {
+        const optional = input.dataset.optional === "true";
+        if (!optional && (!input.files || !input.files.length)) {
+          missing = true;
+          break;
+        }
+      }
+      if (missing) {
+        showAlert("Add every required photo from the tablet gallery. Top and Level 2 can be skipped.");
+        return;
+      }
+      const btn = document.getElementById("qcAttachSaveBtn");
+      const orig = btn ? btn.innerHTML : "";
+      try {
+        if (btn) {
+          btn.disabled = true;
+          btn.innerHTML = "SAVING PHOTOS...";
+        }
+        for (const input of inputs) {
+          if (input.files && input.files.length) {
+            const b64 = await toBase64(input.files[0]);
+            fileData.push({
+              name: input.files[0].name,
+              mime: input.files[0].type || "image/jpeg",
+              data: String(b64).split(",")[1]
+            });
+          } else {
+            fileData.push(null);
+          }
+        }
+        google.script.run
+          .withSuccessHandler((result) => {
+            if (btn) {
+              btn.disabled = false;
+              btn.innerHTML = orig;
+            }
+            if (result && result.success === false) {
+              showAlert("Error: " + (result.error || "Could not save photos"));
+              return;
+            }
+            if (qcAttachPhotosModal) qcAttachPhotosModal.hide();
+            showAlert("Photos are on the QC PDF. Open it again from Completed.");
+            loadCompletedWork(true);
+          })
+          .withFailureHandler((err) => {
+            if (btn) {
+              btn.disabled = false;
+              btn.innerHTML = orig;
+            }
+            showAlert("Error: " + err);
+          })
+          .attachQcPhotos(session.name, session.attachQcLogId, session.attachQcOrder, fileData);
+      } catch (err) {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = orig;
+        }
+        showAlert("Error: " + (err && err.message ? err.message : err));
       }
     }
 

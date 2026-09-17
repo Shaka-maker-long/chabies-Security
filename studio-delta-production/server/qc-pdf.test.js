@@ -131,6 +131,26 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   const again = await qcPdf.backfillFromLogs();
   assert.strictEqual(again.saved, 0, JSON.stringify(again));
 
+  const blank = await qcPdf.saveFromFinish({
+    orderNum: "S260300",
+    workerName: "Siya",
+    processName: "Final QC",
+    qcData: [{ q: "Is the product level?", a: "Y" }],
+    signatureUrl: pngDataUrl,
+    filesData: [],
+    logId: "log-blank-photos"
+  });
+  assert.strictEqual(blank.photo_count, 0);
+  const attached = await qcPdf.attachPhotos({
+    logId: "log-blank-photos",
+    orderNum: "S260300",
+    processName: "Final QC",
+    signatureUrl: pngDataUrl,
+    filesData: [{ name: "front.jpg", mime: "image/jpeg", data: jpegB64 }]
+  });
+  assert.ok(attached.photo_count >= 1, JSON.stringify(attached));
+  assert.ok(pdfPageCount(qcPdf.readPdf(attached.id).buffer) >= 3);
+
   console.log("qc-pdf.test.js ok");
 })().catch((e) => {
   console.error(e && e.stack ? e.stack : e);

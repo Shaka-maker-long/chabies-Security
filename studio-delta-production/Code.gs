@@ -1559,6 +1559,50 @@ function completedProcessMatches_(role, wantProcess) {
   return got.toLowerCase() === want.toLowerCase();
 }
 
+function localHitUrl_(notes) {
+  var localHit = /QC PDF:\s*(\/api\/qc-pdfs\/[^\s]+)/i.exec(String(notes || ""));
+  return localHit ? localHit[1] : "";
+}
+
+function localQcHasPhotos_(logId, orderNum, processName, localUrl) {
+  if (typeof listLocalQcReports !== "function") return false;
+  try {
+    var list = listLocalQcReports() || [];
+    var wantLog = String(logId || "");
+    var wantOrder = String(orderNum || "").trim().toLowerCase();
+    var wantUrl = String(localUrl || "");
+    var p = String(processName || "").toLowerCase();
+    var wantKind = p.indexOf("final") !== -1 ? "final" : ((p.indexOf("pre-powder") !== -1 || p.indexOf("pre powder") !== -1) ? "pre" : "");
+    var i;
+    var row;
+    var kind;
+    var n;
+    for (i = 0; i < list.length; i++) {
+      row = list[i];
+      if (!row) continue;
+      if (wantUrl && row.url === wantUrl) {
+        n = Number(row.photo_count);
+        return !!(row.imported || n > 0);
+      }
+      if (wantLog && row.log_id && String(row.log_id) === wantLog) {
+        n = Number(row.photo_count);
+        return !!(row.imported || n > 0);
+      }
+    }
+    for (i = 0; i < list.length; i++) {
+      row = list[i];
+      if (!row) continue;
+      if (!wantOrder || String(row.order_number || "").trim().toLowerCase() !== wantOrder) continue;
+      kind = String(row.kind || row.label || row.process || "").toLowerCase();
+      if (wantKind === "final" && kind.indexOf("final") === -1) continue;
+      if (wantKind === "pre" && kind.indexOf("pre") === -1) continue;
+      n = Number(row.photo_count);
+      return !!(row.imported || n > 0);
+    }
+  } catch (e) {}
+  return false;
+}
+
 function pickQcPdfUrl_(logId, orderNum, processName, notes) {
   var notesStr = String(notes || "");
   var localHit = /QC PDF:\s*(\/api\/qc-pdfs\/[^\s]+)/i.exec(notesStr);
@@ -1678,6 +1722,8 @@ function getMyCompletedWork(workerName, process) {
         item.qcPdfUrl = pdfUrl;
         item.qcPdfLabel = /final/i.test(processName) || /final/i.test(role) ? "Open Final QC PDF" : "Open QC PDF";
       }
+      item.qcPdfNeedsPhotos = !localQcHasPhotos_(row[0], orderNum, processName, localHitUrl_(notes));
+      item.qcPdfProcess = processName || role;
     }
     if (isCuttingSteelProcess_(role) || isCuttingSteelProcess_(item.status)) {
       var steelKey = steelUsageIndexKey_(logWorker, orderNum, isCuttingSteelProcess_(role) ? role : item.status);
@@ -1690,6 +1736,71 @@ function getMyCompletedWork(workerName, process) {
     return String(b.end || "").localeCompare(String(a.end || ""));
   });
   return { worker: want, process: wantProcess, oversees: oversees, viewAll: viewAll, items: items };
+}
+
+function attachQcPhotos(actorName, logId, orderNum, filesData) {
+  var actor = String(actorName || "").trim();
+  if (!actor) return { success: false, error: "Name is required." };
+  var profile = getUserProfileByName(actor);
+  if (!profile) return { success: false, error: "Unknown person." };
+  var files = filesData || [];
+  var n = 0;
+  var i;
+  for (i = 0; i < files.length; i++) {
+    if (files[i]) n++;
+  }
+  if (!n) return { success: false, error: "Add the QC photos from the tablet gallery. The unit does not need to come back." };
+  var ss = getSpreadsheet();
+  var pack = getLogPack(ss);
+  var rowToUpdate = -1;
+  var logRow = null;
+  var wantLog = String(logId || "");
+  var wantOrder = String(orderNum || "").trim();
+  var r;
+  var row;
+  var blob;
+  for (r = 1; r < pack.values.length; r++) {
+    row = pack.values[r];
+    if (wantLog && String(row[0] || "") === wantLog) {
+      rowToUpdate = packSheetRow(pack, r);
+      logRow = row;
+      break;
+    }
+  }
+  if (!logRow && wantOrder) {
+    for (r = pack.values.length - 1; r >= 1; r--) {
+      row = pack.values[r];
+      if (String(row[1] || "").trim() !== wantOrder) continue;
+      blob = String(row[3] || "") + " " + String(row[4] || "");
+      if (!/qc|pre-powder|pre powder/i.test(blob)) continue;
+      if (!row[6]) continue;
+      rowToUpdate = packSheetRow(pack, r);
+      logRow = row;
+      break;
+    }
+  }
+  if (!logRow) return { success: false, error: "Could not find that QC finish." };
+  var logWorker = String(logRow[2] || "").trim();
+  var can = !!(profile.isAdmin || profile.canSeeOffice || workerCanPerformTask(actor, "Quality Control") || logWorker === actor);
+  if (!can) return { success: false, error: "Only Quality Control or Admin can add photos to a finished QC PDF." };
+  var processName = String(logRow[4] || "").trim();
+  var trueRow = findOrderRowByNumber(getSheetOrDie(ss, TAB_ORDERS), String(logRow[1] || wantOrder));
+  var productName = trueRow > 0 ? String(getSheetOrDie(ss, TAB_ORDERS).getRange(trueRow, 7).getValue() || "").trim() : "";
+  return {
+    success: true,
+    qcPhotoJob: {
+      logId: logRow[0],
+      rowToUpdate: rowToUpdate,
+      orderNum: String(logRow[1] || wantOrder).trim(),
+      workerName: logWorker,
+      processName: processName,
+      productName: productName,
+      notes: String(logRow[7] || ""),
+      signatureUrl: String(logRow[8] || ""),
+      filesData: files,
+      created_at: logRow[6]
+    }
+  };
 }
 
 function getWorkerDayWork(workerName, now) {

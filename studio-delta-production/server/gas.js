@@ -266,7 +266,8 @@ const ALLOWED = new Set([
   "undoAutoSwitch", "leaveBatchForOrder", "getIdleWorkers", "pollIdleAlerts", "assignIndirectTask",
   "grantOvertime", "listOvertimeGrants", "getOrderJobBrief", "noteMissedResume", "managerCorrectStart", "getFloorAdminDesk", "checkMissedResumes",
   "getActivityReport", "getScheduleBoard", "generateWorkerSchedule", "insertScheduleTask", "clearWorkerScheduleFrom",
-  "checkIdleWorkers", "enforceShiftHours", "lazySetup", "getTaskDuration", "getTaskTimeEstimate", "getMyCompletedWork", "getWorkerDayWork", "facilityShiftState", "updateCompletedSteelUsage",
+  "checkIdleWorkers", "enforceShiftHours", "lazySetup", "getTaskDuration", "getTaskTimeEstimate",   "getMyCompletedWork", "getWorkerDayWork", "facilityShiftState", "updateCompletedSteelUsage",
+  "attachQcPhotos",
   "workerMinutesToday", "floorChangeGate",
   "getGlassTypes", "getWoodTypes", "listMaterialsToOrder", "markMaterialOrdered",
   "listCostingLogs", "markOrderNoPlate"
@@ -431,6 +432,22 @@ async function callShopFunction(fnName, args) {
       console.error("[qc-pdf]", e && e.stack ? e.stack : e);
     }
     delete result.qcPdfJob;
+  }
+  if (fnName === "attachQcPhotos" && result && result.qcPhotoJob) {
+    try {
+      const qcPdf = require("./qc-pdf");
+      const saved = await qcPdf.attachPhotos(result.qcPhotoJob);
+      if (saved && saved.url) {
+        qcPdf.writeUrlOnLog(result.qcPhotoJob.rowToUpdate, saved.url);
+        result.qcPdfUrl = saved.url;
+        result.photo_count = saved.photo_count || 0;
+      }
+    } catch (e) {
+      console.error("[qc-pdf] attach", e && e.stack ? e.stack : e);
+      result.success = false;
+      result.error = (e && e.message) || String(e);
+    }
+    delete result.qcPhotoJob;
   }
   if (fnName === "getQCReportsFast") {
     try {

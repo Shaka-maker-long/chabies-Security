@@ -632,6 +632,53 @@ async function recoverPhotosForRecord(rec, signatureUrl, notes) {
   return false;
 }
 
+async function attachPhotos(job) {
+  const order = String((job && job.orderNum) || "").trim();
+  const logId = String((job && job.logId) || "");
+  const rowToUpdate = Number(job && job.rowToUpdate) || 0;
+  const files = (job && job.filesData) || [];
+  const incoming = files.filter((file) => !!file);
+  if (!incoming.length) throw new Error("Add the QC photos from the tablet gallery.");
+  let rec = existingForLog(logId, rowToUpdate);
+  if (!rec && order) {
+    const wantKind = qcKind(job && job.processName);
+    rec = loadStore().records.find((row) => {
+      if (!row || String(row.order_number || "").trim().toLowerCase() !== order.toLowerCase()) return false;
+      return qcKind(row.process || row.kind) === wantKind;
+    }) || null;
+  }
+  const answers = (rec && rec.answers && rec.answers.length)
+    ? rec.answers
+    : parseAnswersFromNotes(job && job.notes);
+  const processName = (rec && rec.process) || String((job && job.processName) || "Final QC");
+  if (rec) {
+    rec.answers = answers;
+    rec.process = processName;
+    rec.kind = qcKind(processName);
+    const ok = await rebuildRecordFromPhotos(rec, files, job && job.signatureUrl);
+    if (!ok) throw new Error("Could not place the photos on the PDF.");
+    return {
+      id: rec.id,
+      url: pdfUrlFor(rec.id),
+      photo_count: rec.photo_count,
+      name: displayName(rec),
+      label: qcLabel(rec.process)
+    };
+  }
+  return saveFromFinish({
+    logId,
+    rowToUpdate,
+    orderNum: order,
+    workerName: (job && job.workerName) || "",
+    processName,
+    productName: (job && job.productName) || "",
+    qcData: answers,
+    signatureUrl: (job && job.signatureUrl) || "",
+    filesData: files,
+    created_at: job && job.created_at
+  });
+}
+
 async function recoverMissingPhotos() {
   if (!hasGoogleAuth()) return { saved: 0 };
   const store = loadStore();
@@ -721,6 +768,7 @@ module.exports = {
   backfillFromLogs,
   parseAnswersFromNotes,
   recoverMissingPhotos,
+  attachPhotos,
   rebuildRecordFromPhotos,
   parseDriveFileId,
   driveIdsFromNotes,
