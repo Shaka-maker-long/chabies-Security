@@ -91,6 +91,7 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   assert.ok(text.indexOf("FINAL QC") !== -1, text.slice(0, 400));
   assert.ok(text.indexOf("CHECKLIST") !== -1 || text.indexOf("Checklist") !== -1, "checklist table header");
   assert.ok(text.indexOf("SIGN-OFF") !== -1, "signature is a last-page sign-off");
+  assert.ok(text.lastIndexOf("SIGN-OFF") > text.lastIndexOf("Photo "), "signature page comes after every photo page");
   assert.ok(text.indexOf("S260184") !== -1);
   assert.ok(text.indexOf("Furniture") !== -1, "same tagline as purchase orders");
   const photoDir = path.join(dir, "qc-pdfs", saved.id);
@@ -135,6 +136,27 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   }
   assert.ok(/photos/i.test(stillThrew), "must not write a QC PDF with no images even for recovery");
   assert.ok(!qcPdf.listReports().some((row) => row.order_number === "S260212"), "no photo-less report is stored");
+
+  const storeFile = path.join(dir, "qc-pdfs.json");
+  const stored = JSON.parse(fs.readFileSync(storeFile, "utf8"));
+  const oldRec = stored.records.find((row) => row && row.order_number === "S260184");
+  assert.ok(oldRec && oldRec.pdf_path);
+  delete oldRec.layout;
+  fs.writeFileSync(oldRec.pdf_path, "%PDF-1.3 old checklist stub\n");
+  fs.writeFileSync(storeFile, JSON.stringify(stored));
+  const emptyLogs = getBook().getSheetByName("Production_Log");
+  assert.ok(!emptyLogs || emptyLogs.getLastRow() < 2, "empty Production_Log must still restyle stored photo PDFs");
+  const restyledEmpty = await qcPdf.backfillFromLogs();
+  assert.ok(restyledEmpty.saved >= 1, JSON.stringify(restyledEmpty));
+  const restyledFile = qcPdf.readPdf(saved.id);
+  assert.ok(restyledFile.buffer.slice(0, 4).toString() === "%PDF");
+  const restyledText = pdfText(restyledFile.buffer);
+  assert.ok(restyledText.indexOf("STUDIO DELTA") !== -1, "empty-log restyle writes the PO letterhead");
+  assert.ok(restyledText.indexOf("SIGN-OFF") !== -1, "empty-log restyle keeps signature last");
+  assert.ok(restyledText.lastIndexOf("SIGN-OFF") > restyledText.lastIndexOf("Photo "), "signature stays after photos after restyle");
+  assert.ok(pdfPageCount(restyledFile.buffer) >= 9);
+  const afterLayout = JSON.parse(fs.readFileSync(storeFile, "utf8"));
+  assert.strictEqual(afterLayout.records.find((row) => row.id === saved.id).layout, 3);
 
   const book = getBook();
   const logs = book.getSheetByName("Production_Log");

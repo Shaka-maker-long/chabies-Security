@@ -327,8 +327,7 @@ async function restyleStoredReports() {
     if (!rec || rec.imported || rec.layout === LAYOUT) continue;
     if (!rec.pdf_path || !fs.existsSync(rec.pdf_path)) continue;
     try {
-      await restyleRecord(rec);
-      n += 1;
+      if (await restyleRecord(rec)) n += 1;
     } catch (e) {
       console.error("[qc-pdf] restyle", rec.order_number, e && e.message ? e.message : e);
     }
@@ -933,7 +932,8 @@ async function backfillFromLogs() {
   const sheet = book.getSheetByName("Production_Log");
   if (!sheet || sheet.getLastRow() < 2) {
     const recovered = await recoverMissingPhotos();
-    return { saved: recovered.saved || 0 };
+    const restyled = await restyleStoredReports();
+    return { saved: (recovered.saved || 0) + restyled };
   }
   const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
   let saved = 0;

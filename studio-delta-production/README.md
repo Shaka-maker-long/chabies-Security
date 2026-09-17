@@ -37,7 +37,7 @@ The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume
 | `DATA_DIR/glass-po-invoices/` | Invoice files for received glass batches |
 | `DATA_DIR/floor-planning.json` | Planning calendars: who is booked for which order and process |
 | `DATA_DIR/job-cards.json` / `job-cards/` / `job-card-images/` | Job cards, PDFs, and product images |
-| `DATA_DIR/qc-pdfs.json` / `qc-pdfs/` | Pre-powder and Final QC PDFs (checklist, signature, and tablet photos as JPEGs). Open them from Shop → **QC Reports**, the clipboard icon on **Orders**, or **Open QC PDF** on Production Tasks → Completed |
+| `DATA_DIR/qc-pdfs.json` / `qc-pdfs/` | Pre-powder and Final QC PDFs (PO-style letterhead, checklist, one photo per page, signature on the last page). A report is not saved without photos. Open them from Shop → **QC Reports**, the clipboard icon on **Orders**, or **Open QC PDF** on Production Tasks → Completed |
 | `DATA_DIR/email-replies.json` | Outlook reply templates |
 | `DATA_DIR/showroom-bookings.json` | Showroom bookings |
 | `DATA_DIR/standard-cutting-lists.json` | Standard job-card cutting lists |
@@ -104,7 +104,7 @@ On a phone, tablet, or Chrome desktop, open the Railway URL and use **Install ap
 
 Google Drive QC is optional. If you still generate QC PDFs: enable Sheets/Drive/Docs APIs, share the Drive folders with the service account (same IDs as `Code.gs`). Floor start / pause / finish does not need Google.
 
-QC PDFs still fill worker / order / Yes-No answers. Inserting photos into the Google Doc template is not wired on Railway (text tags for missing photos stay as-is). Floor start / pause / finish does not need Drive.
+QC PDFs are built on the server (not the old Google Doc template): letterhead like a purchase order, checklist, tablet photos, then the signature as the last page. Finish is refused if the required photos are missing. Floor start / pause / finish does not need Drive.
 
 Local run (from `studio-delta-production/`):
 
