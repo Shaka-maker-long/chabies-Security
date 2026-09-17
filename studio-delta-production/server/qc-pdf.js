@@ -75,6 +75,10 @@ function photoLabels(processName) {
   return qcKind(processName) === "Final QC" ? FINAL_PHOTOS : PRE_PHOTOS;
 }
 
+function requiredPhotoCount(processName) {
+  return photoLabels(processName).filter((label) => String(label).indexOf("Optional") === -1).length;
+}
+
 function filePayload(file) {
   if (!file) return "";
   if (Buffer.isBuffer(file)) return file;
@@ -280,6 +284,14 @@ async function saveFromFinish(job) {
   const files = (job && job.filesData) || [];
   const photoAttempted = files.some((file) => !!file);
   const photos = await packPhotos(rec.process, files);
+  const need = requiredPhotoCount(rec.process);
+  if (!(job && job.allowMissingPhotos) && photos.length < need) {
+    try { fs.rmSync(photosDir(id), { recursive: true, force: true }); } catch (e) {}
+    throw new Error(
+      "QC PDF needs " + need + " photos (Top and Level 2 can be skipped). Only " +
+      photos.length + " could be placed. The job is still running."
+    );
+  }
   const signatureBuf = await toJpeg(job && job.signatureUrl);
   rec.photo_count = photos.length;
   rec.has_signature = !!signatureBuf;
@@ -675,7 +687,8 @@ async function attachPhotos(job) {
     qcData: answers,
     signatureUrl: (job && job.signatureUrl) || "",
     filesData: files,
-    created_at: job && job.created_at
+    created_at: job && job.created_at,
+    allowMissingPhotos: true
   });
 }
 
@@ -729,6 +742,7 @@ async function backfillFromLogs() {
     const workerName = String(values[i][2] || "").trim();
     try {
       const queued = queuePhotosForOrder(orderNum);
+      if (!queued.length) continue;
       const made = await saveFromFinish({
         logId,
         rowToUpdate,
@@ -738,13 +752,14 @@ async function backfillFromLogs() {
         qcData: answers,
         signatureUrl: signature,
         filesData: queued,
-        created_at: ended
+        created_at: ended,
+        allowMissingPhotos: true
       });
       if (made && made.photo_count === 0) {
         const rec = loadStore().records.find((row) => row && row.id === made.id);
         if (rec) await recoverPhotosForRecord(rec, signature);
       }
-      if (made && made.url) {
+      if (made && made.photo_count > 0 && made.url) {
         writeUrlOnLog(rowToUpdate, made.url);
         saved += 1;
       }
@@ -759,6 +774,7 @@ async function backfillFromLogs() {
 
 module.exports = {
   saveFromFinish,
+  requiredPhotoCount,
   writeUrlOnLog,
   listReports,
   readPdf,

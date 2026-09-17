@@ -2364,6 +2364,42 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
 }
 
 // STEP 2: Added steelUsageData as the 7th parameter. orderNumHint is 8th (optional).
+function requiredQcPhotoCount_(processName) {
+  var s = String(processName || "").toLowerCase();
+  if (s.indexOf("final") !== -1) return 7;
+  return 6;
+}
+
+function countQcPhotoFiles_(filesData) {
+  var n = 0;
+  (filesData || []).forEach(function (file) {
+    if (!file) return;
+    if (typeof file === "string") {
+      if (String(file).replace(/\s/g, "").length > 32) n += 1;
+      return;
+    }
+    var data = file.data || file.base64 || file.dataUrl || "";
+    if (data && String(data).replace(/\s/g, "").length > 32) n += 1;
+  });
+  return n;
+}
+
+function reopenQcAfterPdfFail(job) {
+  if (!job) return;
+  var ss = getSpreadsheet();
+  var logSheet = getSheetOrDie(ss, TAB_LOGS);
+  var sheet = getSheetOrDie(ss, TAB_ORDERS);
+  var row = Number(job.rowToUpdate) || 0;
+  if (row >= 2) {
+    logSheet.getRange(row, 7).setValue("");
+  }
+  var orderRow = Number(job.rowIndex) || 0;
+  if (orderRow > 0 && job.previousStatus) {
+    sheet.getRange(orderRow, 3).setValue(job.previousStatus);
+    sheet.getRange(orderRow, 4).setValue(job.previousAssigned || job.workerName || "");
+  }
+}
+
 function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerName, steelUsageData, orderNumHint, backboardUsageData, glassOrderData, woodOrderData) {
   var lock = LockService.getScriptLock();
   lock.waitLock(120000); 
@@ -2408,6 +2444,11 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
         if (!signatureUrl) {
           throw new Error("Server rejected: A signature is required to complete Quality Control.");
         }
+        var needPhotos = requiredQcPhotoCount_(processName);
+        var gotPhotos = countQcPhotoFiles_(filesData);
+        if (gotPhotos < needPhotos) {
+          throw new Error("Server rejected: QC needs the required photos on the PDF (" + needPhotos + "; Top and Level 2 can be skipped). Only " + gotPhotos + " reached the server. The job is still running.");
+        }
       }
     }
     if (role === 'Profile Cutting' || role === 'Plate Cutting') {
@@ -2451,10 +2492,12 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
       meta.batchSplitAt = endTime.getTime();
     }
 
+    var previousStatus = String(sheet.getRange(rowIndex, 3).getValue() || "");
+    var previousAssigned = String(sheet.getRange(rowIndex, 4).getValue() || "");
     if(role === 'Plate Cutting') {
         // Plate Cutting Finished -> Do NOT change Order Status
     } else {
-        var nextStep = getNextStatus(processName || sheet.getRange(rowIndex, 3).getValue()); 
+        var nextStep = getNextStatus(processName || previousStatus); 
         sheet.getRange(rowIndex, 3).setValue(nextStep);
         sheet.getRange(rowIndex, 4).setValue("");
     }
@@ -2554,6 +2597,9 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
       qcPdfJob: (role === "Quality Control" && qcData && signatureUrl && processName !== "Powder Coating") ? {
         logId: logRow[0],
         rowToUpdate: rowToUpdate,
+        rowIndex: rowIndex,
+        previousStatus: previousStatus,
+        previousAssigned: previousAssigned,
         orderNum: orderNum,
         workerName: workerName,
         processName: processName,
@@ -3817,6 +3863,13 @@ function processPdfQueue() {
     var ss = getSpreadsheet();
     var logSheet = getSheetOrDie(ss, TAB_LOGS);
     
+    var queuedPhotos = (jobData.filesData || []).filter(function (f) { return !!f; });
+    var queuedCount = Number(jobData.photoCount) || queuedPhotos.length;
+    if (queuedCount < 1 || !queuedPhotos.length) {
+      file.setTrashed(true);
+      return;
+    }
+
     // --- GENERATE THE PDF ---
     var templateId = TEMP_ID_PRE_POWDER;
     if (jobData.processName === 'Final QC') {

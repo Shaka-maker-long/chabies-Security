@@ -430,6 +430,14 @@ async function callShopFunction(fnName, args) {
       }
     } catch (e) {
       console.error("[qc-pdf]", e && e.stack ? e.stack : e);
+      try {
+        const reopen = vm.runInContext("reopenQcAfterPdfFail", ctx);
+        if (typeof reopen === "function") reopen(result.qcPdfJob);
+      } catch (e2) {
+        console.error("[qc-pdf] reopen", e2 && e2.message ? e2.message : e2);
+      }
+      result.success = false;
+      result.error = (e && e.message) || String(e);
     }
     delete result.qcPdfJob;
   }

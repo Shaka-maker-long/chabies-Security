@@ -6930,6 +6930,7 @@
           // 4. UI FEEDBACK: SHOW LOADING STATE
           isSubmitting = true;
           if (qcModal) qcModal.hide();
+          let willGeneratePdf = false;
           
           if(card) {
              const btn = card.querySelector('button');
@@ -6937,7 +6938,7 @@
                  // Determine if PDF will be generated
                  // PDFs are only generated for Quality Control or Final QC roles with QC data and signature
                  const statusText = card.querySelector('.badge.bg-dark')?.innerText.toLowerCase().trim() || "";
-                 const willGeneratePdf = !skip && 
+                 willGeneratePdf = !skip && 
                                        (session.role === 'Quality Control' || statusText === 'final qc') && 
                                        statusText !== 'powder coating' &&
                                        d.length > 0 && 
@@ -6972,7 +6973,18 @@
                     }
                 }
               }
-              if (result && result.success !== false) {
+              if (result && result.success !== false && willGeneratePdf && !(Number(result.qcPdfPhotos) > 0)) {
+                showAlert("QC photos did not land on the PDF. The job is still running — tap Finish and send the photos again.");
+                if(card) {
+                    const btn = card.querySelector('button');
+                    if(btn) {
+                        btn.innerHTML = 'FINISH & QC';
+                        btn.classList.add('btn-success');
+                        btn.classList.remove('btn-secondary');
+                        btn.disabled = false;
+                    }
+                }
+              } else if (result && result.success !== false) {
                 dropQcDraft();
                 if (result.savedDuration && result.durationLabel) {
                   showAlert('Saved ' + result.durationLabel + ' on the task time sheet. Next time this product will count down.');

@@ -13,6 +13,7 @@ delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const db = require("./db");
 const { callShopFunction } = require("./gas");
+const sharp = require("sharp");
 
 initWorkbook();
 const book = getBook();
@@ -24,6 +25,12 @@ const QC = [{ q: "Is the frame square?", a: "Y" }];
 const SIG = "data:image/png;base64,aaa";
 
 (async function main() {
+  const jpeg = await sharp({
+    create: { width: 16, height: 16, channels: 3, background: { r: 20, g: 20, b: 20 } }
+  }).jpeg({ quality: 40 }).toBuffer();
+  const shot = { name: "qc.jpg", mime: "image/jpeg", data: jpeg.toString("base64") };
+  const PHOTOS = [shot, shot, shot, shot, shot, shot];
+
   await callShopFunction("grantOvertime", ["Nomsa", "", "Admin", "test"]);
   const types = await callShopFunction("getGlassTypes", []);
   assert.ok(types.types.indexOf("Reeded") !== -1, JSON.stringify(types));
@@ -43,7 +50,7 @@ const SIG = "data:image/png;base64,aaa";
   assert.strictEqual(started.success, true, JSON.stringify(started));
 
   const noGlass = await callShopFunction("finishOrder", [
-    order.id, started.logId, QC, SIG, [], "Nomsa", [], "S-PRE-GLASS", [], [], []
+    order.id, started.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-GLASS", [], [], []
   ]);
   assert.ok(noGlass && noGlass.success === false, JSON.stringify(noGlass));
   assert.ok(/glass/i.test(noGlass.error || noGlass.message || ""), JSON.stringify(noGlass));
@@ -64,8 +71,14 @@ const SIG = "data:image/png;base64,aaa";
     width: 800,
     quantity: 3
   }];
-  const finished = await callShopFunction("finishOrder", [
+  const missingPhotos = await callShopFunction("finishOrder", [
     order.id, started.logId, QC, SIG, [], "Nomsa", [], "S-PRE-GLASS", [], glass, wood
+  ]);
+  assert.ok(missingPhotos && missingPhotos.success === false, JSON.stringify(missingPhotos));
+  assert.ok(/photo/i.test(missingPhotos.error || missingPhotos.message || ""), JSON.stringify(missingPhotos));
+
+  const finished = await callShopFunction("finishOrder", [
+    order.id, started.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-GLASS", [], glass, wood
   ]);
   assert.strictEqual(finished.success, true, JSON.stringify(finished));
   assert.ok(finished.qcPdfUrl && String(finished.qcPdfUrl).indexOf("/api/qc-pdfs/") === 0, JSON.stringify(finished));
@@ -105,7 +118,7 @@ const SIG = "data:image/png;base64,aaa";
   ]);
   assert.strictEqual(startedNone.success, true, JSON.stringify(startedNone));
   const finishedNone = await callShopFunction("finishOrder", [
-    noneOrder.id, startedNone.logId, QC, SIG, [], "Nomsa", [], "S-PRE-NONE", [], { noGlass: true }, []
+    noneOrder.id, startedNone.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-NONE", [], { noGlass: true }, []
   ]);
   assert.strictEqual(finishedNone.success, true, JSON.stringify(finishedNone));
   const listedNone = await callShopFunction("listMaterialsToOrder", []);
@@ -126,7 +139,7 @@ const SIG = "data:image/png;base64,aaa";
   ]);
   assert.strictEqual(startedTpl.success, true, JSON.stringify(startedTpl));
   const finishedTpl = await callShopFunction("finishOrder", [
-    tplOrder.id, startedTpl.logId, QC, SIG, [], "Nomsa", [], "S-PRE-TPL", [],
+    tplOrder.id, startedTpl.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-TPL", [],
     { hasTemplate: true, lines: [{ component: "Door", type: "Clear", thickness: "6", quantity: 1, isTemplate: true }] },
     []
   ]);
