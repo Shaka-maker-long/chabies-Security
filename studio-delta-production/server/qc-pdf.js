@@ -3,7 +3,8 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const { dataDir, getBook, persistWorkbook } = require("./workbook-store");
+const { spawnSync } = require("child_process");
+const { dataDir, getBook, persistWorkbook, hasGoogleAuth } = require("./workbook-store");
 
 const PRE_PHOTOS = [
   "Front", "Left Side", "Right Side", "Back", "Open", "Top (Optional)", "Level 1", "Level 2 (Optional)"
@@ -11,6 +12,8 @@ const PRE_PHOTOS = [
 const FINAL_PHOTOS = [
   "Front", "Level 1", "Back", "Left Side", "Right Side", "Job Card", "Open", "Top (Optional)", "Level 2 (Optional)"
 ];
+const QC_DRIVE_FOLDER_ID = process.env.QC_PDF_DRIVE_FOLDER_ID || "1pyzJ-jcgltJlrCOwjR7c8AIFxwcd2YcK";
+const QC_QUEUE_FOLDER_ID = process.env.QC_QUEUE_FOLDER_ID || "1MRl3nX7-4d8dmrjQU0UrCbzCf6Ilymub";
 
 function storePath() {
   return path.join(dataDir(), "qc-pdfs.json");
@@ -18,6 +21,12 @@ function storePath() {
 
 function pdfDir() {
   const dir = path.join(dataDir(), "qc-pdfs");
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function photosDir(id) {
+  const dir = path.join(pdfDir(), String(id || ""));
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -66,14 +75,58 @@ function photoLabels(processName) {
   return qcKind(processName) === "Final QC" ? FINAL_PHOTOS : PRE_PHOTOS;
 }
 
+function filePayload(file) {
+  if (!file) return "";
+  if (Buffer.isBuffer(file)) return file;
+  if (typeof file === "string") return file;
+  if (file.data != null) return file.data;
+  if (file.dataUrl) return file.dataUrl;
+  if (file.base64) return file.base64;
+  return "";
+}
+
+function isJpeg(buf) {
+  return Buffer.isBuffer(buf) && buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+}
+
+function isPng(buf) {
+  return Buffer.isBuffer(buf) && buf.length >= 4 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+}
+
 function decodeImage(raw) {
+  if (Buffer.isBuffer(raw)) {
+    if (!raw.length) return null;
+    return { mime: isPng(raw) ? "image/png" : "image/jpeg", buf: raw };
+  }
   const s = String(raw || "").trim();
   if (!s) return null;
-  const m = s.match(/^data:([^;]+);base64,(.+)$/);
-  if (m) return { mime: m[1], buf: Buffer.from(m[2], "base64") };
+  if (/^https?:\/\//i.test(s) || /^\/api\//i.test(s)) return null;
+  const dataUrl = s.match(/^data:([^;]+);base64,([\s\S]+)$/i);
+  if (dataUrl) {
+    const buf = Buffer.from(String(dataUrl[2]).replace(/\s/g, ""), "base64");
+    if (!buf.length) return null;
+    return { mime: dataUrl[1], buf };
+  }
+  const compact = s.replace(/\s/g, "");
+  if (compact.length < 32 || /[^A-Za-z0-9+/=]/.test(compact)) return null;
+  const buf = Buffer.from(compact, "base64");
+  if (!buf.length) return null;
+  return { mime: "image/jpeg", buf };
+}
+
+async function toJpeg(raw) {
+  const decoded = decodeImage(raw);
+  if (!decoded || !decoded.buf || decoded.buf.length < 24) return null;
   try {
-    return { mime: "image/jpeg", buf: Buffer.from(s, "base64") };
+    const sharp = require("sharp");
+    return await sharp(decoded.buf)
+      .rotate()
+      .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality: 82 })
+      .toBuffer();
   } catch (e) {
+    if (isJpeg(decoded.buf) || isPng(decoded.buf)) return decoded.buf;
     return null;
   }
 }
@@ -91,6 +144,34 @@ function formatWhen(iso) {
     }).format(iso ? new Date(iso) : new Date());
   } catch (e) {
     return String(iso || "");
+  }
+}
+
+async function packPhotos(processName, filesData) {
+  const labels = photoLabels(processName);
+  const out = [];
+  const files = filesData || [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file) continue;
+    const jpeg = await toJpeg(filePayload(file));
+    if (!jpeg) continue;
+    const name = labels[i] || (file && file.name) || ("Photo " + (i + 1));
+    out.push({ name, buf: jpeg });
+  }
+  return out;
+}
+
+function writePhotoFiles(id, photos, signatureBuf) {
+  const dir = photosDir(id);
+  (photos || []).forEach((photo, i) => {
+    if (!photo || !photo.buf) return;
+    const safe = String(photo.name || "photo").replace(/[^\w.-]+/g, "_").slice(0, 40);
+    const name = String(i + 1).padStart(2, "0") + "-" + (safe || "photo") + ".jpg";
+    fs.writeFileSync(path.join(dir, name), photo.buf);
+  });
+  if (signatureBuf && signatureBuf.length) {
+    fs.writeFileSync(path.join(dir, "signature.jpg"), signatureBuf);
   }
 }
 
@@ -129,19 +210,19 @@ async function renderPdf(record, dest) {
       doc.moveDown(0.25);
     });
 
-    const sig = decodeImage(record.signature);
-    if (sig) {
+    if (record.signatureBuf) {
       doc.addPage();
       doc.font("Helvetica-Bold").fontSize(12).text("Signature");
       doc.moveDown(0.4);
       try {
-        doc.image(sig.buf, { fit: [240, 120] });
+        doc.image(record.signatureBuf, { fit: [240, 120] });
       } catch (e) {
         doc.font("Helvetica").fontSize(10).text("Signature could not be placed.");
       }
     }
 
-    (record.photos || []).forEach((photo) => {
+    const photos = record.photos || [];
+    photos.forEach((photo) => {
       if (!photo || !photo.buf) return;
       doc.addPage();
       doc.font("Helvetica-Bold").fontSize(12).text(photo.name || "Photo");
@@ -153,24 +234,26 @@ async function renderPdf(record, dest) {
       }
     });
 
+    if (record.photoAttempted && !photos.length) {
+      doc.addPage();
+      doc.font("Helvetica-Bold").fontSize(12).text("Photos");
+      doc.moveDown(0.4);
+      doc.font("Helvetica").fontSize(10).text("Photos were sent with this QC but could not be placed on the PDF.");
+    }
+
     doc.end();
   });
 }
 
-function packPhotos(processName, filesData) {
-  const labels = photoLabels(processName);
-  const out = [];
-  (filesData || []).forEach((file, i) => {
-    if (!file) return;
-    const img = decodeImage(file.data);
-    if (!img) return;
-    out.push({ name: labels[i] || file.name || ("Photo " + (i + 1)), buf: img.buf });
-  });
-  return out;
-}
-
 function displayName(rec) {
   return (rec.order_number || "Order") + " · " + (rec.kind || "QC") + (rec.worker ? " · " + rec.worker : "");
+}
+
+function isoFromLog(value) {
+  if (!value) return new Date().toISOString();
+  const d = value instanceof Date ? value : new Date(value);
+  if (isNaN(d.getTime())) return new Date().toISOString();
+  return d.toISOString();
 }
 
 async function saveFromFinish(job) {
@@ -187,18 +270,23 @@ async function saveFromFinish(job) {
     kind: qcKind(job && job.processName),
     product: String((job && job.productName) || "").trim(),
     answers: Array.isArray(job && job.qcData) ? job.qcData.map((row) => ({ q: row.q, a: row.a })) : [],
-    signature: String((job && job.signatureUrl) || ""),
-    created_at: new Date().toISOString(),
+    created_at: (job && job.created_at) ? isoFromLog(job.created_at) : new Date().toISOString(),
     pdf_path: pdfPath,
     log_id: String((job && job.logId) || ""),
-    row: Number(job && job.rowToUpdate) || 0
+    row: Number(job && job.rowToUpdate) || 0,
+    photo_count: 0,
+    imported: false
   };
-  const photos = packPhotos(rec.process, job && job.filesData);
-  await renderPdf({ ...rec, photos }, pdfPath);
+  const files = (job && job.filesData) || [];
+  const photoAttempted = files.some((file) => !!file);
+  const photos = await packPhotos(rec.process, files);
+  const signatureBuf = await toJpeg(job && job.signatureUrl);
+  rec.photo_count = photos.length;
+  rec.has_signature = !!signatureBuf;
+  writePhotoFiles(id, photos, signatureBuf);
+  await renderPdf({ ...rec, photos, signatureBuf, photoAttempted }, pdfPath);
   const store = loadStore();
-  const slim = { ...rec };
-  delete slim.signature;
-  store.records.unshift(slim);
+  store.records.unshift(rec);
   saveStore(store);
   return {
     id,
@@ -206,7 +294,8 @@ async function saveFromFinish(job) {
     name: displayName(rec),
     label: qcLabel(rec.process),
     order_number: order,
-    dateCreated: Date.parse(rec.created_at) || Date.now()
+    dateCreated: Date.parse(rec.created_at) || Date.now(),
+    photo_count: rec.photo_count
   };
 }
 
@@ -237,7 +326,9 @@ function listReports() {
       worker: rec.worker || "",
       kind: rec.kind || "",
       log_id: rec.log_id || "",
-      process: rec.process || ""
+      process: rec.process || "",
+      photo_count: Number(rec.photo_count) || 0,
+      imported: !!rec.imported
     }))
     .sort((a, b) => (b.dateCreated || 0) - (a.dateCreated || 0));
 }
@@ -288,10 +379,157 @@ function existingForLog(logId, row) {
   }) || null;
 }
 
+function tryDrive(payload) {
+  if (!hasGoogleAuth()) return null;
+  try {
+    const r = spawnSync(process.execPath, [path.join(__dirname, "drive-cli.js")], {
+      input: JSON.stringify(payload),
+      encoding: "utf8",
+      env: process.env,
+      maxBuffer: 40 * 1024 * 1024
+    });
+    if (!r.stdout) return null;
+    const parsed = JSON.parse(r.stdout);
+    if (!parsed || !parsed.ok) return null;
+    return parsed;
+  } catch (e) {
+    return null;
+  }
+}
+
+function matchDriveName(name, orderNum, kind) {
+  const n = String(name || "").toLowerCase().replace(/\.pdf$/i, "");
+  const o = String(orderNum || "").toLowerCase();
+  if (!o || n.indexOf(o) === -1) return false;
+  const k = String(kind || "").toLowerCase();
+  if (k.indexOf("final") !== -1) return n.indexOf("final") !== -1;
+  if (k.indexOf("pre") !== -1) return n.indexOf("pre") !== -1;
+  return true;
+}
+
+let drivePdfList = undefined;
+function listDriveQcPdfs() {
+  if (drivePdfList !== undefined) return drivePdfList;
+  const listed = tryDrive({ op: "listFiles", folderId: QC_DRIVE_FOLDER_ID });
+  drivePdfList = (listed && listed.files) || [];
+  return drivePdfList;
+}
+
+function downloadDriveQcPdf(orderNum, kind) {
+  const files = listDriveQcPdfs();
+  const hit = files.find((file) => matchDriveName(file && file.name, orderNum, kind));
+  if (!hit || !hit.id) return null;
+  const got = tryDrive({ op: "downloadFile", fileId: hit.id });
+  if (!got || !got.base64) return null;
+  const buf = Buffer.from(got.base64, "base64");
+  if (buf.length < 100 || buf.slice(0, 4).toString() !== "%PDF") return null;
+  return buf;
+}
+
+let queueList = undefined;
+function listQueueJobs() {
+  if (queueList !== undefined) return queueList;
+  const listed = tryDrive({ op: "listFiles", folderId: QC_QUEUE_FOLDER_ID, mimeType: "text/plain" });
+  queueList = (listed && listed.files) || [];
+  return queueList;
+}
+
+function queuePhotosForOrder(orderNum) {
+  const want = String(orderNum || "").trim().toLowerCase();
+  if (!want) return [];
+  const files = listQueueJobs();
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const name = String((file && file.name) || "").toLowerCase();
+    if (name.indexOf(want) === -1) continue;
+    const got = tryDrive({ op: "getFileText", fileId: file.id });
+    if (!got || !got.text) continue;
+    try {
+      const job = JSON.parse(got.text);
+      if (String((job && job.orderNum) || "").trim().toLowerCase() !== want) continue;
+      if (Array.isArray(job.filesData) && job.filesData.some((row) => !!row)) return job.filesData;
+    } catch (e) {}
+  }
+  return [];
+}
+
+function replacePdfBytes(rec, buf, meta) {
+  if (!rec || !rec.pdf_path || !buf) return false;
+  fs.writeFileSync(rec.pdf_path, buf);
+  Object.assign(rec, meta || {});
+  const store = loadStore();
+  const idx = store.records.findIndex((row) => row && row.id === rec.id);
+  if (idx >= 0) store.records[idx] = { ...store.records[idx], ...rec };
+  saveStore(store);
+  return true;
+}
+
+async function recoverPhotosForRecord(rec, signatureUrl) {
+  if (!rec) return false;
+  if ((Number(rec.photo_count) || 0) > 0 || rec.imported || rec.drive_import_tried) return false;
+  if (!hasGoogleAuth()) return false;
+  rec.drive_import_tried = true;
+  const queued = queuePhotosForOrder(rec.order_number);
+  if (queued.length) {
+    try {
+      const photos = await packPhotos(rec.process, queued);
+      const signatureBuf = await toJpeg(signatureUrl);
+      if (photos.length) {
+        writePhotoFiles(rec.id, photos, signatureBuf);
+        await renderPdf({
+          ...rec,
+          photos,
+          signatureBuf,
+          photoAttempted: true
+        }, rec.pdf_path);
+        rec.photo_count = photos.length;
+        rec.has_signature = !!signatureBuf;
+        rec.imported = false;
+        const store = loadStore();
+        const idx = store.records.findIndex((row) => row && row.id === rec.id);
+        if (idx >= 0) store.records[idx] = rec;
+        saveStore(store);
+        return true;
+      }
+    } catch (e) {
+      console.error("[qc-pdf] queue recover", rec.order_number, e.message || e);
+    }
+  }
+  const drivePdf = downloadDriveQcPdf(rec.order_number, rec.kind || rec.process);
+  if (drivePdf) {
+    rec.imported = true;
+    rec.photo_count = -1;
+    return replacePdfBytes(rec, drivePdf, rec);
+  }
+  const store = loadStore();
+  const idx = store.records.findIndex((row) => row && row.id === rec.id);
+  if (idx >= 0) {
+    store.records[idx].drive_import_tried = true;
+    saveStore(store);
+  }
+  return false;
+}
+
+async function recoverMissingPhotos() {
+  if (!hasGoogleAuth()) return { saved: 0 };
+  const store = loadStore();
+  let saved = 0;
+  for (const rec of store.records) {
+    if (!rec || !rec.id || !rec.pdf_path || !fs.existsSync(rec.pdf_path)) continue;
+    if ((Number(rec.photo_count) || 0) > 0 || rec.imported) continue;
+    const ok = await recoverPhotosForRecord(rec, "");
+    if (ok) saved += 1;
+  }
+  return { saved };
+}
+
 async function backfillFromLogs() {
   const book = getBook();
   const sheet = book.getSheetByName("Production_Log");
-  if (!sheet || sheet.getLastRow() < 2) return { saved: 0 };
+  if (!sheet || sheet.getLastRow() < 2) {
+    const recovered = await recoverMissingPhotos();
+    return { saved: recovered.saved || 0 };
+  }
   const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues();
   let saved = 0;
   for (let i = 0; i < values.length; i++) {
@@ -306,20 +544,22 @@ async function backfillFromLogs() {
     const isQc = role === "Quality Control" || blob.indexOf("qc") !== -1 || blob.indexOf("pre-powder") !== -1 || blob.indexOf("pre powder") !== -1;
     if (!isQc) continue;
     if (!ended) continue;
-    if (notesHaveLocalPdf(notes)) continue;
     const rowToUpdate = i + 2;
     const logId = String(values[i][0] || "");
     const existing = existingForLog(logId, rowToUpdate);
     if (existing) {
-      writeUrlOnLog(rowToUpdate, pdfUrlFor(existing.id));
-      saved += 1;
+      if (!notesHaveLocalPdf(notes)) writeUrlOnLog(rowToUpdate, pdfUrlFor(existing.id));
+      const recovered = await recoverPhotosForRecord(existing, signature);
+      if (recovered || !notesHaveLocalPdf(notes)) saved += 1;
       continue;
     }
+    if (notesHaveLocalPdf(notes)) continue;
     const answers = parseAnswersFromNotes(notes);
     if (!answers.length && !signature) continue;
     const orderNum = String(values[i][1] || "").trim();
     const workerName = String(values[i][2] || "").trim();
     try {
+      const queued = queuePhotosForOrder(orderNum);
       const made = await saveFromFinish({
         logId,
         rowToUpdate,
@@ -328,8 +568,13 @@ async function backfillFromLogs() {
         processName: process,
         qcData: answers,
         signatureUrl: signature,
-        filesData: []
+        filesData: queued,
+        created_at: ended
       });
+      if (made && made.photo_count === 0) {
+        const rec = loadStore().records.find((row) => row && row.id === made.id);
+        if (rec) await recoverPhotosForRecord(rec, signature);
+      }
       if (made && made.url) {
         writeUrlOnLog(rowToUpdate, made.url);
         saved += 1;
@@ -350,5 +595,8 @@ module.exports = {
   pdfUrlFor,
   qcLabel,
   backfillFromLogs,
-  parseAnswersFromNotes
+  parseAnswersFromNotes,
+  recoverMissingPhotos,
+  toJpeg,
+  packPhotos
 };

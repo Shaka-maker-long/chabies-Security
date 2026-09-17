@@ -152,6 +152,23 @@ async function main() {
       pageToken = res.data.nextPageToken;
     } while (pageToken && files.length < 500);
     out = { ok: true, files: files.map((f) => ({ id: f.id, name: f.name, mimeType: f.mimeType, createdTime: f.createdTime, url: f.webViewLink, webViewLink: f.webViewLink })) };
+  } else if (op === "downloadFile") {
+    if (!input.fileId) throw new Error("downloadFile needs a fileId");
+    const meta = await drive.files.get({
+      fileId: input.fileId,
+      fields: "id, name, mimeType",
+      supportsAllDrives: true
+    });
+    const mime = String((meta.data && meta.data.mimeType) || "");
+    let buf;
+    if (mime === "application/vnd.google-apps.document") {
+      const pdf = await drive.files.export({ fileId: input.fileId, mimeType: "application/pdf" }, { responseType: "arraybuffer" });
+      buf = Buffer.from(pdf.data);
+    } else {
+      const got = await drive.files.get({ fileId: input.fileId, alt: "media", supportsAllDrives: true }, { responseType: "arraybuffer" });
+      buf = Buffer.from(got.data);
+    }
+    out = { ok: true, base64: buf.toString("base64"), mimeType: mime, name: (meta.data && meta.data.name) || "" };
   } else if (op === "getFileText") {
     const res = await drive.files.get({ fileId: input.fileId, alt: "media", supportsAllDrives: true }, { responseType: "text" });
     out = { ok: true, text: res.data };

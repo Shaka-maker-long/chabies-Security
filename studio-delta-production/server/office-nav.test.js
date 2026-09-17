@@ -137,6 +137,7 @@ assert.ok(floor.indexOf("item.qcPdfLabel") !== -1, "completed cards use Final vs
 assert.ok(floor.indexOf('id="btnQcPdfs"') !== -1, "QC board has a QC PDFs button");
 assert.ok(floor.indexOf("Production Tasks → Completed") !== -1, "QC Reports says where else to open PDFs");
 assert.ok(indexJs.indexOf("/api/qc-pdfs/") !== -1, "QC PDFs are served from the app");
+assert.ok(floor.indexOf("tablet photos") !== -1, "QC Reports says PDFs include tablet photos");
 assert.ok(floor.indexOf("function floorOverseesTasks") !== -1);
 assert.ok(floor.indexOf("getMyCompletedWork(session.name, session.role") !== -1, "task boards load completed work for the selected task");
 assert.ok(floor.indexOf("function floorCanEditCompletedActions") !== -1, "only Admin edits completed steel on others");
@@ -757,6 +758,8 @@ assert.ok(floor.indexOf("managerCorrectStart") !== -1);
 assert.ok(floor.indexOf("Start at that time") !== -1);
 assert.ok(floor.indexOf("If a name is missing from the list, add that person on Users") !== -1);
 const codeGs = fs.readFileSync(path.join(__dirname, "../Code.gs"), "utf8");
+assert.ok(codeGs.indexOf("filesData: [],") !== -1 && codeGs.indexOf("photoCount:") !== -1, "Drive QC queue must not stringify tablet photos");
+assert.ok(codeGs.indexOf("filesData: filesData || []") !== -1, "local QC PDF still receives the tablet photos");
 assert.ok(codeGs.indexOf("function managerCorrectStart") !== -1);
 assert.ok(codeGs.indexOf("function workerCanViewRole") !== -1, "admins can still open look-only boards");
 assert.ok(codeGs.indexOf("if (profile.isAdmin) return true;") !== -1);

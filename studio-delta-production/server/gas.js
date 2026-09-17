@@ -425,6 +425,7 @@ async function callShopFunction(fnName, args) {
       if (saved && saved.url) {
         qcPdf.writeUrlOnLog(result.qcPdfJob.rowToUpdate, saved.url);
         result.qcPdfUrl = saved.url;
+        result.qcPdfPhotos = saved.photo_count || 0;
       }
     } catch (e) {
       console.error("[qc-pdf]", e && e.stack ? e.stack : e);

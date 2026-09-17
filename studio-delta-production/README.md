@@ -37,7 +37,7 @@ The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume
 | `DATA_DIR/glass-po-invoices/` | Invoice files for received glass batches |
 | `DATA_DIR/floor-planning.json` | Planning calendars: who is booked for which order and process |
 | `DATA_DIR/job-cards.json` / `job-cards/` / `job-card-images/` | Job cards, PDFs, and product images |
-| `DATA_DIR/qc-pdfs.json` / `qc-pdfs/` | Pre-powder and Final QC PDFs (checklist, signature, photos). Open them from Shop → **QC Reports**, the clipboard icon on **Orders**, or **Open QC PDF** on Production Tasks → Completed |
+| `DATA_DIR/qc-pdfs.json` / `qc-pdfs/` | Pre-powder and Final QC PDFs (checklist, signature, and tablet photos as JPEGs). Open them from Shop → **QC Reports**, the clipboard icon on **Orders**, or **Open QC PDF** on Production Tasks → Completed |
 | `DATA_DIR/email-replies.json` | Outlook reply templates |
 | `DATA_DIR/showroom-bookings.json` | Showroom bookings |
 | `DATA_DIR/standard-cutting-lists.json` | Standard job-card cutting lists |
