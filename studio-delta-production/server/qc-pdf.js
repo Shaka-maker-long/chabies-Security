@@ -166,6 +166,152 @@ async function packPhotos(processName, filesData) {
   return out;
 }
 
+const catalog = require("./product-catalog");
+const LAYOUT = 2;
+const PAGE_W = 595.28;
+const PAGE_H = 841.89;
+const MARGIN = 36;
+const INK = "#1c1917";
+const BRASS = "#b08948";
+const MUTED = "#6b645b";
+const CREAM = "#fcfbf8";
+const ALT = "#f3efe6";
+const RULE = "#d7d1c6";
+
+let logoMemo;
+
+async function logoPathForPdf() {
+  if (logoMemo !== undefined) return logoMemo;
+  const url = catalog.COMPANY_LOGO_URL;
+  const dest = path.join(dataDir(), "pdf-images", "studio-delta-logo.jpg");
+  try { fs.mkdirSync(path.dirname(dest), { recursive: true }); } catch (e) {}
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 400) {
+    logoMemo = dest;
+    return dest;
+  }
+  if (!url) {
+    logoMemo = null;
+    return null;
+  }
+  try {
+    const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(1500) });
+    if (!res.ok) {
+      logoMemo = fs.existsSync(dest) ? dest : null;
+      return logoMemo;
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length) fs.writeFileSync(dest, buf);
+    logoMemo = dest;
+    return dest;
+  } catch (e) {
+    logoMemo = fs.existsSync(dest) ? dest : null;
+    return logoMemo;
+  }
+}
+
+function drawPdfBox(doc, x, y, w, h) {
+  doc.save().lineWidth(0.7).strokeColor(INK).rect(x, y, w, h).stroke().restore();
+}
+
+function reportTitle(record) {
+  const kind = String((record && record.kind) || (record && record.process) || "QC").toUpperCase();
+  if (kind.indexOf("FINAL") !== -1) return "FINAL QC";
+  if (kind.indexOf("PRE") !== -1) return "PRE-POWDER QC";
+  return "QC REPORT";
+}
+
+function answerLabel(raw) {
+  const a = String(raw || "").trim();
+  if (a === "Y" || /^yes$/i.test(a)) return "Yes";
+  if (a === "N" || /^no$/i.test(a)) return "No";
+  return a || "—";
+}
+
+function drawReportHeader(doc, record, logoPath) {
+  const inner = PAGE_W - MARGIN * 2;
+  drawPdfBox(doc, MARGIN, MARGIN, 72, 72);
+  if (logoPath) {
+    try {
+      doc.image(logoPath, MARGIN + 4, MARGIN + 4, { fit: [64, 64] });
+    } catch (e) {
+      doc.fillColor(INK).font("Helvetica-Bold").fontSize(9).text("STUDIO\nDELTA", MARGIN, MARGIN + 26, { width: 72, align: "center" });
+    }
+  } else {
+    doc.fillColor(INK).font("Helvetica-Bold").fontSize(9).text("STUDIO\nDELTA", MARGIN, MARGIN + 26, { width: 72, align: "center" });
+  }
+  doc.fillColor(INK).font("Helvetica-Bold").fontSize(16).text("STUDIO DELTA", MARGIN + 88, MARGIN + 8);
+  doc.fillColor(MUTED).font("Helvetica").fontSize(9).text("Furniture  ·  Steel  ·  Glass", MARGIN + 88, MARGIN + 28);
+  doc.fillColor(MUTED).font("Helvetica").fontSize(8).text("studiodelta.co.za", MARGIN + 88, MARGIN + 42);
+  doc.fillColor(INK).font("Helvetica-Bold").fontSize(18).text(reportTitle(record), MARGIN, MARGIN + 8, { width: inner, align: "right" });
+  doc.fillColor(BRASS).font("Helvetica-Bold").fontSize(12).text(record.order_number || "", MARGIN, MARGIN + 34, { width: inner, align: "right" });
+  doc.save().strokeColor(BRASS).lineWidth(2).moveTo(MARGIN, MARGIN + 84).lineTo(MARGIN + inner, MARGIN + 84).stroke().restore();
+}
+
+function drawPhotoPageHeader(doc, record, photoName, index, total) {
+  const inner = PAGE_W - MARGIN * 2;
+  doc.fillColor(INK).font("Helvetica-Bold").fontSize(11).text("STUDIO DELTA", MARGIN, MARGIN);
+  doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(
+    (record.order_number || "") + "  ·  " + reportTitle(record),
+    MARGIN, MARGIN + 16
+  );
+  doc.fillColor(INK).font("Helvetica-Bold").fontSize(12).text(photoName || "Photo", MARGIN, MARGIN, { width: inner, align: "right" });
+  doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(
+    "Photo " + String(index) + " of " + String(total),
+    MARGIN, MARGIN + 16, { width: inner, align: "right" }
+  );
+  doc.save().strokeColor(BRASS).lineWidth(2).moveTo(MARGIN, MARGIN + 36).lineTo(MARGIN + inner, MARGIN + 36).stroke().restore();
+}
+
+function loadStoredPhotos(id) {
+  const dir = photosDir(id);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((name) => /\.jpe?g$/i.test(name) && !/^signature\./i.test(name))
+    .sort()
+    .map((name) => {
+      const label = name.replace(/^\d+-/, "").replace(/\.jpe?g$/i, "").replace(/_/g, " ");
+      return { name: label || "Photo", buf: fs.readFileSync(path.join(dir, name)) };
+    });
+}
+
+function loadStoredSignature(id) {
+  const file = path.join(photosDir(id), "signature.jpg");
+  if (!fs.existsSync(file)) return null;
+  const buf = fs.readFileSync(file);
+  return buf && buf.length ? buf : null;
+}
+
+async function restyleRecord(rec) {
+  if (!rec || rec.imported || !rec.pdf_path) return false;
+  const photos = loadStoredPhotos(rec.id);
+  const signatureBuf = loadStoredSignature(rec.id);
+  await renderPdf({
+    ...rec,
+    photos,
+    signatureBuf,
+    photoAttempted: photos.length > 0
+  }, rec.pdf_path);
+  rec.layout = LAYOUT;
+  return true;
+}
+
+async function restyleStoredReports() {
+  const store = loadStore();
+  let n = 0;
+  for (const rec of store.records) {
+    if (!rec || rec.imported || rec.layout === LAYOUT) continue;
+    if (!rec.pdf_path || !fs.existsSync(rec.pdf_path)) continue;
+    try {
+      await restyleRecord(rec);
+      n += 1;
+    } catch (e) {
+      console.error("[qc-pdf] restyle", rec.order_number, e && e.message ? e.message : e);
+    }
+  }
+  if (n) saveStore(store);
+  return n;
+}
+
 function writePhotoFiles(id, photos, signatureBuf) {
   const dir = photosDir(id);
   (photos || []).forEach((photo, i) => {
@@ -181,68 +327,143 @@ function writePhotoFiles(id, photos, signatureBuf) {
 
 async function renderPdf(record, dest) {
   const PDFDocument = require("pdfkit");
+  const logoPath = await logoPathForPdf();
+  const inner = PAGE_W - MARGIN * 2;
+  const photos = (record.photos || []).filter((photo) => photo && photo.buf);
+  const photoSizes = [];
+  for (let i = 0; i < photos.length; i++) {
+    try {
+      const meta = await require("sharp")(photos[i].buf).metadata();
+      photoSizes.push({ w: meta.width || 1, h: meta.height || 1 });
+    } catch (e) {
+      photoSizes.push({ w: 1, h: 1 });
+    }
+  }
   await new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: "A4", margin: 36, info: {
-      Title: (record.order_number || "Order") + " " + (record.kind || "QC"),
-      Author: "Studio Delta"
-    } });
+    const doc = new PDFDocument({
+      size: "A4",
+      margin: MARGIN,
+      compress: false,
+      info: {
+        Title: (record.order_number || "Order") + " " + (record.kind || "QC"),
+        Author: "Studio Delta"
+      }
+    });
     const stream = fs.createWriteStream(dest);
     doc.pipe(stream);
     stream.on("finish", resolve);
     stream.on("error", reject);
     doc.on("error", reject);
 
-    doc.font("Helvetica-Bold").fontSize(18).text("Studio Delta");
-    doc.moveDown(0.2);
-    doc.font("Helvetica-Bold").fontSize(14).text(record.kind || "QC Report");
-    doc.moveDown(0.6);
-    doc.font("Helvetica").fontSize(11);
-    doc.text("Order: " + (record.order_number || ""));
-    if (record.product) doc.text("Product: " + record.product);
-    doc.text("Completed by: " + (record.worker || ""));
-    doc.text("Date: " + formatWhen(record.created_at));
-    doc.moveDown();
-    doc.font("Helvetica-Bold").fontSize(12).text("Checklist");
-    doc.moveDown(0.3);
-    (record.answers || []).forEach((row, i) => {
-      const q = String(row.q || "Q" + (i + 1));
-      let a = String(row.a || "");
-      if (a === "Y") a = "Yes";
-      if (a === "N") a = "No";
-      doc.font("Helvetica").fontSize(10).text((i + 1) + ". " + q);
-      doc.font("Helvetica-Bold").text(a || "—", { indent: 14 });
-      doc.moveDown(0.25);
-    });
+    drawReportHeader(doc, record, logoPath);
 
-    if (record.signatureBuf) {
-      doc.addPage();
-      doc.font("Helvetica-Bold").fontSize(12).text("Signature");
-      doc.moveDown(0.4);
-      try {
-        doc.image(record.signatureBuf, { fit: [240, 120] });
-      } catch (e) {
-        doc.font("Helvetica").fontSize(10).text("Signature could not be placed.");
+    let y = MARGIN + 96;
+    const boxW = inner * 0.48;
+    drawPdfBox(doc, MARGIN, y, boxW, 54);
+    drawPdfBox(doc, MARGIN + inner * 0.52, y, boxW, 54);
+    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("ORDER", MARGIN + 8, y + 8);
+    doc.fillColor(INK).font("Helvetica-Bold").fontSize(11).text(record.order_number || "—", MARGIN + 8, y + 22);
+    doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(record.product || "Studio Delta", MARGIN + 8, y + 38, { width: boxW - 16, lineBreak: false });
+    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("COMPLETED", MARGIN + inner * 0.52 + 8, y + 8);
+    doc.fillColor(INK).font("Helvetica").fontSize(10)
+      .text(record.worker || "—", MARGIN + inner * 0.52 + 8, y + 22)
+      .text(formatWhen(record.created_at), MARGIN + inner * 0.52 + 8, y + 36);
+
+    y += 70;
+    const answers = Array.isArray(record.answers) ? record.answers : [];
+    const numW = 28;
+    const resultW = 70;
+    const qW = inner - numW - resultW;
+    const headerH = 22;
+    function drawChecklistHeader() {
+      doc.save().fillColor(INK).rect(MARGIN, y, inner, headerH).fill().restore();
+      doc.fillColor(CREAM).font("Helvetica-Bold").fontSize(7)
+        .text("#", MARGIN + 4, y + 7, { width: numW - 6, lineBreak: false })
+        .text("Checklist", MARGIN + numW + 4, y + 7, { width: qW - 8, lineBreak: false })
+        .text("Result", MARGIN + numW + qW + 4, y + 7, { width: resultW - 8, lineBreak: false });
+      y += headerH;
+    }
+    drawChecklistHeader();
+    answers.forEach((row, i) => {
+      const q = String(row.q || "Q" + (i + 1));
+      const result = answerLabel(row.a);
+      const qHeight = q.length > 72 ? 32 : 20;
+      if (y + qHeight > PAGE_H - 120) {
+        doc.addPage();
+        drawReportHeader(doc, record, logoPath);
+        y = MARGIN + 96;
+        drawChecklistHeader();
       }
+      if (i % 2 === 1) {
+        doc.save().fillColor(ALT).rect(MARGIN, y, inner, qHeight).fill().restore();
+      }
+      doc.save().strokeColor(RULE).lineWidth(0.4).rect(MARGIN, y, inner, qHeight).stroke().restore();
+      doc.fillColor(INK).font("Helvetica").fontSize(8)
+        .text(String(i + 1), MARGIN + 4, y + 6, { width: numW - 6, lineBreak: false })
+        .text(q, MARGIN + numW + 4, y + 6, { width: qW - 8 });
+      doc.fillColor(INK).font("Helvetica-Bold").fontSize(8)
+        .text(result, MARGIN + numW + qW + 4, y + 6, { width: resultW - 8, align: "center" });
+      y += qHeight;
+    });
+    if (!answers.length) {
+      doc.save().strokeColor(RULE).lineWidth(0.4).rect(MARGIN, y, inner, 20).stroke().restore();
+      doc.fillColor(MUTED).font("Helvetica").fontSize(8).text("No checklist answers were saved.", MARGIN + 8, y + 6);
+      y += 20;
     }
 
-    const photos = record.photos || [];
-    photos.forEach((photo) => {
-      if (!photo || !photo.buf) return;
+    y += 18;
+    const sigH = 88;
+    if (y + sigH > PAGE_H - MARGIN) {
       doc.addPage();
-      doc.font("Helvetica-Bold").fontSize(12).text(photo.name || "Photo");
-      doc.moveDown(0.4);
+      drawReportHeader(doc, record, logoPath);
+      y = MARGIN + 96;
+    }
+    drawPdfBox(doc, MARGIN, y, inner, sigH);
+    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("SIGNATURE", MARGIN + 8, y + 8);
+    if (record.signatureBuf) {
       try {
-        doc.image(photo.buf, { fit: [520, 680] });
+        doc.image(record.signatureBuf, MARGIN + 8, y + 22, { fit: [220, 56] });
       } catch (e) {
-        doc.font("Helvetica").fontSize(10).text("This photo could not be placed.");
+        doc.fillColor(MUTED).font("Helvetica").fontSize(8).text("Signature could not be placed.", MARGIN + 8, y + 40);
+      }
+    } else {
+      doc.save().strokeColor(RULE).lineWidth(0.5).moveTo(MARGIN + 8, y + 70).lineTo(MARGIN + 240, y + 70).stroke().restore();
+      doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(record.worker || "Signed", MARGIN + 8, y + 74);
+    }
+    doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(
+      "Quality Control  ·  " + (record.order_number || ""),
+      MARGIN, y + 36, { width: inner - 12, align: "right" }
+    );
+
+    const photosOnPage = photos;
+    photosOnPage.forEach((photo, i) => {
+      doc.addPage();
+      drawPhotoPageHeader(doc, record, photo.name || ("Photo " + (i + 1)), i + 1, photos.length);
+      const frameY = MARGIN + 48;
+      const frameH = PAGE_H - frameY - MARGIN;
+      drawPdfBox(doc, MARGIN, frameY, inner, frameH);
+      const maxW = inner - 24;
+      const maxH = frameH - 24;
+      const size = photoSizes[i] || { w: maxW, h: maxH };
+      const scale = Math.min(maxW / size.w, maxH / size.h);
+      const dw = Math.max(1, size.w * scale);
+      const dh = Math.max(1, size.h * scale);
+      const imgX = MARGIN + (inner - dw) / 2;
+      const imgY = frameY + (frameH - dh) / 2;
+      try {
+        doc.image(photo.buf, imgX, imgY, { width: dw, height: dh });
+      } catch (e) {
+        doc.fillColor(MUTED).font("Helvetica").fontSize(10).text("This photo could not be placed.", MARGIN + 16, frameY + 24);
       }
     });
 
     if (record.photoAttempted && !photos.length) {
       doc.addPage();
-      doc.font("Helvetica-Bold").fontSize(12).text("Photos");
-      doc.moveDown(0.4);
-      doc.font("Helvetica").fontSize(10).text("Photos were sent with this QC but could not be placed on the PDF.");
+      drawPhotoPageHeader(doc, record, "Photos", 0, 0);
+      doc.fillColor(MUTED).font("Helvetica").fontSize(10).text(
+        "Photos were sent with this QC but could not be placed on the PDF.",
+        MARGIN, MARGIN + 52, { width: inner }
+      );
     }
 
     doc.end();
@@ -279,7 +500,8 @@ async function saveFromFinish(job) {
     log_id: String((job && job.logId) || ""),
     row: Number(job && job.rowToUpdate) || 0,
     photo_count: 0,
-    imported: false
+    imported: false,
+    layout: LAYOUT
   };
   const files = (job && job.filesData) || [];
   const photoAttempted = files.some((file) => !!file);
@@ -595,6 +817,7 @@ async function rebuildRecordFromPhotos(rec, filesData, signatureUrl) {
   rec.has_signature = !!signatureBuf;
   rec.imported = false;
   rec.drive_import_tried = true;
+  rec.layout = LAYOUT;
   const store = loadStore();
   const idx = store.records.findIndex((row) => row && row.id === rec.id);
   if (idx >= 0) store.records[idx] = rec;
@@ -769,7 +992,8 @@ async function backfillFromLogs() {
   }
   const recovered = await recoverMissingPhotos();
   const linked = attachDriveUrlsFromLogs();
-  return { saved: saved + (recovered.saved || 0) + (linked.saved || 0) };
+  const restyled = await restyleStoredReports();
+  return { saved: saved + (recovered.saved || 0) + (linked.saved || 0) + restyled };
 }
 
 module.exports = {

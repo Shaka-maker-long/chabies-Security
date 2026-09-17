@@ -24,6 +24,16 @@ function pdfPageCount(buf) {
   return pages.filter((row) => !/\/Pages\b/.test(row)).length;
 }
 
+function pdfText(buf) {
+  const latin = buf.toString("latin1");
+  const decoded = [];
+  latin.replace(/<([0-9A-Fa-f]+)>/g, (_, hex) => {
+    try { decoded.push(Buffer.from(hex, "hex").toString("latin1")); } catch (e) {}
+    return "";
+  });
+  return latin + "\n" + decoded.join("");
+}
+
 assert.strictEqual(qcPdf.parseDriveFileId("https://drive.google.com/file/d/abc123xyz/view"), "abc123xyz");
 assert.deepStrictEqual(
   qcPdf.driveIdsFromNotes("QC PDF: https://drive.google.com/file/d/abc123xyz\nQC PDF: /api/qc-pdfs/local/pdf"),
@@ -73,9 +83,15 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   const file = qcPdf.readPdf(saved.id);
   assert.ok(file && file.buffer && file.buffer.slice(0, 4).toString() === "%PDF");
   const pages = pdfPageCount(file.buffer);
-  assert.ok(pages >= 9, "checklist + signature + 7 photos, got " + pages);
+  assert.ok(pages >= 8, "checklist page + 7 photo pages, got " + pages);
   const latin = file.buffer.toString("latin1");
   assert.ok(/DCTDecode/.test(latin), "JPEG photos must be embedded");
+  const text = pdfText(file.buffer);
+  assert.ok(text.indexOf("STUDIO DELTA") !== -1, "QC PDF must use the Studio Delta header");
+  assert.ok(text.indexOf("FINAL QC") !== -1, text.slice(0, 400));
+  assert.ok(text.indexOf("CHECKLIST") !== -1 || text.indexOf("Checklist") !== -1, "checklist table header");
+  assert.ok(text.indexOf("S260184") !== -1);
+  assert.ok(text.indexOf("Furniture") !== -1, "same tagline as purchase orders");
   const photoDir = path.join(dir, "qc-pdfs", saved.id);
   assert.ok(fs.existsSync(path.join(photoDir, "signature.jpg")));
   const jpgs = fs.readdirSync(photoDir).filter((name) => /\.jpg$/i.test(name) && name !== "signature.jpg");
@@ -123,7 +139,7 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
   ], pngDataUrl);
   assert.ok(rebuilt);
   const rebuiltPdf = qcPdf.readPdf(noPhotos.id);
-  assert.ok(pdfPageCount(rebuiltPdf.buffer) >= 3, "saved checklist PDF can be rebuilt with photos");
+  assert.ok(pdfPageCount(rebuiltPdf.buffer) >= 2, "saved checklist PDF can be rebuilt with photos");
   assert.strictEqual(qcPdf.listReports().find((row) => row.id === noPhotos.id).photo_count, 1);
 
   const book = getBook();
@@ -168,7 +184,7 @@ assert.deepStrictEqual(qcPdf.parseAnswersFromNotes(
     filesData: [{ name: "front.jpg", mime: "image/jpeg", data: jpegB64 }]
   });
   assert.ok(attached.photo_count >= 1, JSON.stringify(attached));
-  assert.ok(pdfPageCount(qcPdf.readPdf(attached.id).buffer) >= 3);
+  assert.ok(pdfPageCount(qcPdf.readPdf(attached.id).buffer) >= 2);
 
   console.log("qc-pdf.test.js ok");
 })().catch((e) => {
