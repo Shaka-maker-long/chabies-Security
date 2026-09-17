@@ -34,5 +34,6 @@ assert.strictEqual(store.storageInfo().volumeMount, volume);
 const healthJs = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
 assert.ok(healthJs.indexOf("usingEphemeralDisk") !== -1);
 assert.ok(healthJs.indexOf("persistenceInfo") !== -1);
+assert.ok(healthJs.indexOf("gmailLinked") !== -1, "health reports whether a mailbox is linked");
 
 console.log("persistence.test.js ok");

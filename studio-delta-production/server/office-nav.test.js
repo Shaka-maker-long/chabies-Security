@@ -142,6 +142,8 @@ assert.ok(floor.indexOf("saved without pictures") !== -1 || floor.indexOf("Add t
 assert.ok(floor.indexOf("Add tablet photos") !== -1, "completed QC cards can attach gallery photos without redoing QC");
 assert.ok(floor.indexOf("attachQcPhotos") !== -1);
 assert.ok(floor.indexOf("The unit does not need to come back") !== -1);
+assert.ok(floor.indexOf("emails to Siya and Shaka") === -1, "QC Reports must not claim QC PDFs were emailed");
+assert.ok(floor.indexOf("Mail is not linked") !== -1, "QC Reports says mail was never linked");
 assert.ok(floor.indexOf("function floorOverseesTasks") !== -1);
 assert.ok(floor.indexOf("getMyCompletedWork(session.name, session.role") !== -1, "task boards load completed work for the selected task");
 assert.ok(floor.indexOf("function floorCanEditCompletedActions") !== -1, "only Admin edits completed steel on others");
@@ -764,6 +766,7 @@ assert.ok(floor.indexOf("If a name is missing from the list, add that person on 
 const codeGs = fs.readFileSync(path.join(__dirname, "../Code.gs"), "utf8");
 assert.ok(codeGs.indexOf("var driveHit") !== -1 && codeGs.indexOf("localHasPhotos") !== -1, "Completed opens the Drive QC PDF when the local file has no photos");
 assert.ok(codeGs.indexOf("function attachQcPhotos") !== -1, "finished QC PDFs can receive tablet photos without another clock");
+assert.ok(codeGs.indexOf("process.env.GMAIL_SENDER") !== -1, "QC MailApp waits for a linked Workspace mailbox");
 assert.ok(codeGs.indexOf("filesData: [],") !== -1 && codeGs.indexOf("photoCount:") !== -1, "Drive QC queue must not stringify tablet photos");
 assert.ok(codeGs.indexOf("filesData: filesData || []") !== -1, "local QC PDF still receives the tablet photos");
 assert.ok(codeGs.indexOf("function managerCorrectStart") !== -1);

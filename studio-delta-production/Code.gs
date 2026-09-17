@@ -2836,7 +2836,13 @@ function generateQCPdf(templateId, orderNum, workerName, qcAnswers, sigBase64, p
   newFile.setTrashed(true);
 
   // --- EMAIL SECTION ---
-  if (shouldEmail && QC_EMAIL_RECIPIENT && QC_EMAIL_RECIPIENT.trim() !== "") {
+  // Railway only sends mail when GMAIL_SENDER is set (Workspace mailbox + domain-wide delegation).
+  // That variable has never been set on this app, so QC PDFs stay in the app / Drive — they are not emailed.
+  var mailboxLinked = false;
+  try {
+    mailboxLinked = typeof process !== "undefined" && process.env && String(process.env.GMAIL_SENDER || "").trim() !== "";
+  } catch (ignoreMail) {}
+  if (shouldEmail && mailboxLinked && QC_EMAIL_RECIPIENT && QC_EMAIL_RECIPIENT.trim() !== "") {
     try {
       // Clean, trim whitespace, and parse email addresses into an array
       var emailList = QC_EMAIL_RECIPIENT.split(",")

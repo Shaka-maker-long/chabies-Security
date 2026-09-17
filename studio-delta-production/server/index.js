@@ -59,6 +59,7 @@ function health(_req, res) {
     workbookExists: !!persist.workbookExists,
     googleMigrateAvailable: googleMigrateEnabled(),
     googleDriveOptional: hasGoogleAuth(),
+    gmailLinked: !!String(process.env.GMAIL_SENDER || "").trim(),
     sheetsLive: false
   };
   try { Object.assign(payload, require("./backup").info()); } catch (e) {}

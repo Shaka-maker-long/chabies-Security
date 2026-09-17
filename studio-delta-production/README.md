@@ -89,7 +89,7 @@ The GitHub repo is a website plus this app. Railway should build from the **repo
    | `TZ` | `Africa/Johannesburg` |
    | `DATA_DIR` | `/app/data` (already set in Docker) |
    | `GOOGLE_SERVICE_ACCOUNT_JSON` | optional for QC PDFs. **Required for off-site Drive backups** |
-   | `GMAIL_SENDER` | optional. Workspace mailbox for QC / powder / glass emails and backup notices |
+   | `GMAIL_SENDER` | leave empty until a Workspace mailbox is linked (domain-wide delegation). QC / powder / glass alerts are **not emailed** until this is set. `GET /health` shows `"gmailLinked": true` only then |
    | `BACKUP_DRIVE_FOLDER_ID` | optional. Shared-drive folder ID for nightly off-site copies |
    | `BACKUP_DRIVE_IMPERSONATE` | optional. Workspace user to upload as (needs domain-wide delegation) |
    | `BACKUP_EMAIL` | optional. Address that receives “backup OK / failed” mail |
