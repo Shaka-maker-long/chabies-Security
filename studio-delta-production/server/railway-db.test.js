@@ -26,16 +26,6 @@ assert.strictEqual(db.formatMonthOfSale("Sep 2026"), "September 2026");
 assert.strictEqual(db.formatOrderId("S-1001"), "S-1001");
 assert.ok(/^\d+$/.test(db.formatOrderId(new Date("2026-06-30T22:00:00.000Z"))));
 
-const paidMonth = db.upsertOrder({
-  order_number: "S-PAY-MONTH",
-  status: "Not Yet Started",
-  client_name: "Ann",
-  payment_date: "15/09/2026",
-  month_of_sale: "January 2020"
-});
-assert.strictEqual(paidMonth.payment_date, "15/09/2026");
-assert.strictEqual(paidMonth.month_of_sale, "September 2026");
-
 const paidInclVat = db.decorateMoney({
   price_excl_vat: "10000",
   price_incl_vat: db.inclFromExcl("10000"),
@@ -191,6 +181,28 @@ const CONFIRM = { understood: true, highlights: [] };
   const orderRow = raw.sheets.ORDERS.grid.find((r) => String(r[1]) === "S-1001");
   assert.ok(orderRow);
   assert.strictEqual(String(orderRow[2]), "Ready for Tagging");
+
+  const paidMonth = db.upsertOrder({
+    order_number: "S-PAY-MONTH",
+    status: "Not Yet Started",
+    client_name: "Ann",
+    payment_date: "15/09/2026",
+    month_of_sale: "January 2020"
+  });
+  assert.strictEqual(paidMonth.payment_date, "15/09/2026");
+  assert.strictEqual(paidMonth.month_of_sale, "September 2026");
+  const janPay = db.upsertOrder({
+    order_number: "S-JAN-PAY",
+    status: "Not Yet Started",
+    client_name: "Jan",
+    payment_date: "07/01/2026",
+    month_of_sale: "September 2026"
+  });
+  assert.strictEqual(janPay.payment_date, "07/01/2026");
+  assert.strictEqual(janPay.month_of_sale, "January 2026");
+  const janAgain = db.listOrders().find((o) => o.order_number === "S-JAN-PAY");
+  assert.strictEqual(janAgain.month_of_sale, "January 2026");
+  assert.strictEqual(db.listSchedule().find((r) => r.order_number === "S-JAN-PAY").order_date_label, "07-Jan");
 
   console.log("railway-db.test.js ok");
 })().catch((e) => {

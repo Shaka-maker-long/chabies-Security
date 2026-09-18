@@ -30,6 +30,16 @@ assert.ok(!isNaN(asDate.getTime()));
 const written = coerceWrite(new Date("2026-08-27T07:45:00+02:00"));
 assert.ok(String(written).indexOf("2026-08-27") === 0);
 
+const jan = coerceRead("07/01/2026");
+assert.ok(jan instanceof Date);
+assert.strictEqual(coerceWrite(jan).slice(0, 10), "2026-01-07", "07/01/2026 is 7 January, not 1 July");
+const sep = coerceRead("16/09/2026");
+assert.ok(sep instanceof Date);
+assert.strictEqual(coerceWrite(sep).slice(0, 10), "2026-09-16");
+const isoDay = coerceRead("2026-01-07");
+assert.ok(isoDay instanceof Date);
+assert.strictEqual(coerceWrite(isoDay).slice(0, 10), "2026-01-07");
+
 const safe = jsonSafe({ start: new Date("2026-08-27T07:45:00+02:00"), nested: [new Date(0)] });
 assert.strictEqual(typeof safe.start, "number");
 assert.strictEqual(safe.nested[0], 0);
