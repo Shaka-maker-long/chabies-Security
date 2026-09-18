@@ -206,13 +206,28 @@ function snapshot() {
   };
 }
 
-function sendToPaintShop(orderNumbers, actor) {
+function assertReadyForPowderList(orderNumbers) {
+  const nums = (Array.isArray(orderNumbers) ? orderNumbers : [])
+    .map((n) => formatOrderId(n))
+    .filter(Boolean);
+  if (!nums.length) throw new Error("Select at least one order that is Ready for Powder Coating.");
+  nums.forEach((num) => {
+    const order = findOrder(num);
+    if (!order) throw new Error("Order " + num + " was not found.");
+    if (!isReadyForPowder(order.status)) {
+      throw new Error(num + " is " + (order.status || "not ready") + ". Only Ready for Powder Coating can go on the list.");
+    }
+  });
+}
+
+function sendToPaintShop(orderNumbers, actor, opts) {
   const nums = (Array.isArray(orderNumbers) ? orderNumbers : [])
     .map((n) => formatOrderId(n))
     .filter(Boolean);
   const unique = [];
   nums.forEach((n) => { if (unique.indexOf(n) === -1) unique.push(n); });
   if (!unique.length) throw new Error("Select at least one order that is Ready for Powder Coating.");
+  const nextStatus = String((opts && opts.status) || SENT_STATUS).trim() || SENT_STATUS;
   const shop = loadShop();
   const sentAt = nowIso();
   const sentBy = String(actor || "Admin").trim() || "Admin";
@@ -224,7 +239,7 @@ function sendToPaintShop(orderNumbers, actor) {
     if (!isReadyForPowder(order.status)) {
       throw new Error(num + " is " + (order.status || "not ready") + ". Only Ready for Powder Coating can be sent.");
     }
-    upsertOrder(Object.assign({}, order, { status: SENT_STATUS }));
+    upsertOrder(Object.assign({}, order, { status: nextStatus }));
     shop.orders[num] = Object.assign({}, shop.orders[num] || {}, {
       sendId,
       sentAt,
@@ -366,10 +381,12 @@ function receiveFromPaintShop(payload, actor) {
 module.exports = {
   READY_STATUS,
   SENT_STATUS,
+  AT_SHOP_STATUS,
   RECEIVED_STATUS,
   isReadyForPowder,
   isSentToPaintShop,
   snapshot,
+  assertReadyForPowderList,
   sendToPaintShop,
   markAlreadyAtPaintShop,
   receiveFromPaintShop,

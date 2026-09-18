@@ -140,6 +140,8 @@ assert.ok(floor.indexOf("Powder Coating List") !== -1);
 assert.ok(floor.indexOf("Profiles Used") === -1, "powder coating list PO does not ask for profiles used");
 assert.ok(floor.indexOf("Generate PO") !== -1);
 assert.ok(floor.indexOf("powderDimsFromOrder") !== -1);
+assert.ok(floor.indexOf(" Paint Shop.") !== -1);
+assert.ok(floor.indexOf("loadDashboard()") !== -1);
 assert.ok(indexJs.indexOf("/api/powder-lists/:id/pdf") !== -1);
 const qcPdfJs = fs.readFileSync(path.join(__dirname, "qc-pdf.js"), "utf8");
 assert.ok(qcPdfJs.indexOf("#b08948") !== -1, "QC PDF uses the same brass rule as purchase orders");

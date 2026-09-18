@@ -8521,11 +8521,15 @@
                 submitBtn.disabled = false;
                 
                 if(res.success) {
-                    showAlert("Powder coating list PO is ready.");
+                    const moved = (res.orderNumbers || []).filter(Boolean);
+                    showAlert(moved.length
+                      ? "Powder coating list PO is ready. " + moved.join(", ") + " " + (moved.length === 1 ? "is" : "are") + " Paint Shop."
+                      : "Powder coating list PO is ready.");
                     const powderModalEl = document.getElementById('powderModal');
                     const powderModalInstance = bootstrap.Modal.getInstance(powderModalEl);
                     if (powderModalInstance) powderModalInstance.hide();
                     if (res.url) window.open(res.url, "_blank", "noopener");
+                    if (typeof loadDashboard === "function") loadDashboard();
                 } else {
                     showAlert("Error generating PDF: " + (res.error || "Could not generate the list."));
                 }

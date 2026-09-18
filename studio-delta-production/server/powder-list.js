@@ -70,6 +70,16 @@ function nextNumber(records, now) {
   return prefix + String(max + 1);
 }
 
+function uniqueOrderNumbers(lines) {
+  const out = [];
+  (lines || []).forEach((line) => {
+    const n = String((line && line.order) || "").trim();
+    if (!n || out.indexOf(n) !== -1) return;
+    out.push(n);
+  });
+  return out;
+}
+
 function normalizeLines(listData) {
   return (Array.isArray(listData) ? listData : []).map((item) => ({
     order: String((item && item.order) || "").trim(),
@@ -213,6 +223,16 @@ async function createList(listData, workerName) {
       return { success: false, error: "Fill in item, dimensions, quantity, and colour for every line." };
     }
   }
+  const orderNumbers = uniqueOrderNumbers(lines);
+  if (!orderNumbers.length) {
+    return { success: false, error: "Select at least one order to send." };
+  }
+  const paint = require("./powder-shop");
+  try {
+    paint.assertReadyForPowderList(orderNumbers);
+  } catch (e) {
+    return { success: false, error: (e && e.message) || String(e) };
+  }
   const store = loadStore();
   const id = newId();
   const createdAt = new Date().toISOString();
@@ -233,12 +253,21 @@ async function createList(listData, workerName) {
     lineCount: rec.lines.length
   });
   saveStore(store);
+  let moved = [];
+  try {
+    const sent = paint.sendToPaintShop(orderNumbers, rec.createdBy, { status: paint.AT_SHOP_STATUS });
+    moved = sent.orderNumbers || orderNumbers;
+  } catch (e) {
+    return { success: false, error: (e && e.message) || String(e), id, url: pdfUrlFor(id), number: rec.number };
+  }
   return {
     success: true,
     id,
     number: rec.number,
     url: pdfUrlFor(id),
-    filename: rec.number + ".pdf"
+    filename: rec.number + ".pdf",
+    orderNumbers: moved,
+    status: paint.AT_SHOP_STATUS
   };
 }
 
