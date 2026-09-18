@@ -163,6 +163,20 @@ assert.ok(notStarted.count >= 1);
 
 assert.ok(year.stuck.some((r) => r.order_number === "S260406"));
 assert.ok(year.ageing.some((b) => b.count > 0));
+year.ageing.forEach((b) => {
+  assert.ok(Array.isArray(b.statuses));
+  assert.strictEqual(b.statuses.reduce((n, s) => n + s.count, 0), b.count);
+});
+const weldingAge = year.ageing.find((b) => (b.statuses || []).some((s) => s.label === "Welding"));
+assert.ok(weldingAge, "Welding sits in an age band");
+assert.ok(weldingAge.count >= 1);
+const ageWeld = dash.buildDrill({ kind: "age", value: weldingAge.id, slice: "Welding" });
+assert.ok(ageWeld.rows.some((r) => r.order_number === "S260401"));
+assert.ok(ageWeld.rows.every((r) => r.status === "Welding"));
+assert.ok(ageWeld.title.indexOf("Welding") !== -1);
+assert.ok(ageWeld.title.indexOf(weldingAge.id) !== -1);
+const ageAll = dash.buildDrill({ kind: "age", value: weldingAge.id });
+assert.ok(ageAll.rows.length >= ageWeld.rows.length);
 
 assert.strictEqual(year.delivery.thisWeek.count, 1);
 assert.strictEqual(year.delivery.thisWeek.days.Tuesday, 1);
@@ -236,6 +250,10 @@ assert.ok(html.indexOf("Top 10 items by income") !== -1);
 assert.ok(html.indexOf("Top 10 products by quantity") !== -1);
 assert.ok(html.indexOf("Shop pipeline") !== -1);
 assert.ok(html.indexOf("Stuck / ageing") !== -1);
+assert.ok(html.indexOf("openAgeStatus") !== -1);
+assert.ok(html.indexOf("ageStatusPie") !== -1);
+assert.ok(html.indexOf("Click a pie slice") !== -1);
+assert.ok(html.indexOf("Back to statuses") !== -1);
 assert.ok(html.indexOf("Delivery this week and next") !== -1);
 assert.ok(html.indexOf("Throughput") !== -1);
 assert.ok(html.indexOf("Blockers") !== -1);
@@ -274,5 +292,41 @@ const schedDate = db.listSchedule().find((r) => r.order_number === "S260410");
 assert.strictEqual(schedDate.order_date_label, "16-Sep");
 const sepDash = dash.buildDashboard({ month: "2026-09", grain: "month" });
 assert.ok(sepDash.windowCount >= 3, "16-Sep payment lands in September");
+
+db.upsertOrder({
+  order_number: "S260411",
+  status: "Assembly",
+  category: "Mirror",
+  product: "Age Pie A",
+  source: "Website",
+  client_name: "Hal",
+  price_incl_vat: "115.00",
+  amount_paid: "115.00",
+  payment_date: "17/09/2026"
+});
+db.upsertOrder({
+  order_number: "S260412",
+  status: "Grinding",
+  category: "Mirror",
+  product: "Age Pie B",
+  source: "Website",
+  client_name: "Ivy",
+  price_incl_vat: "115.00",
+  amount_paid: "115.00",
+  payment_date: "17/09/2026"
+});
+const pieDash = dash.buildDashboard({ range: "year" });
+const pieBucket = pieDash.ageing.find((b) =>
+  (b.statuses || []).some((s) => s.label === "Assembly")
+  && (b.statuses || []).some((s) => s.label === "Grinding")
+);
+assert.ok(pieBucket, "same-age jobs split by status");
+assert.ok(pieBucket.statuses.length >= 2);
+const assemblySlice = dash.buildDrill({ kind: "age", value: pieBucket.id, slice: "Assembly" });
+assert.ok(assemblySlice.rows.some((r) => r.order_number === "S260411"));
+assert.ok(!assemblySlice.rows.some((r) => r.order_number === "S260412"));
+const grindSlice = dash.buildDrill({ kind: "age", value: pieBucket.id, slice: "Grinding" });
+assert.ok(grindSlice.rows.some((r) => r.order_number === "S260412"));
+assert.ok(!grindSlice.rows.some((r) => r.order_number === "S260411"));
 
 console.log("order-dashboard tests ok");

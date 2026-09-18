@@ -390,7 +390,11 @@ function buildDashboard(query) {
     pipeAges[p.id] = [];
   });
   const ageCounts = {};
-  AGE_BUCKETS.forEach((b) => { ageCounts[b.id] = 0; });
+  const ageStatuses = {};
+  AGE_BUCKETS.forEach((b) => {
+    ageCounts[b.id] = 0;
+    ageStatuses[b.id] = {};
+  });
 
   let income = 0;
   let billed = 0;
@@ -416,7 +420,10 @@ function buildDashboard(query) {
       if (isReadyOrOut(status)) readyOrOut += 1;
       const days = daysOpen(row, nowMs);
       if (days != null) {
-        ageCounts[ageBucket(days)] += 1;
+        const bucket = ageBucket(days);
+        ageCounts[bucket] += 1;
+        const statusLabel = blankLabel(row.status, "(Blank)");
+        ageStatuses[bucket][statusLabel] = (ageStatuses[bucket][statusLabel] || 0) + 1;
         pipeAges[pipe].push(days);
         stuck.push({
           order_number: row.order_number,
@@ -515,7 +522,13 @@ function buildDashboard(query) {
       count: pipeCounts[p.id] || 0,
       medianDays: round1(median(pipeAges[p.id] || []))
     })),
-    ageing: AGE_BUCKETS.map((b) => ({ id: b.id, label: b.id, count: ageCounts[b.id] || 0 })),
+    ageing: AGE_BUCKETS.map((b) => {
+      const statuses = Object.keys(ageStatuses[b.id] || {}).map((label) => ({
+        label,
+        count: ageStatuses[b.id][label]
+      })).sort((a, c) => c.count - a.count || a.label.localeCompare(c.label));
+      return { id: b.id, label: b.id, count: ageCounts[b.id] || 0, statuses };
+    }),
     stuck: stuck.slice(0, 10),
     delivery: {
       today,
@@ -552,7 +565,10 @@ function matchesDrill(row, query, win) {
   if (kind === "age") {
     if (!isOpen(status)) return false;
     const days = daysOpen(row, Date.now());
-    return days != null && ageBucket(days) === value;
+    if (days == null || ageBucket(days) !== value) return false;
+    const slice = String((query && query.slice) || "").trim();
+    if (slice) return blankLabel(row.status, "(Blank)") === slice;
+    return true;
   }
   if (kind === "stuck") {
     return isOpen(status) && (!value || String(row.order_number) === value);
@@ -633,7 +649,10 @@ function drillTitle(query, win) {
   if (kind === "product" || kind === "productIncome") return "Income · " + value;
   if (kind === "productQty") return "Orders · " + value;
   if (kind === "pipeline") return pipelineLabel(String((query && query.group) || value));
-  if (kind === "age") return "Open " + value;
+  if (kind === "age") {
+    const slice = String((query && query.slice) || "").trim();
+    return slice ? "Open " + value + " · " + slice : "Open " + value;
+  }
   if (kind === "stuck") return value ? "Order " + value : "Oldest open jobs";
   if (kind === "open") return "Open jobs";
   if (kind === "drawing") return "Waiting for drawing";

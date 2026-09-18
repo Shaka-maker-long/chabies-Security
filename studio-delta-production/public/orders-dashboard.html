@@ -64,6 +64,9 @@
     .drill-totals { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
     .drill-totals span { background:#f2f4f7; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:600; }
     .drill-totals b { display:block; margin-top:2px; font-size:14px; }
+    .split-pie { max-width:360px; margin:0 auto 12px; }
+    #drillBack { display:none; }
+    #drillBack.show { display:inline-block; }
     @media (max-width: 900px) {
       .grid { grid-template-columns:1fr; }
       .span2 { grid-column:auto; }
@@ -147,7 +150,7 @@
         </section>
         <section class="card">
           <h2>Stuck / ageing</h2>
-          <p class="hint">Days since the payment date on open jobs.</p>
+          <p class="hint">Days since the payment date on open jobs. Click a bar for a status pie, then a slice for the orders.</p>
           <canvas id="ageing"></canvas>
         </section>
         <section class="card">
@@ -182,6 +185,7 @@
           <p class="hint" id="drillHint" hidden style="margin:4px 0 0"></p>
         </div>
         <div class="tools">
+          <button class="ghost" type="button" id="drillBack">Back to statuses</button>
           <button class="ghost" type="button" id="drillClose">Close</button>
         </div>
       </header>
@@ -288,8 +292,64 @@
     function esc(s) {
       return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     }
+    function hideDrillBack() {
+      const btn = document.getElementById("drillBack");
+      btn.classList.remove("show");
+      btn.onclick = null;
+    }
+    function showDrillBack(handler) {
+      const btn = document.getElementById("drillBack");
+      btn.classList.add("show");
+      btn.onclick = handler;
+    }
     function closeDrill() {
+      hideDrillBack();
+      kill("ageStatusPie");
       document.getElementById("drillMask").classList.remove("open");
+    }
+    function openAgeStatus(label) {
+      hideDrillBack();
+      kill("ageStatusPie");
+      const bucket = (data && data.ageing || []).find((x) => x.label === label || x.id === label);
+      const splits = (bucket && bucket.statuses) || [];
+      const mask = document.getElementById("drillMask");
+      const list = document.getElementById("drillList");
+      document.getElementById("drillTitle").textContent = "Open " + label + " by status";
+      document.getElementById("drillHint").hidden = false;
+      document.getElementById("drillHint").textContent = "Click a pie slice (or a status below) for those orders.";
+      mask.classList.add("open");
+      if (!splits.length) {
+        list.innerHTML = "<p class=\"empty\" style=\"border:0;padding:16px 0\">No open jobs in this age band.</p>";
+        return;
+      }
+      list.innerHTML = "<div class=\"split-pie\"><canvas id=\"ageStatusPie\"></canvas></div>"
+        + splits.map((s) => "<button type=\"button\" class=\"drill-item\" data-age-status=\"" + esc(s.label) + "\"><b>" + esc(s.label) + "</b><span>" + s.count + " open job" + (s.count === 1 ? "" : "s") + "</span></button>").join("");
+      charts.ageStatusPie = new Chart(document.getElementById("ageStatusPie"), {
+        type: "doughnut",
+        data: {
+          labels: splits.map((s) => s.label),
+          datasets: [{ data: splits.map((s) => s.count), backgroundColor: PAL }]
+        },
+        options: {
+          plugins: {
+            legend: {
+              position: "bottom",
+              onClick: (_evt, item) => {
+                const slice = splits[item.index];
+                if (slice) openDrill({ kind: "age", value: label, slice: slice.label });
+              }
+            }
+          },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const slice = splits[els[0].index];
+            if (slice) openDrill({ kind: "age", value: label, slice: slice.label });
+          }
+        }
+      });
+      list.querySelectorAll("[data-age-status]").forEach((btn) => {
+        btn.addEventListener("click", () => openDrill({ kind: "age", value: label, slice: btn.getAttribute("data-age-status") }));
+      });
     }
     function kpiHtml(id, label, value, extra) {
       return "<button type=\"button\" class=\"kpi" + (extra || "") + "\" data-kpi=\"" + esc(id) + "\"><span>" + esc(label) + "</span><b>" + value + "</b></button>";
@@ -314,6 +374,8 @@
       location.href = "/orders?q=" + encodeURIComponent(orderNumber || "");
     }
     async function openDrill(params) {
+      hideDrillBack();
+      kill("ageStatusPie");
       const mask = document.getElementById("drillMask");
       const list = document.getElementById("drillList");
       document.getElementById("drillTitle").textContent = "Loading…";
@@ -328,6 +390,9 @@
         document.getElementById("drillTitle").textContent = j.title || "Orders";
         document.getElementById("drillHint").hidden = false;
         document.getElementById("drillHint").textContent = "Money excludes VAT. Click a row to find it on the Orders sheet.";
+        if (params && params.kind === "age" && params.slice && params.value) {
+          showDrillBack(() => openAgeStatus(params.value));
+        }
         if (!(j.rows || []).length) {
           list.innerHTML = drillMoneyHtml(j) + "<p class=\"empty\" style=\"border:0;padding:16px 0\">No orders in this slice.</p>";
           return;
@@ -467,7 +532,7 @@
         const row = (d.pipeline || [])[i];
         if (row) openDrill({ kind: "pipeline", group: row.id });
       });
-      bar("ageing", (d.ageing || []).map((x) => x.label), (d.ageing || []).map((x) => x.count), PAL[4], false, (_i, label) => openDrill({ kind: "age", value: label }));
+      bar("ageing", (d.ageing || []).map((x) => x.label), (d.ageing || []).map((x) => x.count), PAL[4], false, (_i, label) => openAgeStatus(label));
       bar("blockers", (d.blockers || []).map((x) => x.label), (d.blockers || []).map((x) => x.count), PAL[5], true, (i) => {
         const row = (d.blockers || [])[i];
         if (row) openDrill({ kind: row.id });
