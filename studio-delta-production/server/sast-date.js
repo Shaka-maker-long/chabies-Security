@@ -68,7 +68,23 @@ function monthHintIndex(hint) {
   return null;
 }
 
-function slashPair(first, second, year, hint) {
+function startOfSastDay(d) {
+  const p = sastParts(d instanceof Date && !isNaN(d.getTime()) ? d : new Date());
+  return makeSast(p.y, p.m + 1, p.day);
+}
+
+function preferMdyIfDmyFuture(dmy, mdy, now) {
+  if (!dmy || !mdy) return false;
+  const today = startOfSastDay(now);
+  const dmyDay = startOfSastDay(dmy);
+  const mdyDay = startOfSastDay(mdy);
+  const dmyFuture = dmyDay.getTime() > today.getTime() + 7 * DAY_MS;
+  const mdyRecent = mdyDay.getTime() <= today.getTime() + 7 * DAY_MS
+    && mdyDay.getTime() >= today.getTime() - 60 * DAY_MS;
+  return dmyFuture && mdyRecent;
+}
+
+function slashPair(first, second, year, hint, now) {
   const y = expandYear(year);
   const dmy = makeSast(y, second, first);
   const mdy = makeSast(y, first, second);
@@ -86,11 +102,14 @@ function slashPair(first, second, year, hint) {
       return { date: mdy, dmy, mdy, ambiguous: false, kind: "hint-mdy" };
     }
   }
+  if (preferMdyIfDmyFuture(dmy, mdy, now)) {
+    return { date: mdy, dmy, mdy, ambiguous: false, kind: "future-mdy" };
+  }
   return { date: dmy, dmy, mdy, ambiguous: true, kind: "dmy-default" };
 }
 
-function slashToDate(first, second, year, hint) {
-  return slashPair(first, second, year, hint).date;
+function slashToDate(first, second, year, hint, now) {
+  return slashPair(first, second, year, hint, now).date;
 }
 
 function isAmbiguousSlash(s) {
@@ -104,7 +123,7 @@ function orderSeq(orderNumber) {
   return m ? Number(m[1]) : null;
 }
 
-function asDate(v, hint) {
+function asDate(v, hint, now) {
   if (v instanceof Date && !isNaN(v.getTime())) return v;
   if (typeof v === "number" && isFinite(v) && v >= 20000 && v <= 120000) {
     const utcMs = Math.round((v - 25569) * 86400000);
@@ -119,7 +138,7 @@ function asDate(v, hint) {
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (iso) return sastDate(iso[1], iso[2], iso[3]);
   const slash = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
-  if (slash) return slashToDate(Number(slash[1]), Number(slash[2]), slash[3], hint);
+  if (slash) return slashToDate(Number(slash[1]), Number(slash[2]), slash[3], hint, now);
   const named = s.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]{3,})(?:[\/\-\s,]+(\d{2,4}))?$/);
   if (named) {
     const m = MONTH_IX[named[2].toLowerCase()];
@@ -136,18 +155,18 @@ function asDate(v, hint) {
   return null;
 }
 
-function formatPaymentDate(v, hint) {
+function formatPaymentDate(v, hint, now) {
   if (v == null || v === "") return "";
   if (isSheetError(v)) return "";
-  const d = asDate(v, hint);
+  const d = asDate(v, hint, now);
   if (!d) return "";
   return padDmy(d);
 }
 
-function formatMonthOfSale(v, hint) {
+function formatMonthOfSale(v, hint, now) {
   if (v == null || v === "") return "";
   if (isSheetError(v)) return "";
-  const d = asDate(v, hint);
+  const d = asDate(v, hint, now);
   if (d) {
     const p = sastParts(d);
     return MONTH_NAMES[p.m] + " " + p.y;
@@ -200,13 +219,13 @@ function pickBySequence(dmy, mdy, seq, anchors) {
   return dmy;
 }
 
-function resolvePaymentDate(value, orderNumber, hint, anchors) {
+function resolvePaymentDate(value, orderNumber, hint, anchors, now) {
   if (value == null || value === "") return "";
   if (isSheetError(value)) return "";
   const raw = value instanceof Date ? padDmy(value) : String(value).trim();
   const slash = raw.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
   if (slash) {
-    const pair = slashPair(Number(slash[1]), Number(slash[2]), slash[3], hint);
+    const pair = slashPair(Number(slash[1]), Number(slash[2]), slash[3], hint, now);
     if (!pair.date) return "";
     if (pair.ambiguous) {
       const picked = pickBySequence(pair.dmy, pair.mdy, orderSeq(orderNumber), anchors || []);
@@ -214,7 +233,7 @@ function resolvePaymentDate(value, orderNumber, hint, anchors) {
     }
     return padDmy(pair.date);
   }
-  return formatPaymentDate(value, hint);
+  return formatPaymentDate(value, hint, now);
 }
 
 function paymentAnchors(rows, exceptOrder) {

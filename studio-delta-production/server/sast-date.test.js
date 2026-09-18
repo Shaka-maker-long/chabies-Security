@@ -44,4 +44,16 @@ assert.strictEqual(
   "10/07/2026 next to a September order stays 10 July"
 );
 
+const SEP18 = new Date("2026-09-18T12:00:00+02:00");
+assert.strictEqual(dates.formatPaymentDate("09/11/2026", "November 2026", SEP18), "11/09/2026");
+assert.strictEqual(dates.formatMonthOfSale("09/11/2026", "November 2026", SEP18), "September 2026");
+assert.strictEqual(dates.formatPaymentDate("09/10/2026", "October 2026", SEP18), "10/09/2026");
+assert.strictEqual(dates.formatMonthOfSale("09/10/2026", "October 2026", SEP18), "September 2026");
+assert.strictEqual(dates.formatPaymentDate("09/09/2026", "September 2026", SEP18), "09/09/2026");
+assert.strictEqual(dates.resolvePaymentDate("09/11/2026", "S260240 A", "November 2026", anchors, SEP18), "11/09/2026");
+assert.strictEqual(dates.resolvePaymentDate("09/10/2026", "S260237", "October 2026", anchors, SEP18), "10/09/2026");
+assert.strictEqual(dates.resolvePaymentDate("11/09/2026", "S260240 A", "", anchors, SEP18), "11/09/2026", "already-fixed 11 September does not flip to November");
+assert.strictEqual(dates.formatPaymentDate("05/12/2026", "", SEP18), "05/12/2026", "5 December stays day-first");
+assert.strictEqual(dates.formatPaymentDate("11/09/2026", "", new Date("2026-11-18T12:00:00+02:00")), "11/09/2026");
+
 console.log("sast-date.test.js ok");

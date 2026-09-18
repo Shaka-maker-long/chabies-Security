@@ -327,6 +327,7 @@ function cellStr(v) {
 }
 
 function formatOrderField(field, v) {
+  if (isSheetError(v) && (field === "payment_date" || field === "month_of_sale" || field === "source")) return "";
   if (field === "quote_number" || field === "order_number") return formatOrderId(v);
   if (field === "payment_date") return formatPaymentDate(v);
   if (field === "month_of_sale") return formatMonthOfSale(v);
@@ -457,6 +458,10 @@ function normalizeOrdersSheet() {
         rewritten++;
       }
     }
+    if (idx.source != null && isSheetError(grid[i][idx.source])) {
+      grid[i][idx.source] = "";
+      rewritten++;
+    }
     if (idx.price_incl_vat != null && idx.amount_paid != null) {
       const incl = parseMoney(grid[i][idx.price_incl_vat]);
       const paid = parseMoney(grid[i][idx.amount_paid]);
@@ -481,6 +486,7 @@ function upsertOrder(row) {
   for (const f of ORDER_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]);
   payload.quote_number = formatOrderId(payload.quote_number);
   payload.order_number = orderNumber;
+  if (isSheetError(payload.source)) payload.source = "";
   const existingOrders = listOrders();
   const existing = existingOrders.find((o) => o.order_number === orderNumber);
   const anchors = dates.paymentAnchors(existingOrders, orderNumber);

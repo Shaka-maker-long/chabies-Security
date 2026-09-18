@@ -1,7 +1,7 @@
 "use strict";
 
 const { ORDER_FIELDS, parseMoney, money, formatOrderId, formatMonthOfSale, asDate } = require("./db");
-const { isoFromDate, isAmbiguousSlash, resolvePaymentDate, paymentAnchors } = require("./sast-date");
+const { isoFromDate, isAmbiguousSlash, resolvePaymentDate, paymentAnchors, isSheetError } = require("./sast-date");
 const { SHOP_STATUSES, isShopStatus, normalizeShopStatus } = require("./shop-status");
 const { ORDER_TYPES } = require("./create-order-from-enquiry");
 
@@ -254,7 +254,7 @@ function applyTail(row, tail) {
   const leftover = [];
   tail.forEach((raw) => {
     const cell = String(raw || "").trim();
-    if (!cell) return;
+    if (!cell || isSheetError(cell)) return;
     if (!row.province && matchProvince(cell)) {
       row.province = matchProvince(cell);
       return;
@@ -329,6 +329,7 @@ function normalizePastedRow(raw, paidInFull) {
   if (row.payment_date && !isAmbiguousSlash(row.payment_date)) {
     row.month_of_sale = formatMonthOfSale(row.payment_date);
   }
+  if (isSheetError(row.source)) row.source = "";
   const incl = parseMoney(row.price_incl_vat);
   const excl = parseMoney(row.price_excl_vat);
   if (incl > 0 && excl > 0 && incl < excl) {

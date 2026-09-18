@@ -135,6 +135,19 @@ const usHint = parseOrderPaste(
 assert.strictEqual(usHint.rows[0].payment_date, "2026-09-03");
 assert.strictEqual(usHint.rows[0].month_of_sale, "September 2026");
 
+const novLeftover = parseOrderPaste(
+  "QUOTE NUMBER\tORDER NUMBER\tSTATUS\tASSIGNED OPERATOR\tTYPE\tCATERGORY\tPRODUCT\tVARIATION\tDOORS\tDETAILED DESCRIPTION\tDIMENSIONS\tPOWDER COATING\tCLIENT NAME\tCLIENT NUMBER\tEMAIL ADDRESS\tPAYMENT DATE\tADDRESS\tPROVINCE\tPRICE (Excl VAT)\tPRICE (Incl VAT)\tAMOUNT PAID\tMONTH OF SALE\tSOURCE\tCITY\n" +
+  "SOQ2936\tS260240 A\tReady for Tagging\t\tStandard\tTable\tBella Side Table\t\tN/A\tBella\tStandard\tFerrograin Black\tIlse de Beer\t082\tilse@test.com\t09/11/2026\t29 Kiaat Street\tLimpopo\t2491.30\t2865\t\tNovember 2026\t#NUM!\tPolokwane\n" +
+  "22270\tS260237\tReady for Welding\t\tStandard\tShelf\tTatiana Bookshelf\t\tN/A\tTatiana\tStandard\tFerrograin Black\tDr TR Basson\t083\twouie@test.com\t09/10/2026\t278 3rd St\tWestern Cape\t2173.04\t2499\t\tOctober 2026\tSocial Media\tHermanus",
+  { paidInFull: true }
+);
+assert.strictEqual(novLeftover.errors.length, 0, novLeftover.errors.join(" · "));
+assert.strictEqual(novLeftover.rows[0].payment_date, "2026-09-11");
+assert.strictEqual(novLeftover.rows[0].month_of_sale, "September 2026");
+assert.strictEqual(novLeftover.rows[0].source, "");
+assert.strictEqual(novLeftover.rows[1].payment_date, "2026-09-10");
+assert.strictEqual(novLeftover.rows[1].month_of_sale, "September 2026");
+
 const preview = db.pasteOrdersFromSheet({ text: SHEET, paid_in_full: true, preview: true });
 assert.strictEqual(preview.added.length, 4);
 assert.strictEqual(db.listOrders().length, 0, "preview must not write");

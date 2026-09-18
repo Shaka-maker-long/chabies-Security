@@ -253,6 +253,37 @@ const CONFIRM = { understood: true, highlights: [] };
   assert.strictEqual(janKeep.month_of_sale, "January 2026");
   assert.strictEqual(db.listSchedule().find((r) => r.order_number === "S260226 D").order_date_label, "03-Sep");
 
+  const ilse = db.upsertOrder({
+    order_number: "S260240 A",
+    status: "Ready for Tagging",
+    client_name: "Ilse de Beer",
+    payment_date: "09/11/2026",
+    month_of_sale: "November 2026",
+    source: "#NUM!"
+  });
+  assert.strictEqual(ilse.payment_date, "11/09/2026", "09/11/2026 in September is 11 September, not 9 November");
+  assert.strictEqual(ilse.month_of_sale, "September 2026");
+  assert.strictEqual(ilse.source, "", "sheet errors are not a source");
+  const basson = db.upsertOrder({
+    order_number: "S260237",
+    status: "Ready for Welding",
+    client_name: "Dr TR Basson",
+    payment_date: "09/10/2026",
+    month_of_sale: "October 2026"
+  });
+  assert.strictEqual(basson.payment_date, "10/09/2026", "09/10/2026 in September is 10 September, not 9 October");
+  assert.strictEqual(basson.month_of_sale, "September 2026");
+  const kyle = db.upsertOrder({
+    order_number: "S260235",
+    status: "Ready for Tagging",
+    client_name: "Kyle Roux Interiors (PTY) Ltd",
+    payment_date: "09/09/2026",
+    month_of_sale: "September 2026"
+  });
+  assert.strictEqual(kyle.payment_date, "09/09/2026");
+  assert.strictEqual(kyle.month_of_sale, "September 2026");
+  assert.strictEqual(db.listSchedule().find((r) => r.order_number === "S260240 A").order_date_label, "11-Sep");
+
   console.log("railway-db.test.js ok");
 })().catch((e) => {
   console.error(e && e.stack ? e.stack : e);
