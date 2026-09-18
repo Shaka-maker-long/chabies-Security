@@ -303,7 +303,7 @@ function getBackboards() {
 function processNeedsBackboard(role, processName) {
   var r = String(role || "").trim().toLowerCase();
   var p = String(processName || "").trim().toLowerCase();
-  return r === "assembly" || p === "assembly" || p === "final qc";
+  return r === "assembly" || p === "assembly";
 }
 
 function writeBackboardUsage(ss, orderNum, workerName, processName, backboardUsageData) {

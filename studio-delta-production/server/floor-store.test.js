@@ -13,6 +13,7 @@ delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const db = require("./db");
 const { callShopFunction } = require("./gas");
+const sharp = require("sharp");
 
 initWorkbook();
 const book = getBook();
@@ -277,6 +278,25 @@ async function main() {
 
   const qcAdminStart = await callShopFunction("startOrder", [qcOrder.id, "QC Admin", "Quality Control", [], "", false, null, CONFIRM]);
   assert.strictEqual(qcAdminStart.success, true, JSON.stringify(qcAdminStart));
+  const jpeg = await sharp({
+    create: { width: 16, height: 16, channels: 3, background: { r: 20, g: 20, b: 20 } }
+  }).jpeg({ quality: 40 }).toBuffer();
+  const qcShot = { name: "qc.jpg", mime: "image/jpeg", data: jpeg.toString("base64") };
+  const qcPhotos = [qcShot, qcShot, qcShot, qcShot, qcShot, qcShot, qcShot];
+  const qcFinish = await callShopFunction("finishOrder", [
+    qcOrder.id,
+    qcAdminStart.logId,
+    [{ q: "Is the paint free of scratches?", a: "Y" }],
+    "data:image/png;base64," + "a".repeat(40),
+    qcPhotos,
+    "QC Admin",
+    [],
+    "SD-QC-ADMIN",
+    []
+  ]);
+  assert.ok(qcFinish && qcFinish.success !== false, JSON.stringify(qcFinish));
+  const finalBoards = book.getSheetByName("Backboard_Usage").getDataRange().getValues();
+  assert.ok(!finalBoards.some((row, i) => i > 0 && String(row[1]) === "SD-QC-ADMIN"), "Final QC must not log backboard size");
 
   const extraWeld = db.upsertOrder({
     order_number: "SD-WELD-ADMIN",

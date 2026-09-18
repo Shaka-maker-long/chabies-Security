@@ -2228,6 +2228,25 @@
   <div class="modal fade" id="alertModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body text-center p-4"><h5 class="mb-3" id="alertMsg"></h5><button class="btn btn-primary px-4" data-bs-dismiss="modal">OK</button></div></div></div></div>
   <div class="modal fade" id="confirmModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><div class="modal-body text-center p-4"><h5 class="mb-3" id="confirmMsg"></h5><div class="d-flex justify-content-center gap-2"><button class="btn btn-primary px-4" id="confirmBtnYes">YES</button><button class="btn btn-outline-dark px-4" data-bs-dismiss="modal">NO</button></div></div></div></div></div>
 
+  <div class="modal fade" id="noPlateModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title brand-font">Mark as no plate?</h5>
+        </div>
+        <div class="modal-body p-4 text-center">
+          <p class="mb-2">You are about to mark this item as no plate.</p>
+          <h1 class="fw-bold mb-3" id="noPlateModalOrder"></h1>
+          <p class="text-muted mb-0">Would you like to proceed or cancel? Proceed takes it off the plate cutting list. Cancel leaves it unmarked.</p>
+        </div>
+        <div class="modal-footer justify-content-center gap-2">
+          <button type="button" class="btn btn-outline-dark px-4" id="noPlateCancelBtn" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-dark px-4" id="noPlateProceedBtn">Proceed</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
   <!-- Pause / switch-reason modal -->
   <div class="modal fade" id="pauseModal" tabindex="-1">
@@ -2393,7 +2412,7 @@
     </div>
   </div>
 
-  <!-- Backboard Selection Modal (Assembly / Final QC) -->
+  <!-- Backboard Selection Modal (Assembly finish) -->
   <div class="modal fade" id="backboardModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content">
@@ -2669,7 +2688,8 @@
       'Final QC': ['Front', 'Level 1', 'Back', 'Left Side', 'Right Side', 'Job Card', 'Open', 'Top (Optional)', 'Level 2 (Optional)']
     };
 
-    let passModal, changePassModal, startModal, pauseModal, qcModal, qcAttachPhotosModal, alertModal, confirmModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, editSteelModal, welderSteelModal, canvas, ctx, isDrawing = false;
+    let passModal, changePassModal, startModal, pauseModal, qcModal, qcAttachPhotosModal, alertModal, confirmModal, noPlateModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, editSteelModal, welderSteelModal, canvas, ctx, isDrawing = false;
+    let pendingNoPlateOrder = "";
 
     // =====================================================
     // THEME MANAGEMENT
@@ -2730,6 +2750,7 @@
         qcAttachPhotosModal = bindModal('#qcAttachPhotosModal');
         alertModal = bindModal('#alertModal');
         confirmModal = bindModal('#confirmModal');
+        noPlateModal = bindModal('#noPlateModal');
         floorListModal = bindModal('#floorListModal');
         weeklyDetailsModal = bindModal('#weeklyDetailsModal');
         steelSelectionModal = bindModal('#steelModal');
@@ -2743,6 +2764,10 @@
         
         const yes = document.getElementById('confirmBtnYes');
         if (yes) yes.onclick = () => { if (confirmModal) confirmModal.hide(); if(confirmCallback) confirmCallback(); };
+        const noPlateProceed = document.getElementById('noPlateProceedBtn');
+        if (noPlateProceed) noPlateProceed.onclick = () => proceedMarkNoPlates();
+        const noPlateCancel = document.getElementById('noPlateCancelBtn');
+        if (noPlateCancel) noPlateCancel.onclick = () => { pendingNoPlateOrder = ""; };
         
         document.getElementById('qcModal').addEventListener('shown.bs.modal', function () {
           initCanvas();
@@ -5240,7 +5265,18 @@
 
     function markOrderNoPlates(order) {
       if (!order) return;
-      if (!confirm(order + " has no plates? It will leave the plate cutting list.")) return;
+      pendingNoPlateOrder = order;
+      const label = document.getElementById('noPlateModalOrder');
+      if (label) label.textContent = order;
+      if (noPlateModal) noPlateModal.show();
+      else if (window.confirm("You are about to mark " + order + " as no plate. Proceed?")) proceedMarkNoPlates();
+    }
+
+    function proceedMarkNoPlates() {
+      const order = pendingNoPlateOrder;
+      pendingNoPlateOrder = "";
+      if (noPlateModal) noPlateModal.hide();
+      if (!order) return;
       google.script.run.withSuccessHandler(function (res) {
         if (!res || !res.success) {
           showAlert((res && (res.error || res.message)) || "Could not mark no plates.");
@@ -6102,7 +6138,7 @@
         document.getElementById('qcChecklistContainer').innerHTML += materialHtml;
       }
 
-      if (qcKey === 'Assembly' || qcKey === 'Final QC') {
+      if (qcKey === 'Assembly') {
         const backboardHtml = `
           <div id="backboardLoggingSection" class="mt-4 pt-3 border-top">
             <div class="d-flex justify-content-between align-items-center mb-2">
