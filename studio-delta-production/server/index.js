@@ -206,6 +206,22 @@ app.get("/gas-client.js", (_req, res) => {
 function noStore(res) {
   res.set("Cache-Control", "no-store, max-age=0");
 }
+app.get("/api/powder-lists/:id/pdf", (req, res) => {
+  noStore(res);
+  try {
+    const file = require("./powder-list").readPdf(req.params.id);
+    if (!file) {
+      res.status(404).json({ ok: false, error: "No powder coating list for that id." });
+      return;
+    }
+    const download = String((req.query && req.query.download) || "") === "1";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", (download ? "attachment" : "inline") + "; filename=\"" + file.filename + "\"");
+    res.send(file.buffer);
+  } catch (e) {
+    res.status(400).json({ ok: false, error: e.message || String(e) });
+  }
+});
 app.get("/api/qc-pdfs/:id/pdf", (req, res) => {
   noStore(res);
   try {

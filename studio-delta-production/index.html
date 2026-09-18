@@ -2296,13 +2296,12 @@
             <table class="table table-bordered table-hover align-middle mb-0" style="font-size: 0.85rem;">
               <thead class="table-dark text-center">
                 <tr>
-                  <th style="width: 5%;">Send</th>
-                  <th style="width: 12%;">Order #</th>
-                  <th style="width: 25%;">Item Description</th>
-                  <th style="width: 18%;">Dimensions (mm)</th>
-                  <th style="width: 8%;">QTY</th>
-                  <th style="width: 12%;">Colour</th>
-                  <th style="width: 20%;">Profiles Used</th>
+                  <th style="width: 6%;">Send</th>
+                  <th style="width: 14%;">Order #</th>
+                  <th style="width: 28%;">Item Description</th>
+                  <th style="width: 22%;">Dimensions (mm)</th>
+                  <th style="width: 10%;">QTY</th>
+                  <th style="width: 20%;">Colour</th>
                 </tr>
               </thead>
               <tbody id="powderTableBody">
@@ -2313,7 +2312,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">CANCEL</button>
-          <button type="button" class="btn btn-primary" onclick="submitPowderList()">SEND LIST</button>
+          <button type="button" class="btn btn-primary" onclick="submitPowderList()">Generate PO</button>
         </div>
       </div>
     </div>
@@ -4953,14 +4952,13 @@
         if (payload && payload.notice && payload.notice.resumedOrder) showSwitchBanner(payload.notice);
         appData.currentOrders = orders;
         
-        // 1. Only Siya can see the Powder Coating List Button
+        // 1. Siya or Admin can generate the powder coating list PO
         const btnPowder = document.getElementById('btnPowderList');
-        if (session.name && session.name.trim().toLowerCase() === 'siya') {
-          const hasReady = orders.some(o => o.status.toLowerCase() === 'ready for powder coating');
-          if (hasReady && btnPowder) btnPowder.classList.remove('d-none');
-          else if (btnPowder) btnPowder.classList.add('d-none');
-        } else if (btnPowder) {
-          btnPowder.classList.add('d-none');
+        if (btnPowder) {
+          const canList = session.role === 'Admin' || !!session.canSeeOffice ||
+            (session.name && session.name.trim().toLowerCase() === 'siya');
+          const hasReady = orders.some(o => String(o.status || '').toLowerCase() === 'ready for powder coating');
+          btnPowder.classList.toggle('d-none', !(canList && hasReady));
         }
 
         // 1.5. Profile Cutters can see Log Welder Steel button
@@ -8345,19 +8343,18 @@
       }
     }
 
-    // STEP 6: Helper — builds the profile checkbox list strictly from the centralized appData.steelProfiles array.
-    function buildProfileCheckboxesHtml() {
-      // If no profiles exist in the Google Sheet, show a fallback message instead of hardcoded profiles
-      if (!appData.steelProfiles || appData.steelProfiles.length === 0) {
-        return '<div class="text-muted small py-1">No profiles found.</div>';
+    function powderDimsFromOrder(o) {
+      const s = String((o && o.dimensions) || "");
+      function take(letter) {
+        const labeled = s.match(new RegExp("(\\d+(?:\\.\\d+)?)\\s*mm\\s*" + letter + "\\b", "i"));
+        if (labeled) return labeled[1];
+        const prefixed = s.match(new RegExp("\\b" + letter + "[:\\s]*(\\d+(?:\\.\\d+)?)", "i"));
+        return prefixed ? prefixed[1] : "";
       }
-      
-      // Extract just the profile names for the checkboxes
-      const profiles = appData.steelProfiles.map(p => p.name);
-      
-      return profiles.map(p =>
-        `<div class="form-check mb-0"><input class="form-check-input profile-chk" type="checkbox" value="${p}"><label class="form-check-label mt-1">${p}</label></div>`
-      ).join('');
+      return { h: take("H"), w: take("W"), d: take("D") };
+    }
+    function powderColorFromOrder(o) {
+      return String((o && (o.powderCoating || o.powder_coating || o.color)) || "").trim();
     }
 
     function openPowderModal() {
@@ -8367,9 +8364,11 @@
       const readyOrders = appData.currentOrders.filter(o => o.status.toLowerCase() === 'ready for powder coating');
       
       if(readyOrders.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">No orders currently ready for powder coating.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No orders currently ready for powder coating.</td></tr>';
       } else {
           readyOrders.forEach((o, i) => {
+              const dims = powderDimsFromOrder(o);
+              const color = powderColorFromOrder(o);
               const tr = document.createElement('tr');
               tr.className = 'main-order-row';
               tr.innerHTML = `
@@ -8385,21 +8384,16 @@
                   </td>
                   <td style="padding-top: 10px;">
                       <div class="d-flex align-items-center justify-content-center gap-1">
-                          <input type="text" inputmode="numeric" class="form-control form-control-sm text-center powder-h px-1" placeholder="H" style="width: 50px;"> x
-                          <input type="text" inputmode="numeric" class="form-control form-control-sm text-center powder-w px-1" placeholder="W" style="width: 50px;"> x
-                          <input type="text" inputmode="numeric" class="form-control form-control-sm text-center powder-d px-1" placeholder="D" style="width: 50px;">
+                          <input type="text" inputmode="numeric" class="form-control form-control-sm text-center powder-h px-1" placeholder="H" style="width: 50px;" value="${dims.h}"> x
+                          <input type="text" inputmode="numeric" class="form-control form-control-sm text-center powder-w px-1" placeholder="W" style="width: 50px;" value="${dims.w}"> x
+                          <input type="text" inputmode="numeric" class="form-control form-control-sm text-center powder-d px-1" placeholder="D" style="width: 50px;" value="${dims.d}">
                       </div>
                   </td>
                   <td style="padding-top: 10px;">
                       <input type="text" inputmode="numeric" class="form-control form-control-sm text-center powder-qty" value="1" style="width: 50px; margin: 0 auto;">
                   </td>
                   <td style="padding-top: 10px;">
-                      <input type="text" class="form-control form-control-sm powder-color" placeholder="e.g. Matte Black">
-                  </td>
-                  <td>
-                      <div class="border rounded p-1 text-start bg-white" style="max-height: 85px; overflow-y: auto; font-size: 0.75rem;">
-                          ${buildProfileCheckboxesHtml()}
-                      </div>
+                      <input type="text" class="form-control form-control-sm powder-color" placeholder="e.g. Ferrograin Black" value="${color.replace(/"/g, '&quot;')}">
                   </td>
               `;
               tbody.appendChild(tr);
@@ -8447,11 +8441,6 @@
             <td style="padding-top: 10px;">
                 <input type="text" class="form-control form-control-sm powder-color" placeholder="Colour">
             </td>
-            <td>
-                <div class="border rounded p-1 text-start bg-white" style="max-height: 85px; overflow-y: auto; font-size: 0.75rem;">
-                    ${buildProfileCheckboxesHtml()}
-                </div>
-            </td>
         `;
         insertAfterTr.insertAdjacentElement('afterend', tr);
     }
@@ -8474,18 +8463,14 @@
             const qty = tr.querySelector('.powder-qty').value.trim();
             const color = tr.querySelector('.powder-color').value.trim();
             
-            const checkedProfiles = tr.querySelectorAll('.profile-chk:checked');
-            const profiles = Array.from(checkedProfiles).map(cb => cb.value).join(', ');
-            
-            if(!h || !w || !d || !qty || !color || profiles === "") isValid = false;
+            if(!h || !w || !d || !qty || !color) isValid = false;
 
             selected.push({
                 order: order, 
                 desc: desc, 
                 dimensions: h + 'x' + w + 'x' + d, 
                 qty: qty, 
-                color: color, 
-                profiles: profiles
+                color: color
             });
 
             // Get Sub-Parts linked to this order
@@ -8497,21 +8482,17 @@
                 const subD = subTr.querySelector('.powder-d').value.trim();
                 const subQty = subTr.querySelector('.powder-qty').value.trim();
                 const subColor = subTr.querySelector('.powder-color').value.trim();
-                
-                const subCheckedProfiles = subTr.querySelectorAll('.profile-chk:checked');
-                const subProfiles = Array.from(subCheckedProfiles).map(cb => cb.value).join(', ');
 
-                if(!subDescInput || !subH || !subW || !subD || !subQty || !subColor || subProfiles === "") {
+                if(!subDescInput || !subH || !subW || !subD || !subQty || !subColor) {
                     isValid = false;
                 }
 
                 selected.push({
-                    order: "", // Left blank so it indents visually under the parent order in the PDF
+                    order: "",
                     desc: "↳ " + subDescInput, 
                     dimensions: subH + 'x' + subW + 'x' + subD, 
                     qty: subQty, 
-                    color: subColor, 
-                    profiles: subProfiles
+                    color: subColor
                 });
             });
         });
@@ -8522,7 +8503,7 @@
         }
         
         if(!isValid) {
-            showAlert("Please fill in ALL inputs (Name, Dimensions, QTY, Colour, Profile) for all checked orders AND their sub-parts.");
+            showAlert("Please fill in item, dimensions, quantity, and colour for all checked orders and their sub-parts.");
             return;
         }
         
@@ -8540,12 +8521,13 @@
                 submitBtn.disabled = false;
                 
                 if(res.success) {
-                    showAlert("List generated successfully and saved to your Drive!");
+                    showAlert("Powder coating list PO is ready.");
                     const powderModalEl = document.getElementById('powderModal');
                     const powderModalInstance = bootstrap.Modal.getInstance(powderModalEl);
                     if (powderModalInstance) powderModalInstance.hide();
+                    if (res.url) window.open(res.url, "_blank", "noopener");
                 } else {
-                    showAlert("Error generating PDF: " + res.error);
+                    showAlert("Error generating PDF: " + (res.error || "Could not generate the list."));
                 }
             })
             .withFailureHandler((err) => {

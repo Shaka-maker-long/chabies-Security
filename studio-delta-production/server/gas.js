@@ -314,6 +314,9 @@ async function callShopFunction(fnName, args) {
   if (!/^[A-Za-z0-9_]+$/.test(fnName) || !ALLOWED.has(fnName)) {
     throw new Error("Unknown function: " + fnName);
   }
+  if (fnName === "generatePowderCoatingList") {
+    return require("./powder-list").createList(args && args[0], args && args[1]);
+  }
   const workbook = await getCachedWorkbook();
 
   const sandbox = {

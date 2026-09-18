@@ -136,6 +136,11 @@ assert.ok(floor.indexOf("item.qcPdfUrl") !== -1, "completed work carries the QC 
 assert.ok(floor.indexOf("item.qcPdfLabel") !== -1, "completed cards use Final vs pre-powder PDF label");
 assert.ok(floor.indexOf('id="btnQcPdfs"') !== -1, "QC board has a QC PDFs button");
 assert.ok(floor.indexOf("Production Tasks → Completed") !== -1, "QC Reports says where else to open PDFs");
+assert.ok(floor.indexOf("Powder Coating List") !== -1);
+assert.ok(floor.indexOf("Profiles Used") === -1, "powder coating list PO does not ask for profiles used");
+assert.ok(floor.indexOf("Generate PO") !== -1);
+assert.ok(floor.indexOf("powderDimsFromOrder") !== -1);
+assert.ok(indexJs.indexOf("/api/powder-lists/:id/pdf") !== -1);
 const qcPdfJs = fs.readFileSync(path.join(__dirname, "qc-pdf.js"), "utf8");
 assert.ok(qcPdfJs.indexOf("#b08948") !== -1, "QC PDF uses the same brass rule as purchase orders");
 assert.ok(qcPdfJs.indexOf("drawSignaturePage") !== -1, "signature is drawn on its own last page");
