@@ -254,6 +254,7 @@
         <div class="stack-grid four">
           <label>Payment date
             <input id="f_payment_date" type="date">
+            <span class="hint" id="payDateHint">Saved as dd/mm/yyyy (South Africa), for example 03/09/2026 for 3 September.</span>
           </label>
           <label>Month of sale
             <input id="f_month_of_sale" readonly placeholder="From the payment date">
@@ -436,9 +437,27 @@
       return HEADERS.map(([k]) => row[k] || "").concat([row.enquiry_no || ""]).join(" ").toLowerCase();
     }
     function toIsoDate(dmy) {
-      const m = String(dmy || "").trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-      if (m) return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
-      if (/^\d{4}-\d{2}-\d{2}$/.test(String(dmy || "").trim())) return String(dmy).trim();
+      const s = String(dmy || "").trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+      const slash = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+      if (slash) {
+        const a = Number(slash[1]);
+        const b = Number(slash[2]);
+        const y = slash[3];
+        if (b > 12 && a >= 1 && a <= 12) {
+          return y + "-" + String(a).padStart(2, "0") + "-" + String(b).padStart(2, "0");
+        }
+        return y + "-" + String(b).padStart(2, "0") + "-" + String(a).padStart(2, "0");
+      }
+      const named = s.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]{3,})(?:[\/\-\s,]+(\d{4}))?$/);
+      if (named) {
+        const months = { jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06", jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12" };
+        const mm = months[named[2].slice(0, 3).toLowerCase()];
+        if (mm) {
+          const y = named[3] || String(new Date().getFullYear());
+          return y + "-" + mm + "-" + String(named[1]).padStart(2, "0");
+        }
+      }
       return "";
     }
     function fromIsoDate(iso) {
@@ -449,13 +468,16 @@
     function syncMonthOfSale() {
       const iso = document.getElementById("f_payment_date").value;
       const el = document.getElementById("f_month_of_sale");
+      const hint = document.getElementById("payDateHint");
       if (!el) return;
       if (!iso) {
         el.value = "";
+        if (hint) hint.textContent = "Saved as dd/mm/yyyy (South Africa), for example 03/09/2026 for 3 September.";
         return;
       }
       const d = new Date(iso + "T12:00:00");
       el.value = Number.isNaN(d.getTime()) ? "" : d.toLocaleString("en-GB", { month: "long", year: "numeric" });
+      if (hint) hint.textContent = "On the sheet this is " + fromIsoDate(iso) + " (dd/mm/yyyy). The calendar may look like mm/dd on some phones.";
     }
     function fillSelect(id, key, value) {
       const el = document.getElementById(id);

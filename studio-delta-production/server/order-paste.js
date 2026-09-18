@@ -1,6 +1,7 @@
 "use strict";
 
-const { ORDER_FIELDS, parseMoney, money, formatOrderId, formatMonthOfSale } = require("./db");
+const { ORDER_FIELDS, parseMoney, money, formatOrderId, formatMonthOfSale, asDate } = require("./db");
+const { isoFromDate, isAmbiguousSlash, resolvePaymentDate, paymentAnchors } = require("./sast-date");
 const { SHOP_STATUSES, isShopStatus, normalizeShopStatus } = require("./shop-status");
 const { ORDER_TYPES } = require("./create-order-from-enquiry");
 
@@ -199,23 +200,41 @@ function parseMonthOfSale(s) {
 function parseSheetDate(s, monthOfSale) {
   const t = String(s || "").trim();
   if (!t) return "";
-  const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return iso[1] + "-" + iso[2] + "-" + iso[3];
-  const dmy = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
-  if (dmy) {
-    const y = dmy[3].length === 2 ? "20" + dmy[3] : dmy[3];
-    return y + "-" + String(dmy[2]).padStart(2, "0") + "-" + String(dmy[1]).padStart(2, "0");
+  if (isAmbiguousSlash(t)) {
+    const hinted = asDate(t, monthOfSale);
+    const plain = asDate(t);
+    if (hinted && plain && hinted.getTime() !== plain.getTime()) return isoFromDate(hinted);
+    if (hinted && !plain) return isoFromDate(hinted);
+    return t;
   }
-  const named = t.match(/^(\d{1,2})[ \-]([A-Za-z]+)$/);
-  if (named) {
-    const month = MONTHS[named[2].toLowerCase()];
-    const yearHit = String(monthOfSale || "").match(/(\d{4})/);
-    const y = yearHit ? yearHit[1] : String(new Date().getFullYear());
-    if (month) {
-      return y + "-" + String(month).padStart(2, "0") + "-" + String(named[1]).padStart(2, "0");
+  const d = asDate(t, monthOfSale);
+  if (!d) return t;
+  return isoFromDate(d);
+}
+
+function repairPastedPaymentDates(rows) {
+  let existing = [];
+  try {
+    existing = require("./db").listOrders();
+  } catch (e) {
+    existing = [];
+  }
+  const anchors = paymentAnchors(existing.concat(rows || []));
+  (rows || []).forEach((row) => {
+    if (!row || !row.payment_date) return;
+    if (!isAmbiguousSlash(row.payment_date)) {
+      const d = asDate(row.payment_date, row.month_of_sale);
+      if (d) {
+        row.payment_date = isoFromDate(d);
+        row.month_of_sale = formatMonthOfSale(row.payment_date);
+      }
+      return;
     }
-  }
-  return t;
+    const resolved = resolvePaymentDate(row.payment_date, row.order_number, row.month_of_sale, anchors);
+    const d = asDate(resolved);
+    row.payment_date = d ? isoFromDate(d) : resolved;
+    row.month_of_sale = row.payment_date ? formatMonthOfSale(row.payment_date) : "";
+  });
 }
 
 function emptyRow() {
@@ -307,7 +326,9 @@ function normalizePastedRow(raw, paidInFull) {
   row.status = isShopStatus(status) ? status : "Not Yet Started";
   row.month_of_sale = parseMonthOfSale(row.month_of_sale);
   row.payment_date = parseSheetDate(row.payment_date, row.month_of_sale);
-  row.month_of_sale = row.payment_date ? formatMonthOfSale(row.payment_date) : "";
+  if (row.payment_date && !isAmbiguousSlash(row.payment_date)) {
+    row.month_of_sale = formatMonthOfSale(row.payment_date);
+  }
   const incl = parseMoney(row.price_incl_vat);
   const excl = parseMoney(row.price_excl_vat);
   if (incl > 0 && excl > 0 && incl < excl) {
@@ -350,6 +371,7 @@ function parseOrderPaste(text, opts) {
     rows.push(parsed.row);
   }
   if (!rows.length && !errors.length) errors.push("No order rows were found in that paste.");
+  repairPastedPaymentDates(rows);
   return { rows, errors };
 }
 

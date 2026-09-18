@@ -108,6 +108,33 @@ assert.strictEqual(spaced.rows[0].status, "Welding");
 assert.strictEqual(spaced.rows[0].assigned_operator, "Willard");
 assert.strictEqual(spaced.rows[0].amount_paid, "1150.00");
 
+const mixedDates = parseOrderPaste(
+  "QUOTE NUMBER\tORDER NUMBER\tSTATUS\tASSIGNED OPERATOR\tTYPE\tCATERGORY\tPRODUCT\tVARIATION\tDOORS\tDETAILED DESCRIPTION\tDIMENSIONS\tPOWDER COATING\tCLIENT NAME\tCLIENT NUMBER\tEMAIL ADDRESS\tPAYMENT DATE\tADDRESS\tPROVINCE\tPRICE (Excl VAT)\tPRICE (Incl VAT)\tAMOUNT PAID\tMONTH OF SALE\tSOURCE\tCITY\n" +
+  "SOQ2801\tS260178\tDelivered\t\tCustom\tConsole\tLindi Console Table\tTop glass\tN/A\tCustom Lindi\t1400mm\tFerrograin Black\tVuyo Ndlovu\t083\tvuyo@test.com\t21/07/2026\t21 Lemon Tree\tGauteng\t5647.83\t6495\t\tJuly 2026\tSocial Media\tCenturion\n" +
+  "SOQ2896\tS260221 A\tReady for Pre-Powder Coating\t\tStandard\tCabinet\tOlivia Bathroom Cabinet\tSteel\tMirror\tOlivia\tStandard\tFerrograin Black\tLogetta\t083\tkelly@test.com\t28/08/2026\tColeyn\tWestern Cape\t3098.35\t3563.10\t\tAugust 2026\tNo Trace\tCape Town\n" +
+  "SOQ2913\tS260226 D\tReady for Welding\t\tStandard\tCabinet\tThandi Display Cabinet\tSteel\tReeded Glass\tThandi\tStandard\tFerrograin Black\tWinelands Design Studio (Pty) Ltd\t076\tchante@test.com\t09/03/2026\tPaarl\tWestern Cape\t12129.57\t13949\t\tMarch 2026\tRecurring Client\tPaarl\n" +
+  "SOQ2892\tS260227\tNot Yet Started\t\tCustom\tBedframe\tBlaire Platform Bed\tKing\tN/A\tBlaire\tKing XL\tFerrograin Black\tSophie Fischer-Linley\t071\tlinley@test.com\t09/04/2026\tRosmead\tWestern Cape\t5146.96\t5919\t\tApril 2026\tNo Trace\tCape Town",
+  { paidInFull: true }
+);
+assert.strictEqual(mixedDates.errors.length, 0, mixedDates.errors.join(" · "));
+const mixedBy = {};
+mixedDates.rows.forEach((row) => { mixedBy[row.order_number] = row; });
+assert.strictEqual(mixedBy.S260178.payment_date, "2026-07-21");
+assert.strictEqual(mixedBy.S260178.month_of_sale, "July 2026");
+assert.strictEqual(mixedBy["S260221 A"].payment_date, "2026-08-28");
+assert.strictEqual(mixedBy["S260226 D"].payment_date, "2026-09-03", "09/03/2026 with August neighbours is 3 September");
+assert.strictEqual(mixedBy["S260226 D"].month_of_sale, "September 2026");
+assert.strictEqual(mixedBy.S260227.payment_date, "2026-09-04");
+assert.strictEqual(mixedBy.S260227.month_of_sale, "September 2026");
+
+const usHint = parseOrderPaste(
+  "QUOTE NUMBER\tORDER NUMBER\tSTATUS\tASSIGNED OPERATOR\tTYPE\tCATERGORY\tPRODUCT\tVARIATION\tDOORS\tDETAILED DESCRIPTION\tDIMENSIONS\tPOWDER COATING\tCLIENT NAME\tCLIENT NUMBER\tEMAIL ADDRESS\tPAYMENT DATE\tADDRESS\tPROVINCE\tPRICE (Excl VAT)\tPRICE (Incl VAT)\tAMOUNT PAID\tMONTH OF SALE\tSOURCE\tCITY\n" +
+  "SOQ9\tS260330\t\t\tStandard\tChair\tAir Chair\t\t\tA chair\tStandard\tBlack\tCam\t011\tcam@test.com\t09/03/2026\t1 Road\tGauteng\t1000\t1150\t\tSeptember 2026\tWebsite\tJohannesburg",
+  { paidInFull: true }
+);
+assert.strictEqual(usHint.rows[0].payment_date, "2026-09-03");
+assert.strictEqual(usHint.rows[0].month_of_sale, "September 2026");
+
 const preview = db.pasteOrdersFromSheet({ text: SHEET, paid_in_full: true, preview: true });
 assert.strictEqual(preview.added.length, 4);
 assert.strictEqual(db.listOrders().length, 0, "preview must not write");

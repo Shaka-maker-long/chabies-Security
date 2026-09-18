@@ -12,6 +12,7 @@ const { getBook, persistWorkbook, ORDER_HEADERS, dataDir } = require("./workbook
 const fromEnquiry = require("./create-order-from-enquiry");
 const quoteOptions = require("./quote-options");
 const { SHOP_STATUSES, isShopStatus, normalizeShopStatus, WAITING_FOR_DRAWING, isWaitingForDrawing } = require("./shop-status");
+const dates = require("./sast-date");
 
 const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
@@ -23,11 +24,7 @@ const ORDER_FIELDS = [
 
 const VAT_RATE = 0.15;
 
-const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
-];
+const SAST_OFFSET_MS = dates.SAST_OFFSET_MS;
 
 function parseMoney(s) {
   const n = Number(String(s || "").replace(/,/g, "").replace(/[^0-9.-]/g, ""));
@@ -46,54 +43,12 @@ function formatRand(n) {
   return neg + "R " + grouped + "." + frac;
 }
 
-const MONTH_IX = {
-  jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2,
-  apr: 3, april: 3, may: 4, jun: 5, june: 5, jul: 6, july: 6,
-  aug: 7, august: 7, sep: 8, sept: 8, september: 8, oct: 9, october: 9,
-  nov: 10, november: 10, dec: 11, december: 11
-};
-
-function isSheetError(s) {
-  return /^#(NUM|VALUE|REF|N\/A|DIV\/0|NAME|NULL)!/i.test(String(s || "").trim());
-}
-
-function asDate(v) {
-  if (v instanceof Date && !isNaN(v.getTime())) return v;
-  if (typeof v === "number" && isFinite(v) && v >= 20000 && v <= 120000) {
-    const utcMs = Math.round((v - 25569) * 86400000);
-    return new Date(utcMs - SAST_OFFSET_MS);
-  }
-  const s = String(v || "").trim();
-  if (!s || isSheetError(s)) return null;
-  if (/^\d{4}-\d{2}-\d{2}T/.test(s) || /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(s)) {
-    const d = new Date(s);
-    if (!isNaN(d.getTime())) return d;
-  }
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (iso) {
-    return new Date(Date.UTC(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3])) - SAST_OFFSET_MS);
-  }
-  const dmy = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
-  if (dmy) {
-    const y = dmy[3].length === 2 ? 2000 + Number(dmy[3]) : Number(dmy[3]);
-    return new Date(Date.UTC(y, Number(dmy[2]) - 1, Number(dmy[1])) - SAST_OFFSET_MS);
-  }
-  const named = s.match(/^(\d{1,2})[\/\-\s]+([A-Za-z]{3,})(?:[\/\-\s,]+(\d{2,4}))?$/);
-  if (named) {
-    const m = MONTH_IX[named[2].toLowerCase()];
-    if (m != null) {
-      let y = named[3] ? Number(named[3]) : sastParts(new Date()).y;
-      if (y < 100) y += 2000;
-      return new Date(Date.UTC(y, m, Number(named[1])) - SAST_OFFSET_MS);
-    }
-  }
-  return null;
-}
-
-function sastParts(d) {
-  const sast = new Date(d.getTime() + SAST_OFFSET_MS);
-  return { y: sast.getUTCFullYear(), m: sast.getUTCMonth(), day: sast.getUTCDate() };
-}
+const isSheetError = dates.isSheetError;
+const asDate = dates.asDate;
+const sastParts = dates.sastParts;
+const formatPaymentDate = dates.formatPaymentDate;
+const formatMonthOfSale = dates.formatMonthOfSale;
+const monthOfSaleFromPayment = dates.monthOfSaleFromPayment;
 
 function dateToSerial(d) {
   return Math.round((d.getTime() + SAST_OFFSET_MS) / 86400000 + 25569);
@@ -113,36 +68,6 @@ function formatOrderId(v) {
     if (d) return String(dateToSerial(d));
   }
   return String(v).trim();
-}
-
-function formatPaymentDate(v) {
-  if (v == null || v === "") return "";
-  if (isSheetError(v)) return "";
-  const d = asDate(v);
-  if (!d) return "";
-  const p = sastParts(d);
-  return String(p.day).padStart(2, "0") + "/" + String(p.m + 1).padStart(2, "0") + "/" + p.y;
-}
-
-function formatMonthOfSale(v) {
-  if (v == null || v === "") return "";
-  if (isSheetError(v)) return "";
-  const d = asDate(v);
-  if (d) {
-    const p = sastParts(d);
-    return MONTH_NAMES[p.m] + " " + p.y;
-  }
-  const s = String(v).trim().replace(/\s+/g, " ");
-  const named = s.match(/^([A-Za-z]+)\s+(\d{4})$/);
-  if (!named) return "";
-  const m = MONTH_IX[named[1].toLowerCase()];
-  if (m == null) return "";
-  return MONTH_NAMES[m] + " " + named[2];
-}
-
-function monthOfSaleFromPayment(payment) {
-  const pay = formatPaymentDate(payment);
-  return pay ? formatMonthOfSale(pay) : "";
 }
 
 function inclFromExcl(excl) {
@@ -488,6 +413,17 @@ function findOrderSheetRow(sheet, idx, orderNumber) {
   return 0;
 }
 
+function orderRowsForDateAnchors(grid, idx, exceptOrder) {
+  const rows = [];
+  for (let i = 0; i < (grid || []).length; i++) {
+    rows.push({
+      order_number: idx.order_number == null ? "" : formatOrderId(grid[i][idx.order_number]),
+      payment_date: idx.payment_date == null ? "" : grid[i][idx.payment_date]
+    });
+  }
+  return dates.paymentAnchors(rows, exceptOrder);
+}
+
 function normalizeOrdersSheet() {
   const sheet = ordersSheet();
   const { idx, lastCol } = ensureOrderHeaders(sheet);
@@ -495,12 +431,17 @@ function normalizeOrdersSheet() {
   if (last < 2) return { rewritten: 0 };
   const grid = sheet.getRange(2, 1, last - 1, lastCol).getValues();
   let rewritten = 0;
+  const anchors = orderRowsForDateAnchors(grid, idx);
   const fields = ["quote_number", "order_number", "payment_date"];
   for (let i = 0; i < grid.length; i++) {
     fields.forEach((f) => {
       if (idx[f] == null) return;
       const cur = grid[i][idx[f]];
-      const next = formatOrderField(f, cur);
+      let next = formatOrderField(f, cur);
+      if (f === "payment_date") {
+        const orderNumber = idx.order_number == null ? "" : formatOrderId(grid[i][idx.order_number]);
+        next = dates.resolvePaymentDate(cur, orderNumber, "", anchors);
+      }
       const same = !(cur instanceof Date) && String(cur || "") === next;
       if (!same) {
         grid[i][idx[f]] = next;
@@ -528,6 +469,7 @@ function normalizeOrdersSheet() {
   if (rewritten) {
     sheet.getRange(2, 1, last - 1, lastCol).setValues(grid);
     persistWorkbook();
+    syncScheduleFromOrders();
   }
   return { rewritten };
 }
@@ -539,10 +481,14 @@ function upsertOrder(row) {
   for (const f of ORDER_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]);
   payload.quote_number = formatOrderId(payload.quote_number);
   payload.order_number = orderNumber;
-  payload.payment_date = payload.payment_date ? formatPaymentDate(payload.payment_date) : "";
+  const existingOrders = listOrders();
+  const existing = existingOrders.find((o) => o.order_number === orderNumber);
+  const anchors = dates.paymentAnchors(existingOrders, orderNumber);
+  payload.payment_date = row.payment_date
+    ? dates.resolvePaymentDate(row.payment_date, orderNumber, row.month_of_sale, anchors)
+    : "";
   payload.month_of_sale = monthOfSaleFromPayment(payload.payment_date);
   payload.updated_at = nowIso();
-  const existing = listOrders().find((o) => o.order_number === orderNumber);
   applyPriceAndPayments(payload, row, existing);
   const sheet = ordersSheet();
   const { idx, lastCol } = ensureOrderHeaders(sheet);
@@ -1807,6 +1753,7 @@ function pasteOrdersFromSheet(body) {
     taken.add(orderNumber);
     added.push(saved);
   });
+  if (!preview && added.length) normalizeOrdersSheet();
   return {
     added,
     skipped,
@@ -3027,6 +2974,8 @@ module.exports = {
   formatOrderId,
   formatPaymentDate,
   formatMonthOfSale,
+  isoFromDate: dates.isoFromDate,
+  resolvePaymentDate: dates.resolvePaymentDate,
   inclFromExcl,
   exclFromIncl,
   vatPair,

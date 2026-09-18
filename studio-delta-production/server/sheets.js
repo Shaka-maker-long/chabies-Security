@@ -1,5 +1,5 @@
 const { google } = require("googleapis");
-const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
+const { SAST_OFFSET_MS, sastDate, slashToDate } = require("./sast-date");
 
 function colA1(n) {
   let s = "";
@@ -36,10 +36,6 @@ function dateToSheetString(d) {
   return y + "-" + m + "-" + day + " " + hh + ":" + mm + ":" + ss;
 }
 
-function sastDate(y, m, day) {
-  return new Date(Date.UTC(Number(y), Number(m) - 1, Number(day)) - SAST_OFFSET_MS);
-}
-
 function coerceRead(v) {
   if (v === null || v === undefined || v === "") return "";
   if (typeof v === "boolean") return v;
@@ -55,8 +51,8 @@ function coerceRead(v) {
     }
     const iso = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (iso) return sastDate(iso[1], iso[2], iso[3]);
-    const dmy = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (dmy) return sastDate(dmy[3], dmy[2], dmy[1]);
+    const slash = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slash) return slashToDate(Number(slash[1]), Number(slash[2]), slash[3]) || v;
     return v;
   }
   return v;

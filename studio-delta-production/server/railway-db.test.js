@@ -204,6 +204,55 @@ const CONFIRM = { understood: true, highlights: [] };
   assert.strictEqual(janAgain.month_of_sale, "January 2026");
   assert.strictEqual(db.listSchedule().find((r) => r.order_number === "S-JAN-PAY").order_date_label, "07-Jan");
 
+  db.upsertOrder({
+    order_number: "S260178",
+    status: "Delivered",
+    client_name: "Vuyo Ndlovu",
+    payment_date: "21/07/2026",
+    month_of_sale: "July 2026"
+  });
+  db.upsertOrder({
+    order_number: "S260221 A",
+    status: "Ready for Pre-Powder Coating",
+    client_name: "Logetta Property Investments Pty Ltd",
+    payment_date: "28/08/2026",
+    month_of_sale: "August 2026"
+  });
+  const winelands = db.upsertOrder({
+    order_number: "S260226 D",
+    status: "Ready for Welding",
+    client_name: "Winelands Design Studio (Pty) Ltd",
+    payment_date: "09/03/2026",
+    month_of_sale: "March 2026"
+  });
+  assert.strictEqual(winelands.payment_date, "03/09/2026", "09/03/2026 next to August orders is 3 September, not 9 March");
+  assert.strictEqual(winelands.month_of_sale, "September 2026");
+  const eloisa = db.upsertOrder({
+    order_number: "S260223",
+    status: "Ready for Delivery",
+    client_name: "JAWTech Pty",
+    payment_date: "09/04/2026",
+    month_of_sale: "April 2026"
+  });
+  assert.strictEqual(eloisa.payment_date, "04/09/2026", "09/04/2026 next to August orders is 4 September, not 9 April");
+  assert.strictEqual(eloisa.month_of_sale, "September 2026");
+  const oakland = db.upsertOrder({
+    order_number: "S260224",
+    status: "Ready for Delivery",
+    client_name: "Nick Akakios",
+    payment_date: "09/01/2026",
+    month_of_sale: "January 2026"
+  });
+  assert.strictEqual(oakland.payment_date, "01/09/2026");
+  assert.strictEqual(oakland.month_of_sale, "September 2026");
+  const julyKeep = db.listOrders().find((o) => o.order_number === "S260178");
+  assert.strictEqual(julyKeep.payment_date, "21/07/2026");
+  assert.strictEqual(julyKeep.month_of_sale, "July 2026");
+  const janKeep = db.listOrders().find((o) => o.order_number === "S-JAN-PAY");
+  assert.strictEqual(janKeep.payment_date, "07/01/2026");
+  assert.strictEqual(janKeep.month_of_sale, "January 2026");
+  assert.strictEqual(db.listSchedule().find((r) => r.order_number === "S260226 D").order_date_label, "03-Sep");
+
   console.log("railway-db.test.js ok");
 })().catch((e) => {
   console.error(e && e.stack ? e.stack : e);

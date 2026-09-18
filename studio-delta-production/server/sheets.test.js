@@ -36,6 +36,12 @@ assert.strictEqual(coerceWrite(jan).slice(0, 10), "2026-01-07", "07/01/2026 is 7
 const sep = coerceRead("16/09/2026");
 assert.ok(sep instanceof Date);
 assert.strictEqual(coerceWrite(sep).slice(0, 10), "2026-09-16");
+const julyUs = coerceRead("07/21/2026");
+assert.ok(julyUs instanceof Date);
+assert.strictEqual(coerceWrite(julyUs).slice(0, 10), "2026-07-21", "07/21/2026 is 21 July");
+const julySa = coerceRead("21/07/2026");
+assert.ok(julySa instanceof Date);
+assert.strictEqual(coerceWrite(julySa).slice(0, 10), "2026-07-21");
 const isoDay = coerceRead("2026-01-07");
 assert.ok(isoDay instanceof Date);
 assert.strictEqual(coerceWrite(isoDay).slice(0, 10), "2026-01-07");

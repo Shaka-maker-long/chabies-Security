@@ -428,6 +428,7 @@ assert.ok(ordersHtml.indexOf("f_paid_in_full") !== -1);
 assert.ok(ordersHtml.indexOf("syncMonthOfSale") !== -1, "month of sale follows the payment date");
 assert.ok(/id="f_month_of_sale"[^>]*readonly/.test(ordersHtml), "month of sale is not typed");
 assert.ok(ordersHtml.indexOf("From the payment date") !== -1);
+assert.ok(ordersHtml.indexOf("dd/mm/yyyy") !== -1, "payment date is shown as South African dd/mm/yyyy");
 assert.ok(ordersHtml.indexOf("cents <= 1") !== -1);
 assert.ok(ordersHtml.indexOf("price_incl_vat: document.getElementById(\"f_price_incl_vat\")") !== -1);
 assert.ok(ordersHtml.indexOf("data-edit-order") !== -1);
