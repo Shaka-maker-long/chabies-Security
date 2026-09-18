@@ -53,5 +53,6 @@ assert.ok(fs.existsSync(path.join(dir, "debtor-payments", rec.id, rec.has_file ?
 db.deleteOrder("S-D1");
 assert.ok(!db.readPaymentProof(rec.id));
 assert.ok(!db.listDebtorHistory().some((h) => h.order_number === "S-D1"));
+assert.ok(!db.listDebtors().some((o) => o.order_number === "S-D1"), "removing the order also takes it off Debtors");
 
 console.log("debtors.test.js ok");

@@ -297,10 +297,29 @@
           <button class="ghost" type="button" id="viewPrintCardBtn" hidden>Open / print job card</button>
           <button class="ghost" type="button" id="viewJobCardBtn" hidden>Generate job card</button>
           <button class="ghost" type="button" id="viewEditBtn">Edit</button>
+          <button class="danger" type="button" id="viewRemoveBtn" hidden>Remove this order</button>
           <button class="ghost" type="button" onclick="closeView()">Close</button>
         </div>
       </header>
       <div class="body" id="viewBody"></div>
+    </div>
+  </div>
+  <div class="mask" id="removeMask">
+    <div class="sheet" role="dialog" aria-modal="true" style="width:min(480px,96vw)">
+      <header>
+        <h1>Remove this order</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeRemoveOrder()">Cancel</button>
+          <button class="danger" type="button" onclick="confirmRemoveOrder()">Remove order</button>
+        </div>
+      </header>
+      <div class="body stack-form">
+        <p class="hint" id="removeHint">This takes the order off the Orders sheet, Debtors, and the production schedule. The enquiry stays. Type the order number to confirm.</p>
+        <label>Type the order number
+          <input id="removeConfirm" autocomplete="off">
+        </label>
+        <div class="err" id="removeErr"></div>
+      </div>
     </div>
   </div>
   <div class="mask" id="clearMask">
@@ -850,6 +869,9 @@
         closeView();
         openForm(i);
       };
+      const removeBtn = document.getElementById("viewRemoveBtn");
+      removeBtn.hidden = !canManage;
+      removeBtn.onclick = () => openRemoveOrder(row.order_number);
       document.getElementById("viewMask").classList.add("open");
       fillOrderLife(row.order_number);
     }
@@ -947,9 +969,42 @@
       await load();
       document.getElementById("status").textContent = "Cleared " + (j.removed || 0) + " orders. Enquiries were not deleted.";
     }
+    let removingOrder = "";
+    function openRemoveOrder(orderNumber) {
+      removingOrder = String(orderNumber || "").trim();
+      document.getElementById("removeConfirm").value = "";
+      document.getElementById("removeErr").textContent = "";
+      document.getElementById("removeHint").innerHTML = "This takes <b>" + esc(removingOrder) + "</b> off the Orders sheet, Debtors, and the production schedule. The enquiry stays. Type that order number to confirm.";
+      document.getElementById("removeMask").classList.add("open");
+      document.getElementById("removeConfirm").focus();
+    }
+    function closeRemoveOrder() {
+      document.getElementById("removeMask").classList.remove("open");
+      removingOrder = "";
+    }
+    async function confirmRemoveOrder() {
+      const err = document.getElementById("removeErr");
+      err.textContent = "";
+      const typed = String(document.getElementById("removeConfirm").value || "").trim();
+      if (!removingOrder) { err.textContent = "No order selected."; return; }
+      if (typed !== removingOrder) {
+        err.textContent = "Type " + removingOrder + " exactly to remove it.";
+        return;
+      }
+      const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(removingOrder), { method: "DELETE" });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { err.textContent = j.error || "Could not remove this order"; return; }
+      closeRemoveOrder();
+      closeView();
+      await load();
+      document.getElementById("status").textContent = "Removed " + (j.order_number || typed) + ". It is off Orders and Debtors.";
+    }
     window.openClearAll = openClearAll;
     window.closeClearAll = closeClearAll;
     window.confirmClearAll = confirmClearAll;
+    window.openRemoveOrder = openRemoveOrder;
+    window.closeRemoveOrder = closeRemoveOrder;
+    window.confirmRemoveOrder = confirmRemoveOrder;
 
     document.getElementById("grid").onclick = (e) => {
       const printed = e.target.closest("[data-open-job-card]");

@@ -430,6 +430,72 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const seedOrderJson = await seedOrder.json();
   assert.ok(seedOrderJson.ok, JSON.stringify(seedOrderJson));
 
+  const feeRow = await fetch(base + "/api/office/orders", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "x-sd-token": mgr.token },
+    body: JSON.stringify({
+      order_number: "S260247 B",
+      client_name: "Helderberg",
+      status: "Not Yet Started",
+      product: "Design Fee",
+      category: "Fee",
+      price_incl_vat: "350.00",
+      amount_paid: "0"
+    })
+  });
+  assert.ok((await feeRow.json()).ok);
+  const gateRow = await fetch(base + "/api/office/orders", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "x-sd-token": mgr.token },
+    body: JSON.stringify({
+      order_number: "S260247",
+      client_name: "Helderberg",
+      status: "Not Yet Started",
+      product: "Helderberg Gate",
+      category: "Gate",
+      price_incl_vat: "15000.00",
+      amount_paid: "15000.00"
+    })
+  });
+  assert.ok((await gateRow.json()).ok);
+
+  const debtorsBefore = await fetch(base + "/api/office/debtors", { headers: { "x-sd-token": mgr.token } });
+  const debtorsBeforeJson = await debtorsBefore.json();
+  assert.ok((debtorsBeforeJson.rows || []).some((o) => o.order_number === "S260247 B"));
+
+  const quietDelOne = await fetch(base + "/api/office/orders/" + encodeURIComponent("S260247 B"), {
+    method: "DELETE",
+    headers: { "x-sd-token": q.token }
+  });
+  assert.strictEqual(quietDelOne.status, 403);
+
+  const stillThere = await fetch(base + "/api/office/orders", { headers: { "x-sd-token": mgr.token } });
+  assert.ok(((await stillThere.json()).rows || []).some((o) => o.order_number === "S260247 B"));
+
+  const mgrDelOne = await fetch(base + "/api/office/orders/" + encodeURIComponent("S260247 B"), {
+    method: "DELETE",
+    headers: { "x-sd-token": mgr.token }
+  });
+  const mgrDelJson = await mgrDelOne.json();
+  assert.ok(mgrDelJson.ok, JSON.stringify(mgrDelJson));
+  assert.strictEqual(mgrDelJson.order_number, "S260247 B");
+
+  const afterDel = await fetch(base + "/api/office/orders", { headers: { "x-sd-token": mgr.token } });
+  const afterDelRows = ((await afterDel.json()).rows || []).map((o) => o.order_number);
+  assert.ok(!afterDelRows.includes("S260247 B"));
+  assert.ok(afterDelRows.includes("S260247"));
+  assert.ok(afterDelRows.includes("S260001"));
+
+  const debtorsAfter = await fetch(base + "/api/office/debtors", { headers: { "x-sd-token": mgr.token } });
+  const debtorsAfterJson = await debtorsAfter.json();
+  assert.ok(!(debtorsAfterJson.rows || []).some((o) => o.order_number === "S260247 B"));
+
+  const missingDel = await fetch(base + "/api/office/orders/" + encodeURIComponent("S260247 B"), {
+    method: "DELETE",
+    headers: { "x-sd-token": mgr.token }
+  });
+  assert.strictEqual(missingDel.status, 404);
+
   const quietOrderClear = await fetch(base + "/api/office/orders/clear-all", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-sd-token": q.token },

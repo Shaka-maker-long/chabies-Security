@@ -876,8 +876,22 @@ function mountOffice(app) {
   });
 
   app.delete("/api/office/orders/:orderNumber", requireOffice, (req, res) => {
-    deleteOrder(req.params.orderNumber);
-    res.json({ ok: true });
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can remove an order." });
+      return;
+    }
+    const num = formatOrderId(req.params.orderNumber);
+    if (!num) {
+      res.status(400).json({ ok: false, error: "Order number is required." });
+      return;
+    }
+    const exists = listOrders().some((o) => formatOrderId(o.order_number) === num);
+    if (!exists) {
+      res.status(404).json({ ok: false, error: "Order not found." });
+      return;
+    }
+    deleteOrder(num);
+    res.json({ ok: true, order_number: num });
   });
 
   app.post("/api/office/orders/clear-all", requireOffice, (req, res) => {
