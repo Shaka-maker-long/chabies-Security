@@ -195,12 +195,17 @@ function blankLabel(v, empty) {
 }
 
 function moneyOf(row) {
-  const billed = db.parseMoney(row && row.price_incl_vat);
-  const paid = db.parseMoney(row && row.amount_paid);
+  const billedIncl = db.parseMoney(row && row.price_incl_vat);
+  const storedExcl = db.parseMoney(row && row.price_excl_vat);
+  const billed = storedExcl || db.parseMoney(db.exclFromIncl(billedIncl || ""));
+  const paidIncl = db.parseMoney(row && row.amount_paid);
+  const paid = billedIncl > 0
+    ? roundMoney(paidIncl * billed / billedIncl)
+    : db.parseMoney(db.exclFromIncl(paidIncl || ""));
   return {
-    billed,
-    paid,
-    owing: Math.max(0, Math.round((billed - paid) * 100) / 100)
+    billed: roundMoney(billed),
+    paid: roundMoney(paid),
+    owing: Math.max(0, roundMoney(billed - paid))
   };
 }
 
@@ -291,6 +296,7 @@ function cardOf(row) {
     payment_date: row.payment_date || "",
     month_of_sale: row.month_of_sale || "",
     sale_date: d ? db.formatPaymentDate(d) : "",
+    price_excl_vat: money.billed,
     price_incl_vat: money.billed,
     amount_paid: money.paid,
     owing: money.owing
@@ -605,7 +611,7 @@ function deliveryDrill(query) {
     totals: {
       count: rows.length,
       income: roundMoney(rows.reduce((s, r) => s + (r.amount_paid || 0), 0)),
-      billed: roundMoney(rows.reduce((s, r) => s + (r.price_incl_vat || 0), 0)),
+      billed: roundMoney(rows.reduce((s, r) => s + (r.price_excl_vat || r.price_incl_vat || 0), 0)),
       owing: roundMoney(rows.reduce((s, r) => s + (r.owing || 0), 0))
     }
   };
@@ -651,7 +657,7 @@ function buildDrill(query) {
     totals: {
       count: rows.length,
       income: roundMoney(rows.reduce((s, r) => s + (r.amount_paid || 0), 0)),
-      billed: roundMoney(rows.reduce((s, r) => s + (r.price_incl_vat || 0), 0)),
+      billed: roundMoney(rows.reduce((s, r) => s + (r.price_excl_vat || r.price_incl_vat || 0), 0)),
       owing: roundMoney(rows.reduce((s, r) => s + (r.owing || 0), 0))
     }
   };

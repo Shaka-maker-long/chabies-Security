@@ -111,7 +111,7 @@ assert.strictEqual(year.kpis.openJobs, 5);
 assert.strictEqual(year.kpis.waitingForDrawing, 1);
 assert.strictEqual(year.kpis.atPaintShop, 1);
 assert.strictEqual(year.kpis.readyOrOut, 1);
-assert.ok(year.kpis.income >= 11500);
+assert.strictEqual(year.kpis.income, 38695.65);
 assert.ok(year.kpis.unpaidOpen > 0);
 
 assert.ok(dash.saleDate({ payment_date: "14/09/2026" }));
@@ -121,29 +121,31 @@ assert.strictEqual(dash.saleDate({ payment_date: "", month_of_sale: "September 2
 const sep = year.series.find((s) => s.key === "2026-09");
 assert.ok(sep, "September bucket exists");
 assert.strictEqual(sep.count, 2);
-assert.strictEqual(sep.income, 20500);
+assert.strictEqual(sep.income, 17826.09);
+assert.strictEqual(sep.billed, 25652.17);
 assert.strictEqual(sep.delivered, 0);
 
 const jul = year.series.find((s) => s.key === "2026-07");
 assert.ok(jul);
 assert.strictEqual(jul.delivered, 1);
-assert.strictEqual(jul.income, 22000);
+assert.strictEqual(jul.income, 19130.43);
+assert.strictEqual(jul.billed, 19130.43);
 
 const mirror = year.categories.find((c) => c.label === "Mirror");
 assert.ok(mirror);
 assert.strictEqual(mirror.count, 1);
-assert.strictEqual(mirror.income, 11500);
+assert.strictEqual(mirror.income, 10000);
 
 const website = year.sources.find((s) => s.label === "Website");
 assert.ok(website);
-assert.ok(website.income >= 11500);
+assert.strictEqual(website.income, 17826.09);
 
 const topItem = year.topIncome[0];
 assert.strictEqual(topItem.label, "Driveway Gate");
-assert.strictEqual(topItem.income, 22000);
+assert.strictEqual(topItem.income, 19130.43);
 const daphne = year.topIncome.find((p) => p.label === "Daphne Rectangular Mirror");
 assert.ok(daphne);
-assert.strictEqual(daphne.income, 11500);
+assert.strictEqual(daphne.income, 10000);
 assert.strictEqual(daphne.count, 1);
 
 const topQty = year.topQuantity.find((p) => p.label === "Daphne Rectangular Mirror");
@@ -175,7 +177,8 @@ assert.strictEqual(readyBlock.count, 1);
 
 const monthOnly = dash.buildDashboard({ month: "2026-09", grain: "month" });
 assert.strictEqual(monthOnly.windowCount, 2);
-assert.strictEqual(monthOnly.kpis.income, 20500);
+assert.strictEqual(monthOnly.kpis.income, 17826.09);
+assert.strictEqual(monthOnly.kpis.billed, 25652.17);
 assert.strictEqual(monthOnly.windowLabel, "Sep 2026");
 assert.strictEqual(monthOnly.kpis.openJobs, 5, "shop KPIs stay live when a month is picked");
 assert.ok(!monthOnly.categories.some((c) => c.label === "Mirror" && c.count > 1));
@@ -188,7 +191,9 @@ const catDrill = dash.buildDrill({ kind: "category", value: "Mirror", range: "ye
 assert.strictEqual(catDrill.rows.length, 1);
 assert.strictEqual(catDrill.rows[0].order_number, "S260401");
 assert.ok(catDrill.title.indexOf("CATERGORY") !== -1);
-assert.strictEqual(catDrill.totals.income, 11500);
+assert.strictEqual(catDrill.totals.income, 10000);
+assert.strictEqual(catDrill.rows[0].amount_paid, 10000);
+assert.strictEqual(catDrill.rows[0].price_excl_vat, 10000);
 assert.ok(!catDrill.rows.some((r) => r.order_number === "S260403"), "month of sale is not the order date");
 
 const pipeDrill = dash.buildDrill({ kind: "pipeline", group: "drawing" });
@@ -198,6 +203,9 @@ assert.strictEqual(pipeDrill.rows[0].order_number, "S260402");
 const unpaid = dash.buildDrill({ kind: "unpaid" });
 assert.ok(unpaid.rows.some((r) => r.order_number === "S260402"));
 assert.ok(unpaid.rows.every((r) => r.owing > 0));
+const unpaidBen = unpaid.rows.find((r) => r.order_number === "S260402");
+assert.strictEqual(unpaidBen.owing, 2304.78);
+assert.strictEqual(unpaidBen.amount_paid, 1739.13);
 
 const plates = dash.buildDrill({ kind: "no_plates" });
 assert.strictEqual(plates.rows.length, 1);
@@ -237,6 +245,14 @@ assert.ok(html.indexOf("sdOfficeFetch") !== -1);
 assert.ok(html.indexOf("grouped by the payment date") !== -1);
 assert.ok(html.indexOf("the day the order was placed") === -1);
 assert.ok(html.indexOf("month of sale if there is no payment date") === -1);
+assert.ok(html.indexOf("Unpaid on open jobs (Excl VAT)") !== -1);
+assert.ok(html.indexOf("Sale value (Excl VAT)") !== -1);
+assert.ok(html.indexOf("Amount paid (Excl VAT)") !== -1);
+assert.ok(html.indexOf("Income paid Excl VAT") !== -1);
+assert.ok(html.indexOf("Paid Excl VAT") !== -1);
+assert.ok(html.indexOf("Money excludes VAT") !== -1);
+assert.ok(html.indexOf("Incl VAT") === -1);
+assert.ok(html.indexOf("including VAT") === -1);
 
 db.upsertOrder({
   order_number: "S260410",

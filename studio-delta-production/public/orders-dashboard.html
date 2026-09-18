@@ -89,7 +89,7 @@
       </nav>
       <h1>Orders dashboard</h1>
       <p class="window-chip" id="windowChip"></p>
-      <p class="lede">Income is amount paid including VAT. Shop charts are live status, not filtered by month.</p>
+      <p class="lede">Income is amount paid excluding VAT. Shop charts are live status, not filtered by month.</p>
     </div>
     <div class="tools">
       <label class="month-pick">Month
@@ -117,22 +117,22 @@
       <div class="grid">
         <section class="card span2">
           <h2 id="trendTitle">Income per month</h2>
-          <p class="hint">Amount paid (Incl VAT) grouped by the payment date on the order. Sale value is the order price Incl VAT. Orders with no payment date are left off these charts.</p>
+          <p class="hint">Amount paid (Excl VAT) grouped by the payment date on the order. Sale value is the order price Excl VAT. Orders with no payment date are left off these charts.</p>
           <canvas id="trend"></canvas>
         </section>
         <section class="card">
           <h2>Income by CATERGORY</h2>
-          <p class="hint">Amount paid in the selected period.</p>
+          <p class="hint">Amount paid excluding VAT in the selected period.</p>
           <canvas id="cat"></canvas>
         </section>
         <section class="card">
           <h2>Income by source</h2>
-          <p class="hint">Amount paid in the selected period.</p>
+          <p class="hint">Amount paid excluding VAT in the selected period.</p>
           <canvas id="source"></canvas>
         </section>
         <section class="card">
           <h2>Top 10 items by income</h2>
-          <p class="hint">Products with the most amount paid (Incl VAT).</p>
+          <p class="hint">Products with the most amount paid (Excl VAT).</p>
           <canvas id="topIncome"></canvas>
         </section>
         <section class="card">
@@ -298,8 +298,8 @@
       const t = j.totals || {};
       return "<div class=\"drill-totals\">"
         + "<span>Orders<b>" + (t.count || 0) + "</b></span>"
-        + "<span>Paid Incl VAT<b>" + formatR(t.income) + "</b></span>"
-        + "<span>Sale Incl VAT<b>" + formatR(t.billed) + "</b></span>"
+        + "<span>Paid Excl VAT<b>" + formatR(t.income) + "</b></span>"
+        + "<span>Sale Excl VAT<b>" + formatR(t.billed) + "</b></span>"
         + "<span>Owing<b>" + formatR(t.owing) + "</b></span>"
         + "</div>";
     }
@@ -327,7 +327,7 @@
         if (!r.ok || !j.ok) throw new Error(j.error || r.statusText);
         document.getElementById("drillTitle").textContent = j.title || "Orders";
         document.getElementById("drillHint").hidden = false;
-        document.getElementById("drillHint").textContent = "Money includes VAT. Click a row to find it on the Orders sheet.";
+        document.getElementById("drillHint").textContent = "Money excludes VAT. Click a row to find it on the Orders sheet.";
         if (!(j.rows || []).length) {
           list.innerHTML = drillMoneyHtml(j) + "<p class=\"empty\" style=\"border:0;padding:16px 0\">No orders in this slice.</p>";
           return;
@@ -354,8 +354,8 @@
         data: {
           labels: data.series.map((s) => s.label),
           datasets: [
-            { label: "Income paid Incl VAT", data: data.series.map((s) => s.income), borderColor: PAL[1], backgroundColor: "rgba(2,122,72,.08)", tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 },
-            { label: "Sale value Incl VAT", data: data.series.map((s) => s.billed), borderColor: PAL[0], tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 }
+            { label: "Income paid Excl VAT", data: data.series.map((s) => s.income), borderColor: PAL[1], backgroundColor: "rgba(2,122,72,.08)", tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 },
+            { label: "Sale value Excl VAT", data: data.series.map((s) => s.billed), borderColor: PAL[0], tension: 0.25, fill: false, pointRadius: 4, pointHoverRadius: 8, pointHitRadius: 16 }
           ]
         },
         options: {
@@ -446,9 +446,9 @@
         + kpiHtml("readyOrOut", "Ready / out for delivery", k.readyOrOut || 0)
         + kpiHtml("late", "Late deliveries", (d.delivery && d.delivery.late) || 0, d.delivery && d.delivery.late ? " alert" : "");
       document.getElementById("moneyKpis").innerHTML =
-        kpiHtml("income", "Income paid (Incl VAT)", formatR(k.income), " rand")
-        + kpiHtml("billed", "Sale value (Incl VAT)", formatR(k.billed), " rand")
-        + kpiHtml("unpaid", "Unpaid on open jobs", formatR(k.unpaidOpen), " rand" + (k.unpaidOpen ? " alert" : ""));
+        kpiHtml("income", "Income paid (Excl VAT)", formatR(k.income), " rand")
+        + kpiHtml("billed", "Sale value (Excl VAT)", formatR(k.billed), " rand")
+        + kpiHtml("unpaid", "Unpaid on open jobs (Excl VAT)", formatR(k.unpaidOpen), " rand" + (k.unpaidOpen ? " alert" : ""));
       document.querySelectorAll("[data-kpi]").forEach((btn) => {
         btn.addEventListener("click", () => {
           const id = btn.getAttribute("data-kpi");
