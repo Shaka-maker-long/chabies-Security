@@ -127,6 +127,30 @@ assert.strictEqual(mixedBy["S260226 D"].month_of_sale, "September 2026");
 assert.strictEqual(mixedBy.S260227.payment_date, "2026-09-04");
 assert.strictEqual(mixedBy.S260227.month_of_sale, "September 2026");
 
+const feePaste = parseOrderPaste(
+  "QUOTE NUMBER\tORDER NUMBER\tSTATUS\tASSIGNED OPERATOR\tTYPE\tCATERGORY\tPRODUCT\tVARIATION\tDOORS\tDETAILED DESCRIPTION\tDIMENSIONS\tPOWDER COATING\tCLIENT NAME\tCLIENT NUMBER\tEMAIL ADDRESS\tPAYMENT DATE\tADDRESS\tPROVINCE\tPRICE (Excl VAT)\tPRICE (Incl VAT)\tAMOUNT PAID\tMONTH OF SALE\tSOURCE\tCITY\n" +
+  "SOQ2910\tS260247 B\tNot Yet Started\t\tCustom\tFee\tDesign Fee\tRefer to description\tRefer to description\tn/a\t0\tRefer to description\tHelderberg Build and Paint Pty Ltd\t(082) 746 5942\tinfo@hbp-group.co.za\t\t11 Buren Street Strand Western Cape 7140\tWestern Cape\tR 304.35\tR 350.00\tR 0.00\tSeptember 2026\tNo Trace\tCape Town\n" +
+  "SOQ2910\tS260247\tNot Yet Started\t\tCustom\tGate\tHelderberg Gate\tRefer to description\tN/A\tGate\tStandard\tBlack\tHelderberg Build and Paint Pty Ltd\t(082) 746 5942\tinfo@hbp-group.co.za\t\t11 Buren Street Strand\tWestern Cape\tR 10000\tR 11500\tR 0.00\tSeptember 2026\tNo Trace\tCape Town",
+  { paidInFull: false }
+);
+assert.strictEqual(feePaste.errors.length, 0, feePaste.errors.join(" · "));
+assert.strictEqual(feePaste.rows.length, 1);
+assert.strictEqual(feePaste.rows[0].order_number, "S260247");
+assert.strictEqual(feePaste.rows[0].product, "Helderberg Gate");
+assert.strictEqual(feePaste.skipped.length, 1);
+assert.strictEqual(feePaste.skipped[0].order_number, "S260247 B");
+assert.ok(/fee/i.test(feePaste.skipped[0].reason), feePaste.skipped[0].reason);
+
+const feeOnly = parseOrderPaste(
+  "QUOTE NUMBER\tORDER NUMBER\tSTATUS\tASSIGNED OPERATOR\tTYPE\tCATERGORY\tPRODUCT\tVARIATION\tDOORS\tDETAILED DESCRIPTION\tDIMENSIONS\tPOWDER COATING\tCLIENT NAME\tCLIENT NUMBER\tEMAIL ADDRESS\tPAYMENT DATE\tADDRESS\tPROVINCE\tPRICE (Excl VAT)\tPRICE (Incl VAT)\tAMOUNT PAID\tMONTH OF SALE\tSOURCE\tCITY\n" +
+  "SOQ2910\tS260247 B\tNot Yet Started\t\tCustom\tFee\tDesign Fee\tRefer to description\tRefer to description\tn/a\t0\tRefer to description\tHelderberg Build and Paint Pty Ltd\t(082) 746 5942\tinfo@hbp-group.co.za\t\t11 Buren Street Strand\tWestern Cape\tR 304.35\tR 350.00\tR 0.00\tSeptember 2026\tNo Trace\tCape Town",
+  { paidInFull: false }
+);
+assert.strictEqual(feeOnly.rows.length, 0);
+assert.strictEqual(feeOnly.errors.length, 0, feeOnly.errors.join(" · "));
+assert.strictEqual(feeOnly.skipped.length, 1);
+assert.ok(/stays off Orders/i.test(feeOnly.skipped[0].reason));
+
 const usHint = parseOrderPaste(
   "QUOTE NUMBER\tORDER NUMBER\tSTATUS\tASSIGNED OPERATOR\tTYPE\tCATERGORY\tPRODUCT\tVARIATION\tDOORS\tDETAILED DESCRIPTION\tDIMENSIONS\tPOWDER COATING\tCLIENT NAME\tCLIENT NUMBER\tEMAIL ADDRESS\tPAYMENT DATE\tADDRESS\tPROVINCE\tPRICE (Excl VAT)\tPRICE (Incl VAT)\tAMOUNT PAID\tMONTH OF SALE\tSOURCE\tCITY\n" +
   "SOQ9\tS260330\t\t\tStandard\tChair\tAir Chair\t\t\tA chair\tStandard\tBlack\tCam\t011\tcam@test.com\t09/03/2026\t1 Road\tGauteng\t1000\t1150\t\tSeptember 2026\tWebsite\tJohannesburg",

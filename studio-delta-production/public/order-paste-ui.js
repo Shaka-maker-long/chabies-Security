@@ -57,7 +57,14 @@ function sdPasteRenderResult(j, saved) {
     html += "</tbody></table></div>";
   }
   if (skipped.length) {
-    html += "<p class=\"hint\">Already on Orders: " + skipped.map((s) => sdPasteEsc(s.order_number)).join(", ") + "</p>";
+    const already = skipped.filter((s) => /already on Orders/.test(s.reason || ""));
+    const other = skipped.filter((s) => !/already on Orders/.test(s.reason || ""));
+    if (already.length) {
+      html += "<p class=\"hint\">Already on Orders: " + already.map((s) => sdPasteEsc(s.order_number)).join(", ") + "</p>";
+    }
+    other.forEach((s) => {
+      html += "<p class=\"hint\">" + sdPasteEsc(s.reason || s.order_number) + "</p>";
+    });
   }
   if (errors.length) {
     html += "<p class=\"err\">" + errors.map((e) => sdPasteEsc(e)).join(" · ") + "</p>";

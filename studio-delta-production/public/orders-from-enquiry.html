@@ -75,7 +75,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1 id="pageTitle">Create orders from enquiry</h1>
-      <p class="lede" id="pageLede">One form. Quantity and extra items split into A, B, C across the whole order. Tick Paid in full if they paid the price incl VAT for that quantity — only type an amount if they still owe. Address, city, shop details, and a confirmed quantity and exclusive VAT are required. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
+      <p class="lede" id="pageLede">One form. Quantity and extra items split into A, B, C across the whole order. Fee lines (including Design Fee) stay on the enquiry and are not added to Orders. Tick Paid in full if they paid the price incl VAT for that quantity — only type an amount if they still owe. Address, city, shop details, and a confirmed quantity and exclusive VAT are required. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
     </div>
     <div class="tools">
       <a href="/orders" id="backLink"><button class="ghost" type="button" id="backBtn">Back to Orders</button></a>
@@ -208,6 +208,17 @@
       if (types.indexOf("Custom") !== -1) return "Custom";
       return "Standard";
     }
+    function isFeeLine(p) {
+      const cat = String((p && p.category) || "").replace(/\s+/g, " ").trim();
+      const product = String((p && p.product) || "").replace(/\s+/g, " ").trim();
+      const type = String((p && p.type) || "").replace(/\s+/g, " ").trim();
+      if (/^fees?$/i.test(cat) || /^design\s+fees?$/i.test(cat)) return true;
+      if (/^fees?$/i.test(type) || /^design\s+fees?$/i.test(type)) return true;
+      return /\bfees?\b/i.test(product);
+    }
+    function shopProducts(products) {
+      return (products || []).filter((p) => !isFeeLine(p));
+    }
     function splitLetter(i) {
       let n = i + 1, s = "";
       while (n > 0) { n -= 1; s = String.fromCharCode(65 + (n % 26)) + s; n = Math.floor(n / 26); }
@@ -280,7 +291,7 @@
     function plannedNumbers(orderNumber, products) {
       const base = String(orderNumber || "").trim().toUpperCase().replace(/\s+[A-Z]+$/, "");
       const units = [];
-      products.forEach((p) => {
+      shopProducts(products).forEach((p) => {
         const qty = Math.max(0, Math.floor(Number(p.quantity) || 0));
         for (let i = 0; i < qty; i++) units.push(p.product);
       });
@@ -293,7 +304,7 @@
       const copy = document.getElementById("deliveryCopy");
       const codeEl = document.getElementById("deliveryCode");
       if (!dateEl || !copy) return;
-      const types = [...document.querySelectorAll("[data-f=type]")].map((el) => el.value);
+      const types = shopProducts(collect().products).map((p) => p.type);
       const province = document.getElementById("f_province").value;
       const used = strictType(types);
       const weeks = isGauteng(province) ? LEAD[used].g : LEAD[used].o;
@@ -338,7 +349,10 @@
       const data = collect();
       const planned = plannedNumbers(data.order_number, data.products);
       if (!planned.length) {
-        box.innerHTML = "Add a quantity of at least 1 to see the order numbers.";
+        const fees = shopProducts(data.products).length === 0 && (data.products || []).some(isFeeLine);
+        box.innerHTML = fees
+          ? "Fee lines stay on the enquiry and are not added to Orders."
+          : "Add a quantity of at least 1 to see the order numbers.";
         return;
       }
       if (planned.length === 1) {
@@ -539,7 +553,7 @@
       const heading = standalone ? "New order" : ("Enquiry " + esc(enquiryNo));
       const productHint = standalone
         ? "Add each product on this order. Quantity 2 of the same chair becomes A and B. A chair plus a stool becomes A and B with different products. Letters run across the whole order. Tick Paid in full if they paid the price incl VAT for that quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required."
-        : "Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.";
+        : "Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Design Fee and other fee lines stay on the enquiry — they are not split onto Orders. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.";
       page.innerHTML =
         "<form class=\"card\" id=\"form\">" +
           "<h2>" + heading + "</h2>" +
@@ -577,6 +591,9 @@
         "<div class=\"card\">" +
           "<h2>Products</h2>" +
           "<p class=\"hint\">" + productHint + "</p>" +
+          ((draft.skippedFees || []).length
+            ? "<p class=\"hint\">Fee on the enquiry (" + esc((draft.skippedFees).join(", ")) + ") stays on the enquiry and is not added to Orders.</p>"
+            : "") +
           (standalone ? "<button type=\"button\" class=\"ghost add-item\" id=\"addItem\">Add another item</button>" : "") +
           "<div id=\"products\"></div>" +
           "<div class=\"split\" id=\"splitBox\"></div>" +
@@ -680,6 +697,7 @@
         return;
       }
       for (const p of data.products) {
+        if (isFeeLine(p)) continue;
         const label = p.product || "this product";
         if (standalone && !String(p.product || "").trim()) {
           msg.textContent = "Product is required on every item.";

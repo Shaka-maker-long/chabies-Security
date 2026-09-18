@@ -1716,7 +1716,7 @@ function pasteOrdersFromSheet(body) {
   const parsed = require("./order-paste").parseOrderPaste(text, { paidInFull });
   const taken = new Set(listOrders().map((o) => formatOrderId(o.order_number)));
   const added = [];
-  const skipped = [];
+  const skipped = (parsed.skipped || []).slice();
   parsed.rows.forEach((row) => {
     const orderNumber = formatOrderId(row.order_number);
     if (taken.has(orderNumber)) {
@@ -1787,19 +1787,23 @@ function createOrderFromEnquiry(enquiryNo) {
     }
     return { row: decorateMoney(existing), enquiry: getEnquiry(enquiry.enquiry_no), existing: true };
   }
-  const named = (enquiry.products || []).filter((p) => String(p.product || "").trim());
+  const named = (enquiry.products || []).filter((p) => String(p.product || "").trim() && !fromEnquiry.isFeeLine(p));
+  if (!named.length && fromEnquiry.isFeeLine({ product: enquiry.product, category: enquiry.category })) {
+    throw new Error("Fee lines stay on the enquiry. Add a shop product before creating an Orders row");
+  }
   const detail = named.map((p) => {
     const price = p.value_incl_vat || p.value_excl_vat || "";
     return p.product + (p.category ? " (" + p.category + ")" : "") + (price ? " · " + price : "");
   }).join("\n");
+  const feeEnquiryProduct = fromEnquiry.isFeeLine({ product: enquiry.product, category: enquiry.category });
   const saved = upsertOrder({
     enquiry_no: enquiry.enquiry_no,
     quote_number: enquiry.quote_no || "",
     order_number: nextStudioOrderNumber(),
     status: initialOrderStatus(enquiry),
     type: enquiry.enquiry_type || "",
-    category: enquiry.category || "",
-    product: enquiry.product || "",
+    category: feeEnquiryProduct ? (named[0] && named[0].category) || "" : enquiry.category || "",
+    product: feeEnquiryProduct ? (named[0] && named[0].product) || "" : enquiry.product || "",
     client_name: enquiry.client_name || "",
     client_number: enquiry.client_number || "",
     email: enquiry.client_email || "",

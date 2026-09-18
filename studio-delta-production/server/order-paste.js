@@ -3,7 +3,7 @@
 const { ORDER_FIELDS, parseMoney, money, formatOrderId, formatMonthOfSale, asDate } = require("./db");
 const { isoFromDate, isAmbiguousSlash, resolvePaymentDate, paymentAnchors, isSheetError } = require("./sast-date");
 const { SHOP_STATUSES, isShopStatus, normalizeShopStatus } = require("./shop-status");
-const { ORDER_TYPES } = require("./create-order-from-enquiry");
+const { ORDER_TYPES, isFeeLine } = require("./create-order-from-enquiry");
 
 const PROVINCES = [
   "Eastern Cape", "Free State", "Gauteng", "KwaZulu-Natal", "Limpopo", "Mpumalanga",
@@ -350,7 +350,7 @@ function normalizePastedRow(raw, paidInFull) {
 function parseOrderPaste(text, opts) {
   const paidInFull = !opts || opts.paidInFull !== false;
   const grid = parseTsv(text);
-  if (!grid.length) return { rows: [], errors: ["Paste the order rows from the old sheet."] };
+  if (!grid.length) return { rows: [], errors: ["Paste the order rows from the old sheet."], skipped: [] };
   let start = 0;
   let fields = null;
   if (looksLikeHeader(grid[0])) {
@@ -359,6 +359,7 @@ function parseOrderPaste(text, opts) {
   }
   const rows = [];
   const errors = [];
+  const skipped = [];
   for (let i = start; i < grid.length; i++) {
     const raw = fields ? rowFromMapped(grid[i], fields) : (() => {
       const row = emptyRow();
@@ -367,13 +368,20 @@ function parseOrderPaste(text, opts) {
       return row;
     })();
     const parsed = normalizePastedRow(raw, paidInFull);
+    if (isFeeLine(parsed.row) || isFeeLine(raw)) {
+      skipped.push({
+        order_number: parsed.row.order_number || raw.order_number,
+        reason: (parsed.row.product || raw.product || parsed.row.order_number || "Fee") + " is a fee — it stays off Orders."
+      });
+      continue;
+    }
     parsed.errors.forEach((e) => errors.push(e));
     if (parsed.errors.length) continue;
     rows.push(parsed.row);
   }
-  if (!rows.length && !errors.length) errors.push("No order rows were found in that paste.");
+  if (!rows.length && !errors.length && !skipped.length) errors.push("No order rows were found in that paste.");
   repairPastedPaymentDates(rows);
-  return { rows, errors };
+  return { rows, errors, skipped };
 }
 
 module.exports = {

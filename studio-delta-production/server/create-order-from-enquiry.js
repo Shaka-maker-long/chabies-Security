@@ -294,6 +294,20 @@ function estimateDelivery(opts) {
   };
 }
 
+function isFeeLine(p) {
+  const cat = String((p && p.category) || "").replace(/\s+/g, " ").trim();
+  const product = String((p && p.product) || "").replace(/\s+/g, " ").trim();
+  const type = String((p && p.type) || "").replace(/\s+/g, " ").trim();
+  if (/^fees?$/i.test(cat) || /^design\s+fees?$/i.test(cat)) return true;
+  if (/^fees?$/i.test(type) || /^design\s+fees?$/i.test(type)) return true;
+  if (/\bfees?\b/i.test(product)) return true;
+  return false;
+}
+
+function shopLines(products) {
+  return (products || []).filter((p) => !isFeeLine(p));
+}
+
 function namedEnquiryLines(enquiry) {
   const chosen = quoteOptions.chosenQuote(enquiry);
   if (chosen && Array.isArray(chosen.products) && chosen.products.some((p) => String((p && p.product) || "").trim())) {
@@ -315,7 +329,9 @@ function namedEnquiryLines(enquiry) {
 function buildDraft(enquiry, nextOrderNumber, now) {
   const typeDefault = orderTypeFromEnquiryType(enquiry && enquiry.enquiry_type);
   const chosen = quoteOptions.chosenQuote(enquiry);
-  const products = namedEnquiryLines(enquiry).map((p) => ({
+  const named = namedEnquiryLines(enquiry);
+  const skippedFees = named.filter(isFeeLine).map((p) => String(p.product || p.category || "Fee").trim());
+  const products = named.filter((p) => !isFeeLine(p)).map((p) => ({
     category: String(p.category || (enquiry && enquiry.category) || "").trim(),
     product: String(p.product || "").trim(),
     type: typeDefault,
@@ -343,6 +359,7 @@ function buildDraft(enquiry, nextOrderNumber, now) {
       source: (enquiry && enquiry.source) || ""
     },
     products,
+    skippedFees,
     delivery: estimateDelivery({
       types: products.map((p) => p.type),
       province: (enquiry && enquiry.province) || "",
@@ -390,7 +407,7 @@ function buildBlankDraft(nextOrderNumber, now) {
 
 function planUnits(products) {
   const units = [];
-  (products || []).forEach((p) => {
+  shopLines(products).forEach((p) => {
     const qty = Math.floor(Number(p && p.quantity) || 0);
     if (qty < 1) return;
     const product = String((p && p.product) || "").trim();
@@ -426,6 +443,7 @@ function isQtyPriceConfirmed(value) {
 }
 
 function assertProductReady(product, index) {
+  if (isFeeLine(product)) return;
   const qty = Math.floor(Number(product && product.quantity) || 0);
   if (qty < 1) return;
   const label = String((product && product.product) || "").trim() || ("product " + (index + 1));
@@ -460,10 +478,15 @@ function planCreate(enquiry, body, existingOrders) {
   const products = Array.isArray(body && body.products) ? body.products : [];
   products.forEach(assertProductReady);
   const units = planUnits(products);
-  if (!units.length) throw new Error("Add a quantity of at least 1 for a product");
+  if (!units.length) {
+    const hadFee = (products || []).some(isFeeLine);
+    throw new Error(hadFee
+      ? "Fee lines stay on the enquiry. Add a shop product with quantity 1 or more."
+      : "Add a quantity of at least 1 for a product");
+  }
   const province = String(sharedIn.province || "").trim();
   const delivery = estimateDelivery({
-    types: products.map((p) => p.type),
+    types: shopLines(products).map((p) => p.type),
     province,
     now: body && body.now,
     date: body && body.delivery_date,
@@ -507,6 +530,8 @@ module.exports = {
   nextStudioOrderNumberFrom,
   orderBaseTaken,
   splitLetter,
+  isFeeLine,
+  shopLines,
   orderTypeFromEnquiryType,
   strictestOrderType,
   isGauteng,

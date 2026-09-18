@@ -154,6 +154,89 @@ assert.strictEqual(planned.delivery.scheduleCode, "LD");
 assert.strictEqual(planned.delivery.date, "2026-10-15");
 assert.strictEqual(planned.quote_number, "SOQ88");
 
+assert.ok(fromEnquiry.isFeeLine({ category: "Fee", product: "Design Fee" }));
+assert.ok(fromEnquiry.isFeeLine({ product: "Design Fee" }));
+assert.ok(fromEnquiry.isFeeLine({ category: "Fee", product: "Consultation" }));
+assert.ok(fromEnquiry.isFeeLine({ category: "Fees", product: "Consultation" }));
+assert.ok(!fromEnquiry.isFeeLine({ category: "Cabinet", product: "Thandi Display Cabinet" }));
+assert.ok(!fromEnquiry.isFeeLine({ category: "Table", product: "Coffee Table" }));
+
+const feeDraft = fromEnquiry.buildDraft({
+  enquiry_no: "#2910",
+  quote_no: "SOQ2910",
+  enquiry_type: "Custom",
+  products: [
+    { product: "Helderberg Gate", category: "Gate", value_incl_vat: "11500.00" },
+    { product: "Design Fee", category: "Fee", value_incl_vat: "350.00" }
+  ]
+}, "S260247");
+assert.strictEqual(feeDraft.products.length, 1);
+assert.strictEqual(feeDraft.products[0].product, "Helderberg Gate");
+assert.deepStrictEqual(feeDraft.skippedFees, ["Design Fee"]);
+
+const withFee = fromEnquiry.planCreate(
+  { enquiry_no: "#2910", quote_no: "SOQ2910" },
+  {
+    order_number: "S260247",
+    delivery_date: "2026-10-15",
+    shared: {
+      client_name: "Helderberg Build and Paint Pty Ltd",
+      province: "Western Cape",
+      address: "11 Buren Street Strand",
+      city: "Cape Town"
+    },
+    products: [
+      shopFields({ product: "Helderberg Gate", category: "Gate", type: "Custom", quantity: 1, price_incl_vat: "11500" }),
+      shopFields({ product: "Design Fee", category: "Fee", type: "Custom", quantity: 1, price_incl_vat: "350", amount_paid: "0" })
+    ]
+  },
+  []
+);
+assert.strictEqual(withFee.units.length, 1, "split ignores fee lines");
+assert.strictEqual(withFee.units[0].order_number, "S260247");
+assert.strictEqual(withFee.units[0].product, "Helderberg Gate");
+
+const twoPlusFee = fromEnquiry.planCreate(
+  { enquiry_no: "#2910", quote_no: "SOQ2910" },
+  {
+    order_number: "S260248",
+    delivery_date: "2026-10-15",
+    shared: {
+      client_name: "Helderberg Build and Paint Pty Ltd",
+      province: "Western Cape",
+      address: "11 Buren Street Strand",
+      city: "Cape Town"
+    },
+    products: [
+      shopFields({ product: "Gate A", category: "Gate", type: "Custom", quantity: 1, price_incl_vat: "8000" }),
+      shopFields({ product: "Design Fee", category: "Fee", type: "Custom", quantity: 1, price_incl_vat: "350" }),
+      shopFields({ product: "Gate B", category: "Gate", type: "Custom", quantity: 1, price_incl_vat: "9000" })
+    ]
+  },
+  []
+);
+assert.deepStrictEqual(twoPlusFee.units.map((u) => u.order_number), ["S260248 A", "S260248 B"]);
+assert.deepStrictEqual(twoPlusFee.units.map((u) => u.product), ["Gate A", "Gate B"]);
+
+assert.throws(
+  () => fromEnquiry.planCreate(
+    { enquiry_no: "#2910", quote_no: "SOQ2910" },
+    {
+      order_number: "S260249",
+      delivery_date: "2026-10-15",
+      shared: {
+        client_name: "Fee Only",
+        province: "Western Cape",
+        address: "11 Buren Street",
+        city: "Cape Town"
+      },
+      products: [shopFields({ product: "Design Fee", category: "Fee", type: "Custom", quantity: 1, price_incl_vat: "350" })]
+    },
+    []
+  ),
+  /Fee lines stay on the enquiry/
+);
+
 const standalonePlan = fromEnquiry.planCreate(
   null,
   {
@@ -418,6 +501,44 @@ const one = db.createOrdersFromEnquiryForm("#5002", {
 });
 assert.strictEqual(one.rows.length, 1);
 assert.strictEqual(one.rows[0].order_number, "S260200");
+
+db.upsertEnquiry({
+  enquiry_no: "#2910",
+  status: "Ordered",
+  client_name: "Helderberg Build and Paint Pty Ltd",
+  province: "Western Cape",
+  enquiry_type: "Custom",
+  quote_no: "SOQ2910",
+  products: [
+    { product: "Helderberg Gate", category: "Gate", value_incl_vat: "11500.00" },
+    { product: "Design Fee", category: "Fee", value_incl_vat: "350.00" }
+  ],
+  ready_for_orders: true
+}, { fromPipeline: true, fromMigrate: true });
+
+const feeFromDraft = db.createOrderDraftFromEnquiry("#2910");
+assert.strictEqual(feeFromDraft.products.length, 1);
+assert.strictEqual(feeFromDraft.products[0].product, "Helderberg Gate");
+assert.deepStrictEqual(feeFromDraft.skippedFees, ["Design Fee"]);
+
+const helderberg = db.createOrdersFromEnquiryForm("#2910", {
+  order_number: "S260247",
+  delivery_date: "2026-10-15",
+  shared: {
+    client_name: "Helderberg Build and Paint Pty Ltd",
+    province: "Western Cape",
+    address: "11 Buren Street Strand",
+    city: "Cape Town"
+  },
+  products: [
+    shopFields({ product: "Helderberg Gate", category: "Gate", type: "Custom", quantity: 1, price_incl_vat: "11500" }),
+    shopFields({ product: "Design Fee", category: "Fee", type: "Custom", quantity: 1, price_incl_vat: "350", amount_paid: "0" })
+  ]
+});
+assert.strictEqual(helderberg.rows.length, 1);
+assert.strictEqual(helderberg.rows[0].order_number, "S260247");
+assert.strictEqual(helderberg.rows[0].product, "Helderberg Gate");
+assert.ok(!db.listOrders().some((o) => o.order_number === "S260247 B"), "Design Fee must not become unit B");
 assert.strictEqual(one.delivery.scheduleCode, "LC");
 const capeItems = db.listDeliveryItems().items.filter((it) => it.order_number === "S260200");
 assert.strictEqual(capeItems.length, 1);
@@ -611,5 +732,9 @@ assert.ok(officeJs.indexOf("/create-order-draft") !== -1);
 assert.ok(officeJs.indexOf("createOrdersFromEnquiryForm") !== -1);
 assert.ok(officeJs.indexOf("/api/office/orders/create-draft") !== -1);
 assert.ok(officeJs.indexOf("createOrdersStandalone") !== -1);
+const fromHtml = fs.readFileSync(path.join(__dirname, "../public/orders-from-enquiry.html"), "utf8");
+assert.ok(fromHtml.indexOf("function isFeeLine") !== -1);
+assert.ok(fromHtml.indexOf("Fee lines (including Design Fee)") !== -1);
+assert.ok(fromHtml.indexOf("stays on the enquiry and is not added to Orders") !== -1);
 
 console.log("create-order-from-enquiry.test.js ok");
