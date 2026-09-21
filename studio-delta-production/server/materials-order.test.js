@@ -42,6 +42,7 @@ const SIG = "data:image/png;base64,aaa";
     status: "Ready for Pre-Powder Coating",
     type: "Standard",
     product: "Slider",
+    powder_coating: "Ferrograin Black",
     price_excl_vat: "100.00"
   });
   const started = await callShopFunction("startOrder", [
@@ -49,8 +50,18 @@ const SIG = "data:image/png;base64,aaa";
   ]);
   assert.strictEqual(started.success, true, JSON.stringify(started));
 
+  const noColour = await callShopFunction("finishOrder", [
+    order.id, started.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-GLASS", [],
+    { lines: [{ component: "Door", type: "Clear", thickness: "6", height: 100, width: 100, quantity: 1 }] },
+    []
+  ]);
+  assert.ok(noColour && noColour.success === false, JSON.stringify(noColour));
+  assert.ok(/colour|color/i.test(noColour.error || noColour.message || ""), JSON.stringify(noColour));
+
   const noGlass = await callShopFunction("finishOrder", [
-    order.id, started.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-GLASS", [], [], []
+    order.id, started.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-GLASS", [],
+    { colourConfirmed: true, colour: "Ferrograin Black" },
+    []
   ]);
   assert.ok(noGlass && noGlass.success === false, JSON.stringify(noGlass));
   assert.ok(/glass/i.test(noGlass.error || noGlass.message || ""), JSON.stringify(noGlass));
@@ -72,13 +83,17 @@ const SIG = "data:image/png;base64,aaa";
     quantity: 3
   }];
   const missingPhotos = await callShopFunction("finishOrder", [
-    order.id, started.logId, QC, SIG, [], "Nomsa", [], "S-PRE-GLASS", [], glass, wood
+    order.id, started.logId, QC, SIG, [], "Nomsa", [], "S-PRE-GLASS", [],
+    { colourConfirmed: true, colour: "Ferrograin Black", lines: glass },
+    wood
   ]);
   assert.ok(missingPhotos && missingPhotos.success === false, JSON.stringify(missingPhotos));
   assert.ok(/photo/i.test(missingPhotos.error || missingPhotos.message || ""), JSON.stringify(missingPhotos));
 
   const finished = await callShopFunction("finishOrder", [
-    order.id, started.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-GLASS", [], glass, wood
+    order.id, started.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-GLASS", [],
+    { colourConfirmed: true, colour: "Ferrograin Black", lines: glass },
+    wood
   ]);
   assert.strictEqual(finished.success, true, JSON.stringify(finished));
   assert.ok(finished.qcPdfUrl && String(finished.qcPdfUrl).indexOf("/api/qc-pdfs/") === 0, JSON.stringify(finished));
@@ -111,6 +126,7 @@ const SIG = "data:image/png;base64,aaa";
     status: "Ready for Pre-Powder Coating",
     type: "Standard",
     product: "Steel bench",
+    powder_coating: "Smooth Matt Black",
     price_excl_vat: "80.00"
   });
   const startedNone = await callShopFunction("startOrder", [
@@ -118,7 +134,9 @@ const SIG = "data:image/png;base64,aaa";
   ]);
   assert.strictEqual(startedNone.success, true, JSON.stringify(startedNone));
   const finishedNone = await callShopFunction("finishOrder", [
-    noneOrder.id, startedNone.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-NONE", [], { noGlass: true }, []
+    noneOrder.id, startedNone.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-NONE", [],
+    { noGlass: true, colourConfirmed: true, colour: "Smooth Matt Black" },
+    []
   ]);
   assert.strictEqual(finishedNone.success, true, JSON.stringify(finishedNone));
   const listedNone = await callShopFunction("listMaterialsToOrder", []);
@@ -126,12 +144,14 @@ const SIG = "data:image/png;base64,aaa";
   const noneBrief = await callShopFunction("getOrderJobBrief", ["S-PRE-NONE", "Pre-Powder Coating"]);
   assert.ok(noneBrief.standardGlass);
   assert.strictEqual(noneBrief.standardGlass.noGlass, true);
+  assert.strictEqual(noneBrief.powderCoating || noneBrief.colour, "Smooth Matt Black");
 
   const tplOrder = db.upsertOrder({
     order_number: "S-PRE-TPL",
     status: "Ready for Pre-Powder Coating",
     type: "Custom",
     product: "Air Chair",
+    powder_coating: "Ferrograin Black",
     price_excl_vat: "90.00"
   });
   const startedTpl = await callShopFunction("startOrder", [
@@ -140,7 +160,12 @@ const SIG = "data:image/png;base64,aaa";
   assert.strictEqual(startedTpl.success, true, JSON.stringify(startedTpl));
   const finishedTpl = await callShopFunction("finishOrder", [
     tplOrder.id, startedTpl.logId, QC, SIG, PHOTOS, "Nomsa", [], "S-PRE-TPL", [],
-    { hasTemplate: true, lines: [{ component: "Door", type: "Clear", thickness: "6", quantity: 1, isTemplate: true }] },
+    {
+      hasTemplate: true,
+      colourConfirmed: true,
+      colour: "Ferrograin Black",
+      lines: [{ component: "Door", type: "Clear", thickness: "6", quantity: 1, isTemplate: true }]
+    },
     []
   ]);
   assert.strictEqual(finishedTpl.success, true, JSON.stringify(finishedTpl));

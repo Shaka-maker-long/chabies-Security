@@ -5873,6 +5873,7 @@
         woodRequired: !!(document.getElementById("woodRequired") && document.getElementById("woodRequired").checked),
         noGlass: !!(document.getElementById("noGlass") && document.getElementById("noGlass").checked),
         hasTemplateGlass: !!(document.getElementById("hasTemplateGlass") && document.getElementById("hasTemplateGlass").checked),
+        colourConfirmed: !!(document.getElementById("confirmPowderColour") && document.getElementById("confirmPowderColour").checked),
         glassFields: {
           component: qcFieldVal("glassComponent"),
           type: qcFieldVal("glassType"),
@@ -5901,7 +5902,7 @@
       if ((draft.answers || []).some((a) => a === "Y" || a === "N")) return true;
       if ((draft.steel || []).length || (draft.backboard || []).length) return true;
       if ((draft.glassRows || []).length || (draft.woodRows || []).length) return true;
-      if (draft.woodRequired || draft.noGlass) return true;
+      if (draft.woodRequired || draft.noGlass || draft.colourConfirmed) return true;
       if (draft.hasSigned || draft.signature) return true;
       if (draft.photos && Object.keys(draft.photos).length) return true;
       const g = draft.glassFields || {};
@@ -5926,7 +5927,7 @@
       modal.addEventListener("input", scheduleQcDraft);
       modal.addEventListener("change", persistQcDraft);
       modal.addEventListener("click", function (e) {
-        if (e.target.closest(".btn-outline-danger, .btn-check, label, #woodRequired, #noGlass, #useSavedGlassBtn")) {
+        if (e.target.closest(".btn-outline-danger, .btn-check, label, #woodRequired, #noGlass, #hasTemplateGlass, #confirmPowderColour, #useSavedGlassBtn")) {
           setTimeout(persistQcDraft, 40);
         }
       });
@@ -6056,6 +6057,8 @@
       if (noGlassBox) noGlassBox.checked = !!draft.noGlass && !(draft.glassRows || []).length;
       const tplBox = document.getElementById("hasTemplateGlass");
       if (tplBox) tplBox.checked = !!draft.hasTemplateGlass || (draft.glassRows || []).some((l) => l && l.isTemplate);
+      const colourBox = document.getElementById("confirmPowderColour");
+      if (colourBox) colourBox.checked = !!draft.colourConfirmed;
       syncNoGlass();
       syncTemplateGlass();
       const g = draft.glassFields || {};
@@ -6161,6 +6164,7 @@
         varBox.innerHTML = '<div><strong>Variation</strong></div><div>' + (qcOrder.variation || '—') + '</div>' +
           (qcOrder.description ? '<div class="mt-2"><strong>Description</strong><div>' + renderMarkedDescription(qcOrder.description) + '</div></div>' : '');
       }
+      paintPowderColourOnQc(qcOrder);
       
       // 5. PHOTO INPUTS
       const reqPhotos = PHOTO_REQS[qcKey]; 
@@ -6306,8 +6310,25 @@
         options.map((o) => '<option value="' + String(o).replace(/"/g, '&quot;') + '">' + o + '</option>').join('') +
         '</select>';
     }
+    function paintPowderColourOnQc(order) {
+      const colour = powderColorFromOrder(order) || "Not set on this order";
+      const valueEl = document.getElementById("powderColourValue");
+      const labelEl = document.getElementById("powderColourConfirmLabel");
+      if (valueEl) valueEl.textContent = colour;
+      if (labelEl) labelEl.textContent = colour;
+      session.pendingPowderColour = powderColorFromOrder(order) || "";
+    }
     function glassWoodOrderHtml() {
       return `
+        <div id="powderColourSection" class="mt-4 pt-3 border-top">
+          <label class="fw-bold mb-1">Powder coating colour</label>
+          <p class="mb-2 fs-5 fw-bold" id="powderColourValue">—</p>
+          <p class="small text-muted mb-2">This is the POWDER COATING on the order / job card. Check the stickers against it before you finish.</p>
+          <label class="d-flex gap-2 align-items-start fw-bold mb-0">
+            <input type="checkbox" id="confirmPowderColour" class="mt-1">
+            <span>I confirm the colour is <span id="powderColourConfirmLabel">—</span></span>
+          </label>
+        </div>
         <div id="glassOrderSection" class="mt-4 pt-3 border-top">
             <label class="d-flex gap-2 align-items-center fw-bold mb-2">
             <input type="checkbox" id="noGlass" onchange="syncNoGlass()">
@@ -6468,6 +6489,11 @@
       session.savedGlassSpec = null;
       google.script.run.withSuccessHandler((brief) => {
         session.savedGlassSpec = (brief && brief.standardGlass) || null;
+        if (brief && (brief.powderCoating || brief.powder_coating || brief.colour)) {
+          paintPowderColourOnQc({
+            powderCoating: brief.powderCoating || brief.powder_coating || brief.colour
+          });
+        }
         paintSavedGlassOffer();
       }).withFailureHandler(() => {
         session.savedGlassSpec = null;
@@ -6908,21 +6934,37 @@
             }
 
             const glassSection = document.getElementById('glassOrderSection');
+            const colourSection = document.getElementById('powderColourSection');
+            if (colourSection || glassSection) {
+              const colourConfirmed = !!(document.getElementById('confirmPowderColour') && document.getElementById('confirmPowderColour').checked);
+              if (!colourConfirmed) {
+                showAlert("Confirm the powder coating colour before finishing Pre-Powder Coating QC."); return;
+              }
+            }
             if (glassSection) {
               const noGlass = !!(document.getElementById('noGlass') && document.getElementById('noGlass').checked);
               const hasTemplate = !!(document.getElementById('hasTemplateGlass') && document.getElementById('hasTemplateGlass').checked);
               const glassRows = collectGlassWoodRows('#glassRowsContainer .glass-order-row', 'glass');
+              const colourConfirmed = !!(document.getElementById('confirmPowderColour') && document.getElementById('confirmPowderColour').checked);
+              const colour = session.pendingPowderColour || powderColorFromOrder(
+                (appData.currentOrders || []).find((o) => String(o.order) === String(session.activeOrder)) || {}
+              );
               if (hasTemplate && noGlass) {
                 showAlert("Has template glass cannot be ticked together with This order has no glass."); return;
               }
               if (noGlass) {
-                session.pendingGlassOrder = { noGlass: true };
+                session.pendingGlassOrder = { noGlass: true, colourConfirmed: true, colour: colour };
               } else if (!glassRows.length) {
                 showAlert("Add the glass for this order, or tick This order has no glass."); return;
               } else if (hasTemplate && !glassRows.some((row) => row.isTemplate)) {
                 showAlert("Tick Has template glass only after you add the template glass for this order."); return;
               } else {
-                session.pendingGlassOrder = { hasTemplate: hasTemplate || glassRows.some((row) => row.isTemplate), lines: glassRows };
+                session.pendingGlassOrder = {
+                  hasTemplate: hasTemplate || glassRows.some((row) => row.isTemplate),
+                  lines: glassRows,
+                  colourConfirmed: colourConfirmed,
+                  colour: colour
+                };
               }
             } else {
               session.pendingGlassOrder = [];

@@ -366,14 +366,21 @@ function standardGlassHeaders_() {
 }
 
 function parseGlassOrderPayload_(glassOrderData) {
+  var colourConfirmed = !!(glassOrderData && !Array.isArray(glassOrderData) && (glassOrderData.colourConfirmed || glassOrderData.colorConfirmed));
+  var colour = "";
+  if (glassOrderData && !Array.isArray(glassOrderData)) {
+    colour = String(glassOrderData.colour || glassOrderData.color || glassOrderData.powderCoating || glassOrderData.powder_coating || "").trim();
+  }
   if (glassOrderData && !Array.isArray(glassOrderData) && glassOrderData.noGlass) {
-    return { noGlass: true, hasTemplate: false, lines: [] };
+    return { noGlass: true, hasTemplate: false, lines: [], colourConfirmed: colourConfirmed, colour: colour };
   }
   if (glassOrderData && !Array.isArray(glassOrderData) && Array.isArray(glassOrderData.lines)) {
     return {
       noGlass: false,
       hasTemplate: !!glassOrderData.hasTemplate,
-      lines: glassOrderData.lines
+      lines: glassOrderData.lines,
+      colourConfirmed: colourConfirmed,
+      colour: colour
     };
   }
   var list = Array.isArray(glassOrderData) ? glassOrderData : [];
@@ -381,7 +388,7 @@ function parseGlassOrderPayload_(glassOrderData) {
   list.forEach(function (line) {
     if (line && (line.isTemplate || line.template || line.hasTemplate)) hasTemplate = true;
   });
-  return { noGlass: false, hasTemplate: hasTemplate, lines: list };
+  return { noGlass: false, hasTemplate: hasTemplate, lines: list, colourConfirmed: colourConfirmed, colour: colour };
 }
 
 function loadStandardGlassSpec(product) {
@@ -2481,6 +2488,9 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
       });
     }
     if (processNeedsGlass(role, processName)) {
+      if (!glassPayload.colourConfirmed) {
+        throw new Error("Server rejected: Confirm the powder coating colour before finishing Pre-Powder Coating QC.");
+      }
       if (!noGlass && !glassLines.length) {
         throw new Error("Server rejected: Add the glass for this order, or mark that this order has no glass.");
       }
@@ -4401,6 +4411,9 @@ function emptyJobBrief(orderNumber, process) {
     description: "",
     description_plain: "",
     dimensions: "",
+    powderCoating: "",
+    powder_coating: "",
+    colour: "",
     highlights: [],
     process: String(process || ""),
     targetMinutes: 0,
@@ -4418,11 +4431,12 @@ function getOrderJobBrief(orderNumber, process) {
   var sheet = getSheetOrDie(ss, TAB_ORDERS);
   var last = sheet.getLastRow();
   if (last < 2) return emptyJobBrief(want, process);
-  var data = sheet.getRange(2, 1, last - 1, 11).getValues();
+  var data = sheet.getRange(2, 1, last - 1, 12).getValues();
   for (var i = 0; i < data.length; i++) {
     if (String(data[i][1] || "").trim() !== want) continue;
     var description = String(data[i][9] || "");
     var product = String(data[i][6] || "");
+    var powder = String(data[i][11] || "").trim();
     var minutes = getTaskDurationMinutes(product, process);
     var eta = estimateCompletionPack(new Date(), minutes);
     return {
@@ -4433,6 +4447,9 @@ function getOrderJobBrief(orderNumber, process) {
       description: description,
       description_plain: descriptionPlain(description),
       dimensions: String(data[i][10] || ""),
+      powderCoating: powder,
+      powder_coating: powder,
+      colour: powder,
       highlights: parseDescriptionHighlights(description),
       process: String(process || ""),
       targetMinutes: minutes,
