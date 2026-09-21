@@ -161,8 +161,9 @@ db.upsertOrder({
   assert.ok(ordersHtml.indexOf("cell-commentable") !== -1);
   assert.ok(ordersHtml.indexOf("order-comments") !== -1);
   assert.ok(ordersHtml.indexOf("cellCtxComment") !== -1);
-  assert.ok(ordersHtml.indexOf("data-open-comments") !== -1);
+  assert.ok(ordersHtml.indexOf("has-comment") !== -1);
   assert.ok(ordersHtml.indexOf("Assign to") !== -1);
+  assert.ok(ordersHtml.indexOf("td.cell-commentable { position:relative") === -1, "no relative on cells");
 
   server.close();
   console.log("order-cell-comments.test.js ok");
