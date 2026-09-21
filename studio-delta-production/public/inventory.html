@@ -61,9 +61,37 @@
     .sheet .body { padding:16px; display:flex; flex-direction:column; gap:12px; }
     .sheet .foot { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line); }
     .err { color:var(--bad); font-size:12px; min-height:16px; }
+    .use-lines { display:flex; flex-direction:column; gap:10px; }
+    .use-line {
+      display:grid; grid-template-columns:1fr 96px auto; gap:8px; align-items:end;
+      padding:12px; border:1px solid var(--line); border-radius:10px; background:#f8fafc;
+    }
+    .use-line label { margin:0; }
+    .sheet.mobile-use { width:min(560px, 100vw); margin:0 auto; border-radius:12px; max-height:calc(100vh - 24px); display:flex; flex-direction:column; }
+    .sheet.mobile-use .body { overflow:auto; flex:1 1 auto; -webkit-overflow-scrolling:touch; }
+    .sheet.mobile-use header h1 { font-size:17px; }
+    .sheet.mobile-use label { font-size:12px; }
+    .sheet.mobile-use select,
+    .sheet.mobile-use input {
+      min-height:48px; font-size:16px; border-radius:10px; padding:12px;
+    }
+    .sheet.mobile-use button { min-height:48px; font-size:15px; padding:12px 16px; }
+    .sheet.mobile-use .foot { position:sticky; bottom:0; background:#fff; padding-bottom:4px; }
+    .sheet.mobile-use .foot button[type=submit] { width:100%; }
+    .add-line-btn { width:100%; }
     @media (max-width: 900px) {
       .tools { width:100%; margin-left:0; }
       td.actions { white-space:normal; }
+      .mask { padding:0; align-items:stretch; }
+      .sheet.mobile-use {
+        width:100vw; min-height:100%; margin:0; border-radius:0; border:0;
+        max-height:none;
+      }
+      .use-line { grid-template-columns:1fr; }
+      .use-line .use-qty { max-width:none; }
+      .use-line button { width:100%; }
+      header .tools #btnLogUsage,
+      header .tools #btnCreatePo { flex:1 1 140px; min-height:44px; }
     }
   </style>
 </head>
@@ -170,7 +198,7 @@
   </div>
 
   <div class="mask" id="useMask">
-    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="useTitle">
+    <div class="sheet mobile-use" role="dialog" aria-modal="true" aria-labelledby="useTitle">
       <header>
         <h1 id="useTitle">Log usage</h1>
         <div class="tools">
@@ -184,14 +212,10 @@
         <label>Worker
           <select id="useWorker" required></select>
         </label>
-        <label>Item
-          <select id="useItem" required></select>
-        </label>
-        <label>Quantity
-          <input id="useQty" inputmode="decimal" required>
-        </label>
+        <div class="use-lines" id="useLines"></div>
+        <button class="ghost add-line-btn" type="button" id="addUseLine">Add another item</button>
         <label>Note
-          <input id="useNote" placeholder="optional">
+          <input id="useNote" placeholder="optional — applies to all lines">
         </label>
         <p class="err" id="useErr"></p>
         <div class="foot">
@@ -264,7 +288,7 @@
       if (!el) return;
       el.innerHTML = (data.units || ["pcs"]).map((u) => "<option value=\"" + esc(u) + "\">" + esc(u) + "</option>").join("");
     }
-    function fillUseSelects(preItem) {
+    function fillUseSelects() {
       const orders = ["General"].concat(data.activeOrderNumbers || []);
       document.getElementById("useOrder").innerHTML = orders.map((n) =>
         "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>"
@@ -275,7 +299,24 @@
             "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>"
           ).join(""))
         : "<option value=\"\">No production people on Users</option>";
-      document.getElementById("useItem").innerHTML = itemOptions(preItem || "");
+    }
+    function addUseLine(selected) {
+      const wrap = document.createElement("div");
+      wrap.className = "use-line";
+      wrap.innerHTML = "<label>Item<select class='use-item' required>" + itemOptions(selected || "") + "</select></label>" +
+        "<label class='use-qty'>Quantity<input class='use-qty-input' inputmode='decimal' required placeholder='Qty'></label>" +
+        "<button class='ghost' type='button' aria-label='Remove item'>Remove</button>";
+      wrap.querySelector("button").onclick = () => {
+        const host = document.getElementById("useLines");
+        if (host.querySelectorAll(".use-line").length <= 1) {
+          wrap.querySelector(".use-item").value = "";
+          wrap.querySelector(".use-qty-input").value = "";
+          return;
+        }
+        wrap.remove();
+      };
+      document.getElementById("useLines").appendChild(wrap);
+      return wrap;
     }
     function filteredItems() {
       const needle = q();
@@ -393,8 +434,9 @@
       setMsg("status", (j.itemCount || 0) + " item" + ((j.itemCount || 0) === 1 ? "" : "s"));
     }
     function openUse(itemId) {
-      fillUseSelects(itemId || "");
-      document.getElementById("useQty").value = "";
+      fillUseSelects();
+      document.getElementById("useLines").innerHTML = "";
+      addUseLine(itemId || "");
       document.getElementById("useNote").value = "";
       document.getElementById("useErr").textContent = "";
       document.getElementById("useMask").classList.add("open");
@@ -460,6 +502,7 @@
     document.getElementById("btnLogUsage").onclick = () => openUse("");
     document.getElementById("btnCreatePo").onclick = () => openPo();
     document.getElementById("addPoLine").onclick = () => addPoLine("");
+    document.getElementById("addUseLine").onclick = () => addUseLine("");
     document.getElementById("useMask").addEventListener("click", (e) => { if (e.target.id === "useMask") closeUse(); });
     document.getElementById("poMask").addEventListener("click", (e) => { if (e.target.id === "poMask") closePo(); });
 
@@ -489,21 +532,29 @@
       e.preventDefault();
       const err = document.getElementById("useErr");
       err.textContent = "";
+      const lines = [];
+      document.querySelectorAll("#useLines .use-line").forEach((row) => {
+        lines.push({
+          itemId: row.querySelector(".use-item").value,
+          qty: row.querySelector(".use-qty-input").value
+        });
+      });
+      if (!lines.length) { err.textContent = "Add at least one item."; return; }
       const r = await sdOfficeFetch("/api/office/consumables/use", {
         method: "POST",
         body: JSON.stringify({
-          itemId: document.getElementById("useItem").value,
-          qty: document.getElementById("useQty").value,
           orderNumber: document.getElementById("useOrder").value,
           worker: document.getElementById("useWorker").value,
-          note: document.getElementById("useNote").value
+          note: document.getElementById("useNote").value,
+          lines
         })
       });
       const j = await r.json();
       if (!j.ok) { err.textContent = j.error || "Could not use"; return; }
       closeUse();
       applySnapshot(j);
-      setMsg("status", "Used " + (j.item && j.item.name ? j.item.name : "stock") + ".");
+      const n = lines.length;
+      setMsg("status", "Logged " + n + " item" + (n === 1 ? "" : "s") + ".");
     };
     document.getElementById("poForm").onsubmit = async (e) => {
       e.preventDefault();

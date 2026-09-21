@@ -406,8 +406,11 @@ function mountOffice(app) {
 
   app.post("/api/office/consumables/use", requireOffice, (req, res) => {
     try {
-      const item = consumables.logUsage(req.body || {}, req.office && req.office.name);
-      res.json({ ok: true, item, ...consumables.snapshot() });
+      const used = consumables.logUsage(req.body || {}, req.office && req.office.name);
+      const payload = Array.isArray(used)
+        ? { usedItems: used, item: used[0] || null }
+        : { item: used, usedItems: [used] };
+      res.json({ ok: true, ...consumables.snapshot(), ...payload });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

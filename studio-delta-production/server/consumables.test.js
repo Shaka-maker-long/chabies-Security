@@ -86,6 +86,38 @@ const screw = consumables.upsertItem({
 }, "Office Boss");
 assert.strictEqual(screw.low, true);
 
+const multiUsed = consumables.logUsage({
+  orderNumber: "General",
+  worker: "Admire",
+  note: "Floor batch",
+  lines: [
+    { itemId: hinge.id, qty: "2" },
+    { itemId: screw.id, qty: "1" }
+  ]
+}, "Admire");
+assert.ok(Array.isArray(multiUsed));
+assert.strictEqual(multiUsed.length, 2);
+assert.strictEqual(multiUsed.find((row) => row.id === hinge.id).stock, 12);
+assert.strictEqual(multiUsed.find((row) => row.id === screw.id).stock, 0);
+let multiDupFailed = false;
+try {
+  consumables.logUsage({
+    orderNumber: "General",
+    worker: "Admire",
+    lines: [
+      { itemId: hinge.id, qty: "1" },
+      { itemId: hinge.id, qty: "1" }
+    ]
+  }, "Admire");
+} catch (e) {
+  multiDupFailed = /twice/i.test(e.message);
+}
+assert.ok(multiDupFailed, "duplicate items in one usage batch are rejected");
+consumables.receiveStock({ itemId: hinge.id, qty: "2", note: "Restore after batch test" }, "Siya");
+consumables.receiveStock({ itemId: screw.id, qty: "1", note: "Restore after batch test" }, "Siya");
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 14);
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === screw.id).stock, 1);
+
 (async function purchaseFlow() {
 const po = await consumables.createPurchase({
   supplier: "Wellington Hardware",
@@ -228,6 +260,25 @@ return (async function main() {
   });
   assert.strictEqual(usedApi.json.ok, true, JSON.stringify(usedApi.json));
   assert.strictEqual(usedApi.json.item.stock, 62);
+
+  const batchApi = await api("/api/office/consumables/use", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      orderNumber: "General",
+      worker: "Admire",
+      note: "API batch",
+      lines: [
+        { itemId: hinge.id, qty: 1 },
+        { itemId: screw.id, qty: 1 }
+      ]
+    })
+  });
+  assert.strictEqual(batchApi.json.ok, true, JSON.stringify(batchApi.json));
+  assert.ok(Array.isArray(batchApi.json.usedItems));
+  assert.strictEqual(batchApi.json.usedItems.length, 2);
+  assert.strictEqual(batchApi.json.usedItems.find((row) => row.id === hinge.id).stock, 61);
+  assert.ok(Array.isArray(batchApi.json.items) && batchApi.json.items.length > 2, "snapshot items stay intact");
 
   server.close();
   console.log("consumables.test.js ok");

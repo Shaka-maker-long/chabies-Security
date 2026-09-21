@@ -584,34 +584,48 @@ function deleteItem(id) {
 }
 
 function logUsage(body, actor) {
-  const qty = parseQty(body && body.qty, "Quantity used");
+  const linesIn = Array.isArray(body && body.lines) ? body.lines : null;
   let orderNumber = String((body && (body.orderNumber || body.order_number)) || "").trim();
   if (/^general$/i.test(orderNumber)) orderNumber = "General";
   const note = String((body && body.note) || "").trim();
   const worker = String((body && (body.worker || body.employee)) || "").trim() || actorName(actor);
   const store = loadStore();
-  const row = findItem(store, body && (body.itemId || body.item_id));
-  if (!row) throw new Error("Choose a consumable.");
-  const stock = Number(row.stock) || 0;
-  if (qty > stock) {
-    throw new Error(row.name + " has " + formatQty(stock) + " " + (row.unit || "pcs") + " on hand. You cannot use " + formatQty(qty) + ".");
-  }
   const at = nowIso();
-  row.stock = Math.round((stock - qty) * 1000) / 1000;
-  row.updatedAt = at;
-  addMovement(store, {
-    id: newId("cmove"),
-    at,
-    type: "usage",
-    itemId: row.id,
-    itemName: row.name,
-    qty: -qty,
-    orderNumber,
-    employee: worker,
-    note
+  const lines = linesIn && linesIn.length
+    ? linesIn
+    : [{ itemId: body && (body.itemId || body.item_id), qty: body && body.qty, note: body && body.note }];
+  if (!lines.length) throw new Error("Add at least one item.");
+  if (!worker) throw new Error("Choose the worker.");
+  const used = [];
+  const seen = {};
+  lines.forEach((line, i) => {
+    const row = findItem(store, line && (line.itemId || line.item_id));
+    if (!row) throw new Error("Line " + (i + 1) + ": choose a consumable.");
+    if (seen[row.id]) throw new Error(row.name + " is listed twice. Combine the quantities.");
+    seen[row.id] = true;
+    const qty = parseQty(line && line.qty, row.name + " quantity");
+    const stock = Number(row.stock) || 0;
+    if (qty > stock) {
+      throw new Error(row.name + " has " + formatQty(stock) + " " + (row.unit || "pcs") + " on hand. You cannot use " + formatQty(qty) + ".");
+    }
+    const lineNote = String((line && line.note) || note || "").trim();
+    row.stock = Math.round((stock - qty) * 1000) / 1000;
+    row.updatedAt = at;
+    addMovement(store, {
+      id: newId("cmove"),
+      at,
+      type: "usage",
+      itemId: row.id,
+      itemName: row.name,
+      qty: -qty,
+      orderNumber,
+      employee: worker,
+      note: lineNote
+    });
+    used.push(decorateItem(row, store));
   });
   saveStore(store);
-  return decorateItem(row, store);
+  return used.length === 1 ? used[0] : used;
 }
 
 function receiveStock(body, actor) {
