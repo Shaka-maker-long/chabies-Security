@@ -100,6 +100,39 @@
     .life .detail, .life .actor { color:var(--muted); font-size:12px; }
     .form-foot { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line); }
     .err { color:var(--bad); font-size:12px; min-height:16px; }
+    td.cell-commentable { position:relative; }
+    td.has-comment::after {
+      content:""; position:absolute; top:0; right:0;
+      border:6px solid transparent; border-top-color:#f79009; border-right-color:#f79009;
+      pointer-events:none;
+    }
+    td.has-comment { cursor:context-menu; }
+    .cell-ctx {
+      position:fixed; z-index:50; min-width:160px; background:#fff; border:1px solid var(--line);
+      border-radius:8px; box-shadow:0 8px 24px rgba(16,24,40,.16); padding:4px; display:none;
+    }
+    .cell-ctx.open { display:block; }
+    .cell-ctx button {
+      display:block; width:100%; text-align:left; background:#fff; color:var(--ink);
+      border:0; border-radius:6px; padding:8px 10px; font-weight:500; font-size:13px;
+    }
+    .cell-ctx button:hover { background:#f2f4f7; }
+    .comment-sheet { width:min(420px, 96vw); }
+    .comment-meta { font-size:12px; color:var(--muted); margin:0 0 10px; }
+    .comment-list { display:flex; flex-direction:column; gap:12px; max-height:50vh; overflow:auto; }
+    .comment-card { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#f8fafc; }
+    .comment-card.resolved { opacity:.72; background:#fff; }
+    .comment-card .who { font-size:12px; font-weight:600; margin:0 0 4px; }
+    .comment-card .body { font-size:13px; margin:0 0 8px; white-space:pre-wrap; word-break:break-word; }
+    .comment-card .assign { font-size:12px; color:var(--muted); margin:0 0 8px; }
+    .comment-replies { margin:0 0 8px; padding-left:10px; border-left:2px solid #d0d5dd; display:flex; flex-direction:column; gap:6px; }
+    .comment-replies .who { margin:0; }
+    .comment-actions { display:flex; gap:6px; flex-wrap:wrap; }
+    .comment-actions button { padding:6px 10px; font-size:12px; }
+    .comment-compose { display:flex; flex-direction:column; gap:8px; margin-top:12px; padding-top:12px; border-top:1px solid var(--line); }
+    .comment-compose label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; }
+    .comment-compose select, .comment-compose textarea { width:100%; border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; font-weight:400; }
+    .comment-compose textarea { min-height:72px; resize:vertical; }
     @media (max-width: 720px) {
       .stack-grid, .stack-grid.four, .view-grid { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
@@ -304,6 +337,38 @@
       <div class="body" id="viewBody"></div>
     </div>
   </div>
+  <div class="cell-ctx" id="cellCtx" role="menu">
+    <button type="button" id="cellCtxComment">Comment</button>
+  </div>
+
+  <div class="mask" id="commentMask">
+    <div class="sheet comment-sheet" role="dialog" aria-modal="true" aria-labelledby="commentTitle">
+      <header class="form-head">
+        <h1 id="commentTitle">Cell comment</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeCellComments()">Close</button>
+        </div>
+        <p class="form-head-err" id="commentErr"></p>
+      </header>
+      <div class="body">
+        <p class="comment-meta" id="commentMeta"></p>
+        <div class="comment-list" id="commentList"></div>
+        <div class="comment-compose" id="commentCompose">
+          <label>Assign to
+            <select id="commentAssignee"></select>
+          </label>
+          <label>Comment
+            <textarea id="commentBody" placeholder="Add a note on this cell"></textarea>
+          </label>
+          <div class="form-foot">
+            <span class="err" id="commentComposeErr"></span>
+            <button type="button" id="commentSaveBtn">Add comment</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="mask" id="removeMask">
     <div class="sheet" role="dialog" aria-modal="true" style="width:min(480px,96vw)">
       <header>
@@ -383,6 +448,10 @@
     let canManage = false;
     let editingIndex = -1;
     let printedByOrder = {};
+    let commentCells = {};
+    let officeAssignees = [];
+    let commentTarget = null;
+    let ctxTarget = null;
 
     function esc(s) { return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); }
     function parseMoney(s) {
@@ -571,7 +640,10 @@
               "</div></td>";
             return;
           }
-          html += "<td class=\"" + colClass(k, freeze, extra) + "\" style=\"" + colStyle(k, colWidths[c], freeze) + "\"><span class=\"cell-text\">" + esc(displayValue(k, row)) + "</span></td>";
+          const cellKey = String(row.order_number || "") + "::" + k;
+          const hasC = !!commentCells[cellKey];
+          const cellExtra = (extra ? extra + " " : "") + "cell-commentable" + (hasC ? " has-comment" : "");
+          html += "<td class=\"" + colClass(k, freeze, cellExtra) + "\" style=\"" + colStyle(k, colWidths[c], freeze) + "\" data-order=\"" + esc(row.order_number) + "\" data-field=\"" + esc(k) + "\" title=\"" + (hasC ? "Open comments" : "Right-click for comment") + "\"><span class=\"cell-text\">" + esc(displayValue(k, row)) + "</span></td>";
         });
         html += "</tr>";
       });
@@ -908,14 +980,18 @@
     }
 
     async function load() {
-      const [ordersRes, dropRes, cardsRes] = await Promise.all([
+      const [ordersRes, dropRes, cardsRes, sumRes, assignRes] = await Promise.all([
         sdOfficeFetch("/api/office/orders"),
         sdOfficeFetch("/api/office/dropdowns"),
-        sdOfficeFetch("/api/office/job-cards")
+        sdOfficeFetch("/api/office/job-cards"),
+        sdOfficeFetch("/api/office/order-comments/summary"),
+        sdOfficeFetch("/api/office/assignees")
       ]);
       const j = await ordersRes.json();
       const d = await dropRes.json();
       const cards = await cardsRes.json().catch(function () { return {}; });
+      const sum = await sumRes.json().catch(function () { return {}; });
+      const assign = await assignRes.json().catch(function () { return {}; });
       if (!j.ok) {
         document.getElementById("status").textContent = j.error || "Could not load orders";
         return;
@@ -929,6 +1005,13 @@
       (cards.ok && cards.rows ? cards.rows : []).forEach((card) => {
         if (card && card.order_number) printedByOrder[card.order_number] = card;
       });
+      commentCells = {};
+      (sum.ok && sum.cells ? sum.cells : []).forEach((cell) => {
+        if (cell && cell.order_number && cell.field) {
+          commentCells[cell.order_number + "::" + cell.field] = cell;
+        }
+      });
+      officeAssignees = assign.ok && assign.rows ? assign.rows.slice() : [];
       if (j.canManageUsers != null) canManage = !!j.canManageUsers;
       const clearBtn = document.getElementById("clearAllBtn");
       if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
@@ -1006,6 +1089,209 @@
     window.closeRemoveOrder = closeRemoveOrder;
     window.confirmRemoveOrder = confirmRemoveOrder;
 
+    function fieldLabel(field) {
+      const hit = HEADERS.find((h) => h[0] === field);
+      return hit ? hit[1] : field;
+    }
+    function hideCellCtx() {
+      const menu = document.getElementById("cellCtx");
+      if (menu) menu.classList.remove("open");
+      ctxTarget = null;
+    }
+    function showCellCtx(x, y, orderNumber, field) {
+      ctxTarget = { order_number: orderNumber, field };
+      const menu = document.getElementById("cellCtx");
+      menu.classList.add("open");
+      const pad = 8;
+      const w = menu.offsetWidth || 160;
+      const h = menu.offsetHeight || 40;
+      let left = x;
+      let top = y;
+      if (left + w > window.innerWidth - pad) left = Math.max(pad, window.innerWidth - w - pad);
+      if (top + h > window.innerHeight - pad) top = Math.max(pad, window.innerHeight - h - pad);
+      menu.style.left = left + "px";
+      menu.style.top = top + "px";
+    }
+    function fillAssigneeSelect(selected) {
+      const el = document.getElementById("commentAssignee");
+      const cur = String(selected || "");
+      const opts = officeAssignees.slice();
+      if (cur && opts.indexOf(cur) === -1) opts.unshift(cur);
+      el.innerHTML = "<option value=\"\">Select person</option>" + opts.map((n) =>
+        "<option value=\"" + esc(n) + "\"" + (n === cur ? " selected" : "") + ">" + esc(n) + "</option>"
+      ).join("");
+    }
+    function formatWhen(iso) {
+      const d = new Date(iso);
+      if (Number.isNaN(d.getTime())) return "";
+      return d.toLocaleString("en-GB", { timeZone: "Africa/Johannesburg", day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    }
+    async function refreshCommentSummary() {
+      const r = await sdOfficeFetch("/api/office/order-comments/summary");
+      const j = await r.json().catch(() => ({}));
+      commentCells = {};
+      (j.ok && j.cells ? j.cells : []).forEach((cell) => {
+        if (cell && cell.order_number && cell.field) {
+          commentCells[cell.order_number + "::" + cell.field] = cell;
+        }
+      });
+      render();
+    }
+    function renderCommentCards(list) {
+      const host = document.getElementById("commentList");
+      if (!list.length) {
+        host.innerHTML = "<p class=\"hint\">No comments on this cell yet.</p>";
+        return;
+      }
+      host.innerHTML = list.map((c) => {
+        const replies = (c.replies || []).map((rp) =>
+          "<div><div class=\"who\">" + esc(rp.by) + " · " + esc(formatWhen(rp.at)) + "</div><div class=\"body\">" + esc(rp.body) + "</div></div>"
+        ).join("");
+        return "<div class=\"comment-card" + (c.resolved ? " resolved" : "") + "\" data-comment-id=\"" + esc(c.id) + "\">" +
+          "<div class=\"who\">" + esc(c.created_by) + " · " + esc(formatWhen(c.created_at)) + (c.resolved ? " · Resolved" : "") + "</div>" +
+          "<div class=\"body\">" + esc(c.body) + "</div>" +
+          "<p class=\"assign\">Assigned to <b>" + esc(c.assignee || "—") + "</b></p>" +
+          (replies ? "<div class=\"comment-replies\">" + replies + "</div>" : "") +
+          (c.resolved
+            ? "<div class=\"comment-actions\"><button type=\"button\" class=\"ghost\" data-reopen=\"" + esc(c.id) + "\">Re-open</button></div>"
+            : "<div class=\"comment-actions\">" +
+              "<button type=\"button\" class=\"ghost\" data-reply=\"" + esc(c.id) + "\">Reply</button>" +
+              "<button type=\"button\" class=\"ghost\" data-reassign=\"" + esc(c.id) + "\">Reassign</button>" +
+              "<button type=\"button\" data-resolve=\"" + esc(c.id) + "\">Resolve</button>" +
+              "</div>") +
+          "</div>";
+      }).join("");
+    }
+    async function openCellComments(orderNumber, field) {
+      hideCellCtx();
+      commentTarget = { order_number: orderNumber, field };
+      document.getElementById("commentErr").textContent = "";
+      document.getElementById("commentComposeErr").textContent = "";
+      document.getElementById("commentBody").value = "";
+      document.getElementById("commentTitle").textContent = fieldLabel(field);
+      const row = rows.find((r) => String(r.order_number) === String(orderNumber));
+      const cellVal = row ? displayValue(field, row) : "";
+      document.getElementById("commentMeta").textContent = orderNumber + (cellVal ? " — " + cellVal : "");
+      fillAssigneeSelect("");
+      document.getElementById("commentMask").classList.add("open");
+      const r = await sdOfficeFetch("/api/office/order-comments?order=" + encodeURIComponent(orderNumber) + "&field=" + encodeURIComponent(field));
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        document.getElementById("commentErr").textContent = j.error || "Could not load comments";
+        renderCommentCards([]);
+        return;
+      }
+      renderCommentCards(j.rows || []);
+    }
+    function closeCellComments() {
+      document.getElementById("commentMask").classList.remove("open");
+      commentTarget = null;
+    }
+    window.closeCellComments = closeCellComments;
+    async function saveCellComment() {
+      const err = document.getElementById("commentComposeErr");
+      err.textContent = "";
+      if (!commentTarget) { err.textContent = "No cell selected."; return; }
+      const body = String(document.getElementById("commentBody").value || "").trim();
+      const assignee = String(document.getElementById("commentAssignee").value || "").trim();
+      if (!assignee) { err.textContent = "Assign this comment to someone."; return; }
+      if (!body) { err.textContent = "Type a comment."; return; }
+      const r = await sdOfficeFetch("/api/office/order-comments", {
+        method: "POST",
+        body: JSON.stringify({
+          order_number: commentTarget.order_number,
+          field: commentTarget.field,
+          body,
+          assignee
+        })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { err.textContent = j.error || "Could not save comment"; return; }
+      document.getElementById("commentBody").value = "";
+      await openCellComments(commentTarget.order_number, commentTarget.field);
+      await refreshCommentSummary();
+    }
+    async function replyToCellComment(id) {
+      const text = window.prompt("Reply");
+      if (text == null) return;
+      const body = String(text || "").trim();
+      if (!body) return;
+      const r = await sdOfficeFetch("/api/office/order-comments/" + encodeURIComponent(id) + "/reply", {
+        method: "POST",
+        body: JSON.stringify({ body })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        document.getElementById("commentErr").textContent = j.error || "Could not reply";
+        return;
+      }
+      if (commentTarget) await openCellComments(commentTarget.order_number, commentTarget.field);
+    }
+    async function resolveCellComment(id) {
+      const r = await sdOfficeFetch("/api/office/order-comments/" + encodeURIComponent(id) + "/resolve", { method: "POST", body: "{}" });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        document.getElementById("commentErr").textContent = j.error || "Could not resolve";
+        return;
+      }
+      if (commentTarget) await openCellComments(commentTarget.order_number, commentTarget.field);
+      await refreshCommentSummary();
+    }
+    async function reopenCellComment(id) {
+      const r = await sdOfficeFetch("/api/office/order-comments/" + encodeURIComponent(id) + "/reopen", { method: "POST", body: "{}" });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        document.getElementById("commentErr").textContent = j.error || "Could not re-open";
+        return;
+      }
+      if (commentTarget) await openCellComments(commentTarget.order_number, commentTarget.field);
+      await refreshCommentSummary();
+    }
+    async function reassignCellComment(id) {
+      if (!officeAssignees.length) {
+        document.getElementById("commentErr").textContent = "No office people to assign.";
+        return;
+      }
+      const next = window.prompt("Assign to", officeAssignees[0] || "");
+      if (next == null) return;
+      const r = await sdOfficeFetch("/api/office/order-comments/" + encodeURIComponent(id) + "/reassign", {
+        method: "POST",
+        body: JSON.stringify({ assignee: next })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        document.getElementById("commentErr").textContent = j.error || "Could not reassign";
+        return;
+      }
+      if (commentTarget) await openCellComments(commentTarget.order_number, commentTarget.field);
+      await refreshCommentSummary();
+    }
+
+    document.getElementById("commentSaveBtn").onclick = () => { saveCellComment(); };
+    document.getElementById("commentList").onclick = (e) => {
+      const reply = e.target.closest("[data-reply]");
+      if (reply) { replyToCellComment(reply.getAttribute("data-reply")); return; }
+      const resolve = e.target.closest("[data-resolve]");
+      if (resolve) { resolveCellComment(resolve.getAttribute("data-resolve")); return; }
+      const reopen = e.target.closest("[data-reopen]");
+      if (reopen) { reopenCellComment(reopen.getAttribute("data-reopen")); return; }
+      const reassign = e.target.closest("[data-reassign]");
+      if (reassign) { reassignCellComment(reassign.getAttribute("data-reassign")); return; }
+    };
+    document.getElementById("cellCtxComment").onclick = () => {
+      if (!ctxTarget) return;
+      openCellComments(ctxTarget.order_number, ctxTarget.field);
+    };
+    document.getElementById("commentMask").addEventListener("click", (e) => {
+      if (e.target.id === "commentMask") closeCellComments();
+    });
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest("#cellCtx")) hideCellCtx();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") hideCellCtx();
+    });
+
     document.getElementById("grid").onclick = (e) => {
       const printed = e.target.closest("[data-open-job-card]");
       if (printed) {
@@ -1032,8 +1318,20 @@
         openForm(Number(edit.getAttribute("data-edit-order")));
         return;
       }
+      const commented = e.target.closest("td.has-comment[data-field]");
+      if (commented) {
+        openCellComments(commented.getAttribute("data-order"), commented.getAttribute("data-field"));
+        return;
+      }
       const tr = e.target.closest("tr[data-i]");
       if (tr) openView(Number(tr.getAttribute("data-i")));
+    };
+    document.getElementById("grid").oncontextmenu = (e) => {
+      const td = e.target.closest("td.cell-commentable[data-field]");
+      if (!td) return;
+      e.preventDefault();
+      e.stopPropagation();
+      showCellCtx(e.clientX, e.clientY, td.getAttribute("data-order"), td.getAttribute("data-field"));
     };
     document.getElementById("openEnquiryBtn").onclick = () => {
       const no = document.getElementById("f_enquiry_no").value;

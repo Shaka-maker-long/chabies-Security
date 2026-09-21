@@ -63,6 +63,7 @@ const orderCorrect = require("./order-correct");
 const floorPlanning = require("./floor-planning");
 const orderLife = require("./order-life");
 const orderDocs = require("./order-docs");
+const orderCellComments = require("./order-cell-comments");
 const fs = require("fs");
 const express = require("express");
 const sqlite = require("./sqlite-store");
@@ -891,6 +892,7 @@ function mountOffice(app) {
       return;
     }
     deleteOrder(num);
+    try { orderCellComments.dropCommentsForOrder(num); } catch (e) {}
     res.json({ ok: true, order_number: num });
   });
 
@@ -907,7 +909,73 @@ function mountOffice(app) {
     try {
       const removed = deleteAllOrders();
       try { jobCard.deleteAllJobCards(); } catch (e) {}
+      try { orderCellComments.dropAllComments(); } catch (e) {}
       res.json({ ok: true, removed, nextOrderNumber: nextStudioOrderNumber() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/order-comments/summary", requireOffice, (_req, res) => {
+    try {
+      res.json({ ok: true, cells: orderCellComments.cellSummary() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/order-comments", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...orderCellComments.listComments(req.query || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/order-comments", requireOffice, (req, res) => {
+    try {
+      const comment = orderCellComments.createComment(req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, comment });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/order-comments/:id/reply", requireOffice, (req, res) => {
+    try {
+      const comment = orderCellComments.replyToComment(req.params.id, req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, comment });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/order-comments/:id/resolve", requireOffice, (req, res) => {
+    try {
+      const comment = orderCellComments.resolveComment(req.params.id, req.office && req.office.name);
+      res.json({ ok: true, comment });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/order-comments/:id/reopen", requireOffice, (req, res) => {
+    try {
+      const comment = orderCellComments.reopenComment(req.params.id, req.office && req.office.name);
+      res.json({ ok: true, comment });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/order-comments/:id/reassign", requireOffice, (req, res) => {
+    try {
+      const comment = orderCellComments.reassignComment(
+        req.params.id,
+        (req.body && req.body.assignee) || "",
+        req.office && req.office.name
+      );
+      res.json({ ok: true, comment });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
