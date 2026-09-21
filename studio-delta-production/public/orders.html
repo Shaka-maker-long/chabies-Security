@@ -101,6 +101,8 @@
     .form-foot { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line); }
     .err { color:var(--bad); font-size:12px; min-height:16px; }
     td.cell-commentable { position:relative; }
+    /* Keep frozen columns sticky — relative must not win over .freeze */
+    td.freeze.cell-commentable { position:sticky; }
     td.has-comment { cursor:pointer; }
     .cell-comment-mark {
       position:absolute; top:0; right:0; width:22px; height:22px; padding:0; margin:0;
