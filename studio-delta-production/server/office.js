@@ -431,13 +431,28 @@ function mountOffice(app) {
     }
   });
 
-  app.post("/api/office/consumables/purchases", requireOffice, (req, res) => {
+  app.post("/api/office/consumables/purchases", requireOffice, async (req, res) => {
     try {
-      const purchase = consumables.createPurchase(req.body || {}, req.office && req.office.name);
+      const purchase = await consumables.createPurchase(req.body || {}, req.office && req.office.name);
       res.json({ ok: true, purchase, ...consumables.snapshot() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
+  });
+
+  app.get("/api/office/consumables/purchases/:id/pdf", requireOffice, (req, res) => {
+    const file = consumables.readPurchasePdf(req.params.id);
+    if (!file) {
+      res.status(404).json({ ok: false, error: "Purchase order PDF not found." });
+      return;
+    }
+    const download = String((req.query && req.query.download) || "") === "1";
+    res.setHeader("Content-Type", file.mime || "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "purchase-order.pdf").replace(/"/g, "") + "\""
+    );
+    res.send(file.buffer);
   });
 
   app.post("/api/office/consumables/purchases/:id/receive", requireOffice, (req, res) => {

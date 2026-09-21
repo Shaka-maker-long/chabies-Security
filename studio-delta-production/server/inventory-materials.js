@@ -89,6 +89,7 @@ function decorate(name, extra, priceFromRate, orderedFromOrders) {
   const unitPrice = extra && extra.unitPrice != null && extra.unitPrice !== ""
     ? Number(extra.unitPrice)
     : (priceFromRate == null ? null : Number(priceFromRate));
+  const totalValue = unitPrice == null ? null : Math.round(stock * unitPrice * 100) / 100;
   const low = minThreshold > 0 && stock <= minThreshold;
   return {
     id: extra && extra.id ? extra.id : "",
@@ -100,7 +101,9 @@ function decorate(name, extra, priceFromRate, orderedFromOrders) {
     minThreshold,
     ropLabel: formatQty(minThreshold),
     unitPrice,
-    priceLabel: unitPrice == null ? "" : formatRand(unitPrice),
+    priceLabel: unitPrice == null ? "—" : formatRand(unitPrice),
+    totalValue,
+    totalValueLabel: totalValue == null ? "—" : formatRand(totalValue),
     low,
     status: low ? "Low" : "OK"
   };

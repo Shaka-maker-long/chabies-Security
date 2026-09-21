@@ -86,7 +86,8 @@ const screw = consumables.upsertItem({
 }, "Office Boss");
 assert.strictEqual(screw.low, true);
 
-const po = consumables.createPurchase({
+(async function purchaseFlow() {
+const po = await consumables.createPurchase({
   supplier: "Wellington Hardware",
   note: "Weekly top-up",
   lines: [
@@ -96,12 +97,19 @@ const po = consumables.createPurchase({
 }, "Office Boss");
 assert.strictEqual(po.status, "Ordered");
 assert.strictEqual(po.lines.length, 2);
+assert.ok(po.number);
+assert.ok(po.hasPdf);
+assert.ok(po.pdfUrl);
+const pdf = consumables.readPurchasePdf(po.id);
+assert.ok(pdf && pdf.buffer && pdf.buffer.length > 100);
 const orderedSnap = consumables.snapshot();
 const orderedHinge = orderedSnap.items.find((row) => row.id === hinge.id);
 assert.strictEqual(orderedHinge.stock, 14, "ordering does not add stock yet");
 assert.strictEqual(orderedHinge.orderedQty, 50);
 assert.strictEqual(orderedHinge.orderedLabel, "50");
 assert.strictEqual(orderedSnap.items.find((row) => row.id === screw.id).orderedQty, 4);
+assert.ok(orderedSnap.activeOrderNumbers);
+assert.ok(Array.isArray(orderedSnap.productionWorkers));
 
 const received = consumables.receivePurchase(po.id, "Shaka");
 assert.strictEqual(received.status, "Received");
@@ -128,7 +136,7 @@ const counted = consumables.countStock({
 }, "Siya");
 assert.strictEqual(counted.stock, 5);
 
-const openPo = consumables.createPurchase({
+const openPo = await consumables.createPurchase({
   lines: [{ itemId: hinge.id, qty: "10" }]
 }, "Office Boss");
 consumables.cancelPurchase(openPo.id, "Office Boss");
@@ -183,8 +191,8 @@ try {
   deleteFailed = /down to 0/i.test(e.message);
 }
 assert.ok(deleteFailed, "cannot delete an item that still has stock");
-
-(async function main() {
+})().then(function () {
+return (async function main() {
   const app = express();
   app.use(express.json({ limit: "2mb" }));
   mountOffice(app);
@@ -223,7 +231,8 @@ assert.ok(deleteFailed, "cannot delete an item that still has stock");
 
   server.close();
   console.log("consumables.test.js ok");
-})().catch((err) => {
+})();
+}).catch((err) => {
   console.error(err);
   process.exit(1);
 });

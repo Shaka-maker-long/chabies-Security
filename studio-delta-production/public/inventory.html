@@ -21,14 +21,13 @@
     button.ghost { background:#fff; color:#1d2939; }
     button.danger { background:#fff; color:var(--bad); border-color:#fecdca; }
     button:disabled { opacity:.55; cursor:not-allowed; }
-    input, select { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
+    input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; }
     .page { padding:18px 16px 48px; max-width:1180px; }
     .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
     .kpi { background:#fff; border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
     .kpi span { display:block; color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
     .kpi b { display:block; margin-top:4px; font-family: Outfit, Inter, sans-serif; font-size:22px; }
     .kpi.alert b { color:var(--bad); }
-    .grid { display:grid; grid-template-columns:1.4fr .9fr; gap:12px; }
     .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:12px; }
     .card h2 { margin:0; padding:14px 16px 0; font-size:16px; }
     .hint { margin:6px 16px 12px; color:var(--muted); font-size:13px; }
@@ -41,7 +40,7 @@
     .add { display:flex; gap:8px; flex-wrap:wrap; align-items:end; padding:12px 16px; border-top:1px solid var(--line); background:#f8fafc; }
     .add label, .stack label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
     .add input, .add select { min-width:120px; }
-    .stack { display:flex; flex-direction:column; gap:10px; padding:0 16px 14px; }
+    .stack { display:flex; flex-direction:column; gap:10px; }
     .row { display:flex; gap:8px; flex-wrap:wrap; align-items:end; }
     .empty { padding:28px 16px; text-align:center; color:var(--muted); }
     .msg { font-size:12px; color:var(--muted); }
@@ -51,12 +50,18 @@
     .pill.low { background:#fee4e2; color:var(--bad); }
     .pill.wait { background:#ffefc6; color:#93370d; }
     .search { min-width:180px; }
-    .low-box { background:#fff8f7; border-color:#fda29b; }
-    .span2 { grid-column:1 / -1; }
+    .low-box { background:#fff8f7; }
     #matList tbody tr { cursor:pointer; }
     #matList tbody tr:hover { background:#f8fafc; }
+    .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
+    .mask.open { display:flex; }
+    .sheet { width:min(560px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:24px auto; }
+    .sheet.wide { width:min(720px, 96vw); }
+    .sheet header { position:static; border-radius:12px 12px 0 0; align-items:flex-start; }
+    .sheet .body { padding:16px; display:flex; flex-direction:column; gap:12px; }
+    .sheet .foot { display:flex; gap:8px; justify-content:flex-end; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line); }
+    .err { color:var(--bad); font-size:12px; min-height:16px; }
     @media (max-width: 900px) {
-      .grid { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
       td.actions { white-space:normal; }
     }
@@ -68,154 +73,71 @@
       <h1>Inventory Management</h1>
       <nav class="tabs" aria-label="Inventory">
         <a id="tab-cons" href="/inventory">Consumables</a>
+        <a id="tab-pos" href="/inventory/purchases">Purchase orders</a>
         <a id="tab-steel" href="/inventory/steel">Steel</a>
         <a id="tab-glass" href="/inventory/glass">Glass</a>
       </nav>
-      <p class="lede" id="lede">Hinges, bullets, screws, stickers, and other hardware. Current stock, ordered stock, ROP, and unit price. Steel and glass have their own tabs. Wood, powder, and backboards stay on To order, Cost, and Paint shop.</p>
+      <p class="lede" id="lede">Hinges, bullets, screws, stickers, and other hardware. Name, current stock, ordered stock, unit price, ROP, and total value.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input class="search" type="search" id="q" placeholder="Search items">
-      <button class="ghost" type="button" onclick="load()">Refresh</button>
+      <button class="ghost" type="button" id="btnLogUsage">Log usage</button>
+      <button type="button" id="btnCreatePo">Create purchase order</button>
+      <button class="ghost" type="button" onclick="reloadPage()">Refresh</button>
     </div>
   </header>
+
   <div class="page" id="consPage">
     <div class="kpis">
       <div class="kpi"><span>Items</span><b id="kpiItems">0</b></div>
       <div class="kpi alert"><span>Low stock</span><b id="kpiLow">0</b></div>
-      <div class="kpi"><span>Open purchases</span><b id="kpiPo">0</b></div>
+      <div class="kpi"><span>Open POs</span><b id="kpiPo">0</b></div>
+      <div class="kpi"><span>Total value</span><b id="kpiValue">R 0.00</b></div>
     </div>
-    <div class="grid">
-      <section class="card" id="lowCard" hidden>
-        <h2>Below ROP</h2>
-        <p class="hint">Stock is at or under the reorder point. Raise a purchase or receive stock.</p>
-        <div id="lowList"></div>
-      </section>
-      <section class="card span2">
-        <h2>On hand</h2>
-        <p class="hint">Name, current stock, ordered stock, ROP (reorder point), and unit price.</p>
-        <div id="itemList"><div class="empty">Loading…</div></div>
-        <form class="add" id="addForm">
-          <label>Item name
-            <input id="itemName" required placeholder="e.g. Bullet hinge" autocomplete="off">
-          </label>
-          <label>Unit
-            <select id="itemUnit"></select>
-          </label>
-          <label>ROP
-            <input id="itemMin" inputmode="decimal" placeholder="e.g. 20" value="0">
-          </label>
-          <label>Unit price (R)
-            <input id="itemPrice" inputmode="decimal" placeholder="optional">
-          </label>
-          <label>Opening stock
-            <input id="itemOpen" inputmode="decimal" placeholder="optional">
-          </label>
-          <button type="submit">Add item</button>
-          <span class="msg" id="addMsg"></span>
-        </form>
-      </section>
-      <section class="card">
-        <h2>Log usage</h2>
-        <p class="hint">Deducts on-hand and writes a usage line with the person logged in. Leave the order blank for general shop use.</p>
-        <form class="stack" id="useForm">
-          <label>Item
-            <select id="useItem" required></select>
-          </label>
-          <div class="row">
-            <label>Quantity
-              <input id="useQty" inputmode="decimal" required>
-            </label>
-            <label>Shop order
-              <input id="useOrder" list="orderList" placeholder="optional" autocomplete="off">
-            </label>
-          </div>
-          <label>Note
-            <input id="useNote" placeholder="optional">
-          </label>
-          <div class="row">
-            <button type="submit">Use stock</button>
-            <span class="msg" id="useMsg"></span>
-          </div>
-        </form>
-      </section>
-      <section class="card">
-        <h2>Receive stock</h2>
-        <p class="hint">Walk-in or already paid. For a supplier list, use Create purchase first, then Receive purchase when the box arrives.</p>
-        <form class="stack" id="recvForm">
-          <label>Item
-            <select id="recvItem" required></select>
-          </label>
-          <div class="row">
-            <label>Quantity
-              <input id="recvQty" inputmode="decimal" required>
-            </label>
-            <label>Supplier
-              <input id="recvSupplier" placeholder="optional">
-            </label>
-          </div>
-          <label>Note
-            <input id="recvNote" placeholder="optional">
-          </label>
-          <div class="row">
-            <button type="submit">Receive</button>
-            <span class="msg" id="recvMsg"></span>
-          </div>
-        </form>
-      </section>
-      <section class="card">
-        <h2>Create purchase</h2>
-        <p class="hint">Marks items Ordered. Stock does not go up until you receive the purchase.</p>
-        <form class="stack" id="poForm">
-          <div class="row">
-            <label>Supplier
-              <input id="poSupplier" placeholder="optional">
-            </label>
-            <label>Note
-              <input id="poNote" placeholder="optional">
-            </label>
-          </div>
-          <div id="poLines"></div>
-          <div class="row">
-            <button class="ghost" type="button" id="addPoLine">Add line</button>
-            <button type="submit">Save as Ordered</button>
-            <span class="msg" id="poMsg"></span>
-          </div>
-        </form>
-      </section>
-      <section class="card">
-        <h2>Count</h2>
-        <p class="hint">Physical stocktake. Set the counted quantity and say why it changed.</p>
-        <form class="stack" id="countForm">
-          <label>Item
-            <select id="countItem" required></select>
-          </label>
-          <div class="row">
-            <label>Counted on hand
-              <input id="countQty" inputmode="decimal" required>
-            </label>
-            <label>Reason
-              <input id="countNote" required placeholder="e.g. Box was short">
-            </label>
-          </div>
-          <div class="row">
-            <button type="submit">Save count</button>
-            <span class="msg" id="countMsg"></span>
-          </div>
-        </form>
-      </section>
-      <section class="card span2" id="openPoCard">
-        <h2>Open purchases</h2>
-        <p class="hint">Receive adds the ordered quantity to on-hand.</p>
-        <div id="openPoList"><div class="empty">No open purchases.</div></div>
-      </section>
-      <section class="card span2">
-        <h2>Usage and receive log</h2>
-        <p class="hint">Timestamp, order, person, item, and quantity.</p>
-        <div id="moveList"><div class="empty">No movements yet.</div></div>
-      </section>
-    </div>
+    <section class="card">
+      <h2>On hand</h2>
+      <p class="hint">Name, Current Stock, Ordered Stock, Unit Price, ROP, Total Value.</p>
+      <div id="itemList"><div class="empty">Loading…</div></div>
+      <form class="add" id="addForm">
+        <label>Item name
+          <input id="itemName" required placeholder="e.g. Bullet hinge" autocomplete="off">
+        </label>
+        <label>Unit
+          <select id="itemUnit"></select>
+        </label>
+        <label>ROP
+          <input id="itemMin" inputmode="decimal" placeholder="e.g. 20" value="0">
+        </label>
+        <label>Unit price (R)
+          <input id="itemPrice" inputmode="decimal" placeholder="optional">
+        </label>
+        <label>Opening stock
+          <input id="itemOpen" inputmode="decimal" placeholder="optional">
+        </label>
+        <button type="submit">Add item</button>
+        <span class="msg" id="addMsg"></span>
+      </form>
+    </section>
+    <section class="card">
+      <h2>Usage and receive log</h2>
+      <p class="hint">Timestamp, type, item, quantity, order, worker.</p>
+      <div id="moveList"><div class="empty">No movements yet.</div></div>
+    </section>
   </div>
+
+  <div class="page" id="poPage" hidden>
+    <div class="kpis">
+      <div class="kpi"><span>All POs</span><b id="poKpiAll">0</b></div>
+      <div class="kpi"><span>Open</span><b id="poKpiOpen">0</b></div>
+    </div>
+    <section class="card">
+      <h2>Purchase orders</h2>
+      <p class="hint">Create a purchase order from Consumables. Open the PDF, receive when stock arrives, or cancel.</p>
+      <div id="poList"><div class="empty">Loading…</div></div>
+    </section>
+  </div>
+
   <div class="page" id="matPage" hidden>
     <div class="kpis">
       <div class="kpi"><span>Items</span><b id="matItems">0</b></div>
@@ -235,22 +157,88 @@
         <label>Ordered
           <input id="matOrdered" inputmode="decimal" placeholder="0">
         </label>
-        <label>ROP
-          <input id="matRop" inputmode="decimal" placeholder="0">
-        </label>
         <label>Unit price (R)
           <input id="matPrice" inputmode="decimal" placeholder="optional">
+        </label>
+        <label>ROP
+          <input id="matRop" inputmode="decimal" placeholder="0">
         </label>
         <button type="submit">Save line</button>
         <span class="msg" id="matMsg"></span>
       </form>
     </section>
   </div>
-  <datalist id="orderList"></datalist>
+
+  <div class="mask" id="useMask">
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="useTitle">
+      <header>
+        <h1 id="useTitle">Log usage</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeUse()">Cancel</button>
+        </div>
+      </header>
+      <form class="body" id="useForm">
+        <label>Order number
+          <select id="useOrder" required></select>
+        </label>
+        <label>Worker
+          <select id="useWorker" required></select>
+        </label>
+        <label>Item
+          <select id="useItem" required></select>
+        </label>
+        <label>Quantity
+          <input id="useQty" inputmode="decimal" required>
+        </label>
+        <label>Note
+          <input id="useNote" placeholder="optional">
+        </label>
+        <p class="err" id="useErr"></p>
+        <div class="foot">
+          <button type="submit">Save usage</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="mask" id="poMask">
+    <div class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="poTitle">
+      <header>
+        <h1 id="poTitle">Create purchase order</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closePo()">Cancel</button>
+        </div>
+      </header>
+      <form class="body" id="poForm">
+        <div class="row">
+          <label style="flex:1">Supplier
+            <input id="poSupplier" placeholder="optional">
+          </label>
+          <label style="flex:1">Note
+            <input id="poNote" placeholder="optional">
+          </label>
+        </div>
+        <div id="poLines"></div>
+        <div class="row">
+          <button class="ghost" type="button" id="addPoLine">Add line</button>
+        </div>
+        <p class="err" id="poErr"></p>
+        <div class="foot">
+          <button type="submit">Generate purchase order</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script src="/office-auth.js?v=drawing-erin-tasks"></script>
   <script>
-    let data = { items: [], movements: [], openPurchases: [], units: [], orderNumbers: [] };
+    let data = { items: [], movements: [], purchases: [], openPurchases: [], units: [], activeOrderNumbers: [], productionWorkers: [] };
     let poLineN = 0;
+    const pathTab = location.pathname.indexOf("/inventory/purchases") === 0 ? "pos"
+      : (location.pathname.indexOf("/inventory/steel") === 0 ? "steel"
+        : (location.pathname.indexOf("/inventory/glass") === 0 ? "glass" : "cons"));
+    const matKind = pathTab === "steel" || pathTab === "glass" ? pathTab : "";
+
     function esc(s) {
       return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
     }
@@ -260,6 +248,9 @@
       el.textContent = text || "";
       el.classList.toggle("bad", !!bad);
     }
+    function q() {
+      return String(document.getElementById("q").value || "").trim().toLowerCase();
+    }
     function itemOptions(selected) {
       const rows = data.items || [];
       if (!rows.length) return "<option value=\"\">Add an item first</option>";
@@ -268,42 +259,27 @@
         esc(row.name) + " (" + esc(row.stockLabel) + " " + esc(row.unit) + ")</option>"
       ).join("");
     }
-    function fillItemSelects(keep) {
-      ["useItem", "recvItem", "countItem"].forEach((id) => {
-        const el = document.getElementById(id);
-        const was = keep && el.value ? el.value : "";
-        el.innerHTML = itemOptions(was);
-      });
-      document.querySelectorAll(".po-item").forEach((el) => {
-        const was = el.value;
-        el.innerHTML = itemOptions(was);
-      });
-    }
     function fillUnits() {
       const el = document.getElementById("itemUnit");
+      if (!el) return;
       el.innerHTML = (data.units || ["pcs"]).map((u) => "<option value=\"" + esc(u) + "\">" + esc(u) + "</option>").join("");
     }
-    function fillOrders() {
-      document.getElementById("orderList").innerHTML = (data.orderNumbers || []).map((n) =>
-        "<option value=\"" + esc(n) + "\">"
+    function fillUseSelects(preItem) {
+      const orders = ["General"].concat(data.activeOrderNumbers || []);
+      document.getElementById("useOrder").innerHTML = orders.map((n) =>
+        "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>"
       ).join("");
-    }
-    function q() {
-      return String(document.getElementById("q").value || "").trim().toLowerCase();
+      const workers = data.productionWorkers || [];
+      document.getElementById("useWorker").innerHTML = workers.length
+        ? ("<option value=\"\">Choose worker</option>" + workers.map((n) =>
+            "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>"
+          ).join(""))
+        : "<option value=\"\">No production people on Users</option>";
+      document.getElementById("useItem").innerHTML = itemOptions(preItem || "");
     }
     function filteredItems() {
       const needle = q();
       return (data.items || []).filter((row) => !needle || String(row.name).toLowerCase().indexOf(needle) !== -1);
-    }
-    function renderLow() {
-      const box = document.getElementById("lowCard");
-      const low = data.low || [];
-      box.hidden = !low.length;
-      document.getElementById("lowList").innerHTML = low.length
-        ? "<table><thead><tr><th>Item</th><th class='r'>On hand</th><th class='r'>Min</th></tr></thead><tbody>" +
-          low.map((row) => "<tr><td>" + esc(row.name) + "</td><td class='r'>" + esc(row.stockLabel) + " " + esc(row.unit) +
-            "</td><td class='r'>" + esc(row.minLabel) + "</td></tr>").join("") + "</tbody></table>"
-        : "";
     }
     function renderItems() {
       const rows = filteredItems();
@@ -316,44 +292,26 @@
         box.innerHTML = '<div class="empty">No items match that search.</div>';
         return;
       }
-      box.innerHTML = "<table><thead><tr><th>Name</th><th class='r'>Current stock</th><th class='r'>Ordered stock</th><th class='r'>ROP</th><th class='r'>Unit price</th><th></th></tr></thead><tbody>" +
+      box.innerHTML = "<table><thead><tr>" +
+        "<th>Name</th><th class='r'>Current Stock</th><th class='r'>Ordered Stock</th>" +
+        "<th class='r'>Unit Price</th><th class='r'>ROP</th><th class='r'>Total Value</th><th></th>" +
+        "</tr></thead><tbody>" +
         rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\"><td>" + esc(row.name) +
           "</td><td class='r'>" + esc(row.stockLabel) +
           "</td><td class='r'>" + esc(row.orderedLabel) +
-          "</td><td class='r'>" + esc(row.ropLabel) +
           "</td><td class='r'>" + esc(row.priceLabel) +
+          "</td><td class='r'>" + esc(row.ropLabel) +
+          "</td><td class='r'>" + esc(row.totalValueLabel) +
           "</td><td class='actions'>" +
           "<button class='ghost' type='button' data-use=\"" + esc(row.id) + "\">Use</button>" +
-          "<button class='ghost' type='button' data-recv=\"" + esc(row.id) + "\">Receive</button>" +
           "<button class='ghost' type='button' data-edit=\"" + esc(row.id) + "\">Edit</button>" +
           "<button class='danger' type='button' data-del=\"" + esc(row.id) + "\">Delete</button>" +
           "</td></tr>").join("") + "</tbody></table>";
       box.querySelectorAll("[data-use]").forEach((btn) => {
-        btn.onclick = () => { document.getElementById("useItem").value = btn.getAttribute("data-use"); document.getElementById("useQty").focus(); };
-      });
-      box.querySelectorAll("[data-recv]").forEach((btn) => {
-        btn.onclick = () => { document.getElementById("recvItem").value = btn.getAttribute("data-recv"); document.getElementById("recvQty").focus(); };
+        btn.onclick = () => openUse(btn.getAttribute("data-use"));
       });
       box.querySelectorAll("[data-edit]").forEach((btn) => { btn.onclick = () => editMin(btn.getAttribute("data-edit")); });
       box.querySelectorAll("[data-del]").forEach((btn) => { btn.onclick = () => removeItem(btn.getAttribute("data-del")); });
-    }
-    function renderPurchases() {
-      const rows = data.openPurchases || [];
-      const box = document.getElementById("openPoList");
-      if (!rows.length) {
-        box.innerHTML = '<div class="empty">No open purchases.</div>';
-        return;
-      }
-      box.innerHTML = rows.map((po) => {
-        const lines = (po.lines || []).map((line) => esc(line.itemName) + " × " + esc(line.qtyLabel)).join("; ");
-        return "<table><thead><tr><th>When</th><th>Supplier</th><th>Items</th><th>Status</th><th></th></tr></thead><tbody><tr>" +
-          "<td>" + esc(po.whenLabel) + "</td><td>" + esc(po.supplier || po.employee) + "</td><td>" + lines +
-          "</td><td><span class='pill wait'>" + esc(po.status) + "</span></td>" +
-          "<td class='actions'><button type='button' data-recv-po=\"" + esc(po.id) + "\">Receive purchase</button>" +
-          "<button class='danger' type='button' data-cancel-po=\"" + esc(po.id) + "\">Cancel</button></td></tr></tbody></table>";
-      }).join("");
-      box.querySelectorAll("[data-recv-po]").forEach((btn) => { btn.onclick = () => receivePo(btn.getAttribute("data-recv-po")); });
-      box.querySelectorAll("[data-cancel-po]").forEach((btn) => { btn.onclick = () => cancelPo(btn.getAttribute("data-cancel-po")); });
     }
     function renderMoves() {
       const rows = data.movements || [];
@@ -362,16 +320,54 @@
         box.innerHTML = '<div class="empty">No movements yet.</div>';
         return;
       }
-      box.innerHTML = "<table><thead><tr><th>When</th><th>Type</th><th>Item</th><th class='r'>Qty</th><th>Order</th><th>Person</th><th>Note</th></tr></thead><tbody>" +
+      box.innerHTML = "<table><thead><tr><th>When</th><th>Type</th><th>Item</th><th class='r'>Qty</th><th>Order</th><th>Worker</th><th>Note</th></tr></thead><tbody>" +
         rows.map((row) => "<tr><td>" + esc(row.whenLabel) + "</td><td>" + esc(row.typeLabel) + "</td><td>" + esc(row.itemName) +
           "</td><td class='r'>" + esc(row.qtyLabel) + "</td><td>" + esc(row.orderNumber || "—") +
           "</td><td>" + esc(row.employee) + "</td><td>" + esc(row.note) + "</td></tr>").join("") + "</tbody></table>";
     }
-    function addPoLine() {
+    function renderPurchases() {
+      const rows = data.purchases || [];
+      const box = document.getElementById("poList");
+      document.getElementById("poKpiAll").textContent = String(rows.length);
+      document.getElementById("poKpiOpen").textContent = String(data.openPurchaseCount || 0);
+      if (!rows.length) {
+        box.innerHTML = '<div class="empty">No purchase orders yet. Create one from Consumables.</div>';
+        return;
+      }
+      const needle = q();
+      const filtered = rows.filter((po) => {
+        if (!needle) return true;
+        const blob = [po.number, po.supplier, po.status, po.note].concat((po.lines || []).map((l) => l.itemName)).join(" ").toLowerCase();
+        return blob.indexOf(needle) !== -1;
+      });
+      if (!filtered.length) {
+        box.innerHTML = '<div class="empty">No purchase orders match that search.</div>';
+        return;
+      }
+      box.innerHTML = "<table><thead><tr><th>PO</th><th>When</th><th>Supplier</th><th>Items</th><th class='r'>Total</th><th>Status</th><th></th></tr></thead><tbody>" +
+        filtered.map((po) => {
+          const lines = (po.lines || []).map((line) => esc(line.itemName) + " × " + esc(line.qtyLabel)).join("; ");
+          const pill = po.status === "Ordered" ? "wait" : (po.status === "Received" ? "ok" : "low");
+          return "<tr><td>" + esc(po.number) + "</td><td>" + esc(po.whenLabel) + "</td><td>" + esc(po.supplier || "—") +
+            "</td><td>" + lines + "</td><td class='r'>" + esc(po.totalValueLabel) +
+            "</td><td><span class='pill " + pill + "'>" + esc(po.status) + "</span></td>" +
+            "<td class='actions'>" +
+            (po.pdfUrl ? "<button class='ghost' type='button' data-pdf=\"" + esc(po.pdfUrl) + "\">Open PDF</button>" : "") +
+            (po.status === "Ordered" ? "<button type='button' data-recv-po=\"" + esc(po.id) + "\">Receive</button>" +
+              "<button class='danger' type='button' data-cancel-po=\"" + esc(po.id) + "\">Cancel</button>" : "") +
+            "</td></tr>";
+        }).join("") + "</tbody></table>";
+      box.querySelectorAll("[data-pdf]").forEach((btn) => {
+        btn.onclick = () => window.open(btn.getAttribute("data-pdf"), "_blank", "noopener");
+      });
+      box.querySelectorAll("[data-recv-po]").forEach((btn) => { btn.onclick = () => receivePo(btn.getAttribute("data-recv-po")); });
+      box.querySelectorAll("[data-cancel-po]").forEach((btn) => { btn.onclick = () => cancelPo(btn.getAttribute("data-cancel-po")); });
+    }
+    function addPoLine(selected) {
       poLineN += 1;
       const wrap = document.createElement("div");
       wrap.className = "row po-line";
-      wrap.innerHTML = "<label>Item<select class='po-item' required>" + itemOptions("") + "</select></label>" +
+      wrap.innerHTML = "<label style='flex:1.4'>Item<select class='po-item' required>" + itemOptions(selected || "") + "</select></label>" +
         "<label>Qty<input class='po-qty' inputmode='decimal' required></label>" +
         "<button class='ghost' type='button'>Remove</button>";
       wrap.querySelector("button").onclick = () => wrap.remove();
@@ -382,14 +378,11 @@
       document.getElementById("kpiItems").textContent = String(j.itemCount || 0);
       document.getElementById("kpiLow").textContent = String(j.lowCount || 0);
       document.getElementById("kpiPo").textContent = String(j.openPurchaseCount || 0);
+      document.getElementById("kpiValue").textContent = j.totalValueLabel || "R 0.00";
       fillUnits();
-      fillOrders();
-      fillItemSelects(true);
-      renderLow();
       renderItems();
-      renderPurchases();
       renderMoves();
-      if (!document.querySelector(".po-line")) addPoLine();
+      renderPurchases();
     }
     async function load() {
       setMsg("status", "Loading…");
@@ -399,6 +392,29 @@
       applySnapshot(j);
       setMsg("status", (j.itemCount || 0) + " item" + ((j.itemCount || 0) === 1 ? "" : "s"));
     }
+    function openUse(itemId) {
+      fillUseSelects(itemId || "");
+      document.getElementById("useQty").value = "";
+      document.getElementById("useNote").value = "";
+      document.getElementById("useErr").textContent = "";
+      document.getElementById("useMask").classList.add("open");
+    }
+    function closeUse() {
+      document.getElementById("useMask").classList.remove("open");
+    }
+    function openPo() {
+      document.getElementById("poSupplier").value = "";
+      document.getElementById("poNote").value = "";
+      document.getElementById("poErr").textContent = "";
+      document.getElementById("poLines").innerHTML = "";
+      addPoLine("");
+      document.getElementById("poMask").classList.add("open");
+    }
+    function closePo() {
+      document.getElementById("poMask").classList.remove("open");
+    }
+    window.closeUse = closeUse;
+    window.closePo = closePo;
     async function editMin(id) {
       const row = (data.items || []).find((item) => item.id === id);
       if (!row) return;
@@ -441,6 +457,12 @@
       applySnapshot(j);
       setMsg("status", "Purchase cancelled.");
     }
+    document.getElementById("btnLogUsage").onclick = () => openUse("");
+    document.getElementById("btnCreatePo").onclick = () => openPo();
+    document.getElementById("addPoLine").onclick = () => addPoLine("");
+    document.getElementById("useMask").addEventListener("click", (e) => { if (e.target.id === "useMask") closeUse(); });
+    document.getElementById("poMask").addEventListener("click", (e) => { if (e.target.id === "poMask") closePo(); });
+
     document.getElementById("addForm").onsubmit = async (e) => {
       e.preventDefault();
       setMsg("addMsg", "Saving…");
@@ -465,62 +487,28 @@
     };
     document.getElementById("useForm").onsubmit = async (e) => {
       e.preventDefault();
-      setMsg("useMsg", "Saving…");
+      const err = document.getElementById("useErr");
+      err.textContent = "";
       const r = await sdOfficeFetch("/api/office/consumables/use", {
         method: "POST",
         body: JSON.stringify({
           itemId: document.getElementById("useItem").value,
           qty: document.getElementById("useQty").value,
           orderNumber: document.getElementById("useOrder").value,
+          worker: document.getElementById("useWorker").value,
           note: document.getElementById("useNote").value
         })
       });
       const j = await r.json();
-      if (!j.ok) { setMsg("useMsg", j.error || "Could not use", true); return; }
-      document.getElementById("useQty").value = "";
-      document.getElementById("useNote").value = "";
+      if (!j.ok) { err.textContent = j.error || "Could not use"; return; }
+      closeUse();
       applySnapshot(j);
-      setMsg("useMsg", "Used " + (j.item && j.item.name ? j.item.name : "stock") + ".");
-    };
-    document.getElementById("recvForm").onsubmit = async (e) => {
-      e.preventDefault();
-      setMsg("recvMsg", "Saving…");
-      const r = await sdOfficeFetch("/api/office/consumables/receive", {
-        method: "POST",
-        body: JSON.stringify({
-          itemId: document.getElementById("recvItem").value,
-          qty: document.getElementById("recvQty").value,
-          supplier: document.getElementById("recvSupplier").value,
-          note: document.getElementById("recvNote").value
-        })
-      });
-      const j = await r.json();
-      if (!j.ok) { setMsg("recvMsg", j.error || "Could not receive", true); return; }
-      document.getElementById("recvQty").value = "";
-      document.getElementById("recvNote").value = "";
-      applySnapshot(j);
-      setMsg("recvMsg", "Received " + (j.item && j.item.name ? j.item.name : "stock") + ".");
-    };
-    document.getElementById("countForm").onsubmit = async (e) => {
-      e.preventDefault();
-      setMsg("countMsg", "Saving…");
-      const r = await sdOfficeFetch("/api/office/consumables/count", {
-        method: "POST",
-        body: JSON.stringify({
-          itemId: document.getElementById("countItem").value,
-          stock: document.getElementById("countQty").value,
-          note: document.getElementById("countNote").value
-        })
-      });
-      const j = await r.json();
-      if (!j.ok) { setMsg("countMsg", j.error || "Could not count", true); return; }
-      document.getElementById("countQty").value = "";
-      document.getElementById("countNote").value = "";
-      applySnapshot(j);
-      setMsg("countMsg", "Counted " + (j.item && j.item.name ? j.item.name : "stock") + ".");
+      setMsg("status", "Used " + (j.item && j.item.name ? j.item.name : "stock") + ".");
     };
     document.getElementById("poForm").onsubmit = async (e) => {
       e.preventDefault();
+      const err = document.getElementById("poErr");
+      err.textContent = "";
       const lines = [];
       document.querySelectorAll(".po-line").forEach((row) => {
         lines.push({
@@ -528,7 +516,6 @@
           qty: row.querySelector(".po-qty").value
         });
       });
-      setMsg("poMsg", "Saving…");
       const r = await sdOfficeFetch("/api/office/consumables/purchases", {
         method: "POST",
         body: JSON.stringify({
@@ -538,32 +525,41 @@
         })
       });
       const j = await r.json();
-      if (!j.ok) { setMsg("poMsg", j.error || "Could not save", true); return; }
-      document.getElementById("poSupplier").value = "";
-      document.getElementById("poNote").value = "";
-      document.getElementById("poLines").innerHTML = "";
+      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      closePo();
       applySnapshot(j);
-      setMsg("poMsg", "Saved as Ordered.");
+      setMsg("status", "Purchase order " + ((j.purchase && j.purchase.number) || "") + " created.");
+      if (j.purchase && j.purchase.pdfUrl) {
+        window.open(j.purchase.pdfUrl, "_blank", "noopener");
+      }
+      if (pathTab !== "pos") location.href = "/inventory/purchases";
     };
-    document.getElementById("addPoLine").onclick = () => addPoLine();
-    document.getElementById("q").oninput = () => { renderItems(); renderMat(); };
-    const tab = location.pathname.indexOf("/inventory/steel") === 0 ? "steel" : (location.pathname.indexOf("/inventory/glass") === 0 ? "glass" : "cons");
-    const matKind = tab === "steel" || tab === "glass" ? tab : "";
-    document.getElementById("tab-cons").classList.toggle("on", tab === "cons");
-    document.getElementById("tab-steel").classList.toggle("on", tab === "steel");
-    document.getElementById("tab-glass").classList.toggle("on", tab === "glass");
-    document.getElementById("consPage").hidden = tab !== "cons";
+
+    document.getElementById("tab-cons").classList.toggle("on", pathTab === "cons");
+    document.getElementById("tab-pos").classList.toggle("on", pathTab === "pos");
+    document.getElementById("tab-steel").classList.toggle("on", pathTab === "steel");
+    document.getElementById("tab-glass").classList.toggle("on", pathTab === "glass");
+    document.getElementById("consPage").hidden = pathTab !== "cons";
+    document.getElementById("poPage").hidden = pathTab !== "pos";
     document.getElementById("matPage").hidden = !matKind;
-    if (tab === "steel") {
-      document.getElementById("lede").textContent = "Steel profiles from Cost rates and Steel_Profiles. Set current stock, ordered stock, ROP, and unit price here. Usage at cutting still writes Steel_Usage.";
+    document.getElementById("btnLogUsage").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
+    document.getElementById("btnCreatePo").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
+
+    if (pathTab === "pos") {
+      document.getElementById("lede").textContent = "Consumables purchase orders. Open the PDF, receive stock when the order arrives, or cancel.";
+      document.getElementById("q").placeholder = "Search purchase orders";
+    }
+    if (pathTab === "steel") {
+      document.getElementById("lede").textContent = "Steel profiles from Cost rates and Steel_Profiles. Name, current stock, ordered stock, unit price, ROP, total value.";
       document.getElementById("matTitle").textContent = "Steel";
-      document.getElementById("matHint").textContent = "Name, current stock, ordered stock, ROP, unit price (from the steel rate per metre unless you type another price).";
+      document.getElementById("matHint").textContent = "Name, Current Stock, Ordered Stock, Unit Price, ROP, Total Value.";
     }
-    if (tab === "glass") {
-      document.getElementById("lede").textContent = "Glass types from Glass rates. Ordered stock is outstanding To order / purchase-order quantity. Receive and purchase orders stay on To order.";
+    if (pathTab === "glass") {
+      document.getElementById("lede").textContent = "Glass types from Glass rates. Ordered stock follows outstanding To order quantity unless you type another figure.";
       document.getElementById("matTitle").textContent = "Glass";
-      document.getElementById("matHint").textContent = "Name, current stock, ordered stock, ROP, unit price (from the glass rate per m² unless you type another price).";
+      document.getElementById("matHint").textContent = "Name, Current Stock, Ordered Stock, Unit Price, ROP, Total Value.";
     }
+
     let matData = { items: [] };
     function filteredMat() {
       const needle = q();
@@ -590,12 +586,13 @@
         box.innerHTML = '<div class="empty">No items match that search.</div>';
         return;
       }
-      box.innerHTML = "<table><thead><tr><th>Name</th><th class='r'>Current stock</th><th class='r'>Ordered stock</th><th class='r'>ROP</th><th class='r'>Unit price</th></tr></thead><tbody>" +
+      box.innerHTML = "<table><thead><tr><th>Name</th><th class='r'>Current Stock</th><th class='r'>Ordered Stock</th><th class='r'>Unit Price</th><th class='r'>ROP</th><th class='r'>Total Value</th></tr></thead><tbody>" +
         rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-name=\"" + esc(row.name) + "\"><td>" + esc(row.name) +
           "</td><td class='r'>" + esc(row.stockLabel) +
           "</td><td class='r'>" + esc(row.orderedLabel) +
+          "</td><td class='r'>" + esc(row.priceLabel) +
           "</td><td class='r'>" + esc(row.ropLabel) +
-          "</td><td class='r'>" + esc(row.priceLabel) + "</td></tr>").join("") + "</tbody></table>";
+          "</td><td class='r'>" + esc(row.totalValueLabel || "—") + "</td></tr>").join("") + "</tbody></table>";
       box.querySelectorAll("tbody tr").forEach((tr) => {
         tr.onclick = () => {
           const row = (matData.items || []).find((item) => item.name === tr.getAttribute("data-name"));
@@ -634,7 +631,21 @@
       if (saved) fillMat(saved);
       setMsg("matMsg", "Saved.");
     };
-    sdRequireOffice("inventory").then((p) => { if (p) { if (matKind) loadMat(); else load(); } });
+    document.getElementById("q").oninput = () => {
+      if (matKind) renderMat();
+      else if (pathTab === "pos") renderPurchases();
+      else renderItems();
+    };
+    function reloadPage() {
+      if (matKind) loadMat();
+      else load();
+    }
+    window.reloadPage = reloadPage;
+    sdRequireOffice("inventory").then((p) => {
+      if (!p) return;
+      if (matKind) loadMat();
+      else load();
+    });
   </script>
 </body>
 </html>
