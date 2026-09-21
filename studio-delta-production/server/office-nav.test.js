@@ -538,6 +538,7 @@ assert.ok(ordersHtml.indexOf("method: \"DELETE\"") !== -1);
 assert.ok(ordersHtml.indexOf("cell-commentable") !== -1, "Orders cells support comments");
 assert.ok(ordersHtml.indexOf("/api/office/order-comments") !== -1);
 assert.ok(ordersHtml.indexOf("cellCtxComment") !== -1);
+assert.ok(ordersHtml.indexOf("data-open-comments") !== -1, "orange mark opens comments");
 assert.ok(officeJs.indexOf("orderCellComments") !== -1);
 assert.ok(officeJs.indexOf("/api/office/order-comments") !== -1);
 assert.ok(officeJs.indexOf("dropCommentsForOrder") !== -1);

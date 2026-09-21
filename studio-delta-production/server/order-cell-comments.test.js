@@ -161,6 +161,7 @@ db.upsertOrder({
   assert.ok(ordersHtml.indexOf("cell-commentable") !== -1);
   assert.ok(ordersHtml.indexOf("order-comments") !== -1);
   assert.ok(ordersHtml.indexOf("cellCtxComment") !== -1);
+  assert.ok(ordersHtml.indexOf("data-open-comments") !== -1);
   assert.ok(ordersHtml.indexOf("Assign to") !== -1);
 
   server.close();

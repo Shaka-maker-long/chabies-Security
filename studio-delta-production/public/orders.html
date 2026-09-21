@@ -101,12 +101,16 @@
     .form-foot { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line); }
     .err { color:var(--bad); font-size:12px; min-height:16px; }
     td.cell-commentable { position:relative; }
-    td.has-comment::after {
-      content:""; position:absolute; top:0; right:0;
-      border:6px solid transparent; border-top-color:#f79009; border-right-color:#f79009;
-      pointer-events:none;
+    td.has-comment { cursor:pointer; }
+    .cell-comment-mark {
+      position:absolute; top:0; right:0; width:14px; height:14px; padding:0; margin:0;
+      border:0; border-radius:0; background:transparent; cursor:pointer; z-index:2;
     }
-    td.has-comment { cursor:context-menu; }
+    .cell-comment-mark::before {
+      content:""; position:absolute; top:0; right:0;
+      border:7px solid transparent; border-top-color:#f79009; border-right-color:#f79009;
+    }
+    .cell-comment-mark:hover::before { border-top-color:#dc6803; border-right-color:#dc6803; }
     .cell-ctx {
       position:fixed; z-index:50; min-width:160px; background:#fff; border:1px solid var(--line);
       border-radius:8px; box-shadow:0 8px 24px rgba(16,24,40,.16); padding:4px; display:none;
@@ -643,7 +647,9 @@
           const cellKey = String(row.order_number || "") + "::" + k;
           const hasC = !!commentCells[cellKey];
           const cellExtra = (extra ? extra + " " : "") + "cell-commentable" + (hasC ? " has-comment" : "");
-          html += "<td class=\"" + colClass(k, freeze, cellExtra) + "\" style=\"" + colStyle(k, colWidths[c], freeze) + "\" data-order=\"" + esc(row.order_number) + "\" data-field=\"" + esc(k) + "\" title=\"" + (hasC ? "Open comments" : "Right-click for comment") + "\"><span class=\"cell-text\">" + esc(displayValue(k, row)) + "</span></td>";
+          html += "<td class=\"" + colClass(k, freeze, cellExtra) + "\" style=\"" + colStyle(k, colWidths[c], freeze) + "\" data-order=\"" + esc(row.order_number) + "\" data-field=\"" + esc(k) + "\" title=\"" + (hasC ? "Open comments" : "Right-click for comment") + "\"><span class=\"cell-text\">" + esc(displayValue(k, row)) + "</span>" +
+            (hasC ? "<button type=\"button\" class=\"cell-comment-mark\" title=\"Open comments\" aria-label=\"Open comments\" data-open-comments=\"" + esc(row.order_number) + "\" data-comment-field=\"" + esc(k) + "\"></button>" : "") +
+            "</td>";
         });
         html += "</tr>";
       });
@@ -1318,8 +1324,17 @@
         openForm(Number(edit.getAttribute("data-edit-order")));
         return;
       }
+      const openC = e.target.closest("[data-open-comments]");
+      if (openC) {
+        e.preventDefault();
+        e.stopPropagation();
+        openCellComments(openC.getAttribute("data-open-comments"), openC.getAttribute("data-comment-field"));
+        return;
+      }
       const commented = e.target.closest("td.has-comment[data-field]");
       if (commented) {
+        e.preventDefault();
+        e.stopPropagation();
         openCellComments(commented.getAttribute("data-order"), commented.getAttribute("data-field"));
         return;
       }
