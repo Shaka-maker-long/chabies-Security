@@ -103,12 +103,12 @@
     td.cell-commentable { position:relative; }
     td.has-comment { cursor:pointer; }
     .cell-comment-mark {
-      position:absolute; top:0; right:0; width:14px; height:14px; padding:0; margin:0;
+      position:absolute; top:0; right:0; width:22px; height:22px; padding:0; margin:0;
       border:0; border-radius:0; background:transparent; cursor:pointer; z-index:2;
     }
     .cell-comment-mark::before {
       content:""; position:absolute; top:0; right:0;
-      border:7px solid transparent; border-top-color:#f79009; border-right-color:#f79009;
+      border:8px solid transparent; border-top-color:#f79009; border-right-color:#f79009;
     }
     .cell-comment-mark:hover::before { border-top-color:#dc6803; border-right-color:#dc6803; }
     .cell-ctx {
@@ -1194,6 +1194,7 @@
       commentTarget = null;
     }
     window.closeCellComments = closeCellComments;
+    window.openCellComments = openCellComments;
     async function saveCellComment() {
       const err = document.getElementById("commentComposeErr");
       err.textContent = "";
