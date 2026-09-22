@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta</title>
   <script src="/sd-pwa.js?v=pwa"></script>
+  <script src="/ar-measure.js?v=ar-measure"></script>
   
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700&family=Playfair+Display:wght@400;600;700&display=swap" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -6155,16 +6156,52 @@
 
       if (qcKey === 'Quality Control') {
         document.getElementById('qcChecklistContainer').innerHTML += glassWoodOrderHtml();
+        document.getElementById('qcChecklistContainer').innerHTML +=
+          '<div id="qcArMeasureSection" class="mt-4 pt-3 border-top">' +
+          '<label class="fw-bold mb-1">Overall size check (phone AR)</label>' +
+          '<p class="small text-muted mb-2">On phones that support AR, measure the unit height and width and compare to the order. This is a check — use a tape when unsure.</p>' +
+          '<div class="row g-2 align-items-end">' +
+          '<div class="col-6"><input id="qcOverallHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Measured height mm">' +
+          '<button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure(\'qcOverallHeight\',\'overall height\')">Measure height</button></div>' +
+          '<div class="col-6"><input id="qcOverallWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Measured width mm">' +
+          '<button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure(\'qcOverallWidth\',\'overall width\')">Measure width</button></div>' +
+          '</div>' +
+          '<p class="small mt-2 mb-0" id="qcArCompareNote"></p>' +
+          '</div>';
+      }
+
+      if (qcKey === 'Final QC') {
+        document.getElementById('qcChecklistContainer').innerHTML +=
+          '<div id="qcArMeasureSection" class="mt-4 pt-3 border-top">' +
+          '<label class="fw-bold mb-1">Overall size check (phone AR)</label>' +
+          '<p class="small text-muted mb-2">Measure the finished unit on a supported phone, or type tape sizes. Optional — helps catch wrong sizes before delivery.</p>' +
+          '<div class="row g-2 align-items-end">' +
+          '<div class="col-6"><input id="qcOverallHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Measured height mm">' +
+          '<button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure(\'qcOverallHeight\',\'overall height\')">Measure height</button></div>' +
+          '<div class="col-6"><input id="qcOverallWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Measured width mm">' +
+          '<button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure(\'qcOverallWidth\',\'overall width\')">Measure width</button></div>' +
+          '</div>' +
+          '<p class="small mt-2 mb-0" id="qcArCompareNote"></p>' +
+          '</div>';
       }
 
       document.getElementById('qcOrderNum').innerText = ord;
       const qcOrder = (appData.currentOrders || []).find(o => o.rowIndex === row) || {};
+      session.qcOrderForAr = qcOrder;
       const varBox = document.getElementById('qcVariationBox');
       if (varBox) {
         varBox.innerHTML = '<div><strong>Variation</strong></div><div>' + (qcOrder.variation || '—') + '</div>' +
+          (qcOrder.dimensions ? '<div class="mt-2"><strong>Dimensions</strong><div>' + String(qcOrder.dimensions) + '</div></div>' : '') +
           (qcOrder.description ? '<div class="mt-2"><strong>Description</strong><div>' + renderMarkedDescription(qcOrder.description) + '</div></div>' : '');
       }
       paintPowderColourOnQc(qcOrder);
+      try {
+        const oh = document.getElementById("qcOverallHeight");
+        const ow = document.getElementById("qcOverallWidth");
+        if (oh) oh.addEventListener("input", updateQcArCompare);
+        if (ow) ow.addEventListener("input", updateQcArCompare);
+        updateQcArCompare();
+      } catch (e) {}
       
       // 5. PHOTO INPUTS
       const reqPhotos = PHOTO_REQS[qcKey]; 
@@ -6318,6 +6355,62 @@
       if (labelEl) labelEl.textContent = colour;
       session.pendingPowderColour = powderColorFromOrder(order) || "";
     }
+    function openQcArMeasure(fieldId, label) {
+      if (typeof sdOpenArMeasure !== "function") {
+        showAlert("AR measure is not loaded on this page. Type the millimetres by hand.");
+        return;
+      }
+      sdOpenArMeasure({
+        label: label || "edge",
+        onResult: function (mm) {
+          const el = document.getElementById(fieldId);
+          if (el) {
+            el.value = String(mm);
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+          }
+          try { scheduleQcDraft(); } catch (e) {}
+          updateQcArCompare();
+        }
+      });
+    }
+
+    function parseOrderDimsMm(raw) {
+      const s = String(raw || "");
+      const nums = s.match(/\d+(?:[.,]\d+)?/g);
+      if (!nums || !nums.length) return null;
+      const vals = nums.map((n) => Math.round(Number(String(n).replace(",", ".")))).filter((n) => n > 0);
+      if (!vals.length) return null;
+      return { h: vals[0] || null, w: vals[1] || null, d: vals[2] || null, raw: s };
+    }
+
+    function updateQcArCompare() {
+      const note = document.getElementById("qcArCompareNote");
+      if (!note) return;
+      const h = Number((document.getElementById("qcOverallHeight") || {}).value);
+      const w = Number((document.getElementById("qcOverallWidth") || {}).value);
+      const order = session && session.qcOrderForAr ? session.qcOrderForAr : {};
+      const expected = parseOrderDimsMm(order.dimensions);
+      if (!expected || (!h && !w)) {
+        note.textContent = expected ? ("Order sheet: " + expected.raw) : "";
+        note.className = "small mt-2 mb-0 text-muted";
+        return;
+      }
+      const bits = [];
+      const tol = 15;
+      if (h && expected.h) {
+        const diff = Math.abs(h - expected.h);
+        bits.push("H " + h + " vs " + expected.h + " (Δ " + diff + " mm)" + (diff > tol ? " — check" : " — ok"));
+      }
+      if (w && expected.w) {
+        const diff = Math.abs(w - expected.w);
+        bits.push("W " + w + " vs " + expected.w + " (Δ " + diff + " mm)" + (diff > tol ? " — check" : " — ok"));
+      }
+      const bad = bits.some((b) => b.indexOf("check") !== -1);
+      note.textContent = bits.join(" · ") || ("Order sheet: " + expected.raw);
+      note.className = "small mt-2 mb-0 " + (bad ? "text-danger fw-bold" : "text-success");
+    }
+
     function glassWoodOrderHtml() {
       return `
         <div id="powderColourSection" class="mt-4 pt-3 border-top">
@@ -6350,8 +6443,14 @@
               <div class="col-6 col-md-3"><select id="glassType" class="form-select form-select-sm border-dark"><option value="">Glass type</option><option value="Reeded">Reeded</option><option value="Clear">Clear</option><option value="Ocean view">Ocean view</option><option value="__custom__">+ Add another glass</option></select></div>
               <div class="col-12 col-md-3 d-none" id="glassTypeCustomWrap"><input id="glassTypeCustom" class="form-control form-control-sm" placeholder="New glass type"></div>
               <div class="col-6 col-md-2">${glassWoodSelect('glassThickness', ['4mm','6mm','8mm','10mm'], 'Thickness')}</div>
-              <div class="col-6 col-md-2"><input id="glassHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm"></div>
-              <div class="col-6 col-md-2"><input id="glassWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm"></div>
+              <div class="col-6 col-md-2">
+                <input id="glassHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm">
+                <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure('glassHeight','glass height')">Measure H</button>
+              </div>
+              <div class="col-6 col-md-2">
+                <input id="glassWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm">
+                <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure('glassWidth','glass width')">Measure W</button>
+              </div>
               <div class="col-6 col-md-1"><input id="glassQty" class="form-control form-control-sm" type="number" min="1" step="1" value="1" placeholder="Qty"></div>
               <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-dark w-100" onclick="addGlassOrderLine()">Add glass</button></div>
             </div>
@@ -6370,8 +6469,14 @@
               <div class="col-6 col-md-3"><select id="woodTypeSaved" class="form-select form-select-sm border-dark" onchange="onWoodTypeSaved()"><option value="">Wood type</option></select></div>
               <div class="col-12 col-md-3"><input id="woodTypeInput" class="form-control form-control-sm" placeholder="Wood type"></div>
               <div class="col-6 col-md-2">${glassWoodSelect('woodThickness', ['16mm','20mm','25mm'], 'Thickness')}</div>
-              <div class="col-6 col-md-2"><input id="woodHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm"></div>
-              <div class="col-6 col-md-2"><input id="woodWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm"></div>
+              <div class="col-6 col-md-2">
+                <input id="woodHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm">
+                <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure('woodHeight','wood height')">Measure H</button>
+              </div>
+              <div class="col-6 col-md-2">
+                <input id="woodWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm">
+                <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure('woodWidth','wood width')">Measure W</button>
+              </div>
               <div class="col-6 col-md-1"><input id="woodQty" class="form-control form-control-sm" type="number" min="1" step="1" value="1" placeholder="Qty"></div>
               <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-dark w-100" onclick="addWoodOrderLine()">Add wood</button></div>
             </div>

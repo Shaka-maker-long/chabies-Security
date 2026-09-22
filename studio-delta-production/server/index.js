@@ -270,6 +270,9 @@ app.get("/sd-pwa.js", (_req, res) => {
   noStore(res);
   res.type("application/javascript").sendFile(path.join(publicDir, "sd-pwa.js"));
 });
+app.get("/ar-measure.js", (_req, res) => {
+  res.type("application/javascript").sendFile(path.join(publicDir, "ar-measure.js"));
+});
 app.get("/manifest.webmanifest", (_req, res) => {
   res.set("Cache-Control", "no-store, max-age=0");
   res.type("application/manifest+json").sendFile(path.join(publicDir, "manifest.webmanifest"));
