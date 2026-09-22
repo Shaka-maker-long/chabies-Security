@@ -1,8 +1,8 @@
 /**
- * Phone AR edge measure for Studio Delta QC (WebXR hit-test).
- * Tap two points on a real edge → length in millimetres.
- * Works best on Android Chrome with ARCore. iPhone Safari support is limited;
- * unsupported phones get a clear tape/manual fallback.
+ * Overall-size measure for Studio Delta QC.
+ * Default: bright tape/manual entry (never a black screen).
+ * Optional WebXR AR on Android Chrome + ARCore only — iPhone skips AR
+ * because Safari often opens a black camera session.
  */
 (function (global) {
   "use strict";
@@ -23,8 +23,14 @@
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
   }
 
+  function isAppleMobile() {
+    const ua = String((global.navigator && navigator.userAgent) || "");
+    return /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  }
+
   async function isArMeasureSupported() {
     try {
+      if (isAppleMobile()) return { ok: false, reason: "ios" };
       if (!global.isSecureContext) return { ok: false, reason: "https" };
       if (!navigator.xr || typeof navigator.xr.isSessionSupported !== "function") {
         return { ok: false, reason: "no-xr" };
@@ -46,25 +52,28 @@
     el.innerHTML =
       '<div class="sd-ar-sheet" role="dialog" aria-modal="true" aria-labelledby="sdArTitle">' +
       '  <header class="sd-ar-head">' +
-      '    <div><h2 id="sdArTitle">Measure with phone</h2>' +
-      '    <p class="sd-ar-hint" id="sdArHint">Tap two ends of the edge you are measuring.</p></div>' +
+      '    <div><h2 id="sdArTitle">Measure overall size</h2>' +
+      '    <p class="sd-ar-hint" id="sdArHint">Type the tape size in millimetres.</p></div>' +
       '    <button type="button" class="sd-ar-x" id="sdArClose" aria-label="Close">Close</button>' +
       "  </header>" +
-      '  <div class="sd-ar-stage">' +
+      '  <div class="sd-ar-body" id="sdArBody">' +
+      '    <p class="sd-ar-lead" id="sdArFallbackText"></p>' +
+      '    <label class="sd-ar-label">Millimetres' +
+      '      <input id="sdArManual" inputmode="numeric" type="number" min="1" step="1" placeholder="e.g. 1200">' +
+      "    </label>" +
+      '    <button type="button" class="sd-ar-primary" id="sdArManualUse">Use this size</button>' +
+      '    <button type="button" class="sd-ar-secondary" id="sdArTryCam" hidden>Try AR camera</button>' +
+      '    <p class="sd-ar-note" id="sdArNote"></p>' +
+      "  </div>" +
+      '  <div class="sd-ar-stage" id="sdArStage" hidden>' +
       '    <canvas id="sdArCanvas"></canvas>' +
       '    <div class="sd-ar-readout" id="sdArReadout">—</div>' +
       '    <p class="sd-ar-status" id="sdArStatus"></p>' +
-      "  </div>" +
-      '  <div class="sd-ar-foot">' +
-      '    <button type="button" class="sd-ar-ghost" id="sdArReset">Reset points</button>' +
-      '    <button type="button" class="sd-ar-primary" id="sdArUse" disabled>Use measurement</button>' +
-      "  </div>" +
-      '  <div class="sd-ar-fallback" id="sdArFallback" hidden>' +
-      "    <p id=\"sdArFallbackText\"></p>" +
-      '    <label>Type millimetres' +
-      '      <input id="sdArManual" inputmode="numeric" type="number" min="1" step="1" placeholder="e.g. 1200">' +
-      "    </label>" +
-      '    <button type="button" class="sd-ar-primary" id="sdArManualUse">Use typed size</button>' +
+      '    <div class="sd-ar-foot">' +
+      '      <button type="button" class="sd-ar-ghost" id="sdArBack">Back</button>' +
+      '      <button type="button" class="sd-ar-ghost" id="sdArReset">Reset</button>' +
+      '      <button type="button" class="sd-ar-primary" id="sdArUse" disabled>Use measurement</button>' +
+      "    </div>" +
       "  </div>" +
       "</div>";
     document.body.appendChild(el);
@@ -72,26 +81,32 @@
       const style = document.createElement("style");
       style.id = "sdArMeasureStyles";
       style.textContent =
-        ".sd-ar-mask{position:fixed;inset:0;z-index:2000;background:#0c0a09;color:#fafaf9;display:flex;flex-direction:column}" +
+        ".sd-ar-mask{position:fixed;inset:0;z-index:2000;background:#f8fafc;color:#1d2939;display:flex;flex-direction:column}" +
         ".sd-ar-mask[hidden]{display:none!important}" +
-        ".sd-ar-sheet{flex:1;display:flex;flex-direction:column;min-height:0}" +
-        ".sd-ar-head{display:flex;gap:12px;align-items:flex-start;padding:14px 16px;border-bottom:1px solid #292524}" +
+        ".sd-ar-sheet{flex:1;display:flex;flex-direction:column;min-height:0;max-width:560px;width:100%;margin:0 auto}" +
+        ".sd-ar-head{display:flex;gap:12px;align-items:flex-start;padding:16px;border-bottom:1px solid #d0d5dd;background:#fff}" +
         ".sd-ar-head h2{margin:0;font-size:18px;font-weight:700}" +
-        ".sd-ar-hint{margin:4px 0 0;color:#a8a29e;font-size:13px}" +
-        ".sd-ar-x{margin-left:auto;border:1px solid #44403c;background:#1c1917;color:#fff;border-radius:8px;padding:10px 14px;font-weight:600;min-height:44px}" +
-        ".sd-ar-stage{position:relative;flex:1;min-height:220px;background:#000}" +
-        ".sd-ar-stage canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}" +
-        ".sd-ar-readout{position:absolute;left:50%;top:18%;transform:translate(-50%,-50%);font-size:42px;font-weight:800;letter-spacing:.02em;text-shadow:0 2px 12px #000;pointer-events:none}" +
-        ".sd-ar-status{position:absolute;left:16px;right:16px;bottom:16px;margin:0;font-size:14px;color:#e7e5e4;text-shadow:0 1px 8px #000;pointer-events:none}" +
-        ".sd-ar-foot{display:flex;gap:8px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));border-top:1px solid #292524;background:#1c1917}" +
-        ".sd-ar-foot button{flex:1;min-height:48px;border-radius:10px;font-weight:700;font-size:15px}" +
-        ".sd-ar-primary{border:0;background:#fafaf9;color:#1c1917}" +
+        ".sd-ar-hint{margin:4px 0 0;color:#667085;font-size:13px}" +
+        ".sd-ar-x{margin-left:auto;border:1px solid #d0d5dd;background:#fff;color:#1d2939;border-radius:8px;padding:10px 14px;font-weight:600;min-height:44px}" +
+        ".sd-ar-body{padding:20px 16px;display:flex;flex-direction:column;gap:14px;background:#f8fafc;flex:1}" +
+        ".sd-ar-body[hidden]{display:none!important}" +
+        ".sd-ar-lead{margin:0;font-size:15px;line-height:1.45;color:#344054}" +
+        ".sd-ar-label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#667085}" +
+        ".sd-ar-label input{min-height:52px;border-radius:10px;border:1px solid #d0d5dd;background:#fff;color:#1d2939;padding:12px;font-size:18px}" +
+        ".sd-ar-primary,.sd-ar-secondary,.sd-ar-ghost{min-height:48px;border-radius:10px;font-weight:700;font-size:15px;padding:12px 16px}" +
+        ".sd-ar-primary{border:0;background:#1d2939;color:#fff}" +
         ".sd-ar-primary:disabled{opacity:.45}" +
-        ".sd-ar-ghost{border:1px solid #57534e;background:transparent;color:#fafaf9}" +
-        ".sd-ar-fallback{padding:16px;display:flex;flex-direction:column;gap:12px}" +
-        ".sd-ar-fallback[hidden]{display:none!important}" +
-        ".sd-ar-fallback label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#a8a29e}" +
-        ".sd-ar-fallback input{min-height:48px;border-radius:10px;border:1px solid #44403c;background:#0c0a09;color:#fff;padding:12px;font-size:16px}";
+        ".sd-ar-secondary{border:1px solid #1d2939;background:#fff;color:#1d2939}" +
+        ".sd-ar-secondary[hidden]{display:none!important}" +
+        ".sd-ar-note{margin:0;font-size:12px;color:#667085;line-height:1.4}" +
+        ".sd-ar-stage{position:relative;flex:1;min-height:280px;background:#111;color:#fff;display:flex;flex-direction:column}" +
+        ".sd-ar-stage[hidden]{display:none!important}" +
+        ".sd-ar-stage canvas{position:absolute;inset:0 0 72px 0;width:100%;height:calc(100% - 72px);touch-action:none}" +
+        ".sd-ar-readout{position:absolute;left:50%;top:16%;transform:translate(-50%,-50%);font-size:40px;font-weight:800;text-shadow:0 2px 12px #000;pointer-events:none}" +
+        ".sd-ar-status{position:absolute;left:16px;right:16px;bottom:84px;margin:0;font-size:14px;text-shadow:0 1px 8px #000;pointer-events:none}" +
+        ".sd-ar-foot{margin-top:auto;display:flex;gap:8px;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:#1c1917;position:relative;z-index:2}" +
+        ".sd-ar-foot button{flex:1}" +
+        ".sd-ar-ghost{border:1px solid #57534e;background:transparent;color:#fafaf9}";
       document.head.appendChild(style);
     }
     return el;
@@ -100,6 +115,27 @@
   function setText(id, text) {
     const el = document.getElementById(id);
     if (el) el.textContent = text;
+  }
+
+  function showManual(mask, label, support) {
+    const body = document.getElementById("sdArBody");
+    const stage = document.getElementById("sdArStage");
+    const tryCam = document.getElementById("sdArTryCam");
+    if (body) body.hidden = false;
+    if (stage) stage.hidden = true;
+    setText("sdArTitle", "Measure " + label);
+    setText("sdArHint", "Type the tape reading in millimetres.");
+    let why = "Use a tape measure, type the size, then Use this size.";
+    if (support && support.reason === "ios") {
+      why = "iPhone cannot run this in-app AR measure reliably (black camera). Use a tape, type millimetres below.";
+    } else if (support && support.reason === "https") {
+      why = "AR camera needs https. This preview may be http on your phone — use a tape and type millimetres below.";
+    } else if (support && !support.ok) {
+      why = "AR camera is not available on this phone/browser. Use a tape and type millimetres below.";
+    }
+    setText("sdArFallbackText", why);
+    setText("sdArNote", "AR is optional. Tape is the source of truth when sizes are tight.");
+    if (tryCam) tryCam.hidden = !(support && support.ok);
   }
 
   async function openArMeasure(opts) {
@@ -111,9 +147,10 @@
     const useBtn = document.getElementById("sdArUse");
     const resetBtn = document.getElementById("sdArReset");
     const closeBtn = document.getElementById("sdArClose");
-    const fallback = document.getElementById("sdArFallback");
-    const stage = mask.querySelector(".sd-ar-stage");
-    const foot = mask.querySelector(".sd-ar-foot");
+    const backBtn = document.getElementById("sdArBack");
+    const tryCam = document.getElementById("sdArTryCam");
+    const body = document.getElementById("sdArBody");
+    const stage = document.getElementById("sdArStage");
     const manual = document.getElementById("sdArManual");
     const manualUse = document.getElementById("sdArManualUse");
 
@@ -122,16 +159,12 @@
     let refSpace = null;
     let viewerSpace = null;
     let hitTestSource = null;
-    let xrLayer = null;
     let points = [];
     let latestMm = 0;
     let closed = false;
-    let raf = 0;
 
     function cleanup() {
       closed = true;
-      if (raf) cancelAnimationFrame(raf);
-      raf = 0;
       try {
         if (hitTestSource && hitTestSource.cancel) hitTestSource.cancel();
       } catch (e) {}
@@ -158,19 +191,147 @@
       }
     }
 
+    async function stopArAndShowManual(support) {
+      try {
+        if (hitTestSource && hitTestSource.cancel) hitTestSource.cancel();
+      } catch (e) {}
+      hitTestSource = null;
+      try {
+        if (session) await session.end();
+      } catch (e) {}
+      session = null;
+      showManual(mask, label, support || { ok: false, reason: "fallback" });
+    }
+
+    async function startArCamera() {
+      if (body) body.hidden = true;
+      if (stage) stage.hidden = false;
+      setText("sdArStatus", "Starting camera…");
+      setText("sdArReadout", "—");
+      latestMm = 0;
+      points = [];
+      useBtn.disabled = true;
+
+      try {
+        gl = canvas.getContext("webgl", { xrCompatible: true, alpha: true });
+        if (!gl) throw new Error("WebGL not available");
+
+        // Prefer session without DOM overlay — overlay often paints a black sheet over the camera.
+        session = await navigator.xr.requestSession("immersive-ar", {
+          requiredFeatures: ["hit-test"],
+          optionalFeatures: ["local", "local-floor", "dom-overlay"],
+          domOverlay: { root: mask }
+        }).catch(() =>
+          navigator.xr.requestSession("immersive-ar", {
+            requiredFeatures: ["hit-test"],
+            optionalFeatures: ["local", "local-floor"]
+          })
+        );
+
+        const layer = new XRWebGLLayer(session, gl, { alpha: true });
+        await session.updateRenderState({ baseLayer: layer });
+        refSpace = await session.requestReferenceSpace("local").catch(() => session.requestReferenceSpace("local-floor"));
+        viewerSpace = await session.requestReferenceSpace("viewer");
+        if (!session.requestHitTestSource) throw new Error("Hit-test unavailable");
+        hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+
+        setText("sdArStatus", "Tap the first end of the " + label + ".");
+
+        session.addEventListener("end", () => {
+          if (!closed && stage && !stage.hidden) {
+            showManual(mask, label, { ok: false, reason: "ended" });
+          }
+        });
+
+        session.addEventListener("select", (ev) => {
+          try {
+            const frame = ev.frame;
+            if (!frame || !hitTestSource) return;
+            const hits = frame.getHitTestResults(hitTestSource);
+            if (!hits || !hits.length) {
+              setText("sdArStatus", "No surface found — aim at the item and tap again.");
+              return;
+            }
+            const pose = hits[0].getPose(refSpace);
+            if (!pose) return;
+            const p = {
+              x: pose.transform.position.x,
+              y: pose.transform.position.y,
+              z: pose.transform.position.z
+            };
+            if (points.length >= 2) points = [];
+            points.push(p);
+            if (points.length === 1) {
+              latestMm = 0;
+              updateReadout();
+              setText("sdArStatus", "First point set. Tap the other end.");
+              return;
+            }
+            latestMm = roundMm(distMeters(points[0], points[1]));
+            updateReadout();
+            setText("sdArStatus", "Measured " + latestMm + " mm. Use measurement, or Reset.");
+          } catch (err) {
+            setText("sdArStatus", "Could not place that point. Try again.");
+          }
+        });
+
+        let frames = 0;
+        const onXRFrame = (_time, frame) => {
+          if (closed || !session) return;
+          session.requestAnimationFrame(onXRFrame);
+          frames += 1;
+          const base = session.renderState.baseLayer;
+          if (!base) return;
+          gl.bindFramebuffer(gl.FRAMEBUFFER, base.framebuffer);
+          // Transparent clear so the XR camera feed stays visible.
+          gl.clearColor(0, 0, 0, 0);
+          gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+          if (points.length === 1 && hitTestSource) {
+            const hits = frame.getHitTestResults(hitTestSource);
+            if (hits && hits.length) {
+              const pose = hits[0].getPose(refSpace);
+              if (pose) {
+                const live = roundMm(
+                  distMeters(points[0], {
+                    x: pose.transform.position.x,
+                    y: pose.transform.position.y,
+                    z: pose.transform.position.z
+                  })
+                );
+                setText("sdArReadout", live + " mm");
+              }
+            }
+          }
+        };
+        session.requestAnimationFrame(onXRFrame);
+
+        // If still black / no useful frames, bounce to manual after a short wait.
+        setTimeout(() => {
+          if (closed || !session) return;
+          if (frames < 5) {
+            stopArAndShowManual({ ok: false, reason: "no-frames" });
+            setText("sdArFallbackText", "AR camera did not start on this phone. Type the tape size in millimetres.");
+          }
+        }, 2500);
+
+        return true;
+      } catch (e) {
+        await stopArAndShowManual({ ok: false, reason: "error" });
+        setText(
+          "sdArFallbackText",
+          "Could not start AR (" + ((e && e.message) || "unsupported") + "). Type the tape size below."
+        );
+        return false;
+      }
+    }
+
     mask.hidden = false;
-    fallback.hidden = true;
-    if (stage) stage.hidden = false;
-    if (foot) foot.hidden = false;
-    setText("sdArTitle", "Measure " + label);
-    setText("sdArHint", "Tap the first end, then the second end of the " + label + ".");
-    setText("sdArStatus", "Starting camera…");
+    if (manual) manual.value = "";
     latestMm = 0;
     points = [];
-    updateReadout();
-    if (manual) manual.value = "";
 
     closeBtn.onclick = () => cleanup();
+    backBtn.onclick = () => stopArAndShowManual(lastSupport);
     resetBtn.onclick = () => {
       points = [];
       latestMm = 0;
@@ -189,134 +350,18 @@
       finishMm(n);
     };
 
-    const support = await isArMeasureSupported();
-    if (!support.ok) {
-      if (stage) stage.hidden = true;
-      if (foot) foot.hidden = true;
-      fallback.hidden = false;
-      const why =
-        support.reason === "https"
-          ? "AR measure needs a secure (https) page."
-          : "This phone browser cannot run in-app AR measure (needs ARCore Chrome on Android, or a browser with WebXR AR).";
-      setText(
-        "sdArFallbackText",
-        why + " Use a tape, type the millimetres below, then Use typed size. Results from AR are a check — tape wins when unsure."
-      );
-      return { mode: "manual" };
-    }
+    const lastSupport = await isArMeasureSupported();
+    showManual(mask, label, lastSupport);
+    tryCam.onclick = () => startArCamera();
 
-    try {
-      gl = canvas.getContext("webgl", { xrCompatible: true });
-      if (!gl) throw new Error("WebGL not available");
-      session = await navigator.xr.requestSession("immersive-ar", {
-        requiredFeatures: ["hit-test", "local", "dom-overlay"],
-        optionalFeatures: ["dom-overlay"],
-        domOverlay: { root: mask }
-      }).catch(async () => {
-        // Older stacks may refuse dom-overlay — retry without it.
-        return navigator.xr.requestSession("immersive-ar", {
-          requiredFeatures: ["hit-test"],
-          optionalFeatures: ["local", "local-floor"]
-        });
-      });
-
-      xrLayer = new XRWebGLLayer(session, gl);
-      await session.updateRenderState({ baseLayer: xrLayer });
-      refSpace = await session.requestReferenceSpace("local").catch(() => session.requestReferenceSpace("local-floor"));
-      viewerSpace = await session.requestReferenceSpace("viewer");
-      if (session.requestHitTestSource) {
-        hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
-      } else {
-        throw new Error("Hit-test is not available on this device.");
-      }
-
-      setText("sdArStatus", "Tap the first end of the " + label + ".");
-
-      session.addEventListener("end", () => {
-        if (!closed) cleanup();
-      });
-
-      session.addEventListener("select", (ev) => {
-        try {
-          const frame = ev.frame;
-          if (!frame || !hitTestSource) return;
-          const hits = frame.getHitTestResults(hitTestSource);
-          if (!hits || !hits.length) {
-            setText("sdArStatus", "No surface found — aim at the item and tap again.");
-            return;
-          }
-          const pose = hits[0].getPose(refSpace);
-          if (!pose) return;
-          const p = {
-            x: pose.transform.position.x,
-            y: pose.transform.position.y,
-            z: pose.transform.position.z
-          };
-          if (points.length >= 2) points = [];
-          points.push(p);
-          if (points.length === 1) {
-            latestMm = 0;
-            updateReadout();
-            setText("sdArStatus", "First point set. Tap the other end of the " + label + ".");
-            return;
-          }
-          latestMm = roundMm(distMeters(points[0], points[1]));
-          updateReadout();
-          setText(
-            "sdArStatus",
-            "Measured " +
-              latestMm +
-              " mm. Use measurement, or Reset to try again. Allow a few mm tolerance — tape wins if tight."
-          );
-        } catch (err) {
-          setText("sdArStatus", "Could not place that point. Try again.");
-        }
-      });
-
-      const onXRFrame = (_time, frame) => {
-        if (closed || !session) return;
-        session.requestAnimationFrame(onXRFrame);
-        const layer = session.renderState.baseLayer;
-        if (!layer) return;
-        gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-        // Keep session alive; camera feed is composited by the XR runtime.
-        if (points.length === 1 && hitTestSource) {
-          const hits = frame.getHitTestResults(hitTestSource);
-          if (hits && hits.length) {
-            const pose = hits[0].getPose(refSpace);
-            if (pose) {
-              const live = roundMm(
-                distMeters(points[0], {
-                  x: pose.transform.position.x,
-                  y: pose.transform.position.y,
-                  z: pose.transform.position.z
-                })
-              );
-              setText("sdArReadout", live + " mm");
-            }
-          }
-        }
-      };
-      session.requestAnimationFrame(onXRFrame);
-      return { mode: "webxr" };
-    } catch (e) {
-      if (stage) stage.hidden = true;
-      if (foot) foot.hidden = true;
-      fallback.hidden = false;
-      setText(
-        "sdArFallbackText",
-        "Could not start AR (" +
-          ((e && e.message) || "unsupported") +
-          "). Use a tape and type millimetres below."
-      );
+    // Auto-focus the input so the phone keyboard is ready.
+    setTimeout(() => {
       try {
-        if (session) session.end();
-      } catch (err) {}
-      session = null;
-      return { mode: "manual" };
-    }
+        if (manual) manual.focus();
+      } catch (e) {}
+    }, 50);
+
+    return { mode: lastSupport.ok ? "manual-with-ar" : "manual" };
   }
 
   global.sdArMeasureSupported = isArMeasureSupported;
