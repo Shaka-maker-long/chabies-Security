@@ -539,6 +539,28 @@ assert.strictEqual(helderberg.rows.length, 1);
 assert.strictEqual(helderberg.rows[0].order_number, "S260247");
 assert.strictEqual(helderberg.rows[0].product, "Helderberg Gate");
 assert.ok(!db.listOrders().some((o) => o.order_number === "S260247 B"), "Design Fee must not become unit B");
+
+const origIsFee = fromEnquiry.isFeeLine;
+fromEnquiry.isFeeLine = () => false;
+db.upsertOrder({
+  order_number: "S260247 B",
+  quote_number: "SOQ2910",
+  status: "Not Yet Started",
+  type: "Custom",
+  category: "Fee",
+  product: "Design Fee",
+  client_name: "Helderberg Build and Paint Pty Ltd",
+  price_incl_vat: "350.00",
+  amount_paid: "0"
+});
+fromEnquiry.isFeeLine = origIsFee;
+assert.ok(db.listOrders().some((o) => o.order_number === "S260247 B"));
+const purgedFees = db.purgeFeeOrders();
+assert.ok(purgedFees.removed >= 1);
+assert.ok(purgedFees.orderNumbers.indexOf("S260247 B") !== -1);
+assert.ok(!db.listOrders().some((o) => o.order_number === "S260247 B"), "purge removes Design Fee from Orders");
+assert.ok(db.listOrders().some((o) => o.order_number === "S260247"), "shop unit stays");
+
 assert.strictEqual(one.delivery.scheduleCode, "LC");
 const capeItems = db.listDeliveryItems().items.filter((it) => it.order_number === "S260200");
 assert.strictEqual(capeItems.length, 1);

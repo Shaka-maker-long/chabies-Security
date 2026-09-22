@@ -486,6 +486,9 @@ function upsertOrder(row) {
   for (const f of ORDER_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]);
   payload.quote_number = formatOrderId(payload.quote_number);
   payload.order_number = orderNumber;
+  if (fromEnquiry.isFeeLine(payload)) {
+    throw new Error("Fee lines (including Design Fee) stay on the enquiry. They are not saved on Orders.");
+  }
   if (isSheetError(payload.source)) payload.source = "";
   const existingOrders = listOrders();
   const existing = existingOrders.find((o) => o.order_number === orderNumber);
@@ -533,6 +536,38 @@ function deleteOrder(orderNumber) {
   deleteScheduleForOrder(orderNumber, false);
   try { require("./floor-planning").unscheduleOrder(orderNumber); } catch (e) {}
   save();
+}
+
+/** Remove Design Fee / Fee category rows that should never sit on Orders. */
+function purgeFeeOrders() {
+  const sheet = ordersSheet();
+  const { idx, lastCol } = ensureOrderHeaders(sheet);
+  const last = sheet.getLastRow();
+  if (last < 2) return { removed: 0, orderNumbers: [] };
+  const grid = sheet.getRange(2, 1, last - 1, lastCol).getValues();
+  const doomed = [];
+  for (let i = 0; i < grid.length; i++) {
+    const row = rowToOrder(grid[i], idx, i + 2);
+    if (!String(row.order_number || "").trim()) continue;
+    if (!fromEnquiry.isFeeLine(row)) continue;
+    doomed.push({ rowNum: i + 2, order_number: formatOrderId(row.order_number) });
+  }
+  doomed.sort((a, b) => b.rowNum - a.rowNum);
+  const orderNumbers = [];
+  doomed.forEach((item) => {
+    sheet.deleteRow(item.rowNum);
+    orderNumbers.push(item.order_number);
+    removeProofsForOrder(item.order_number);
+    if (state.paymentsByOrder) delete state.paymentsByOrder[item.order_number];
+    deleteScheduleForOrder(item.order_number, false);
+    try { require("./floor-planning").unscheduleOrder(item.order_number); } catch (e) {}
+    try { require("./order-cell-comments").dropCommentsForOrder(item.order_number); } catch (e) {}
+  });
+  if (orderNumbers.length) {
+    persistWorkbook();
+    save();
+  }
+  return { removed: orderNumbers.length, orderNumbers };
 }
 
 function scheduleFieldsFromOrder(order, sortOrder, previous) {
@@ -2992,6 +3027,7 @@ module.exports = {
   listOrders,
   upsertOrder,
   deleteOrder,
+  purgeFeeOrders,
   listSchedule,
   listDeliveryItems,
   upsertScheduleRow,

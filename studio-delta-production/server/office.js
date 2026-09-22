@@ -4,6 +4,7 @@ const {
   listOrders,
   upsertOrder,
   deleteOrder,
+  purgeFeeOrders,
   listSchedule,
   listDeliveryItems,
   upsertScheduleRow,
@@ -713,6 +714,7 @@ function mountOffice(app) {
 
   app.get("/api/office/orders", requireOffice, (_req, res) => {
     try { require("./in-progress-status").reconcile(); } catch (e) {}
+    try { purgeFeeOrders(); } catch (e) {}
     const noPlates = require("./no-plates");
     const rows = orderCorrect.annotateOrders(listOrders().map((o) => {
       const copy = decorateMoney(o);
@@ -1030,6 +1032,7 @@ function mountOffice(app) {
   });
 
   app.get("/api/office/orders/dashboard", requireOffice, (req, res) => {
+    try { purgeFeeOrders(); } catch (e) {}
     try {
       res.json({ ok: true, ...require("./order-dashboard").buildDashboard(req.query || {}) });
     } catch (e) {
@@ -1607,6 +1610,7 @@ function mountOffice(app) {
   });
 
   app.get("/api/office/debtors", requireOffice, requireDebtors, (_req, res) => {
+    try { purgeFeeOrders(); } catch (e) {}
     res.json({ ok: true, rows: listDebtors(), vatRate: VAT_RATE });
   });
 

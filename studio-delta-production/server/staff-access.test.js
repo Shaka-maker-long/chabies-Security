@@ -430,7 +430,7 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const seedOrderJson = await seedOrder.json();
   assert.ok(seedOrderJson.ok, JSON.stringify(seedOrderJson));
 
-  const feeRow = await fetch(base + "/api/office/orders", {
+  const feeRefused = await fetch(base + "/api/office/orders", {
     method: "PUT",
     headers: { "Content-Type": "application/json", "x-sd-token": mgr.token },
     body: JSON.stringify({
@@ -443,7 +443,24 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
       amount_paid: "0"
     })
   });
-  assert.ok((await feeRow.json()).ok);
+  const feeRefusedJson = await feeRefused.json();
+  assert.strictEqual(feeRefused.status, 400);
+  assert.ok(/fee/i.test(feeRefusedJson.error || ""), JSON.stringify(feeRefusedJson));
+
+  const unitB = await fetch(base + "/api/office/orders", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", "x-sd-token": mgr.token },
+    body: JSON.stringify({
+      order_number: "S260247 B",
+      client_name: "Helderberg",
+      status: "Not Yet Started",
+      product: "Helderberg Gate leaf B",
+      category: "Gate",
+      price_incl_vat: "350.00",
+      amount_paid: "0"
+    })
+  });
+  assert.ok((await unitB.json()).ok);
   const gateRow = await fetch(base + "/api/office/orders", {
     method: "PUT",
     headers: { "Content-Type": "application/json", "x-sd-token": mgr.token },
