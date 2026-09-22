@@ -6443,14 +6443,8 @@
               <div class="col-6 col-md-3"><select id="glassType" class="form-select form-select-sm border-dark"><option value="">Glass type</option><option value="Reeded">Reeded</option><option value="Clear">Clear</option><option value="Ocean view">Ocean view</option><option value="__custom__">+ Add another glass</option></select></div>
               <div class="col-12 col-md-3 d-none" id="glassTypeCustomWrap"><input id="glassTypeCustom" class="form-control form-control-sm" placeholder="New glass type"></div>
               <div class="col-6 col-md-2">${glassWoodSelect('glassThickness', ['4mm','6mm','8mm','10mm'], 'Thickness')}</div>
-              <div class="col-6 col-md-2">
-                <input id="glassHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm">
-                <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure('glassHeight','glass height')">Measure H</button>
-              </div>
-              <div class="col-6 col-md-2">
-                <input id="glassWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm">
-                <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure('glassWidth','glass width')">Measure W</button>
-              </div>
+              <div class="col-6 col-md-2"><input id="glassHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm"></div>
+              <div class="col-6 col-md-2"><input id="glassWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm"></div>
               <div class="col-6 col-md-1"><input id="glassQty" class="form-control form-control-sm" type="number" min="1" step="1" value="1" placeholder="Qty"></div>
               <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-dark w-100" onclick="addGlassOrderLine()">Add glass</button></div>
             </div>
@@ -6469,14 +6463,8 @@
               <div class="col-6 col-md-3"><select id="woodTypeSaved" class="form-select form-select-sm border-dark" onchange="onWoodTypeSaved()"><option value="">Wood type</option></select></div>
               <div class="col-12 col-md-3"><input id="woodTypeInput" class="form-control form-control-sm" placeholder="Wood type"></div>
               <div class="col-6 col-md-2">${glassWoodSelect('woodThickness', ['16mm','20mm','25mm'], 'Thickness')}</div>
-              <div class="col-6 col-md-2">
-                <input id="woodHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm">
-                <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure('woodHeight','wood height')">Measure H</button>
-              </div>
-              <div class="col-6 col-md-2">
-                <input id="woodWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm">
-                <button type="button" class="btn btn-sm btn-outline-dark w-100 mt-1" onclick="openQcArMeasure('woodWidth','wood width')">Measure W</button>
-              </div>
+              <div class="col-6 col-md-2"><input id="woodHeight" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Height mm"></div>
+              <div class="col-6 col-md-2"><input id="woodWidth" class="form-control form-control-sm" type="number" min="1" step="1" placeholder="Width mm"></div>
               <div class="col-6 col-md-1"><input id="woodQty" class="form-control form-control-sm" type="number" min="1" step="1" value="1" placeholder="Qty"></div>
               <div class="col-12 col-md-2"><button type="button" class="btn btn-sm btn-dark w-100" onclick="addWoodOrderLine()">Add wood</button></div>
             </div>
