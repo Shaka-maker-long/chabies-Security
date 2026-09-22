@@ -3,7 +3,7 @@ const CACHE = "sd-pwa-v13";
 const PRECACHE = [
   "/offline.html",
   "/manifest.webmanifest",
-  "/sd-pwa.js?v=pwa",
+  "/sd-pwa.js?v=pwa-stg1",
   "/sd-brand.css?v=logged-in-2",
   "/sd-splash.js?v=erp-shell",
   "/office-auth.js?v=drawing-erin-tasks",

@@ -103,11 +103,47 @@
     if (standalone()) document.documentElement.classList.add("sd-standalone");
   }
 
+  function showStagingBanner(text) {
+    if (document.getElementById("sdStagingBanner")) return;
+    var bar = document.createElement("div");
+    bar.id = "sdStagingBanner";
+    bar.setAttribute("role", "status");
+    bar.textContent = text || "STAGING — safe to test updates. Live shop is unchanged.";
+    var css = document.createElement("style");
+    css.textContent = "#sdStagingBanner{position:sticky;top:0;z-index:12000;background:#7c2d12;color:#fff7ed;border-bottom:2px solid #ea580c;padding:8px 12px;font:700 13px Outfit,Inter,system-ui,sans-serif;letter-spacing:.02em;text-align:center}" +
+      "html.sd-staging body{padding-top:0}" +
+      "html.sd-staging #sdPwaInstall{bottom:52px}";
+    document.head.appendChild(css);
+    document.documentElement.classList.add("sd-staging");
+    if (document.body) document.body.insertBefore(bar, document.body.firstChild);
+    else document.addEventListener("DOMContentLoaded", function () {
+      document.body.insertBefore(bar, document.body.firstChild);
+    });
+    try {
+      if (document.title && document.title.indexOf("STAGING") === -1) {
+        document.title = "STAGING · " + document.title;
+      }
+    } catch (e) {}
+  }
+
+  function bootStagingBanner() {
+    fetch("/health", { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.isStaging) showStagingBanner(j.stagingBanner);
+      })
+      .catch(function () {});
+  }
+
   ensureHead();
   registerWorker();
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bootInstall);
+    document.addEventListener("DOMContentLoaded", function () {
+      bootInstall();
+      bootStagingBanner();
+    });
   } else {
     bootInstall();
+    bootStagingBanner();
   }
 })(typeof window !== "undefined" ? window : this);

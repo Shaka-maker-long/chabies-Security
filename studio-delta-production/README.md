@@ -98,6 +98,33 @@ The GitHub repo is a website plus this app. Railway should build from the **repo
 4. **Settings → Networking → Generate domain**. Login is name + access code from the Railway `Users` table. If Users is empty, the app seeds **Admin** / **admin** — change that code on Users.
 5. Keep **one replica**.
 
+## Staging clone (updates / phone testing)
+
+Use a **separate Railway environment** so updates can be tested on a phone without touching live data.
+
+Live: `https://chabies-security-production.up.railway.app`  
+Staging: own Railway domain + own volume at `/app/data` (never share the live volume).
+
+1. In Railway project **zucchini-rebirth** → environment dropdown → **New Environment** → **Duplicate** production → name it `staging`.
+2. On the staging service: **Settings → Source** → branch `cursor/staging-updates-9723` (or your updates branch). Leave production on `cursor/production-time-rules-ef3b`.
+3. Staging variables (in addition to the usual ones):
+
+   | Variable | Value |
+   | --- | --- |
+   | `APP_ENV` | `staging` |
+   | `STAGING` | `1` |
+   | `LOCAL_ADMIN_CODE` | `admin` (only used when Users is empty) |
+
+4. Attach a **new** volume at `/app/data` for staging (do not reuse production’s volume).
+5. **Networking → Generate domain**. Open that URL on your phone. A red **STAGING** banner appears on every page. Login **Admin** / **admin** on a fresh staging volume.
+6. Optional API create (needs an account token from https://railway.com/account/tokens):
+
+```bash
+RAILWAY_TOKEN=... node studio-delta-production/scripts/create-railway-staging.js
+```
+
+Push updates to the staging branch first; only promote to the live branch after phone checks pass.
+
 ## Install as an app (PWA)
 
 On a phone, tablet, or Chrome desktop, open the Railway URL and use **Install app** / **Add to Home Screen**. Studio Delta then opens full screen from the home screen (steel icon, starts on Home). Live orders, enquiries, and the floor still need a network; if the device is offline you get a short Studio Delta page instead of a browser error. The Outlook add-in is not part of the installed app.

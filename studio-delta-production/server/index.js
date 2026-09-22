@@ -35,9 +35,15 @@ function health(_req, res) {
   try { persist = persistenceInfo(); } catch (e) {
     try { persist = storageInfo(); } catch (err) { persist = { error: String(err && err.message || err) }; }
   }
+  let appEnvInfo = { appEnv: "production", isStaging: false, stagingBanner: null };
+  try { appEnvInfo = require("./app-env"); } catch (e) {}
+  const staging = !!(appEnvInfo.isStaging && appEnvInfo.isStaging());
   const payload = {
     ok: true,
     tz: process.env.TZ,
+    appEnv: appEnvInfo.appEnv ? appEnvInfo.appEnv() : (staging ? "staging" : "production"),
+    isStaging: staging,
+    stagingBanner: staging && appEnvInfo.stagingBannerText ? appEnvInfo.stagingBannerText() : null,
     db: persist.usingEphemeralDisk ? "ephemeral" : "railway",
     database: persist.database || "SQLite on the Railway volume (not Google Sheets, not Postgres)",
     dataDir: persist.dataDir || null,
@@ -326,7 +332,9 @@ async function boot() {
     staff.seedLocalAdminIfEmpty();
   } catch (e) {}
   server = app.listen(PORT, "0.0.0.0", () => {
-    console.log("Studio Delta production listening on " + PORT + " (" + process.env.TZ + ")");
+    let envLabel = "production";
+    try { envLabel = require("./app-env").appEnv(); } catch (e) {}
+    console.log("Studio Delta " + envLabel + " listening on " + PORT + " (" + process.env.TZ + ")");
     try {
       const info = persistenceInfo();
       if (info.warning) console.error("[persist]", info.warning);
