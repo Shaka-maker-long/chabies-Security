@@ -194,6 +194,15 @@ function blankLabel(v, empty) {
   return s || empty;
 }
 
+/** Website quotes are digits only (e.g. 22300). Offline quotes are SOQ + digits (e.g. SOQ2954). */
+function quoteChannel(raw) {
+  const s = String(raw || "").trim().toUpperCase().replace(/\s+/g, "");
+  if (!s) return "";
+  if (/^SOQ\d+$/.test(s)) return "offline";
+  if (/^\d+$/.test(s)) return "website";
+  return "";
+}
+
 function moneyOf(row) {
   const billedIncl = db.parseMoney(row && row.price_incl_vat);
   const storedExcl = db.parseMoney(row && row.price_excl_vat);
@@ -293,6 +302,8 @@ function cardOf(row) {
     product: row.product || "",
     category: row.category || "",
     source: row.source || "",
+    quote_number: row.quote_number || "",
+    quote_channel: quoteChannel(row.quote_number),
     payment_date: row.payment_date || "",
     month_of_sale: row.month_of_sale || "",
     sale_date: d ? db.formatPaymentDate(d) : "",
@@ -377,7 +388,9 @@ function buildDashboard(query) {
 
   const keys = bucketKeys(win.grain, win.from, win.to);
   const seriesMap = {};
-  keys.forEach((key) => { seriesMap[key] = { key, income: 0, billed: 0, count: 0, delivered: 0 }; });
+  keys.forEach((key) => {
+    seriesMap[key] = { key, income: 0, billed: 0, count: 0, delivered: 0, website: 0, offline: 0 };
+  });
 
   const catMap = {};
   const sourceMap = {};
@@ -442,11 +455,16 @@ function buildDashboard(query) {
     income += money.paid;
     billed += money.billed;
     const key = bucketOf(ms, win.grain);
-    if (!seriesMap[key]) seriesMap[key] = { key, income: 0, billed: 0, count: 0, delivered: 0 };
+    if (!seriesMap[key]) {
+      seriesMap[key] = { key, income: 0, billed: 0, count: 0, delivered: 0, website: 0, offline: 0 };
+    }
     seriesMap[key].income += money.paid;
     seriesMap[key].billed += money.billed;
     seriesMap[key].count += 1;
     if (isDelivered(status)) seriesMap[key].delivered += 1;
+    const channel = quoteChannel(row.quote_number);
+    if (channel === "website") seriesMap[key].website += 1;
+    if (channel === "offline") seriesMap[key].offline += 1;
     bumpMoney(catMap, blankLabel(row.category, "(Blank)"), money.paid);
     bumpMoney(sourceMap, blankLabel(row.source, "(Blank)"), money.paid);
     bumpMoney(productIncome, blankLabel(row.product, "(No product)"), money.paid);
@@ -459,7 +477,9 @@ function buildDashboard(query) {
     income: roundMoney(seriesMap[key] ? seriesMap[key].income : 0),
     billed: roundMoney(seriesMap[key] ? seriesMap[key].billed : 0),
     count: seriesMap[key] ? seriesMap[key].count : 0,
-    delivered: seriesMap[key] ? seriesMap[key].delivered : 0
+    delivered: seriesMap[key] ? seriesMap[key].delivered : 0,
+    website: seriesMap[key] ? seriesMap[key].website : 0,
+    offline: seriesMap[key] ? seriesMap[key].offline : 0
   }));
 
   stuck.sort((a, b) => b.days - a.days || String(a.order_number).localeCompare(String(b.order_number)));
@@ -549,10 +569,14 @@ function matchesDrill(row, query, win) {
   const inWin = ms && inWindow(ms, win.from, win.to);
   const status = row.status;
 
-  if (kind === "income" || kind === "billed" || kind === "period" || kind === "throughput") {
+  if (kind === "income" || kind === "billed" || kind === "period" || kind === "throughput" || kind === "channel") {
     if (!inWin) return false;
     if (key && bucketOf(ms, win.grain) !== key) return false;
     if (kind === "throughput" && String((query && query.slice) || "") === "delivered") return isDelivered(status);
+    if (kind === "channel") {
+      const want = String((query && (query.slice || query.value)) || "").toLowerCase();
+      return quoteChannel(row.quote_number) === want;
+    }
     return true;
   }
   if (kind === "category") return inWin && blankLabel(row.category, "(Blank)") === value;
@@ -644,6 +668,11 @@ function drillTitle(query, win) {
   if (kind === "throughput") {
     return (String((query && query.slice) || "") === "delivered" ? "Delivered · " : "Booked · ") + period;
   }
+  if (kind === "channel") {
+    const slice = String((query && (query.slice || query.value)) || "").toLowerCase();
+    const label = slice === "website" ? "Website quotes" : slice === "offline" ? "Offline (SOQ) quotes" : "Quote channel";
+    return label + " · " + period;
+  }
   if (kind === "category") return "CATERGORY · " + value;
   if (kind === "source") return "Source · " + value;
   if (kind === "product" || kind === "productIncome") return "Income · " + value;
@@ -688,5 +717,6 @@ module.exports = {
   resolveWindow,
   saleDate,
   pipelineId,
+  quoteChannel,
   PIPELINE
 };

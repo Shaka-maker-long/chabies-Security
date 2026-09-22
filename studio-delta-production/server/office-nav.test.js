@@ -510,6 +510,7 @@ assert.ok(officeJs.indexOf("/api/office/orders/dashboard") !== -1);
 assert.ok(officeJs.indexOf("/api/office/orders/dashboard/drill") !== -1);
 const ordersDashHtml = fs.readFileSync(path.join(__dirname, "../public/orders-dashboard.html"), "utf8");
 assert.ok(ordersDashHtml.indexOf("Income per month") !== -1);
+assert.ok(ordersDashHtml.indexOf("Website vs offline orders") !== -1);
 assert.ok(ordersDashHtml.indexOf("Income by CATERGORY") !== -1);
 assert.ok(ordersDashHtml.indexOf("Top 10 items by income") !== -1);
 assert.ok(ordersDashHtml.indexOf("Top 10 products by quantity") !== -1);

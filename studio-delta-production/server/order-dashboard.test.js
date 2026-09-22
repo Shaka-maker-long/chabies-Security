@@ -31,6 +31,7 @@ db.upsertOrder({
   category: "Mirror",
   product: "Daphne Rectangular Mirror",
   source: "Website",
+  quote_number: "22300",
   client_name: "Ann",
   price_incl_vat: "11500.00",
   amount_paid: "11500.00",
@@ -42,6 +43,7 @@ db.upsertOrder({
   category: "Table",
   product: "Air Chair",
   source: "Instagram",
+  quote_number: "SOQ2954",
   client_name: "Ben",
   price_incl_vat: "4650.50",
   amount_paid: "2000.00",
@@ -53,6 +55,7 @@ db.upsertOrder({
   category: "Mirror",
   product: "Daphne Rectangular Mirror",
   source: "Website",
+  quote_number: "22301",
   client_name: "Cara",
   price_incl_vat: "8000.00",
   amount_paid: "8000.00",
@@ -64,6 +67,7 @@ db.upsertOrder({
   category: "Gate",
   product: "Driveway Gate",
   source: "Walk-in",
+  quote_number: "SOQ2900",
   client_name: "Dan",
   price_incl_vat: "22000.00",
   amount_paid: "22000.00",
@@ -75,6 +79,7 @@ db.upsertOrder({
   category: "Cabinet",
   product: "Vivienne Arched Cabinet",
   source: "Website",
+  quote_number: "22450",
   client_name: "Eve",
   price_incl_vat: "18000.00",
   amount_paid: "9000.00",
@@ -86,6 +91,7 @@ db.upsertOrder({
   category: "",
   product: "",
   source: "",
+  quote_number: "",
   client_name: "Fay",
   price_incl_vat: "1000.00",
   amount_paid: "0",
@@ -101,9 +107,23 @@ const weld = schedRows.find((r) => r.order_number === "S260401");
 const ready = schedRows.find((r) => r.order_number === "S260405");
 const paint = schedRows.find((r) => r.order_number === "S260403");
 assert.ok(weld && ready && paint);
-db.setScheduleCell(weld.id, "2026-09-15", "LD");
-db.setScheduleCell(ready.id, "2026-09-21", "LC");
-db.setScheduleCell(paint.id, "2026-09-10", "LD");
+const sched = require("./office-schedule");
+function isoAddDays(iso, days) {
+  const d = new Date(String(iso).slice(0, 10) + "T12:00:00");
+  d.setDate(d.getDate() + days);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+const todayParts = (() => {
+  const sast = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  return sast.getUTCFullYear() + "-" + String(sast.getUTCMonth() + 1).padStart(2, "0") + "-" + String(sast.getUTCDate()).padStart(2, "0");
+})();
+const thisMonday = sched.mondayOf(todayParts);
+const thisTuesday = isoAddDays(thisMonday, 1);
+const nextMonday = isoAddDays(thisMonday, 7);
+const lastWednesday = isoAddDays(thisMonday, -5);
+db.setScheduleCell(weld.id, thisTuesday, "LD");
+db.setScheduleCell(ready.id, nextMonday, "LC");
+db.setScheduleCell(paint.id, lastWednesday, "LD");
 
 const year = dash.buildDashboard({ range: "year", grain: "month" });
 assert.strictEqual(year.orderCount, 6);
@@ -124,10 +144,33 @@ assert.strictEqual(sep.count, 2);
 assert.strictEqual(sep.income, 17826.09);
 assert.strictEqual(sep.billed, 25652.17);
 assert.strictEqual(sep.delivered, 0);
+assert.strictEqual(sep.website, 2, "Sep website quotes 22300 and 22450");
+assert.strictEqual(sep.offline, 0);
 
 const jul = year.series.find((s) => s.key === "2026-07");
 assert.ok(jul);
 assert.strictEqual(jul.delivered, 1);
+assert.strictEqual(jul.website, 0);
+assert.strictEqual(jul.offline, 1, "Jul offline SOQ2900");
+
+const aug = year.series.find((s) => s.key === "2026-08");
+assert.ok(aug);
+assert.strictEqual(aug.offline, 1, "Aug offline SOQ2954");
+assert.strictEqual(aug.website, 0);
+
+assert.strictEqual(dash.quoteChannel("22300"), "website");
+assert.strictEqual(dash.quoteChannel("SOQ2954"), "offline");
+assert.strictEqual(dash.quoteChannel("soq 2954"), "offline");
+assert.strictEqual(dash.quoteChannel(""), "");
+
+const channelWeb = dash.buildDrill({ kind: "channel", slice: "website", key: "2026-09", range: "year", grain: "month" });
+assert.strictEqual(channelWeb.rows.length, 2);
+assert.ok(channelWeb.rows.every((r) => r.quote_channel === "website"));
+assert.ok(channelWeb.title.indexOf("Website") !== -1);
+const channelOff = dash.buildDrill({ kind: "channel", slice: "offline", key: "2026-07", range: "year", grain: "month" });
+assert.strictEqual(channelOff.rows.length, 1);
+assert.strictEqual(channelOff.rows[0].order_number, "S260404");
+assert.strictEqual(channelOff.rows[0].quote_number, "SOQ2900");
 assert.strictEqual(jul.income, 19130.43);
 assert.strictEqual(jul.billed, 19130.43);
 
@@ -244,6 +287,10 @@ assert.ok(html.indexOf("No orders yet.") !== -1);
 assert.ok(html.indexOf("Could not load the dashboard") !== -1);
 assert.ok(html.indexOf("Income per month") !== -1);
 assert.ok(html.indexOf("Income per week") !== -1);
+assert.ok(html.indexOf("Website vs offline orders") !== -1);
+assert.ok(html.indexOf("drawChannel") !== -1);
+assert.ok(html.indexOf("id=\"channel\"") !== -1);
+assert.ok(html.indexOf("SOQ2954") !== -1 || html.indexOf("SOQ") !== -1);
 assert.ok(html.indexOf("Income by CATERGORY") !== -1);
 assert.ok(html.indexOf("Income by source") !== -1);
 assert.ok(html.indexOf("Top 10 items by income") !== -1);

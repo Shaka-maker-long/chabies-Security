@@ -123,6 +123,11 @@
           <p class="hint">Amount paid (Excl VAT) grouped by the payment date on the order. Sale value is the order price Excl VAT. Orders with no payment date are left off these charts.</p>
           <canvas id="trend"></canvas>
         </section>
+        <section class="card span2">
+          <h2 id="channelTitle">Website vs offline orders</h2>
+          <p class="hint">Website quotes are numeric only (e.g. 22300). Offline quotes start with SOQ (e.g. SOQ2954). Counted by payment date. Use Weekly / Monthly above to switch the view.</p>
+          <canvas id="channel"></canvas>
+        </section>
         <section class="card">
           <h2>Income by CATERGORY</h2>
           <p class="hint">Amount paid excluding VAT in the selected period.</p>
@@ -364,7 +369,7 @@
         + "</div>";
     }
     function drillRowHtml(row) {
-      const bits = [row.order_number, row.status, row.product, row.category, row.source]
+      const bits = [row.order_number, row.quote_number, row.status, row.product, row.category, row.source]
         .filter(Boolean).join(" · ");
       const money = formatR(row.amount_paid) + " paid · " + formatR(row.owing) + " owing";
       const extra = row.delivery_day ? " · " + row.delivery_day + (row.delivery_code ? " " + row.delivery_code : "") + (row.late ? " late" : "") : "";
@@ -435,6 +440,37 @@
             openDrill({ kind: el.datasetIndex === 1 ? "billed" : "income", key: point.key });
           }
         }
+      });
+    }
+
+    function drawChannel() {
+      if (!data) return;
+      document.getElementById("channelTitle").textContent =
+        grain === "week" ? "Website vs offline orders (weekly)" : "Website vs offline orders (monthly)";
+      mk("channel", {
+        type: "bar",
+        data: {
+          labels: data.series.map((s) => s.label),
+          datasets: [
+            { label: "Website (numeric quote)", data: data.series.map((s) => s.website || 0), backgroundColor: PAL[2] },
+            { label: "Offline (SOQ quote)", data: data.series.map((s) => s.offline || 0), backgroundColor: PAL[0] }
+          ]
+        },
+        options: Object.assign({
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            x: { stacked: false },
+            y: { beginAtZero: true, ticks: { precision: 0 } }
+          }
+        }, clickOpt((el) => {
+          const point = data.series[el.index];
+          if (!point) return;
+          openDrill({
+            kind: "channel",
+            key: point.key,
+            slice: el.datasetIndex === 1 ? "offline" : "website"
+          });
+        }))
       });
     }
 
@@ -524,6 +560,7 @@
         });
       });
       drawTrend();
+      drawChannel();
       doughnut("cat", (d.categories || []).map((x) => x.label), (d.categories || []).map((x) => x.income), (_i, label) => openDrill({ kind: "category", value: label }));
       doughnut("source", (d.sources || []).map((x) => x.label), (d.sources || []).map((x) => x.income), (_i, label) => openDrill({ kind: "source", value: label }));
       bar("topIncome", (d.topIncome || []).map((x) => x.label), (d.topIncome || []).map((x) => x.income), PAL[1], true, (_i, label) => openDrill({ kind: "productIncome", value: label }), true);
