@@ -22,6 +22,8 @@ const indexHtml = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8")
 assert.ok(indexHtml.indexOf("/ar-measure.js") !== -1);
 assert.ok(indexHtml.indexOf("openQcArMeasure") !== -1);
 assert.ok(indexHtml.indexOf("Overall size check (phone AR)") !== -1);
+assert.ok(indexHtml.indexOf("openQcArMeasure('glassHeight'") === -1);
+assert.ok(indexHtml.indexOf("openQcArMeasure('woodHeight'") === -1);
 
 const indexJs = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
 assert.ok(indexJs.indexOf("/ar-measure.js") !== -1);
