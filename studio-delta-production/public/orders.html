@@ -182,11 +182,11 @@
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search orders">
-      <button class="ghost" type="button" onclick="location.href='/orders/job-card'">Generate job card</button>
-      <button class="ghost" type="button" onclick="location.href='/orders/onboard'">Add existing order</button>
-      <button class="ghost" type="button" onclick="location.href='/orders/paste'">Paste orders</button>
-      <button class="ghost" type="button" onclick="location.href='/orders/new'">New order</button>
-      <button class="danger" type="button" id="clearAllBtn" style="display:none" onclick="openClearAll()">Clear all orders</button>
+      <button class="ghost" type="button" data-marketing-hide onclick="location.href='/orders/job-card'">Generate job card</button>
+      <button class="ghost" type="button" data-marketing-hide onclick="location.href='/orders/onboard'">Add existing order</button>
+      <button class="ghost" type="button" data-marketing-hide onclick="location.href='/orders/paste'">Paste orders</button>
+      <button class="ghost" type="button" data-marketing-hide onclick="location.href='/orders/new'">New order</button>
+      <button class="danger" type="button" id="clearAllBtn" data-marketing-hide style="display:none" onclick="openClearAll()">Clear all orders</button>
     </div>
   </header>
   <div class="sheet-stack">
@@ -206,7 +206,7 @@
         <h1 id="formTitle">New order</h1>
         <div class="tools">
           <button class="ghost" type="button" onclick="closeForm()">Cancel</button>
-          <button type="button" id="saveBtn" onclick="saveForm()">Save order</button>
+          <button type="button" id="saveBtn" data-marketing-edit onclick="saveForm()">Save order</button>
         </div>
         <p class="form-head-err" id="formErr" role="alert"></p>
       </header>
@@ -271,7 +271,10 @@
             <select id="f_powder_coating"></select>
           </label>
           <label>Source
-            <select id="f_source"></select>
+            <select id="f_source" data-marketing-edit></select>
+          </label>
+          <label>Campaign
+            <select id="f_campaign" data-marketing-edit></select>
           </label>
         </div>
         <label>Detailed description
@@ -421,7 +424,7 @@
     </div>
   </div>
 
-  <script src="/office-auth.js?v=drawing-erin-tasks"></script>
+  <script src="/office-auth.js?v=marketing-1"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 128, true],
@@ -449,9 +452,10 @@
       ["owing", "OWING", 110, false],
       ["month_of_sale", "MONTH OF SALE", 130, false],
       ["source", "SOURCE", 140, false],
+      ["campaign", "CAMPAIGN", 140, false],
       ["city", "CITY", 120, false]
     ];
-    const DROP_FIELDS = ["type", "category", "product", "variation", "doors", "powder_coating", "province", "source", "assigned_operator"];
+    const DROP_FIELDS = ["type", "category", "product", "variation", "doors", "powder_coating", "province", "source", "campaign", "assigned_operator"];
     const VAT_RATE = 0.15;
     const freezeLeft = {};
     const colWidths = HEADERS.map((h) => h[2]);
@@ -797,18 +801,33 @@
         paid_in_full: document.getElementById("f_paid_in_full").checked,
         month_of_sale: document.getElementById("f_month_of_sale").value,
         source: document.getElementById("f_source").value,
+        campaign: document.getElementById("f_campaign").value,
         city: document.getElementById("f_city").value
       };
     }
     async function saveForm() {
-      const payload = formPayload();
+      const profile = typeof sdOfficeProfile === "function" ? sdOfficeProfile() : null;
+      const marketing = typeof sdIsMarketing === "function" && sdIsMarketing(profile);
+      let payload = formPayload();
+      if (marketing) {
+        if (editingIndex < 0) {
+          setFormErr("Marketing can only update Source and Campaign on existing orders.");
+          return;
+        }
+        const existing = rows[editingIndex] || {};
+        payload = {
+          order_number: existing.order_number || payload.order_number,
+          source: payload.source,
+          campaign: payload.campaign
+        };
+      }
       setFormErr("");
       if (!String(payload.order_number || "").trim()) {
         setFormErr("Enter an order number.");
         document.getElementById("f_order_number").focus();
         return;
       }
-      if (!String(payload.client_name || "").trim()) {
+      if (!marketing && !String(payload.client_name || "").trim()) {
         setFormErr("Enter the client name.");
         document.getElementById("f_client_name").focus();
         return;
@@ -816,7 +835,7 @@
       const existing = editingIndex >= 0 ? rows[editingIndex] : null;
       const nextStatus = String((document.getElementById("f_correct_status") || {}).value || payload.status || "").trim();
       const confirmed = !!(document.getElementById("f_correct_confirm") && document.getElementById("f_correct_confirm").checked);
-      const statusChanged = !!(existing && nextStatus && nextStatus !== String(existing.status || "").trim());
+      const statusChanged = !marketing && !!(existing && nextStatus && nextStatus !== String(existing.status || "").trim());
       if (statusChanged && !confirmed) {
         setFormErr("Tick that this is where the order is now before changing the status.");
         const box = document.getElementById("correctBox");
@@ -925,6 +944,7 @@
       html += viewItem("Payment date", row.payment_date);
       html += viewItem("Month of sale", row.month_of_sale);
       html += viewItem("Source", row.source);
+      html += viewItem("Campaign", row.campaign);
       html += viewItem("Price excl VAT", row.price_excl_vat);
       html += viewItem("Price incl VAT", row.price_incl_vat);
       html += viewItem("Amount paid (Incl VAT)", row.amount_paid);

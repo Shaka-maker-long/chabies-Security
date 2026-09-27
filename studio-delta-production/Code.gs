@@ -116,8 +116,10 @@ function parseAccessLabel(accessCell, roleCell) {
   if (role === "manager") return "Admin";
   var a = String(accessCell || "").trim().toLowerCase();
   if (a === "admin" || a === "manager") return "Admin";
+  if (a === "marketing") return "Marketing";
   if (a === "production") return "Production";
   if (role === "admin") return "Admin";
+  if (role === "marketing") return "Marketing";
   return "Production";
 }
 
@@ -178,6 +180,7 @@ function readUserRowProfile(row) {
   var name = String(row[0] || "").trim();
   var access = parseAccessLabel(row.length > 4 ? row[4] : "", row[1]);
   var isAdmin = access === "Admin";
+  var isMarketing = access === "Marketing";
   var parsed = parseUserTasks(row[1], row.length > 3 ? row[3] : "", isAdmin);
   var debtorsCell = String(row.length > 5 ? row[5] : "").trim().toLowerCase();
   var manageCell = String(row.length > 7 ? row[7] : "").trim().toLowerCase();
@@ -188,11 +191,13 @@ function readUserRowProfile(row) {
     jobTitle: parsed.jobTitle,
     access: access,
     isAdmin: isAdmin,
-    canSeeOffice: isAdmin,
-    canSeeDebtors: isAdmin && debtorsCell !== "no",
+    isMarketing: isMarketing,
+    canSeeOffice: isAdmin || isMarketing,
+    canSeeDebtors: isAdmin ? debtorsCell !== "no" : (isMarketing && debtorsCell === "yes"),
     canManageUsers: isAdmin && (isManager || manageCell === "yes" || manageCell === "true" || manageCell === "1"),
+    canEditMarketingFields: isMarketing,
     isQcOnly: parsed.isQcOnly,
-    tasks: parsed.tasks
+    tasks: isMarketing ? [] : parsed.tasks
   };
 }
 
@@ -997,6 +1002,8 @@ function verifyGlobalLogin(name, password) {
           canManageUsers: profile.canManageUsers,
           canSeeIdleAlerts: userManagesIdle(profile),
           isQcOnly: profile.isQcOnly,
+          canEditMarketingFields: !!profile.canEditMarketingFields || !!profile.isMarketing,
+          isMarketing: !!profile.isMarketing,
           tasks: profile.tasks
         };
       }

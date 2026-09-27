@@ -18,7 +18,7 @@ const ORDER_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
   "product", "variation", "doors", "detailed_description", "dimensions", "powder_coating",
   "client_name", "client_number", "email", "payment_date", "address", "province",
-  "price_excl_vat", "price_incl_vat", "amount_paid", "month_of_sale", "source", "city",
+  "price_excl_vat", "price_incl_vat", "amount_paid", "month_of_sale", "source", "campaign", "city",
   "enquiry_no"
 ];
 
@@ -311,6 +311,7 @@ const ORDER_HEADER_MAP = {
   "amount paid": "amount_paid",
   "month of sale": "month_of_sale",
   "source": "source",
+  "campaign": "campaign",
   "city": "city",
   "enquiry no": "enquiry_no",
   "enquiry number": "enquiry_no"
@@ -370,6 +371,11 @@ function ensureOrderHeaders(sheet) {
   if (look.idx.enquiry_no == null) {
     const col = Math.max(sheet.getLastColumn(), look.headers.length) + 1;
     sheet.getRange(1, col).setValue("ENQUIRY NO");
+    look = headerLookup(sheet);
+  }
+  if (look.idx.campaign == null) {
+    const col = Math.max(sheet.getLastColumn(), look.headers.length) + 1;
+    sheet.getRange(1, col).setValue("CAMPAIGN");
     look = headerLookup(sheet);
   }
   return look;
@@ -1314,7 +1320,7 @@ function appendEnquiryEvent(row, partial) {
 function captureFieldsChanged(existing, payload) {
   if (!existing) return true;
   const keys = [
-    "client_name", "enquiry_type", "enquiry_source", "source", "province",
+    "client_name", "enquiry_type", "enquiry_source", "source", "campaign", "province",
     "client_email", "client_number", "comment", "date_enquired", "design_description"
   ];
   for (const k of keys) {
@@ -1720,6 +1726,7 @@ function onboardExistingOrder(body) {
     province: row.province || "",
     city: row.city || "",
     source: row.source || "",
+    campaign: row.campaign || "",
     price_excl_vat: pair.excl,
     price_incl_vat: pair.incl,
     amount_paid: row.amount_paid || "",
@@ -1785,6 +1792,7 @@ function pasteOrdersFromSheet(body) {
       province: row.province || "",
       city: row.city || "",
       source: row.source || "",
+      campaign: row.campaign || "",
       price_excl_vat: pair.excl,
       price_incl_vat: pair.incl,
       amount_paid: row.amount_paid || "",
@@ -1844,6 +1852,7 @@ function createOrderFromEnquiry(enquiryNo) {
     email: enquiry.client_email || "",
     province: enquiry.province || "",
     source: enquiry.source || "",
+    campaign: enquiry.campaign || "",
     price_excl_vat: enquiry.quote_total_excl_vat || "",
     price_incl_vat: enquiry.quote_total_incl_vat || "",
     detailed_description: [enquiry.request, enquiry.design_description, detail].filter(Boolean).join("\n")
@@ -2758,6 +2767,7 @@ function enquiryHeaderField(header) {
     enquiry_type: ["enquiry_type"],
     client_name: ["client_name", "name", "customer", "customer_name"],
     source: ["source"],
+    campaign: ["campaign"],
     client_email: ["client_email", "email", "email_address"],
     client_number: ["client_number", "number", "phone", "cell"],
     province: ["province"],

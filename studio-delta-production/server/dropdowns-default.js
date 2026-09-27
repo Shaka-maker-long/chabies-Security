@@ -1,7 +1,7 @@
 function unique(items) {
   const skip = new Set([
     "type", "catergory", "category", "product", "variation", "doors",
-    "powder coating", "province", "source"
+    "powder coating", "province", "source", "campaign"
   ]);
   const out = [];
   const seen = new Set();
@@ -24,7 +24,8 @@ const DROPDOWN_KEYS = [
   "doors",
   "powder_coating",
   "province",
-  "source"
+  "source",
+  "campaign"
 ];
 
 const DROPDOWN_LABELS = {
@@ -35,7 +36,8 @@ const DROPDOWN_LABELS = {
   doors: "DOORS",
   powder_coating: "POWDER COATING",
   province: "PROVINCE",
-  source: "SOURCE"
+  source: "SOURCE",
+  campaign: "CAMPAIGN"
 };
 
 const DEFAULT_DROPDOWNS = {
@@ -183,7 +185,8 @@ const DEFAULT_DROPDOWNS = {
   source: unique([
     "Billboards", "Friends/Family", "Google", "Google Ads", "Magazine", "No Trace",
     "Recurring Client", "Social Media"
-  ])
+  ]),
+  campaign: unique([])
 };
 
 module.exports = { unique, DROPDOWN_KEYS, DROPDOWN_LABELS, DEFAULT_DROPDOWNS };

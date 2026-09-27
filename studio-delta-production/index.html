@@ -3399,7 +3399,9 @@
         if (office && office.canManageUsers) session.canManageUsers = true;
         if (office && office.canSeeIdleAlerts) session.canSeeIdleAlerts = true;
       } catch (e) {}
-      session.access = res.access || (session.canSeeOffice ? 'Admin' : 'Production');
+      session.access = res.access || (session.canSeeOffice ? (res.isMarketing ? 'Marketing' : 'Admin') : 'Production');
+      session.isMarketing = !!res.isMarketing || String(session.access).toLowerCase() === 'marketing';
+      session.canEditMarketingFields = !!res.canEditMarketingFields || session.isMarketing;
       session.isQcOnly = !!res.isQcOnly;
       session.tasks = res.tasks || [];
       session.role = null;

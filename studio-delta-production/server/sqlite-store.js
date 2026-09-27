@@ -7,7 +7,7 @@ const ORDER_COLUMNS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
   "product", "variation", "doors", "detailed_description", "dimensions", "powder_coating",
   "client_name", "client_number", "email", "payment_date", "address", "province",
-  "price_excl_vat", "price_incl_vat", "amount_paid", "month_of_sale", "source", "city",
+  "price_excl_vat", "price_incl_vat", "amount_paid", "month_of_sale", "source", "campaign", "city",
   "enquiry_no"
 ];
 
@@ -78,6 +78,7 @@ function open() {
       amount_paid TEXT,
       month_of_sale TEXT,
       source TEXT,
+      campaign TEXT,
       city TEXT,
       enquiry_no TEXT,
       extra_json TEXT
@@ -90,6 +91,7 @@ function open() {
       enquiry_type TEXT,
       client_name TEXT,
       source TEXT,
+      campaign TEXT,
       client_email TEXT,
       client_number TEXT,
       province TEXT,
@@ -152,6 +154,8 @@ function open() {
   try { db.exec("ALTER TABLE users ADD COLUMN enquiry_roles TEXT"); } catch (e) {}
   try { db.exec("ALTER TABLE users ADD COLUMN manage_users TEXT"); } catch (e) {}
   try { db.exec("ALTER TABLE orders ADD COLUMN enquiry_no TEXT"); } catch (e) {}
+  try { db.exec("ALTER TABLE orders ADD COLUMN campaign TEXT"); } catch (e) {}
+  try { db.exec("ALTER TABLE enquiries ADD COLUMN campaign TEXT"); } catch (e) {}
   try { db.exec("ALTER TABLE payments ADD COLUMN extra TEXT"); } catch (e) {}
   return db;
 }

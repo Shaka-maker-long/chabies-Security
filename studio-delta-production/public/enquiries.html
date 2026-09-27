@@ -145,7 +145,7 @@
     <div class="tools">
       <span class="msg" id="status"></span>
       <input type="search" id="q" placeholder="Search enquiries">
-      <button class="ghost" onclick="openCapture()">New enquiry</button>
+      <button class="ghost" data-marketing-hide onclick="openCapture()">New enquiry</button>
       <button class="ghost" type="button" onclick="openOnboard()">Add existing enquiry</button>
       <button class="ghost" type="button" onclick="downloadCsv()">Download CSV</button>
     </div>
@@ -281,7 +281,7 @@
           <button class="ghost" type="button" id="captureDupBtn" hidden>Save anyway</button>
           <button class="ghost" type="button" id="captureUseNextBtn" hidden>Use next number</button>
           <button class="ghost" type="button" id="captureShowTakenBtn" hidden>Show this enquiry</button>
-          <button type="button" data-save="capture" onclick="saveCapture()">Save enquiry</button>
+          <button type="button" data-save="capture" data-marketing-edit onclick="saveCapture()">Save enquiry</button>
         </div>
         <p class="form-head-err" id="captureErr" role="alert"></p>
       </header>
@@ -307,7 +307,10 @@
         </label>
         <div class="stack-grid">
           <label>How they found us
-            <select id="cap_source"></select>
+            <select id="cap_source" data-marketing-edit></select>
+          </label>
+          <label>Campaign
+            <select id="cap_campaign" data-marketing-edit></select>
           </label>
           <label>Province
             <select id="cap_province"></select>
@@ -377,7 +380,7 @@
         <div class="enq-dup" id="captureDup" hidden></div>
         <div class="form-foot">
           <p class="err" id="captureErrFoot" role="alert"></p>
-          <button type="button" data-save="capture" onclick="saveCapture()">Save enquiry</button>
+          <button type="button" data-save="capture" data-marketing-edit onclick="saveCapture()">Save enquiry</button>
         </div>
       </div>
     </div>
@@ -421,7 +424,10 @@
             <select id="ob_enquiry_source"></select>
           </label>
           <label>How they found us
-            <select id="ob_source"></select>
+            <select id="ob_source" data-marketing-edit></select>
+          </label>
+          <label>Campaign
+            <select id="ob_campaign" data-marketing-edit></select>
           </label>
           <label>Province
             <select id="ob_province"></select>
@@ -558,7 +564,7 @@
       <div class="body" id="viewBody"></div>
     </div>
   </div>
-  <script src="/office-auth.js?v=drawing-erin-tasks"></script>
+  <script src="/office-auth.js?v=marketing-1"></script>
   <script src="/enquiry-process.js?v=drawing-erin-tasks"></script>
   <script>
     const HEADERS = [
@@ -570,6 +576,7 @@
       ["enquiry_type", "ENQUIRY TYPE", 160, true],
       ["client_name", "CLIENT NAME", 170, true],
       ["source", "SOURCE", 150, false],
+      ["campaign", "CAMPAIGN", 150, false],
       ["client_email", "CLIENT EMAIL", 210, false],
       ["client_number", "CLIENT NUMBER", 150, false],
       ["province", "PROVINCE", 150, false],
@@ -585,7 +592,7 @@
       ["comment", "COMMENT", 260, false]
     ];
     const DROP_FIELDS = {
-      enquiry_source: 1, enquiry_type: 1, source: 1, province: 1
+      enquiry_source: 1, enquiry_type: 1, source: 1, campaign: 1, province: 1
     };
     const READONLY_FIELDS = { enquiry_no: 1, month_enquired: 1, date_quoted: 1, quote_no: 1 };
     const DATE_FIELDS = { date_enquired: 1 };
@@ -1137,6 +1144,7 @@
       html += viewItem("Enquiry type", row.enquiry_type);
       html += viewItem("Client name", row.client_name, true);
       html += viewItem("How they found us", row.source);
+      html += viewItem("Campaign", row.campaign);
       html += viewItem("Province", row.province);
       html += viewItem("Client email", row.client_email);
       html += viewItem("Client number", row.client_number);
@@ -1879,6 +1887,7 @@
         fillCaptureSelect("cap_enquiry_source", "enquiry_source", existing.enquiry_source || "");
         fillCaptureSelect("cap_enquiry_type", "enquiry_type", existing.enquiry_type || "");
         fillCaptureSelect("cap_source", "source", existing.source || "");
+        fillCaptureSelect("cap_campaign", "campaign", existing.campaign || "");
         fillCaptureSelect("cap_province", "province", existing.province || "");
         setCaptureEnough(existing.enough_for_costing || "");
         showCaptureEnough(existing);
@@ -1902,6 +1911,7 @@
         fillCaptureSelect("cap_enquiry_source", "enquiry_source", "");
         fillCaptureSelect("cap_enquiry_type", "enquiry_type", "");
         fillCaptureSelect("cap_source", "source", "");
+        fillCaptureSelect("cap_campaign", "campaign", "");
         fillCaptureSelect("cap_province", "province", "");
         setCaptureEnough("");
         showCaptureEnough(null);
@@ -1924,6 +1934,7 @@
       fillCaptureSelect("cap_enquiry_source", "enquiry_source", d.enquiry_source || "");
       fillCaptureSelect("cap_enquiry_type", "enquiry_type", d.enquiry_type || "");
       fillCaptureSelect("cap_source", "source", d.source || "");
+      fillCaptureSelect("cap_campaign", "campaign", d.campaign || "");
       fillCaptureSelect("cap_province", "province", d.province || "");
       if (d.enough_for_costing) setCaptureEnough(d.enough_for_costing);
       if (d.chase_assignee) fillAssigneeSelect("cap_chase", d.chase_assignee, me);
@@ -2052,6 +2063,33 @@
       if (capture.saving) return;
       hideTakenActions("capture");
       setSheetError("captureErr", "");
+      const profile = typeof sdOfficeProfile === "function" ? sdOfficeProfile() : null;
+      const marketing = typeof sdIsMarketing === "function" && sdIsMarketing(profile);
+      if (marketing) {
+        const existing = capture.i >= 0 ? rows[capture.i] : null;
+        if (!existing || !existing.enquiry_no) {
+          setSheetError("captureErr", "Marketing can only update Source and Campaign on existing enquiries.");
+          return;
+        }
+        capture.saving = true;
+        try {
+          const r = await sdOfficeFetch("/api/office/enquiries", {
+            method: "PUT",
+            body: JSON.stringify({
+              enquiry_no: existing.enquiry_no,
+              source: document.getElementById("cap_source").value,
+              campaign: document.getElementById("cap_campaign").value
+            })
+          });
+          const j = await r.json();
+          if (!j.ok) { setSheetError("captureErr", j.error || "Could not save"); return; }
+          await load();
+          closeCapture();
+        } finally {
+          capture.saving = false;
+        }
+        return;
+      }
       const client = String(document.getElementById("cap_client_name").value || "").trim();
       if (!client) { setSheetError("captureErr", "Enter the client name.", "cap_client_name"); return; }
       const dateIso = document.getElementById("cap_date_enquired").value;
@@ -2073,6 +2111,7 @@
       payload.enquiry_type = type;
       payload.client_name = client;
       payload.source = document.getElementById("cap_source").value;
+      payload.campaign = document.getElementById("cap_campaign").value;
       payload.client_email = document.getElementById("cap_client_email").value;
       payload.client_number = document.getElementById("cap_client_number").value;
       payload.province = document.getElementById("cap_province").value;
@@ -2535,6 +2574,7 @@
       fillCaptureSelect("ob_enquiry_source", "enquiry_source", "");
       fillCaptureSelect("ob_enquiry_type", "enquiry_type", "");
       fillCaptureSelect("ob_source", "source", "");
+      fillCaptureSelect("ob_campaign", "campaign", "");
       fillCaptureSelect("ob_province", "province", "");
       const st = document.getElementById("ob_status");
       st.innerHTML = "<option value=\"\"></option>" + ONBOARD_STATUSES.map((s) => "<option>" + esc(s) + "</option>").join("");
@@ -2571,6 +2611,7 @@
       fillCaptureSelect("ob_enquiry_source", "enquiry_source", d.enquiry_source || "");
       fillCaptureSelect("ob_enquiry_type", "enquiry_type", d.enquiry_type || "");
       fillCaptureSelect("ob_source", "source", d.source || "");
+      fillCaptureSelect("ob_campaign", "campaign", d.campaign || "");
       fillCaptureSelect("ob_province", "province", d.province || "");
       document.getElementById("ob_status").value = d.status || "";
       fillAssigneeSelect("ob_chase", d.chase || me);
@@ -2623,6 +2664,7 @@
         enquiry_type: type,
         client_name: client,
         source: document.getElementById("ob_source").value,
+        campaign: document.getElementById("ob_campaign").value,
         client_email: document.getElementById("ob_client_email").value,
         client_number: document.getElementById("ob_client_number").value,
         province: document.getElementById("ob_province").value,

@@ -98,6 +98,10 @@ The GitHub repo is a website plus this app. Railway should build from the **repo
 4. **Settings → Networking → Generate domain**. Login is name + access code from the Railway `Users` table. If Users is empty, the app seeds **Admin** / **admin** — change that code on Users.
 5. Keep **one replica**.
 
+### Marketing access
+
+On **Users**, set Access to **Marketing** (job title can be Marketing). That person can open office pages and view Enquiries and Orders, but the only fields they can change are **Source** and **Campaign**. Creating, deleting, pipeline actions, inventory, and other edits are blocked. Add campaign names under **Dropdowns → CAMPAIGN**.
+
 ## Staging clone (updates / phone testing)
 
 Use a **separate Railway environment** so updates can be tested on a phone without touching live data.

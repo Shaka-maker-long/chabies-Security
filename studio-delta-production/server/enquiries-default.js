@@ -14,12 +14,12 @@ function unique(items) {
 
 const ENQUIRY_FIELDS = [
   "enquiry_no", "date_enquired", "month_enquired", "enquiry_source", "enquiry_type",
-  "client_name", "source", "client_email", "client_number", "province", "category",
+  "client_name", "source", "campaign", "client_email", "client_number", "province", "category",
   "product", "request", "status", "date_quoted", "quote_no", "comment"
 ];
 
 const ENQUIRY_DROPDOWN_KEYS = [
-  "enquiry_source", "enquiry_type", "source", "status", "province", "category", "product",
+  "enquiry_source", "enquiry_type", "source", "campaign", "status", "province", "category", "product",
   "custom_spec"
 ];
 
@@ -39,6 +39,7 @@ const DEFAULT_ENQUIRY_DROPDOWNS = {
     "Magazine", "Recurring Client", "No Trace", "Inexss", "Designer Meeting",
     "Decor & Design", "Delta Employee"
   ]),
+  campaign: unique([]),
   status: unique([
     "New", "Costing", "Costed", "Quoted", "Followed Up", "Ordered", "Re-Cost",
     "Waiting on clients personal details", "Waiting on clients specifictions",

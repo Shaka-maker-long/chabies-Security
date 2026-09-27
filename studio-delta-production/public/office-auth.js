@@ -20,9 +20,14 @@ function sdIsDrawingOwner(profile) {
   if (n === "erin") return true;
   return String(profile.name || "").trim().split(/\s+/)[0].toLowerCase() === "erin";
 }
+function sdIsMarketing(profile) {
+  if (!profile) return false;
+  if (profile.isMarketing || profile.canEditMarketingFields) return true;
+  return String(profile.access || "").trim().toLowerCase() === "marketing";
+}
 function sdOfficePageAllowed(profile, page) {
   if (!profile) return false;
-  if (profile.canSeeOffice || profile.isAdmin) return true;
+  if (profile.canSeeOffice || profile.isAdmin || sdIsMarketing(profile)) return true;
   if (sdIsDrawingOwner(profile) && (page === "tasks" || !page)) return true;
   return false;
 }
@@ -335,7 +340,32 @@ async function sdRequireOffice(page) {
   sdPaintOfficeWho(profile);
   sdHideDebtorsLinks(!!profile.canSeeDebtors);
   sdHideUsersLink(!!profile.canManageUsers);
+  sdApplyMarketingLock(profile);
   sdWarnPersistence();
   return profile;
+}
+function sdApplyMarketingLock(profile) {
+  if (!sdIsMarketing(profile)) return;
+  document.body.classList.add("sd-marketing-view");
+  if (!document.getElementById("sdMarketingBanner")) {
+    const bar = document.createElement("div");
+    bar.id = "sdMarketingBanner";
+    bar.setAttribute("role", "status");
+    bar.textContent = "Marketing — view only, except Source and Campaign on Enquiries and Orders";
+    const css = document.createElement("style");
+    css.textContent = "#sdMarketingBanner{position:sticky;top:0;z-index:11050;background:#1e3a5f;color:#e8eef7;border-bottom:2px solid #3b82f6;padding:8px 12px;font:700 13px Outfit,Inter,system-ui,sans-serif;letter-spacing:.02em;text-align:center}" +
+      "body.sd-marketing-view [data-marketing-hide]{display:none !important}" +
+      "body.sd-marketing-view .sd-marketing-readonly input:not([data-marketing-edit])," +
+      "body.sd-marketing-view .sd-marketing-readonly select:not([data-marketing-edit])," +
+      "body.sd-marketing-view .sd-marketing-readonly textarea:not([data-marketing-edit])," +
+      "body.sd-marketing-view .sd-marketing-readonly button:not([data-marketing-edit]):not(.sd-logout-btn):not(#sdPasswordBtn):not(#sdCollapseBtn):not(#sdNavBurger){pointer-events:none;opacity:.72}" +
+      "body.sd-marketing-view .sd-marketing-readonly [data-marketing-edit]{pointer-events:auto;opacity:1}";
+    document.head.appendChild(css);
+    document.body.insertBefore(bar, document.body.firstChild);
+  }
+  document.querySelectorAll("form, .form, .modal, .panel, .sheet, main, .office-main, .content").forEach((el) => {
+    el.classList.add("sd-marketing-readonly");
+  });
+  document.querySelectorAll("[data-marketing-hide]").forEach((el) => { el.style.display = "none"; });
 }
 function sdWarnPersistence() {}

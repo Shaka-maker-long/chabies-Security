@@ -30,10 +30,12 @@ function applySessionMap(raw) {
       role: String(row.role || "").trim(),
       jobTitle: String(row.jobTitle || row.role || "").trim(),
       isAdmin: !!row.isAdmin,
+      isMarketing: !!row.isMarketing || String(row.access || "").toLowerCase() === "marketing",
       canSeeOffice: !!row.canSeeOffice,
       canSeeDrawingDesk: !!row.canSeeDrawingDesk || isDrawingOwnerName(row.name),
       canSeeDebtors: !!row.canSeeDebtors,
       canManageUsers: !!row.canManageUsers,
+      canEditMarketingFields: !!row.canEditMarketingFields || String(row.access || "").toLowerCase() === "marketing",
       tasks: Array.isArray(row.tasks) ? row.tasks : []
     });
   });
@@ -153,9 +155,20 @@ function canSeeIdleAlerts(profile) {
   return String(profile.name || "").trim().toLowerCase() === "siya";
 }
 
+function isMarketingTitle(role) {
+  return String(role || "").trim().toLowerCase() === "marketing";
+}
+
+function isMarketing(profile) {
+  if (!profile) return false;
+  if (String(profile.access || "").trim().toLowerCase() === "marketing") return true;
+  return isMarketingTitle(profile.jobTitle || profile.role);
+}
+
 function isProductionFloorUser(profile) {
   if (!profile || !String(profile.name || "").trim()) return false;
   if (profile.isAdmin) return false;
+  if (isMarketing(profile)) return false;
   return String(profile.access || "").toLowerCase() !== "admin";
 }
 
@@ -163,10 +176,51 @@ function parseAccess(accessCell, roleCell) {
   if (isManagerTitle(roleCell)) return "Admin";
   const a = String(accessCell || "").trim().toLowerCase();
   if (a === "admin") return "Admin";
+  if (a === "marketing") return "Marketing";
   if (a === "production") return "Production";
   const r = String(roleCell || "").trim().toLowerCase();
   if (r === "admin") return "Admin";
+  if (r === "marketing") return "Marketing";
   return "Production";
+}
+
+const MARKETING_EDIT_FIELDS = ["source", "campaign"];
+const MARKETING_WRITE_ERROR = "Marketing can only update Source and Campaign on enquiries and orders.";
+
+function marketingEditFields() {
+  return MARKETING_EDIT_FIELDS.slice();
+}
+
+function canEditMarketingFields(profile) {
+  return isMarketing(profile);
+}
+
+function isMutatingHttpMethod(method) {
+  const m = String(method || "").toUpperCase();
+  return m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE";
+}
+
+function marketingWriteAllowed(method, path) {
+  if (!isMutatingHttpMethod(method)) return true;
+  const p = String(path || "").split("?")[0].replace(/\/+$/, "") || "/";
+  if (String(method).toUpperCase() === "PUT" && (p === "/api/office/orders" || p === "/api/office/enquiries")) {
+    return true;
+  }
+  return false;
+}
+
+function applyMarketingFieldPatch(existing, body, opts) {
+  opts = opts || {};
+  if (!existing) {
+    throw new Error(opts.createError || "Marketing can only update Source and Campaign on existing rows.");
+  }
+  const out = Object.assign({}, existing);
+  MARKETING_EDIT_FIELDS.forEach((field) => {
+    if (body && Object.prototype.hasOwnProperty.call(body, field)) {
+      out[field] = body[field] == null ? "" : String(body[field]);
+    }
+  });
+  return out;
 }
 
 function parseYesNo(value) {
@@ -182,12 +236,14 @@ function parseManageUsers(body, access) {
 }
 
 function parseSeeDebtors(body, access) {
-  if (access !== "Admin") return "No";
+  if (access !== "Admin" && access !== "Marketing") return "No";
   if (body.seeDebtors === false || body.canSeeDebtors === false) return "No";
-  const v = String(body.seeDebtors != null && body.seeDebtors !== "" ? body.seeDebtors : (body.canSeeDebtors != null ? body.canSeeDebtors : "Yes"))
+  const fallback = access === "Marketing" ? "No" : "Yes";
+  const v = String(body.seeDebtors != null && body.seeDebtors !== "" ? body.seeDebtors : (body.canSeeDebtors != null ? body.canSeeDebtors : fallback))
     .trim()
     .toLowerCase();
   if (v === "no" || v === "false" || v === "0") return "No";
+  if (access === "Marketing" && v === "") return "No";
   return "Yes";
 }
 
@@ -287,6 +343,7 @@ function enquiryRoleDefaults() {
 function rowToUser(row, id) {
   const access = parseAccess(row[4], row[1]);
   const isAdmin = access === "Admin";
+  const marketing = access === "Marketing";
   const debtors = String(row[5] || "").trim().toLowerCase();
   const manage = isAdmin && (parseYesNo(row[7]) || isManagerTitle(row[1]));
   return {
@@ -294,16 +351,18 @@ function rowToUser(row, id) {
     name: String(row[0] || "").trim(),
     role: String(row[1] || "").trim(),
     jobTitle: String(row[1] || "").trim(),
-    tasks: parseTasks(row[3]),
+    tasks: marketing ? [] : parseTasks(row[3]),
     access,
     isAdmin,
-    canSeeOffice: isAdmin,
+    isMarketing: marketing,
+    canSeeOffice: isAdmin || marketing,
     canSeeDrawingDesk: isDrawingOwnerName(String(row[0] || "").trim()),
-    canSeeDebtors: isAdmin && debtors !== "no",
-    seeDebtors: isAdmin && debtors !== "no" ? "Yes" : "No",
+    canSeeDebtors: isAdmin ? debtors !== "no" : (marketing && debtors === "yes"),
+    seeDebtors: (isAdmin && debtors !== "no") || (marketing && debtors === "yes") ? "Yes" : "No",
     enquiryRoles: parseEnquiryRoles(row[6], access),
     canManageUsers: manage,
-    manageUsers: manage ? "Yes" : "No"
+    manageUsers: manage ? "Yes" : "No",
+    canEditMarketingFields: marketing
   };
 }
 
@@ -362,10 +421,14 @@ function upsertUser(body) {
   if (wantsManage) role = "Manager";
   let access = parseAccess(body.access, role);
   if (isManagerTitle(role)) access = "Admin";
-  if (!role) role = access === "Admin" ? "Admin" : "Production";
-  const tasks = Array.isArray(body.tasks) ? body.tasks.filter((t) => FLOOR_TASKS.indexOf(t) !== -1) : parseTasks(body.tasks);
+  if (isMarketingTitle(role) && access !== "Admin") access = "Marketing";
+  if (access === "Marketing" && !role) role = "Marketing";
+  if (!role) role = access === "Admin" ? "Admin" : (access === "Marketing" ? "Marketing" : "Production");
+  const tasks = access === "Marketing"
+    ? []
+    : (Array.isArray(body.tasks) ? body.tasks.filter((t) => FLOOR_TASKS.indexOf(t) !== -1) : parseTasks(body.tasks));
   const seeDebtors = parseSeeDebtors(body, access);
-  const enquiryRoles = parseEnquiryRoles(body.enquiryRoles != null ? body.enquiryRoles : body.enquiry_roles, access);
+  const enquiryRoles = access === "Marketing" ? [] : parseEnquiryRoles(body.enquiryRoles != null ? body.enquiryRoles : body.enquiry_roles, access);
   const manageUsers = isManagerTitle(role) ? "Yes" : "No";
   const sheet = usersSheet();
   let rowNum = findUserRow(name);
@@ -509,11 +572,13 @@ function createSession(profile) {
     role: profile.role || profile.jobTitle || "",
     jobTitle: profile.jobTitle || profile.role || "",
     isAdmin: profile.isAdmin,
+    isMarketing: isMarketing(profile),
     canSeeOffice: profile.canSeeOffice,
     canSeeDrawingDesk: !!(profile.canSeeDrawingDesk || isDrawingOwnerName(profile.name)),
     canSeeDebtors: profile.canSeeDebtors,
     canManageUsers: canManageUsers(profile),
     canSeeIdleAlerts: canSeeIdleAlerts(profile),
+    canEditMarketingFields: canEditMarketingFields(profile),
     tasks: profile.tasks
   };
   sessions.set(token, safe);
@@ -662,6 +727,8 @@ function durationMinutes(product, process) {
 module.exports = {
   FLOOR_TASKS,
   ENQUIRY_ROLES,
+  MARKETING_EDIT_FIELDS,
+  MARKETING_WRITE_ERROR,
   listUsers,
   seedLocalAdminIfEmpty,
   upsertUser,
@@ -675,6 +742,13 @@ module.exports = {
   DRAWING_OWNER,
   isProductionFloorUser,
   isManagerTitle,
+  isMarketingTitle,
+  isMarketing,
+  canEditMarketingFields,
+  marketingEditFields,
+  marketingWriteAllowed,
+  isMutatingHttpMethod,
+  applyMarketingFieldPatch,
   verifyUser,
   checkRestoreSecrets,
   loginFailureMessage,

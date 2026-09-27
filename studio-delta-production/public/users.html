@@ -61,10 +61,11 @@
       <option value="Manager"></option>
       <option value="Production Manager"></option>
       <option value="Admin"></option>
+      <option value="Marketing"></option>
       <option value="Welding"></option>
       <option value="Quality Control"></option>
     </datalist>
-    <p class="help">Tick <b>Quality Control</b> on an Admin if they do pre-powder, powder, or final QC. Other shop clocks stay look-only for Admin. Anyone on Production Tasks can see completion times. Only Admin can edit completed steel.</p>
+    <p class="help">Tick <b>Quality Control</b> on an Admin if they do pre-powder, powder, or final QC. Other shop clocks stay look-only for Admin. Anyone on Production Tasks can see completion times. Only Admin can edit completed steel. <b>Marketing</b> access can view Enquiries and Orders, and may only change Source and Campaign.</p>
     <table id="usersTable">
       <thead>
         <tr><th>Name</th><th>Access</th><th>Job title</th><th>Enquiry roles</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th></th></tr>
@@ -72,7 +73,7 @@
       <tbody id="body"></tbody>
     </table>
   </div>
-  <script src="/office-auth.js?v=drawing-erin-tasks"></script>
+  <script src="/office-auth.js?v=marketing-1"></script>
   <script>
     const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
     const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval", "Follow-up"];
@@ -83,15 +84,20 @@
     function render() {
       const body = document.getElementById("body");
       body.innerHTML = rows.map((u, i) => {
-        const tasks = TASKS.map((t) => "<label class='t'><input type='checkbox' data-i='"+i+"' data-task='"+t+"'"+(u.tasks.indexOf(t)>=0?" checked":"")+"> "+t+"</label>").join("");
+        const tasks = TASKS.map((t) => "<label class='t'><input type='checkbox' data-i='"+i+"' data-task='"+t+"'"+(u.tasks.indexOf(t)>=0?" checked":"")+(u.access==="Marketing"?" disabled":"")+"> "+t+"</label>").join("");
         const roles = (u.enquiryRoles || []);
         const roleDisabled = u.access !== "Admin" ? " disabled" : "";
         const enquiryRoles = ENQUIRY_ROLES.map((t) => "<label class='t'><input type='checkbox' data-i='"+i+"' data-role='"+t+"'"+(roles.indexOf(t)>=0?" checked":"")+roleDisabled+"> "+t+"</label>").join("");
-        const debtDisabled = u.access !== "Admin" ? " disabled" : "";
+        const debtDisabled = (u.access !== "Admin" && u.access !== "Marketing") ? " disabled" : "";
+        const tasksDisabled = u.access !== "Admin" && u.access !== "Production" ? " disabled" : (u.access === "Marketing" ? " disabled" : "");
         return "<tr>" +
           "<td><input data-i='"+i+"' data-k='name' value='"+esc(u.name)+"'></td>" +
-          "<td><select data-i='"+i+"' data-k='access'><option"+(u.access==="Production"?" selected":"")+">Production</option><option"+(u.access==="Admin"?" selected":"")+">Admin</option></select></td>" +
-          "<td><input data-i='"+i+"' data-k='role' list='jobTitles' placeholder='Manager, Welding…' value='"+esc(u.role)+"'></td>" +
+          "<td><select data-i='"+i+"' data-k='access'>" +
+            "<option"+(u.access==="Production"?" selected":"")+">Production</option>" +
+            "<option"+(u.access==="Admin"?" selected":"")+">Admin</option>" +
+            "<option"+(u.access==="Marketing"?" selected":"")+">Marketing</option>" +
+          "</select></td>" +
+          "<td><input data-i='"+i+"' data-k='role' list='jobTitles' placeholder='Manager, Marketing…' value='"+esc(u.role)+"'></td>" +
           "<td><div class='tasks'>"+enquiryRoles+"</div></td>" +
           "<td><input data-i='"+i+"' data-k='password' placeholder='Leave blank to keep' value=''></td>" +
           "<td><div class='tasks'>"+tasks+"</div></td>" +
@@ -131,6 +137,12 @@
             if (rows[i].access === "Admin") {
               rows[i].canSeeDebtors = true;
               rows[i].seeDebtors = "Yes";
+            } else if (rows[i].access === "Marketing") {
+              rows[i].canSeeDebtors = false;
+              rows[i].seeDebtors = "No";
+              rows[i].enquiryRoles = [];
+              rows[i].tasks = [];
+              if (!String(rows[i].role || "").trim()) rows[i].role = "Marketing";
             } else {
               rows[i].canSeeDebtors = false;
               rows[i].seeDebtors = "No";

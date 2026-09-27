@@ -11,7 +11,7 @@ const COMMENTABLE_FIELDS = [
   "quote_number", "order_number", "status", "assigned_operator", "type", "category",
   "product", "variation", "doors", "detailed_description", "dimensions", "powder_coating",
   "client_name", "client_number", "email", "payment_date", "address", "province",
-  "price_excl_vat", "price_incl_vat", "amount_paid", "owing", "month_of_sale", "source", "city"
+  "price_excl_vat", "price_incl_vat", "amount_paid", "owing", "month_of_sale", "source", "campaign", "city"
 ];
 
 const FIELD_LABELS = {

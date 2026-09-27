@@ -101,6 +101,11 @@ function requireOffice(req, res, next) {
     return;
   }
   req.office = profile;
+  if (staff.isMarketing(profile) && staff.isMutatingHttpMethod(req.method)
+      && !staff.marketingWriteAllowed(req.method, req.path)) {
+    res.status(403).json({ ok: false, error: staff.MARKETING_WRITE_ERROR });
+    return;
+  }
   next();
 }
 
@@ -192,6 +197,8 @@ function mountOffice(app) {
       ok: true,
       canManageUsers: staff.canManageUsers(profile),
       canMarkNoPlate: staff.canMarkNoPlate(profile),
+      canEditMarketingFields: staff.canEditMarketingFields(profile),
+      isMarketing: staff.isMarketing(profile),
       ...session
     });
   });
@@ -212,7 +219,9 @@ function mountOffice(app) {
       ok: true,
       profile: Object.assign({}, profile, {
         canManageUsers: staff.canManageUsers(profile),
-        canMarkNoPlate: staff.canMarkNoPlate(profile)
+        canMarkNoPlate: staff.canMarkNoPlate(profile),
+        canEditMarketingFields: staff.canEditMarketingFields(profile),
+        isMarketing: staff.isMarketing(profile)
       })
     });
   });
@@ -733,6 +742,8 @@ function mountOffice(app) {
       shopStatuses: SHOP_STATUSES.slice(),
       canManageUsers: staff.canManageUsers(_req.office),
       canMarkNoPlate: noPlates.canMarkNoPlate(_req.office),
+      canEditMarketingFields: staff.canEditMarketingFields(_req.office),
+      isMarketing: staff.isMarketing(_req.office),
       readyEnquiries: listEnquiriesWaitingForOrders().map((row) => ({
         enquiry_no: row.enquiry_no,
         client_name: row.client_name || "",
@@ -763,8 +774,14 @@ function mountOffice(app) {
 
   app.put("/api/office/orders", requireOffice, (req, res) => {
     try {
-      const body = req.body || {};
-      const existing = listOrders().find((o) => o.order_number === formatOrderId(body.order_number)) || null;
+      let body = req.body || {};
+      let existing = listOrders().find((o) => o.order_number === formatOrderId(body.order_number)) || null;
+      if (staff.isMarketing(req.office)) {
+        body = staff.applyMarketingFieldPatch(existing, body, {
+          createError: "Marketing can only update Source and Campaign on existing orders."
+        });
+        existing = body;
+      }
       const row = upsertOrder(jobCard.applyOfficeOrderStatusLock(body, existing));
       res.json({ ok: true, row });
     } catch (e) {
@@ -1010,6 +1027,8 @@ function mountOffice(app) {
       dropdowns: listEnquiryDropdowns(),
       vatRate: VAT_RATE,
       canManageUsers: staff.canManageUsers(req.office),
+      canEditMarketingFields: staff.canEditMarketingFields(req.office),
+      isMarketing: staff.isMarketing(req.office),
       assignees: pipeline.officeAssignees(),
       enquiryRoles: staff.enquiryRoleDefaults(),
       onboardStatuses: pipeline.ONBOARD_STATUSES
@@ -1188,20 +1207,30 @@ function mountOffice(app) {
   app.put("/api/office/enquiries", requireOffice, (req, res) => {
     try {
       const actor = req.office && req.office.name;
-      const incoming = req.body || {};
+      let incoming = req.body || {};
+      if (staff.isMarketing(req.office)) {
+        if (incoming.create_only || incoming.createOnly) {
+          res.status(403).json({ ok: false, error: staff.MARKETING_WRITE_ERROR });
+          return;
+        }
+        const existing = getEnquiry(incoming.enquiry_no || incoming.enquiryNo || "");
+        incoming = staff.applyMarketingFieldPatch(existing, incoming, {
+          createError: "Marketing can only update Source and Campaign on existing enquiries."
+        });
+      }
       const saved = upsertEnquiry(incoming, {
         actor,
         createOnly: !!(incoming.create_only || incoming.createOnly),
         previousEnquiryNo: incoming.previous_enquiry_no || incoming.previousEnquiryNo || ""
       });
       const pasted = String(incoming.correspondence_links || incoming.correspondenceLinks || "").trim();
-      if (actor && pasted) {
+      if (actor && pasted && !staff.isMarketing(req.office)) {
         pipeline.applyAction(saved.enquiry_no, actor, {
           action: "add_correspondence",
           correspondence_links: pasted
         });
       }
-      const row = actor && pipeline.isAutoCaptureStatus(saved.status)
+      const row = actor && !staff.isMarketing(req.office) && pipeline.isAutoCaptureStatus(saved.status)
         ? pipeline.applyCaptureRoute(saved.enquiry_no, actor, incoming).row
         : saved;
       res.json({
