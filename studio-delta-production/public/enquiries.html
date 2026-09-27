@@ -277,7 +277,7 @@
         <h1 id="captureTitle">New enquiry</h1>
         <div class="tools">
           <button class="ghost" type="button" id="captureBlankBtn" onclick="blankCapture()" hidden>Start blank</button>
-          <button class="ghost" type="button" onclick="closeCapture()">Cancel</button>
+          <button class="ghost" type="button" data-marketing-close onclick="closeCapture()">Cancel</button>
           <button class="ghost" type="button" id="captureDupBtn" hidden>Save anyway</button>
           <button class="ghost" type="button" id="captureUseNextBtn" hidden>Use next number</button>
           <button class="ghost" type="button" id="captureShowTakenBtn" hidden>Show this enquiry</button>
@@ -305,13 +305,15 @@
         <label>Client name *
           <input id="cap_client_name" placeholder="Who is this for?">
         </label>
-        <div class="stack-grid">
+        <div class="stack-grid mkt-keep" id="mktEnquirySourceCampaign">
           <label>How they found us
             <select id="cap_source" data-marketing-edit></select>
           </label>
           <label>Campaign
             <select id="cap_campaign" data-marketing-edit></select>
           </label>
+        </div>
+        <div class="stack-grid">
           <label>Province
             <select id="cap_province"></select>
           </label>
@@ -557,14 +559,15 @@
       <header>
         <h1 id="viewTitle">Enquiry</h1>
         <div class="tools">
-          <button class="ghost" type="button" id="viewEmailBtn">Write email</button>
-          <button class="ghost" type="button" onclick="closeView()">Close</button>
+          <button class="ghost" type="button" id="viewEmailBtn" data-marketing-hide>Write email</button>
+          <button class="ghost" type="button" id="viewEditBtn" data-marketing-edit hidden>Edit Source &amp; Campaign</button>
+          <button class="ghost" type="button" data-marketing-close onclick="closeView()">Close</button>
         </div>
       </header>
       <div class="body" id="viewBody"></div>
     </div>
   </div>
-  <script src="/office-auth.js?v=marketing-1"></script>
+  <script src="/office-auth.js?v=marketing-2"></script>
   <script src="/enquiry-process.js?v=drawing-erin-tasks"></script>
   <script>
     const HEADERS = [
@@ -1030,7 +1033,7 @@
           const style = colStyle(k, width, freeze);
           if (k === "_edit") {
             html += "<td class=\"" + cls + "\" style=\"" + style + "\"><div class=\"row-actions-cell\">" +
-              "<button type=\"button\" class=\"ghost icon-btn\" title=\"Edit enquiry\" aria-label=\"Edit enquiry\" data-edit-enquiry=\"" + i + "\"><i class=\"bi bi-pencil\"></i></button>" +
+              "<button type=\"button\" class=\"ghost icon-btn\" title=\"Edit Source & Campaign\" aria-label=\"Edit Source and Campaign\" data-edit-enquiry=\"" + i + "\" data-marketing-edit><i class=\"bi bi-pencil\"></i></button>" +
               "<button type=\"button\" class=\"ghost icon-btn\" title=\"Status update\" aria-label=\"Status update\" data-open-process=\"" + i + "\"><i class=\"bi bi-list-task\"></i></button>" +
               (row.ready_for_orders
                 ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Create order\" aria-label=\"Create order\" data-create-order=\"" + i + "\"><i class=\"bi bi-box-seam\"></i></button>"
@@ -1121,15 +1124,80 @@
       return "<div class=\"view-item" + (wide ? " wide" : "") + "\"><div class=\"view-label\">" + esc(label) + "</div>" +
         "<div class=\"view-value" + (v ? "" : " empty") + "\">" + esc(v || "—") + "</div></div>";
     }
+    function isMarketingUser() {
+      const profile = typeof sdOfficeProfile === "function" ? sdOfficeProfile() : null;
+      return typeof sdIsMarketing === "function" && sdIsMarketing(profile);
+    }
+    function marketingOptionHtml(key, value) {
+      const current = String(value || "");
+      const opts = (dropdowns[key] || []).slice();
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      return "<option value=\"\"></option>" + opts.map((o) =>
+        "<option value=\"" + esc(o) + "\"" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>"
+      ).join("");
+    }
+    function marketingEditBoxHtml(source, campaign) {
+      return "<div class=\"mkt-edit-box\" id=\"mktEditBox\">" +
+        "<b>Update Source and Campaign</b>" +
+        "<p class=\"hint\">Change how they found us and the campaign, then save.</p>" +
+        "<div class=\"stack-grid\">" +
+        "<label>How they found us<select id=\"mkt_source\" data-marketing-edit>" + marketingOptionHtml("source", source) + "</select></label>" +
+        "<label>Campaign<select id=\"mkt_campaign\" data-marketing-edit>" + marketingOptionHtml("campaign", campaign) + "</select></label>" +
+        "</div>" +
+        "<p class=\"err\" id=\"mktEditErr\" role=\"alert\"></p>" +
+        "<div class=\"mkt-save-row\">" +
+        "<button type=\"button\" id=\"mktSaveBtn\" data-marketing-edit>Save Source &amp; Campaign</button>" +
+        "</div></div>";
+    }
+    async function saveMarketingEnquiryFields(i) {
+      const row = rows[i];
+      const err = document.getElementById("mktEditErr");
+      const btn = document.getElementById("mktSaveBtn");
+      if (!row || !row.enquiry_no) return;
+      if (err) err.textContent = "";
+      if (btn) btn.disabled = true;
+      try {
+        const r = await sdOfficeFetch("/api/office/enquiries", {
+          method: "PUT",
+          body: JSON.stringify({
+            enquiry_no: row.enquiry_no,
+            source: (document.getElementById("mkt_source") || {}).value || "",
+            campaign: (document.getElementById("mkt_campaign") || {}).value || ""
+          })
+        });
+        const j = await r.json();
+        if (!j.ok) {
+          if (err) err.textContent = j.error || "Could not save";
+          return;
+        }
+        rows[i] = j.row || Object.assign({}, row, {
+          source: (document.getElementById("mkt_source") || {}).value || "",
+          campaign: (document.getElementById("mkt_campaign") || {}).value || ""
+        });
+        render();
+        openView(i);
+        const ok = document.getElementById("mktEditErr");
+        if (ok) {
+          ok.style.color = "#067647";
+          ok.textContent = "Saved.";
+        }
+      } catch (e) {
+        if (err) err.textContent = "Could not save";
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
     function openView(i) {
       const row = rows[i];
       if (!row) return;
+      const marketing = isMarketingUser();
       const lines = namedLines(ensureLines(row));
       const hasValues = lines.some((l) => String(l.value_incl_vat || l.value_excl_vat || "").trim() !== "") || String(row.delivery_incl_vat || row.delivery_excl_vat || "").trim() !== "";
       const quotes = Array.isArray(row.quotes) ? row.quotes : [];
       const specs = Array.isArray(row.custom_specs) ? row.custom_specs.filter((s) => s && (s.kind || s.detail)) : [];
       document.getElementById("viewTitle").textContent = (row.enquiry_no || "Enquiry") + (row.client_name ? " · " + row.client_name : "");
-      let html = "<div class=\"view-grid\">";
+      let html = marketing ? marketingEditBoxHtml(row.source, row.campaign) : "";
+      html += "<div class=\"view-grid\">";
       html += viewItem("Enquiry no", row.enquiry_no);
       html += viewItem("Date enquired", displayValue(row, "date_enquired") || row.date_enquired);
       html += viewItem("Month enquired", row.month_enquired);
@@ -1143,8 +1211,10 @@
       html += viewItem("Enquiry source", row.enquiry_source);
       html += viewItem("Enquiry type", row.enquiry_type);
       html += viewItem("Client name", row.client_name, true);
-      html += viewItem("How they found us", row.source);
-      html += viewItem("Campaign", row.campaign);
+      if (!marketing) {
+        html += viewItem("How they found us", row.source);
+        html += viewItem("Campaign", row.campaign);
+      }
       html += viewItem("Province", row.province);
       html += viewItem("Client email", row.client_email);
       html += viewItem("Client number", row.client_number);
@@ -1198,9 +1268,22 @@
       document.getElementById("viewBody").innerHTML = html;
       const emailBtn = document.getElementById("viewEmailBtn");
       if (emailBtn) {
+        emailBtn.hidden = !!marketing;
         emailBtn.onclick = () => {
           location.href = "/enquiries/replies?enquiry=" + encodeURIComponent(row.enquiry_no || "");
         };
+      }
+      const editBtn = document.getElementById("viewEditBtn");
+      if (editBtn) {
+        editBtn.hidden = !marketing;
+        editBtn.onclick = () => {
+          closeView();
+          openCapture(i);
+        };
+      }
+      if (marketing) {
+        const saveBtn = document.getElementById("mktSaveBtn");
+        if (saveBtn) saveBtn.onclick = () => saveMarketingEnquiryFields(i);
       }
       document.getElementById("viewMask").classList.add("open");
     }
@@ -1944,20 +2027,38 @@
     function openCapture(index, skipRestore) {
       const i = typeof index === "number" && index >= 0 ? index : -1;
       const existing = i >= 0 ? rows[i] : null;
+      const marketing = isMarketingUser();
+      if (marketing && !existing) {
+        setSheetError("captureErr", "Marketing can only update Source and Campaign on existing enquiries. Open an enquiry from the list.");
+        return;
+      }
       capture.open = true;
       capture.i = i;
       capture.ignoreDup = false;
       document.getElementById("captureDup").hidden = true;
       document.getElementById("captureDup").innerHTML = "";
       fillCaptureFromRow(existing);
+      if (marketing && existing) {
+        document.getElementById("captureTitle").textContent = "Update Source & Campaign — " + (existing.enquiry_no || "");
+        const saveBtn = document.querySelector('#captureMask [data-save="capture"]');
+        if (saveBtn) saveBtn.textContent = "Save Source & Campaign";
+        document.getElementById("captureHint").textContent = "Only How they found us and Campaign will be saved.";
+      } else {
+        const saveBtn = document.querySelector('#captureMask [data-save="capture"]');
+        if (saveBtn) saveBtn.textContent = "Save enquiry";
+      }
+      const captureBody = document.querySelector("#captureMask .stack-form");
+      if (captureBody) captureBody.classList.toggle("mkt-form-mode", !!(marketing && existing));
       const id = existing ? existing.enquiry_no : "new";
-      const draft = skipRestore ? null : readDraft("capture", id);
+      const draft = skipRestore || (marketing && existing) ? null : readDraft("capture", id);
       const restored = draftHasWork(draft) && applyCaptureDraft(draft);
       const blankBtn = document.getElementById("captureBlankBtn");
-      if (blankBtn) blankBtn.hidden = !restored;
-      document.getElementById("captureHint").textContent = restored
-        ? "Unsaved progress from last time is filled in."
-        : "Progress is kept for you if you close this before saving.";
+      if (blankBtn) blankBtn.hidden = !restored || marketing;
+      if (!(marketing && existing)) {
+        document.getElementById("captureHint").textContent = restored
+          ? "Unsaved progress from last time is filled in."
+          : "Progress is kept for you if you close this before saving.";
+      }
       setSheetError("captureErr", "");
       const dupBtn = document.getElementById("captureDupBtn");
       if (dupBtn) dupBtn.hidden = true;
@@ -1967,7 +2068,8 @@
       document.getElementById("captureMask").classList.add("open");
       lockCaptureEnquiryNo(false);
       setCaptureEnquiryNoHint(!!existing);
-      document.getElementById("cap_enquiry_no").focus();
+      const focusEl = document.getElementById(marketing && existing ? "cap_source" : "cap_enquiry_no");
+      if (focusEl) focusEl.focus();
     }
     function blankCapture() {
       const id = captureDraftId();
@@ -1977,6 +2079,10 @@
     function closeCapture(keepDraft) {
       if (keepDraft !== false) persistCaptureDraft();
       document.getElementById("captureMask").classList.remove("open");
+      const captureBody = document.querySelector("#captureMask .stack-form");
+      if (captureBody) captureBody.classList.remove("mkt-form-mode");
+      const saveBtn = document.querySelector('#captureMask [data-save="capture"]');
+      if (saveBtn) saveBtn.textContent = "Save enquiry";
       capture.open = false;
       capture.i = -1;
     }

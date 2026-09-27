@@ -351,15 +351,29 @@ function sdApplyMarketingLock(profile) {
     const bar = document.createElement("div");
     bar.id = "sdMarketingBanner";
     bar.setAttribute("role", "status");
-    bar.textContent = "Marketing — view only, except Source and Campaign on Enquiries and Orders";
+    bar.textContent = "Marketing — open an order or enquiry to update Source and Campaign";
     const css = document.createElement("style");
     css.textContent = "#sdMarketingBanner{position:sticky;top:0;z-index:11050;background:#1e3a5f;color:#e8eef7;border-bottom:2px solid #3b82f6;padding:8px 12px;font:700 13px Outfit,Inter,system-ui,sans-serif;letter-spacing:.02em;text-align:center}" +
       "body.sd-marketing-view [data-marketing-hide]{display:none !important}" +
       "body.sd-marketing-view .sd-marketing-readonly input:not([data-marketing-edit])," +
       "body.sd-marketing-view .sd-marketing-readonly select:not([data-marketing-edit])," +
       "body.sd-marketing-view .sd-marketing-readonly textarea:not([data-marketing-edit])," +
-      "body.sd-marketing-view .sd-marketing-readonly button:not([data-marketing-edit]):not(.sd-logout-btn):not(#sdPasswordBtn):not(#sdCollapseBtn):not(#sdNavBurger){pointer-events:none;opacity:.72}" +
-      "body.sd-marketing-view .sd-marketing-readonly [data-marketing-edit]{pointer-events:auto;opacity:1}";
+      "body.sd-marketing-view .sd-marketing-readonly button:not([data-marketing-edit]):not([data-marketing-close]):not(.sd-logout-btn):not(#sdPasswordBtn):not(#sdCollapseBtn):not(#sdNavBurger){pointer-events:none;opacity:.72}" +
+      "body.sd-marketing-view .sd-marketing-readonly [data-marketing-edit]," +
+      "body.sd-marketing-view .sd-marketing-readonly [data-marketing-close]{pointer-events:auto;opacity:1}" +
+      ".mkt-edit-box{border:2px solid #3b82f6;border-radius:10px;padding:14px 16px;margin:0 0 16px;background:#eff6ff}" +
+      ".mkt-edit-box > b{display:block;font:700 14px Outfit,Inter,system-ui,sans-serif;color:#1e3a5f;margin:0 0 4px}" +
+      ".mkt-edit-box .hint{margin:0 0 12px}" +
+      ".mkt-edit-box .stack-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 12px}" +
+      ".mkt-edit-box label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:#344054}" +
+      ".mkt-edit-box select{width:100%;min-height:40px;border:1px solid #98a2b3;border-radius:8px;padding:8px 10px;font:inherit;background:#fff}" +
+      ".mkt-edit-box .err{color:#b42318;font-size:12px;min-height:16px;margin:0 0 8px}" +
+      ".mkt-edit-box .mkt-save-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}" +
+      "@media (max-width:720px){.mkt-edit-box .stack-grid{grid-template-columns:1fr}}" +
+      "body.sd-marketing-view form.mkt-form-mode > :not(.mkt-keep):not(.form-foot)," +
+      "body.sd-marketing-view .stack-form.mkt-form-mode > :not(.mkt-keep):not(.form-foot){display:none !important}" +
+      "body.sd-marketing-view form.mkt-form-mode .mkt-keep," +
+      "body.sd-marketing-view .stack-form.mkt-form-mode .mkt-keep{display:grid !important}";
     document.head.appendChild(css);
     document.body.insertBefore(bar, document.body.firstChild);
   }

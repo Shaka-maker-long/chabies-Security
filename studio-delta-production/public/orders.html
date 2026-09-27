@@ -205,7 +205,7 @@
       <header class="form-head">
         <h1 id="formTitle">New order</h1>
         <div class="tools">
-          <button class="ghost" type="button" onclick="closeForm()">Cancel</button>
+          <button class="ghost" type="button" data-marketing-close onclick="closeForm()">Cancel</button>
           <button type="button" id="saveBtn" data-marketing-edit onclick="saveForm()">Save order</button>
         </div>
         <p class="form-head-err" id="formErr" role="alert"></p>
@@ -270,6 +270,8 @@
           <label>Powder coating
             <select id="f_powder_coating"></select>
           </label>
+        </div>
+        <div class="stack-grid mkt-keep" id="mktSourceCampaign">
           <label>Source
             <select id="f_source" data-marketing-edit></select>
           </label>
@@ -344,12 +346,12 @@
       <header>
         <h1 id="viewTitle">Order</h1>
         <div class="tools">
-          <button class="ghost" type="button" id="viewEnquiryBtn" hidden>Open enquiry</button>
-          <button class="ghost" type="button" id="viewPrintCardBtn" hidden>Open / print job card</button>
-          <button class="ghost" type="button" id="viewJobCardBtn" hidden>Generate job card</button>
-          <button class="ghost" type="button" id="viewEditBtn">Edit</button>
+          <button class="ghost" type="button" id="viewEnquiryBtn" hidden data-marketing-hide>Open enquiry</button>
+          <button class="ghost" type="button" id="viewPrintCardBtn" hidden data-marketing-hide>Open / print job card</button>
+          <button class="ghost" type="button" id="viewJobCardBtn" hidden data-marketing-hide>Generate job card</button>
+          <button class="ghost" type="button" id="viewEditBtn" data-marketing-edit>Edit Source &amp; Campaign</button>
           <button class="danger" type="button" id="viewRemoveBtn" hidden>Remove this order</button>
-          <button class="ghost" type="button" onclick="closeView()">Close</button>
+          <button class="ghost" type="button" data-marketing-close onclick="closeView()">Close</button>
         </div>
       </header>
       <div class="body" id="viewBody"></div>
@@ -424,7 +426,7 @@
     </div>
   </div>
 
-  <script src="/office-auth.js?v=marketing-1"></script>
+  <script src="/office-auth.js?v=marketing-2"></script>
   <script>
     const HEADERS = [
       ["_edit", "", 128, true],
@@ -646,7 +648,7 @@
             const canCard = canGenerateJobCard(row.status);
             html += "<td class=\"" + colClass(k, freeze, "") + "\" style=\"" + colStyle(k, colWidths[c], freeze) + "\">" +
               "<div class=\"row-actions-cell\">" +
-              "<button type=\"button\" class=\"ghost icon-btn\" title=\"Edit order\" aria-label=\"Edit order\" data-edit-order=\"" + i + "\"><i class=\"bi bi-pencil\"></i></button>" +
+              "<button type=\"button\" class=\"ghost icon-btn\" title=\"Edit Source & Campaign\" aria-label=\"Edit Source and Campaign\" data-edit-order=\"" + i + "\" data-marketing-edit><i class=\"bi bi-pencil\"></i></button>" +
               ((printed && printed.has_pdf)
                 ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Open / print job card\" aria-label=\"Open / print job card\" data-open-job-card=\"" + esc(printed.pdf_url) + "\"><i class=\"bi bi-file-earmark-pdf\"></i></button>"
                 : (canCard ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Generate job card\" aria-label=\"Generate job card\" data-job-card=\"" + esc(row.order_number) + "\"><i class=\"bi bi-file-earmark-plus\"></i></button>" : "")) +
@@ -712,13 +714,84 @@
       syncMonthOfSale();
       return true;
     }
+    function isMarketingUser() {
+      const profile = typeof sdOfficeProfile === "function" ? sdOfficeProfile() : null;
+      return typeof sdIsMarketing === "function" && sdIsMarketing(profile);
+    }
+    function marketingOptionHtml(key, value) {
+      const current = String(value || "");
+      const opts = (dropdowns[key] || []).slice();
+      if (current && opts.indexOf(current) === -1) opts.unshift(current);
+      return "<option value=\"\"></option>" + opts.map((o) =>
+        "<option value=\"" + esc(o) + "\"" + (o === current ? " selected" : "") + ">" + esc(o) + "</option>"
+      ).join("");
+    }
+    function marketingEditBoxHtml(source, campaign) {
+      return "<div class=\"mkt-edit-box\" id=\"mktEditBox\">" +
+        "<b>Update Source and Campaign</b>" +
+        "<p class=\"hint\">Change how they found us and the campaign, then save.</p>" +
+        "<div class=\"stack-grid\">" +
+        "<label>Source<select id=\"mkt_source\" data-marketing-edit>" + marketingOptionHtml("source", source) + "</select></label>" +
+        "<label>Campaign<select id=\"mkt_campaign\" data-marketing-edit>" + marketingOptionHtml("campaign", campaign) + "</select></label>" +
+        "</div>" +
+        "<p class=\"err\" id=\"mktEditErr\" role=\"alert\"></p>" +
+        "<div class=\"mkt-save-row\">" +
+        "<button type=\"button\" id=\"mktSaveBtn\" data-marketing-edit>Save Source &amp; Campaign</button>" +
+        "</div></div>";
+    }
+    async function saveMarketingOrderFields(i) {
+      const row = rows[i];
+      const err = document.getElementById("mktEditErr");
+      const btn = document.getElementById("mktSaveBtn");
+      if (!row || !row.order_number) return;
+      if (err) err.textContent = "";
+      if (btn) btn.disabled = true;
+      try {
+        const r = await sdOfficeFetch("/api/office/orders", {
+          method: "PUT",
+          body: JSON.stringify({
+            order_number: row.order_number,
+            source: (document.getElementById("mkt_source") || {}).value || "",
+            campaign: (document.getElementById("mkt_campaign") || {}).value || ""
+          })
+        });
+        const j = await r.json();
+        if (!j.ok) {
+          if (err) err.textContent = j.error || "Could not save";
+          return;
+        }
+        rows[i] = j.row || Object.assign({}, row, {
+          source: (document.getElementById("mkt_source") || {}).value || "",
+          campaign: (document.getElementById("mkt_campaign") || {}).value || ""
+        });
+        render();
+        openView(i);
+        const ok = document.getElementById("mktEditErr");
+        if (ok) {
+          ok.style.color = "#067647";
+          ok.textContent = "Saved.";
+        }
+      } catch (e) {
+        if (err) err.textContent = "Could not save";
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
     function openForm(index) {
       const existing = Number.isInteger(index) ? rows[index] : null;
       editingIndex = existing ? index : -1;
       setFormErr("");
-      document.getElementById("formTitle").textContent = existing
-        ? "Edit order " + (existing.order_number || "")
-        : "New order";
+      const marketing = isMarketingUser();
+      if (marketing && !existing) {
+        setFormErr("Marketing can only update Source and Campaign on existing orders. Open an order from the list.");
+        return;
+      }
+      document.getElementById("formTitle").textContent = marketing && existing
+        ? "Update Source & Campaign — " + (existing.order_number || "")
+        : (existing ? "Edit order " + (existing.order_number || "") : "New order");
+      const saveBtn = document.getElementById("saveBtn");
+      if (saveBtn) saveBtn.textContent = marketing && existing ? "Save Source & Campaign" : "Save order";
+      document.getElementById("form").classList.toggle("mkt-form-mode", !!(marketing && existing));
       document.getElementById("f_enquiry_no").value = (existing && existing.enquiry_no) || "";
       const linked = !!(existing && existing.enquiry_no);
       document.getElementById("linkBox").hidden = !linked;
@@ -748,7 +821,7 @@
       document.getElementById("f_paid_in_full").checked = !!(total > 0 && Math.round((total - paid) * 100) <= 1);
       document.getElementById("f_status").value = existing ? (existing.status || "Not Yet Started") : "Not Yet Started";
       const correctBox = document.getElementById("correctBox");
-      if (correctBox) correctBox.hidden = !existing;
+      if (correctBox) correctBox.hidden = !existing || marketing;
       const correctSel = document.getElementById("f_correct_status");
       if (correctSel) {
         const current = existing ? (existing.status || "Not Yet Started") : "Not Yet Started";
@@ -759,18 +832,27 @@
       const confirmEl = document.getElementById("f_correct_confirm");
       if (confirmEl) confirmEl.checked = false;
       DROP_FIELDS.forEach((k) => fillSelect("f_" + k, k, existing ? existing[k] : ""));
-      const restored = applyOrderDraft(orderDraftId());
-      document.getElementById("formFootHint").textContent = restored
-        ? "Unsaved progress from last time is filled in. Save to clear it."
-        : "Progress stays on this device if you close this form. Save to clear it.";
+      if (!(marketing && existing)) {
+        const restored = applyOrderDraft(orderDraftId());
+        document.getElementById("formFootHint").textContent = restored
+          ? "Unsaved progress from last time is filled in. Save to clear it."
+          : "Progress stays on this device if you close this form. Save to clear it.";
+      } else {
+        document.getElementById("formFootHint").textContent = "Only Source and Campaign will be saved.";
+      }
       if (!(existing && existing.price_incl_vat)) updateMoneyFields();
       else syncPaidInFull();
       document.getElementById("formMask").classList.add("open");
-      document.getElementById(existing ? "f_client_name" : "f_order_number").focus();
+      const focusId = marketing && existing ? "f_source" : (existing ? "f_client_name" : "f_order_number");
+      const focusEl = document.getElementById(focusId);
+      if (focusEl) focusEl.focus();
     }
     function closeForm() {
       persistOrderDraft();
       document.getElementById("formMask").classList.remove("open");
+      document.getElementById("form").classList.remove("mkt-form-mode");
+      const saveBtn = document.getElementById("saveBtn");
+      if (saveBtn) saveBtn.textContent = "Save order";
       editingIndex = -1;
     }
     function formPayload() {
@@ -922,8 +1004,10 @@
     function openView(i) {
       const row = rows[i];
       if (!row) return;
+      const marketing = isMarketingUser();
       document.getElementById("viewTitle").textContent = (row.order_number || "Order") + (row.client_name ? " · " + row.client_name : "");
-      let html = "<div class=\"view-grid\">";
+      let html = marketing ? marketingEditBoxHtml(row.source, row.campaign) : "";
+      html += "<div class=\"view-grid\">";
       html += viewItem("Order number", row.order_number);
       html += viewItem("Quote number", row.quote_number);
       html += viewItem("Status", row.status);
@@ -943,8 +1027,10 @@
       html += viewItem("Address", row.address, true);
       html += viewItem("Payment date", row.payment_date);
       html += viewItem("Month of sale", row.month_of_sale);
-      html += viewItem("Source", row.source);
-      html += viewItem("Campaign", row.campaign);
+      if (!marketing) {
+        html += viewItem("Source", row.source);
+        html += viewItem("Campaign", row.campaign);
+      }
       html += viewItem("Price excl VAT", row.price_excl_vat);
       html += viewItem("Price incl VAT", row.price_incl_vat);
       html += viewItem("Amount paid (Incl VAT)", row.amount_paid);
@@ -956,29 +1042,41 @@
       html += "<div class=\"life\" id=\"orderLife\"><h2>Journey</h2><p class=\"life-sub\">Loading the journey…</p></div>";
       document.getElementById("viewBody").innerHTML = html;
       const enqBtn = document.getElementById("viewEnquiryBtn");
-      enqBtn.hidden = !row.enquiry_no;
+      enqBtn.hidden = !row.enquiry_no || marketing;
       enqBtn.onclick = () => {
         if (row.enquiry_no && typeof sdOpenEnquiryProcess === "function") sdOpenEnquiryProcess(row.enquiry_no);
         else if (row.enquiry_no) location.href = "/enquiries";
       };
       const printed = printedByOrder[row.order_number];
       const printBtn = document.getElementById("viewPrintCardBtn");
-      printBtn.hidden = !(printed && printed.has_pdf);
+      printBtn.hidden = marketing || !(printed && printed.has_pdf);
       printBtn.onclick = () => {
         if (printed && printed.pdf_url) window.open(printed.pdf_url, "_blank", "noopener");
       };
       const cardBtn = document.getElementById("viewJobCardBtn");
-      cardBtn.hidden = !canGenerateJobCard(row.status);
+      cardBtn.hidden = marketing || !canGenerateJobCard(row.status);
       cardBtn.onclick = () => {
         location.href = "/orders/job-card?order=" + encodeURIComponent(row.order_number || "");
       };
-      document.getElementById("viewEditBtn").onclick = () => {
+      const editBtn = document.getElementById("viewEditBtn");
+      if (marketing) {
+        editBtn.textContent = "Edit in form";
+        editBtn.hidden = false;
+      } else {
+        editBtn.textContent = "Edit";
+        editBtn.hidden = false;
+      }
+      editBtn.onclick = () => {
         closeView();
         openForm(i);
       };
       const removeBtn = document.getElementById("viewRemoveBtn");
-      removeBtn.hidden = !canManage;
+      removeBtn.hidden = !canManage || marketing;
       removeBtn.onclick = () => openRemoveOrder(row.order_number);
+      if (marketing) {
+        const saveBtn = document.getElementById("mktSaveBtn");
+        if (saveBtn) saveBtn.onclick = () => saveMarketingOrderFields(i);
+      }
       document.getElementById("viewMask").classList.add("open");
       fillOrderLife(row.order_number);
     }
