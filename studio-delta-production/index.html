@@ -2476,7 +2476,7 @@
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">CANCEL</button>
-          <button type="button" class="btn btn-dark" onclick="addBackboardFromModal()">ADD BACKBOARD</button>
+          <button type="button" class="btn btn-dark" id="addBackboardModalBtn" onclick="addBackboardFromModal()">ADD BACKBOARD</button>
         </div>
       </div>
     </div>
@@ -2787,6 +2787,18 @@
         editSteelModal = bindModal('#editSteelModal');
         editBackboardModal = bindModal('#editBackboardModal');
         backboardSelectionModal = bindModal('#backboardModal');
+        const backboardSelectEl = document.getElementById('backboardModal');
+        if (backboardSelectEl) {
+          backboardSelectEl.addEventListener('hidden.bs.modal', function () {
+            session.editingBackboardRowId = "";
+            const addBtn = document.getElementById('addBackboardModalBtn');
+            if (addBtn) addBtn.textContent = 'ADD BACKBOARD';
+            if (session.backboardRowTargetId && editBackboardModal) {
+              const editEl = document.getElementById('editBackboardModal');
+              if (editEl && !editEl.classList.contains('show')) editBackboardModal.show();
+            }
+          });
+        }
         idleAlertModal = bindModal('#idleAlertModal');
         welderSteelModal = bindModal('#welderSteelModal');
         batchWorkModal = bindModal('#batchWorkModal');
@@ -6112,6 +6124,27 @@
         "<button type=\"button\" class=\"btn btn-sm btn-outline-danger\" onclick=\"document.getElementById('" + rowId + "').remove()\" title=\"Remove\"><i class=\"bi bi-trash\"></i></button>";
       container.appendChild(row);
     }
+    function parseBackboardSize(sizeText) {
+      const raw = String(sizeText || "").trim();
+      const m = raw.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
+      if (!m) return { amount: "", unit: "m²" };
+      const unit = String(m[2] || "").trim() || "m²";
+      return { amount: m[1], unit: unit };
+    }
+    function paintBackboardRow(row, item) {
+      if (!row || !item || !item.name) return;
+      row.dataset.category = item.category || "";
+      row.dataset.name = item.name;
+      row.dataset.size = item.size || "";
+      row.dataset.custom = item.custom ? "true" : "false";
+      const rowId = row.id;
+      row.innerHTML = "<div><div class=\"fw-bold\">" + item.name + "</div>" +
+        "<div class=\"small text-muted\">" + (item.category || "") + " | " + (item.size || "") + "</div></div>" +
+        "<div class=\"d-flex gap-1\">" +
+        "<button type=\"button\" class=\"btn btn-sm btn-outline-dark\" onclick=\"openEditBackboardRow('" + rowId + "')\" title=\"Edit backboard\" aria-label=\"Edit backboard\"><i class=\"bi bi-pencil\"></i></button>" +
+        "<button type=\"button\" class=\"btn btn-sm btn-outline-danger\" onclick=\"document.getElementById('" + rowId + "').remove()\" title=\"Remove\" aria-label=\"Remove\"><i class=\"bi bi-trash\"></i></button>" +
+        "</div>";
+    }
     function appendBackboardRow(item) {
       const containerId = session.backboardRowTargetId || "backboardRowsContainer";
       const container = document.getElementById(containerId);
@@ -6120,14 +6153,19 @@
       const row = document.createElement("div");
       row.className = "backboard-row d-flex justify-content-between align-items-center mb-2 p-2 border rounded bg-light";
       row.id = rowId;
-      row.dataset.category = item.category || "";
-      row.dataset.name = item.name;
-      row.dataset.size = item.size || "";
-      row.dataset.custom = item.custom ? "true" : "false";
-      row.innerHTML = "<div><div class=\"fw-bold\">" + item.name + "</div>" +
-        "<div class=\"small text-muted\">" + (item.category || "") + " | " + (item.size || "") + "</div></div>" +
-        "<button type=\"button\" class=\"btn btn-sm btn-outline-danger\" onclick=\"document.getElementById('" + rowId + "').remove()\" title=\"Remove\"><i class=\"bi bi-trash\"></i></button>";
+      paintBackboardRow(row, item);
       container.appendChild(row);
+    }
+    function openEditBackboardRow(rowId) {
+      const row = document.getElementById(rowId);
+      if (!row) return;
+      session.editingBackboardRowId = rowId;
+      ensureBackboards(() => openBackboardModalReady({
+        category: row.dataset.category || "",
+        name: row.dataset.name || "",
+        size: row.dataset.size || "",
+        custom: row.dataset.custom === "true"
+      }));
     }
     function renderSavedPhotoThumb(idx) {
       const input = document.getElementById("photo-input-" + idx);
@@ -6844,22 +6882,66 @@
       return rows;
     }
     function openBackboardModal() {
+      session.editingBackboardRowId = "";
       ensureBackboards(() => openBackboardModalReady());
     }
-    function openBackboardModalReady() {
-      document.getElementById('backboardSizeInput').value = '';
+    function openBackboardModalReady(prefills) {
+      const draft = prefills || null;
+      const sizeBits = parseBackboardSize(draft && draft.size);
+      document.getElementById('backboardSizeInput').value = sizeBits.amount || '';
+      const unitSel = document.getElementById('backboardUnitSelect');
+      if (unitSel) {
+        const wantUnit = sizeBits.unit || "m²";
+        let found = false;
+        Array.prototype.forEach.call(unitSel.options || [], (opt) => {
+          if (String(opt.value) === wantUnit) found = true;
+        });
+        if (!found && wantUnit) {
+          const opt = document.createElement("option");
+          opt.value = wantUnit;
+          opt.textContent = wantUnit;
+          unitSel.appendChild(opt);
+        }
+        unitSel.value = wantUnit;
+      }
       const customInput = document.getElementById('backboardCustomProfile');
       customInput.value = '';
       customInput.classList.add('d-none');
 
       const categories = [...new Set((appData.backboards || []).map(p => p.category))];
       if (!categories.includes("Custom")) categories.push("Custom");
+      if (draft && draft.category && categories.indexOf(draft.category) === -1) categories.push(draft.category);
 
       const catSelect = document.getElementById('backboardCategorySelect');
       catSelect.innerHTML = '<option value="">-- Choose Category --</option>' +
         categories.map(c => `<option value="${c}">${c}</option>`).join('');
 
       document.getElementById('backboardProfileSelect').innerHTML = '<option value="">-- Select Category First --</option>';
+
+      const addBtn = document.getElementById('addBackboardModalBtn');
+      if (addBtn) addBtn.textContent = session.editingBackboardRowId ? 'UPDATE BACKBOARD' : 'ADD BACKBOARD';
+
+      if (draft && draft.category) {
+        catSelect.value = draft.category;
+        onBackboardCategoryChange();
+        const profSelect = document.getElementById('backboardProfileSelect');
+        const name = String(draft.name || "").trim();
+        const isCustom = !!draft.custom || draft.category === "Custom";
+        if (isCustom) {
+          if (profSelect.querySelector('option[value="__custom__"]')) profSelect.value = "__custom__";
+          customInput.value = name;
+          customInput.classList.remove("d-none");
+        } else if (name) {
+          if (!Array.prototype.some.call(profSelect.options || [], (opt) => opt.value === name)) {
+            const opt = document.createElement("option");
+            opt.value = name;
+            opt.textContent = name;
+            profSelect.insertBefore(opt, profSelect.querySelector('option[value="__custom__"]') || null);
+          }
+          profSelect.value = name;
+          onBackboardProfileChange();
+        }
+      }
 
       if (backboardSelectionModal) backboardSelectionModal.show();
     }
@@ -6919,7 +7001,17 @@
          return;
       }
 
-      appendBackboardRow({ category: cat, name: finalName, size: size + ' ' + unit, custom: isCustom });
+      const next = { category: cat, name: finalName, size: size + ' ' + unit, custom: isCustom };
+      const editId = session.editingBackboardRowId || "";
+      const existing = editId ? document.getElementById(editId) : null;
+      if (existing) {
+        paintBackboardRow(existing, next);
+      } else {
+        appendBackboardRow(next);
+      }
+      session.editingBackboardRowId = "";
+      const addBtn = document.getElementById('addBackboardModalBtn');
+      if (addBtn) addBtn.textContent = 'ADD BACKBOARD';
       if (!session.backboardRowTargetId && !session.editingCompletedBackboard) persistQcDraft();
 
       if (backboardSelectionModal) backboardSelectionModal.hide();
