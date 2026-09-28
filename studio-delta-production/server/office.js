@@ -328,6 +328,15 @@ function mountOffice(app) {
     }
   });
 
+  app.post("/api/office/glass-po/received-costs", requireOffice, (req, res) => {
+    try {
+      const result = glassPo.updateReceivedCosts(req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.post("/api/office/glass-po/clear", requireOffice, (req, res) => {
     const confirm = String((req.body && (req.body.confirm || req.body.confirmation)) || "").trim();
     if (confirm.toUpperCase() !== "CLEAR") {

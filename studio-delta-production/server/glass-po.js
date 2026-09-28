@@ -568,6 +568,39 @@ function receiveGlass(payload, actor) {
   };
 }
 
+function updateReceivedCosts(payload, actor) {
+  const body = payload || {};
+  const receiveId = String(body.receiveId || body.id || "").trim();
+  if (!receiveId) throw new Error("Which received glass batch are you updating?");
+  const entries = parseReceiveLines(body.lines || body.orders);
+  const store = loadStore();
+  const batch = (store.receives || []).find((row) => row && row.id === receiveId);
+  if (!batch) throw new Error("That received glass batch was not found.");
+  const byId = {};
+  (batch.lines || []).forEach((entry) => {
+    byId[String(entry.id || "").trim()] = entry;
+  });
+  entries.forEach((entry) => {
+    const existing = byId[entry.id];
+    if (!existing) {
+      throw new Error("Glass line " + entry.id + " is not on that received batch.");
+    }
+    existing.cost = Number(money(entry.cost));
+    store.lines[entry.id] = Object.assign({}, store.lines[entry.id] || {}, {
+      cost: money(entry.cost),
+      receiveId,
+      costUpdatedAt: nowIso(),
+      costUpdatedBy: String(actor || "Admin").trim() || "Admin"
+    });
+  });
+  saveStore(store);
+  return {
+    receiveId,
+    lineIds: entries.map((entry) => entry.id),
+    ...snapshot()
+  };
+}
+
 function findPo(poId) {
   const store = loadStore();
   const want = String(poId || "").trim();
@@ -769,6 +802,7 @@ module.exports = {
   snapshot,
   createPurchaseOrder,
   receiveGlass,
+  updateReceivedCosts,
   readInvoiceFile,
   readGlassLines,
   findPo,

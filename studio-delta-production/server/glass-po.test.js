@@ -123,6 +123,21 @@ const later = glassPo.receiveGlass({
 assert.strictEqual(later.outstandingCount, 0);
 assert.notStrictEqual(later.invoiceId, recv.invoiceId);
 
+const costEdit = glassPo.updateReceivedCosts({
+  receiveId: recv.receiveId,
+  lines: [
+    { id: "g1", cost: "100" },
+    { id: "g2", cost: "80" },
+    { id: "g3", cost: "40" }
+  ]
+}, "Office Boss");
+const editedBatch = (costEdit.received || []).find((b) => b.id === recv.receiveId);
+assert.ok(editedBatch, JSON.stringify(costEdit.received));
+assert.strictEqual(editedBatch.total, "220.00");
+const histG1 = (costEdit.purchaseHistory || []).find((r) => r.id === "g1");
+assert.ok(histG1, JSON.stringify(costEdit.purchaseHistory));
+assert.strictEqual(histG1.actualCost, "100.00");
+
 (async function main() {
   const pdf = await glassPo.buildPurchaseOrderPdf(po.poId);
   assert.ok(pdf.buffer.slice(0, 4).toString() === "%PDF");
@@ -214,6 +229,19 @@ assert.notStrictEqual(later.invoiceId, recv.invoiceId);
     headers: { "x-sd-token": session.token }
   });
   assert.strictEqual(file.status, 200);
+  const costApi = await fetch(base + "/api/office/glass-po/received-costs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": session.token },
+    body: JSON.stringify({
+      receiveId: recJson.receiveId,
+      lines: [{ id: "g-api-1", cost: "55.25" }]
+    })
+  });
+  const costJson = await costApi.json();
+  assert.ok(costJson.ok, JSON.stringify(costJson));
+  const histApi = (costJson.purchaseHistory || []).find((r) => r.id === "g-api-1");
+  assert.ok(histApi);
+  assert.strictEqual(histApi.actualCost, "55.25");
   const pdfRes = await fetch(base + "/api/office/glass-po/" + encodeURIComponent(madeJson.poId) + "/pdf", {
     headers: { "x-sd-token": session.token }
   });
