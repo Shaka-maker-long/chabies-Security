@@ -69,6 +69,15 @@
     .prod-list button { display:flex; justify-content:space-between; gap:8px; width:100%; border:0; border-bottom:1px solid var(--line); background:#fff; padding:8px 10px; cursor:pointer; font:inherit; font-size:12px; text-align:left; }
     .prod-list button:last-child { border-bottom:0; }
     .prod-list button:hover { background:#f2f4f7; }
+    .prod-list .product-clip[data-product-shot] { cursor:help; text-decoration: underline dotted rgba(29,41,57,.35); text-underline-offset:2px; }
+    #productShot {
+      position:fixed; z-index:80; width:min(280px, calc(100vw - 24px));
+      background:#fff; border:1px solid var(--line); border-radius:10px;
+      box-shadow:0 12px 32px rgba(16,24,40,.2); padding:8px; pointer-events:none;
+    }
+    #productShot[hidden] { display:none !important; }
+    #productShot img { display:block; width:100%; height:auto; max-height:280px; object-fit:contain; background:#f8f9fc; border-radius:6px; }
+    #productShot .product-shot-name { margin:8px 2px 2px; font-size:12px; font-weight:700; color:var(--ink); }
     .wom-months { display:flex; flex-wrap:wrap; gap:8px 12px; margin:0 0 10px; font-size:12px; }
     .wom-months label { display:flex; align-items:center; gap:6px; font-weight:600; color:#344054; }
     .split-pie { max-width:360px; margin:0 auto 12px; }
@@ -194,7 +203,7 @@
         </section>
         <section class="card">
           <h2>Product value (excl VAT)</h2>
-          <p class="hint">Each product’s own value, not the quote total.</p>
+          <p class="hint">Each product’s own value, not the quote total. Hover a product name for the catalog photo.</p>
           <canvas id="prod"></canvas>
           <input class="prod-search" id="prodSearch" placeholder="Search products" autocomplete="off">
           <div class="prod-list" id="prodList"></div>
@@ -212,6 +221,10 @@
         </section>
       </div>
     </div>
+  </div>
+  <div id="productShot" hidden>
+    <img alt="">
+    <p class="product-shot-name"></p>
   </div>
   <div class="drill-mask" id="drillMask">
     <div class="drill-sheet" role="dialog" aria-modal="true" aria-labelledby="drillTitle">
@@ -301,9 +314,10 @@
       cfg.options.onClick = cfg.options.onClick || undefined;
       charts[id] = new Chart(document.getElementById(id), cfg);
     }
-    function bar(id, labels, values, color, horizontal, onBar, money) {
+    function bar(id, labels, values, color, horizontal, onBar, money, images) {
       const valueScale = { beginAtZero: true, ticks: money ? { callback: randTick } : { precision: 0 } };
       const categoryScale = {};
+      const hover = horizontal && images ? productHoverOpt(labels, images, onBar) : {};
       mk(id, {
         type: "bar",
         data: { labels, datasets: [{ data: values, backgroundColor: color || PAL[0] }] },
@@ -313,8 +327,13 @@
           scales: horizontal
             ? { x: valueScale, y: categoryScale }
             : { x: categoryScale, y: valueScale }
-        }, clickOpt((el) => { if (onBar) onBar(el.index, labels[el.index]); }))
+        }, hover, clickOpt((el) => { if (onBar) onBar(el.index, labels[el.index]); }))
       });
+      const canvas = document.getElementById(id);
+      if (canvas && !canvas._productShotBound) {
+        canvas._productShotBound = true;
+        canvas.addEventListener("mouseleave", hideProductShot);
+      }
     }
     function doughnut(id, labels, values, onSlice) {
       mk(id, {
@@ -346,6 +365,80 @@
     }
     function esc(s) {
       return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+    function hideProductShot() {
+      const box = document.getElementById("productShot");
+      if (box) box.hidden = true;
+    }
+    function placeProductShot(box, clientX, clientY, anchorEl) {
+      const w = box.offsetWidth || 280;
+      const h = box.offsetHeight || 300;
+      let left;
+      let top;
+      if (anchorEl) {
+        const r = anchorEl.getBoundingClientRect();
+        left = r.right + 10;
+        top = r.top;
+        if (left + w > window.innerWidth - 8) left = Math.max(8, r.left - w - 10);
+      } else {
+        left = (clientX || 0) + 16;
+        top = (clientY || 0) - 24;
+        if (left + w > window.innerWidth - 8) left = Math.max(8, (clientX || 0) - w - 16);
+      }
+      if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+      if (top < 8) top = 8;
+      box.style.left = left + "px";
+      box.style.top = top + "px";
+    }
+    function showProductShot(url, label, clientX, clientY, anchorEl) {
+      const box = document.getElementById("productShot");
+      if (!url || !box) return;
+      const img = box.querySelector("img");
+      const name = box.querySelector(".product-shot-name");
+      img.alt = label || "";
+      if (img.getAttribute("src") !== url) img.src = url;
+      name.textContent = label || "";
+      box.setAttribute("data-url", url);
+      box.hidden = false;
+      placeProductShot(box, clientX, clientY, anchorEl);
+    }
+    function imgMap(rows) {
+      const out = {};
+      (rows || []).forEach((row) => {
+        const label = row && (row.label || row.product);
+        if (label && row.img) out[label] = row.img;
+      });
+      return out;
+    }
+    function productLabelAtEvent(evt, chart, labels) {
+      if (!chart || !labels || !labels.length) return null;
+      if (chart.options.indexAxis !== "y") return null;
+      const yScale = chart.scales.y;
+      const area = chart.chartArea;
+      if (!yScale || !area) return null;
+      const x = evt.x;
+      const y = evt.y;
+      if (y < area.top || y > area.bottom) return null;
+      if (x > area.right) return null;
+      const idx = Math.round(yScale.getValueForPixel(y));
+      if (idx < 0 || idx >= labels.length) return null;
+      return labels[idx];
+    }
+    function productHoverOpt(labels, images, onBar) {
+      return {
+        onHover: (evt, els, chart) => {
+          const label = productLabelAtEvent(evt, chart, labels);
+          const url = label && images ? images[label] : "";
+          if (url) {
+            chart.canvas.style.cursor = "pointer";
+            const native = evt.native || evt;
+            showProductShot(url, label, native.clientX, native.clientY);
+            return;
+          }
+          hideProductShot();
+          chart.canvas.style.cursor = (els && els.length && onBar) ? "pointer" : "default";
+        }
+      };
     }
     function drillMoneyHtml(j) {
       const t = j.totals || {};
@@ -410,6 +503,17 @@
     document.getElementById("drillMask").addEventListener("click", (e) => {
       if (e.target.id === "drillMask") closeDrill();
     });
+    document.addEventListener("pointerover", (e) => {
+      const hit = e.target.closest && e.target.closest("[data-product-shot]");
+      if (!hit) return;
+      showProductShot(hit.getAttribute("data-product-shot"), String(hit.textContent || "").trim(), 0, 0, hit);
+    });
+    document.addEventListener("pointerout", (e) => {
+      const from = e.target.closest && e.target.closest("[data-product-shot]");
+      const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-product-shot]") : null;
+      if (from && from !== to) hideProductShot();
+    });
+    window.addEventListener("scroll", hideProductShot, true);
     window.sdOnEnquiryProcessClose = function () { /* keep the drill list open */ };
 
     function clickType(label, useValue) {
@@ -591,11 +695,14 @@
       const all = ((data && data.products) || []).slice();
       const needle = String(q || "").toLowerCase();
       const top = all.slice(0, 8);
-      bar("prod", top.map((x) => x.label), top.map((x) => x.productValue || 0), PAL[4], true, (_i, label) => openDrill({ kind: "product", value: label }), true);
+      bar("prod", top.map((x) => x.label), top.map((x) => x.productValue || 0), PAL[4], true, (_i, label) => openDrill({ kind: "product", value: label }), true, imgMap(top));
       const filtered = needle ? all.filter((p) => p.label.toLowerCase().indexOf(needle) >= 0) : all;
       const shown = filtered.slice(0, 40);
       document.getElementById("prodList").innerHTML = shown.length
-        ? shown.map((p) => "<button type=\"button\" data-product=\"" + esc(p.label) + "\"><span>" + esc(p.label) + "</span><b>" + formatR(p.productValue) + (p.count ? " · " + p.count : "") + "</b></button>").join("")
+        ? shown.map((p) => {
+          const shot = p.img ? " data-product-shot=\"" + esc(p.img) + "\"" : "";
+          return "<button type=\"button\" data-product=\"" + esc(p.label) + "\"><span class=\"product-clip\"" + shot + ">" + esc(p.label) + "</span><b>" + formatR(p.productValue) + (p.count ? " · " + p.count : "") + "</b></button>";
+        }).join("")
         : "<p class=\"hint\" style=\"padding:8px\">No products match that search.</p>";
       document.getElementById("prodList").onclick = (e) => {
         const btn = e.target.closest("[data-product]");

@@ -4,6 +4,7 @@ const db = require("./db");
 const shop = require("./shop-status");
 const sched = require("./office-schedule");
 const noPlates = require("./no-plates");
+const catalog = require("./product-catalog");
 
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
 
@@ -344,6 +345,17 @@ function bumpMoney(map, label, income) {
   map[key].count += 1;
 }
 
+function productImg(label) {
+  const found = catalog.lookupProduct(label);
+  return (found && found.imageUrl) || "";
+}
+
+function withProductImg(rows) {
+  return (rows || []).map((row) => Object.assign({}, row, {
+    img: productImg(row.label || row.product)
+  }));
+}
+
 function deliveryWeekSummary(items, weekKeyValue, today) {
   const days = { Monday: 0, Tuesday: 0, Wednesday: 0, Thursday: 0, Friday: 0 };
   const rows = [];
@@ -531,11 +543,11 @@ function buildDashboard(query) {
     series,
     categories: sortedMoney(catMap, 16),
     sources: sortedMoney(sourceMap, 16),
-    topIncome: sortedMoney(productIncome, 10),
-    topQuantity: Object.keys(productQty).map((label) => ({
+    topIncome: withProductImg(sortedMoney(productIncome, 10)),
+    topQuantity: withProductImg(Object.keys(productQty).map((label) => ({
       label,
       count: productQty[label]
-    })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 10),
+    })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label)).slice(0, 10)),
     pipeline: PIPELINE.map((p) => ({
       id: p.id,
       label: p.label,
@@ -549,7 +561,7 @@ function buildDashboard(query) {
       })).sort((a, c) => c.count - a.count || a.label.localeCompare(c.label));
       return { id: b.id, label: b.id, count: ageCounts[b.id] || 0, statuses };
     }),
-    stuck: stuck.slice(0, 10),
+    stuck: withProductImg(stuck.slice(0, 10)),
     delivery: {
       today,
       thisWeek,

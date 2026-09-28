@@ -45,6 +45,15 @@
     table.mini td.r, table.mini th.r { text-align:right; }
     table.mini tbody tr[data-stuck] { cursor:pointer; }
     table.mini tbody tr[data-stuck]:hover { background:#f2f4f7; }
+    table.mini .product-clip[data-product-shot] { cursor:help; text-decoration: underline dotted rgba(29,41,57,.35); text-underline-offset:2px; }
+    #productShot {
+      position:fixed; z-index:80; width:min(280px, calc(100vw - 24px));
+      background:#fff; border:1px solid var(--line); border-radius:10px;
+      box-shadow:0 12px 32px rgba(16,24,40,.2); padding:8px; pointer-events:none;
+    }
+    #productShot[hidden] { display:none !important; }
+    #productShot img { display:block; width:100%; height:auto; max-height:280px; object-fit:contain; background:#f8f9fc; border-radius:6px; }
+    #productShot .product-shot-name { margin:8px 2px 2px; font-size:12px; font-weight:700; color:var(--ink); }
     .month-pick { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--muted); }
     .month-pick select { border:1px solid var(--line); border-radius:8px; padding:7px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink); background:#fff; }
     .window-chip { font-size:12px; font-weight:700; color:var(--ink); }
@@ -140,12 +149,12 @@
         </section>
         <section class="card">
           <h2>Top 10 items by income</h2>
-          <p class="hint">Products with the most amount paid (Excl VAT).</p>
+          <p class="hint">Products with the most amount paid (Excl VAT). Hover a product name for the catalog photo.</p>
           <canvas id="topIncome"></canvas>
         </section>
         <section class="card">
           <h2>Top 10 products by quantity</h2>
-          <p class="hint">Order count, not doors.</p>
+          <p class="hint">Order count, not doors. Hover a product name for the catalog photo.</p>
           <canvas id="topQty"></canvas>
         </section>
         <section class="card span2">
@@ -182,6 +191,10 @@
     </div>
   </div>
 
+  <div id="productShot" hidden>
+    <img alt="">
+    <p class="product-shot-name"></p>
+  </div>
   <div class="drill-mask" id="drillMask">
     <div class="drill-sheet" role="dialog" aria-labelledby="drillTitle">
       <header>
@@ -255,9 +268,10 @@
       cfg.options = cfg.options || {};
       charts[id] = new Chart(document.getElementById(id), cfg);
     }
-    function bar(id, labels, values, color, horizontal, onBar, money) {
+    function bar(id, labels, values, color, horizontal, onBar, money, images) {
       const valueScale = { beginAtZero: true, ticks: money ? { callback: randTick } : { precision: 0 } };
       const categoryScale = {};
+      const hover = horizontal && images ? productHoverOpt(labels, images, onBar) : {};
       mk(id, {
         type: "bar",
         data: { labels, datasets: [{ data: values, backgroundColor: color || PAL[0] }] },
@@ -267,8 +281,13 @@
           scales: horizontal
             ? { x: valueScale, y: categoryScale }
             : { x: categoryScale, y: valueScale }
-        }, clickOpt((el) => { if (onBar) onBar(el.index, labels[el.index]); }))
+        }, hover, clickOpt((el) => { if (onBar) onBar(el.index, labels[el.index]); }))
       });
+      const canvas = document.getElementById(id);
+      if (canvas && !canvas._productShotBound) {
+        canvas._productShotBound = true;
+        canvas.addEventListener("mouseleave", hideProductShot);
+      }
     }
     function doughnut(id, labels, values, onSlice) {
       mk(id, {
@@ -296,6 +315,80 @@
     }
     function esc(s) {
       return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+    function hideProductShot() {
+      const box = document.getElementById("productShot");
+      if (box) box.hidden = true;
+    }
+    function placeProductShot(box, clientX, clientY, anchorEl) {
+      const w = box.offsetWidth || 280;
+      const h = box.offsetHeight || 300;
+      let left;
+      let top;
+      if (anchorEl) {
+        const r = anchorEl.getBoundingClientRect();
+        left = r.right + 10;
+        top = r.top;
+        if (left + w > window.innerWidth - 8) left = Math.max(8, r.left - w - 10);
+      } else {
+        left = (clientX || 0) + 16;
+        top = (clientY || 0) - 24;
+        if (left + w > window.innerWidth - 8) left = Math.max(8, (clientX || 0) - w - 16);
+      }
+      if (top + h > window.innerHeight - 8) top = Math.max(8, window.innerHeight - h - 8);
+      if (top < 8) top = 8;
+      box.style.left = left + "px";
+      box.style.top = top + "px";
+    }
+    function showProductShot(url, label, clientX, clientY, anchorEl) {
+      const box = document.getElementById("productShot");
+      if (!url || !box) return;
+      const img = box.querySelector("img");
+      const name = box.querySelector(".product-shot-name");
+      img.alt = label || "";
+      if (img.getAttribute("src") !== url) img.src = url;
+      name.textContent = label || "";
+      box.setAttribute("data-url", url);
+      box.hidden = false;
+      placeProductShot(box, clientX, clientY, anchorEl);
+    }
+    function imgMap(rows) {
+      const out = {};
+      (rows || []).forEach((row) => {
+        const label = row && (row.label || row.product);
+        if (label && row.img) out[label] = row.img;
+      });
+      return out;
+    }
+    function productLabelAtEvent(evt, chart, labels) {
+      if (!chart || !labels || !labels.length) return null;
+      if (chart.options.indexAxis !== "y") return null;
+      const yScale = chart.scales.y;
+      const area = chart.chartArea;
+      if (!yScale || !area) return null;
+      const x = evt.x;
+      const y = evt.y;
+      if (y < area.top || y > area.bottom) return null;
+      if (x > area.right) return null;
+      const idx = Math.round(yScale.getValueForPixel(y));
+      if (idx < 0 || idx >= labels.length) return null;
+      return labels[idx];
+    }
+    function productHoverOpt(labels, images, onBar) {
+      return {
+        onHover: (evt, els, chart) => {
+          const label = productLabelAtEvent(evt, chart, labels);
+          const url = label && images ? images[label] : "";
+          if (url) {
+            chart.canvas.style.cursor = "pointer";
+            const native = evt.native || evt;
+            showProductShot(url, label, native.clientX, native.clientY);
+            return;
+          }
+          hideProductShot();
+          chart.canvas.style.cursor = (els && els.length && onBar) ? "pointer" : "default";
+        }
+      };
     }
     function hideDrillBack() {
       const btn = document.getElementById("drillBack");
@@ -415,6 +508,17 @@
     document.getElementById("drillMask").addEventListener("click", (e) => {
       if (e.target.id === "drillMask") closeDrill();
     });
+    document.addEventListener("pointerover", (e) => {
+      const hit = e.target.closest && e.target.closest("[data-product-shot]");
+      if (!hit) return;
+      showProductShot(hit.getAttribute("data-product-shot"), String(hit.textContent || "").trim(), 0, 0, hit);
+    });
+    document.addEventListener("pointerout", (e) => {
+      const from = e.target.closest && e.target.closest("[data-product-shot]");
+      const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-product-shot]") : null;
+      if (from && from !== to) hideProductShot();
+    });
+    window.addEventListener("scroll", hideProductShot, true);
 
     function drawTrend() {
       if (!data) return;
@@ -528,7 +632,10 @@
         return;
       }
       host.innerHTML = "<table class=\"mini\"><thead><tr><th>Order</th><th>Product</th><th>Status</th><th class=\"r\">Days</th></tr></thead><tbody>"
-        + rows.map((r) => "<tr data-stuck=\"" + esc(r.order_number) + "\"><td>" + esc(r.order_number) + "</td><td>" + esc(r.product) + "</td><td>" + esc(r.status) + "</td><td class=\"r\">" + r.days + "</td></tr>").join("")
+        + rows.map((r) => {
+          const shot = r.img ? " data-product-shot=\"" + esc(r.img) + "\"" : "";
+          return "<tr data-stuck=\"" + esc(r.order_number) + "\"><td>" + esc(r.order_number) + "</td><td><span class=\"product-clip\"" + shot + ">" + esc(r.product) + "</span></td><td>" + esc(r.status) + "</td><td class=\"r\">" + r.days + "</td></tr>";
+        }).join("")
         + "</tbody></table>";
       host.querySelectorAll("[data-stuck]").forEach((tr) => {
         tr.addEventListener("click", () => openOrder(tr.getAttribute("data-stuck")));
@@ -563,8 +670,8 @@
       drawChannel();
       doughnut("cat", (d.categories || []).map((x) => x.label), (d.categories || []).map((x) => x.income), (_i, label) => openDrill({ kind: "category", value: label }));
       doughnut("source", (d.sources || []).map((x) => x.label), (d.sources || []).map((x) => x.income), (_i, label) => openDrill({ kind: "source", value: label }));
-      bar("topIncome", (d.topIncome || []).map((x) => x.label), (d.topIncome || []).map((x) => x.income), PAL[1], true, (_i, label) => openDrill({ kind: "productIncome", value: label }), true);
-      bar("topQty", (d.topQuantity || []).map((x) => x.label), (d.topQuantity || []).map((x) => x.count), PAL[2], true, (_i, label) => openDrill({ kind: "productQty", value: label }));
+      bar("topIncome", (d.topIncome || []).map((x) => x.label), (d.topIncome || []).map((x) => x.income), PAL[1], true, (_i, label) => openDrill({ kind: "productIncome", value: label }), true, imgMap(d.topIncome));
+      bar("topQty", (d.topQuantity || []).map((x) => x.label), (d.topQuantity || []).map((x) => x.count), PAL[2], true, (_i, label) => openDrill({ kind: "productQty", value: label }), false, imgMap(d.topQuantity));
       bar("pipeline", (d.pipeline || []).map((x) => x.label), (d.pipeline || []).map((x) => x.count), PAL[0], false, (i) => {
         const row = (d.pipeline || [])[i];
         if (row) openDrill({ kind: "pipeline", group: row.id });

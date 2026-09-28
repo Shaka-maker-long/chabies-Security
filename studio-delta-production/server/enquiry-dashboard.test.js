@@ -209,8 +209,11 @@ try {
   assert.ok(daphne);
   assert.strictEqual(daphne.productValue, 11000, "product chart must use the product value, not the quote total");
   assert.ok(daphne.count >= 2);
+  assert.ok(daphne.img, "catalog photo on enquiry product rows");
+  assert.ok(/studiodelta\.co\.za/.test(daphne.img));
   assert.ok(air);
   assert.strictEqual(air.productValue, 4300);
+  assert.strictEqual(typeof air.img, "string");
   assert.ok(!month.products.some((p) => p.quoteValue === 16650.5), "must not roll the full quote onto a product");
   assert.ok(month.workload.some((w) => w.name === "Coster" && w.count >= 2));
   assert.ok(month.workload.some((w) => w.name === "Quoter" && w.count >= 1), "record client outcome is work to do");

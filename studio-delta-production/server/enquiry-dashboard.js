@@ -1,5 +1,6 @@
 const db = require("./db");
 const { CLOSED_STATUSES } = require("./enquiry-pipeline");
+const catalog = require("./product-catalog");
 
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
 const FOLLOW_UP_DAYS = 7;
@@ -207,6 +208,11 @@ function namedProducts(row) {
     category: String(row.category || "").trim(),
     value_excl_vat: 0
   }));
+}
+
+function productImg(label) {
+  const found = catalog.lookupProduct(label);
+  return (found && found.imageUrl) || "";
 }
 
 function deliveryExclOf(row) {
@@ -708,7 +714,8 @@ function buildDashboard(query) {
   const productRows = Object.keys(product).map((label) => ({
     label,
     count: product[label],
-    productValue: Math.round((productValueMap[label] || 0) * 100) / 100
+    productValue: Math.round((productValueMap[label] || 0) * 100) / 100,
+    img: productImg(label)
   })).sort((a, b) => b.productValue - a.productValue || b.count - a.count || a.label.localeCompare(b.label));
 
   const typeRows = Object.keys(type).map((label) => ({

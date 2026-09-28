@@ -190,10 +190,17 @@ const daphne = year.topIncome.find((p) => p.label === "Daphne Rectangular Mirror
 assert.ok(daphne);
 assert.strictEqual(daphne.income, 10000);
 assert.strictEqual(daphne.count, 1);
+assert.ok(daphne.img, "catalog photo on top-income product rows");
+assert.ok(/studiodelta\.co\.za/.test(daphne.img));
 
 const topQty = year.topQuantity.find((p) => p.label === "Daphne Rectangular Mirror");
 assert.ok(topQty);
 assert.strictEqual(topQty.count, 1);
+assert.ok(topQty.img);
+
+const vivienneStuck = year.stuck.find((r) => r.product === "Vivienne Arched Cabinet" || r.order_number === "S260405");
+assert.ok(vivienneStuck);
+assert.ok(vivienneStuck.img, "stuck rows carry catalog photo for name hover");
 
 const steel = year.pipeline.find((p) => p.id === "steelwork");
 assert.strictEqual(steel.count, 1);
@@ -295,6 +302,9 @@ assert.ok(html.indexOf("Income by CATERGORY") !== -1);
 assert.ok(html.indexOf("Income by source") !== -1);
 assert.ok(html.indexOf("Top 10 items by income") !== -1);
 assert.ok(html.indexOf("Top 10 products by quantity") !== -1);
+assert.ok(html.indexOf("id=\"productShot\"") !== -1, "hover catalog photo on product names");
+assert.ok(html.indexOf("productHoverOpt") !== -1);
+assert.ok(html.indexOf("data-product-shot") !== -1);
 assert.ok(html.indexOf("Shop pipeline") !== -1);
 assert.ok(html.indexOf("Stuck / ageing") !== -1);
 assert.ok(html.indexOf("openAgeStatus") !== -1);
