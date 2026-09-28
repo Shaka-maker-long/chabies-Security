@@ -299,23 +299,28 @@ function readBackboardUsage() {
 function readWoodUsage() {
   const sheet = getBook().getSheetByName("Wood_To_Order");
   if (!sheet || sheet.getLastRow() < 2) return [];
-  const lastCol = Math.max(sheet.getLastColumn(), 11);
+  const lastCol = Math.max(sheet.getLastColumn(), 14);
   return sheet.getRange(2, 1, sheet.getLastRow() - 1, lastCol).getValues().map((row) => {
     const ts = row[1] ? new Date(row[1]) : null;
     const type = String(row[5] || "").trim();
     const orderNum = String(row[2] || "").trim();
     if (!orderNum || !type) return null;
+    const status = String(row[10] || "").trim();
+    const cost = parseMoney(row[11]);
+    const receivedAt = row[12] ? new Date(row[12]) : null;
     return {
-      timestamp: ts && !isNaN(ts.getTime()) ? ts : null,
+      timestamp: (receivedAt && !isNaN(receivedAt.getTime()) ? receivedAt : (ts && !isNaN(ts.getTime()) ? ts : null)),
       orderNum,
-      worker: String(row[3] || "").trim(),
+      worker: String(row[3] || "").trim() || String(row[13] || "").trim(),
       component: String(row[4] || "").trim(),
       type,
       thickness: String(row[6] || "").trim(),
       height: row[7],
       width: row[8],
       quantity: row[9],
-      status: String(row[10] || "").trim()
+      status,
+      cost: Number.isFinite(cost) ? cost : 0,
+      received: /^received$/i.test(status)
     };
   }).filter(Boolean);
 }
@@ -530,13 +535,14 @@ async function getAppData(query) {
     const qty = [row.height, row.width].filter((v) => v !== "" && v != null).join(" × ")
       + (row.quantity ? " × " + row.quantity : "")
       + (row.thickness ? " · " + row.thickness : "");
+    const cost = row.received && row.cost > 0 ? row.cost : 0;
     addMaterial(order(row.orderNum), {
       type: "wood",
       item: [row.type, row.component].filter(Boolean).join(" ") || "Wood",
       qty,
-      cost: 0,
+      cost,
       month,
-      rateMissing: true,
+      rateMissing: !(cost > 0),
       worker: row.worker,
       status: row.status
     });

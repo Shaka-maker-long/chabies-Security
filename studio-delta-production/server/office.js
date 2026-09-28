@@ -625,7 +625,9 @@ function mountOffice(app) {
       const result = await callShopFunction("markMaterialOrdered", [
         req.body && req.body.kind,
         req.body && req.body.id,
-        req.body && req.body.status
+        req.body && req.body.status,
+        req.body && req.body.cost,
+        req.office && req.office.name
       ]);
       if (!result || result.success === false) {
         return res.status(400).json({ ok: false, error: (result && result.message) || "Could not update" });

@@ -80,6 +80,17 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   assert.strictEqual(order.woodCost, 0);
   assert.strictEqual(order.backboardCost, 0);
 
+  book.getSheetByName("Wood_To_Order").getRange(2, 11, 1, 4).setValues([["Received", 180, start, "Office"]]);
+  persistWorkbook();
+  const withWood = await cost.getAppData({ mode: "all" });
+  const woodOrder = withWood.orders.find((o) => o.orderNum === "S-COST-1");
+  assert.ok(woodOrder);
+  assert.ok(Math.abs(woodOrder.woodCost - 180) < 0.02, "received wood cost " + woodOrder.woodCost);
+  assert.ok((woodOrder.materialEntries || []).some((e) => e.type === "wood" && !e.rateMissing && Math.abs((e.cost || 0) - 180) < 0.02));
+  // reset wood line for later assertions that expect base materialCost without wood
+  book.getSheetByName("Wood_To_Order").getRange(2, 11, 1, 4).setValues([["To order", "", "", ""]]);
+  persistWorkbook();
+
   backboardRates.upsertRate({ type: "MDF", ratePerM2: "40" });
   assert.strictEqual(backboardRates.costUsage("MDF", "2.5 m²").cost, 100);
   assert.strictEqual(backboardRates.costUsage("Standard - MDF", "2.5 m²").cost, 100);

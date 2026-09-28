@@ -42,6 +42,7 @@
     .file { font-size:13px; }
     .pill { display:inline-block; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; }
     .pill.to { background:#fffaeb; color:#b54708; }
+    .pill.out { background:#eff8ff; color:#175cd3; }
     .pill.ok { background:#ecfdf3; color:var(--ok); }
     .pill.po { background:#eff8ff; color:#175cd3; }
     .batch { padding:12px 16px; border-top:1px solid var(--line); }
@@ -267,20 +268,39 @@
         return;
       }
       const open = rows.filter((r) => r.status !== "Ordered" && r.status !== "Received").length;
-      let html = '<p class="msg">' + open + ' still to buy · ' + rows.length + ' lines</p>';
-      html += '<div class="card" style="overflow:auto"><table><thead><tr><th>Order</th><th>Component</th><th>Type</th><th>Thickness</th><th>Height</th><th>Width</th><th>Qty</th><th>Status</th><th></th></tr></thead><tbody>';
+      const ordered = rows.filter((r) => r.status === "Ordered").length;
+      const received = rows.filter((r) => r.status === "Received").length;
+      let html = '<p class="msg">' + open + ' still to buy · ' + ordered + ' ordered · ' + received + ' received · ' + rows.length + ' lines</p>';
+      html += '<p class="hint" style="margin:0 0 12px;color:var(--muted);font-size:13px">When wood arrives, type the invoice cost and mark it received — that cost is allocated onto the order on Cost.</p>';
+      html += '<div class="card" style="overflow:auto"><table><thead><tr><th>Order</th><th>Component</th><th>Type</th><th>Thickness</th><th>Height</th><th>Width</th><th>Qty</th><th>Cost (R)</th><th>Status</th><th></th></tr></thead><tbody>';
       rows.forEach((r) => {
-        const ordered = r.status === "Ordered" || r.status === "Received";
+        const st = String(r.status || "To order");
+        const isReceived = st === "Received";
+        const isOrdered = st === "Ordered" || isReceived;
+        const costVal = r.cost != null && r.cost !== "" ? r.cost : "";
+        const costCell = isOrdered
+          ? '<input class="cost wood-cost" data-id="' + esc(r.id) + '" inputmode="decimal" value="' + esc(costVal) + '" placeholder="' + (isReceived ? "" : "Required") + '">'
+          : "—";
+        let actions = "";
+        if (!isOrdered) {
+          actions = '<button type="button" data-wood-action="Ordered" data-id="' + esc(r.id) + '">Mark ordered</button>';
+        } else if (!isReceived) {
+          actions = '<button type="button" data-wood-action="Received" data-id="' + esc(r.id) + '">Mark received</button> ' +
+            '<button class="ghost" type="button" data-wood-action="To order" data-id="' + esc(r.id) + '">Back to order</button>';
+        } else {
+          actions = '<button type="button" data-wood-action="Received" data-id="' + esc(r.id) + '">Save cost</button> ' +
+            '<button class="ghost" type="button" data-wood-action="Ordered" data-id="' + esc(r.id) + '">Back to ordered</button>';
+        }
         html += '<tr><td><b>' + esc(r.order) + '</b></td><td>' + esc(r.component) + '</td><td>' + esc(r.type) +
           '</td><td>' + esc(r.thickness) + '</td><td>' + esc(r.height) + '</td><td>' + esc(r.width) +
-          '</td><td>' + esc(r.quantity) + '</td><td><span class="pill ' + (ordered ? "ok" : "to") + '">' + esc(r.status || "To order") +
-          '</span></td><td>' + (ordered
-            ? '<button class="ghost" type="button" onclick="markWood(\'' + esc(r.id) + '\',\'To order\')">Back to order</button>'
-            : '<button type="button" onclick="markWood(\'' + esc(r.id) + '\',\'Ordered\')">Mark ordered</button>') +
-          '</td></tr>';
+          '</td><td>' + esc(r.quantity) + '</td><td>' + costCell + '</td><td><span class="pill ' + (isReceived ? "ok" : (isOrdered ? "out" : "to")) + '">' + esc(st) +
+          '</span></td><td>' + actions + '</td></tr>';
       });
       html += '</tbody></table></div>';
       box.innerHTML = html;
+      box.querySelectorAll("[data-wood-action]").forEach((btn) => {
+        btn.onclick = () => markWood(btn.getAttribute("data-id"), btn.getAttribute("data-wood-action"));
+      });
     }
     function render() {
       if (kind === "wood") renderWood();
@@ -460,12 +480,24 @@
       setMsg("status", (j.toOrderCount || 0) + " to put on a PO · " + (j.outstandingCount || 0) + " outstanding");
     }
     async function markWood(id, status) {
+      const body = { kind: "wood", id, status };
+      if (status === "Received") {
+        const input = document.querySelector('.wood-cost[data-id="' + id + '"]');
+        const cost = input ? String(input.value || "").trim() : "";
+        if (!cost) {
+          setMsg("status", "Put the wood cost on this line before you mark it received.", true);
+          if (input) input.focus();
+          return;
+        }
+        body.cost = cost;
+      }
       const r = await sdOfficeFetch("/api/office/materials-to-order", {
         method: "PUT",
-        body: JSON.stringify({ kind: "wood", id, status })
+        body: JSON.stringify(body)
       });
       const j = await r.json();
       if (!j.ok) { setMsg("status", j.error || "Could not update", true); return; }
+      setMsg("status", status === "Received" ? "Wood received — cost allocated to the order." : "");
       await load();
     }
     sdRequireOffice("orders").then((p) => { if (p) load(); });

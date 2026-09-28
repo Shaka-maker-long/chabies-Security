@@ -114,6 +114,23 @@ const SIG = "data:image/png;base64,aaa";
   const after = await callShopFunction("listMaterialsToOrder", []);
   assert.strictEqual(after.glass[0].status, "Ordered");
 
+  const woodOrdered = await callShopFunction("markMaterialOrdered", ["wood", listed.wood[0].id, "Ordered"]);
+  assert.strictEqual(woodOrdered.success, true, JSON.stringify(woodOrdered));
+  const woodNoCost = await callShopFunction("markMaterialOrdered", ["wood", listed.wood[0].id, "Received"]);
+  assert.strictEqual(woodNoCost.success, false, JSON.stringify(woodNoCost));
+  assert.ok(/cost/i.test(woodNoCost.message || ""), JSON.stringify(woodNoCost));
+  const woodRecv = await callShopFunction("markMaterialOrdered", [
+    "wood", listed.wood[0].id, "Received", "245.50", "Office Boss"
+  ]);
+  assert.strictEqual(woodRecv.success, true, JSON.stringify(woodRecv));
+  assert.strictEqual(woodRecv.cost, 245.5);
+  const woodAfter = await callShopFunction("listMaterialsToOrder", []);
+  const woodLine = woodAfter.wood.find((w) => w.id === listed.wood[0].id);
+  assert.ok(woodLine, JSON.stringify(woodAfter.wood));
+  assert.strictEqual(woodLine.status, "Received");
+  assert.strictEqual(Number(woodLine.cost), 245.5);
+  assert.ok(woodLine.receivedBy);
+
   const briefAfter = await callShopFunction("getOrderJobBrief", ["S-PRE-GLASS", "Pre-Powder Coating"]);
   assert.ok(briefAfter.standardGlass, JSON.stringify(briefAfter));
   assert.strictEqual(briefAfter.standardGlass.noGlass, false);

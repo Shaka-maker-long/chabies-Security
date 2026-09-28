@@ -697,7 +697,20 @@ function glassOrderHeaders() {
 }
 
 function woodOrderHeaders() {
-  return ["ID", "Timestamp", "Order #", "Worker", "Component", "Wood type", "Thickness", "Height", "Width", "Quantity", "Status"];
+  return ["ID", "Timestamp", "Order #", "Worker", "Component", "Wood type", "Thickness", "Height", "Width", "Quantity", "Status", "Cost", "Received at", "Received by"];
+}
+
+function parseWoodCost_(raw) {
+  var s = String(raw == null ? "" : raw).replace(/R/gi, "").replace(/\s+/g, "").replace(/,/g, "").trim();
+  if (!s) return NaN;
+  var n = Number(s);
+  if (!isFinite(n)) return NaN;
+  return Math.round(n * 100) / 100;
+}
+
+function formatWoodCost_(n) {
+  if (!isFinite(n)) return "";
+  return "R " + Number(n).toFixed(2);
 }
 
 function normalizeMmChoice(value, allowed) {
@@ -800,7 +813,10 @@ function writeWoodToOrder(ss, orderNum, workerName, lines) {
       line.height,
       line.width,
       line.quantity,
-      "To order"
+      "To order",
+      "",
+      "",
+      ""
     ]);
     wrote++;
   });
@@ -835,6 +851,13 @@ function readMaterialsSheet(tab, headers, kind) {
       row.isTemplate = isTemplateGlass_({ isTemplate: grid[i][11] });
       row.templateSpec = String(grid[i][12] || "").trim();
     }
+    if (kind === "wood") {
+      var woodCost = parseWoodCost_(grid[i][11]);
+      row.cost = isFinite(woodCost) ? woodCost : "";
+      row.costLabel = isFinite(woodCost) ? formatWoodCost_(woodCost) : "";
+      row.receivedAt = grid[i][12] ? new Date(grid[i][12]).toISOString() : "";
+      row.receivedBy = String(grid[i][13] || "").trim();
+    }
     items.push(row);
   }
   items.sort(function (a, b) {
@@ -852,7 +875,7 @@ function listMaterialsToOrder() {
   };
 }
 
-function markMaterialOrdered(kind, id, status) {
+function markMaterialOrdered(kind, id, status, cost, actor) {
   var want = String(id || "").trim();
   var next = String(status || "Ordered").trim() || "Ordered";
   if (next !== "To order" && next !== "Ordered" && next !== "On PO" && next !== "Received") next = "Ordered";
@@ -860,10 +883,26 @@ function markMaterialOrdered(kind, id, status) {
   var headers = tab === TAB_WOOD_TO_ORDER ? woodOrderHeaders() : glassOrderHeaders();
   var sheet = ensureMaterialsOrderSheet(tab, headers);
   if (sheet.getLastRow() < 2) return { success: false, message: "Line not found." };
-  var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+  var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(sheet.getLastColumn(), headers.length)).getValues();
   for (var i = 0; i < grid.length; i++) {
     if (String(grid[i][0] || "").trim() === want) {
+      if (tab === TAB_WOOD_TO_ORDER && next === "Received") {
+        var parsed = parseWoodCost_(cost != null && cost !== "" ? cost : grid[i][11]);
+        if (!isFinite(parsed) || parsed < 0) {
+          return { success: false, message: "Put the wood cost on this line before you mark it received." };
+        }
+        sheet.getRange(i + 2, 11).setValue(next);
+        sheet.getRange(i + 2, 12).setValue(parsed);
+        sheet.getRange(i + 2, 13).setValue(new Date());
+        sheet.getRange(i + 2, 14).setValue(String(actor || "").trim() || "Admin");
+        return { success: true, id: want, status: next, cost: parsed, costLabel: formatWoodCost_(parsed) };
+      }
       sheet.getRange(i + 2, 11).setValue(next);
+      if (tab === TAB_WOOD_TO_ORDER && (next === "To order" || next === "Ordered")) {
+        // Keep any typed cost when bouncing status, but clear receive stamp.
+        sheet.getRange(i + 2, 13).setValue("");
+        sheet.getRange(i + 2, 14).setValue("");
+      }
       return { success: true, id: want, status: next };
     }
   }
