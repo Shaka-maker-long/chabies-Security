@@ -50,6 +50,20 @@ assert.ok(file.buffer.length > 0);
 assert.ok(/png/i.test(file.mime) || /png/i.test(file.filename));
 assert.ok(fs.existsSync(path.join(dir, "debtor-payments", rec.id, rec.has_file ? "proof.png" : "proof.png")));
 
+// Office order edits omit payments — history must survive the upsert.
+const edited = db.upsertOrder({
+  order_number: "S-D1",
+  status: "In Progress",
+  product: "Air Chair",
+  client_name: "Winelands Design Studio",
+  price_excl_vat: "1000.00",
+  amount_paid: "150.00"
+});
+assert.ok(Array.isArray(edited.payments) && edited.payments.length === 1);
+assert.strictEqual(edited.payments[0].id, rec.id);
+assert.ok(db.listDebtorHistory().some((h) => h.order_number === "S-D1" && h.id === rec.id && h.has_file));
+assert.ok(db.readPaymentProof(rec.id));
+
 db.deleteOrder("S-D1");
 assert.ok(!db.readPaymentProof(rec.id));
 assert.ok(!db.listDebtorHistory().some((h) => h.order_number === "S-D1"));

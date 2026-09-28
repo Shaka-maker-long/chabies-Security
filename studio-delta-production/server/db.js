@@ -119,9 +119,19 @@ function applyPriceAndPayments(payload, row, existing) {
   payload.amount_paid = payload.amount_paid === "" || payload.amount_paid == null
     ? (existing && existing.amount_paid) || "0.00"
     : money(parseMoney(payload.amount_paid));
-  payload.payments = Array.isArray(row.payments)
-    ? row.payments
-    : (existing && Array.isArray(existing.payments) ? existing.payments : []);
+  const orderNumber = formatOrderId(payload.order_number || (row && row.order_number) || (existing && existing.order_number));
+  const prior = paymentsForOrder(orderNumber);
+  // Only replace payment history when the caller explicitly sent a payments array.
+  // Office order edits omit payments — keep the stored proof history.
+  if (Array.isArray(row && row.payments)) {
+    payload.payments = row.payments;
+  } else if (prior.length) {
+    payload.payments = prior;
+  } else if (existing && Array.isArray(existing.payments)) {
+    payload.payments = existing.payments;
+  } else {
+    payload.payments = [];
+  }
   return payload;
 }
 
@@ -401,12 +411,21 @@ function listOrders() {
   for (let i = 0; i < grid.length; i++) {
     const row = rowToOrder(grid[i], idx, i + 2);
     if (!String(row.order_number || "").trim()) continue;
-    if (state.paymentsByOrder && state.paymentsByOrder[row.order_number]) {
-      row.payments = state.paymentsByOrder[row.order_number];
-    }
+    row.payments = paymentsForOrder(row.order_number);
     out.push(row);
   }
   return out.reverse();
+}
+
+function paymentsForOrder(orderNumber) {
+  const want = formatOrderId(orderNumber);
+  if (!want || !state.paymentsByOrder) return [];
+  if (Array.isArray(state.paymentsByOrder[want])) return state.paymentsByOrder[want];
+  const keys = Object.keys(state.paymentsByOrder);
+  for (let i = 0; i < keys.length; i++) {
+    if (formatOrderId(keys[i]) === want) return state.paymentsByOrder[keys[i]] || [];
+  }
+  return [];
 }
 
 function findOrderSheetRow(sheet, idx, orderNumber) {
@@ -538,7 +557,12 @@ function deleteOrder(orderNumber) {
     persistWorkbook();
   }
   removeProofsForOrder(orderNumber);
-  if (state.paymentsByOrder) delete state.paymentsByOrder[orderNumber];
+  const want = formatOrderId(orderNumber);
+  if (state.paymentsByOrder) {
+    Object.keys(state.paymentsByOrder).forEach((key) => {
+      if (key === want || formatOrderId(key) === want) delete state.paymentsByOrder[key];
+    });
+  }
   deleteScheduleForOrder(orderNumber, false);
   try { require("./floor-planning").unscheduleOrder(orderNumber); } catch (e) {}
   save();
@@ -880,8 +904,16 @@ function listDebtors() {
 
 function listDebtorHistory() {
   const rows = [];
-  listOrders().forEach((order) => {
-    const payments = Array.isArray(order.payments) ? order.payments : [];
+  const orders = listOrders();
+  const byNumber = {};
+  orders.forEach((order) => {
+    byNumber[formatOrderId(order.order_number)] = order;
+  });
+  const pay = state.paymentsByOrder || {};
+  Object.keys(pay).forEach((key) => {
+    const orderNumber = formatOrderId(key);
+    const order = byNumber[orderNumber] || { order_number: orderNumber, client_name: "", product: "" };
+    const payments = Array.isArray(pay[key]) ? pay[key] : [];
     payments.forEach((p) => {
       if (!p || typeof p !== "object") return;
       rows.push({
@@ -892,7 +924,7 @@ function listDebtorHistory() {
         filename: p.filename || "",
         mime: p.mime || "",
         has_file: !!(p.id && p.storedAs),
-        order_number: order.order_number,
+        order_number: order.order_number || orderNumber,
         client_name: order.client_name || "",
         product: order.product || ""
       });
@@ -2951,7 +2983,7 @@ function removeProofDir(paymentId) {
 }
 
 function removeProofsForOrder(orderNumber) {
-  const history = (state.paymentsByOrder && state.paymentsByOrder[orderNumber]) || [];
+  const history = paymentsForOrder(orderNumber);
   history.forEach((p) => { if (p && p.id) removeProofDir(p.id); });
 }
 
@@ -2981,17 +3013,15 @@ function readPaymentProof(paymentId) {
 }
 
 function recordPayment(orderNumber, amount, note, proof) {
-  const num = String(orderNumber || "").trim();
-  const existing = listOrders().find((o) => o.order_number === num);
+  const num = formatOrderId(orderNumber);
+  const existing = listOrders().find((o) => formatOrderId(o.order_number) === num);
   if (!existing) throw new Error("Order not found");
   const add = parseMoney(amount);
   if (add <= 0) throw new Error("Payment amount must be more than 0");
   const paymentId = "pay_" + crypto.randomBytes(8).toString("hex");
   const savedFile = writePaymentProof(paymentId, proof);
   if (!state.paymentsByOrder) state.paymentsByOrder = {};
-  const history = Array.isArray(state.paymentsByOrder[num])
-    ? state.paymentsByOrder[num].slice()
-    : (Array.isArray(existing.payments) ? existing.payments.slice() : []);
+  const history = paymentsForOrder(num).slice();
   history.push({
     id: savedFile.id,
     at: nowIso(),
@@ -3003,6 +3033,10 @@ function recordPayment(orderNumber, amount, note, proof) {
     size: savedFile.size
   });
   state.paymentsByOrder[num] = history;
+  // Drop any legacy unformatted key so history is not duplicated.
+  Object.keys(state.paymentsByOrder).forEach((key) => {
+    if (key !== num && formatOrderId(key) === num) delete state.paymentsByOrder[key];
+  });
   const saved = upsertOrder({
     ...existing,
     amount_paid: money(orderPaid(existing) + add),
