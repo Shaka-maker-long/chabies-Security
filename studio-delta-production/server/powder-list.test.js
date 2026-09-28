@@ -127,7 +127,11 @@ function pdfText(buf) {
   const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
   assert.ok(floor.indexOf("Profiles Used") === -1);
   assert.ok(floor.indexOf("function powderDimsFromOrder") !== -1);
-  assert.ok(floor.indexOf("window.open(res.url") !== -1);
+  assert.ok(floor.indexOf("powderListMsg") !== -1, "powder modal shows errors in-panel");
+  assert.ok(floor.indexOf("openPowderPdf") !== -1, "powder PDF opens without relying on window.open alone");
+  assert.ok(floor.indexOf("powderPdfLink") !== -1, "powder modal keeps an Open PDF link");
+  assert.ok(floor.indexOf("setPowderListMsg") !== -1);
+  assert.ok(floor.indexOf("window.open(res.url") === -1, "success path must not only use window.open(res.url)");
   assert.ok(floor.indexOf(" Paint Shop.") !== -1);
   assert.ok(floor.indexOf("loadDashboard()") !== -1);
 

@@ -243,8 +243,25 @@ async function createList(listData, workerName) {
     createdBy: String(workerName || "").trim() || "Studio Delta",
     lines
   };
-  const buffer = await buildPdf(rec);
-  fs.writeFileSync(path.join(pdfDir(), id + ".pdf"), buffer);
+  let buffer;
+  try {
+    buffer = await buildPdf(rec);
+  } catch (e) {
+    console.error("[powder-list] pdf", e && e.stack ? e.stack : e);
+    return {
+      success: false,
+      error: "Could not build the powder coating list PDF: " + ((e && e.message) || String(e))
+    };
+  }
+  try {
+    fs.writeFileSync(path.join(pdfDir(), id + ".pdf"), buffer);
+  } catch (e) {
+    console.error("[powder-list] write", e && e.stack ? e.stack : e);
+    return {
+      success: false,
+      error: "Could not save the powder coating list PDF: " + ((e && e.message) || String(e))
+    };
+  }
   store.records.unshift({
     id: rec.id,
     number: rec.number,

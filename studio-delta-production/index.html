@@ -2293,6 +2293,8 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body p-3">
+          <p class="small text-muted mb-2" id="powderListHint">Tick Ready for Powder Coating orders, fill H × W × D, quantity, and colour, then Generate PO.</p>
+          <div class="alert alert-danger d-none py-2 px-3 mb-2" id="powderListMsg" role="alert"></div>
           <div class="table-responsive">
             <table class="table table-bordered table-hover align-middle mb-0" style="font-size: 0.85rem;">
               <thead class="table-dark text-center">
@@ -2311,9 +2313,10 @@
             </table>
           </div>
         </div>
-        <div class="modal-footer">
+        <div class="modal-footer flex-wrap gap-2">
+          <a class="btn btn-outline-primary d-none" id="powderPdfLink" href="#" target="_blank" rel="noopener">Open PDF</a>
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">CANCEL</button>
-          <button type="button" class="btn btn-primary" onclick="submitPowderList()">Generate PO</button>
+          <button type="button" class="btn btn-primary" id="powderGenerateBtn" onclick="submitPowderList()">Generate PO</button>
         </div>
       </div>
     </div>
@@ -8486,22 +8489,118 @@
         const labeled = s.match(new RegExp("(\\d+(?:\\.\\d+)?)\\s*mm\\s*" + letter + "\\b", "i"));
         if (labeled) return labeled[1];
         const prefixed = s.match(new RegExp("\\b" + letter + "[:\\s]*(\\d+(?:\\.\\d+)?)", "i"));
-        return prefixed ? prefixed[1] : "";
+        if (prefixed) return prefixed[1];
+        return "";
       }
-      return { h: take("H"), w: take("W"), d: take("D") };
+      let h = take("H");
+      let w = take("W");
+      let d = take("D");
+      if (!h && !w && !d) {
+        const plain = s.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)(?:\s*[x×]\s*(\d+(?:\.\d+)?))?/i);
+        if (plain) {
+          h = plain[1] || "";
+          w = plain[2] || "";
+          d = plain[3] || "";
+        }
+      }
+      return { h: h, w: w, d: d };
     }
     function powderColorFromOrder(o) {
       return String((o && (o.powderCoating || o.powder_coating || o.color)) || "").trim();
+    }
+    function setPowderListMsg(msg, isError) {
+      const el = document.getElementById("powderListMsg");
+      if (!el) {
+        if (msg) showAlert(msg);
+        return;
+      }
+      if (!msg) {
+        el.classList.add("d-none");
+        el.textContent = "";
+        el.classList.remove("alert-danger", "alert-success", "alert-warning");
+        return;
+      }
+      el.classList.remove("d-none", "alert-danger", "alert-success", "alert-warning");
+      el.classList.add(isError ? "alert-danger" : "alert-success");
+      el.textContent = msg;
+      try { el.scrollIntoView({ block: "nearest" }); } catch (e) {}
+    }
+    function markPowderField(el, bad) {
+      if (!el) return;
+      if (bad) {
+        el.classList.add("is-invalid");
+        el.style.borderColor = "#b42318";
+      } else {
+        el.classList.remove("is-invalid");
+        el.style.borderColor = "";
+      }
+    }
+    function setPowderPdfLink(url) {
+      const link = document.getElementById("powderPdfLink");
+      if (!link) return;
+      if (!url) {
+        link.classList.add("d-none");
+        link.removeAttribute("href");
+        return;
+      }
+      link.href = url;
+      link.classList.remove("d-none");
+    }
+    async function openPowderPdf(url) {
+      if (!url) return false;
+      setPowderPdfLink(url);
+      try {
+        const r = await fetch(url, { credentials: "same-origin" });
+        if (!r.ok) {
+          throw new Error("The PDF link is missing (HTTP " + r.status + "). Use Open PDF if it appears, or Generate PO again.");
+        }
+        const blob = await r.blob();
+        if (!blob || blob.size < 5) throw new Error("The PDF file was empty. Generate PO again.");
+        const obj = URL.createObjectURL(blob);
+        const opened = window.open(obj, "_blank", "noopener");
+        if (!opened) {
+          const a = document.createElement("a");
+          a.href = obj;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.download = "powder-coating-list.pdf";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setPowderListMsg("PDF is ready. If it did not open, tap Open PDF below.", false);
+          return true;
+        }
+        setTimeout(function () { try { URL.revokeObjectURL(obj); } catch (e) {} }, 60000);
+        return true;
+      } catch (e) {
+        // Fall back to navigating the saved URL (same-origin API).
+        try {
+          const a = document.createElement("a");
+          a.href = url;
+          a.target = "_blank";
+          a.rel = "noopener";
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          return true;
+        } catch (e2) {
+          setPowderListMsg((e && e.message) || "Could not open the PDF. Use Open PDF below.", true);
+          return false;
+        }
+      }
     }
 
     function openPowderModal() {
       const tbody = document.getElementById('powderTableBody');
       tbody.innerHTML = '';
+      setPowderListMsg("");
+      setPowderPdfLink("");
       
-      const readyOrders = appData.currentOrders.filter(o => o.status.toLowerCase() === 'ready for powder coating');
+      const readyOrders = (appData.currentOrders || []).filter(o => String(o.status || "").toLowerCase() === 'ready for powder coating');
       
       if(readyOrders.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No orders currently ready for powder coating.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No orders currently ready for powder coating. Only <b>Ready for Powder Coating</b> can go on this list.</td></tr>';
+          setPowderListMsg("No orders are Ready for Powder Coating right now.", true);
       } else {
           readyOrders.forEach((o, i) => {
               const dims = powderDimsFromOrder(o);
@@ -8586,7 +8685,11 @@
     function submitPowderList() {
         const selected =[];
         let isValid = true;
-        const submitBtn = document.querySelector('#powderModal .modal-footer .btn-primary');
+        const missingBits = [];
+        const submitBtn = document.getElementById('powderGenerateBtn') || document.querySelector('#powderModal .modal-footer .btn-primary');
+        setPowderListMsg("");
+        setPowderPdfLink("");
+        document.querySelectorAll('#powderModal .is-invalid').forEach((el) => markPowderField(el, false));
 
         document.querySelectorAll('.powder-select:checked').forEach(chk => {
             const tr = chk.closest('tr');
@@ -8594,13 +8697,26 @@
             
             // Get Main Order Info
             const desc = tr.querySelector('.main-desc').innerText.trim();
-            const h = tr.querySelector('.powder-h').value.trim();
-            const w = tr.querySelector('.powder-w').value.trim();
-            const d = tr.querySelector('.powder-d').value.trim();
-            const qty = tr.querySelector('.powder-qty').value.trim();
-            const color = tr.querySelector('.powder-color').value.trim();
+            const hEl = tr.querySelector('.powder-h');
+            const wEl = tr.querySelector('.powder-w');
+            const dEl = tr.querySelector('.powder-d');
+            const qtyEl = tr.querySelector('.powder-qty');
+            const colorEl = tr.querySelector('.powder-color');
+            const h = (hEl && hEl.value || "").trim();
+            const w = (wEl && wEl.value || "").trim();
+            const d = (dEl && dEl.value || "").trim();
+            const qty = (qtyEl && qtyEl.value || "").trim();
+            const color = (colorEl && colorEl.value || "").trim();
             
-            if(!h || !w || !d || !qty || !color) isValid = false;
+            markPowderField(hEl, !h);
+            markPowderField(wEl, !w);
+            markPowderField(dEl, !d);
+            markPowderField(qtyEl, !qty);
+            markPowderField(colorEl, !color);
+            if(!h || !w || !d || !qty || !color) {
+              isValid = false;
+              missingBits.push(order || "selected order");
+            }
 
             selected.push({
                 order: order, 
@@ -8613,15 +8729,28 @@
             // Get Sub-Parts linked to this order
             const subRows = document.querySelectorAll(`.sub-part-row[data-parent-order="${order}"]`);
             subRows.forEach(subTr => {
-                const subDescInput = subTr.querySelector('.sub-desc').value.trim();
-                const subH = subTr.querySelector('.powder-h').value.trim();
-                const subW = subTr.querySelector('.powder-w').value.trim();
-                const subD = subTr.querySelector('.powder-d').value.trim();
-                const subQty = subTr.querySelector('.powder-qty').value.trim();
-                const subColor = subTr.querySelector('.powder-color').value.trim();
+                const subDescEl = subTr.querySelector('.sub-desc');
+                const subHEl = subTr.querySelector('.powder-h');
+                const subWEl = subTr.querySelector('.powder-w');
+                const subDEl = subTr.querySelector('.powder-d');
+                const subQtyEl = subTr.querySelector('.powder-qty');
+                const subColorEl = subTr.querySelector('.powder-color');
+                const subDescInput = (subDescEl && subDescEl.value || "").trim();
+                const subH = (subHEl && subHEl.value || "").trim();
+                const subW = (subWEl && subWEl.value || "").trim();
+                const subD = (subDEl && subDEl.value || "").trim();
+                const subQty = (subQtyEl && subQtyEl.value || "").trim();
+                const subColor = (subColorEl && subColorEl.value || "").trim();
 
+                markPowderField(subDescEl, !subDescInput);
+                markPowderField(subHEl, !subH);
+                markPowderField(subWEl, !subW);
+                markPowderField(subDEl, !subD);
+                markPowderField(subQtyEl, !subQty);
+                markPowderField(subColorEl, !subColor);
                 if(!subDescInput || !subH || !subW || !subD || !subQty || !subColor) {
                     isValid = false;
+                    missingBits.push((order || "order") + " sub-part");
                 }
 
                 selected.push({
@@ -8635,47 +8764,67 @@
         });
         
         if(selected.length === 0) {
-            showAlert("Please select at least one order to send.");
+            setPowderListMsg("Tick at least one order that is Ready for Powder Coating.", true);
             return;
         }
         
         if(!isValid) {
-            showAlert("Please fill in item, dimensions, quantity, and colour for all checked orders and their sub-parts.");
+            setPowderListMsg("Fill in item, H, W, D, quantity, and colour for: " + missingBits.join(", ") + ".", true);
             return;
         }
         
         // Show Loading State
         isSubmitting = true;
-        const originalBtnText = submitBtn.innerHTML;
-        submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>GENERATING PDF...';
-        submitBtn.disabled = true;
+        const originalBtnText = submitBtn ? submitBtn.innerHTML : "Generate PO";
+        if (submitBtn) {
+          submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>GENERATING PDF...';
+          submitBtn.disabled = true;
+        }
+        setPowderListMsg("Generating the powder coating list PDF…", false);
 
         // Send to backend
         google.script.run
             .withSuccessHandler((res) => {
                 isSubmitting = false;
-                submitBtn.innerHTML = originalBtnText;
-                submitBtn.disabled = false;
+                if (submitBtn) {
+                  submitBtn.innerHTML = originalBtnText;
+                  submitBtn.disabled = false;
+                }
+                if (!res || typeof res !== "object") {
+                  setPowderListMsg("No response from the server. Try Generate PO again.", true);
+                  return;
+                }
                 
                 if(res.success) {
                     const moved = (res.orderNumbers || []).filter(Boolean);
-                    showAlert(moved.length
+                    const okMsg = moved.length
                       ? "Powder coating list PO is ready. " + moved.join(", ") + " " + (moved.length === 1 ? "is" : "are") + " Paint Shop."
-                      : "Powder coating list PO is ready.");
-                    const powderModalEl = document.getElementById('powderModal');
-                    const powderModalInstance = bootstrap.Modal.getInstance(powderModalEl);
-                    if (powderModalInstance) powderModalInstance.hide();
-                    if (res.url) window.open(res.url, "_blank", "noopener");
+                      : "Powder coating list PO is ready.";
+                    setPowderListMsg(okMsg, false);
+                    if (res.url) {
+                      setPowderPdfLink(res.url);
+                      openPowderPdf(res.url);
+                    } else {
+                      setPowderListMsg(okMsg + " No PDF link came back — try Generate PO again.", true);
+                    }
                     if (typeof loadDashboard === "function") loadDashboard();
                 } else {
-                    showAlert("Error generating PDF: " + (res.error || "Could not generate the list."));
+                    const err = (res && res.error) || "Could not generate the list.";
+                    setPowderListMsg(err, true);
+                    if (res && res.url) {
+                      setPowderPdfLink(res.url);
+                      setPowderListMsg(err + " A PDF was still saved — tap Open PDF.", true);
+                    }
                 }
             })
             .withFailureHandler((err) => {
                 isSubmitting = false;
-                submitBtn.innerHTML = originalBtnText;
-                submitBtn.disabled = false;
-                showAlert("System Error: " + err);
+                if (submitBtn) {
+                  submitBtn.innerHTML = originalBtnText;
+                  submitBtn.disabled = false;
+                }
+                const msg = (err && err.message) ? err.message : String(err || "Could not generate the list.");
+                setPowderListMsg(msg, true);
             })
             .generatePowderCoatingList(selected, session.name);
     }
