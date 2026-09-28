@@ -16,11 +16,15 @@
     .tabs { display:flex; gap:4px; flex-wrap:wrap; }
     .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
     .tabs a.on { background:#1d2939; color:#fff; }
+    .subtabs { display:flex; gap:6px; flex-wrap:wrap; padding:12px 16px 0; }
+    .subtabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:8px 12px; border-radius:8px; border:1px solid var(--line); background:#fff; }
+    .subtabs a.on { background:#1d2939; color:#fff; border-color:#1d2939; }
     .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
     button:disabled { opacity:.55; cursor:not-allowed; }
     .page { padding:18px 16px 40px; display:flex; flex-direction:column; gap:16px; }
+    .panel[hidden] { display:none !important; }
     .cols { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
     .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
     .card h2 { margin:0; padding:14px 16px 0; font-size:16px; }
@@ -33,6 +37,7 @@
     .foot { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:12px 16px; border-top:1px solid var(--line); background:#f8fafc; }
     .msg { font-size:12px; color:var(--muted); }
     .msg.bad { color:var(--bad); }
+    .msg.ok { color:var(--ok); }
     .cost { width:110px; border:1px solid var(--line); border-radius:6px; padding:6px 8px; font:inherit; }
     .file { font-size:13px; }
     .find { width:100%; max-width:360px; border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; margin:0 16px 12px; }
@@ -40,9 +45,11 @@
     .pill.ready { background:#fffaeb; color:#b54708; }
     .pill.sent { background:#eff8ff; color:#175cd3; }
     .pill.back { background:#ecfdf3; color:var(--ok); }
+    .pill.delivery { background:#f4ebff; color:#6941c6; }
     .batch { padding:12px 16px; border-top:1px solid var(--line); }
     .batch h3 { margin:0 0 8px; font-size:14px; }
     .batch table { margin-top:8px; }
+    .batch .foot { margin-top:10px; border:1px solid var(--line); border-radius:8px; }
     @media (max-width: 900px) {
       .cols { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
@@ -66,56 +73,66 @@
         <a class="on" href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Paint shop</h1>
-      <p class="lede">Every order with status <b>Paint Shop</b> or <b>Sent to Paint Shop</b> is listed here — that is the powder coaters. If paste stored those jobs as <b>Not Yet Started</b>, tick them under Saved as Not Yet Started. Ready for Powder Coating is waiting to go. When a load comes back, tick only the orders that arrived, put a cost on each one, and attach one invoice for that received batch.</p>
+      <p class="lede">Send Ready for Powder Coating jobs to the powder coaters, receive what comes back with a cost and invoice, then track Ready for Delivery.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
       <button class="ghost" type="button" onclick="load()">Refresh</button>
     </div>
   </header>
+  <nav class="subtabs" aria-label="Paint shop pages">
+    <a href="#at-shop" id="tab-at-shop" data-panel="at-shop">At the paint shop</a>
+    <a href="#received" id="tab-received" data-panel="received">Received batches</a>
+    <a href="#ready-delivery" id="tab-ready-delivery" data-panel="ready-delivery">Ready for delivery</a>
+  </nav>
   <div class="page">
-    <div class="cols">
+    <div class="panel" id="panel-at-shop">
+      <div class="cols">
+        <section class="card">
+          <h2>Ready to send</h2>
+          <p class="hint">These are Ready for Powder Coating. Send the ones you drop at the paint shop.</p>
+          <div id="readyBox"><div class="load">Loading…</div></div>
+          <div class="foot">
+            <button type="button" id="sendBtn" onclick="sendSelected()" disabled>Send to paint shop</button>
+            <span class="msg" id="sendMsg"></span>
+          </div>
+        </section>
+        <section class="card">
+          <h2>At the paint shop</h2>
+          <p class="hint">These orders are at the powder coaters (Paint Shop). Receive only what came back. Cost is required on each received order. One invoice covers this received batch.</p>
+          <div id="sentBox"><div class="load">Loading…</div></div>
+          <div class="foot">
+            <label class="file">Invoice for this received batch
+              <input id="invoiceFile" type="file" accept="application/pdf,image/jpeg,image/png,image/webp">
+            </label>
+            <button type="button" id="recvBtn" onclick="receiveSelected()" disabled>Receive selected</button>
+            <span class="msg" id="recvMsg"></span>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-received" hidden>
       <section class="card">
-        <h2>Ready to send</h2>
-        <p class="hint">These are Ready for Powder Coating. Send the ones you drop at the paint shop.</p>
-        <div id="readyBox"><div class="load">Loading…</div></div>
-        <div class="foot">
-          <button type="button" id="sendBtn" onclick="sendSelected()" disabled>Send to paint shop</button>
-          <span class="msg" id="sendMsg"></span>
-        </div>
-      </section>
-      <section class="card">
-        <h2>At the paint shop</h2>
-        <p class="hint">These orders are at the powder coaters (Paint Shop). Receive only what came back. Cost is required on each received order. One invoice covers this received batch.</p>
-        <div id="sentBox"><div class="load">Loading…</div></div>
-        <div class="foot">
-          <label class="file">Invoice for this received batch
-            <input id="invoiceFile" type="file" accept="application/pdf,image/jpeg,image/png,image/webp">
-          </label>
-          <button type="button" id="recvBtn" onclick="receiveSelected()" disabled>Receive selected</button>
-          <span class="msg" id="recvMsg"></span>
-        </div>
+        <h2>Received batches</h2>
+        <p class="hint">Each batch shares one invoice. Change a cost if it was typed wrong, then Save costs on that batch.</p>
+        <input class="find" id="recvSearch" type="search" placeholder="Search order, product, or client" oninput="renderReceived()">
+        <div id="recvBox"><div class="load">Loading…</div></div>
       </section>
     </div>
-    <section class="card">
-      <h2>Saved as Not Yet Started</h2>
-      <p class="hint">The old sheet said Paint Shop. Paste used to save that as Not Yet Started. Tick only the orders that are actually at the powder coaters — not jobs that have not started in the shop.</p>
-      <input class="find" id="adoptSearch" type="search" placeholder="Search order, product, or client" oninput="renderMisplaced()">
-      <div id="adoptBox"><div class="load">Loading…</div></div>
-      <div class="foot">
-        <button type="button" id="adoptBtn" onclick="adoptSelected()" disabled>They are at the paint shop</button>
-        <span class="msg" id="adoptMsg"></span>
-      </div>
-    </section>
-    <section class="card">
-      <h2>Received batches</h2>
-      <p class="hint">Each batch shares one invoice. Later arrivals from the same send get their own invoice when you receive them.</p>
-      <div id="recvBox"><div class="load">Loading…</div></div>
-    </section>
+
+    <div class="panel" id="panel-ready-delivery" hidden>
+      <section class="card">
+        <h2>Ready for delivery</h2>
+        <p class="hint">Orders with status Ready for Delivery. Open the order sheet if you need to change status.</p>
+        <input class="find" id="deliverySearch" type="search" placeholder="Search order, product, or client" oninput="renderReadyDelivery()">
+        <div id="deliveryBox"><div class="load">Loading…</div></div>
+      </section>
+    </div>
   </div>
   <script src="/office-auth.js?v=marketing-2"></script>
   <script>
-    let data = { ready: [], misplaced: [], sent: [], received: [] };
+    let data = { ready: [], sent: [], received: [], readyForDelivery: [] };
     function esc(s) {
       return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
@@ -131,16 +148,35 @@
     function selectedSent() {
       return Array.from(document.querySelectorAll(".sent-chk:checked")).map((el) => el.value);
     }
-    function selectedAdopt() {
-      return Array.from(document.querySelectorAll(".adopt-chk:checked")).map((el) => el.value);
-    }
-    function adoptQuery() {
-      return String((document.getElementById("adoptSearch") || {}).value || "").trim().toLowerCase();
-    }
     function setMsg(id, text, bad) {
       const el = document.getElementById(id);
+      if (!el) return;
       el.textContent = text || "";
       el.classList.toggle("bad", !!bad);
+      el.classList.toggle("ok", !bad && !!text);
+    }
+    function panelFromHash() {
+      const h = String(location.hash || "").replace(/^#/, "").toLowerCase();
+      if (h === "received" || h === "ready-delivery" || h === "at-shop") return h;
+      return "at-shop";
+    }
+    function setPanel(name) {
+      const want = name || panelFromHash();
+      ["at-shop", "received", "ready-delivery"].forEach((id) => {
+        const panel = document.getElementById("panel-" + id);
+        const tab = document.getElementById("tab-" + id);
+        if (panel) panel.hidden = id !== want;
+        if (tab) tab.classList.toggle("on", id === want);
+      });
+      if (location.hash.replace(/^#/, "") !== want) {
+        try { history.replaceState(null, "", "#" + want); } catch (e) { location.hash = want; }
+      }
+    }
+    function statusLine() {
+      return (data.readyCount || 0) + " ready · " +
+        (data.sentCount || 0) + " at the shop · " +
+        (data.receivedCount || (data.received || []).length) + " batches · " +
+        (data.readyForDeliveryCount || (data.readyForDelivery || []).length) + " ready for delivery";
     }
     function renderReady() {
       const box = document.getElementById("readyBox");
@@ -173,58 +209,80 @@
       box.querySelectorAll(".sent-chk").forEach((el) => { el.onchange = syncButtons; });
       syncButtons();
     }
-    function renderMisplaced() {
-      const box = document.getElementById("adoptBox");
-      const btn = document.getElementById("adoptBtn");
-      if (!box) return;
-      const q = adoptQuery();
-      const rows = (data.misplaced || []).filter((o) => {
+    function renderReceived() {
+      const box = document.getElementById("recvBox");
+      const q = String((document.getElementById("recvSearch") || {}).value || "").trim().toLowerCase();
+      const batches = (data.received || []).filter((batch) => {
+        if (!q) return true;
+        const blob = [
+          batch.receivedBy,
+          batch.invoiceFilename,
+          (batch.orders || []).map((o) => [o.order_number, o.product, o.client_name, o.cost, o.status].join(" ")).join(" ")
+        ].join(" ").toLowerCase();
+        return blob.indexOf(q) !== -1;
+      });
+      if (!(data.received || []).length) {
+        box.innerHTML = '<div class="empty">No paint shop invoices received yet.</div>';
+        return;
+      }
+      if (!batches.length) {
+        box.innerHTML = '<div class="empty">No batches match that search.</div>';
+        return;
+      }
+      box.innerHTML = batches.map((batch) => {
+        const rows = (batch.orders || []).map((o) =>
+          "<tr><td><b>" + esc(o.order_number) + "</b></td><td>" + esc(o.product) + "</td>" +
+          "<td><input class='cost recv-cost' data-receive=\"" + esc(batch.id) + "\" data-order=\"" + esc(o.order_number) +
+          "\" inputmode='decimal' value=\"" + esc(o.cost || "") + "\"></td>" +
+          "<td><span class='pill back'>" + esc(o.status) + "</span></td></tr>"
+        ).join("");
+        return "<div class='batch' data-receive=\"" + esc(batch.id) + "\">" +
+          "<h3>" + esc(when(batch.receivedAt)) + " · " + esc(batch.receivedBy) + " · " + (batch.orders || []).length +
+          " orders · <span class='batch-total'>" + esc(batch.totalLabel) + "</span></h3>" +
+          "<a href=\"/api/office/paint-shop/invoices/" + encodeURIComponent(batch.invoiceId) +
+          "\" target=\"_blank\" rel=\"noopener\">" + esc(batch.invoiceFilename || "Open invoice") + "</a>" +
+          "<table><thead><tr><th>Order</th><th>Product</th><th>Cost (R)</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table>" +
+          "<div class='foot'>" +
+          "<button type='button' data-save-receive=\"" + esc(batch.id) + "\">Save costs</button>" +
+          "<span class='msg' id=\"recvCostMsg-" + esc(batch.id) + "\"></span>" +
+          "</div></div>";
+      }).join("");
+      box.querySelectorAll("[data-save-receive]").forEach((btn) => {
+        btn.onclick = () => saveReceivedCosts(btn.getAttribute("data-save-receive"));
+      });
+    }
+    function renderReadyDelivery() {
+      const box = document.getElementById("deliveryBox");
+      const q = String((document.getElementById("deliverySearch") || {}).value || "").trim().toLowerCase();
+      const rows = (data.readyForDelivery || []).filter((o) => {
         if (!q) return true;
         return [o.order_number, o.product, o.client_name, o.status, o.powder_coating]
           .join(" ").toLowerCase().indexOf(q) !== -1;
       });
-      if (!(data.misplaced || []).length) {
-        box.innerHTML = '<div class="empty">No orders are sitting as Not Yet Started.</div>';
-        if (btn) btn.disabled = true;
+      if (!(data.readyForDelivery || []).length) {
+        box.innerHTML = '<div class="empty">No orders are Ready for Delivery.</div>';
         return;
       }
       if (!rows.length) {
         box.innerHTML = '<div class="empty">No orders match that search.</div>';
-        if (btn) btn.disabled = true;
         return;
       }
-      box.innerHTML = "<table><thead><tr><th></th><th>Order</th><th>Product</th><th>Client</th><th>Status now</th></tr></thead><tbody>" +
-        rows.map((o) => "<tr><td><input class='adopt-chk' type='checkbox' value=\"" + esc(o.order_number) + "\"></td>" +
-          "<td><b>" + esc(o.order_number) + "</b></td><td>" + esc(o.product) + "</td><td>" + esc(o.client_name) +
-          "</td><td><span class='pill ready'>" + esc(o.status) + "</span></td></tr>").join("") +
+      box.innerHTML = "<table><thead><tr><th>Order</th><th>Product</th><th>Client</th><th>Colour</th><th>Status</th></tr></thead><tbody>" +
+        rows.map((o) => "<tr><td><b><a href=\"/orders?q=" + encodeURIComponent(o.order_number || "") + "\">" +
+          esc(o.order_number) + "</a></b></td><td>" + esc(o.product) + "</td><td>" + esc(o.client_name) +
+          "</td><td>" + esc(o.powder_coating) + "</td><td><span class='pill delivery'>" + esc(o.status) +
+          "</span></td></tr>").join("") +
         "</tbody></table>";
-      box.querySelectorAll(".adopt-chk").forEach((el) => { el.onchange = syncButtons; });
-      syncButtons();
-    }
-    function renderReceived() {
-      const box = document.getElementById("recvBox");
-      if (!data.received.length) {
-        box.innerHTML = '<div class="empty">No paint shop invoices received yet.</div>';
-        return;
-      }
-      box.innerHTML = data.received.map((batch) => {
-        const rows = (batch.orders || []).map((o) => "<tr><td>" + esc(o.order_number) + "</td><td>" + esc(o.product) + "</td><td>" + esc(o.costLabel || o.cost) + "</td><td><span class='pill back'>" + esc(o.status) + "</span></td></tr>").join("");
-        return "<div class='batch'><h3>" + esc(when(batch.receivedAt)) + " · " + esc(batch.receivedBy) + " · " + (batch.orders || []).length + " orders · " + esc(batch.totalLabel) + "</h3>" +
-          "<a href=\"/api/office/paint-shop/invoices/" + encodeURIComponent(batch.invoiceId) + "\" target=\"_blank\" rel=\"noopener\">" + esc(batch.invoiceFilename || "Open invoice") + "</a>" +
-          "<table><thead><tr><th>Order</th><th>Product</th><th>Cost</th><th>Status</th></tr></thead><tbody>" + rows + "</tbody></table></div>";
-      }).join("");
     }
     function syncButtons() {
       document.getElementById("sendBtn").disabled = !selectedReady().length;
       const picked = selectedSent();
-      document.querySelectorAll(".cost").forEach((input) => {
+      document.querySelectorAll("#sentBox .cost").forEach((input) => {
         const on = picked.indexOf(input.getAttribute("data-order")) !== -1;
         input.disabled = !on;
         if (!on) input.value = "";
       });
       document.getElementById("recvBtn").disabled = !picked.length;
-      const adoptBtn = document.getElementById("adoptBtn");
-      if (adoptBtn) adoptBtn.disabled = !selectedAdopt().length;
     }
     async function load() {
       setMsg("status", "Loading…");
@@ -236,14 +294,13 @@
           setMsg("status", err, true);
           document.getElementById("readyBox").innerHTML = '<div class="err">' + err + "</div>";
           document.getElementById("sentBox").innerHTML = '<div class="err">' + err + "</div>";
-          document.getElementById("recvBox").innerHTML = '<div class="empty">No paint shop invoices received yet.</div>';
-          const adoptFail = document.getElementById("adoptBox");
-          if (adoptFail) adoptFail.innerHTML = '<div class="err">' + err + "</div>";
+          document.getElementById("recvBox").innerHTML = '<div class="err">' + err + "</div>";
+          document.getElementById("deliveryBox").innerHTML = '<div class="err">' + err + "</div>";
           return;
         }
         data = j;
         paintAll();
-        setMsg("status", (j.readyCount || 0) + " ready · " + (j.sentCount || 0) + " at the shop · " + (j.misplacedCount || 0) + " to check");
+        setMsg("status", statusLine());
       } catch (e) {
         const err = (e && e.message) || "Could not load Paint shop.";
         setMsg("status", err, true);
@@ -263,21 +320,7 @@
       data = j;
       paintAll();
       setMsg("sendMsg", "Sent " + (j.orderNumbers || []).length + " to the paint shop.");
-      setMsg("status", (j.readyCount || 0) + " ready · " + (j.sentCount || 0) + " at the shop · " + (j.misplacedCount || 0) + " to check");
-    }
-    async function adoptSelected() {
-      const orderNumbers = selectedAdopt();
-      if (!orderNumbers.length) return;
-      if (!confirm("Mark " + orderNumbers.length + " order" + (orderNumbers.length === 1 ? "" : "s") + " as Paint Shop (already at the powder coaters)?")) return;
-      document.getElementById("adoptBtn").disabled = true;
-      setMsg("adoptMsg", "Saving…");
-      const r = await sdOfficeFetch("/api/office/paint-shop/adopt", { method: "POST", body: JSON.stringify({ orderNumbers }) });
-      const j = await r.json();
-      if (!j.ok) { setMsg("adoptMsg", j.error || "Could not update", true); document.getElementById("adoptBtn").disabled = false; return; }
-      data = j;
-      paintAll();
-      setMsg("adoptMsg", "Moved " + (j.orderNumbers || []).length + " to Paint Shop.");
-      setMsg("status", (j.readyCount || 0) + " ready · " + (j.sentCount || 0) + " at the shop · " + (j.misplacedCount || 0) + " to check");
+      setMsg("status", statusLine());
     }
     function readInvoice() {
       const input = document.getElementById("invoiceFile");
@@ -295,7 +338,7 @@
       if (!orderNumbers.length) return;
       const orders = [];
       for (const num of orderNumbers) {
-        const input = document.querySelector('.cost[data-order="' + num + '"]');
+        const input = document.querySelector('#sentBox .cost[data-order="' + num + '"]');
         const cost = input ? String(input.value || "").trim() : "";
         if (!cost) { setMsg("recvMsg", "Put the paint shop cost on " + num + ".", true); return; }
         orders.push({ orderNumber: num, cost });
@@ -316,14 +359,60 @@
       document.getElementById("invoiceFile").value = "";
       paintAll();
       setMsg("recvMsg", "Received " + (j.orderNumbers || []).length + " with one invoice.");
-      setMsg("status", (j.readyCount || 0) + " ready · " + (j.sentCount || 0) + " at the shop · " + (j.misplacedCount || 0) + " to check");
+      setMsg("status", statusLine());
+      setPanel("received");
+    }
+    async function saveReceivedCosts(receiveId) {
+      const msgId = "recvCostMsg-" + receiveId;
+      const inputs = Array.from(document.querySelectorAll('.recv-cost[data-receive="' + receiveId + '"]'));
+      const orders = [];
+      for (const input of inputs) {
+        const cost = String(input.value || "").trim();
+        const orderNumber = input.getAttribute("data-order");
+        if (!cost) {
+          setMsg(msgId, "Put the paint shop cost on " + orderNumber + ".", true);
+          input.focus();
+          return;
+        }
+        orders.push({ orderNumber, cost });
+      }
+      const btn = document.querySelector('[data-save-receive="' + receiveId + '"]');
+      if (btn) btn.disabled = true;
+      setMsg(msgId, "Saving…");
+      try {
+        const r = await sdOfficeFetch("/api/office/paint-shop/received-costs", {
+          method: "POST",
+          body: JSON.stringify({ receiveId, orders })
+        });
+        const j = await r.json();
+        if (!j.ok) {
+          setMsg(msgId, j.error || "Could not save costs", true);
+          if (btn) btn.disabled = false;
+          return;
+        }
+        data = j;
+        paintAll();
+        setMsg(msgId, "Costs saved.", false);
+        setMsg("status", statusLine());
+      } catch (e) {
+        setMsg(msgId, (e && e.message) || "Could not save costs", true);
+        if (btn) btn.disabled = false;
+      }
     }
     function paintAll() {
       renderReady();
       renderSent();
-      renderMisplaced();
       renderReceived();
+      renderReadyDelivery();
     }
+    document.querySelectorAll(".subtabs a").forEach((a) => {
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        setPanel(a.getAttribute("data-panel"));
+      });
+    });
+    window.addEventListener("hashchange", () => setPanel(panelFromHash()));
+    setPanel(panelFromHash());
     sdRequireOffice("orders").then(load);
   </script>
 </body>

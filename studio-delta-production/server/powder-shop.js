@@ -195,14 +195,28 @@ function snapshot() {
       totalLabel: formatRand((batch.orders || []).reduce((sum, line) => sum + parseMoney(line.cost), 0))
     };
   });
+  const readyForDelivery = orders
+    .filter((o) => statusKey(o.status) === statusKey("Ready for Delivery"))
+    .map((o) => {
+      const meta = shop.orders[formatOrderId(o.order_number)] || {};
+      return publicOrder(o, {
+        cost: meta.cost || "",
+        costLabel: meta.cost ? formatRand(meta.cost) : "",
+        receivedAt: meta.receivedAt || "",
+        receivedBy: meta.receivedBy || ""
+      });
+    });
   return {
     ready,
     misplaced,
     sent,
     received,
+    readyForDelivery,
     readyCount: ready.length,
     misplacedCount: misplaced.length,
-    sentCount: sent.length
+    sentCount: sent.length,
+    readyForDeliveryCount: readyForDelivery.length,
+    receivedCount: received.length
   };
 }
 
@@ -378,6 +392,40 @@ function receiveFromPaintShop(payload, actor) {
   };
 }
 
+function updateReceivedCosts(payload, actor) {
+  const body = payload || {};
+  const receiveId = String(body.receiveId || body.id || "").trim();
+  if (!receiveId) throw new Error("Which received batch are you updating?");
+  const lines = parseReceiveLines(body.orders);
+  const shop = loadShop();
+  const batch = (shop.receives || []).find((row) => row && row.id === receiveId);
+  if (!batch) throw new Error("That received batch was not found.");
+  const byOrder = {};
+  (batch.orders || []).forEach((line) => {
+    byOrder[formatOrderId(line.orderNumber)] = line;
+  });
+  lines.forEach((line) => {
+    const existing = byOrder[line.orderNumber];
+    if (!existing) {
+      throw new Error(line.orderNumber + " is not on that received batch.");
+    }
+    existing.cost = Number(money(line.cost));
+    shop.orders[line.orderNumber] = Object.assign({}, shop.orders[line.orderNumber] || {}, {
+      cost: money(line.cost),
+      receiveId,
+      costUpdatedAt: nowIso(),
+      costUpdatedBy: String(actor || "Admin").trim() || "Admin"
+    });
+  });
+  saveShop(shop);
+  try { require("./gas").clearShopCache(); } catch (e) {}
+  return {
+    receiveId,
+    orderNumbers: lines.map((line) => line.orderNumber),
+    ...snapshot()
+  };
+}
+
 module.exports = {
   READY_STATUS,
   SENT_STATUS,
@@ -390,6 +438,7 @@ module.exports = {
   sendToPaintShop,
   markAlreadyAtPaintShop,
   receiveFromPaintShop,
+  updateReceivedCosts,
   readInvoiceFile,
   loadShop,
   canMarkAtPaintShop

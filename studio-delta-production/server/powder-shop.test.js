@@ -176,6 +176,23 @@ const invoice = {
   assert.ok(paint.snapshot().sent.some((o) => o.order_number === "SD-WAS-NYS"));
   assert.ok(!paint.snapshot().misplaced.some((o) => o.order_number === "SD-WAS-NYS"));
 
+  const costEdit = paint.updateReceivedCosts({
+    receiveId: recvThree.receiveId,
+    orders: [
+      { orderNumber: "SD-P1", cost: "150" },
+      { orderNumber: "SD-P2", cost: "90" },
+      { orderNumber: "SD-P3", cost: "40" }
+    ]
+  }, "Office Boss");
+  assert.ok(costEdit.received[0]);
+  assert.strictEqual(costEdit.received.find((b) => b.id === recvThree.receiveId).total, "280.00");
+  assert.strictEqual(paint.loadShop().orders["SD-P1"].cost, "150.00");
+
+  seed("SD-READY-DEL", "Ready for Delivery");
+  const withDelivery = paint.snapshot();
+  assert.ok(withDelivery.readyForDelivery.some((o) => o.order_number === "SD-READY-DEL"));
+  assert.ok(withDelivery.readyForDeliveryCount >= 1);
+
   const app = express();
   app.use(express.json({ limit: "8mb" }));
   mountOffice(app);
@@ -216,6 +233,23 @@ const invoice = {
     headers: { "x-sd-token": session.token }
   });
   assert.strictEqual(file.status, 200);
+  const costApi = await fetch(base + "/api/office/paint-shop/received-costs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-sd-token": session.token },
+    body: JSON.stringify({
+      receiveId: recvJson.receiveId,
+      orders: [{ orderNumber: "SD-API1", cost: "55.25" }]
+    })
+  });
+  const costJson = await costApi.json();
+  assert.ok(costJson.ok, JSON.stringify(costJson));
+  assert.strictEqual(paint.loadShop().orders["SD-API1"].cost, "55.25");
+  const snapApi = await fetch(base + "/api/office/paint-shop", {
+    headers: { "x-sd-token": session.token }
+  });
+  const snapJson = await snapApi.json();
+  assert.ok(snapJson.ok, JSON.stringify(snapJson));
+  assert.ok(Array.isArray(snapJson.readyForDelivery));
   server.close();
   console.log("powder-shop.test.js ok");
 })().catch((err) => {

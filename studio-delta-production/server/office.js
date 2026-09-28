@@ -1703,6 +1703,15 @@ function mountOffice(app) {
     }
   });
 
+  app.post("/api/office/paint-shop/received-costs", requireOffice, (req, res) => {
+    try {
+      const result = paintShop.updateReceivedCosts(req.body || {}, req.office && req.office.name);
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.get("/api/office/paint-shop/invoices/:invoiceId", requireOffice, (req, res) => {
     const file = paintShop.readInvoiceFile(req.params.invoiceId);
     if (!file) {
