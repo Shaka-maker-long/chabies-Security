@@ -186,7 +186,6 @@
       <button class="ghost" type="button" data-marketing-hide onclick="location.href='/orders/onboard'">Add existing order</button>
       <button class="ghost" type="button" data-marketing-hide onclick="location.href='/orders/paste'">Paste orders</button>
       <button class="ghost" type="button" data-marketing-hide onclick="location.href='/orders/new'">New order</button>
-      <button class="danger" type="button" id="clearAllBtn" data-marketing-hide style="display:none" onclick="openClearAll()">Clear all orders</button>
     </div>
   </header>
   <div class="sheet-stack">
@@ -404,24 +403,6 @@
           <input id="removeConfirm" autocomplete="off">
         </label>
         <div class="err" id="removeErr"></div>
-      </div>
-    </div>
-  </div>
-  <div class="mask" id="clearMask">
-    <div class="sheet" role="dialog" aria-modal="true" style="width:min(480px,96vw)">
-      <header>
-        <h1>Clear all orders</h1>
-        <div class="tools">
-          <button class="ghost" type="button" onclick="closeClearAll()">Cancel</button>
-          <button class="danger" type="button" onclick="confirmClearAll()">Delete every order</button>
-        </div>
-      </header>
-      <div class="body stack-form">
-        <p class="hint">This removes every order from the Orders sheet, the production schedule, the Planning calendar, and saved job cards. Enquiries are not deleted. Type <b>CLEAR</b> to confirm.</p>
-        <label>Type CLEAR
-          <input id="clearConfirm" autocomplete="off">
-        </label>
-        <div class="err" id="clearErr"></div>
       </div>
     </div>
   </div>
@@ -1146,8 +1127,6 @@
       });
       officeAssignees = assign.ok && assign.rows ? assign.rows.slice() : [];
       if (j.canManageUsers != null) canManage = !!j.canManageUsers;
-      const clearBtn = document.getElementById("clearAllBtn");
-      if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       document.getElementById("status").textContent = rows.length + " orders";
       try {
         const pasted = sessionStorage.getItem("sd-paste-added");
@@ -1162,28 +1141,6 @@
         if (q0) document.getElementById("q").value = q0;
       } catch (e) {}
       render();
-    }
-    function openClearAll() {
-      document.getElementById("clearConfirm").value = "";
-      document.getElementById("clearErr").textContent = "";
-      document.getElementById("clearMask").classList.add("open");
-      document.getElementById("clearConfirm").focus();
-    }
-    function closeClearAll() {
-      document.getElementById("clearMask").classList.remove("open");
-    }
-    async function confirmClearAll() {
-      const err = document.getElementById("clearErr");
-      err.textContent = "";
-      const r = await sdOfficeFetch("/api/office/orders/clear-all", {
-        method: "POST",
-        body: JSON.stringify({ confirm: document.getElementById("clearConfirm").value })
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!j.ok) { err.textContent = j.error || "Could not clear orders"; return; }
-      closeClearAll();
-      await load();
-      document.getElementById("status").textContent = "Cleared " + (j.removed || 0) + " orders. Enquiries were not deleted.";
     }
     let removingOrder = "";
     function openRemoveOrder(orderNumber) {
@@ -1215,9 +1172,6 @@
       await load();
       document.getElementById("status").textContent = "Removed " + (j.order_number || typed) + ". It is off Orders and Debtors.";
     }
-    window.openClearAll = openClearAll;
-    window.closeClearAll = closeClearAll;
-    window.confirmClearAll = confirmClearAll;
     window.openRemoveOrder = openRemoveOrder;
     window.closeRemoveOrder = closeRemoveOrder;
     window.confirmRemoveOrder = confirmRemoveOrder;
@@ -1518,8 +1472,6 @@
     sdRequireOffice("orders").then((p) => {
       if (!p) return;
       canManage = !!p.canManageUsers;
-      const clearBtn = document.getElementById("clearAllBtn");
-      if (clearBtn) clearBtn.style.display = canManage ? "" : "none";
       load();
     });
   </script>

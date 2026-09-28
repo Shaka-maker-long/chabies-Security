@@ -353,6 +353,166 @@ function writeBackboardUsage(ss, orderNum, workerName, processName, backboardUsa
   });
 }
 
+function ensureBackboardUsageSheet_(ss) {
+  var usageSheet = ss.getSheetByName(TAB_BACKBOARD_USAGE);
+  if (!usageSheet) {
+    usageSheet = ss.insertSheet(TAB_BACKBOARD_USAGE);
+    usageSheet.hideSheet();
+    usageSheet.appendRow(["Timestamp", "Order #", "Worker", "Process", "Type", "Size"]);
+  }
+  return usageSheet;
+}
+
+function backboardUsageProcessAliases_(process) {
+  var p = String(process || "").trim();
+  if (!p) return ["Assembly"];
+  var lower = p.toLowerCase();
+  if (lower === "assembly") return ["Assembly"];
+  return [p];
+}
+
+function backboardUsageRowToItem_(profileType, size) {
+  var s = String(profileType || "").trim();
+  var sep = " - ";
+  var idx = s.indexOf(sep);
+  var category = "";
+  var type = s;
+  if (idx >= 0) {
+    category = s.substring(0, idx).trim();
+    type = s.substring(idx + sep.length).trim();
+  }
+  return {
+    category: category,
+    type: type,
+    name: type,
+    size: String(size || "").trim(),
+    label: s,
+    isCustom: false
+  };
+}
+
+function backboardUsageIndexKey_(workerName, orderNum, process) {
+  return String(workerName || "").trim().toLowerCase() + "|" +
+    String(orderNum || "").trim() + "|assembly";
+}
+
+function loadBackboardUsageIndex_(ss) {
+  var index = {};
+  var sheet = ss.getSheetByName(TAB_BACKBOARD_USAGE);
+  if (!sheet || sheet.getLastRow() < 2) return index;
+  var data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    var worker = String(data[i][2] || "").trim();
+    var orderNum = String(data[i][1] || "").trim();
+    var process = String(data[i][3] || "").trim();
+    if (!worker || !orderNum) continue;
+    if (String(process || "").trim().toLowerCase() !== "assembly" && !processNeedsBackboard("", process)) continue;
+    var key = backboardUsageIndexKey_(worker, orderNum, process);
+    if (!index[key]) index[key] = [];
+    index[key].push(backboardUsageRowToItem_(data[i][4], data[i][5]));
+  }
+  return index;
+}
+
+function normalizeBackboardUsageItems_(backboardUsageData) {
+  var raw = backboardUsageData;
+  if (!raw) return [];
+  if (!Array.isArray(raw)) raw = [raw];
+  var out = [];
+  for (var i = 0; i < raw.length; i++) {
+    var item = raw[i] || {};
+    var type = String(item.type || item.name || "").trim();
+    var category = String(item.category || "").trim();
+    var size = String(item.size || "").trim();
+    if (!type || !size) continue;
+    out.push({
+      category: category || "Uncategorized",
+      type: type,
+      size: size,
+      isCustom: !!(item.isCustom || item.custom)
+    });
+  }
+  return out;
+}
+
+function replaceBackboardUsageForJob_(ss, orderNum, workerName, process, processLabel, items) {
+  var usageSheet = ensureBackboardUsageSheet_(ss);
+  var aliases = backboardUsageProcessAliases_(process);
+  var last = usageSheet.getLastRow();
+  if (last >= 2) {
+    var grid = usageSheet.getRange(2, 1, last - 1, 6).getValues();
+    for (var i = grid.length - 1; i >= 0; i--) {
+      if (String(grid[i][1] || "").trim() !== String(orderNum).trim()) continue;
+      if (String(grid[i][2] || "").trim() !== String(workerName).trim()) continue;
+      var proc = String(grid[i][3] || "").trim();
+      if (aliases.indexOf(proc) === -1 && !processNeedsBackboard("", proc)) continue;
+      usageSheet.deleteRow(i + 2);
+    }
+  }
+  writeBackboardUsage(ss, orderNum, workerName, processLabel || "Assembly", items);
+}
+
+function updateCompletedBackboardUsage(workerName, orderNum, process, backboardUsageData, actorName) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    workerName = String(workerName || "").trim();
+    orderNum = String(orderNum || "").trim();
+    process = String(process || "").trim() || "Assembly";
+    var actor = String(actorName || workerName || "").trim();
+    var actorProfile = getUserProfileByName(actor);
+    if (!actor || (actor !== workerName && !userHasAdminAccess(actorProfile))) {
+      return { success: false, error: "Only Admin can edit someone else's completed backboard usage." };
+    }
+    if (!workerName || !orderNum) {
+      return { success: false, error: "Missing worker or order." };
+    }
+    if (!processNeedsBackboard("", process) && String(process).toLowerCase() !== "assembly") {
+      return { success: false, error: "Backboard usage can only be edited for Assembly." };
+    }
+    var items = normalizeBackboardUsageItems_(backboardUsageData);
+    if (!items.length) {
+      return { success: false, error: "Add at least one backboard used." };
+    }
+    var ss = getSpreadsheet();
+    var pack = getLogPack(ss);
+    var foundLog = false;
+    var processLabel = "Assembly";
+    for (var i = 1; i < pack.values.length; i++) {
+      var row = pack.values[i];
+      if (!row[6]) continue;
+      if (String(row[2] || "").trim() !== workerName) continue;
+      if (String(row[1] || "").trim() !== orderNum) continue;
+      var role = String(row[3] || "").trim();
+      var status = String(row[4] || "").trim();
+      if (processNeedsBackboard(role, status) || String(role).toLowerCase() === "assembly") {
+        foundLog = true;
+        processLabel = status || role || "Assembly";
+      }
+    }
+    if (!foundLog) {
+      return { success: false, error: "No completed Assembly job found for you on this order." };
+    }
+    replaceBackboardUsageForJob_(ss, orderNum, workerName, process, processLabel, items);
+    SpreadsheetApp.flush();
+    return { success: true, backboardUsage: items.map(function (item) {
+      return {
+        category: item.category,
+        type: item.type,
+        name: item.type,
+        size: item.size,
+        label: item.category && item.category !== "Uncategorized" ? (item.category + " - " + item.type) : item.type,
+        isCustom: !!item.isCustom
+      };
+    }) };
+  } catch (e) {
+    return { success: false, error: e.toString() };
+  } finally {
+    try { bumpFloorCache(); } catch (ignoreBb) {}
+    lock.releaseLock();
+  }
+}
+
 function processNeedsGlass(role, processName) {
   var p = String(processName || "").trim().toLowerCase();
   return p === "pre-powder coating";
@@ -1695,6 +1855,7 @@ function getMyCompletedWork(workerName, process) {
   var pack = getLogPack(ss);
   var products = orderProductMap(ss);
   var steelIndex = loadSteelUsageIndex_(ss);
+  var backboardIndex = loadBackboardUsageIndex_(ss);
   for (var i = 1; i < pack.values.length; i++) {
     var row = pack.values[i];
     if (!row[6]) continue;
@@ -1745,6 +1906,11 @@ function getMyCompletedWork(workerName, process) {
       var steelKey = steelUsageIndexKey_(logWorker, orderNum, isCuttingSteelProcess_(role) ? role : item.status);
       item.steelUsage = steelIndex[steelKey] ? steelIndex[steelKey].slice() : [];
       item.canEditSteel = canEditSteelLogs || logWorker === want;
+    }
+    if (processNeedsBackboard(role, item.status) || String(role).toLowerCase() === "assembly") {
+      var bbKey = backboardUsageIndexKey_(logWorker, orderNum, "Assembly");
+      item.backboardUsage = backboardIndex[bbKey] ? backboardIndex[bbKey].slice() : [];
+      item.canEditBackboard = canEditSteelLogs || logWorker === want;
     }
     items.push(item);
   }

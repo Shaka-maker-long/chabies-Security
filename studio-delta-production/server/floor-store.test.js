@@ -126,6 +126,27 @@ async function main() {
   assert.ok(cutDone.steelUsage && cutDone.steelUsage.length, "completed work should show logged steel");
   assert.ok(String(cutDone.steelUsage[0].type).indexOf("25x25x2") >= 0, "logged profile type missing");
 
+  const asmDone = (completed.items || []).find((i) => i.order === "SD-ASM" && i.process === "Assembly");
+  assert.ok(asmDone, "completed assembly missing");
+  assert.ok(asmDone.canEditBackboard, "assembly should allow backboard edit");
+  assert.ok(asmDone.backboardUsage && asmDone.backboardUsage.length, "completed assembly should show logged backboard");
+  assert.ok(String(asmDone.backboardUsage[0].type || asmDone.backboardUsage[0].name).indexOf("12mm") >= 0, "logged backboard type missing");
+
+  const emptyBb = await callShopFunction("updateCompletedBackboardUsage", ["Sipho", "SD-ASM", "Assembly", []]);
+  assert.strictEqual(emptyBb.success, false, "empty backboard replace must fail");
+  const bbReplaced = await callShopFunction("updateCompletedBackboardUsage", [
+    "Sipho",
+    "SD-ASM",
+    "Assembly",
+    [{ category: "Board", type: "18mm", size: "2 sheet", isCustom: true }],
+    "Sipho"
+  ]);
+  assert.ok(bbReplaced && bbReplaced.success !== false, JSON.stringify(bbReplaced));
+  assert.ok((bbReplaced.backboardUsage || []).some((row) => String(row.type || "").indexOf("18mm") >= 0), "replaced backboard missing");
+  const completedBb = await callShopFunction("getMyCompletedWork", ["Sipho"]);
+  const asmDone2 = (completedBb.items || []).find((i) => i.order === "SD-ASM" && i.process === "Assembly");
+  assert.ok(asmDone2 && asmDone2.backboardUsage && asmDone2.backboardUsage.some((row) => String(row.type || row.name).indexOf("18mm") >= 0), "completed list should show edited backboard");
+
   const weldSteel = await callShopFunction("logWelderSteel", [
     "SD-WELD",
     "Sipho",

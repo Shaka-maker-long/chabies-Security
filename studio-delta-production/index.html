@@ -2415,6 +2415,33 @@
     </div>
   </div>
 
+  <!-- Edit backboard usage on a completed Assembly job -->
+  <div class="modal fade" id="editBackboardModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title brand-font">Edit backboard</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-3">
+          <p class="small text-muted mb-2" id="editBackboardOrderLabel"></p>
+          <p class="small text-muted">Fix the backboard allocated when this Assembly job was finished. This does not re-open the job.</p>
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <label class="fw-bold mb-0">Backboard logged <span class="text-danger">*</span></label>
+            <button type="button" class="btn btn-sm btn-outline-dark" onclick="openBackboardModal()">
+              <i class="bi bi-plus"></i> Select Backboard
+            </button>
+          </div>
+          <div id="editBackboardRowsContainer"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">CANCEL</button>
+          <button type="button" class="btn btn-dark" id="saveCompletedBackboardBtn" onclick="saveCompletedBackboardUsage()">Save backboard</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Backboard Selection Modal (Assembly finish) -->
   <div class="modal fade" id="backboardModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -2691,7 +2718,7 @@
       'Final QC': ['Front', 'Level 1', 'Back', 'Left Side', 'Right Side', 'Job Card', 'Open', 'Top (Optional)', 'Level 2 (Optional)']
     };
 
-    let passModal, changePassModal, startModal, pauseModal, qcModal, qcAttachPhotosModal, alertModal, confirmModal, noPlateModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, editSteelModal, welderSteelModal, canvas, ctx, isDrawing = false;
+    let passModal, changePassModal, startModal, pauseModal, qcModal, qcAttachPhotosModal, alertModal, confirmModal, noPlateModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, editSteelModal, editBackboardModal, welderSteelModal, canvas, ctx, isDrawing = false;
     let pendingNoPlateOrder = "";
 
     // =====================================================
@@ -2758,6 +2785,7 @@
         weeklyDetailsModal = bindModal('#weeklyDetailsModal');
         steelSelectionModal = bindModal('#steelModal');
         editSteelModal = bindModal('#editSteelModal');
+        editBackboardModal = bindModal('#editBackboardModal');
         backboardSelectionModal = bindModal('#backboardModal');
         idleAlertModal = bindModal('#idleAlertModal');
         welderSteelModal = bindModal('#welderSteelModal');
@@ -2804,6 +2832,19 @@
             if (steelEl && steelEl.classList.contains('show')) return;
             session.editingCompletedSteel = null;
             session.steelRowTargetId = '';
+          });
+        }
+        const editBackboardEl = document.getElementById('editBackboardModal');
+        if (editBackboardEl) {
+          editBackboardEl.addEventListener('hide.bs.modal', function (e) {
+            const bbEl = document.getElementById('backboardModal');
+            if (bbEl && bbEl.classList.contains('show')) e.preventDefault();
+          });
+          editBackboardEl.addEventListener('hidden.bs.modal', function () {
+            const bbEl = document.getElementById('backboardModal');
+            if (bbEl && bbEl.classList.contains('show')) return;
+            session.editingCompletedBackboard = null;
+            session.backboardRowTargetId = '';
           });
         }
       } catch (e) {}
@@ -4752,6 +4793,7 @@
         return '<div class="completed-empty">No completed work yet. Finish an order and it will show here. Pauses do not count toward the time.</div>';
       }
       window._completedSteelByKey = {};
+      window._completedBackboardByKey = {};
       return res.items.map((item) => {
         let icon = '<div class="completed-icon is-plain" title="No estimate"><i class="bi bi-dash-circle"></i></div>';
         let verdict = 'No estimate was saved for this product when you finished.';
@@ -4788,6 +4830,30 @@
           }
           steelHtml += '</div>';
         }
+        const assemblyJob = item.canEditBackboard || String(item.process || '').toLowerCase() === 'assembly' || (item.backboardUsage && item.backboardUsage.length);
+        const canEditBackboard = !!(item.canEditBackboard && (floorCanEditCompletedActions() || item.worker === session.name));
+        let backboardHtml = '';
+        if (assemblyJob) {
+          const bbKey = String(item.order || '') + '\t' + String(item.process || '') + '\t' + String(item.worker || '');
+          window._completedBackboardByKey[bbKey] = item.backboardUsage || [];
+          const bbLines = item.backboardUsage || [];
+          backboardHtml = '<div class="completed-steel"><p class="completed-steel-label">Backboard logged</p>';
+          if (bbLines.length) {
+            backboardHtml += '<ul class="completed-steel-list">';
+            bbLines.forEach((line) => {
+              const name = line.label || ((line.category ? line.category + ' - ' : '') + (line.type || line.name || ''));
+              backboardHtml += '<li>' + floorEsc(name) + (line.size ? ' · ' + floorEsc(line.size) : '') + '</li>';
+            });
+            backboardHtml += '</ul>';
+          } else {
+            backboardHtml += '<p class="completed-steel-empty">No backboard was found for this job.</p>';
+          }
+          if (canEditBackboard) {
+            backboardHtml += '<button type="button" class="btn btn-sm btn-outline-dark" onclick=\'openEditCompletedBackboard(' +
+              JSON.stringify(item.order || '') + ',' + JSON.stringify(item.process || '') + ',' + JSON.stringify(item.worker || '') + ')\'>Edit backboard</button>';
+          }
+          backboardHtml += '</div>';
+        }
         const who = (showWho && item.worker) ? (floorEsc(item.worker) + ' · ') : '';
         const pdfBtn = item.qcPdfUrl
           ? '<a class="btn btn-sm btn-outline-dark mt-2" href="' + floorEsc(item.qcPdfUrl) + '" target="_blank" rel="noopener">' + floorEsc(item.qcPdfLabel || 'Open QC PDF') + '</a>'
@@ -4802,7 +4868,7 @@
           '<div class="completed-body"><h3>' + floorEsc(item.order || '') + (item.product ? ' · ' + floorEsc(item.product) : '') + '</h3>' +
           '<p>' + who + floorEsc(item.process || '') + (item.end ? ' · ' + formatCompletedWhen(item.end) : '') + '</p>' +
           '<p>' + est + (took ? ' · ' + took : '') + '</p>' +
-          '<p>' + verdict + '</p>' + pdfBtn + addPhotosBtn + steelHtml + '</div></article>';
+          '<p>' + verdict + '</p>' + pdfBtn + addPhotosBtn + steelHtml + backboardHtml + '</div></article>';
       }).join('');
     }
     function paintCompletedWork(res) {
@@ -4906,6 +4972,80 @@
           showAlert('Error: ' + err);
         })
         .updateCompletedSteelUsage(ctx.worker || session.name, ctx.order, ctx.process, collected, session.name);
+    }
+    function backboardRowFromUsage(row) {
+      return {
+        category: row.category || '',
+        name: row.type || row.name || '',
+        size: row.size || '',
+        custom: !!(row.isCustom || row.custom)
+      };
+    }
+    function openEditCompletedBackboard(orderNum, process, workerName) {
+      session.editingCompletedBackboard = { order: orderNum, process: process || 'Assembly', worker: workerName || session.name };
+      session.backboardRowTargetId = 'editBackboardRowsContainer';
+      const key = String(orderNum || '') + '\t' + String(process || '') + '\t' + String(workerName || session.name || '');
+      const usage = (window._completedBackboardByKey && window._completedBackboardByKey[key]) || [];
+      const container = document.getElementById('editBackboardRowsContainer');
+      if (container) container.innerHTML = '';
+      const label = document.getElementById('editBackboardOrderLabel');
+      if (label) label.textContent = (orderNum || '') + (process ? ' · ' + process : '');
+      usage.forEach((row) => appendBackboardRow(backboardRowFromUsage(row)));
+      if (editBackboardModal) editBackboardModal.show();
+    }
+    function saveCompletedBackboardUsage() {
+      const ctx = session.editingCompletedBackboard;
+      if (!ctx) return;
+      const container = document.getElementById('editBackboardRowsContainer');
+      const rows = container ? container.querySelectorAll('.backboard-row') : [];
+      if (!rows.length) {
+        showAlert('Please add at least one backboard used.');
+        return;
+      }
+      const collected = [];
+      let valid = true;
+      rows.forEach((rowEl) => {
+        const type = rowEl.dataset.name;
+        const category = rowEl.dataset.category;
+        const size = rowEl.dataset.size;
+        const isCustom = rowEl.dataset.custom === 'true';
+        if (!type || !size) valid = false;
+        else collected.push({ category: category, type: type, size: size, isCustom: isCustom });
+      });
+      if (!valid) {
+        showAlert('Invalid backboard row detected. Please check your entries.');
+        return;
+      }
+      const btn = document.getElementById('saveCompletedBackboardBtn');
+      const orig = btn ? btn.innerHTML : '';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = 'SAVING…';
+      }
+      google.script.run
+        .withSuccessHandler((res) => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = orig || 'Save backboard';
+          }
+          if (res && res.success === false) {
+            showAlert(res.error || 'Could not save backboard.');
+            return;
+          }
+          if (editBackboardModal) editBackboardModal.hide();
+          session.editingCompletedBackboard = null;
+          session.backboardRowTargetId = '';
+          showAlert('Backboard updated.');
+          loadCompletedWork(true);
+        })
+        .withFailureHandler((err) => {
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = orig || 'Save backboard';
+          }
+          showAlert('Error: ' + err);
+        })
+        .updateCompletedBackboardUsage(ctx.worker || session.name, ctx.order, ctx.process, collected, session.name);
     }
     function enterDashboard() {
       navTo('view-dashboard');
@@ -5973,7 +6113,8 @@
       container.appendChild(row);
     }
     function appendBackboardRow(item) {
-      const container = document.getElementById("backboardRowsContainer");
+      const containerId = session.backboardRowTargetId || "backboardRowsContainer";
+      const container = document.getElementById(containerId);
       if (!container || !item || !item.name) return;
       const rowId = "brow-" + Date.now() + "-" + Math.floor(Math.random() * 99);
       const row = document.createElement("div");
@@ -6779,9 +6920,13 @@
       }
 
       appendBackboardRow({ category: cat, name: finalName, size: size + ' ' + unit, custom: isCustom });
-      persistQcDraft();
+      if (!session.backboardRowTargetId && !session.editingCompletedBackboard) persistQcDraft();
 
       if (backboardSelectionModal) backboardSelectionModal.hide();
+      if (session.backboardRowTargetId && editBackboardModal) {
+        const editEl = document.getElementById('editBackboardModal');
+        if (editEl && !editEl.classList.contains('show')) editBackboardModal.show();
+      }
     }
 
     function openWelderSteelModal() {
