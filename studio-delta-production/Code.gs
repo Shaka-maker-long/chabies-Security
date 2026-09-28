@@ -3651,6 +3651,29 @@ function sortProcessesByWorkflow(processes) {
   });
 }
 
+/** Fixed Order Overview / metrics columns — shop floor tasks only (no Other / QC / idle). */
+var ORDER_OVERVIEW_PROCESSES = [
+  "Profile Cutting",
+  "Plate Cutting",
+  "Tagging",
+  "Welding",
+  "Grinding",
+  "Paint Preparation",
+  "Painting",
+  "Assembly"
+];
+
+function orderOverviewProcessName(raw) {
+  var canonical = canonicalTaskName(raw) || String(raw || "").trim();
+  if (!canonical) return "";
+  for (var i = 0; i < ORDER_OVERVIEW_PROCESSES.length; i++) {
+    if (ORDER_OVERVIEW_PROCESSES[i].toLowerCase() === canonical.toLowerCase()) {
+      return ORDER_OVERVIEW_PROCESSES[i];
+    }
+  }
+  return "";
+}
+
 /**
  * Get order-based metrics with production processes as columns
  * Returns: { processes: [], orders: [{orderNum, productName, processes: {processName: {totalMinutes, totalCost}}}] }
@@ -3704,8 +3727,8 @@ function getOrderMetrics() {
     
     if (!orderNum || !task) continue;
     
-    var processName = String(task).trim();
-    if (processName.toLowerCase() === 'pre-powder coating' || processName.toLowerCase() === 'final qc') continue;
+    var processName = orderOverviewProcessName(task) || orderOverviewProcessName(role);
+    if (!processName) continue;
     
     processesSet[processName] = true;
     
@@ -3762,7 +3785,7 @@ function getOrderMetrics() {
     }
   }
   
-  var processes = sortProcessesByWorkflow(Object.keys(processesSet));
+  var processes = ORDER_OVERVIEW_PROCESSES.slice();
   var weeks = Object.keys(weeksSet).sort().reverse();
   var orders =[];
   for (var orderKey in orderMetrics) {
@@ -4165,20 +4188,17 @@ function getWeeklyAnalyticsData() {
     // Only count tasks that actually have an End Time (Completed)
     if (!orderNum || !task || !endTime) continue; 
     
-    // Exclude QC tasks from manufacturing throughput (Optional, keeps the board clean)
-    var lowerTask = task.toLowerCase();
-    if (lowerTask === 'pre-powder coating' || lowerTask === 'final qc') {
-       continue; 
-    }
+    var processName = orderOverviewProcessName(task) || orderOverviewProcessName(logData[i][3]);
+    if (!processName) continue;
 
-    var aggKey = orderNum + "|" + task;
+    var aggKey = orderNum + "|" + processName;
     var ts = new Date(endTime).getTime();
     if (isNaN(ts)) ts = 0;
     
     if (!processAggregates[aggKey]) {
       processAggregates[aggKey] = {
         orderNum: orderNum,
-        processName: task,
+        processName: processName,
         maxEndTime: ts,
         workers: worker ? [worker] : []
       };
@@ -4215,8 +4235,7 @@ function getWeeklyAnalyticsData() {
     });
   }
   
-  // Use existing helper to sort processes properly (Welding -> Grinding -> Powder)
-  var processes = sortProcessesByWorkflow(Object.keys(processesSet));
+  var processes = ORDER_OVERVIEW_PROCESSES.slice();
   
   // Sort weeks descending (newest weeks at the top)
   var weeks = Object.keys(weeklyData).sort().reverse(); 

@@ -853,6 +853,9 @@ assert.ok(codeGs.indexOf("SHIFT_LOCK_MINS = SHIFT_END_MINS") !== -1, "auto lock 
 assert.ok(codeGs.indexOf("closed after 15:45") !== -1);
 assert.ok(codeGs.indexOf("if (!start || !end) continue;") !== -1, "costing skips unfinished production logs");
 assert.ok(codeGs.indexOf("var IDLE_GRACE_MINS = 15") !== -1, "idle holes start after 15 minutes");
+assert.ok(codeGs.indexOf("ORDER_OVERVIEW_PROCESSES") !== -1, "Order Overview columns are fixed shop tasks");
+assert.ok(codeGs.indexOf("function orderOverviewProcessName") !== -1);
+assert.ok(floor.indexOf("ORDER_OVERVIEW_PROCESSES") !== -1, "Order Overview UI clamps to shop tasks");
 assert.ok(codeGs.indexOf("function userManagesIdle") !== -1);
 assert.ok(codeGs.indexOf("function userCountsForIdleAlerts") !== -1, "idle checker must know who counts as shop idle");
 assert.ok(codeGs.indexOf('title === "marketing"') !== -1 || codeGs.indexOf("access || \"\").toLowerCase() === \"marketing\"") !== -1, "Marketing must not enter idle alerts");

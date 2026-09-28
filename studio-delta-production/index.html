@@ -8263,12 +8263,17 @@
     
     // Order Overview Tab Functions
     let orderOverviewData = null;
+    const ORDER_OVERVIEW_PROCESSES = [
+      "Profile Cutting", "Plate Cutting", "Tagging", "Welding",
+      "Grinding", "Paint Preparation", "Painting", "Assembly"
+    ];
 
     function loadOrderOverview() {
       document.getElementById('orderOverviewContainer').innerHTML = '<div class="text-center p-5"><div class="spinner-border"></div></div>';
       
       google.script.run.withSuccessHandler(data => {
-        orderOverviewData = data;
+        orderOverviewData = data || {};
+        orderOverviewData.processes = ORDER_OVERVIEW_PROCESSES.slice();
         
         if (!data || !data.orders || data.orders.length === 0) {
           document.getElementById('orderOverviewContainer').innerHTML = '<div class="text-center p-5 text-muted">No data available. Ensure orders have been tracked in the Production Log.</div>';
@@ -8645,7 +8650,9 @@
       container.innerHTML = '<div class="text-center p-5"><div class="spinner-border"></div></div>';
       
       google.script.run.withSuccessHandler(res => {
-        weeklyAnalyticsData = res;
+        weeklyAnalyticsData = res || {};
+        weeklyAnalyticsData.processes = ORDER_OVERVIEW_PROCESSES.slice();
+        if (res) res.processes = weeklyAnalyticsData.processes;
         
         if (!res || !res.weeks || res.weeks.length === 0) {
           container.innerHTML = '<div class="text-center p-5 text-muted">No completed processes found yet.</div>';
