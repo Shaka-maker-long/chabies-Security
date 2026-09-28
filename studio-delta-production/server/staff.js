@@ -151,6 +151,7 @@ function isIdleManagerTitle(role) {
 
 function canSeeIdleAlerts(profile) {
   if (!profile) return false;
+  if (isMarketing(profile)) return false;
   if (isIdleManagerTitle(profile.jobTitle || profile.role)) return true;
   return String(profile.name || "").trim().toLowerCase() === "siya";
 }

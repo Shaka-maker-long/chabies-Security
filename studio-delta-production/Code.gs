@@ -1087,6 +1087,7 @@ function getUsersAndRoles() {
       jobTitle: profile.jobTitle,
       access: profile.access,
       isAdmin: profile.isAdmin,
+      isMarketing: !!profile.isMarketing,
       canSeeOffice: profile.canSeeOffice,
       canSeeDebtors: profile.canSeeDebtors,
       canManageUsers: profile.canManageUsers,
@@ -5294,9 +5295,19 @@ function stampOpenIdleUntil(idleSheet, logs, workerName, now) {
 
 function userManagesIdle(profile) {
   if (!profile) return false;
+  if (profile.isMarketing || String(profile.access || "").toLowerCase() === "marketing") return false;
   var title = String(profile.jobTitle || profile.role || "").trim().toLowerCase();
   if (title === "manager" || title === "production manager" || title === "site manager") return true;
   return String(profile.name || "").trim().toLowerCase() === "siya";
+}
+
+function userCountsForIdleAlerts(profile) {
+  if (!profile || !String(profile.name || "").trim()) return false;
+  if (profile.isAdmin || String(profile.access || "").toLowerCase() === "admin") return false;
+  if (profile.isMarketing || String(profile.access || "").toLowerCase() === "marketing") return false;
+  var title = String(profile.jobTitle || profile.role || "").trim().toLowerCase();
+  if (title === "marketing") return false;
+  return true;
 }
 
 function enforceShiftHours(now) {
@@ -5631,7 +5642,7 @@ function checkIdleWorkers(now) {
     var name = users[u].name;
     var role = users[u].role;
     if (!name) continue;
-    if (users[u].isAdmin || String(users[u].access || "").toLowerCase() === "admin") continue;
+    if (!userCountsForIdleAlerts(users[u])) continue;
     stampOpenIdleUntil(idleSheet, logs, name, at);
     if (workerHasRunningJob(logs, name)) continue;
     if (workerHasOpenIndirect(logs, name)) continue;
@@ -5662,17 +5673,20 @@ function getIdleWorkers() {
   var today = sastDayStamp(new Date());
   var list = [];
   for (var i = 1; i < data.length; i++) {
-    if (idleRowIsOpenToday(data[i], today)) {
-      list.push({
-        row: i + 1,
-        worker: data[i][1],
-        role: data[i][2],
-        idleSince: data[i][3] ? new Date(data[i][3]).getTime() : null,
-        alertedAt: data[i][4] ? new Date(data[i][4]).getTime() : null,
-        idleUntil: data[i][7] ? new Date(data[i][7]).getTime() : null,
-        liveAgain: !!(data[i][7])
-      });
+    if (!idleRowIsOpenToday(data[i], today)) continue;
+    var workerName = data[i][1];
+    if (!userCountsForIdleAlerts(getUserProfileByName(workerName) || { name: workerName, role: data[i][2] })) {
+      continue;
     }
+    list.push({
+      row: i + 1,
+      worker: workerName,
+      role: data[i][2],
+      idleSince: data[i][3] ? new Date(data[i][3]).getTime() : null,
+      alertedAt: data[i][4] ? new Date(data[i][4]).getTime() : null,
+      idleUntil: data[i][7] ? new Date(data[i][7]).getTime() : null,
+      liveAgain: !!(data[i][7])
+    });
   }
   return { workers: list, tasks: INDIRECT_TASKS };
 }

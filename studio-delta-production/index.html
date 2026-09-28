@@ -9428,6 +9428,7 @@
 
     function sessionSeesIdleAlerts() {
       if (!session.name) return false;
+      if (session.isMarketing || String(session.access || '').toLowerCase() === 'marketing') return false;
       if (session.canSeeIdleAlerts) return true;
       if (idleManagerTitle(session.jobTitle || session.role)) return true;
       return String(session.name || '').trim().toLowerCase() === 'siya';

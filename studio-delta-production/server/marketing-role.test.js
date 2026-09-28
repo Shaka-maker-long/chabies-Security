@@ -43,6 +43,13 @@ assert.deepStrictEqual(marketer.tasks, []);
 assert.deepStrictEqual(marketer.enquiryRoles, []);
 assert.ok(staff.isMarketing(marketer));
 assert.ok(!staff.isProductionFloorUser(marketer));
+assert.strictEqual(staff.canSeeIdleAlerts(marketer), false, "Marketing must not get idle notifications");
+assert.strictEqual(staff.canSeeIdleAlerts({
+  name: "Mia Market",
+  access: "Marketing",
+  role: "Marketing",
+  jobTitle: "Marketing"
+}), false);
 
 const order = upsertOrder({
   order_number: "S260901",
@@ -103,6 +110,7 @@ mountOffice(app);
   assert.strictEqual(session.isMarketing, true);
   assert.strictEqual(session.canEditMarketingFields, true);
   assert.strictEqual(session.canSeeOffice, true);
+  assert.strictEqual(session.canSeeIdleAlerts, false, "Marketing login must not unlock idle alerts");
 
   const okPatch = await api(session.token, "PUT", "/api/office/orders", {
     order_number: "S260901",

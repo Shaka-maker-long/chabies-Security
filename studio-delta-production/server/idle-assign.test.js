@@ -53,6 +53,12 @@ staff.upsertUser({
   password: "sipho",
   seeDebtors: "Yes"
 });
+staff.upsertUser({
+  name: "Mia Market",
+  access: "Marketing",
+  role: "Marketing",
+  password: "mkt"
+});
 
 function todayStamp() {
   return new Intl.DateTimeFormat("en-CA", {
@@ -138,9 +144,9 @@ function openHole(worker, dateCell) {
   const gonePm = await callShopFunction("getIdleWorkers", []);
   assert.ok(!(gonePm.workers || []).some((w) => w.worker === "Uriah"), "Production Manager must be able to assign idle tasks");
 
-  const pauseAt = new Date("2026-09-15T10:15:00+02:00");
-  const checkAt = new Date("2026-09-15T10:40:00+02:00");
-  const liveStart = new Date("2026-09-15T12:30:00+02:00");
+  const pauseAt = new Date(today + "T10:15:00+02:00");
+  const checkAt = new Date(today + "T10:40:00+02:00");
+  const liveStart = new Date(today + "T12:30:00+02:00");
   const logsSheet = getBook().getSheetByName("Production_Log");
   logsSheet.appendRow([
     "log-willard-pause",
@@ -148,7 +154,7 @@ function openHole(worker, dateCell) {
     "Willard",
     "Welding",
     "Welding",
-    new Date("2026-09-15T07:45:00+02:00"),
+    new Date(today + "T07:45:00+02:00"),
     "",
     "",
     "",
@@ -166,6 +172,7 @@ function openHole(worker, dateCell) {
   assert.ok(willardHole, "paused job must open an idle hole");
   const holeStart = new Date(willardHole[3]).getTime();
   assert.ok(Math.abs(holeStart - pauseAt.getTime()) < 60 * 1000, "Other hole starts at the pause, not the job start: " + willardHole[3]);
+  assert.ok(!(idleSheet().getDataRange().getValues() || []).some((row, i) => i > 0 && String(row[1]) === "Mia Market" && String(row[5] || "").toLowerCase() === "open"), "Marketing must not get idle holes from checkIdleWorkers");
 
   logsSheet.appendRow([
     "log-willard-live",
@@ -300,6 +307,16 @@ function openHole(worker, dateCell) {
     .find((row) => String(row[1]) === "S-CORRECT-3" && !row[6]);
   assert.ok(movedLog, "late start log must still be open");
   assert.strictEqual(new Date(movedLog[5]).getTime(), startAt.getTime(), "late start must move back to 07:45: " + movedLog[5]);
+
+  clearShopCache();
+  openHole("Mia Market", today);
+  const marketingListed = await callShopFunction("getIdleWorkers", []);
+  assert.ok(!(marketingListed.workers || []).some((w) => w.worker === "Mia Market"), "Marketing must not appear in idle notifications");
+  const marketingPoll = await callShopFunction("pollIdleAlerts", ["Siya"]);
+  assert.ok(!(marketingPoll.alerts || []).some((w) => w.worker === "Mia Market"), "Marketing must not be in Siya idle popup");
+  await callShopFunction("checkIdleWorkers", [checkAt]);
+  const marketingStillOff = await callShopFunction("getIdleWorkers", []);
+  assert.ok(!(marketingStillOff.workers || []).some((w) => w.worker === "Mia Market"), "checkIdleWorkers must not create Marketing idle holes");
 
   console.log("idle-assign.test.js ok");
 })().catch((e) => {
