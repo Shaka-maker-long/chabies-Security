@@ -129,6 +129,10 @@ app.get("/orders/glass-rates", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "orders-glass-rates.html"));
 });
+app.get("/orders/products", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "orders-products.html"));
+});
 app.get("/orders/cost", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "orders-cost.html"));

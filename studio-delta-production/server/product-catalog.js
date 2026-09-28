@@ -1,5 +1,9 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
+const { dataDir } = require("./workbook-store");
+
 const DIMENSIONS = [
   ["Amalia Side Table", 560, 550, 550, ""],
   ["Amara Bed Double", 1200, 1400, 1900, ""],
@@ -251,32 +255,195 @@ function dimRecord(row) {
 const BY_KEY = new Map();
 for (const row of DIMENSIONS) {
   const rec = dimRecord(row);
-  rec.imageUrl = IMAGES[rec.name] || "";
   BY_KEY.set(normalizeName(rec.name), rec);
+}
+
+function overridesPath() {
+  return path.join(dataDir(), "product-catalog-overrides.json");
+}
+
+function loadOverrides() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(overridesPath(), "utf8"));
+    const products = Array.isArray(parsed && parsed.products)
+      ? parsed.products
+      : (Array.isArray(parsed) ? parsed : []);
+    return products.filter((row) => row && String(row.name || "").trim());
+  } catch (e) {
+    if (e && e.code !== "ENOENT") {
+      console.error("[product-catalog] could not read", overridesPath(), e.message || e);
+    }
+    return [];
+  }
+}
+
+function saveOverrides(products) {
+  const file = overridesPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  const tmp = file + ".tmp";
+  fs.writeFileSync(tmp, JSON.stringify({ products: products || [] }, null, 2));
+  fs.renameSync(tmp, file);
+}
+
+function findOverride(productName) {
+  const want = normalizeName(productName);
+  if (!want) return null;
+  return loadOverrides().find((row) => normalizeName(row.name) === want) || null;
+}
+
+function numOrNull(value) {
+  if (value === "" || value == null) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function cleanImageUrl(raw) {
+  const url = String(raw == null ? "" : raw).trim();
+  if (!url) return "";
+  if (!/^https?:\/\//i.test(url)) {
+    throw new Error("Image link must start with http:// or https://");
+  }
+  return url;
+}
+
+function builtInImage(name) {
+  return IMAGES[name] || "";
+}
+
+function applyOverride(base, ov) {
+  const out = {
+    name: (base && base.name) || (ov && ov.name) || "",
+    height: base && base.height != null ? base.height : null,
+    width: base && base.width != null ? base.width : null,
+    depth: base && base.depth != null ? base.depth : null,
+    diameter: base && base.diameter != null ? base.diameter : null,
+    imageUrl: builtInImage((base && base.name) || ""),
+    custom: false,
+    override: false
+  };
+  if (ov) {
+    out.override = true;
+    if (Object.prototype.hasOwnProperty.call(ov, "imageUrl")) {
+      out.imageUrl = String(ov.imageUrl || "").trim();
+    }
+    if (Object.prototype.hasOwnProperty.call(ov, "height")) out.height = numOrNull(ov.height);
+    if (Object.prototype.hasOwnProperty.call(ov, "width")) out.width = numOrNull(ov.width);
+    if (Object.prototype.hasOwnProperty.call(ov, "depth")) out.depth = numOrNull(ov.depth);
+    if (Object.prototype.hasOwnProperty.call(ov, "diameter")) out.diameter = numOrNull(ov.diameter);
+    if (ov.custom || !(base && base.name)) {
+      out.custom = true;
+      out.name = String(ov.name || out.name).trim();
+    }
+  }
+  return out;
 }
 
 function lookupProduct(productName) {
   const key = normalizeName(productName);
   if (!key) return null;
-  if (BY_KEY.has(key)) return { ...BY_KEY.get(key) };
+  const ov = findOverride(productName);
+  if (BY_KEY.has(key)) {
+    return applyOverride({ ...BY_KEY.get(key) }, ov);
+  }
   if (ALIASES[key]) {
     const aliased = BY_KEY.get(normalizeName(ALIASES[key]));
-    if (aliased) return { ...aliased };
+    if (aliased) return applyOverride({ ...aliased }, findOverride(aliased.name) || ov);
   }
   for (const [catalogKey, rec] of BY_KEY) {
     if (key.includes(catalogKey) || catalogKey.includes(key)) {
-      return { ...rec };
+      return applyOverride({ ...rec }, findOverride(rec.name) || ov);
     }
   }
+  if (ov) return applyOverride(null, ov);
   return null;
 }
 
 function listCatalog() {
-  return DIMENSIONS.map((row) => {
-    const rec = dimRecord(row);
-    rec.imageUrl = IMAGES[rec.name] || "";
-    return rec;
+  const overrides = loadOverrides();
+  const byKey = new Map();
+  overrides.forEach((row) => {
+    byKey.set(normalizeName(row.name), row);
   });
+  const out = [];
+  const seen = new Set();
+  for (const row of DIMENSIONS) {
+    const rec = dimRecord(row);
+    const key = normalizeName(rec.name);
+    out.push(applyOverride(rec, byKey.get(key) || null));
+    seen.add(key);
+  }
+  overrides.forEach((row) => {
+    const key = normalizeName(row.name);
+    if (seen.has(key)) return;
+    out.push(applyOverride(null, row));
+    seen.add(key);
+  });
+  return out.sort((a, b) => String(a.name).localeCompare(String(b.name)));
+}
+
+function snapshotCatalog() {
+  const products = listCatalog().map((p) => ({
+    name: p.name,
+    imageUrl: p.imageUrl || "",
+    height: p.height,
+    width: p.width,
+    depth: p.depth,
+    diameter: p.diameter,
+    custom: !!p.custom,
+    override: !!p.override,
+    hasImage: !!(p.imageUrl && String(p.imageUrl).trim()),
+    builtInImage: builtInImage(p.name)
+  }));
+  return {
+    products,
+    total: products.length,
+    missingCount: products.filter((p) => !p.hasImage).length
+  };
+}
+
+function upsertProduct(body) {
+  const name = String((body && body.name) || "").trim();
+  if (!name) throw new Error("Product name is required.");
+  const imageUrl = cleanImageUrl(body && body.imageUrl);
+  const key = normalizeName(name);
+  const builtIn = BY_KEY.get(key);
+  const store = loadOverrides();
+  let row = store.find((item) => normalizeName(item.name) === key);
+  if (!row) {
+    row = { name: builtIn ? builtIn.name : name };
+    store.push(row);
+  } else if (builtIn) {
+    row.name = builtIn.name;
+  } else {
+    row.name = name;
+  }
+  row.imageUrl = imageUrl;
+  row.custom = !builtIn;
+  if (body && Object.prototype.hasOwnProperty.call(body, "height")) row.height = numOrNull(body.height);
+  if (body && Object.prototype.hasOwnProperty.call(body, "width")) row.width = numOrNull(body.width);
+  if (body && Object.prototype.hasOwnProperty.call(body, "depth")) row.depth = numOrNull(body.depth);
+  if (body && Object.prototype.hasOwnProperty.call(body, "diameter")) row.diameter = numOrNull(body.diameter);
+  if (!builtIn) {
+    if (row.height == null && body && body.height !== "" && body.height != null) row.height = numOrNull(body.height);
+    if (row.width == null && body && body.width !== "" && body.width != null) row.width = numOrNull(body.width);
+    if (row.depth == null && body && body.depth !== "" && body.depth != null) row.depth = numOrNull(body.depth);
+    if (row.diameter == null && body && body.diameter !== "" && body.diameter != null) row.diameter = numOrNull(body.diameter);
+  }
+  saveOverrides(store);
+  try {
+    require("./db").addDropdownItem("product", row.name);
+  } catch (e) {}
+  return lookupProduct(row.name);
+}
+
+function deleteProductOverride(productName) {
+  const want = normalizeName(productName);
+  if (!want) throw new Error("Product not found.");
+  const store = loadOverrides();
+  const next = store.filter((row) => normalizeName(row.name) !== want);
+  if (next.length === store.length) throw new Error("No saved photo link for that product.");
+  saveOverrides(next);
+  return true;
 }
 
 function dimensionsForDisplay(productName, overrides) {
@@ -300,6 +467,9 @@ module.exports = {
   normalizeName,
   lookupProduct,
   listCatalog,
+  snapshotCatalog,
+  upsertProduct,
+  deleteProductOverride,
   dimensionsForDisplay,
   dimensionsString,
   COMPANY_LOGO_URL: "https://studiodelta.co.za/wp-content/uploads/2024/03/Studio-Delta_company_logo.jpg",

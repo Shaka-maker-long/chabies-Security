@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Product photos</title>
+  <script src="/sd-pwa.js?v=pwa-stg1"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#027a48; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:780px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#fff; color:var(--bad); border-color:#fecdca; }
+    button.small { padding:6px 10px; font-size:12px; }
+    .page { padding:18px 16px 40px; max-width:1100px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:16px; }
+    .card h2 { margin:0; padding:14px 16px 0; font-size:16px; }
+    .hint { margin:6px 16px 12px; color:var(--muted); font-size:13px; }
+    .filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center; padding:0 16px 12px; }
+    .filters input, .filters select { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-size:13px; }
+    .filters input { flex:1; min-width:180px; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-top:1px solid var(--line); padding:8px 10px; font-size:13px; text-align:left; vertical-align:middle; }
+    th { background:var(--head); font-size:11px; letter-spacing:.03em; text-transform:uppercase; }
+    td.thumb { width:64px; }
+    td.thumb img, .preview img {
+      width:56px; height:56px; object-fit:cover; border-radius:8px; background:#f2f4f7; border:1px solid var(--line);
+    }
+    td.thumb .none, .preview .none {
+      width:56px; height:56px; border-radius:8px; background:#f2f4f7; border:1px dashed var(--line);
+      display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:10px; font-weight:700;
+    }
+    td.name { font-weight:600; min-width:160px; }
+    td.name .tag { display:inline-block; margin-left:6px; font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    td.url input { width:100%; min-width:220px; border:1px solid var(--line); border-radius:6px; padding:7px 9px; font:inherit; font-size:12px; }
+    td.actions { white-space:nowrap; }
+    .add { display:flex; gap:8px; flex-wrap:wrap; align-items:end; padding:12px 16px; border-top:1px solid var(--line); background:#f8fafc; }
+    .add label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+    .add input { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; min-width:120px; }
+    .add input.wide { min-width:260px; }
+    .empty { padding:28px 16px; text-align:center; color:var(--muted); }
+    .msg { font-size:12px; color:var(--muted); }
+    .msg.bad { color:var(--bad); }
+    .msg.ok { color:var(--ok); }
+    .chip { font-size:12px; font-weight:700; color:var(--ink); }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Orders views">
+        <a href="/orders">Sheet</a>
+        <a href="/orders/dashboard">Dashboard</a>
+        <a href="/orders/paste">Paste orders</a>
+        <a href="/orders/schedule">Production schedule</a>
+        <a href="/orders/delivery">Delivery summary</a>
+        <a href="/orders/job-card">Job card</a>
+        <a href="/orders/to-order">To order</a>
+        <a href="/orders/glass-rates">Glass rates</a>
+        <a class="on" href="/orders/products">Product photos</a>
+        <a href="/orders/cost">Cost</a>
+        <a href="/orders/correct">Fix status</a>
+        <a href="/orders/paint-shop">Paint shop</a>
+      </nav>
+      <h1>Product photos</h1>
+      <p class="lede">Paste a Studio Delta website image link for any product. Missing photos show on dashboards, Cost, Planning, and job cards once saved. New products are also added to the PRODUCT dropdown.</p>
+    </div>
+    <div class="tools">
+      <span class="chip" id="counts"></span>
+      <span class="msg" id="status"></span>
+      <button class="ghost" type="button" onclick="load()">Refresh</button>
+    </div>
+  </header>
+  <div class="page">
+    <section class="card">
+      <h2>Catalog photos</h2>
+      <p class="hint">Use the full https link from studiodelta.co.za (or another image URL). Filter to “Missing photo” to fill gaps first.</p>
+      <div class="filters">
+        <input id="search" type="search" placeholder="Search products" autocomplete="off">
+        <select id="filter" aria-label="Filter products">
+          <option value="all">All products</option>
+          <option value="missing">Missing photo</option>
+          <option value="has">Has photo</option>
+          <option value="custom">Added online</option>
+        </select>
+      </div>
+      <div id="list"><div class="empty">Loading…</div></div>
+      <form class="add" id="addForm">
+        <label>Product name
+          <input id="newName" class="wide" placeholder="e.g. Air Chair" required>
+        </label>
+        <label>Image link
+          <input id="newUrl" class="wide" placeholder="https://www.studiodelta.co.za/..." required>
+        </label>
+        <label>Height mm
+          <input id="newH" inputmode="decimal" placeholder="optional">
+        </label>
+        <label>Width mm
+          <input id="newW" inputmode="decimal" placeholder="optional">
+        </label>
+        <label>Depth mm
+          <input id="newD" inputmode="decimal" placeholder="optional">
+        </label>
+        <button type="submit">Save product photo</button>
+        <span class="msg" id="formMsg"></span>
+      </form>
+    </section>
+  </div>
+  <script src="/office-auth.js?v=marketing-2"></script>
+  <script>
+    let data = { products: [], missingCount: 0, total: 0 };
+
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+    }
+    function setMsg(id, text, kind) {
+      const el = document.getElementById(id);
+      el.textContent = text || "";
+      el.classList.remove("bad", "ok");
+      if (kind) el.classList.add(kind);
+    }
+    function thumbHtml(url) {
+      if (url) return "<img src=\"" + esc(url) + "\" alt=\"\">";
+      return "<div class=\"none\">NO IMG</div>";
+    }
+    function filtered() {
+      const needle = String(document.getElementById("search").value || "").trim().toLowerCase();
+      const mode = document.getElementById("filter").value;
+      return (data.products || []).filter((p) => {
+        if (mode === "missing" && p.hasImage) return false;
+        if (mode === "has" && !p.hasImage) return false;
+        if (mode === "custom" && !p.custom) return false;
+        if (!needle) return true;
+        return String(p.name || "").toLowerCase().indexOf(needle) >= 0;
+      });
+    }
+    function render() {
+      document.getElementById("counts").textContent =
+        (data.total || 0) + " products · " + (data.missingCount || 0) + " missing photo";
+      const rows = filtered();
+      const box = document.getElementById("list");
+      if (!rows.length) {
+        box.innerHTML = "<div class=\"empty\">No products match that search.</div>";
+        return;
+      }
+      box.innerHTML = "<table><thead><tr><th></th><th>Product</th><th>Image link</th><th></th></tr></thead><tbody>" +
+        rows.map((p) => {
+          const tag = p.custom ? "<span class=\"tag\">added</span>" : (p.override ? "<span class=\"tag\">edited</span>" : "");
+          return "<tr data-name=\"" + esc(p.name) + "\">" +
+            "<td class=\"thumb\">" + thumbHtml(p.imageUrl) + "</td>" +
+            "<td class=\"name\">" + esc(p.name) + tag + "</td>" +
+            "<td class=\"url\"><input data-url value=\"" + esc(p.imageUrl) + "\" placeholder=\"https://...\"></td>" +
+            "<td class=\"actions\">" +
+              "<button class=\"small\" type=\"button\" data-save>Save</button> " +
+              ((p.override || p.custom)
+                ? "<button class=\"small danger\" type=\"button\" data-clear>" + (p.custom ? "Delete" : "Clear") + "</button>"
+                : "") +
+            "</td></tr>";
+        }).join("") +
+        "</tbody></table>";
+      box.querySelectorAll("[data-save]").forEach((btn) => {
+        btn.onclick = () => {
+          const tr = btn.closest("tr");
+          saveProduct(tr.getAttribute("data-name"), tr.querySelector("[data-url]").value);
+        };
+      });
+      box.querySelectorAll("[data-clear]").forEach((btn) => {
+        btn.onclick = () => clearProduct(btn.closest("tr").getAttribute("data-name"));
+      });
+    }
+    async function load() {
+      setMsg("status", "Loading…");
+      const r = await sdOfficeFetch("/api/office/product-catalog");
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        setMsg("status", j.error || "Could not load", "bad");
+        return;
+      }
+      data = j;
+      setMsg("status", "Ready", "ok");
+      render();
+    }
+    async function saveProduct(name, imageUrl, extra) {
+      setMsg("formMsg", "");
+      setMsg("status", "Saving…");
+      const body = Object.assign({ name, imageUrl }, extra || {});
+      const r = await sdOfficeFetch("/api/office/product-catalog", {
+        method: "POST",
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        setMsg("status", j.error || "Could not save", "bad");
+        setMsg("formMsg", j.error || "Could not save", "bad");
+        return false;
+      }
+      data = j;
+      setMsg("status", "Saved " + name, "ok");
+      setMsg("formMsg", "Saved.", "ok");
+      render();
+      return true;
+    }
+    async function clearProduct(name) {
+      if (!confirm("Remove the saved photo link for " + name + "?")) return;
+      setMsg("status", "Updating…");
+      const r = await sdOfficeFetch("/api/office/product-catalog/" + encodeURIComponent(name), { method: "DELETE" });
+      const j = await r.json();
+      if (!r.ok || !j.ok) {
+        setMsg("status", j.error || "Could not clear", "bad");
+        return;
+      }
+      data = j;
+      setMsg("status", "Cleared " + name, "ok");
+      render();
+    }
+    document.getElementById("search").addEventListener("input", render);
+    document.getElementById("filter").addEventListener("change", render);
+    document.getElementById("addForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("newName").value;
+      const imageUrl = document.getElementById("newUrl").value;
+      const ok = await saveProduct(name, imageUrl, {
+        height: document.getElementById("newH").value,
+        width: document.getElementById("newW").value,
+        depth: document.getElementById("newD").value
+      });
+      if (ok) {
+        document.getElementById("addForm").reset();
+        document.getElementById("filter").value = "all";
+        document.getElementById("search").value = name;
+        render();
+      }
+    };
+    sdRequireOffice("orders").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

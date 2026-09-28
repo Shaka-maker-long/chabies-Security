@@ -401,6 +401,28 @@ function mountOffice(app) {
     }
   });
 
+  app.get("/api/office/product-catalog", requireOffice, (_req, res) => {
+    res.json({ ok: true, ...require("./product-catalog").snapshotCatalog() });
+  });
+
+  app.post("/api/office/product-catalog", requireOffice, (req, res) => {
+    try {
+      const product = require("./product-catalog").upsertProduct(req.body || {});
+      res.json({ ok: true, product, ...require("./product-catalog").snapshotCatalog() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.delete("/api/office/product-catalog/:name", requireOffice, (req, res) => {
+    try {
+      require("./product-catalog").deleteProductOverride(decodeURIComponent(req.params.name || ""));
+      res.json({ ok: true, ...require("./product-catalog").snapshotCatalog() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.get("/api/office/consumables", requireOffice, (_req, res) => {
     res.json({ ok: true, ...consumables.snapshot() });
   });
