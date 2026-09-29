@@ -1976,8 +1976,8 @@
           
           <!-- MISSING CANVAS RESTORED HERE -->
           <div class="bg-white rounded shadow-sm p-4">
-            <p class="small text-muted mb-3 mb-md-2">Select a product to plot a dashed <strong>Estimate</strong> line from Task times next to actual order times.</p>
-            <canvas id="productionTrendsChart" style="max-height: 500px;"></canvas>
+            <p class="small text-muted mb-3 mb-md-2">Select a product to plot a dashed <strong>Estimate</strong> line from Task times. Click the estimate for predicted hours and cost, or an order line for actual vs predicted (profit / loss) by workstation.</p>
+            <canvas id="productionTrendsChart" style="max-height: 500px; cursor:pointer;"></canvas>
           </div>
         </div>
         
@@ -2104,6 +2104,23 @@
   </div>
 
   <div class="modal fade" id="passModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="mb-3">Access Code</h3><p class="text-muted" id="passPromptName">Enter code</p><input type="password" id="inputPass" class="form-control text-center mb-3"><button class="btn btn-primary w-100" onclick="submitPass()">ENTER</button></div></div></div>
+  <div class="modal fade" id="trendsCostModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h3 class="modal-title h5 mb-0" id="trendsCostTitle">Breakdown</h3>
+            <p class="small text-muted mb-0 mt-1" id="trendsCostHint"></p>
+          </div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body" id="trendsCostBody"></div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-dark" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="modal fade" id="changePassModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4"><h3 class="mb-2">Change access code</h3><label class="form-label">Name</label><input id="changePassName" class="form-control mb-2" autocomplete="username"><label class="form-label">Current access code</label><input type="password" id="changePassCurrent" class="form-control mb-2" autocomplete="current-password"><label class="form-label">New access code</label><input type="password" id="changePassNext" class="form-control mb-3" autocomplete="new-password"><p class="text-danger small mb-2" id="changePassErr"></p><button class="btn btn-dark w-100" onclick="submitChangePassword()">SAVE ACCESS CODE</button></div></div></div>
   <div class="modal fade" id="startModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
@@ -8515,6 +8532,166 @@
       renderProductionTrendsChart(selectedProduct, selectedWeek, selectedOrders);
     }
 
+    function trendsMoney(n) {
+      const v = Number(n) || 0;
+      return 'R ' + v.toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function trendsEstimateCell(product, process) {
+      const raw = ((productionTrendsData && productionTrendsData.estimatesByProduct) || {})[product];
+      if (!raw) return { minutes: 0, rate: trendsRateFor(process), cost: 0 };
+      const cell = raw[process];
+      if (cell && typeof cell === 'object') {
+        return {
+          minutes: Number(cell.minutes) || 0,
+          rate: Number(cell.rate) || trendsRateFor(process),
+          cost: Number(cell.cost) || 0
+        };
+      }
+      const minutes = Number(cell) || 0;
+      const rate = trendsRateFor(process);
+      return { minutes, rate, cost: Math.round((minutes / 60) * rate * 100) / 100 };
+    }
+
+    function trendsRateFor(process) {
+      const rates = (productionTrendsData && productionTrendsData.processRates) || {};
+      return Number(rates[process]) || 0;
+    }
+
+    function trendsStationCost(minutes, process) {
+      return Math.round(((Number(minutes) || 0) / 60) * trendsRateFor(process) * 100) / 100;
+    }
+
+    function openTrendsCostModal(title, hint, html) {
+      const el = document.getElementById('trendsCostModal');
+      document.getElementById('trendsCostTitle').textContent = title;
+      document.getElementById('trendsCostHint').textContent = hint || '';
+      document.getElementById('trendsCostBody').innerHTML = html;
+      try {
+        if (window.bootstrap && bootstrap.Modal) {
+          bootstrap.Modal.getOrCreateInstance(el).show();
+          return;
+        }
+      } catch (e) {}
+      el.classList.add('show');
+      el.style.display = 'block';
+      el.removeAttribute('aria-hidden');
+      if (!document.getElementById('trendsCostBackdrop')) {
+        const back = document.createElement('div');
+        back.className = 'modal-backdrop fade show';
+        back.id = 'trendsCostBackdrop';
+        document.body.appendChild(back);
+      }
+      document.body.classList.add('modal-open');
+    }
+
+    function showEstimateCostBreakdown(product, processes) {
+      const rows = processes.map((process) => {
+        const cell = trendsEstimateCell(product, process);
+        return {
+          process,
+          minutes: cell.minutes,
+          rate: cell.rate,
+          cost: cell.cost || trendsStationCost(cell.minutes, process)
+        };
+      }).filter((r) => r.minutes > 0 || r.cost > 0 || r.rate > 0);
+      const totalMins = rows.reduce((s, r) => s + r.minutes, 0);
+      const totalCost = rows.reduce((s, r) => s + r.cost, 0);
+      let html = '<div class="row g-2 mb-3">' +
+        '<div class="col-sm-6"><div class="border rounded p-3"><div class="small text-muted">Predicted hours</div><div class="fs-5 fw-semibold">' + formatDuration(totalMins) + '</div></div></div>' +
+        '<div class="col-sm-6"><div class="border rounded p-3"><div class="small text-muted">Predicted cost</div><div class="fs-5 fw-semibold">' + trendsMoney(totalCost) + '</div></div></div>' +
+        '</div>';
+      html += '<div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr>' +
+        '<th>Workstation</th><th class="text-end">Hours</th><th class="text-end">Rate / hr</th><th class="text-end">Cost</th>' +
+        '</tr></thead><tbody>';
+      rows.forEach((r) => {
+        html += '<tr><td>' + r.process + '</td><td class="text-end">' + formatDuration(r.minutes) +
+          '</td><td class="text-end">' + trendsMoney(r.rate) + '</td><td class="text-end">' + trendsMoney(r.cost) + '</td></tr>';
+      });
+      html += '<tr class="fw-semibold"><td>Total</td><td class="text-end">' + formatDuration(totalMins) +
+        '</td><td></td><td class="text-end">' + trendsMoney(totalCost) + '</td></tr>';
+      html += '</tbody></table></div>';
+      openTrendsCostModal(
+        'Estimate — ' + product,
+        'Predicted hours from Task times × workstation rate.',
+        html
+      );
+    }
+
+    function showOrderCostBreakdown(order, product, filterWeek, processes) {
+      const rows = processes.map((process) => {
+        const processData = order.processes[process];
+        let actualMins = 0;
+        let labourCost = 0;
+        if (processData) {
+          if (!filterWeek) {
+            actualMins = Number(processData.totalMinutes) || 0;
+            labourCost = Number(processData.totalCost) || 0;
+          } else if (processData.weeklyData && processData.weeklyData[filterWeek]) {
+            actualMins = Number(processData.weeklyData[filterWeek].minutes) || 0;
+            labourCost = Number(processData.weeklyData[filterWeek].cost) || 0;
+          }
+        }
+        const est = trendsEstimateCell(product, process);
+        const actualStationCost = trendsStationCost(actualMins, process);
+        const predictedCost = est.cost || trendsStationCost(est.minutes, process);
+        const variance = Math.round((predictedCost - actualStationCost) * 100) / 100;
+        return {
+          process,
+          actualMins,
+          predictedMins: est.minutes,
+          rate: est.rate || trendsRateFor(process),
+          actualStationCost,
+          predictedCost,
+          labourCost,
+          variance
+        };
+      }).filter((r) => r.actualMins > 0 || r.predictedMins > 0);
+      const totalActualMins = rows.reduce((s, r) => s + r.actualMins, 0);
+      const totalPredictedMins = rows.reduce((s, r) => s + r.predictedMins, 0);
+      const totalActualCost = rows.reduce((s, r) => s + r.actualStationCost, 0);
+      const totalPredictedCost = rows.reduce((s, r) => s + r.predictedCost, 0);
+      const totalVariance = Math.round((totalPredictedCost - totalActualCost) * 100) / 100;
+      const resultLabel = totalVariance > 0.005 ? 'Profit' : (totalVariance < -0.005 ? 'Loss' : 'Break even');
+      const resultClass = totalVariance > 0.005 ? 'text-success' : (totalVariance < -0.005 ? 'text-danger' : 'text-muted');
+      let html = '<div class="row g-2 mb-3">' +
+        '<div class="col-md-3"><div class="border rounded p-3"><div class="small text-muted">Actual hours</div><div class="fs-6 fw-semibold">' + formatDuration(totalActualMins) + '</div></div></div>' +
+        '<div class="col-md-3"><div class="border rounded p-3"><div class="small text-muted">Predicted hours</div><div class="fs-6 fw-semibold">' + formatDuration(totalPredictedMins) + '</div></div></div>' +
+        '<div class="col-md-3"><div class="border rounded p-3"><div class="small text-muted">Actual cost</div><div class="fs-6 fw-semibold">' + trendsMoney(totalActualCost) + '</div></div></div>' +
+        '<div class="col-md-3"><div class="border rounded p-3"><div class="small text-muted">Predicted cost</div><div class="fs-6 fw-semibold">' + trendsMoney(totalPredictedCost) + '</div></div></div>' +
+        '</div>';
+      html += '<div class="border rounded p-3 mb-3 ' + resultClass + '"><span class="small text-uppercase fw-semibold">' + resultLabel + '</span>' +
+        '<div class="fs-5 fw-semibold">' + trendsMoney(Math.abs(totalVariance)) + '</div>' +
+        '<div class="small text-muted">Predicted − actual at workstation rates. Under time = profit.</div></div>';
+      html += '<div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr>' +
+        '<th>Workstation</th><th class="text-end">Actual hrs</th><th class="text-end">Pred. hrs</th>' +
+        '<th class="text-end">Rate / hr</th><th class="text-end">Actual cost</th><th class="text-end">Pred. cost</th><th class="text-end">P/L</th>' +
+        '</tr></thead><tbody>';
+      rows.forEach((r) => {
+        const pl = r.variance > 0.005 ? 'Profit' : (r.variance < -0.005 ? 'Loss' : '—');
+        const plClass = r.variance > 0.005 ? 'text-success' : (r.variance < -0.005 ? 'text-danger' : 'text-muted');
+        html += '<tr><td>' + r.process + '</td>' +
+          '<td class="text-end">' + formatDuration(r.actualMins) + '</td>' +
+          '<td class="text-end">' + formatDuration(r.predictedMins) + '</td>' +
+          '<td class="text-end">' + trendsMoney(r.rate) + '</td>' +
+          '<td class="text-end">' + trendsMoney(r.actualStationCost) + '</td>' +
+          '<td class="text-end">' + trendsMoney(r.predictedCost) + '</td>' +
+          '<td class="text-end ' + plClass + '">' + pl + ' ' + (pl === '—' ? '' : trendsMoney(Math.abs(r.variance))) + '</td></tr>';
+      });
+      html += '<tr class="fw-semibold"><td>Total</td>' +
+        '<td class="text-end">' + formatDuration(totalActualMins) + '</td>' +
+        '<td class="text-end">' + formatDuration(totalPredictedMins) + '</td><td></td>' +
+        '<td class="text-end">' + trendsMoney(totalActualCost) + '</td>' +
+        '<td class="text-end">' + trendsMoney(totalPredictedCost) + '</td>' +
+        '<td class="text-end ' + resultClass + '">' + resultLabel + ' ' + trendsMoney(Math.abs(totalVariance)) + '</td></tr>';
+      html += '</tbody></table></div>';
+      openTrendsCostModal(
+        order.orderNum + ' — ' + product,
+        'Actual hours × workstation rate vs Task times prediction.',
+        html
+      );
+    }
+
     function renderProductionTrendsChart(filterProduct, filterWeek, selectedOrdersArray = null) {
       if (!productionTrendsData) return;
       
@@ -8545,9 +8722,16 @@
         if (estimateMap) {
           let estimateHasData = false;
           const estimatePoints = graphProcesses.map(process => {
-            const mins = Number(estimateMap[process]) || 0;
-            if (mins > 0) estimateHasData = true;
-            return { x: process, y: mins, worker: 'Task times estimate', cost: 0, isEstimate: true };
+            const cell = trendsEstimateCell(filterProduct, process);
+            if (cell.minutes > 0) estimateHasData = true;
+            return {
+              x: process,
+              y: cell.minutes,
+              worker: 'Task times estimate',
+              cost: cell.cost || trendsStationCost(cell.minutes, process),
+              rate: cell.rate || trendsRateFor(process),
+              isEstimate: true
+            };
           });
           if (estimateHasData) {
             hasAnyData = true;
@@ -8562,13 +8746,15 @@
               pointHoverRadius: 6,
               tension: 0.1,
               fill: false,
-              order: 0
+              order: 0,
+              isEstimate: true,
+              productName: filterProduct
             });
           }
         }
       }
 
-      filteredData.forEach((order, idx) => {
+      filteredData.forEach((order) => {
         const dataPoints =[];
         let orderHasDataInSelection = false;
         
@@ -8589,8 +8775,19 @@
           }
           
           if (pTime > 0) orderHasDataInSelection = true;
+          const stationCost = trendsStationCost(pTime, process);
+          const est = trendsEstimateCell(order.productName, process);
 
-          dataPoints.push({ x: process, y: pTime, worker: pWorkers, cost: pCost });
+          dataPoints.push({
+            x: process,
+            y: pTime,
+            worker: pWorkers,
+            cost: stationCost,
+            labourCost: pCost,
+            rate: trendsRateFor(process),
+            predictedMinutes: est.minutes,
+            predictedCost: est.cost || trendsStationCost(est.minutes, process)
+          });
         });
         
         // Only map the line if work occurred during the selected filter
@@ -8605,7 +8802,11 @@
               backgroundColor: color + '33',
               tension: 0.1,
               fill: false,
-              order: 1
+              order: 1,
+              isEstimate: false,
+              orderNum: order.orderNum,
+              productName: order.productName,
+              orderRef: order
             });
         }
       });
@@ -8623,6 +8824,18 @@
         options: {
           responsive: true,
           maintainAspectRatio: true,
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const ds = datasets[els[0].datasetIndex];
+            if (!ds) return;
+            if (ds.isEstimate) {
+              showEstimateCostBreakdown(ds.productName || filterProduct, graphProcesses);
+              return;
+            }
+            const order = ds.orderRef || filteredData.find((o) => o.orderNum === ds.orderNum);
+            if (!order) return;
+            showOrderCostBreakdown(order, ds.productName || order.productName, filterWeek, graphProcesses);
+          },
           plugins: {
             title: {
               display: true,
@@ -8632,7 +8845,17 @@
             legend: {
               display: !!filterProduct,
               position: 'bottom',
-              labels: { boxWidth: 18, font: { size: 11 } }
+              labels: { boxWidth: 18, font: { size: 11 } },
+              onClick: (_e, item) => {
+                const ds = datasets[item.datasetIndex];
+                if (!ds) return;
+                if (ds.isEstimate) {
+                  showEstimateCostBreakdown(ds.productName || filterProduct, graphProcesses);
+                  return;
+                }
+                const order = ds.orderRef || filteredData.find((o) => o.orderNum === ds.orderNum);
+                if (order) showOrderCostBreakdown(order, ds.productName || order.productName, filterWeek, graphProcesses);
+              }
             },
             tooltip: {
               callbacks: {
@@ -8641,14 +8864,16 @@
                     return [
                       context.dataset.label,
                       `Estimate: ${formatDuration(context.raw.y)}`,
-                      'From Task times'
+                      `Rate: ${trendsMoney(context.raw.rate)} / hr`,
+                      `Est. cost: ${trendsMoney(context.raw.cost)}`
                     ];
                   }
                   return[
                     context.dataset.label,
                     `Worker: ${context.raw.worker}`,
                     `Time: ${formatDuration(context.raw.y)}`,
-                    `Cost: R ${context.raw.cost.toFixed(2)}`
+                    `Station cost: ${trendsMoney(context.raw.cost)}`,
+                    `Predicted: ${formatDuration(context.raw.predictedMinutes || 0)} · ${trendsMoney(context.raw.predictedCost || 0)}`
                   ];
                 }
               }

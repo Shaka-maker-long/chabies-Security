@@ -3796,6 +3796,49 @@ function getOrderMetrics() {
 }
 
 /**
+ * Workstation charge-out rates (R/hour) for Production Trends estimate costing.
+ * Paint stations stay 0 until rates are set.
+ */
+var TRENDS_PROCESS_RATES = {
+  "Profile Cutting": 53.25,
+  "Plate Cutting": 45.64,
+  "Tagging": 60,
+  "Welding": 126.9,
+  "Grinding": 43.75,
+  "Paint Preparation": 0,
+  "Painting": 0,
+  "Assembly": 57
+};
+
+function trendsProcessRate(processName) {
+  var key = String(processName || "").trim();
+  if (!key) return 0;
+  if (Object.prototype.hasOwnProperty.call(TRENDS_PROCESS_RATES, key)) {
+    return Number(TRENDS_PROCESS_RATES[key]) || 0;
+  }
+  var lower = key.toLowerCase();
+  for (var name in TRENDS_PROCESS_RATES) {
+    if (name.toLowerCase() === lower) return Number(TRENDS_PROCESS_RATES[name]) || 0;
+  }
+  return 0;
+}
+
+function trendsProcessRatesMap() {
+  var out = {};
+  for (var i = 0; i < ORDER_OVERVIEW_PROCESSES.length; i++) {
+    var name = ORDER_OVERVIEW_PROCESSES[i];
+    out[name] = trendsProcessRate(name);
+  }
+  return out;
+}
+
+function trendsCostFromMinutes(minutes, processName) {
+  var mins = Math.max(0, Number(minutes) || 0);
+  var rate = trendsProcessRate(processName);
+  return Math.round((mins / 60) * rate * 100) / 100;
+}
+
+/**
  * Task_Durations estimates keyed by product → process minutes for Production Trends.
  * Uses the same shop process columns as ORDER_OVERVIEW_PROCESSES.
  */
@@ -3823,7 +3866,12 @@ function buildTrendsEstimatesByProduct(productNames) {
     for (var p = 0; p < ORDER_OVERVIEW_PROCESSES.length; p++) {
       var processName = ORDER_OVERVIEW_PROCESSES[p];
       var mins = getTaskDurationMinutes(product, processName);
-      byProcess[processName] = mins;
+      var rate = trendsProcessRate(processName);
+      byProcess[processName] = {
+        minutes: mins,
+        rate: rate,
+        cost: trendsCostFromMinutes(mins, processName)
+      };
       if (mins > 0) any = true;
     }
     if (any) out[product] = byProcess;
@@ -3833,8 +3881,7 @@ function buildTrendsEstimatesByProduct(productNames) {
 
 /**
  * Get production trends data for line graph
- * Returns: { processes: [], products: [], orderData: [...], estimatesByProduct: { product: { process: minutes } } }
- * Note: Uses calculateWorkMinutesServer() function defined in this file
+ * Returns estimates with minutes + station cost, plus processRates for actual vs predict.
  */
 function getProductionTrendsData() {
   // It uses the exact same core logic as getOrderMetrics now, but adds the products list
@@ -3858,6 +3905,7 @@ function getProductionTrendsData() {
     products: products,
     weeks: data.weeks,
     orderData: data.orders,
+    processRates: trendsProcessRatesMap(),
     estimatesByProduct: buildTrendsEstimatesByProduct(products)
   };
 }
