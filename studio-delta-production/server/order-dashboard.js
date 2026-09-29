@@ -9,12 +9,17 @@ const catalog = require("./product-catalog");
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
 
 const AGE_BUCKETS = [
-  { id: "0-3d", maxDays: 3 },
-  { id: "4-7d", maxDays: 7 },
-  { id: "8-14d", maxDays: 14 },
-  { id: "15-30d", maxDays: 30 },
-  { id: "31-60d", maxDays: 60 },
-  { id: "60d+", maxDays: Infinity }
+  { id: "0-5d", maxDays: 5 },
+  { id: "6-10d", maxDays: 10 },
+  { id: "11-15d", maxDays: 15 },
+  { id: "16-20d", maxDays: 20 },
+  { id: "21-25d", maxDays: 25 },
+  { id: "26-30d", maxDays: 30 },
+  { id: "31-35d", maxDays: 35 },
+  { id: "36-40d", maxDays: 40 },
+  { id: "41-45d", maxDays: 45 },
+  { id: "46-50d", maxDays: 50 },
+  { id: "50d+", maxDays: Infinity }
 ];
 
 const PIPELINE = [
@@ -258,7 +263,7 @@ function ageBucket(days) {
   for (const b of AGE_BUCKETS) {
     if (days <= b.maxDays) return b.id;
   }
-  return "60d+";
+  return "50d+";
 }
 
 function median(nums) {
@@ -287,10 +292,27 @@ function addIsoDays(iso, days) {
   return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 }
 
+/** Weekdays (Mon–Fri) strictly after fromMs's SAST calendar day, through toMs's day. */
+function businessDaysBetween(fromMs, toMs) {
+  if (!fromMs || !toMs || toMs < fromMs) return 0;
+  const start = sastParts(new Date(fromMs));
+  const end = sastParts(new Date(toMs));
+  const cursor = new Date(Date.UTC(start.y, start.m, start.day));
+  cursor.setUTCDate(cursor.getUTCDate() + 1);
+  const last = new Date(Date.UTC(end.y, end.m, end.day));
+  let count = 0;
+  while (cursor.getTime() <= last.getTime()) {
+    const dow = cursor.getUTCDay();
+    if (dow !== 0 && dow !== 6) count += 1;
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return count;
+}
+
 function daysOpen(row, nowMs) {
   const ms = saleMs(row);
   if (!ms) return null;
-  return Math.max(0, Math.floor((nowMs - ms) / 86400000));
+  return businessDaysBetween(ms, nowMs || Date.now());
 }
 
 function cardOf(row) {
@@ -730,5 +752,9 @@ module.exports = {
   saleDate,
   pipelineId,
   quoteChannel,
+  businessDaysBetween,
+  daysOpen,
+  ageBucket,
+  AGE_BUCKETS,
   PIPELINE
 };

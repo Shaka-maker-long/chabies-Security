@@ -213,6 +213,10 @@ assert.ok(notStarted.count >= 1);
 
 assert.ok(year.stuck.some((r) => r.order_number === "S260406"));
 assert.ok(year.ageing.some((b) => b.count > 0));
+assert.deepStrictEqual(year.ageing.map((b) => b.id), [
+  "0-5d", "6-10d", "11-15d", "16-20d", "21-25d", "26-30d",
+  "31-35d", "36-40d", "41-45d", "46-50d", "50d+"
+]);
 year.ageing.forEach((b) => {
   assert.ok(Array.isArray(b.statuses));
   assert.strictEqual(b.statuses.reduce((n, s) => n + s.count, 0), b.count);
@@ -227,6 +231,22 @@ assert.ok(ageWeld.title.indexOf("Welding") !== -1);
 assert.ok(ageWeld.title.indexOf(weldingAge.id) !== -1);
 const ageAll = dash.buildDrill({ kind: "age", value: weldingAge.id });
 assert.ok(ageAll.rows.length >= ageWeld.rows.length);
+
+// Business days: Fri → Mon is 1 weekday, not 3 calendar days
+const friNoon = Date.parse("2026-09-11T12:00:00+02:00");
+const monNoon = Date.parse("2026-09-14T12:00:00+02:00");
+assert.strictEqual(dash.businessDaysBetween(friNoon, monNoon), 1);
+assert.strictEqual(dash.businessDaysBetween(friNoon, friNoon), 0);
+assert.strictEqual(dash.ageBucket(0), "0-5d");
+assert.strictEqual(dash.ageBucket(5), "0-5d");
+assert.strictEqual(dash.ageBucket(6), "6-10d");
+assert.strictEqual(dash.ageBucket(50), "46-50d");
+assert.strictEqual(dash.ageBucket(51), "50d+");
+assert.strictEqual(
+  dash.daysOpen({ payment_date: "11/09/2026" }, monNoon),
+  1,
+  "open age uses business days"
+);
 
 assert.strictEqual(year.delivery.thisWeek.count, 1);
 assert.strictEqual(year.delivery.thisWeek.days.Tuesday, 1);
@@ -307,6 +327,7 @@ assert.ok(html.indexOf("productHoverOpt") !== -1);
 assert.ok(html.indexOf("data-product-shot") !== -1);
 assert.ok(html.indexOf("Shop pipeline") !== -1);
 assert.ok(html.indexOf("Stuck / ageing") !== -1);
+assert.ok(html.indexOf("Business days since the payment date") !== -1);
 assert.ok(html.indexOf("openAgeStatus") !== -1);
 assert.ok(html.indexOf("ageStatusPie") !== -1);
 assert.ok(html.indexOf("Click a pie slice") !== -1);
