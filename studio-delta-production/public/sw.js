@@ -6,7 +6,7 @@ const PRECACHE = [
   "/sd-pwa.js?v=pwa-stg1",
   "/sd-brand.css?v=logged-in-2",
   "/sd-splash.js?v=erp-shell",
-  "/office-auth.js?v=marketing-2",
+  "/office-auth.js?v=marketing-3",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png",

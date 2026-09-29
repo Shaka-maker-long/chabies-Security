@@ -72,6 +72,7 @@ const pages = [
   "public/inventory.html",
   "public/orders-glass-rates.html",
   "public/orders-products.html",
+  "public/marketing-dashboard.html",
   "public/orders-cost.html",
   "public/orders-correct.html"
 ];

@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Marketing dashboard</title>
+  <script src="/sd-pwa.js?v=pwa-stg1"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --card:#fff; --bad:#b42318; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:5; flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:680px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .seg { display:inline-flex; border:1px solid var(--line); border-radius:8px; overflow:hidden; background:#fff; }
+    .seg button { border:0; background:transparent; padding:7px 10px; font:inherit; font-size:12px; font-weight:600; cursor:pointer; color:var(--muted); }
+    .seg button.on { background:#1d2939; color:#fff; }
+    .wrap { padding:16px; }
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px; margin-bottom:14px; }
+    .kpi { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; }
+    .kpi span { display:block; color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    .kpi b { display:block; margin-top:4px; font-family: Outfit, Inter, sans-serif; font-size:20px; }
+    .kpi.alert b { color:var(--bad); }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px 16px; margin-bottom:12px; min-width:0; }
+    .card h2 { margin:0 0 2px; font-size:15px; }
+    .hint { margin:0 0 10px; color:var(--muted); font-size:12px; }
+    canvas { max-height:360px; width:100%; }
+    .empty, .err, .load { padding:36px 16px; text-align:center; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:12px; }
+    .err { color:var(--bad); }
+    table.mini { width:100%; border-collapse:collapse; font-size:13px; }
+    table.mini th, table.mini td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); }
+    table.mini th { color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:.03em; }
+    table.mini td.r, table.mini th.r { text-align:right; }
+    table.mini tbody tr.missing td { color:#b54708; }
+    .month-pick { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--muted); }
+    .month-pick select { border:1px solid var(--line); border-radius:8px; padding:7px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink); background:#fff; }
+    .window-chip { font-size:12px; font-weight:700; color:var(--ink); }
+    @media (max-width: 900px) {
+      .tools { width:100%; margin-left:0; }
+      header { align-items:flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Marketing views">
+        <a class="on" href="/marketing">Dashboard</a>
+        <a href="/orders">Orders</a>
+        <a href="/tasks">My tasks</a>
+      </nav>
+      <h1>Marketing dashboard</h1>
+      <p class="window-chip" id="windowChip"></p>
+      <p class="lede">Campaign income is amount paid excluding VAT, by the payment date on the order. Each line is one campaign across the selected weeks or months.</p>
+    </div>
+    <div class="tools">
+      <label class="month-pick">Month
+        <select id="month" aria-label="Filter charts to one month">
+          <option value="">All in range</option>
+        </select>
+      </label>
+      <div class="seg" id="grain" role="group" aria-label="Time grain">
+        <button type="button" data-v="week">Weekly</button>
+        <button type="button" data-v="month" class="on">Monthly</button>
+      </div>
+      <div class="seg" id="range" role="group" aria-label="Date range">
+        <button type="button" data-v="6m" class="on">6 months</button>
+        <button type="button" data-v="year">This year</button>
+        <button type="button" data-v="all">All time</button>
+      </div>
+    </div>
+  </header>
+  <div class="wrap">
+    <div id="load" class="load">Loading dashboard…</div>
+    <div id="err" class="err" hidden></div>
+    <div id="app" hidden>
+      <div class="kpis" id="kpis"></div>
+      <section class="card">
+        <h2 id="trendTitle">Campaign income per month</h2>
+        <p class="hint">Top campaigns by income in this window. “(No campaign)” is included when orders still need a campaign tagged.</p>
+        <canvas id="trend"></canvas>
+      </section>
+      <section class="card">
+        <h2>Campaign ranking</h2>
+        <p class="hint">All campaigns in the selected period, ranked by amount paid excl VAT.</p>
+        <div id="rank"></div>
+      </section>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=marketing-3"></script>
+  <script>
+    const charts = {};
+    let data = null;
+    let grain = "month";
+    let range = "6m";
+    let month = "";
+
+    function qs() {
+      return "grain=" + encodeURIComponent(grain)
+        + "&range=" + encodeURIComponent(range)
+        + (month ? "&month=" + encodeURIComponent(month) : "");
+    }
+    function bindSeg(id, get, set) {
+      const root = document.getElementById(id);
+      root.querySelectorAll("button").forEach((b) => {
+        b.classList.toggle("on", b.dataset.v === get());
+        b.addEventListener("click", () => {
+          set(b.dataset.v);
+          root.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
+          if (id === "range") {
+            month = "";
+            const sel = document.getElementById("month");
+            if (sel) sel.value = "";
+          }
+          load();
+        });
+      });
+    }
+    bindSeg("grain", () => grain, (v) => (grain = v));
+    bindSeg("range", () => range, (v) => (range = v));
+    document.getElementById("month").addEventListener("change", (e) => {
+      month = e.target.value || "";
+      load();
+    });
+
+    function kill(id) {
+      if (charts[id]) {
+        charts[id].destroy();
+        charts[id] = null;
+      }
+    }
+    function randTick(v) {
+      if (Math.abs(v) >= 10000) return "R " + Math.round(v / 1000) + "k";
+      return "R " + Math.round(v).toLocaleString("en-ZA");
+    }
+    function formatR(n) {
+      const v = Number(n) || 0;
+      return "R " + v.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+    function esc(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+    function fillMonths(list) {
+      const sel = document.getElementById("month");
+      const keep = month;
+      sel.innerHTML = "<option value=\"\">All in range</option>" +
+        (list || []).map((m) => "<option value=\"" + m.key + "\"" + (m.key === keep ? " selected" : "") + ">" + m.label + "</option>").join("");
+      sel.value = keep;
+    }
+
+    function drawTrend() {
+      if (!data || !data.chart) return;
+      document.getElementById("trendTitle").textContent =
+        grain === "week" ? "Campaign income per week" : "Campaign income per month";
+      kill("trend");
+      const sets = (data.chart.datasets || []).map((d) => ({
+        label: d.label,
+        data: d.data || [],
+        borderColor: d.color,
+        backgroundColor: d.color,
+        tension: 0.25,
+        fill: false,
+        pointRadius: 3,
+        pointHoverRadius: 6
+      }));
+      charts.trend = new Chart(document.getElementById("trend"), {
+        type: "line",
+        data: {
+          labels: data.chart.labels || [],
+          datasets: sets
+        },
+        options: {
+          interaction: { mode: "nearest", intersect: false },
+          plugins: { legend: { position: "bottom" } },
+          scales: { y: { beginAtZero: true, ticks: { callback: randTick } } }
+        }
+      });
+    }
+
+    function renderRank(list) {
+      const host = document.getElementById("rank");
+      const rows = list || [];
+      if (!rows.length) {
+        host.innerHTML = "<p class=\"hint\">No paid orders with a payment date in this window.</p>";
+        return;
+      }
+      host.innerHTML = "<table class=\"mini\"><thead><tr><th>Campaign</th><th class=\"r\">Orders</th><th class=\"r\">Income excl VAT</th><th class=\"r\">Share</th></tr></thead><tbody>" +
+        rows.map((r) => {
+          const miss = r.label === "(No campaign)";
+          return "<tr class=\"" + (miss ? "missing" : "") + "\"><td>" + esc(r.label) + "</td><td class=\"r\">" + r.orders +
+            "</td><td class=\"r\">" + formatR(r.income) + "</td><td class=\"r\">" + (r.share || 0) + "%</td></tr>";
+        }).join("") +
+        "</tbody></table>";
+    }
+
+    function render(d) {
+      data = d;
+      document.getElementById("windowChip").textContent = d.windowLabel + " · campaign income";
+      fillMonths(d.months);
+      const k = d.kpis || {};
+      document.getElementById("kpis").innerHTML =
+        "<div class=\"kpi\"><span>Income paid (Excl VAT)</span><b>" + formatR(k.income) + "</b></div>" +
+        "<div class=\"kpi\"><span>Sale value (Excl VAT)</span><b>" + formatR(k.billed) + "</b></div>" +
+        "<div class=\"kpi\"><span>Orders in window</span><b>" + (k.orders || 0) + "</b></div>" +
+        "<div class=\"kpi\"><span>Campaigns with income</span><b>" + (k.campaigns || 0) + "</b></div>" +
+        "<div class=\"kpi" + (k.missingOrders ? " alert" : "") + "\"><span>No campaign yet</span><b>" +
+          (k.missingOrders || 0) + " · " + formatR(k.missingIncome) + "</b></div>";
+      drawTrend();
+      renderRank(d.campaigns);
+    }
+
+    async function load() {
+      document.getElementById("load").hidden = false;
+      document.getElementById("err").hidden = true;
+      document.getElementById("app").hidden = true;
+      try {
+        const r = await sdOfficeFetch("/api/office/marketing/dashboard?" + qs());
+        const j = await r.json();
+        if (!r.ok || !j.ok) throw new Error(j.error || r.statusText);
+        document.getElementById("load").hidden = true;
+        if (!j.orderCount) {
+          document.getElementById("err").hidden = false;
+          document.getElementById("err").className = "empty";
+          document.getElementById("err").textContent = "No paid orders with a payment date in this window yet.";
+          return;
+        }
+        document.getElementById("app").hidden = false;
+        render(j);
+      } catch (e) {
+        document.getElementById("load").hidden = true;
+        document.getElementById("err").hidden = false;
+        document.getElementById("err").className = "err";
+        document.getElementById("err").textContent = "Could not load the marketing dashboard. " + (e.message || e);
+      }
+    }
+
+    sdRequireOffice("marketing").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

@@ -169,6 +169,14 @@ app.get("/enquiries/dashboard", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "enquiries-dashboard.html"));
 });
+app.get("/marketing", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "marketing-dashboard.html"));
+});
+app.get("/marketing/dashboard", (_req, res) => {
+  noStore(res);
+  res.redirect(302, "/marketing");
+});
 app.get("/enquiries/replies", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "enquiries-replies.html"));
