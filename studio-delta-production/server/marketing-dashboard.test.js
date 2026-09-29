@@ -29,6 +29,8 @@ db.upsertOrder({
   client_name: "Ann",
   campaign: "Spring Push",
   source: "Instagram",
+  province: "Gauteng",
+  city: "Johannesburg",
   price_excl_vat: "1000.00",
   amount_paid: "1150.00",
   price_incl_vat: "1150.00",
@@ -41,6 +43,8 @@ db.upsertOrder({
   client_name: "Ben",
   campaign: "Spring Push",
   source: "Website",
+  province: "Gauteng",
+  city: "Pretoria",
   price_excl_vat: "2000.00",
   amount_paid: "2300.00",
   price_incl_vat: "2300.00",
@@ -53,6 +57,8 @@ db.upsertOrder({
   client_name: "Cara",
   campaign: "Decor Fair",
   source: "Showroom",
+  province: "Western Cape",
+  city: "Cape Town",
   price_excl_vat: "5000.00",
   amount_paid: "5750.00",
   price_incl_vat: "5750.00",
@@ -65,6 +71,8 @@ db.upsertOrder({
   client_name: "Dan",
   campaign: "",
   source: "Google",
+  province: "KwaZulu-Natal",
+  city: "Durban",
   price_excl_vat: "800.00",
   amount_paid: "920.00",
   price_incl_vat: "920.00",
@@ -104,10 +112,49 @@ const week = dash.buildDashboard({ range: "6m", grain: "week" });
 assert.strictEqual(week.grain, "week");
 assert.ok(week.chart.labels.length >= 1);
 
+const sepKey = "2026-09";
+const provinces = dash.buildDrill({
+  kind: "provinces",
+  campaign: "Spring Push",
+  key: sepKey,
+  month: sepKey,
+  grain: "month"
+});
+assert.strictEqual(provinces.kind, "provinces");
+assert.ok(provinces.slices.some((s) => s.label === "Gauteng"));
+assert.ok(provinces.totals.income > 0);
+
+const cities = dash.buildDrill({
+  kind: "cities",
+  campaign: "Spring Push",
+  key: sepKey,
+  province: "Gauteng",
+  month: sepKey,
+  grain: "month"
+});
+assert.strictEqual(cities.kind, "cities");
+assert.ok(cities.slices.some((s) => s.label === "Johannesburg" || s.label === "(No city)" || s.orders >= 1));
+
+const orders = dash.buildDrill({
+  kind: "orders",
+  campaign: "Spring Push",
+  key: sepKey,
+  province: "Gauteng",
+  city: cities.slices[0].label,
+  month: sepKey,
+  grain: "month"
+});
+assert.strictEqual(orders.kind, "orders");
+assert.ok(orders.rows.length >= 1);
+assert.ok(orders.rows.every((r) => r.campaign === "Spring Push"));
+
 const html = fs.readFileSync(path.join(__dirname, "../public/marketing-dashboard.html"), "utf8");
 assert.ok(html.indexOf("Campaign income per month") !== -1);
 assert.ok(html.indexOf("Campaign income per week") !== -1);
 assert.ok(html.indexOf("/api/office/marketing/dashboard") !== -1);
+assert.ok(html.indexOf("/api/office/marketing/dashboard/drill") !== -1);
+assert.ok(html.indexOf("openDrill") !== -1);
+assert.ok(html.indexOf("kind: \"provinces\"") !== -1 || html.indexOf('kind: "provinces"') !== -1);
 assert.ok(html.indexOf("chart.js@4.4.7") !== -1);
 assert.ok(html.indexOf("sdRequireOffice(\"marketing\")") !== -1);
 

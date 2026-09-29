@@ -1117,6 +1117,14 @@ function mountOffice(app) {
     }
   });
 
+  app.get("/api/office/marketing/dashboard/drill", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...require("./marketing-dashboard").buildDrill(req.query || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.get("/api/office/enquiries/dashboard/drill", requireOffice, (req, res) => {
     try {
       res.json({ ok: true, ...require("./enquiry-dashboard").buildDrill(req.query || {}) });

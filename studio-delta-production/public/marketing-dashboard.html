@@ -30,7 +30,7 @@
     .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px 16px; margin-bottom:12px; min-width:0; }
     .card h2 { margin:0 0 2px; font-size:15px; }
     .hint { margin:0 0 10px; color:var(--muted); font-size:12px; }
-    canvas { max-height:360px; width:100%; }
+    canvas { max-height:360px; width:100%; cursor:pointer; }
     .empty, .err, .load { padding:36px 16px; text-align:center; color:var(--muted); background:#fff; border:1px solid var(--line); border-radius:12px; }
     .err { color:var(--bad); }
     table.mini { width:100%; border-collapse:collapse; font-size:13px; }
@@ -41,6 +41,25 @@
     .month-pick { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--muted); }
     .month-pick select { border:1px solid var(--line); border-radius:8px; padding:7px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink); background:#fff; }
     .window-chip { font-size:12px; font-weight:700; color:var(--ink); }
+    .drill-mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
+    .drill-mask.open { display:flex; }
+    .drill-sheet { width:min(720px,96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:12px auto; }
+    .drill-sheet header { position:static; display:flex; gap:12px; align-items:flex-start; padding:16px; border-bottom:1px solid var(--line); }
+    .drill-sheet h2 { margin:0; font-size:18px; font-family:Outfit, Inter, sans-serif; }
+    .drill-sheet .tools { margin-left:auto; }
+    .drill-sheet button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    .drill-sheet button.ghost { background:#fff; color:#1d2939; }
+    .drill-body { padding:12px 16px 20px; }
+    .drill-item { width:100%; text-align:left; background:#fff; color:var(--ink); border:1px solid var(--line); border-radius:10px; padding:12px; margin:0 0 8px; cursor:pointer; }
+    .drill-item:hover { border-color:#1d2939; }
+    .drill-item b { display:block; font-size:14px; }
+    .drill-item span { display:block; color:var(--muted); font-size:12px; margin-top:2px; }
+    .drill-totals { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 12px; }
+    .drill-totals span { background:#f2f4f7; border-radius:8px; padding:8px 10px; font-size:12px; font-weight:600; }
+    .drill-totals b { display:block; margin-top:2px; font-size:14px; }
+    .split-pie { max-width:360px; margin:0 auto 12px; }
+    #drillBack { display:none; }
+    #drillBack.show { display:inline-block; }
     @media (max-width: 900px) {
       .tools { width:100%; margin-left:0; }
       header { align-items:flex-start; }
@@ -57,7 +76,7 @@
       </nav>
       <h1>Marketing dashboard</h1>
       <p class="window-chip" id="windowChip"></p>
-      <p class="lede">Campaign income is amount paid excluding VAT, by the payment date on the order. Each line is one campaign across the selected weeks or months.</p>
+      <p class="lede">Campaign income is amount paid excluding VAT, by the payment date on the order. Click a point on a campaign line for province → city → orders.</p>
     </div>
     <div class="tools">
       <label class="month-pick">Month
@@ -83,7 +102,7 @@
       <div class="kpis" id="kpis"></div>
       <section class="card">
         <h2 id="trendTitle">Campaign income per month</h2>
-        <p class="hint">Top campaigns by income in this window. “(No campaign)” is included when orders still need a campaign tagged.</p>
+        <p class="hint">Top campaigns by income in this window. Click a point for that campaign’s province split, then city, then orders.</p>
         <canvas id="trend"></canvas>
       </section>
       <section class="card">
@@ -93,6 +112,22 @@
       </section>
     </div>
   </div>
+
+  <div class="drill-mask" id="drillMask">
+    <div class="drill-sheet" role="dialog" aria-labelledby="drillTitle">
+      <header>
+        <div>
+          <h2 id="drillTitle">Breakdown</h2>
+          <p class="hint" id="drillHint" hidden style="margin:4px 0 0"></p>
+        </div>
+        <div class="tools">
+          <button class="ghost" type="button" id="drillBack">Back</button>
+          <button class="ghost" type="button" id="drillClose">Close</button>
+        </div>
+      </header>
+      <div class="drill-body" id="drillList"></div>
+    </div>
+  </div>
   <script src="/office-auth.js?v=marketing-3"></script>
   <script>
     const charts = {};
@@ -100,11 +135,17 @@
     let grain = "month";
     let range = "6m";
     let month = "";
+    let drillState = null;
+    const PAL = ["#027a48", "#3538cd", "#b54708", "#b42318", "#026aa2", "#6941c6", "#1d2939", "#667085", "#dd2590", "#3b7c0f"];
 
-    function qs() {
-      return "grain=" + encodeURIComponent(grain)
+    function qs(extra) {
+      const base = "grain=" + encodeURIComponent(grain)
         + "&range=" + encodeURIComponent(range)
         + (month ? "&month=" + encodeURIComponent(month) : "");
+      if (!extra) return base;
+      return base + "&" + Object.keys(extra).map((k) =>
+        encodeURIComponent(k) + "=" + encodeURIComponent(extra[k] == null ? "" : extra[k])
+      ).join("&");
     }
     function bindSeg(id, get, set) {
       const root = document.getElementById(id);
@@ -154,6 +195,179 @@
       sel.value = keep;
     }
 
+    function hideDrillBack() {
+      const btn = document.getElementById("drillBack");
+      btn.classList.remove("show");
+      btn.onclick = null;
+    }
+    function showDrillBack(handler) {
+      const btn = document.getElementById("drillBack");
+      btn.classList.add("show");
+      btn.onclick = handler;
+    }
+    function closeDrill() {
+      hideDrillBack();
+      kill("drillPie");
+      drillState = null;
+      document.getElementById("drillMask").classList.remove("open");
+    }
+    function drillMoneyHtml(j) {
+      const t = j.totals || {};
+      return "<div class=\"drill-totals\">"
+        + "<span>Orders<b>" + (t.count || 0) + "</b></span>"
+        + "<span>Paid Excl VAT<b>" + formatR(t.income) + "</b></span>"
+        + "<span>Sale Excl VAT<b>" + formatR(t.billed) + "</b></span>"
+        + "</div>";
+    }
+    function drillOrderHtml(row) {
+      const bits = [row.order_number, row.quote_number, row.status, row.product, row.source]
+        .filter(Boolean).join(" · ");
+      return "<button type=\"button\" class=\"drill-item\" data-order=\"" + esc(row.order_number) + "\">"
+        + "<b>" + esc(row.client_name || row.order_number) + "</b>"
+        + "<span>" + esc(bits) + "</span>"
+        + "<span>" + esc(row.province) + " · " + esc(row.city) + " · " + formatR(row.amount_paid) + " paid</span>"
+        + "</button>";
+    }
+    function openOrder(orderNumber) {
+      location.href = "/orders?q=" + encodeURIComponent(orderNumber || "") + "&edit=campaign";
+    }
+
+    async function openDrill(params) {
+      kill("drillPie");
+      const mask = document.getElementById("drillMask");
+      const list = document.getElementById("drillList");
+      document.getElementById("drillTitle").textContent = "Loading…";
+      document.getElementById("drillHint").hidden = true;
+      list.innerHTML = "<p class=\"hint\">Loading this slice…</p>";
+      mask.classList.add("open");
+      hideDrillBack();
+      try {
+        const r = await sdOfficeFetch("/api/office/marketing/dashboard/drill?" + qs(params));
+        const j = await r.json();
+        if (!r.ok || !j.ok) throw new Error(j.error || r.statusText);
+        drillState = Object.assign({}, params, { title: j.title });
+        document.getElementById("drillTitle").textContent = j.title || "Breakdown";
+        document.getElementById("drillHint").hidden = false;
+        document.getElementById("drillHint").textContent = j.hint || "";
+
+        if (j.kind === "orders") {
+          showDrillBack(() => openDrill({
+            kind: "cities",
+            campaign: params.campaign,
+            key: params.key,
+            province: params.province
+          }));
+          if (!(j.rows || []).length) {
+            list.innerHTML = drillMoneyHtml(j) + "<p class=\"empty\" style=\"border:0;padding:16px 0\">No orders in this city.</p>";
+            return;
+          }
+          list.innerHTML = drillMoneyHtml(j) + j.rows.map(drillOrderHtml).join("");
+          list.querySelectorAll("[data-order]").forEach((btn) => {
+            btn.addEventListener("click", () => openOrder(btn.getAttribute("data-order")));
+          });
+          return;
+        }
+
+        if (j.kind === "cities") {
+          showDrillBack(() => openDrill({
+            kind: "provinces",
+            campaign: params.campaign,
+            key: params.key
+          }));
+        }
+
+        const slices = j.slices || [];
+        if (!slices.length) {
+          list.innerHTML = drillMoneyHtml(j) + "<p class=\"empty\" style=\"border:0;padding:16px 0\">No income in this slice.</p>";
+          return;
+        }
+        const nextKind = j.kind === "provinces" ? "cities" : "orders";
+        const attr = j.kind === "provinces" ? "data-province" : "data-city";
+        list.innerHTML = drillMoneyHtml(j)
+          + "<div class=\"split-pie\"><canvas id=\"drillPie\"></canvas></div>"
+          + slices.map((s) => "<button type=\"button\" class=\"drill-item\" " + attr + "=\"" + esc(s.label) + "\">"
+            + "<b>" + esc(s.label) + "</b>"
+            + "<span>" + s.orders + " order" + (s.orders === 1 ? "" : "s") + " · " + formatR(s.income) + "</span>"
+            + "</button>").join("");
+        charts.drillPie = new Chart(document.getElementById("drillPie"), {
+          type: "doughnut",
+          data: {
+            labels: slices.map((s) => s.label),
+            datasets: [{ data: slices.map((s) => s.income), backgroundColor: PAL }]
+          },
+          options: {
+            plugins: {
+              legend: {
+                position: "bottom",
+                onClick: (_evt, item) => {
+                  const slice = slices[item.index];
+                  if (!slice) return;
+                  if (nextKind === "cities") {
+                    openDrill({ kind: "cities", campaign: params.campaign, key: params.key, province: slice.label });
+                  } else {
+                    openDrill({
+                      kind: "orders",
+                      campaign: params.campaign,
+                      key: params.key,
+                      province: params.province,
+                      city: slice.label
+                    });
+                  }
+                }
+              },
+              tooltip: {
+                callbacks: {
+                  label: (ctx) => {
+                    const v = ctx.parsed || 0;
+                    return " " + formatR(v);
+                  }
+                }
+              }
+            },
+            onClick: (_evt, els) => {
+              if (!els || !els.length) return;
+              const slice = slices[els[0].index];
+              if (!slice) return;
+              if (nextKind === "cities") {
+                openDrill({ kind: "cities", campaign: params.campaign, key: params.key, province: slice.label });
+              } else {
+                openDrill({
+                  kind: "orders",
+                  campaign: params.campaign,
+                  key: params.key,
+                  province: params.province,
+                  city: slice.label
+                });
+              }
+            }
+          }
+        });
+        list.querySelectorAll("[" + attr + "]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const value = btn.getAttribute(attr);
+            if (nextKind === "cities") {
+              openDrill({ kind: "cities", campaign: params.campaign, key: params.key, province: value });
+            } else {
+              openDrill({
+                kind: "orders",
+                campaign: params.campaign,
+                key: params.key,
+                province: params.province,
+                city: value
+              });
+            }
+          });
+        });
+      } catch (e) {
+        document.getElementById("drillTitle").textContent = "Could not load";
+        list.innerHTML = "<p class=\"err\" style=\"border:0\">" + esc(e.message || e) + "</p>";
+      }
+    }
+    document.getElementById("drillClose").onclick = closeDrill;
+    document.getElementById("drillMask").addEventListener("click", (e) => {
+      if (e.target.id === "drillMask") closeDrill();
+    });
+
     function drawTrend() {
       if (!data || !data.chart) return;
       document.getElementById("trendTitle").textContent =
@@ -166,8 +380,9 @@
         backgroundColor: d.color,
         tension: 0.25,
         fill: false,
-        pointRadius: 3,
-        pointHoverRadius: 6
+        pointRadius: 4,
+        pointHoverRadius: 8,
+        pointHitRadius: 16
       }));
       charts.trend = new Chart(document.getElementById("trend"), {
         type: "line",
@@ -176,9 +391,17 @@
           datasets: sets
         },
         options: {
-          interaction: { mode: "nearest", intersect: false },
+          interaction: { mode: "nearest", intersect: true },
           plugins: { legend: { position: "bottom" } },
-          scales: { y: { beginAtZero: true, ticks: { callback: randTick } } }
+          scales: { y: { beginAtZero: true, ticks: { callback: randTick } } },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const el = els[0];
+            const campaign = (data.chart.datasets[el.datasetIndex] || {}).label;
+            const key = (data.chart.keys || [])[el.index];
+            if (!campaign || !key) return;
+            openDrill({ kind: "provinces", campaign, key });
+          }
         }
       });
     }
@@ -219,6 +442,7 @@
       document.getElementById("load").hidden = false;
       document.getElementById("err").hidden = true;
       document.getElementById("app").hidden = true;
+      closeDrill();
       try {
         const r = await sdOfficeFetch("/api/office/marketing/dashboard?" + qs());
         const j = await r.json();

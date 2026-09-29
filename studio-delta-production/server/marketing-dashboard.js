@@ -111,6 +111,11 @@ function campaignLabel(row) {
   return s || "(No campaign)";
 }
 
+function placeLabel(raw, empty) {
+  const s = String(raw || "").trim();
+  return s || empty;
+}
+
 function pickerMonths(rows) {
   const keys = new Set();
   const today = sastParts(new Date());
@@ -123,6 +128,127 @@ function pickerMonths(rows) {
     if (d) keys.add(monthKey(d));
   });
   return Array.from(keys).sort().reverse().map((key) => ({ key, label: monthLabel(key) }));
+}
+
+function ordersInSlice(query, win) {
+  const campaign = String((query && query.campaign) || "");
+  const key = String((query && query.key) || "");
+  const province = Object.prototype.hasOwnProperty.call(query || {}, "province")
+    ? String(query.province)
+    : null;
+  const city = Object.prototype.hasOwnProperty.call(query || {}, "city")
+    ? String(query.city)
+    : null;
+  const out = [];
+  db.listOrders().forEach((row) => {
+    const d = orderDash.saleDate(row);
+    if (!d) return;
+    const ms = d.getTime();
+    if (ms < win.from || ms > win.to) return;
+    if (key && bucketOf(ms, win.grain) !== key) return;
+    if (campaignLabel(row) !== campaign) return;
+    if (province != null && placeLabel(row.province, "(No province)") !== province) return;
+    if (city != null && placeLabel(row.city, "(No city)") !== city) return;
+    const money = moneyOf(row);
+    out.push({
+      order_number: row.order_number || "",
+      quote_number: row.quote_number || "",
+      client_name: row.client_name || "",
+      product: row.product || "",
+      status: row.status || "",
+      source: row.source || "",
+      campaign: campaignLabel(row),
+      province: placeLabel(row.province, "(No province)"),
+      city: placeLabel(row.city, "(No city)"),
+      payment_date: row.payment_date || "",
+      amount_paid: money.paid,
+      price_excl_vat: money.billed
+    });
+  });
+  out.sort((a, b) => b.amount_paid - a.amount_paid || String(a.order_number).localeCompare(String(b.order_number)));
+  return out;
+}
+
+function groupIncome(rows, field) {
+  const map = {};
+  rows.forEach((row) => {
+    const label = row[field];
+    if (!map[label]) map[label] = { label, income: 0, orders: 0 };
+    map[label].income = roundMoney(map[label].income + (row.amount_paid || 0));
+    map[label].orders += 1;
+  });
+  return Object.keys(map).map((k) => map[k])
+    .sort((a, b) => b.income - a.income || a.label.localeCompare(b.label));
+}
+
+function sliceTotals(rows) {
+  return {
+    count: rows.length,
+    income: roundMoney(rows.reduce((s, r) => s + (r.amount_paid || 0), 0)),
+    billed: roundMoney(rows.reduce((s, r) => s + (r.price_excl_vat || 0), 0))
+  };
+}
+
+function periodLabel(key, grain) {
+  if (!key) return "";
+  return grain === "week" ? weekLabel(key) : monthLabel(key);
+}
+
+function buildDrill(query) {
+  const win = orderDash.resolveWindow(query || {});
+  const kind = String((query && query.kind) || "provinces");
+  const campaign = String((query && query.campaign) || "");
+  const key = String((query && query.key) || "");
+  const province = String((query && query.province) || "");
+  const city = String((query && query.city) || "");
+  const when = periodLabel(key, win.grain);
+  const rows = ordersInSlice(query, win);
+  const totals = sliceTotals(rows);
+
+  if (kind === "orders") {
+    return {
+      kind: "orders",
+      title: [campaign, when, province, city].filter(Boolean).join(" · "),
+      hint: "Money excludes VAT. Click a row to open that order.",
+      campaign,
+      key,
+      province,
+      city,
+      slices: [],
+      rows,
+      totals
+    };
+  }
+
+  if (kind === "cities") {
+    const slices = groupIncome(rows, "city");
+    return {
+      kind: "cities",
+      title: [campaign, when, province].filter(Boolean).join(" · ") + " by city",
+      hint: "Click a city slice for the orders.",
+      campaign,
+      key,
+      province,
+      city: "",
+      slices,
+      rows: [],
+      totals
+    };
+  }
+
+  const slices = groupIncome(rows, "province");
+  return {
+    kind: "provinces",
+    title: [campaign, when].filter(Boolean).join(" · ") + " by province",
+    hint: "Click a province slice for cities.",
+    campaign,
+    key,
+    province: "",
+    city: "",
+    slices,
+    rows: [],
+    totals
+  };
 }
 
 function buildDashboard(query) {
@@ -233,6 +359,7 @@ function buildDashboard(query) {
 
 module.exports = {
   buildDashboard,
+  buildDrill,
   campaignLabel,
   TOP_LINE_CAMPAIGNS
 };
