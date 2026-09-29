@@ -1138,10 +1138,21 @@
       } catch (e) {}
       renderReadyEnquiries(j.readyEnquiries || []);
       try {
-        const q0 = new URLSearchParams(location.search).get("q");
+        const params = new URLSearchParams(location.search);
+        const q0 = params.get("q");
         if (q0) document.getElementById("q").value = q0;
       } catch (e) {}
       render();
+      try {
+        const params = new URLSearchParams(location.search);
+        const q0 = String(params.get("q") || "").trim();
+        const edit = String(params.get("edit") || "").trim().toLowerCase();
+        if (q0 && (edit === "1" || edit === "campaign" || edit === "source")) {
+          const want = q0.toLowerCase();
+          const idx = rows.findIndex((r) => String(r.order_number || "").trim().toLowerCase() === want);
+          if (idx >= 0) openForm(idx);
+        }
+      } catch (e) {}
     }
     let removingOrder = "";
     function openRemoveOrder(orderNumber) {

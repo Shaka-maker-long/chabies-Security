@@ -112,6 +112,24 @@ mountOffice(app);
   assert.strictEqual(session.canSeeOffice, true);
   assert.strictEqual(session.canSeeIdleAlerts, false, "Marketing login must not unlock idle alerts");
 
+  const tasksBefore = await api(session.token, "GET", "/api/office/my-tasks");
+  assert.strictEqual(tasksBefore.status, 200, JSON.stringify(tasksBefore.body));
+  assert.ok((tasksBefore.body.rows || []).some((t) => t.kind === "campaign" && t.order_number === "S260901"),
+    "orders without a campaign must sit on Marketing My tasks");
+  assert.ok((tasksBefore.body.rows || []).every((t) => t.kind !== "campaign" || t.open_order),
+    "campaign tasks open the order sheet");
+
+  staff.upsertUser({
+    name: "Sam Ads",
+    access: "Marketing",
+    role: "Marketing",
+    password: "mkt2"
+  });
+  const sam = await login("Sam Ads", "mkt2");
+  const samTasks = await api(sam.token, "GET", "/api/office/my-tasks");
+  assert.ok((samTasks.body.rows || []).some((t) => t.kind === "campaign" && t.order_number === "S260901"),
+    "every Marketing login sees orders missing a campaign");
+
   const okPatch = await api(session.token, "PUT", "/api/office/orders", {
     order_number: "S260901",
     source: "Billboards",
@@ -130,6 +148,10 @@ mountOffice(app);
   const listed = listOrders().find((o) => o.order_number === "S260901");
   assert.strictEqual(listed.client_name, "Test Client");
   assert.strictEqual(listed.campaign, "Spring Push");
+
+  const tasksAfter = await api(session.token, "GET", "/api/office/my-tasks");
+  assert.ok(!(tasksAfter.body.rows || []).some((t) => t.kind === "campaign" && t.order_number === "S260901"),
+    "campaign task clears once Marketing saves a campaign");
 
   const enqPatch = await api(session.token, "PUT", "/api/office/enquiries", {
     enquiry_no: "#9001",

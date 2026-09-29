@@ -44,7 +44,8 @@ const TASK_TITLES = {
   quote: "Issue quote PDF",
   follow_up: "Follow up with client",
   pop: "Record client outcome",
-  drawing: "Upload drawing"
+  drawing: "Upload drawing",
+  campaign: "Add campaign"
 };
 
 const TASK_TYPE_LABELS = {
@@ -55,7 +56,8 @@ const TASK_TYPE_LABELS = {
   quote: "Quoting",
   follow_up: "Follow-up",
   pop: "Client outcome",
-  drawing: "Drawing"
+  drawing: "Drawing",
+  campaign: "Campaign"
 };
 
 function taskTypeLabel(kind) {
@@ -207,7 +209,71 @@ function namesMatch(a, b) {
 function taskAssigneeIsMe(task, me) {
   if (namesMatch(task && task.assignee, me)) return true;
   if (task && task.kind === "drawing" && isDrawingOwnerName(task.assignee) && isDrawingOwnerName(me)) return true;
+  if (task && task.assignee && String(task.assignee).indexOf(",") !== -1) {
+    return String(task.assignee).split(",").some((n) => namesMatch(n, me));
+  }
   return false;
+}
+
+function marketingUserNames() {
+  return staff.listUsers()
+    .filter((u) => u && u.name && staff.isMarketing(u))
+    .map((u) => u.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+function isMarketingName(name) {
+  const me = String(name || "").trim();
+  if (!me) return false;
+  return staff.listUsers().some((u) => namesMatch(u.name, me) && staff.isMarketing(u));
+}
+
+function orderNeedsCampaign(order) {
+  if (!order || !String(order.order_number || "").trim()) return false;
+  try {
+    if (require("./create-order-from-enquiry").isFeeLine(order)) return false;
+  } catch (e) {}
+  return !String(order.campaign || "").trim();
+}
+
+function decorateCampaignOrderTask(order, assignee) {
+  const orderNumber = db.formatOrderId(order.order_number) || String(order.order_number || "").trim();
+  return {
+    id: "campaign-" + orderNumber,
+    kind: "campaign",
+    title: TASK_TITLES.campaign,
+    type_label: TASK_TYPE_LABELS.campaign,
+    assignee: assignee || "",
+    status: "open",
+    created_at: order.updated_at || order.payment_date || "",
+    due_at: "",
+    overdue: false,
+    note: "Order has no campaign yet",
+    enquiry_no: order.enquiry_no || "",
+    quote_no: order.quote_number || "",
+    order_numbers: [orderNumber],
+    order_label: orderNumber,
+    order_number: orderNumber,
+    client_name: order.client_name || "",
+    product: order.product || "",
+    enquiry_status: order.status || "",
+    open_order: true,
+    href: "/orders?q=" + encodeURIComponent(orderNumber) + "&edit=campaign"
+  };
+}
+
+function listMissingCampaignOrderTasks(userName, opts) {
+  const me = String(userName || "").trim();
+  const marketers = marketingUserNames();
+  if (!marketers.length) return [];
+  const all = !!(opts && opts.all) && isManagerName(me);
+  const iAmMarketing = isMarketingName(me);
+  if (!all && !iAmMarketing) return [];
+  const assignee = all ? marketers.join(", ") : me;
+  return db.listOrders()
+    .filter(orderNeedsCampaign)
+    .map((order) => decorateCampaignOrderTask(order, assignee))
+    .sort((a, b) => String(a.order_number || "").localeCompare(String(b.order_number || "")));
 }
 
 function namedProducts(row) {
@@ -638,6 +704,7 @@ function listMyTasks(userName, opts) {
       }
     }
   }
+  listMissingCampaignOrderTasks(me, opts).forEach((task) => out.push(task));
   out.sort((a, b) => {
     if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
     return String(b.created_at || "").localeCompare(String(a.created_at || ""));
