@@ -884,7 +884,14 @@ assert.ok(codeGs.indexOf("if (!start || !end) continue;") !== -1, "costing skips
 assert.ok(codeGs.indexOf("var IDLE_GRACE_MINS = 15") !== -1, "idle holes start after 15 minutes");
 assert.ok(codeGs.indexOf("ORDER_OVERVIEW_PROCESSES") !== -1, "Order Overview columns are fixed shop tasks");
 assert.ok(codeGs.indexOf("function orderOverviewProcessName") !== -1);
+assert.ok(codeGs.indexOf("function buildTrendsEstimatesByProduct") !== -1, "Production Trends loads Task times estimates");
+assert.ok(codeGs.indexOf("function listTaskDurationProducts") !== -1, "Production Trends lists Task times products");
+assert.ok(codeGs.indexOf("estimatesByProduct") !== -1, "Production Trends payload includes estimatesByProduct");
 assert.ok(floor.indexOf("ORDER_OVERVIEW_PROCESSES") !== -1, "Order Overview UI clamps to shop tasks");
+assert.ok(floor.indexOf("Estimate —") !== -1 || floor.indexOf("Estimate — ${filterProduct}") !== -1, "Production Trends charts Task times estimate line");
+assert.ok(floor.indexOf("estimatesByProduct") !== -1, "Production Trends chart reads estimatesByProduct");
+assert.ok(floor.indexOf("borderDash") !== -1, "Estimate line is dashed");
+assert.ok(floor.indexOf("From Task times") !== -1, "Estimate tooltip names Task times");
 assert.ok(codeGs.indexOf("function userManagesIdle") !== -1);
 assert.ok(codeGs.indexOf("function userCountsForIdleAlerts") !== -1, "idle checker must know who counts as shop idle");
 assert.ok(codeGs.indexOf('title === "marketing"') !== -1 || codeGs.indexOf("access || \"\").toLowerCase() === \"marketing\"") !== -1, "Marketing must not enter idle alerts");

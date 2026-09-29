@@ -3796,8 +3796,44 @@ function getOrderMetrics() {
 }
 
 /**
+ * Task_Durations estimates keyed by product → process minutes for Production Trends.
+ * Uses the same shop process columns as ORDER_OVERVIEW_PROCESSES.
+ */
+function listTaskDurationProducts() {
+  var sheet = taskDurationSheet();
+  var names = {};
+  if (sheet && sheet.getLastRow() >= 2) {
+    var grid = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < grid.length; i++) {
+      var product = String(grid[i][0] || "").trim();
+      if (product) names[product] = true;
+    }
+  }
+  return Object.keys(names).sort();
+}
+
+function buildTrendsEstimatesByProduct(productNames) {
+  var names = productNames || [];
+  var out = {};
+  for (var i = 0; i < names.length; i++) {
+    var product = String(names[i] || "").trim();
+    if (!product || product === "Unknown") continue;
+    var byProcess = {};
+    var any = false;
+    for (var p = 0; p < ORDER_OVERVIEW_PROCESSES.length; p++) {
+      var processName = ORDER_OVERVIEW_PROCESSES[p];
+      var mins = getTaskDurationMinutes(product, processName);
+      byProcess[processName] = mins;
+      if (mins > 0) any = true;
+    }
+    if (any) out[product] = byProcess;
+  }
+  return out;
+}
+
+/**
  * Get production trends data for line graph
- * Returns: { processes: [], products: [], orderData: [{orderNum, productName, processes: {}}] }
+ * Returns: { processes: [], products: [], orderData: [...], estimatesByProduct: { product: { process: minutes } } }
  * Note: Uses calculateWorkMinutesServer() function defined in this file
  */
 function getProductionTrendsData() {
@@ -3808,12 +3844,21 @@ function getProductionTrendsData() {
   for (var i = 0; i < data.orders.length; i++) {
      productsSet[data.orders[i].productName] = true;
   }
+  // Include products that only have Task times estimates so the dropdown still works.
+  var durationProducts = listTaskDurationProducts();
+  for (var d = 0; d < durationProducts.length; d++) {
+    productsSet[durationProducts[d]] = true;
+  }
+  var products = Object.keys(productsSet).filter(function (name) {
+    return name && name !== "Unknown";
+  }).sort();
   
   return {
     processes: data.processes,
-    products: Object.keys(productsSet).sort(),
+    products: products,
     weeks: data.weeks,
-    orderData: data.orders
+    orderData: data.orders,
+    estimatesByProduct: buildTrendsEstimatesByProduct(products)
   };
 }
 

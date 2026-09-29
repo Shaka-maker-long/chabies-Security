@@ -1976,6 +1976,7 @@
           
           <!-- MISSING CANVAS RESTORED HERE -->
           <div class="bg-white rounded shadow-sm p-4">
+            <p class="small text-muted mb-3 mb-md-2">Select a product to plot a dashed <strong>Estimate</strong> line from Task times next to actual order times.</p>
             <canvas id="productionTrendsChart" style="max-height: 500px;"></canvas>
           </div>
         </div>
@@ -8536,6 +8537,36 @@
       const datasets = [];
       const colorPalette =['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF', '#FF9F40', '#FF6384', '#C9CBCF', '#4BC0C0', '#FF6384'];
       let hasAnyData = false;
+      let orderLineIndex = 0;
+
+      // Dashed estimate from Task times — one line per selected product
+      if (filterProduct) {
+        const estimateMap = (productionTrendsData.estimatesByProduct || {})[filterProduct] || null;
+        if (estimateMap) {
+          let estimateHasData = false;
+          const estimatePoints = graphProcesses.map(process => {
+            const mins = Number(estimateMap[process]) || 0;
+            if (mins > 0) estimateHasData = true;
+            return { x: process, y: mins, worker: 'Task times estimate', cost: 0, isEstimate: true };
+          });
+          if (estimateHasData) {
+            hasAnyData = true;
+            datasets.push({
+              label: `Estimate — ${filterProduct}`,
+              data: estimatePoints,
+              borderColor: '#1d2939',
+              backgroundColor: 'rgba(29,41,57,0.08)',
+              borderWidth: 3,
+              borderDash: [8, 5],
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              tension: 0.1,
+              fill: false,
+              order: 0
+            });
+          }
+        }
+      }
 
       filteredData.forEach((order, idx) => {
         const dataPoints =[];
@@ -8565,13 +8596,16 @@
         // Only map the line if work occurred during the selected filter
         if (orderHasDataInSelection) {
             hasAnyData = true;
+            const color = colorPalette[orderLineIndex % colorPalette.length];
+            orderLineIndex += 1;
             datasets.push({
               label: `${order.orderNum} - ${order.productName}`,
               data: dataPoints,
-              borderColor: colorPalette[datasets.length % colorPalette.length],
-              backgroundColor: colorPalette[datasets.length % colorPalette.length] + '33',
+              borderColor: color,
+              backgroundColor: color + '33',
               tension: 0.1,
-              fill: false
+              fill: false,
+              order: 1
             });
         }
       });
@@ -8595,10 +8629,21 @@
               text: filterProduct ? `Production Time for ${filterProduct}` : 'Production Time by Process',
               font: { size: 18, family: "'Playfair Display', serif" }
             },
-            legend: { display: false },
+            legend: {
+              display: !!filterProduct,
+              position: 'bottom',
+              labels: { boxWidth: 18, font: { size: 11 } }
+            },
             tooltip: {
               callbacks: {
                 label: function(context) {
+                  if (context.raw && context.raw.isEstimate) {
+                    return [
+                      context.dataset.label,
+                      `Estimate: ${formatDuration(context.raw.y)}`,
+                      'From Task times'
+                    ];
+                  }
                   return[
                     context.dataset.label,
                     `Worker: ${context.raw.worker}`,
