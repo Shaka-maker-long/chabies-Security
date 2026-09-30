@@ -343,7 +343,7 @@ function assertLoginAllowed(meta) {
     return {
       ok: false,
       pending: true,
-      error: "This device is not recognised. Refresh the page, then ask the Manager to approve it under Users → Devices."
+      error: "This device is not recognised. Refresh the page, then ask the Manager to approve it."
     };
   }
 
@@ -369,17 +369,17 @@ function assertLoginAllowed(meta) {
   let error;
   if (managerNeedsUnlock) {
     if (!bootstrapCodeConfigured()) {
-      error = "This device is not approved for " + forWho + " yet. Ask a Manager who is already logged in to approve it under Users → Devices.";
+      error = "This device is not approved for " + forWho + " yet. Ask the Manager to approve it.";
     } else if (wantsBootstrap) {
-      error = "That unlock code is wrong, or this device still needs approval under Users → Devices.";
+      error = "That unlock code is wrong, or this device still needs Manager approval.";
     } else {
-      error = "This device is not approved for " + forWho + " yet. Ask a Manager who is already logged in to approve it under Users → Devices.";
+      error = "This device is not approved for " + forWho + " yet. Ask the Manager to approve it.";
     }
   } else if (pending.status === "approved" && assigned) {
     error = "This device is assigned to " + assigned + ". " + forWho +
-      " needs Manager approval under Users → Devices before logging in here.";
+      " needs Manager approval before logging in here.";
   } else {
-    error = forWho + " is not linked to this device yet. Ask the Manager to approve it under Users → Devices.";
+    error = forWho + " is not linked to this device yet. Ask the Manager to approve it.";
   }
   return {
     ok: false,

@@ -338,7 +338,7 @@ function sdShowLogin(message) {
       }
       if (!j || !j.ok) {
         if (j && j.pendingDevice) {
-          showErr(j.error || "Correct name and access code — this device is waiting for Manager approval under Users → Devices.", true);
+          showErr(j.error || "Correct name and access code — this device is waiting for Manager approval.", true);
         } else {
           const err = String((j && j.error) || "").trim();
           showErr(/incorrect/i.test(err)

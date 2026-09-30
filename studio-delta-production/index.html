@@ -3015,7 +3015,7 @@
       if (!res) return { text: "No response from the server. Check your connection and try again.", kind: "danger" };
       if (res.pendingDevice) {
         return {
-          text: res.error || "Correct name and access code — this device is waiting for Manager approval under Users → Devices. You cannot log in until it is approved.",
+          text: res.error || "Correct name and access code — this device is waiting for Manager approval. You cannot log in until it is approved.",
           kind: "pending"
         };
       }
