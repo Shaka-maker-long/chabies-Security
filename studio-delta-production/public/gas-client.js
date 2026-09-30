@@ -19,6 +19,18 @@
     }
   }
 
+  function authToken() {
+    try {
+      var office = JSON.parse(global.sessionStorage.getItem("sd-office") || "null");
+      if (office && office.token) return String(office.token);
+    } catch (e) {}
+    try {
+      var floor = JSON.parse(global.sessionStorage.getItem("sd-session") || "null");
+      if (floor && floor.token) return String(floor.token);
+    } catch (e) {}
+    return "";
+  }
+
   function runner() {
     var success = null;
     var failure = null;
@@ -43,7 +55,13 @@
             "Content-Type": "application/json",
             "x-sd-device-id": deviceId()
           };
+          var token = authToken();
+          if (token) headers["x-sd-token"] = token;
           var body = { fn: prop, args: args, deviceId: deviceId() };
+          if (prop === "verifyGlobalLogin" && args[2] && typeof args[2] === "object") {
+            if (args[2].bootstrapCode) body.bootstrapCode = args[2].bootstrapCode;
+            if (args[2].deviceId) body.deviceId = args[2].deviceId;
+          }
           fetch("/api/run", {
             method: "POST",
             credentials: "same-origin",
@@ -62,6 +80,14 @@
                 if (failure) failure(err);
                 else console.error(err);
                 return;
+              }
+              if (prop === "verifyGlobalLogin" && j.result && j.result.success && j.result.token) {
+                try {
+                  var raw = JSON.parse(global.sessionStorage.getItem("sd-session") || "null") || {};
+                  raw.token = j.result.token;
+                  raw.name = j.result.name || raw.name;
+                  global.sessionStorage.setItem("sd-session", JSON.stringify(raw));
+                } catch (e) {}
               }
               if (success) success(j.result);
             })

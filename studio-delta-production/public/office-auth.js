@@ -300,25 +300,39 @@ function sdShowLogin(message) {
       (message ? "<p data-login-hint>" + message + "</p>" : "") +
       "<label>Name</label><input name='name' autocomplete='username'>" +
       "<label>Access code</label><input name='password' type='password' autocomplete='current-password'>" +
+      "<div data-bootstrap-wrap style='display:none'>" +
+      "<label>First-device unlock code</label>" +
+      "<input name='bootstrapCode' type='password' autocomplete='off' placeholder='Manager only — first device'>" +
+      "<p style='font-size:12px;color:#667085;margin:6px 0 0'>Required only when no devices are approved yet.</p>" +
+      "</div>" +
       "<button type='submit'>Log in</button>" +
       "<p style='margin:14px 0 0;text-align:center'><a href='/'>Back to floor</a></p></form>";
     document.body.appendChild(wrap);
+    const bootWrap = wrap.querySelector("[data-bootstrap-wrap]");
     wrap.querySelector("form").onsubmit = async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
+      const body = {
+        name: fd.get("name"),
+        password: fd.get("password"),
+        deviceId: sdDeviceId()
+      };
+      const boot = String(fd.get("bootstrapCode") || "").trim();
+      if (boot) body.bootstrapCode = boot;
       const r = await fetch("/api/office/login", {
         method: "POST",
         credentials: "same-origin",
         headers: { "Content-Type": "application/json", "x-sd-device-id": sdDeviceId() },
-        body: JSON.stringify({
-          name: fd.get("name"),
-          password: fd.get("password"),
-          deviceId: sdDeviceId()
-        })
+        body: JSON.stringify(body)
       });
       const j = await r.json();
       if (!j.ok) {
-        alert(j.error || (j.pendingDevice ? "This device is waiting for Manager approval under Users → Devices." : "Login failed"));
+        if (j.needsBootstrap && bootWrap) bootWrap.style.display = "";
+        const msg = j.error
+          || (j.pendingDevice
+            ? "This device is waiting for Manager approval under Users → Devices. You cannot log in until it is linked to you."
+            : "Login failed");
+        alert(msg);
         return;
       }
       sdSaveOffice(j);

@@ -389,11 +389,33 @@ function loadFloor() {
 app.post("/api/run", (req, res) => {
   const fn = req.body && req.body.fn;
   const args = (req.body && req.body.args) || [];
+  const PUBLIC_RUN = new Set(["verifyGlobalLogin", "verifyLogin", "getUsersAndRoles"]);
   serialize(async () => {
     try {
       if (!fn) {
         res.status(400).json({ ok: false, error: "Missing fn" });
         return;
+      }
+      const staff = require("./staff");
+      const auditLog = require("./audit-log");
+      const loginThrottle = require("./login-throttle");
+      if (!PUBLIC_RUN.has(fn)) {
+        const profile = staff.readSession(req);
+        if (!profile) {
+          res.status(401).json({ ok: false, error: "Log in first." });
+          return;
+        }
+        req.shop = profile;
+      }
+      if (fn === "verifyGlobalLogin" || fn === "verifyLogin") {
+        const name = fn === "verifyGlobalLogin" ? (args && args[0]) : (args && args[1]);
+        const ip = auditLog.clientIp(req);
+        const throttle = loginThrottle.check(name, ip);
+        if (!throttle.ok) {
+          auditLog.record("shop.login.blocked", { actor: name, ok: false, detail: "throttled", ip }, req);
+          res.status(429).json({ ok: false, error: throttle.error });
+          return;
+        }
       }
       const result = await loadFloor()(fn, args);
       if (fn === "verifyGlobalLogin" && result && result.success) {
@@ -401,23 +423,68 @@ app.post("/api/run", (req, res) => {
         const deviceId = (req.body && req.body.deviceId)
           || (args && args[2] && args[2].deviceId)
           || (req.headers && req.headers["x-sd-device-id"]);
-        const deviceCheck = trustedDevices.assertLoginAllowed(
-          trustedDevices.metaFromReq(req, result.name, deviceId)
-        );
+        const deviceMeta = trustedDevices.metaFromReq(req, result.name, deviceId);
+        if (req.body && req.body.bootstrapCode) deviceMeta.bootstrapCode = req.body.bootstrapCode;
+        if (args && args[2] && args[2].bootstrapCode) deviceMeta.bootstrapCode = args[2].bootstrapCode;
+        deviceMeta.canManageUsers = !!result.canManageUsers;
+        const deviceCheck = trustedDevices.assertLoginAllowed(deviceMeta);
         if (!deviceCheck.ok) {
+          auditLog.record("shop.login.device_pending", {
+            actor: result.name,
+            ok: false,
+            detail: deviceCheck.error || "pending",
+            deviceId: deviceMeta.deviceId
+          }, req);
           res.json({
             ok: true,
             result: {
               success: false,
               pendingDevice: !!deviceCheck.pending,
+              needsBootstrap: !!deviceCheck.needsBootstrap,
+              bootstrapConfigured: trustedDevices.bootstrapCodeConfigured(),
               device: deviceCheck.device || null,
               error: deviceCheck.error || "This device is not approved yet."
             }
           });
           return;
         }
+        loginThrottle.clear(result.name, auditLog.clientIp(req));
+        const session = staff.createSession({
+          name: result.name,
+          access: result.access,
+          role: result.role || result.jobTitle,
+          jobTitle: result.jobTitle || result.role,
+          isAdmin: result.isAdmin,
+          isMarketing: result.isMarketing,
+          canSeeOffice: result.canSeeOffice,
+          canSeeDrawingDesk: result.canSeeDrawingDesk,
+          canSeeDebtors: result.canSeeDebtors,
+          canManageUsers: result.canManageUsers,
+          canEditMarketingFields: result.canEditMarketingFields,
+          tasks: result.tasks || []
+        }, { deviceId: deviceCheck.device && deviceCheck.device.id });
+        result.token = session.token;
         result.device = deviceCheck.device || null;
         result.deviceBootstrapped = !!deviceCheck.bootstrapped;
+        const secure = String(process.env.COOKIE_SECURE || "").trim() === "0" ? ""
+          : ((String((req.headers && req.headers["x-forwarded-proto"]) || "").indexOf("https") !== -1
+            || String(process.env.RAILWAY_ENVIRONMENT || "").trim()
+            || String(process.env.NODE_ENV || "").toLowerCase() === "production") ? "; Secure" : "");
+        const maxAge = Math.floor((staff.SESSION_MAX_AGE_MS || (14 * 24 * 60 * 60 * 1000)) / 1000);
+        res.setHeader(
+          "Set-Cookie",
+          "sd_session=" + encodeURIComponent(session.token) + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + maxAge + secure
+        );
+        auditLog.record("shop.login.ok", {
+          actor: result.name,
+          ok: true,
+          deviceId: session.deviceId,
+          detail: deviceCheck.bootstrapped ? "bootstrap" : "approved"
+        }, req);
+      } else if (fn === "verifyGlobalLogin" && result && !result.success) {
+        const name = args && args[0];
+        loginThrottle.fail(name, auditLog.clientIp(req));
+        auditLog.record("shop.login.failed", { actor: name, ok: false, detail: result.error || "" }, req);
       }
       res.json({ ok: true, result });
     } catch (e) {

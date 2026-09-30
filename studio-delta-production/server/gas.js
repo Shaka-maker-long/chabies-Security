@@ -317,6 +317,41 @@ async function callShopFunction(fnName, args) {
   if (fnName === "generatePowderCoatingList") {
     return require("./powder-list").createList(args && args[0], args && args[1]);
   }
+  if (fnName === "verifyGlobalLogin" || fnName === "verifyLogin") {
+    const staff = require("./staff");
+    if (fnName === "verifyLogin") {
+      const role = args && args[0];
+      const name = args && args[1];
+      const password = args && args[2];
+      const profile = staff.verifyUser(name, password);
+      if (!profile) return { success: false, error: "Incorrect Access Code" };
+      if (role && String(profile.role || "").trim() !== String(role || "").trim()
+          && String(profile.access || "").trim() !== String(role || "").trim()) {
+        return { success: false, error: "Incorrect Access Code" };
+      }
+      return { success: true, isAdmin: !!profile.isAdmin };
+    }
+    const name = args && args[0];
+    const password = args && args[1];
+    const profile = staff.verifyUser(name, password);
+    if (!profile) return { success: false, error: staff.loginFailureMessage() };
+    return {
+      success: true,
+      name: profile.name,
+      role: profile.role,
+      jobTitle: profile.jobTitle,
+      access: profile.access,
+      isAdmin: profile.isAdmin,
+      canSeeOffice: profile.canSeeOffice,
+      canSeeDebtors: profile.canSeeDebtors,
+      canManageUsers: staff.canManageUsers(profile),
+      canSeeIdleAlerts: staff.canSeeIdleAlerts(profile),
+      isQcOnly: false,
+      canEditMarketingFields: !!profile.canEditMarketingFields || !!profile.isMarketing,
+      isMarketing: !!profile.isMarketing,
+      tasks: profile.tasks
+    };
+  }
   const workbook = await getCachedWorkbook();
 
   const sandbox = {

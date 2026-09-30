@@ -58,6 +58,8 @@ const glassRates = require("./glass-rates");
 const consumables = require("./consumables");
 const inventoryMaterials = require("./inventory-materials");
 const trustedDevices = require("./trusted-devices");
+const auditLog = require("./audit-log");
+const loginThrottle = require("./login-throttle");
 const steelRates = require("./steel-rates");
 const backboardRates = require("./backboard-rates");
 const productionCost = require("./production-cost");
@@ -79,9 +81,22 @@ const {
   weekOptions
 } = require("./office-schedule");
 
-function officeCookie(token, clear) {
-  if (clear) return "sd_office=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
-  return "sd_office=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax";
+function cookieSecureFlag(req) {
+  if (String(process.env.COOKIE_SECURE || "").trim() === "0") return false;
+  if (String(process.env.COOKIE_SECURE || "").trim() === "1") return true;
+  const proto = String((req && req.headers && req.headers["x-forwarded-proto"]) || "").split(",")[0].trim().toLowerCase();
+  if (proto === "https") return true;
+  if (req && req.secure) return true;
+  if (String(process.env.NODE_ENV || "").toLowerCase() === "production") return true;
+  if (String(process.env.RAILWAY_ENVIRONMENT || "").trim()) return true;
+  return false;
+}
+
+function officeCookie(token, clear, req) {
+  const secure = cookieSecureFlag(req) ? "; Secure" : "";
+  if (clear) return "sd_office=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" + secure;
+  const maxAge = Math.floor((staff.SESSION_MAX_AGE_MS || (14 * 24 * 60 * 60 * 1000)) / 1000);
+  return "sd_office=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + maxAge + secure;
 }
 
 function canUseOfficeApi(profile) {
@@ -183,29 +198,63 @@ function writeFloorLayout(layout) {
 
 function mountOffice(app) {
   app.post("/api/office/login", (req, res) => {
-    const profile = staff.verifyUser((req.body && req.body.name) || "", (req.body && req.body.password) || "");
+    const name = (req.body && req.body.name) || "";
+    const ip = auditLog.clientIp(req);
+    const throttle = loginThrottle.check(name, ip);
+    if (!throttle.ok) {
+      auditLog.record("login.blocked", { actor: name, ok: false, detail: "throttled", ip }, req);
+      res.status(429).json({ ok: false, error: throttle.error, retryAfterSec: throttle.retryAfterSec });
+      return;
+    }
+    const profile = staff.verifyUser(name, (req.body && req.body.password) || "");
     if (!profile) {
+      const after = loginThrottle.fail(name, ip);
+      auditLog.record("login.failed", { actor: name, ok: false, detail: "bad credentials", ip }, req);
+      if (!after.ok) {
+        res.status(429).json({ ok: false, error: after.error, retryAfterSec: after.retryAfterSec });
+        return;
+      }
       res.status(401).json({ ok: false, error: staff.loginFailureMessage() });
       return;
     }
     if (!profile.canSeeOffice && !staff.isDrawingOwnerName(profile.name) && !profile.canSeeDrawingDesk) {
+      auditLog.record("login.denied", { actor: profile.name, ok: false, detail: "production only", ip }, req);
       res.status(403).json({ ok: false, error: "Production users can only use Production Tasks." });
       return;
     }
-    const deviceCheck = trustedDevices.assertLoginAllowed(
-      trustedDevices.metaFromReq(req, profile.name, req.body && req.body.deviceId)
-    );
+    const deviceMeta = trustedDevices.metaFromReq(req, profile.name, req.body && req.body.deviceId);
+    deviceMeta.canManageUsers = staff.canManageUsers(profile);
+    const deviceCheck = trustedDevices.assertLoginAllowed(deviceMeta);
     if (!deviceCheck.ok) {
+      auditLog.record("login.device_pending", {
+        actor: profile.name,
+        ok: false,
+        detail: deviceCheck.error || "pending",
+        deviceId: deviceMeta.deviceId,
+        ip
+      }, req);
       res.status(403).json({
         ok: false,
         pendingDevice: !!deviceCheck.pending,
+        needsBootstrap: !!deviceCheck.needsBootstrap,
+        bootstrapConfigured: trustedDevices.bootstrapCodeConfigured(),
         device: deviceCheck.device || null,
         error: deviceCheck.error || "This device is not approved yet."
       });
       return;
     }
-    const session = staff.createSession(profile);
-    res.setHeader("Set-Cookie", officeCookie(session.token));
+    loginThrottle.clear(name, ip);
+    const session = staff.createSession(profile, {
+      deviceId: deviceCheck.device && deviceCheck.device.id
+    });
+    auditLog.record("login.ok", {
+      actor: profile.name,
+      ok: true,
+      detail: deviceCheck.bootstrapped ? "bootstrap" : "approved device",
+      deviceId: session.deviceId,
+      ip
+    }, req);
+    res.setHeader("Set-Cookie", officeCookie(session.token, false, req));
     res.json({
       ok: true,
       canManageUsers: staff.canManageUsers(profile),
@@ -219,8 +268,12 @@ function mountOffice(app) {
   });
 
   app.post("/api/office/logout", (req, res) => {
+    const profile = staff.readSession(req, { skipDeviceCheck: true });
     staff.dropSession(req);
-    res.setHeader("Set-Cookie", officeCookie("", true));
+    if (profile) {
+      auditLog.record("logout", { actor: profile.name, ok: true, deviceId: profile.deviceId }, req);
+    }
+    res.setHeader("Set-Cookie", officeCookie("", true, req));
     res.json({ ok: true });
   });
 
@@ -265,7 +318,14 @@ function mountOffice(app) {
       return;
     }
     try {
-      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...trustedDevices.approveDevice(req.params.id, req.office.name, req.body || {}) });
+      const snap = trustedDevices.approveDevice(req.params.id, req.office.name, req.body || {});
+      auditLog.record("device.approve", {
+        actor: req.office.name,
+        target: req.params.id,
+        detail: (req.body && (req.body.assignedTo || req.body.nickname)) || "",
+        deviceId: req.params.id
+      }, req);
+      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...snap });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
@@ -276,7 +336,13 @@ function mountOffice(app) {
       return;
     }
     try {
-      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...trustedDevices.updateDevice(req.params.id, req.body || {}) });
+      const snap = trustedDevices.updateDevice(req.params.id, req.body || {});
+      auditLog.record("device.update", {
+        actor: req.office.name,
+        target: req.params.id,
+        deviceId: req.params.id
+      }, req);
+      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...snap });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
@@ -287,7 +353,14 @@ function mountOffice(app) {
       return;
     }
     try {
-      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...trustedDevices.revokeDevice(req.params.id, req.office.name) });
+      const snap = trustedDevices.revokeDevice(req.params.id, req.office.name);
+      staff.dropSessionsForDevice(req.params.id);
+      auditLog.record("device.revoke", {
+        actor: req.office.name,
+        target: req.params.id,
+        deviceId: req.params.id
+      }, req);
+      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...snap });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
@@ -298,10 +371,24 @@ function mountOffice(app) {
       return;
     }
     try {
-      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...trustedDevices.removeDevice(req.params.id) });
+      staff.dropSessionsForDevice(req.params.id);
+      const snap = trustedDevices.removeDevice(req.params.id);
+      auditLog.record("device.remove", {
+        actor: req.office.name,
+        target: req.params.id,
+        deviceId: req.params.id
+      }, req);
+      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...snap });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
+  });
+  app.get("/api/office/audit", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can view the audit trail." });
+      return;
+    }
+    res.json({ ok: true, rows: auditLog.recent(Number(req.query && req.query.limit) || 200) });
   });
   app.put("/api/office/users", requireOffice, (req, res) => {
     try {
@@ -1591,13 +1678,23 @@ function mountOffice(app) {
     });
   });
 
-  app.get("/api/office/backup", requireOffice, (_req, res) => {
+  app.get("/api/office/backup", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can download a live data backup." });
+      return;
+    }
+    auditLog.record("backup.download_json", { actor: req.office.name, ok: true }, req);
     const stamp = new Date().toISOString().slice(0, 10);
     res.setHeader("Content-Disposition", "attachment; filename=\"studio-delta-railway-" + stamp + ".json\"");
     res.json(railwayBackup());
   });
 
-  app.get("/api/office/backup.db", requireOffice, (_req, res) => {
+  app.get("/api/office/backup.db", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can download the database backup." });
+      return;
+    }
+    auditLog.record("backup.download_db", { actor: req.office.name, ok: true }, req);
     try { require("./db").persist(); } catch (e) {}
     sqlite.checkpoint();
     const file = sqlite.sqlitePath();
@@ -1635,7 +1732,11 @@ function mountOffice(app) {
     fs.createReadStream(file).pipe(res);
   });
 
-  app.get("/api/office/backups", requireOffice, (_req, res) => {
+  app.get("/api/office/backups", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can view backups." });
+      return;
+    }
     const backup = require("./backup");
     res.json({
       ok: true,

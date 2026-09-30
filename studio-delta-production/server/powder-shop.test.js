@@ -9,6 +9,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sdp-paint-"));
 process.env.DATA_DIR = dir;
 process.env.OFFICE_DB_PATH = path.join(dir, "studio-delta.json");
 process.env.TZ = "Africa/Johannesburg";
+process.env.SD_TRUST_DEVICES = "0";
 delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 

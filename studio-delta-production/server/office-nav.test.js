@@ -1204,6 +1204,7 @@ assert.ok(usersBackupHtml.indexOf("/api/office/backups/drive-test") !== -1);
 assert.ok(usersBackupHtml.indexOf("Send test file to Drive") !== -1);
 assert.ok(usersBackupHtml.indexOf("href=\"/users\"") !== -1);
 const usersDevicesHtml = fs.readFileSync(path.join(__dirname, "../public/users-devices.html"), "utf8");
+assert.ok(usersDevicesHtml.indexOf("Nothing auto-approves") !== -1 || usersDevicesHtml.indexOf("DEVICE_BOOTSTRAP_CODE") !== -1);
 assert.ok(usersDevicesHtml.indexOf("Approved devices") !== -1);
 assert.ok(usersDevicesHtml.indexOf("Waiting for your approval") !== -1 || usersDevicesHtml.indexOf("Waiting for approval") !== -1);
 assert.ok(usersDevicesHtml.indexOf("assigned to") !== -1 || usersDevicesHtml.indexOf("Assigned to") !== -1);

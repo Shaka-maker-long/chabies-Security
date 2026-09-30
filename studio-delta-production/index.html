@@ -1633,9 +1633,14 @@
                 <label class="form-label">Name</label>
                 <input type="text" id="globalLoginName" class="form-control" placeholder="Your name" autocomplete="username" autocapitalize="words">
               </div>
-              <div class="mb-4">
+              <div class="mb-3">
                 <label class="form-label">Access code</label>
                 <input type="password" id="globalLoginPass" class="form-control" placeholder="Access code" autocomplete="current-password">
+              </div>
+              <div class="mb-4 d-none" id="bootstrapCodeWrap">
+                <label class="form-label">First-device unlock code</label>
+                <input type="password" id="globalLoginBootstrap" class="form-control" placeholder="Manager only — first device" autocomplete="off">
+                <div class="form-text">Only when no devices are approved yet. After that, the Manager approves phones under Users → Devices.</div>
               </div>
               <button id="btnGlobalLogin" class="btn btn-primary w-100 py-2 fw-bold" onclick="submitGlobalLogin()">LOG IN</button>
             </div>
@@ -2587,6 +2592,17 @@
           }
         }
         global.sdDeviceId = global.sdDeviceId || deviceId;
+        function floorToken() {
+          try {
+            var office = JSON.parse(global.sessionStorage.getItem("sd-office") || "null");
+            if (office && office.token) return String(office.token);
+          } catch (e) {}
+          try {
+            var floor = JSON.parse(global.sessionStorage.getItem("sd-session") || "null");
+            if (floor && floor.token) return String(floor.token);
+          } catch (e) {}
+          return "";
+        }
         function runner() {
           var success = null;
           var failure = null;
@@ -2602,11 +2618,18 @@
               return function () {
                 var args = Array.prototype.slice.call(arguments);
                 var id = deviceId();
+                var headers = { "Content-Type": "application/json", "x-sd-device-id": id };
+                var tok = floorToken();
+                if (tok) headers["x-sd-token"] = tok;
+                var body = { fn: prop, args: args, deviceId: id };
+                if (prop === "verifyGlobalLogin" && args[2] && typeof args[2] === "object") {
+                  if (args[2].bootstrapCode) body.bootstrapCode = args[2].bootstrapCode;
+                }
                 fetch("/api/run", {
                   method: "POST",
                   credentials: "same-origin",
-                  headers: { "Content-Type": "application/json", "x-sd-device-id": id },
-                  body: JSON.stringify({ fn: prop, args: args, deviceId: id })
+                  headers: headers,
+                  body: JSON.stringify(body)
                 })
                   .then(function (r) {
                     return r.json().then(function (j) { return { http: r, j: j }; });
@@ -2618,6 +2641,14 @@
                       if (failure) failure(err);
                       else console.error(err);
                       return;
+                    }
+                    if (prop === "verifyGlobalLogin" && j.result && j.result.success && j.result.token) {
+                      try {
+                        var raw = JSON.parse(global.sessionStorage.getItem("sd-session") || "null") || {};
+                        raw.token = j.result.token;
+                        raw.name = j.result.name || raw.name;
+                        global.sessionStorage.setItem("sd-session", JSON.stringify(raw));
+                      } catch (e) {}
                     }
                     if (success) success(j.result);
                   })
@@ -3064,6 +3095,7 @@
         if (!session.name) sessionStorage.removeItem('sd-session');
         else sessionStorage.setItem('sd-session', JSON.stringify({
           success: true,
+          token: session.token || '',
           name: session.name,
           jobTitle: session.jobTitle,
           isAdmin: session.isAdmin,
@@ -3447,12 +3479,18 @@
         }
       });
     }
-    function syncOfficeLogin(name, pass, profile) {
+    function syncOfficeLogin(name, pass, profile, extra) {
       if (!profile || !profile.canSeeOffice) {
         try { sessionStorage.removeItem('sd-office'); } catch (e) {}
         try { localStorage.removeItem('sd-office'); } catch (e) {}
         return Promise.resolve();
       }
+      const body = {
+        name: name,
+        password: pass,
+        deviceId: (typeof sdDeviceId === 'function' ? sdDeviceId() : '')
+      };
+      if (extra && extra.bootstrapCode) body.bootstrapCode = extra.bootstrapCode;
       return fetch('/api/office/login', {
         method: 'POST',
         credentials: 'same-origin',
@@ -3460,11 +3498,7 @@
           'Content-Type': 'application/json',
           'x-sd-device-id': (typeof sdDeviceId === 'function' ? sdDeviceId() : '')
         },
-        body: JSON.stringify({
-          name: name,
-          password: pass,
-          deviceId: (typeof sdDeviceId === 'function' ? sdDeviceId() : '')
-        })
+        body: JSON.stringify(body)
       }).then((r) => r.json()).then((j) => {
         if (j && j.ok) {
           try { sessionStorage.setItem('sd-office', JSON.stringify(j)); } catch (e) {}
@@ -3481,6 +3515,7 @@
     }
     function applyLoginProfile(res, opts) {
       session.name = res.name;
+      session.token = res.token || session.token || '';
       session.jobTitle = res.jobTitle || res.role || '';
       session.isAdmin = !!res.isAdmin;
       session.canSeeOffice = !!res.canSeeOffice;
@@ -4549,6 +4584,8 @@
     function submitGlobalLogin() {
       const name = document.getElementById('globalLoginName').value;
       const pass = document.getElementById('globalLoginPass').value;
+      const bootEl = document.getElementById('globalLoginBootstrap');
+      const bootstrapCode = bootEl ? String(bootEl.value || '').trim() : '';
       if (!name || !pass) {
         showAlert("Please enter both name and password.");
         return;
@@ -4560,22 +4597,32 @@
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> LOGGING IN...';
       btn.disabled = true;
 
+      const opts = {};
+      if (bootstrapCode) opts.bootstrapCode = bootstrapCode;
+
       google.script.run.withSuccessHandler(res => {
         btn.innerHTML = origText;
         btn.disabled = false;
         if(res.success) {
+          if (res.token) session.token = res.token;
           const go = function () { applyLoginProfile(res, { welcome: true }); };
-          const synced = syncOfficeLogin(name, pass, res);
+          const synced = syncOfficeLogin(name, pass, res, opts);
           if (synced && typeof synced.then === 'function') synced.then(go, go);
           else go();
         } else {
-          showAlert(res.error);
+          if (res.needsBootstrap) {
+            const wrap = document.getElementById('bootstrapCodeWrap');
+            if (wrap) wrap.classList.remove('d-none');
+          }
+          showAlert(res.error || (res.pendingDevice
+            ? 'This device is waiting for Manager approval under Users → Devices.'
+            : 'Login failed'));
         }
       }).withFailureHandler(err => {
         btn.innerHTML = origText;
         btn.disabled = false;
         showAlert("Connection error: " + err);
-      }).verifyGlobalLogin(name, pass);
+      }).verifyGlobalLogin(name, pass, opts);
     }
 
     function submitPass() {

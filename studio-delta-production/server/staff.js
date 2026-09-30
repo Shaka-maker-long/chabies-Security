@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { getBook, persistWorkbook, dataDir } = require("./workbook-store");
+const accessCodes = require("./access-codes");
 
 const FLOOR_TASKS = [
   "Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding",
@@ -12,7 +13,7 @@ const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval", "Follow-up"];
 const USER_HEADERS = ["Name", "Role", "Password", "Tasks", "Access", "See Debtors", "Enquiry Roles", "Manage Users"];
 
 const sessions = new Map();
-const SESSION_MAX_AGE_MS = 90 * 24 * 60 * 60 * 1000;
+const SESSION_MAX_AGE_MS = 14 * 24 * 60 * 60 * 1000;
 
 function sessionsPath() {
   return path.join(dataDir(), "office-sessions.json");
@@ -36,7 +37,9 @@ function applySessionMap(raw) {
       canSeeDebtors: !!row.canSeeDebtors,
       canManageUsers: !!row.canManageUsers,
       canEditMarketingFields: !!row.canEditMarketingFields || String(row.access || "").toLowerCase() === "marketing",
-      tasks: Array.isArray(row.tasks) ? row.tasks : []
+      tasks: Array.isArray(row.tasks) ? row.tasks : [],
+      deviceId: String(row.deviceId || "").trim(),
+      savedAt: Number(row.savedAt) || now
     });
   });
 }
@@ -436,9 +439,12 @@ function upsertUser(body) {
   let password = accessCode(body.password);
   if (!rowNum) {
     if (!password) throw new Error("Access code is required for a new user");
+    password = accessCodes.hashPlain(password);
     rowNum = sheet.getLastRow() + 1;
   } else if (!password) {
     password = String(sheet.getRange(rowNum, 3).getValue() || "");
+  } else {
+    password = accessCodes.hashPlain(password);
   }
   sheet.getRange(rowNum, 1, 1, USER_HEADERS.length).setValues([[
     name, role, password, tasks.join(", "), access, seeDebtors, enquiryRoles.join(", "), manageUsers
@@ -486,11 +492,14 @@ function changeOwnPassword(name, currentPassword, nextPassword) {
   const next = accessCode(nextPassword);
   if (!want) throw new Error("Name is required");
   if (!next) throw new Error("New access code is required");
+  if (!accessCodes.strengthOk(next)) {
+    throw new Error("Access code must be at least " + accessCodes.MIN_LEN + " characters.");
+  }
   const rowNum = findUserRow(want);
   if (!rowNum) throw new Error("Current access code is wrong");
-  const stored = accessCode(usersSheet().getRange(rowNum, 3).getValue());
-  if (!stored || stored !== current) throw new Error("Current access code is wrong");
-  usersSheet().getRange(rowNum, 3).setValue(next);
+  const stored = String(usersSheet().getRange(rowNum, 3).getValue() || "");
+  if (!accessCodes.verify(current, stored)) throw new Error("Current access code is wrong");
+  usersSheet().getRange(rowNum, 3).setValue(accessCodes.hashPlain(next));
   persistWorkbook();
   bumpShopCache();
   return { name: String(usersSheet().getRange(rowNum, 1).getValue() || want) };
@@ -501,9 +510,12 @@ function setUserPassword(name, nextPassword) {
   const next = accessCode(nextPassword);
   if (!want) throw new Error("Name is required");
   if (!next) throw new Error("New access code is required");
+  if (!accessCodes.strengthOk(next)) {
+    throw new Error("Access code must be at least " + accessCodes.MIN_LEN + " characters.");
+  }
   const rowNum = findUserRow(want);
   if (!rowNum) throw new Error("No user named " + want);
-  usersSheet().getRange(rowNum, 3).setValue(next);
+  usersSheet().getRange(rowNum, 3).setValue(accessCodes.hashPlain(next));
   persistWorkbook();
   bumpShopCache();
   return { name: String(usersSheet().getRange(rowNum, 1).getValue() || want) };
@@ -543,7 +555,17 @@ function verifyUser(name, password) {
   const pass = accessCode(password);
   for (let i = 0; i < grid.length; i++) {
     if (String(grid[i][0] || "").trim().toLowerCase() !== want) continue;
-    if (pass && pass === accessCode(grid[i][2])) {
+    const stored = String(grid[i][2] || "");
+    if (pass && accessCodes.verify(pass, stored)) {
+      if (accessCodes.needsRehash(stored)) {
+        try {
+          sheet.getRange(i + 2, 3).setValue(accessCodes.hashPlain(pass));
+          persistWorkbook();
+          bumpShopCache();
+        } catch (e) {
+          console.warn("[staff] could not rehash access code:", e && e.message ? e.message : e);
+        }
+      }
       return rowToUser(grid[i], i + 2);
     }
   }
@@ -565,8 +587,10 @@ function checkRestoreSecrets(actor, secrets) {
   return true;
 }
 
-function createSession(profile) {
-  const token = crypto.randomBytes(16).toString("hex");
+function createSession(profile, opts) {
+  opts = opts || {};
+  const token = crypto.randomBytes(24).toString("hex");
+  const deviceId = String(opts.deviceId || profile.deviceId || "").trim();
   const safe = {
     name: profile.name,
     access: profile.access,
@@ -580,11 +604,41 @@ function createSession(profile) {
     canManageUsers: canManageUsers(profile),
     canSeeIdleAlerts: canSeeIdleAlerts(profile),
     canEditMarketingFields: canEditMarketingFields(profile),
-    tasks: profile.tasks
+    tasks: profile.tasks,
+    deviceId,
+    savedAt: Date.now()
   };
   sessions.set(token, safe);
   persistSessions();
   return { token, ...safe };
+}
+
+function dropSessionsForDevice(deviceId) {
+  const want = String(deviceId || "").trim();
+  if (!want) return 0;
+  let n = 0;
+  sessions.forEach((row, token) => {
+    if (row && String(row.deviceId || "").trim() === want) {
+      sessions.delete(token);
+      n += 1;
+    }
+  });
+  if (n) persistSessions();
+  return n;
+}
+
+function dropSessionsForUser(name) {
+  const want = String(name || "").trim().toLowerCase();
+  if (!want) return 0;
+  let n = 0;
+  sessions.forEach((row, token) => {
+    if (row && String(row.name || "").trim().toLowerCase() === want) {
+      sessions.delete(token);
+      n += 1;
+    }
+  });
+  if (n) persistSessions();
+  return n;
 }
 
 function tokensFromReq(req) {
@@ -617,11 +671,17 @@ function tokenFromReq(req) {
   return tokens[0] || "";
 }
 
-function readSession(req) {
+function readSession(req, opts) {
+  opts = opts || {};
   const token = tokenFromReq(req);
   if (!token) return null;
   const row = sessions.get(token) || null;
   if (!row) return null;
+  if (row.savedAt && Date.now() - Number(row.savedAt) > SESSION_MAX_AGE_MS) {
+    sessions.delete(token);
+    persistSessions();
+    return null;
+  }
   if (row.isAdmin) row.canSeeOffice = true;
   const live = listUsers().find((u) => String(u.name).toLowerCase() === String(row.name).toLowerCase());
   if (live) {
@@ -639,6 +699,22 @@ function readSession(req) {
     row.jobTitle = String(row.jobTitle || row.role || "").trim();
     row.canSeeDrawingDesk = !!(row.canSeeDrawingDesk || isDrawingOwnerName(row.name));
     row.canSeeIdleAlerts = canSeeIdleAlerts(row);
+  }
+  if (!opts.skipDeviceCheck && String(process.env.SD_TRUST_DEVICES || "").trim() !== "0") {
+    try {
+      const trustedDevices = require("./trusted-devices");
+      const headerId = req && req.headers ? req.headers["x-sd-device-id"] : "";
+      const deviceId = trustedDevices.normalizeDeviceId(headerId) || String(row.deviceId || "").trim();
+      const check = trustedDevices.sessionStillValid(row.name, deviceId);
+      if (!check.ok) {
+        sessions.delete(token);
+        persistSessions();
+        return null;
+      }
+      if (deviceId && !row.deviceId) row.deviceId = deviceId;
+    } catch (e) {
+      console.warn("[staff] device session check failed:", e && e.message ? e.message : e);
+    }
   }
   return row;
 }
@@ -756,10 +832,13 @@ module.exports = {
   createSession,
   readSession,
   dropSession,
+  dropSessionsForDevice,
+  dropSessionsForUser,
   keepRequestSession,
   reloadSessionsKeeping,
   persistSessions,
   sessionCount: () => sessions.size,
+  SESSION_MAX_AGE_MS,
   listDurations,
   setDurations,
   durationMinutes,

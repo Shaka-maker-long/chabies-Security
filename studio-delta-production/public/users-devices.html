@@ -52,12 +52,13 @@
     <button class="ghost" type="button" onclick="load()">Refresh</button>
   </header>
   <div class="wrap">
-    <p class="help">Each phone or computer is <b>assigned to a person</b>. Their first device is trusted automatically. If they try a <b>different</b> phone or laptop, it waits here until you approve it for them. You always see <b>who</b> tried to log in. Nickname devices (e.g. “Johannes iPhone”) so two iPhones are obvious.</p>
+    <p class="help">Each phone or computer must be <b>assigned to a person by the Manager</b> before that person can log in. Nothing auto-approves on first login — including staff who already downloaded the app. Nickname devices (e.g. “Johannes iPhone”) so two iPhones are obvious. Revoke lost hardware to end their sessions immediately.</p>
+    <p class="help warn">Empty shop / first Manager device: set <code>DEVICE_BOOTSTRAP_CODE</code> on the server, then the Manager types that code once at login to unlock their first device. After that, every other phone waits here.</p>
     <p class="help" id="thisDevice"></p>
 
     <section class="card">
       <h2>Waiting for your approval <span id="pendingCount"></span></h2>
-      <p class="help warn">Correct name and access code were used, but this device is not assigned to that person yet.</p>
+      <p class="help warn">Correct name and access code were used, but this device is not linked to that person yet. They cannot log in until you approve.</p>
       <div id="pendingBox"><div class="empty">Loading…</div></div>
     </section>
 

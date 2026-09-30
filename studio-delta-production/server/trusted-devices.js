@@ -224,7 +224,6 @@ function upsertPending(store, deviceId, meta) {
     };
     store.devices.push(row);
   } else if (row.status === "approved") {
-    // Keep current assignees logged in; queue this person for Manager approval.
     touchDevice(row, meta);
     addPendingUser(row, userName);
   } else {
@@ -240,11 +239,12 @@ function upsertPending(store, deviceId, meta) {
   return row;
 }
 
-function autoApprove(store, deviceId, meta) {
+function approveNow(store, deviceId, meta, actorName) {
   const id = normalizeDeviceId(deviceId) || ("d_" + crypto.randomBytes(12).toString("hex"));
   let row = findDevice(store, id);
   const now = nowIso();
   const userName = cleanName(meta && meta.userName) || "system";
+  const by = cleanName(actorName) || userName;
   if (!row) {
     row = {
       id,
@@ -261,7 +261,7 @@ function autoApprove(store, deviceId, meta) {
       createdAt: now,
       updatedAt: now,
       approvedAt: now,
-      approvedBy: userName,
+      approvedBy: by,
       lastSeenAt: now,
       revokedAt: "",
       revokedBy: ""
@@ -270,7 +270,7 @@ function autoApprove(store, deviceId, meta) {
   } else {
     row.status = "approved";
     row.approvedAt = now;
-    row.approvedBy = userName;
+    row.approvedBy = by;
     row.revokedAt = "";
     row.revokedBy = "";
     assignUsers(row, [userName].concat(row.assignedUsers || []));
@@ -291,19 +291,37 @@ function fallbackDeviceId(meta) {
   return "d_" + crypto.createHash("sha256").update(raw).digest("hex").slice(0, 24);
 }
 
-function userHasApprovedDevice(store, userName) {
-  const want = nameKey(userName);
+function deviceEnforceDisabled() {
+  return String(process.env.SD_TRUST_DEVICES || "").trim() === "0";
+}
+
+function bootstrapCodeConfigured() {
+  return String(process.env.DEVICE_BOOTSTRAP_CODE || "").trim();
+}
+
+function bootstrapCodeMatches(raw) {
+  const want = bootstrapCodeConfigured();
   if (!want) return false;
-  return (store.devices || []).some((row) => row.status === "approved" && isAssignedTo(row, userName));
+  const got = String(raw || "").trim();
+  if (!got || got.length !== want.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(want));
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
  * After credentials are verified:
- * - device must be approved AND assigned to this person
- * - a person's first device is auto-approved and assigned to them
- * - any further / different device needs Manager approval under Users → Devices
+ * - device must be approved AND assigned to this person (no first-login auto-approve)
+ * - when the shop has zero approved devices, Manager may unlock the first device with DEVICE_BOOTSTRAP_CODE
+ * - everyone else waits under Users → Devices until the Manager assigns the phone/computer to them
  */
 function assertLoginAllowed(meta) {
+  if (deviceEnforceDisabled()) {
+    return { ok: true, skipped: true, device: null };
+  }
+
   const store = loadStore();
   const deviceId = normalizeDeviceId(meta && meta.deviceId) || fallbackDeviceId(meta);
   const userName = cleanName(meta && meta.userName);
@@ -329,9 +347,20 @@ function assertLoginAllowed(meta) {
     return { ok: true, device: publicDevice(existing) };
   }
 
-  // First device for this person (or empty system): auto-approve and assign.
-  if (!userHasApprovedDevice(store, userName)) {
-    const row = autoApprove(store, deviceId, info);
+  // First Manager device only: empty trusted list + matching DEVICE_BOOTSTRAP_CODE.
+  if (approvedCount(store) === 0 && bootstrapCodeMatches(meta && meta.bootstrapCode)) {
+    const canBootstrap = !!(meta && meta.canManageUsers);
+    if (!canBootstrap) {
+      const pending = upsertPending(store, deviceId, info);
+      return {
+        ok: false,
+        pending: true,
+        needsBootstrap: true,
+        device: publicDevice(pending),
+        error: "No devices are approved yet. The Manager must unlock the first device with the bootstrap code, then approve everyone else under Users → Devices."
+      };
+    }
+    const row = approveNow(store, deviceId, info, userName + " (bootstrap)");
     return { ok: true, bootstrapped: true, device: publicDevice(row) };
   }
 
@@ -339,18 +368,36 @@ function assertLoginAllowed(meta) {
   const assigned = (pending.assignedUsers || []).join(", ");
   const forWho = userName || "this person";
   let error;
-  if (pending.status === "approved" && assigned) {
+  if (approvedCount(store) === 0) {
+    error = "No devices are approved yet. Ask the Manager to unlock the first device (bootstrap code), then approve " +
+      forWho + " under Users → Devices.";
+  } else if (pending.status === "approved" && assigned) {
     error = "This device is assigned to " + assigned + ". " + forWho +
       " needs Manager approval under Users → Devices before logging in here.";
   } else {
-    error = forWho + " already has an approved device. This one needs Manager approval under Users → Devices.";
+    error = forWho + " is not linked to this device yet. Ask the Manager to approve it under Users → Devices.";
   }
   return {
     ok: false,
     pending: true,
+    needsBootstrap: approvedCount(store) === 0,
     device: publicDevice(pending),
     error
   };
+}
+
+function sessionStillValid(userName, deviceId) {
+  if (deviceEnforceDisabled()) return { ok: true, skipped: true };
+  const id = normalizeDeviceId(deviceId);
+  if (!id) {
+    return { ok: false, error: "This session is not bound to an approved device. Log in again." };
+  }
+  const store = loadStore();
+  const row = findDevice(store, id);
+  if (!row || row.status !== "approved" || !isAssignedTo(row, userName)) {
+    return { ok: false, error: "This device is no longer approved for " + (cleanName(userName) || "you") + ". Log in again after the Manager approves it." };
+  }
+  return { ok: true, device: publicDevice(row) };
 }
 
 function snapshot() {
@@ -373,7 +420,8 @@ function snapshot() {
     pending,
     revoked: devices.filter((row) => row.status === "revoked"),
     approvedCount: devices.filter((row) => row.status === "approved").length,
-    pendingCount: pending.length
+    pendingCount: pending.length,
+    bootstrapConfigured: !!bootstrapCodeConfigured()
   };
 }
 
@@ -397,7 +445,6 @@ function approveDevice(deviceId, actorName, body) {
     ? uniqueNames((row.assignedUsers || []).concat([assignTo]))
     : [assignTo];
   assignUsers(row, nextAssignees);
-  // Clear only the approved person from pending queue; leave other waiters.
   row.pendingUsers = (row.pendingUsers || []).filter((item) => nameKey(item.name) !== nameKey(assignTo));
   row.status = "approved";
   row.approvedAt = now;
@@ -463,11 +510,13 @@ function metaFromReq(req, userName, bodyDeviceId) {
   const headerId = req && req.headers ? req.headers["x-sd-device-id"] : "";
   const body = (req && req.body) || {};
   return {
-    deviceId: normalizeDeviceId(bodyDeviceId || headerId),
+    deviceId: normalizeDeviceId(bodyDeviceId || headerId || body.deviceId),
     userAgent: String((req && req.headers && req.headers["user-agent"]) || "").slice(0, 400),
     ip: clientIp(req),
     userName: cleanName(userName),
-    nickname: cleanName(body.deviceNickname || body.nickname)
+    nickname: cleanName(body.deviceNickname || body.nickname),
+    bootstrapCode: body.bootstrapCode || body.deviceBootstrapCode || "",
+    canManageUsers: false
   };
 }
 
@@ -475,6 +524,7 @@ module.exports = {
   normalizeDeviceId,
   labelFromUserAgent,
   assertLoginAllowed,
+  sessionStillValid,
   snapshot,
   approveDevice,
   updateDevice,
@@ -482,5 +532,6 @@ module.exports = {
   removeDevice,
   metaFromReq,
   isAssignedTo,
+  bootstrapCodeConfigured,
   approvedCount: () => approvedCount(loadStore())
 };

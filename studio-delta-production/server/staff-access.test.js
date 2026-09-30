@@ -9,6 +9,7 @@ const dir = fs.mkdtempSync(path.join(os.tmpdir(), "sdp-staff-"));
 process.env.DATA_DIR = dir;
 process.env.OFFICE_DB_PATH = path.join(dir, "studio-delta.json");
 process.env.TZ = "Africa/Johannesburg";
+process.env.SD_TRUST_DEVICES = "0";
 delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
@@ -54,7 +55,7 @@ const productionTitledAdmin = staff.upsertUser({
   name: "Named Admin Job",
   access: "Production",
   role: "Admin",
-  password: "x"
+  password: "xpass"
 });
 assert.strictEqual(productionTitledAdmin.access, "Production");
 assert.strictEqual(productionTitledAdmin.canSeeOffice, false);
@@ -336,7 +337,7 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const promote = await fetch(base + "/api/office/users", {
     method: "PUT",
     headers: { "Content-Type": "application/json", "x-sd-token": boss2.token },
-    body: JSON.stringify({ name: "Site Manager", access: "Production", role: "Manager", password: "mgr", seeDebtors: "Yes" })
+    body: JSON.stringify({ name: "Site Manager", access: "Production", role: "Manager", password: "mgr1", seeDebtors: "Yes" })
   });
   const promoted = await promote.json();
   assert.ok(promoted.ok, JSON.stringify(promoted));
@@ -350,7 +351,7 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
   const mgrLogin = await fetch(base + "/api/office/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "Site Manager", password: "mgr" })
+    body: JSON.stringify({ name: "Site Manager", password: "mgr1" })
   });
   const mgr = await mgrLogin.json();
   assert.ok(mgr.ok, JSON.stringify(mgr));
