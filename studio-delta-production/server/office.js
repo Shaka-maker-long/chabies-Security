@@ -57,6 +57,7 @@ const glassPo = require("./glass-po");
 const glassRates = require("./glass-rates");
 const consumables = require("./consumables");
 const inventoryMaterials = require("./inventory-materials");
+const trustedDevices = require("./trusted-devices");
 const steelRates = require("./steel-rates");
 const backboardRates = require("./backboard-rates");
 const productionCost = require("./production-cost");
@@ -191,6 +192,18 @@ function mountOffice(app) {
       res.status(403).json({ ok: false, error: "Production users can only use Production Tasks." });
       return;
     }
+    const deviceCheck = trustedDevices.assertLoginAllowed(
+      trustedDevices.metaFromReq(req, profile.name, req.body && req.body.deviceId)
+    );
+    if (!deviceCheck.ok) {
+      res.status(403).json({
+        ok: false,
+        pendingDevice: !!deviceCheck.pending,
+        device: deviceCheck.device || null,
+        error: deviceCheck.error || "This device is not approved yet."
+      });
+      return;
+    }
     const session = staff.createSession(profile);
     res.setHeader("Set-Cookie", officeCookie(session.token));
     res.json({
@@ -199,6 +212,8 @@ function mountOffice(app) {
       canMarkNoPlate: staff.canMarkNoPlate(profile),
       canEditMarketingFields: staff.canEditMarketingFields(profile),
       isMarketing: staff.isMarketing(profile),
+      device: deviceCheck.device || null,
+      deviceBootstrapped: !!deviceCheck.bootstrapped,
       ...session
     });
   });
@@ -235,6 +250,46 @@ function mountOffice(app) {
       tasks: staff.FLOOR_TASKS,
       canManageUsers: manage
     });
+  });
+  app.get("/api/office/devices", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can view trusted devices." });
+      return;
+    }
+    res.json({ ok: true, ...trustedDevices.snapshot() });
+  });
+  app.post("/api/office/devices/:id/approve", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can approve devices." });
+      return;
+    }
+    try {
+      res.json({ ok: true, ...trustedDevices.approveDevice(req.params.id, req.office.name) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.post("/api/office/devices/:id/revoke", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can revoke devices." });
+      return;
+    }
+    try {
+      res.json({ ok: true, ...trustedDevices.revokeDevice(req.params.id, req.office.name) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.delete("/api/office/devices/:id", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can remove devices." });
+      return;
+    }
+    try {
+      res.json({ ok: true, ...trustedDevices.removeDevice(req.params.id) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
   });
   app.put("/api/office/users", requireOffice, (req, res) => {
     try {

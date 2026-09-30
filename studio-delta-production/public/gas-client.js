@@ -5,6 +5,20 @@
 (function (global) {
   if (global.google && global.google.script && global.google.script.run) return;
 
+  function deviceId() {
+    try {
+      if (typeof global.sdDeviceId === "function") return global.sdDeviceId();
+      var id = String(global.localStorage.getItem("sd-device-id") || "").trim();
+      if (/^[A-Za-z0-9_-]{8,80}$/.test(id)) return id;
+      id = "d_";
+      for (var i = 0; i < 24; i++) id += Math.floor(Math.random() * 16).toString(16);
+      global.localStorage.setItem("sd-device-id", id);
+      return id;
+    } catch (e) {
+      return "";
+    }
+  }
+
   function runner() {
     var success = null;
     var failure = null;
@@ -25,11 +39,16 @@
         if (prop === "then" || prop === "toJSON") return undefined;
         return function () {
           var args = Array.prototype.slice.call(arguments);
+          var headers = {
+            "Content-Type": "application/json",
+            "x-sd-device-id": deviceId()
+          };
+          var body = { fn: prop, args: args, deviceId: deviceId() };
           fetch("/api/run", {
             method: "POST",
             credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ fn: prop, args: args })
+            headers: headers,
+            body: JSON.stringify(body)
           })
             .then(function (r) {
               return r.json().then(function (j) {

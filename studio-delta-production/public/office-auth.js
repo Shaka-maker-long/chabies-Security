@@ -42,10 +42,31 @@ function sdClearOfficeProfile() {
   try { sessionStorage.removeItem("sd-office"); } catch (e) {}
   try { localStorage.removeItem("sd-office"); } catch (e) {}
 }
+function sdDeviceId() {
+  try {
+    let id = String(localStorage.getItem("sd-device-id") || "").trim();
+    if (/^[A-Za-z0-9_-]{8,80}$/.test(id)) return id;
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      id = "d_" + window.crypto.randomUUID().replace(/-/g, "");
+    } else {
+      id = "d_";
+      for (let i = 0; i < 24; i++) id += Math.floor(Math.random() * 16).toString(16);
+    }
+    localStorage.setItem("sd-device-id", id);
+    return id;
+  } catch (e) {
+    return "";
+  }
+}
 function sdOfficeFetch(url, opts) {
   const p = sdOfficeProfile() || {};
   opts = opts || {};
-  opts.headers = Object.assign({ "Content-Type": "application/json", "x-sd-token": p.token || "" }, opts.headers || {});
+  opts.credentials = opts.credentials || "same-origin";
+  opts.headers = Object.assign({
+    "Content-Type": "application/json",
+    "x-sd-token": p.token || "",
+    "x-sd-device-id": sdDeviceId()
+  }, opts.headers || {});
   return fetch(url, opts);
 }
 function sdFormWho() {
@@ -288,11 +309,18 @@ function sdShowLogin(message) {
       const r = await fetch("/api/office/login", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: fd.get("name"), password: fd.get("password") })
+        headers: { "Content-Type": "application/json", "x-sd-device-id": sdDeviceId() },
+        body: JSON.stringify({
+          name: fd.get("name"),
+          password: fd.get("password"),
+          deviceId: sdDeviceId()
+        })
       });
       const j = await r.json();
-      if (!j.ok) { alert(j.error || "Login failed"); return; }
+      if (!j.ok) {
+        alert(j.error || (j.pendingDevice ? "This device is waiting for Manager approval under Users → Devices." : "Login failed"));
+        return;
+      }
       sdSaveOffice(j);
       wrap.remove();
       if (typeof sdShowWelcome === "function") await sdShowWelcome(5000);

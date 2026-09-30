@@ -211,6 +211,10 @@ app.get("/debtors", (_req, res) => {
 app.get("/users", (_req, res) => {
   res.sendFile(path.join(publicDir, "users.html"));
 });
+app.get("/users/devices", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "users-devices.html"));
+});
 app.get("/users/backup", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "users-backup.html"));
@@ -392,6 +396,29 @@ app.post("/api/run", (req, res) => {
         return;
       }
       const result = await loadFloor()(fn, args);
+      if (fn === "verifyGlobalLogin" && result && result.success) {
+        const trustedDevices = require("./trusted-devices");
+        const deviceId = (req.body && req.body.deviceId)
+          || (args && args[2] && args[2].deviceId)
+          || (req.headers && req.headers["x-sd-device-id"]);
+        const deviceCheck = trustedDevices.assertLoginAllowed(
+          trustedDevices.metaFromReq(req, result.name, deviceId)
+        );
+        if (!deviceCheck.ok) {
+          res.json({
+            ok: true,
+            result: {
+              success: false,
+              pendingDevice: !!deviceCheck.pending,
+              device: deviceCheck.device || null,
+              error: deviceCheck.error || "This device is not approved yet."
+            }
+          });
+          return;
+        }
+        result.device = deviceCheck.device || null;
+        result.deviceBootstrapped = !!deviceCheck.bootstrapped;
+      }
       res.json({ ok: true, result });
     } catch (e) {
       const msg = (e && e.message) || String(e);

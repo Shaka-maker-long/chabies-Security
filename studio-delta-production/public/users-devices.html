@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Devices</title>
+  <script src="/sd-pwa.js?v=pwa-stg1"></script>
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; --warn:#b54708; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-start; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:4px 0 0; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .msg { font-size:12px; color:var(--muted); margin-left:auto; }
+    .wrap { padding:16px; max-width:1100px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; margin:0 0 16px; }
+    .card h2 { font-family: Outfit, Inter, sans-serif; font-size:16px; margin:0 0 8px; }
+    p.help { color:var(--muted); font-size:13px; max-width:900px; margin:0 0 12px; }
+    .warn { color:var(--warn); font-weight:600; }
+    .ok { color:var(--ok); }
+    .empty { color:var(--muted); font-size:13px; padding:8px 0; }
+    table { border-collapse:collapse; width:100%; background:#fff; font-size:13px; }
+    th, td { border:1px solid var(--line); padding:8px; text-align:left; vertical-align:top; }
+    th { background:var(--head); }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:6px 10px; font-weight:600; cursor:pointer; font:inherit; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#b42318; border-color:#b42318; }
+    .actions { display:flex; flex-wrap:wrap; gap:6px; }
+    .pill { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+    .pill.ok { background:#dcfae6; color:var(--ok); }
+    .pill.warn { background:#fffaeb; color:var(--warn); }
+    .pill.bad { background:#fee4e2; color:var(--bad); }
+    .meta { color:var(--muted); font-size:12px; margin-top:2px; }
+    code { font-size:11px; background:#eef2f6; padding:1px 5px; border-radius:4px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <nav class="tabs" aria-label="Users views">
+        <a href="/users">People</a>
+        <a class="on" data-manage-only href="/users/devices">Devices</a>
+        <a data-manage-only href="/users/backup">Backup</a>
+      </nav>
+      <h1>Devices</h1>
+    </div>
+    <span class="msg" id="status"></span>
+    <button class="ghost" type="button" onclick="load()">Refresh</button>
+  </header>
+  <div class="wrap">
+    <p class="help">Only approved phones and computers can log in. The first successful login on a new system auto-approves that device. After that, a new laptop or phone waits here until you approve it — same idea as Gmail on a new device.</p>
+    <p class="help" id="thisDevice"></p>
+
+    <section class="card">
+      <h2>Waiting for approval <span id="pendingCount"></span></h2>
+      <p class="help warn">Someone entered a correct name and access code from a device that is not approved yet.</p>
+      <div id="pendingBox"><div class="empty">Loading…</div></div>
+    </section>
+
+    <section class="card">
+      <h2>Approved devices <span id="approvedCount"></span></h2>
+      <p class="help">These devices may log in. Revoke a lost phone or old laptop so it cannot sign in again.</p>
+      <div id="approvedBox"><div class="empty">Loading…</div></div>
+    </section>
+
+    <section class="card">
+      <h2>Revoked</h2>
+      <div id="revokedBox"><div class="empty">Loading…</div></div>
+    </section>
+  </div>
+  <script src="/office-auth.js?v=devices-1"></script>
+  <script>
+    function esc(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+    }
+    function when(iso) {
+      if (!iso) return "—";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return esc(iso);
+      return d.toLocaleString("en-ZA", { timeZone: "Africa/Johannesburg" });
+    }
+    function statusPill(status) {
+      if (status === "approved") return "<span class='pill ok'>Approved</span>";
+      if (status === "pending") return "<span class='pill warn'>Pending</span>";
+      return "<span class='pill bad'>Revoked</span>";
+    }
+    function rowHtml(row, mode) {
+      const actions = [];
+      if (mode === "pending") {
+        actions.push("<button type='button' data-act='approve' data-id='" + esc(row.id) + "'>Approve</button>");
+        actions.push("<button class='ghost' type='button' data-act='remove' data-id='" + esc(row.id) + "'>Remove</button>");
+      } else if (mode === "approved") {
+        actions.push("<button class='danger' type='button' data-act='revoke' data-id='" + esc(row.id) + "'>Revoke</button>");
+      } else {
+        actions.push("<button type='button' data-act='approve' data-id='" + esc(row.id) + "'>Approve again</button>");
+        actions.push("<button class='ghost' type='button' data-act='remove' data-id='" + esc(row.id) + "'>Remove</button>");
+      }
+      return "<tr>" +
+        "<td>" + esc(row.label) + "<div class='meta'>" + statusPill(row.status) +
+          " · id <code>" + esc(row.id.slice(0, 10)) + "…</code></div></td>" +
+        "<td>" + esc(row.requestedBy || row.lastUser || "—") +
+          "<div class='meta'>Last user " + esc(row.lastUser || "—") + "</div></td>" +
+        "<td>" + esc(row.lastIp || "—") + "</td>" +
+        "<td>First seen " + when(row.createdAt) +
+          "<div class='meta'>Last seen " + when(row.lastSeenAt || row.updatedAt) + "</div>" +
+          (row.approvedBy ? "<div class='meta'>Approved by " + esc(row.approvedBy) + " · " + when(row.approvedAt) + "</div>" : "") +
+          (row.revokedBy ? "<div class='meta'>Revoked by " + esc(row.revokedBy) + " · " + when(row.revokedAt) + "</div>" : "") +
+        "</td>" +
+        "<td><div class='actions'>" + actions.join("") + "</div></td>" +
+        "</tr>";
+    }
+    function tableFor(rows, mode, emptyText) {
+      if (!(rows || []).length) return "<div class='empty'>" + esc(emptyText) + "</div>";
+      return "<table><thead><tr><th>Device</th><th>Who</th><th>IP</th><th>When</th><th></th></tr></thead><tbody>" +
+        rows.map((row) => rowHtml(row, mode)).join("") + "</tbody></table>";
+    }
+    function bindActions(box) {
+      box.querySelectorAll("[data-act]").forEach((btn) => {
+        btn.onclick = async () => {
+          const id = btn.getAttribute("data-id");
+          const act = btn.getAttribute("data-act");
+          document.getElementById("status").textContent = "Saving…";
+          let r;
+          if (act === "approve") r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id) + "/approve", { method: "POST", body: "{}" });
+          else if (act === "revoke") r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id) + "/revoke", { method: "POST", body: "{}" });
+          else r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id), { method: "DELETE" });
+          const j = await r.json();
+          if (!j.ok) {
+            document.getElementById("status").textContent = j.error || "Could not update";
+            return;
+          }
+          paint(j);
+          document.getElementById("status").textContent = "Updated.";
+        };
+      });
+    }
+    function paint(j) {
+      document.getElementById("pendingCount").textContent = j.pendingCount ? "(" + j.pendingCount + ")" : "";
+      document.getElementById("approvedCount").textContent = j.approvedCount ? "(" + j.approvedCount + ")" : "";
+      const pendingBox = document.getElementById("pendingBox");
+      const approvedBox = document.getElementById("approvedBox");
+      const revokedBox = document.getElementById("revokedBox");
+      pendingBox.innerHTML = tableFor(j.pending, "pending", "No devices waiting.");
+      approvedBox.innerHTML = tableFor(j.approved, "approved", "No approved devices yet.");
+      revokedBox.innerHTML = tableFor(j.revoked, "revoked", "No revoked devices.");
+      bindActions(pendingBox);
+      bindActions(approvedBox);
+      bindActions(revokedBox);
+      const mine = typeof sdDeviceId === "function" ? sdDeviceId() : "";
+      const thisLine = document.getElementById("thisDevice");
+      const hit = (j.devices || []).find((row) => row.id === mine);
+      if (hit) {
+        thisLine.innerHTML = "This browser is <b>" + esc(hit.label) + "</b> · " + statusPill(hit.status);
+      } else {
+        thisLine.textContent = mine
+          ? "This browser has device id " + mine.slice(0, 10) + "… and is not on the list yet (log in once to register it)."
+          : "";
+      }
+    }
+    async function load() {
+      document.getElementById("status").textContent = "Loading…";
+      const r = await sdOfficeFetch("/api/office/devices");
+      const j = await r.json();
+      if (!j.ok) {
+        document.getElementById("status").textContent = j.error || "Could not load devices";
+        return;
+      }
+      paint(j);
+      document.getElementById("status").textContent =
+        (j.approvedCount || 0) + " approved · " + (j.pendingCount || 0) + " waiting";
+    }
+    sdRequireOffice("users").then((p) => {
+      if (!p) return;
+      if (!p.canManageUsers) {
+        location.replace("/users");
+        return;
+      }
+      load();
+    });
+  </script>
+</body>
+</html>

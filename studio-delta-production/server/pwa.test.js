@@ -67,6 +67,7 @@ const pages = [
   "public/dropdowns.html",
   "public/debtors.html",
   "public/users.html",
+  "public/users-devices.html",
   "public/users-backup.html",
   "public/durations.html",
   "public/planning.html",
