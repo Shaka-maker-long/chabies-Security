@@ -1,5 +1,5 @@
 /* Studio Delta PWA — live office/floor data is never cached. */
-const CACHE = "sd-pwa-v14-offline-vendor";
+const CACHE = "sd-pwa-v15-facility-floor";
 const PRECACHE = [
   "/offline.html",
   "/manifest.webmanifest",
@@ -7,6 +7,7 @@ const PRECACHE = [
   "/sd-brand.css?v=logged-in-2",
   "/sd-splash.js?v=erp-shell",
   "/office-auth.js?v=marketing-3",
+  "/facility-floor.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png",

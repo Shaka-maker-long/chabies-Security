@@ -39,8 +39,10 @@ assert.ok(pwaJs.indexOf("serviceWorker") !== -1);
 assert.ok(pwaJs.indexOf("beforeinstallprompt") !== -1);
 
 const offline = fs.readFileSync(path.join(publicDir, "offline.html"), "utf8");
-assert.ok(offline.indexOf("offline") !== -1);
+assert.ok(/offline/i.test(offline));
 assert.ok(offline.indexOf("Studio Delta") !== -1);
+assert.ok(fs.existsSync(path.join(publicDir, "facility-floor.png")), "Home twin needs facility-floor.png");
+assert.ok(sw.indexOf("facility-floor.png") !== -1, "PWA precaches the facility floor image");
 
 const indexJs = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
 assert.ok(indexJs.indexOf("/manifest.webmanifest") !== -1);
