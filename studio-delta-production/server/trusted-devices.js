@@ -311,10 +311,17 @@ function bootstrapCodeMatches(raw) {
   }
 }
 
+function userHasApprovedDevice(store, userName) {
+  const want = nameKey(userName);
+  if (!want) return false;
+  return (store.devices || []).some((row) => row.status === "approved" && isAssignedTo(row, userName));
+}
+
 /**
  * After credentials are verified:
  * - device must be approved AND assigned to this person (no first-login auto-approve)
- * - when the shop has zero approved devices, Manager may unlock the first device with DEVICE_BOOTSTRAP_CODE
+ * - Manager may unlock THEIR first device with DEVICE_BOOTSTRAP_CODE (even if other
+ *   people already have approved phones — avoids locking the Manager out)
  * - everyone else waits under Users → Devices until the Manager assigns the phone/computer to them
  */
 function assertLoginAllowed(meta) {
@@ -347,19 +354,10 @@ function assertLoginAllowed(meta) {
     return { ok: true, device: publicDevice(existing) };
   }
 
-  // First Manager device only: empty trusted list + matching DEVICE_BOOTSTRAP_CODE.
-  if (approvedCount(store) === 0 && bootstrapCodeMatches(meta && meta.bootstrapCode)) {
-    const canBootstrap = !!(meta && meta.canManageUsers);
-    if (!canBootstrap) {
-      const pending = upsertPending(store, deviceId, info);
-      return {
-        ok: false,
-        pending: true,
-        needsBootstrap: true,
-        device: publicDevice(pending),
-        error: "No devices are approved yet. The Manager must unlock the first device with the bootstrap code, then approve everyone else under Users → Devices."
-      };
-    }
+  // Manager unlock: matching DEVICE_BOOTSTRAP_CODE + this Manager has no approved device yet.
+  const wantsBootstrap = bootstrapCodeMatches(meta && meta.bootstrapCode);
+  const managerUnlock = !!(meta && meta.canManageUsers) && wantsBootstrap && !userHasApprovedDevice(store, userName);
+  if (managerUnlock) {
     const row = approveNow(store, deviceId, info, userName + " (bootstrap)");
     return { ok: true, bootstrapped: true, device: publicDevice(row) };
   }
@@ -367,10 +365,16 @@ function assertLoginAllowed(meta) {
   const pending = upsertPending(store, deviceId, info);
   const assigned = (pending.assignedUsers || []).join(", ");
   const forWho = userName || "this person";
+  const managerNeedsUnlock = !!(meta && meta.canManageUsers) && !userHasApprovedDevice(store, userName);
   let error;
-  if (approvedCount(store) === 0) {
-    error = "No devices are approved yet. Ask the Manager to unlock the first device (bootstrap code), then approve " +
-      forWho + " under Users → Devices.";
+  if (managerNeedsUnlock) {
+    if (!bootstrapCodeConfigured()) {
+      error = "This Manager device is not approved yet. Set DEVICE_BOOTSTRAP_CODE on Railway, restart, then enter that unlock code on the login screen.";
+    } else if (wantsBootstrap) {
+      error = "That unlock code is wrong. Check DEVICE_BOOTSTRAP_CODE on Railway and try again.";
+    } else {
+      error = "This Manager device is not approved yet. Enter the first-device unlock code (DEVICE_BOOTSTRAP_CODE from Railway), then try again. After that you can approve everyone else under Users → Devices.";
+    }
   } else if (pending.status === "approved" && assigned) {
     error = "This device is assigned to " + assigned + ". " + forWho +
       " needs Manager approval under Users → Devices before logging in here.";
@@ -380,7 +384,8 @@ function assertLoginAllowed(meta) {
   return {
     ok: false,
     pending: true,
-    needsBootstrap: approvedCount(store) === 0,
+    needsBootstrap: managerNeedsUnlock,
+    bootstrapConfigured: !!bootstrapCodeConfigured(),
     device: publicDevice(pending),
     error
   };

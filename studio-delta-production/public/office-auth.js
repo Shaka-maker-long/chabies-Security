@@ -300,15 +300,22 @@ function sdShowLogin(message) {
       (message ? "<p data-login-hint>" + message + "</p>" : "") +
       "<label>Name</label><input name='name' autocomplete='username'>" +
       "<label>Access code</label><input name='password' type='password' autocomplete='current-password'>" +
-      "<div data-bootstrap-wrap style='display:none'>" +
-      "<label>First-device unlock code</label>" +
-      "<input name='bootstrapCode' type='password' autocomplete='off' placeholder='Manager only — first device'>" +
-      "<p style='font-size:12px;color:#667085;margin:6px 0 0'>Required only when no devices are approved yet.</p>" +
-      "</div>" +
+      "<label>First-device unlock code <span style='font-weight:400;color:#667085'>(Manager only)</span></label>" +
+      "<input name='bootstrapCode' type='password' autocomplete='off' placeholder='From Railway DEVICE_BOOTSTRAP_CODE'>" +
+      "<p style='font-size:12px;color:#667085;margin:6px 0 0'>Needed once on a new Manager phone. Leave blank if already approved.</p>" +
+      "<p data-login-error style='display:none;color:#b54708;font-size:13px;font-weight:600;margin:12px 0 0'></p>" +
       "<button type='submit'>Log in</button>" +
       "<p style='margin:14px 0 0;text-align:center'><a href='/'>Back to floor</a></p></form>";
     document.body.appendChild(wrap);
-    const bootWrap = wrap.querySelector("[data-bootstrap-wrap]");
+    const errEl = wrap.querySelector("[data-login-error]");
+    function showErr(msg) {
+      if (!errEl) {
+        alert(msg);
+        return;
+      }
+      errEl.style.display = "";
+      errEl.textContent = msg;
+    }
     wrap.querySelector("form").onsubmit = async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
@@ -319,20 +326,23 @@ function sdShowLogin(message) {
       };
       const boot = String(fd.get("bootstrapCode") || "").trim();
       if (boot) body.bootstrapCode = boot;
-      const r = await fetch("/api/office/login", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "Content-Type": "application/json", "x-sd-device-id": sdDeviceId() },
-        body: JSON.stringify(body)
-      });
-      const j = await r.json();
-      if (!j.ok) {
-        if (j.needsBootstrap && bootWrap) bootWrap.style.display = "";
-        const msg = j.error
-          || (j.pendingDevice
-            ? "This device is waiting for Manager approval under Users → Devices. You cannot log in until it is linked to you."
-            : "Login failed");
-        alert(msg);
+      let j;
+      try {
+        const r = await fetch("/api/office/login", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json", "x-sd-device-id": sdDeviceId() },
+          body: JSON.stringify(body)
+        });
+        j = await r.json();
+      } catch (err) {
+        showErr("Connection error. Try again.");
+        return;
+      }
+      if (!j || !j.ok) {
+        showErr((j && j.error) || (j && j.pendingDevice
+          ? "This device is waiting for Manager approval under Users → Devices."
+          : "Login failed"));
         return;
       }
       sdSaveOffice(j);

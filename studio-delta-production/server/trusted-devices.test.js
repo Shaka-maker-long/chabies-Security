@@ -94,6 +94,35 @@ const samBoot = devices.assertLoginAllowed({
 });
 assert.strictEqual(samBoot.ok, false);
 
+// Second Manager with no personal device can still bootstrap even though Sam's phone exists
+staff.upsertUser({
+  name: "New Manager",
+  access: "Admin",
+  role: "Manager",
+  password: "mgr1",
+  seeDebtors: "Yes"
+});
+const mgrLockout = devices.assertLoginAllowed({
+  deviceId: "d_newmgrphoneabcdefghij",
+  userName: "New Manager",
+  userAgent: "Mozilla/5.0 (iPhone)",
+  ip: "10.0.0.9",
+  canManageUsers: true
+});
+assert.strictEqual(mgrLockout.ok, false);
+assert.strictEqual(mgrLockout.needsBootstrap, true);
+
+const mgrUnlock = devices.assertLoginAllowed({
+  deviceId: "d_newmgrphoneabcdefghij",
+  userName: "New Manager",
+  userAgent: "Mozilla/5.0 (iPhone)",
+  ip: "10.0.0.9",
+  canManageUsers: true,
+  bootstrapCode: "first-device-unlock"
+});
+assert.strictEqual(mgrUnlock.ok, true);
+assert.strictEqual(mgrUnlock.bootstrapped, true);
+
 let snap = devices.approveDevice("d_phonexyz12345678901", "Office Boss", {
   assignedTo: "Sam Floor",
   nickname: "Sam iPhone"
@@ -191,17 +220,17 @@ assert.strictEqual(devices.sessionStillValid("Sam Floor", "d_phone2abcdefghijklm
 
   const login = await api("/api/office/login", {
     method: "POST",
-    headers: { "content-type": "application/json", "x-sd-device-id": "d_laptopabc1234567890" },
+    headers: { "content-type": "application/json", "x-sd-device-id": "d_newmgrphoneabcdefghij" },
     body: JSON.stringify({
-      name: "Office Boss",
-      password: "admin",
-      deviceId: "d_laptopabc1234567890"
+      name: "New Manager",
+      password: "mgr1",
+      deviceId: "d_newmgrphoneabcdefghij"
     })
   });
   assert.strictEqual(login.json.ok, true, JSON.stringify(login.json));
   assert.ok(login.json.deviceId || (login.json.device && login.json.device.id));
   const token = login.json.token;
-  const headers = { "content-type": "application/json", "x-sd-token": token, "x-sd-device-id": "d_laptopabc1234567890" };
+  const headers = { "content-type": "application/json", "x-sd-token": token, "x-sd-device-id": "d_newmgrphoneabcdefghij" };
 
   const pendingLogin = await api("/api/office/login", {
     method: "POST",
@@ -235,7 +264,7 @@ assert.strictEqual(devices.sessionStillValid("Sam Floor", "d_phone2abcdefghijklm
   const bossOnTablet = await api("/api/office/login", {
     method: "POST",
     headers: { "content-type": "application/json", "x-sd-device-id": "d_tablet111222333444" },
-    body: JSON.stringify({ name: "Office Boss", password: "admin", deviceId: "d_tablet111222333444" })
+    body: JSON.stringify({ name: "New Manager", password: "mgr1", deviceId: "d_tablet111222333444" })
   });
   assert.strictEqual(bossOnTablet.json.ok, false);
   assert.strictEqual(bossOnTablet.json.pendingDevice, true);

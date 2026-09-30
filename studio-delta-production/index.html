@@ -1637,11 +1637,12 @@
                 <label class="form-label">Access code</label>
                 <input type="password" id="globalLoginPass" class="form-control" placeholder="Access code" autocomplete="current-password">
               </div>
-              <div class="mb-4 d-none" id="bootstrapCodeWrap">
-                <label class="form-label">First-device unlock code</label>
-                <input type="password" id="globalLoginBootstrap" class="form-control" placeholder="Manager only — first device" autocomplete="off">
-                <div class="form-text">Only when no devices are approved yet. After that, the Manager approves phones under Users → Devices.</div>
+              <div class="mb-3" id="bootstrapCodeWrap">
+                <label class="form-label">First-device unlock code <span class="text-muted fw-normal">(Manager only)</span></label>
+                <input type="password" id="globalLoginBootstrap" class="form-control" placeholder="From Railway DEVICE_BOOTSTRAP_CODE" autocomplete="off">
+                <div class="form-text">Needed once on a new Manager phone/computer. Leave blank if this device is already approved.</div>
               </div>
+              <div id="loginError" class="alert alert-warning d-none py-2 px-3 mb-3" role="alert" style="font-size:0.92rem"></div>
               <button id="btnGlobalLogin" class="btn btn-primary w-100 py-2 fw-bold" onclick="submitGlobalLogin()">LOG IN</button>
             </div>
           </div>
@@ -2994,11 +2995,34 @@
       }
     }
 
+    function showLoginError(msg) {
+      const text = String(msg || "").trim() || "Login failed";
+      const box = document.getElementById("loginError");
+      if (box) {
+        box.textContent = text;
+        box.classList.remove("d-none");
+      }
+      try { showAlert(text); } catch (e) {
+        try { window.alert(text); } catch (err) {}
+      }
+    }
+    function clearLoginError() {
+      const box = document.getElementById("loginError");
+      if (box) {
+        box.textContent = "";
+        box.classList.add("d-none");
+      }
+    }
+
     function showAlert(msg) { 
       const el = document.getElementById('alertMsg');
       if (el) el.innerText = msg; 
-      if (alertModal) alertModal.show();
-      else window.alert(msg);
+      try {
+        if (alertModal) alertModal.show();
+        else window.alert(msg);
+      } catch (e) {
+        try { window.alert(msg); } catch (err) {}
+      }
     }
     function showConfirm(msg, cb) { 
       document.getElementById('confirmMsg').innerText = msg; 
@@ -4587,41 +4611,54 @@
       const bootEl = document.getElementById('globalLoginBootstrap');
       const bootstrapCode = bootEl ? String(bootEl.value || '').trim() : '';
       if (!name || !pass) {
-        showAlert("Please enter both name and password.");
+        showLoginError("Please enter both name and access code.");
         return;
       }
       
       const btn = document.getElementById('btnGlobalLogin');
       const origText = btn.innerHTML;
       if (btn.disabled) return;
+      clearLoginError();
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> LOGGING IN...';
       btn.disabled = true;
 
       const opts = {};
       if (bootstrapCode) opts.bootstrapCode = bootstrapCode;
 
-      google.script.run.withSuccessHandler(res => {
+      function finishBtn() {
         btn.innerHTML = origText;
         btn.disabled = false;
-        if(res.success) {
-          if (res.token) session.token = res.token;
-          const go = function () { applyLoginProfile(res, { welcome: true }); };
-          const synced = syncOfficeLogin(name, pass, res, opts);
-          if (synced && typeof synced.then === 'function') synced.then(go, go);
-          else go();
-        } else {
+      }
+
+      google.script.run.withSuccessHandler(res => {
+        finishBtn();
+        try {
+          if (!res) {
+            showLoginError("No response from the server. Check your connection and try again.");
+            return;
+          }
+          if (res.success) {
+            if (res.token) session.token = res.token;
+            // Open the app immediately; sync office cookie in the background.
+            applyLoginProfile(res, { welcome: true });
+            try { syncOfficeLogin(name, pass, res, opts); } catch (e) {}
+            return;
+          }
           if (res.needsBootstrap) {
             const wrap = document.getElementById('bootstrapCodeWrap');
             if (wrap) wrap.classList.remove('d-none');
+            const boot = document.getElementById('globalLoginBootstrap');
+            if (boot) boot.focus();
           }
-          showAlert(res.error || (res.pendingDevice
+          showLoginError(res.error || (res.pendingDevice
             ? 'This device is waiting for Manager approval under Users → Devices.'
-            : 'Login failed'));
+            : 'Incorrect name or access code'));
+        } catch (e) {
+          showLoginError((e && e.message) ? e.message : String(e));
         }
       }).withFailureHandler(err => {
-        btn.innerHTML = origText;
-        btn.disabled = false;
-        showAlert("Connection error: " + err);
+        finishBtn();
+        showLoginError("Connection error: " + err);
       }).verifyGlobalLogin(name, pass, opts);
     }
 

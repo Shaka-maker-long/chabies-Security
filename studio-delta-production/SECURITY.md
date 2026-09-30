@@ -20,7 +20,7 @@ How this app maps to the shop security checklist. Archive a copy of this file wi
 ## Device approval (no auto-trust)
 
 1. Set a long random `DEVICE_BOOTSTRAP_CODE` on Railway (and keep it offline).
-2. Manager logs in once with name + access code + bootstrap code → their phone/PC is approved and assigned to them.
+2. Manager logs in once with name + access code + bootstrap code → that phone/PC is approved for them (works even if other people’s devices are already listed).
 3. Everyone else (including staff who already downloaded the PWA) gets **pending** until the Manager assigns the device under **Users → Devices**.
 4. Revoke a lost phone → their sessions end immediately.
 
