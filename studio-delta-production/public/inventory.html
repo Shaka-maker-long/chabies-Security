@@ -183,14 +183,17 @@
         <label>Name
           <input id="matName" required placeholder="Profile or glass type" autocomplete="off">
         </label>
-        <label id="matUnitWrap" hidden>Buy unit
-          <input id="matBuyUnit" readonly>
+        <label id="matUnitWrap" hidden>Unit
+          <select id="matBuyUnit">
+            <option value="length">length (6 m)</option>
+            <option value="sheet">sheet</option>
+          </select>
         </label>
         <label>Current stock
           <input id="matStock" inputmode="decimal" placeholder="0">
         </label>
-        <label id="matWipWrap" hidden>Stock in WIP
-          <input id="matWip" inputmode="decimal" placeholder="0" readonly title="Filled when auto-deduct is enabled">
+        <label id="matWipWrap" hidden>WIP Qty
+          <input id="matWip" inputmode="decimal" placeholder="0" readonly title="From Steel_Usage on orders not yet Delivered">
         </label>
         <label>Ordered
           <input id="matOrdered" inputmode="decimal" placeholder="0">
@@ -205,7 +208,7 @@
           <input id="matPurchased" inputmode="decimal" placeholder="0">
         </label>
         <label id="matUsedWrap" hidden>Total used
-          <input id="matUsed" inputmode="decimal" placeholder="0">
+          <input id="matUsed" inputmode="decimal" placeholder="0" title="Defaults from Steel_Usage on Delivered orders">
         </label>
         <button type="submit">Save line</button>
         <span class="msg" id="matMsg"></span>
@@ -617,11 +620,11 @@
       document.getElementById("q").placeholder = "Search purchase orders";
     }
     if (pathTab === "steel") {
-      document.getElementById("lede").textContent = "Steel stock in buy units: lengths (6 m) for tubes/bars/angle, sheets for plates. Unit price is per length or per sheet. Auto-deduct to WIP is off until on-hand counts are loaded.";
+      document.getElementById("lede").textContent = "Steel stock in buy units: lengths (6 m) for tubes/bars/angle, sheets for plates. Click a row to edit name, unit, current stock, unit price, ROP, and total used. WIP Qty and Value come from Steel_Usage on orders that are not Delivered.";
       document.getElementById("matTitle").textContent = "Steel";
-      document.getElementById("matHint").textContent = "Current stock, WIP, ordered, unit price (per length / sheet), ROP, value in stock / WIP, total purchased and used. Click a row to edit name, stock, ordered, price, ROP, purchased, and used.";
+      document.getElementById("matHint").textContent = "Editable: name, unit, current stock, ordered, unit price, ROP, total purchased, total used. WIP Qty / Value WIP are live from undelivered steel usage (metres → lengths, m² → sheets).";
       document.getElementById("matDeductNote").hidden = false;
-      document.getElementById("matDeductNote").textContent = "Auto-deduct is disabled: allocating steel will not move Current → WIP yet, and Delivered will not move WIP → used yet.";
+      document.getElementById("matDeductNote").textContent = "Auto-deduct of Current stock is still off. WIP Qty already follows Steel_Usage by order status.";
       document.getElementById("matUnitWrap").hidden = false;
       document.getElementById("matWipWrap").hidden = false;
       document.getElementById("matPurchasedWrap").hidden = false;
@@ -655,7 +658,7 @@
       document.getElementById("matRop").value = row.ropLabel;
       document.getElementById("matPrice").value = row.unitPrice == null ? "" : String(row.unitPrice);
       const buy = document.getElementById("matBuyUnit");
-      if (buy) buy.value = row.buyUnitLabel || "";
+      if (buy) buy.value = row.buyUnit === "sheet" ? "sheet" : "length";
       const wip = document.getElementById("matWip");
       if (wip) wip.value = row.wipLabel != null ? row.wipLabel : "0";
       const purchased = document.getElementById("matPurchased");
@@ -679,9 +682,9 @@
       }
       if (matKind === "steel") {
         box.innerHTML = "<table><thead><tr>" +
-          "<th>Name</th><th>Unit</th><th class='r'>Current Stock</th><th class='r'>Stock in WIP</th>" +
+          "<th>Name</th><th>Unit</th><th class='r'>Current Stock</th><th class='r'>WIP Qty</th>" +
           "<th class='r'>Ordered Stock</th><th class='r'>Unit Price</th><th class='r'>ROP</th>" +
-          "<th class='r'>Value in stock</th><th class='r'>Value in WIP</th>" +
+          "<th class='r'>Value in stock</th><th class='r'>Value WIP</th>" +
           "<th class='r'>Total purchased</th><th class='r'>Total used</th>" +
           "</tr></thead><tbody>" +
           rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-name=\"" + esc(row.name) + "\">" +
@@ -739,6 +742,7 @@
       if (matKind === "steel") {
         payload.totalPurchased = document.getElementById("matPurchased").value;
         payload.totalUsed = document.getElementById("matUsed").value;
+        payload.buyUnit = document.getElementById("matBuyUnit").value;
       }
       const r = await sdOfficeFetch("/api/office/inventory/" + matKind, {
         method: "POST",

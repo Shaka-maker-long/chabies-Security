@@ -4,7 +4,8 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { dataDir, getBook } = require("./workbook-store");
-const { parseMoney, money, formatRand } = require("./db");
+const { parseMoney, money, formatRand, listOrders, formatOrderId } = require("./db");
+const { normalizeShopStatus } = require("./shop-status");
 const steelRates = require("./steel-rates");
 const glassRates = require("./glass-rates");
 
@@ -114,8 +115,109 @@ function steelBuyUnit(name) {
   return isPlateName(name) ? "sheet" : "length";
 }
 
-function steelBuyUnitLabel(name) {
-  return isPlateName(name) ? "sheet" : "length (6 m)";
+function resolveBuyUnit(name, extra) {
+  const raw = extra && extra.buyUnit != null ? String(extra.buyUnit).trim().toLowerCase() : "";
+  if (raw === "sheet" || raw === "length") return raw;
+  return steelBuyUnit(name);
+}
+
+function buyUnitLabelFor(buyUnit) {
+  return buyUnit === "sheet" ? "sheet" : "length (6 m)";
+}
+
+function steelBuyUnitLabel(name, extra) {
+  return buyUnitLabelFor(resolveBuyUnit(name, extra));
+}
+
+function parseBuyUnit(raw) {
+  const s = String(raw == null ? "" : raw).trim().toLowerCase();
+  if (!s) return null;
+  if (s === "sheet" || s.indexOf("sheet") !== -1) return "sheet";
+  if (s === "length" || s.indexOf("length") !== -1 || s.indexOf("6 m") !== -1 || s.indexOf("6m") !== -1) return "length";
+  throw new Error("Buy unit must be length or sheet.");
+}
+
+function steelTypeKeys(type) {
+  const raw = String(type || "").replace(/\s+/g, " ").trim();
+  if (!raw) return [];
+  const keys = [nameKey(raw)];
+  if (raw.indexOf(" - ") !== -1) keys.push(nameKey(raw.split(" - ").slice(-1)[0]));
+  return keys.filter(Boolean);
+}
+
+function steelTypesMatch(a, b) {
+  const ak = steelTypeKeys(a);
+  const bk = steelTypeKeys(b);
+  return ak.some((k) => bk.indexOf(k) !== -1);
+}
+
+function allocationQty(size) {
+  return parseFloat(String(size == null ? "" : size).replace(/,/g, "").replace(/[^\d.-]/g, "")) || 0;
+}
+
+function readSteelUsageRows() {
+  try {
+    const sheet = getBook().getSheetByName("Steel_Usage");
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    return sheet.getRange(2, 1, sheet.getLastRow() - 1, 6).getValues().map((row) => ({
+      orderNum: String(row[1] || "").trim(),
+      type: String(row[4] || "").trim(),
+      size: row[5]
+    })).filter((row) => row.orderNum && row.type);
+  } catch (e) {
+    return [];
+  }
+}
+
+function orderDeliveredById() {
+  const map = {};
+  try {
+    listOrders().forEach((order) => {
+      const id = formatOrderId(order.order_number) || String(order.order_number || "").trim();
+      if (!id) return;
+      map[id] = normalizeShopStatus(order.status) === "Delivered";
+    });
+  } catch (e) {}
+  return map;
+}
+
+/**
+ * Allocated metres (or m² for plates) from Steel_Usage, split by order status.
+ * Not Delivered → WIP; Delivered → used.
+ */
+function steelUsageAllocByName(names) {
+  const buckets = {};
+  (names || []).forEach((name) => {
+    buckets[nameKey(name)] = { name, wipAlloc: 0, usedAlloc: 0 };
+  });
+  const delivered = orderDeliveredById();
+  readSteelUsageRows().forEach((row) => {
+    const qty = allocationQty(row.size);
+    if (!(qty > 0)) return;
+    const orderId = formatOrderId(row.orderNum) || row.orderNum;
+    const isDelivered = !!delivered[orderId];
+    let hitKey = null;
+    for (let i = 0; i < (names || []).length; i++) {
+      if (steelTypesMatch(row.type, names[i])) {
+        hitKey = nameKey(names[i]);
+        break;
+      }
+    }
+    if (!hitKey) {
+      hitKey = nameKey(row.type);
+      if (!buckets[hitKey]) buckets[hitKey] = { name: row.type, wipAlloc: 0, usedAlloc: 0 };
+    }
+    if (isDelivered) buckets[hitKey].usedAlloc = Math.round((buckets[hitKey].usedAlloc + qty) * 1000) / 1000;
+    else buckets[hitKey].wipAlloc = Math.round((buckets[hitKey].wipAlloc + qty) * 1000) / 1000;
+  });
+  return buckets;
+}
+
+function allocToBuyUnits(allocQty, buyUnit, sheetAreaM2) {
+  const qty = Number(allocQty) || 0;
+  if (!(qty > 0)) return 0;
+  if (buyUnit === "sheet") return m2ToSheets(qty, sheetAreaM2);
+  return metresToLengths(qty);
 }
 
 /** Metres allocated → lengths to deduct (6 m = 1 length). */
@@ -169,15 +271,19 @@ function decorateGlass(name, extra, priceFromRate, orderedFromOrders) {
   };
 }
 
-function decorateSteel(name, extra, ratePerM) {
-  const buyUnit = steelBuyUnit(name);
+function decorateSteel(name, extra, ratePerM, usageAlloc) {
+  const buyUnit = resolveBuyUnit(name, extra);
   const sheetArea = buyUnit === "sheet" ? plateSheetAreaM2(name) : null;
   const stock = extra && extra.stock != null ? Number(extra.stock) || 0 : 0;
-  const wipStock = extra && extra.wipStock != null ? Number(extra.wipStock) || 0 : 0;
   const orderedQty = extra && extra.orderedQty != null ? Number(extra.orderedQty) || 0 : 0;
   const totalPurchased = extra && extra.totalPurchased != null ? Number(extra.totalPurchased) || 0 : 0;
-  const totalUsed = extra && extra.totalUsed != null ? Number(extra.totalUsed) || 0 : 0;
   const minThreshold = extra && extra.minThreshold != null ? Number(extra.minThreshold) || 0 : 0;
+  const wipAlloc = usageAlloc && usageAlloc.wipAlloc != null ? Number(usageAlloc.wipAlloc) || 0 : 0;
+  const usedAlloc = usageAlloc && usageAlloc.usedAlloc != null ? Number(usageAlloc.usedAlloc) || 0 : 0;
+  const wipStock = allocToBuyUnits(wipAlloc, buyUnit, sheetArea);
+  const usedFromUsage = allocToBuyUnits(usedAlloc, buyUnit, sheetArea);
+  const hasStoredUsed = !!(extra && Object.prototype.hasOwnProperty.call(extra, "totalUsed") && extra.totalUsed != null && String(extra.totalUsed).trim() !== "");
+  const totalUsed = hasStoredUsed ? Number(extra.totalUsed) || 0 : usedFromUsage;
   const defaultPrice = buyUnit === "length" ? defaultLengthUnitPrice(ratePerM) : null;
   const unitPrice = extra && extra.unitPrice != null && extra.unitPrice !== ""
     ? Number(extra.unitPrice)
@@ -192,19 +298,24 @@ function decorateSteel(name, extra, ratePerM) {
     id: extra && extra.id ? extra.id : "",
     name,
     buyUnit,
-    buyUnitLabel: steelBuyUnitLabel(name),
+    buyUnitLabel: buyUnitLabelFor(buyUnit),
     lengthM: buyUnit === "length" ? STEEL_LENGTH_M : null,
     sheetAreaM2: sheetArea,
     stock,
     stockLabel: formatQty(stock),
     wipStock,
+    wipQty: wipStock,
     wipLabel: formatQty(wipStock),
+    wipAlloc,
+    wipAllocLabel: formatQty(wipAlloc),
     orderedQty,
     orderedLabel: formatQty(orderedQty),
     totalPurchased,
     purchasedLabel: formatQty(totalPurchased),
     totalUsed,
+    usedFromUsage,
     usedLabel: formatQty(totalUsed),
+    usedFromUsageLabel: formatQty(usedFromUsage),
     minThreshold,
     ropLabel: formatQty(minThreshold),
     unitPrice,
@@ -246,15 +357,23 @@ function steelProfileNames() {
   } catch (e) {}
   (steelRates.snapshotRates().rates || []).forEach((row) => add(row.type));
   (loadKind(steelPath()).items || []).forEach((row) => add(row.name));
+  readSteelUsageRows().forEach((row) => add(row.type));
   return names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
 function snapshotSteel() {
   const store = loadKind(steelPath());
   const extras = extraByName(store);
-  const items = steelProfileNames().map((name) => {
+  const names = steelProfileNames();
+  const usageByName = steelUsageAllocByName(names);
+  const items = names.map((name) => {
     const rate = steelRates.findRate(name);
-    return decorateSteel(name, extras[nameKey(name)], rate ? rate.ratePerM : null);
+    return decorateSteel(
+      name,
+      extras[nameKey(name)],
+      rate ? rate.ratePerM : null,
+      usageByName[nameKey(name)]
+    );
   });
   return {
     items,
@@ -279,12 +398,15 @@ function upsertSteel(body) {
   }
   row.name = name;
   if (body && Object.prototype.hasOwnProperty.call(body, "stock")) row.stock = parseStock(body.stock);
-  if (body && Object.prototype.hasOwnProperty.call(body, "wipStock")) row.wipStock = parseStock(body.wipStock);
   if (body && Object.prototype.hasOwnProperty.call(body, "minThreshold")) row.minThreshold = parseThreshold(body.minThreshold);
   if (body && Object.prototype.hasOwnProperty.call(body, "orderedQty")) row.orderedQty = parseStock(body.orderedQty);
   if (body && Object.prototype.hasOwnProperty.call(body, "totalPurchased")) row.totalPurchased = parseStock(body.totalPurchased);
   if (body && Object.prototype.hasOwnProperty.call(body, "totalUsed")) row.totalUsed = parseStock(body.totalUsed);
   if (body && Object.prototype.hasOwnProperty.call(body, "unitPrice")) row.unitPrice = parsePrice(body.unitPrice);
+  if (body && Object.prototype.hasOwnProperty.call(body, "buyUnit")) {
+    const unit = parseBuyUnit(body.buyUnit);
+    if (unit) row.buyUnit = unit;
+  }
   saveKind(steelPath(), store);
   return snapshotSteel();
 }
@@ -426,6 +548,8 @@ module.exports = {
   parsePlateSheetMm,
   plateSheetAreaM2,
   steelBuyUnit,
+  resolveBuyUnit,
+  steelTypesMatch,
   metresToLengths,
   m2ToSheets,
   defaultLengthUnitPrice,

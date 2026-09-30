@@ -14,6 +14,7 @@ delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
 const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const staff = require("./staff");
+const db = require("./db");
 const { mountOffice } = require("./office");
 const steelRates = require("./steel-rates");
 const glassRates = require("./glass-rates");
@@ -76,19 +77,64 @@ assert.ok(saved.priceLabel.indexOf("50.00") !== -1);
 steel = inventory.upsertSteel({
   name: "25x25 SHS",
   previousName: "25x25 SHS",
-  wipStock: "3",
+  buyUnit: "length",
   unitPrice: "50"
 });
-const withWip = steel.items.find((row) => row.name === "25x25 SHS");
-assert.strictEqual(withWip.wipStock, 3);
-assert.strictEqual(withWip.valueInWip, 150);
+const withUnit = steel.items.find((row) => row.name === "25x25 SHS");
+assert.strictEqual(withUnit.buyUnit, "length");
+
+db.upsertOrder({
+  order_number: "S-STEEL-WIP",
+  product: "Gate",
+  status: "Welding",
+  price_excl_vat: "1000.00"
+});
+db.upsertOrder({
+  order_number: "S-STEEL-DONE",
+  product: "Gate",
+  status: "Delivered",
+  price_excl_vat: "1000.00"
+});
+const start = new Date("2026-09-09T06:00:00.000Z");
+getBook().getSheetByName("Steel_Usage").appendRow([
+  start, "S-STEEL-WIP", "Willard", "Welding", "25x25 SHS", 12
+]);
+getBook().getSheetByName("Steel_Usage").appendRow([
+  start, "S-STEEL-DONE", "Willard", "Welding", "25x25 SHS", 6
+]);
+persistWorkbook();
+
+steel = inventory.snapshotSteel();
+const fromUsage = steel.items.find((row) => row.name === "25x25 SHS");
+assert.strictEqual(fromUsage.wipStock, 2, "12 m on undelivered order → 2 lengths in WIP Qty");
+assert.strictEqual(fromUsage.valueInWip, 100, "WIP value = WIP Qty × unit price");
+assert.strictEqual(fromUsage.usedFromUsage, 1, "6 m on Delivered order → 1 length used from usage");
+assert.strictEqual(fromUsage.totalUsed, 3, "stored totalUsed override still wins over usage");
+
+steel = inventory.upsertSteel({
+  name: "25x25 SHS",
+  previousName: "25x25 SHS",
+  stock: "12",
+  unitPrice: "50"
+});
+// clear stored totalUsed by writing usage-default path: delete field via fresh row logic —
+// re-save without totalUsed keeps prior stored 3. Explicitly set to usage by saving usedFromUsage.
+steel = inventory.upsertSteel({
+  name: "25x25 SHS",
+  previousName: "25x25 SHS",
+  totalUsed: "1"
+});
+const usedSynced = steel.items.find((row) => row.name === "25x25 SHS");
+assert.strictEqual(usedSynced.totalUsed, 1);
+assert.strictEqual(usedSynced.wipQty, 2);
 
 steel = inventory.upsertSteel({
   name: "LATE - 1.2X1220X2450 PLATE",
   stock: "4",
   orderedQty: "2",
   unitPrice: "160.35",
-  totalPurchased: "4"
+  totalPurchased: "4",
+  buyUnit: "sheet"
 });
 const plate = steel.items.find((row) => row.name === "LATE - 1.2X1220X2450 PLATE");
 assert.ok(plate);
