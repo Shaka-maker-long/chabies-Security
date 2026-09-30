@@ -13,6 +13,7 @@ function loadStore() {
   try {
     const parsed = JSON.parse(fs.readFileSync(devicesPath(), "utf8"));
     const devices = Array.isArray(parsed.devices) ? parsed.devices.filter((row) => row && row.id) : [];
+    devices.forEach(ensureRowShape);
     return { devices };
   } catch (e) {
     if (e && e.code !== "ENOENT") {
@@ -41,6 +42,27 @@ function normalizeDeviceId(raw) {
   return id;
 }
 
+function nameKey(name) {
+  return String(name || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function cleanName(name) {
+  return String(name || "").replace(/\s+/g, " ").trim();
+}
+
+function uniqueNames(list) {
+  const out = [];
+  const seen = {};
+  (list || []).forEach((name) => {
+    const n = cleanName(name);
+    const k = nameKey(n);
+    if (!k || seen[k]) return;
+    seen[k] = true;
+    out.push(n);
+  });
+  return out;
+}
+
 function labelFromUserAgent(ua) {
   const s = String(ua || "").trim();
   if (!s) return "Unknown device";
@@ -58,14 +80,55 @@ function labelFromUserAgent(ua) {
   return browser + " on " + os;
 }
 
+function ensureRowShape(row) {
+  if (!row) return row;
+  row.nickname = cleanName(row.nickname);
+  row.assignedUsers = uniqueNames(
+    Array.isArray(row.assignedUsers) ? row.assignedUsers
+      : (row.assignedTo ? [row.assignedTo] : [])
+  );
+  if (!row.assignedUsers.length) {
+    const fallback = cleanName(row.assignedTo || row.requestedBy || row.lastUser || "");
+    if (fallback) row.assignedUsers = [fallback];
+  }
+  row.assignedTo = row.assignedUsers[0] || "";
+  const rawPending = Array.isArray(row.pendingUsers) ? row.pendingUsers : [];
+  const mapped = [];
+  const seen = {};
+  rawPending.forEach((item) => {
+    const name = cleanName(item && item.name != null ? item.name : item);
+    const k = nameKey(name);
+    if (!k || seen[k]) return;
+    seen[k] = true;
+    mapped.push({ name, at: (item && item.at) || "" });
+  });
+  row.pendingUsers = mapped;
+  return row;
+}
+
+function displayLabel(row) {
+  const nick = cleanName(row && row.nickname);
+  const auto = (row && row.label) || "Unknown device";
+  return nick || auto;
+}
+
 function publicDevice(row) {
   if (!row) return null;
+  ensureRowShape(row);
   return {
     id: row.id,
     status: row.status,
     label: row.label || "Unknown device",
+    nickname: row.nickname || "",
+    displayLabel: displayLabel(row),
     userAgent: row.userAgent || "",
     lastIp: row.lastIp || "",
+    assignedTo: row.assignedTo || "",
+    assignedUsers: row.assignedUsers.slice(),
+    pendingUsers: (row.pendingUsers || []).map((item) => ({
+      name: item.name,
+      at: item.at || ""
+    })),
     requestedBy: row.requestedBy || "",
     lastUser: row.lastUser || "",
     createdAt: row.createdAt || "",
@@ -81,23 +144,54 @@ function publicDevice(row) {
 function findDevice(store, deviceId) {
   const want = normalizeDeviceId(deviceId);
   if (!want) return null;
-  return (store.devices || []).find((row) => row.id === want) || null;
+  const row = (store.devices || []).find((item) => item.id === want) || null;
+  if (row) ensureRowShape(row);
+  return row;
 }
 
 function approvedCount(store) {
   return (store.devices || []).filter((row) => row.status === "approved").length;
 }
 
+function isAssignedTo(row, userName) {
+  ensureRowShape(row);
+  const want = nameKey(userName);
+  if (!want) return false;
+  return (row.assignedUsers || []).some((name) => nameKey(name) === want);
+}
+
+function addPendingUser(row, userName) {
+  ensureRowShape(row);
+  const name = cleanName(userName);
+  if (!name) return row;
+  if (isAssignedTo(row, name)) return row;
+  if (!(row.pendingUsers || []).some((item) => nameKey(item.name) === nameKey(name))) {
+    row.pendingUsers.push({ name, at: nowIso() });
+  }
+  row.requestedBy = name;
+  return row;
+}
+
 function touchDevice(row, meta) {
   const now = nowIso();
   row.updatedAt = now;
   row.lastSeenAt = now;
-  if (meta && meta.userName) row.lastUser = String(meta.userName).trim();
+  if (meta && meta.userName) row.lastUser = cleanName(meta.userName);
   if (meta && meta.ip) row.lastIp = String(meta.ip || "").trim();
   if (meta && meta.userAgent) {
     row.userAgent = String(meta.userAgent || "").slice(0, 400);
     if (!row.label || row.label === "Unknown device") row.label = labelFromUserAgent(row.userAgent);
   }
+  if (meta && meta.nickname) row.nickname = cleanName(meta.nickname);
+  return row;
+}
+
+function assignUsers(row, names) {
+  row.assignedUsers = uniqueNames(names);
+  row.assignedTo = row.assignedUsers[0] || "";
+  row.pendingUsers = (row.pendingUsers || []).filter(
+    (item) => !row.assignedUsers.some((name) => nameKey(name) === nameKey(item.name))
+  );
   return row;
 }
 
@@ -106,15 +200,20 @@ function upsertPending(store, deviceId, meta) {
   if (!id) throw new Error("This browser did not send a device id. Refresh and try again.");
   let row = findDevice(store, id);
   const now = nowIso();
+  const userName = cleanName(meta && meta.userName);
   if (!row) {
     row = {
       id,
       status: "pending",
       label: labelFromUserAgent(meta && meta.userAgent),
+      nickname: cleanName(meta && meta.nickname),
       userAgent: String((meta && meta.userAgent) || "").slice(0, 400),
       lastIp: String((meta && meta.ip) || "").trim(),
-      requestedBy: String((meta && meta.userName) || "").trim(),
-      lastUser: String((meta && meta.userName) || "").trim(),
+      assignedTo: "",
+      assignedUsers: [],
+      pendingUsers: userName ? [{ name: userName, at: now }] : [],
+      requestedBy: userName,
+      lastUser: userName,
       createdAt: now,
       updatedAt: now,
       approvedAt: "",
@@ -124,10 +223,14 @@ function upsertPending(store, deviceId, meta) {
       revokedBy: ""
     };
     store.devices.push(row);
+  } else if (row.status === "approved") {
+    // Keep current assignees logged in; queue this person for Manager approval.
+    touchDevice(row, meta);
+    addPendingUser(row, userName);
   } else {
     row.status = "pending";
-    row.requestedBy = String((meta && meta.userName) || row.requestedBy || "").trim();
     touchDevice(row, meta);
+    addPendingUser(row, userName);
     row.revokedAt = "";
     row.revokedBy = "";
     row.approvedAt = "";
@@ -141,19 +244,24 @@ function autoApprove(store, deviceId, meta) {
   const id = normalizeDeviceId(deviceId) || ("d_" + crypto.randomBytes(12).toString("hex"));
   let row = findDevice(store, id);
   const now = nowIso();
+  const userName = cleanName(meta && meta.userName) || "system";
   if (!row) {
     row = {
       id,
       status: "approved",
       label: labelFromUserAgent(meta && meta.userAgent),
+      nickname: cleanName(meta && meta.nickname),
       userAgent: String((meta && meta.userAgent) || "").slice(0, 400),
       lastIp: String((meta && meta.ip) || "").trim(),
-      requestedBy: String((meta && meta.userName) || "").trim(),
-      lastUser: String((meta && meta.userName) || "").trim(),
+      assignedTo: userName,
+      assignedUsers: [userName],
+      pendingUsers: [],
+      requestedBy: userName,
+      lastUser: userName,
       createdAt: now,
       updatedAt: now,
       approvedAt: now,
-      approvedBy: String((meta && meta.userName) || "system").trim() || "system",
+      approvedBy: userName,
       lastSeenAt: now,
       revokedAt: "",
       revokedBy: ""
@@ -162,38 +270,49 @@ function autoApprove(store, deviceId, meta) {
   } else {
     row.status = "approved";
     row.approvedAt = now;
-    row.approvedBy = String((meta && meta.userName) || row.approvedBy || "system").trim() || "system";
+    row.approvedBy = userName;
     row.revokedAt = "";
     row.revokedBy = "";
+    assignUsers(row, [userName].concat(row.assignedUsers || []));
     touchDevice(row, meta);
+    row.pendingUsers = [];
   }
   saveStore(store);
   return row;
 }
 
 function fallbackDeviceId(meta) {
-  const raw = [String((meta && meta.userAgent) || "").trim(), String((meta && meta.ip) || "").trim()].join("|");
+  const raw = [
+    String((meta && meta.userAgent) || "").trim(),
+    String((meta && meta.ip) || "").trim(),
+    String((meta && meta.userName) || "").trim().toLowerCase()
+  ].join("|");
   if (!raw.replace(/\|/g, "").trim()) return "";
   return "d_" + crypto.createHash("sha256").update(raw).digest("hex").slice(0, 24);
 }
 
+function userHasApprovedDevice(store, userName) {
+  const want = nameKey(userName);
+  if (!want) return false;
+  return (store.devices || []).some((row) => row.status === "approved" && isAssignedTo(row, userName));
+}
+
 /**
- * After credentials are verified, decide whether this device may receive a session.
- * Bootstrap: if no approved devices exist yet, auto-approve the first successful login.
+ * After credentials are verified:
+ * - device must be approved AND assigned to this person
+ * - a person's first device is auto-approved and assigned to them
+ * - any further / different device needs Manager approval under Users → Devices
  */
 function assertLoginAllowed(meta) {
   const store = loadStore();
   const deviceId = normalizeDeviceId(meta && meta.deviceId) || fallbackDeviceId(meta);
+  const userName = cleanName(meta && meta.userName);
   const info = {
-    userName: meta && meta.userName,
+    userName,
     userAgent: meta && meta.userAgent,
-    ip: meta && meta.ip
+    ip: meta && meta.ip,
+    nickname: meta && meta.nickname
   };
-
-  if (!approvedCount(store)) {
-    const row = autoApprove(store, deviceId || ("d_" + crypto.randomBytes(12).toString("hex")), info);
-    return { ok: true, bootstrapped: true, device: publicDevice(row) };
-  }
 
   if (!deviceId) {
     return {
@@ -204,19 +323,33 @@ function assertLoginAllowed(meta) {
   }
 
   const existing = findDevice(store, deviceId);
-  if (existing && existing.status === "approved") {
+  if (existing && existing.status === "approved" && isAssignedTo(existing, userName)) {
     touchDevice(existing, info);
     saveStore(store);
     return { ok: true, device: publicDevice(existing) };
   }
 
+  // First device for this person (or empty system): auto-approve and assign.
+  if (!userHasApprovedDevice(store, userName)) {
+    const row = autoApprove(store, deviceId, info);
+    return { ok: true, bootstrapped: true, device: publicDevice(row) };
+  }
+
   const pending = upsertPending(store, deviceId, info);
+  const assigned = (pending.assignedUsers || []).join(", ");
+  const forWho = userName || "this person";
+  let error;
+  if (pending.status === "approved" && assigned) {
+    error = "This device is assigned to " + assigned + ". " + forWho +
+      " needs Manager approval under Users → Devices before logging in here.";
+  } else {
+    error = forWho + " already has an approved device. This one needs Manager approval under Users → Devices.";
+  }
   return {
     ok: false,
     pending: true,
     device: publicDevice(pending),
-    error: "This device is waiting for approval. Ask the Manager to open Users → Devices and approve “" +
-      (pending.label || "this device") + "”."
+    error
   };
 }
 
@@ -224,29 +357,74 @@ function snapshot() {
   const store = loadStore();
   const devices = (store.devices || [])
     .slice()
-    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")))
-    .map(publicDevice);
+    .map((row) => {
+      ensureRowShape(row);
+      return publicDevice(row);
+    })
+    .sort((a, b) => String(b.updatedAt || "").localeCompare(String(a.updatedAt || "")));
+  const pending = [];
+  devices.forEach((row) => {
+    if (row.status === "pending") pending.push(row);
+    else if (row.status === "approved" && (row.pendingUsers || []).length) pending.push(row);
+  });
   return {
     devices,
     approved: devices.filter((row) => row.status === "approved"),
-    pending: devices.filter((row) => row.status === "pending"),
+    pending,
     revoked: devices.filter((row) => row.status === "revoked"),
     approvedCount: devices.filter((row) => row.status === "approved").length,
-    pendingCount: devices.filter((row) => row.status === "pending").length
+    pendingCount: pending.length
   };
 }
 
-function approveDevice(deviceId, actorName) {
+function approveDevice(deviceId, actorName, body) {
   const store = loadStore();
   const row = findDevice(store, deviceId);
   if (!row) throw new Error("Device not found.");
   const now = nowIso();
+  const assignTo = cleanName(
+    (body && (body.assignedTo || body.user || body.name))
+      || (row.pendingUsers[0] && row.pendingUsers[0].name)
+      || row.requestedBy
+      || row.lastUser
+  );
+  if (!assignTo) throw new Error("Pick who this device belongs to.");
+  if (body && Object.prototype.hasOwnProperty.call(body, "nickname")) {
+    row.nickname = cleanName(body.nickname);
+  }
+  const keepExisting = !(body && body.replaceAssignees);
+  const nextAssignees = keepExisting
+    ? uniqueNames((row.assignedUsers || []).concat([assignTo]))
+    : [assignTo];
+  assignUsers(row, nextAssignees);
+  // Clear only the approved person from pending queue; leave other waiters.
+  row.pendingUsers = (row.pendingUsers || []).filter((item) => nameKey(item.name) !== nameKey(assignTo));
   row.status = "approved";
   row.approvedAt = now;
-  row.approvedBy = String(actorName || "").trim() || "Manager";
+  row.approvedBy = cleanName(actorName) || "Manager";
   row.updatedAt = now;
   row.revokedAt = "";
   row.revokedBy = "";
+  row.requestedBy = assignTo;
+  saveStore(store);
+  return snapshot();
+}
+
+function updateDevice(deviceId, body) {
+  const store = loadStore();
+  const row = findDevice(store, deviceId);
+  if (!row) throw new Error("Device not found.");
+  if (body && Object.prototype.hasOwnProperty.call(body, "nickname")) {
+    row.nickname = cleanName(body.nickname);
+  }
+  if (body && (body.assignedTo || body.assignedUsers)) {
+    const list = Array.isArray(body.assignedUsers)
+      ? body.assignedUsers
+      : [body.assignedTo];
+    if (body.replaceAssignees) assignUsers(row, list);
+    else assignUsers(row, (row.assignedUsers || []).concat(list));
+  }
+  row.updatedAt = nowIso();
   saveStore(store);
   return snapshot();
 }
@@ -258,8 +436,9 @@ function revokeDevice(deviceId, actorName) {
   const now = nowIso();
   row.status = "revoked";
   row.revokedAt = now;
-  row.revokedBy = String(actorName || "").trim() || "Manager";
+  row.revokedBy = cleanName(actorName) || "Manager";
   row.updatedAt = now;
+  row.pendingUsers = [];
   saveStore(store);
   return snapshot();
 }
@@ -282,11 +461,13 @@ function clientIp(req) {
 
 function metaFromReq(req, userName, bodyDeviceId) {
   const headerId = req && req.headers ? req.headers["x-sd-device-id"] : "";
+  const body = (req && req.body) || {};
   return {
     deviceId: normalizeDeviceId(bodyDeviceId || headerId),
     userAgent: String((req && req.headers && req.headers["user-agent"]) || "").slice(0, 400),
     ip: clientIp(req),
-    userName: String(userName || "").trim()
+    userName: cleanName(userName),
+    nickname: cleanName(body.deviceNickname || body.nickname)
   };
 }
 
@@ -296,8 +477,10 @@ module.exports = {
   assertLoginAllowed,
   snapshot,
   approveDevice,
+  updateDevice,
   revokeDevice,
   removeDevice,
   metaFromReq,
+  isAssignedTo,
   approvedCount: () => approvedCount(loadStore())
 };

@@ -33,7 +33,6 @@ staff.upsertUser({
   seeDebtors: "No"
 });
 
-assert.strictEqual(devices.approvedCount(), 0);
 const first = devices.assertLoginAllowed({
   deviceId: "d_laptopabc1234567890",
   userName: "Office Boss",
@@ -42,50 +41,83 @@ const first = devices.assertLoginAllowed({
 });
 assert.strictEqual(first.ok, true);
 assert.strictEqual(first.bootstrapped, true);
-assert.strictEqual(first.device.status, "approved");
-assert.ok(/Chrome on Windows/.test(first.device.label));
-assert.strictEqual(devices.approvedCount(), 1);
+assert.strictEqual(first.device.assignedTo, "Office Boss");
 
-const blocked = devices.assertLoginAllowed({
+// Sam's first phone auto-assigns to Sam
+const samFirst = devices.assertLoginAllowed({
   deviceId: "d_phonexyz12345678901",
   userName: "Sam Floor",
   userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Safari/604.1",
   ip: "10.0.0.2"
 });
-assert.strictEqual(blocked.ok, false);
-assert.strictEqual(blocked.pending, true);
-assert.strictEqual(blocked.device.status, "pending");
-assert.ok(/Safari on iPhone/.test(blocked.device.label));
+assert.strictEqual(samFirst.ok, true);
+assert.strictEqual(samFirst.bootstrapped, true);
+assert.strictEqual(samFirst.device.assignedTo, "Sam Floor");
 
-let snap = devices.snapshot();
-assert.strictEqual(snap.pendingCount, 1);
-assert.strictEqual(snap.approvedCount, 1);
-
-snap = devices.approveDevice("d_phonexyz12345678901", "Office Boss");
-assert.strictEqual(snap.pendingCount, 0);
-assert.strictEqual(snap.approvedCount, 2);
-
-const allowed = devices.assertLoginAllowed({
-  deviceId: "d_phonexyz12345678901",
+// Sam tries Boss laptop (different device) → Manager must approve
+const cross = devices.assertLoginAllowed({
+  deviceId: "d_laptopabc1234567890",
   userName: "Sam Floor",
-  userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15",
-  ip: "10.0.0.2"
+  userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
+  ip: "10.0.0.3"
 });
-assert.strictEqual(allowed.ok, true);
-assert.strictEqual(allowed.device.status, "approved");
+assert.strictEqual(cross.ok, false);
+assert.strictEqual(cross.pending, true);
+assert.ok((cross.device.pendingUsers || []).some((p) => p.name === "Sam Floor"));
+assert.strictEqual(cross.device.status, "approved");
 
-snap = devices.revokeDevice("d_phonexyz12345678901", "Office Boss");
-assert.strictEqual(snap.approvedCount, 1);
-assert.ok(snap.revoked.some((row) => row.id === "d_phonexyz12345678901"));
-
-const again = devices.assertLoginAllowed({
+// Boss cannot use Sam phone without approval
+const bossOnSamPhone = devices.assertLoginAllowed({
   deviceId: "d_phonexyz12345678901",
+  userName: "Office Boss",
+  userAgent: "Mozilla/5.0 (iPhone)",
+  ip: "127.0.0.1"
+});
+assert.strictEqual(bossOnSamPhone.ok, false);
+
+let snap = devices.approveDevice("d_laptopabc1234567890", "Office Boss", {
+  assignedTo: "Sam Floor",
+  nickname: "Office laptop"
+});
+assert.ok(snap.approved.some((row) => {
+  return row.id === "d_laptopabc1234567890"
+    && row.nickname === "Office laptop"
+    && row.assignedUsers.indexOf("Office Boss") !== -1
+    && row.assignedUsers.indexOf("Sam Floor") !== -1;
+}));
+
+const samOnLaptop = devices.assertLoginAllowed({
+  deviceId: "d_laptopabc1234567890",
+  userName: "Sam Floor",
+  userAgent: "Mozilla/5.0 (Windows NT 10.0)",
+  ip: "10.0.0.3"
+});
+assert.strictEqual(samOnLaptop.ok, true);
+
+// Sam's second device needs approval
+const secondPhone = devices.assertLoginAllowed({
+  deviceId: "d_phone2abcdefghijklmn",
+  userName: "Sam Floor",
+  userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Safari/604.1",
+  ip: "10.0.0.8"
+});
+assert.strictEqual(secondPhone.ok, false);
+assert.strictEqual(secondPhone.pending, true);
+
+snap = devices.approveDevice("d_phone2abcdefghijklmn", "Office Boss", {
+  assignedTo: "Sam Floor",
+  nickname: "Sam spare iPhone"
+});
+assert.ok(snap.approved.some((row) => row.id === "d_phone2abcdefghijklmn" && row.assignedTo === "Sam Floor"));
+
+snap = devices.revokeDevice("d_phone2abcdefghijklmn", "Office Boss");
+assert.ok(snap.revoked.some((row) => row.id === "d_phone2abcdefghijklmn"));
+assert.strictEqual(devices.assertLoginAllowed({
+  deviceId: "d_phone2abcdefghijklmn",
   userName: "Sam Floor",
   userAgent: "Mozilla/5.0 (iPhone)",
-  ip: "10.0.0.2"
-});
-assert.strictEqual(again.ok, false);
-assert.strictEqual(again.pending, true);
+  ip: "10.0.0.8"
+}).ok, false);
 
 (async function main() {
   const app = express();
@@ -115,20 +147,22 @@ assert.strictEqual(again.pending, true);
     headers: { "content-type": "application/json", "x-sd-device-id": "d_tablet111222333444" },
     body: JSON.stringify({ name: "Sam Floor", password: "sam", deviceId: "d_tablet111222333444" })
   });
-  assert.strictEqual(pendingLogin.json.ok, false);
+  assert.strictEqual(pendingLogin.json.ok, false, "Sam already has a phone, tablet needs approval");
   assert.strictEqual(pendingLogin.json.pendingDevice, true);
 
   const listed = await api("/api/office/devices", { headers });
   assert.strictEqual(listed.json.ok, true);
-  assert.ok((listed.json.pending || []).some((row) => row.id === "d_tablet111222333444"));
+  assert.ok((listed.json.people || []).indexOf("Sam Floor") !== -1);
 
   const approved = await api("/api/office/devices/d_tablet111222333444/approve", {
     method: "POST",
     headers,
-    body: "{}"
+    body: JSON.stringify({ assignedTo: "Sam Floor", nickname: "Sam tablet" })
   });
   assert.strictEqual(approved.json.ok, true, JSON.stringify(approved.json));
-  assert.ok((approved.json.approved || []).some((row) => row.id === "d_tablet111222333444"));
+  const tablet = (approved.json.approved || []).find((row) => row.id === "d_tablet111222333444");
+  assert.strictEqual(tablet.assignedTo, "Sam Floor");
+  assert.strictEqual(tablet.nickname, "Sam tablet");
 
   const second = await api("/api/office/login", {
     method: "POST",
@@ -136,6 +170,14 @@ assert.strictEqual(again.pending, true);
     body: JSON.stringify({ name: "Sam Floor", password: "sam", deviceId: "d_tablet111222333444" })
   });
   assert.strictEqual(second.json.ok, true, JSON.stringify(second.json));
+
+  const bossOnTablet = await api("/api/office/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-sd-device-id": "d_tablet111222333444" },
+    body: JSON.stringify({ name: "Office Boss", password: "admin", deviceId: "d_tablet111222333444" })
+  });
+  assert.strictEqual(bossOnTablet.json.ok, false);
+  assert.strictEqual(bossOnTablet.json.pendingDevice, true);
 
   server.close();
   console.log("trusted-devices.test.js ok");

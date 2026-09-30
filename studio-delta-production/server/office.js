@@ -256,7 +256,8 @@ function mountOffice(app) {
       res.status(403).json({ ok: false, error: "Only the Manager can view trusted devices." });
       return;
     }
-    res.json({ ok: true, ...trustedDevices.snapshot() });
+    const people = staff.listUsers().map((u) => u.name).filter(Boolean);
+    res.json({ ok: true, people, ...trustedDevices.snapshot() });
   });
   app.post("/api/office/devices/:id/approve", requireOffice, (req, res) => {
     if (!staff.canManageUsers(req.office)) {
@@ -264,7 +265,18 @@ function mountOffice(app) {
       return;
     }
     try {
-      res.json({ ok: true, ...trustedDevices.approveDevice(req.params.id, req.office.name) });
+      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...trustedDevices.approveDevice(req.params.id, req.office.name, req.body || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.put("/api/office/devices/:id", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can edit devices." });
+      return;
+    }
+    try {
+      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...trustedDevices.updateDevice(req.params.id, req.body || {}) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
@@ -275,7 +287,7 @@ function mountOffice(app) {
       return;
     }
     try {
-      res.json({ ok: true, ...trustedDevices.revokeDevice(req.params.id, req.office.name) });
+      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...trustedDevices.revokeDevice(req.params.id, req.office.name) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
@@ -286,7 +298,7 @@ function mountOffice(app) {
       return;
     }
     try {
-      res.json({ ok: true, ...trustedDevices.removeDevice(req.params.id) });
+      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...trustedDevices.removeDevice(req.params.id) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

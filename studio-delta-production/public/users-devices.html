@@ -15,20 +15,21 @@
     .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
     .tabs a.on { background:#1d2939; color:#fff; }
     .msg { font-size:12px; color:var(--muted); margin-left:auto; }
-    .wrap { padding:16px; max-width:1100px; }
+    .wrap { padding:16px; max-width:1180px; }
     .card { background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px; margin:0 0 16px; }
     .card h2 { font-family: Outfit, Inter, sans-serif; font-size:16px; margin:0 0 8px; }
-    p.help { color:var(--muted); font-size:13px; max-width:900px; margin:0 0 12px; }
+    p.help { color:var(--muted); font-size:13px; max-width:980px; margin:0 0 12px; }
     .warn { color:var(--warn); font-weight:600; }
-    .ok { color:var(--ok); }
     .empty { color:var(--muted); font-size:13px; padding:8px 0; }
     table { border-collapse:collapse; width:100%; background:#fff; font-size:13px; }
     th, td { border:1px solid var(--line); padding:8px; text-align:left; vertical-align:top; }
     th { background:var(--head); }
-    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:6px 10px; font-weight:600; cursor:pointer; font:inherit; }
+    button, select, input { font:inherit; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:6px 10px; font-weight:600; cursor:pointer; }
     button.ghost { background:#fff; color:#1d2939; }
     button.danger { background:#b42318; border-color:#b42318; }
-    .actions { display:flex; flex-wrap:wrap; gap:6px; }
+    select, input[type=text] { border:1px solid var(--line); border-radius:6px; padding:6px 8px; min-width:140px; }
+    .actions { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
     .pill { display:inline-block; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
     .pill.ok { background:#dcfae6; color:var(--ok); }
     .pill.warn { background:#fffaeb; color:var(--warn); }
@@ -51,18 +52,18 @@
     <button class="ghost" type="button" onclick="load()">Refresh</button>
   </header>
   <div class="wrap">
-    <p class="help">Only approved phones and computers can log in. The first successful login on a new system auto-approves that device. After that, a new laptop or phone waits here until you approve it — same idea as Gmail on a new device.</p>
+    <p class="help">Each phone or computer is <b>assigned to a person</b>. Their first device is trusted automatically. If they try a <b>different</b> phone or laptop, it waits here until you approve it for them. You always see <b>who</b> tried to log in. Nickname devices (e.g. “Johannes iPhone”) so two iPhones are obvious.</p>
     <p class="help" id="thisDevice"></p>
 
     <section class="card">
-      <h2>Waiting for approval <span id="pendingCount"></span></h2>
-      <p class="help warn">Someone entered a correct name and access code from a device that is not approved yet.</p>
+      <h2>Waiting for your approval <span id="pendingCount"></span></h2>
+      <p class="help warn">Correct name and access code were used, but this device is not assigned to that person yet.</p>
       <div id="pendingBox"><div class="empty">Loading…</div></div>
     </section>
 
     <section class="card">
-      <h2>Approved devices <span id="approvedCount"></span></h2>
-      <p class="help">These devices may log in. Revoke a lost phone or old laptop so it cannot sign in again.</p>
+      <h2>Approved devices by person <span id="approvedCount"></span></h2>
+      <p class="help">Rename a device (e.g. “Johannes iPhone”) and change who it belongs to. Revoke a lost phone.</p>
       <div id="approvedBox"><div class="empty">Loading…</div></div>
     </section>
 
@@ -71,8 +72,11 @@
       <div id="revokedBox"><div class="empty">Loading…</div></div>
     </section>
   </div>
-  <script src="/office-auth.js?v=devices-1"></script>
+  <script src="/office-auth.js?v=devices-2"></script>
   <script>
+    let people = [];
+    let data = { devices: [], pending: [], approved: [], revoked: [] };
+
     function esc(s) {
       return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
     }
@@ -87,46 +91,126 @@
       if (status === "pending") return "<span class='pill warn'>Pending</span>";
       return "<span class='pill bad'>Revoked</span>";
     }
-    function rowHtml(row, mode) {
-      const actions = [];
-      if (mode === "pending") {
-        actions.push("<button type='button' data-act='approve' data-id='" + esc(row.id) + "'>Approve</button>");
-        actions.push("<button class='ghost' type='button' data-act='remove' data-id='" + esc(row.id) + "'>Remove</button>");
-      } else if (mode === "approved") {
-        actions.push("<button class='danger' type='button' data-act='revoke' data-id='" + esc(row.id) + "'>Revoke</button>");
-      } else {
-        actions.push("<button type='button' data-act='approve' data-id='" + esc(row.id) + "'>Approve again</button>");
-        actions.push("<button class='ghost' type='button' data-act='remove' data-id='" + esc(row.id) + "'>Remove</button>");
+    function personOptions(selected, includeBlank) {
+      const names = people.slice();
+      if (selected && names.indexOf(selected) === -1) names.unshift(selected);
+      let html = includeBlank ? "<option value=''>Choose person…</option>" : "";
+      names.forEach((name) => {
+        html += "<option value=\"" + esc(name) + "\"" + (name === selected ? " selected" : "") + ">" + esc(name) + "</option>";
+      });
+      return html;
+    }
+    function waitingPeople(row) {
+      if (row.status === "pending") {
+        return [row.requestedBy || row.lastUser].filter(Boolean);
       }
+      return (row.pendingUsers || []).map((item) => item.name).filter(Boolean);
+    }
+    function pendingRowHtml(row) {
+      const waiters = waitingPeople(row);
+      const defaultPerson = waiters[0] || row.requestedBy || "";
       return "<tr>" +
-        "<td>" + esc(row.label) + "<div class='meta'>" + statusPill(row.status) +
-          " · id <code>" + esc(row.id.slice(0, 10)) + "…</code></div></td>" +
-        "<td>" + esc(row.requestedBy || row.lastUser || "—") +
-          "<div class='meta'>Last user " + esc(row.lastUser || "—") + "</div></td>" +
+        "<td>" + esc(row.displayLabel || row.label) +
+          "<div class='meta'>" + statusPill(row.status) + " · " + esc(row.label) +
+          " · <code>" + esc(String(row.id || "").slice(0, 10)) + "…</code></div></td>" +
+        "<td><b>" + esc(waiters.join(", ") || "—") + "</b>" +
+          "<div class='meta'>Wants to log in" +
+          (row.assignedUsers && row.assignedUsers.length
+            ? " · currently assigned to " + esc(row.assignedUsers.join(", "))
+            : "") +
+          "</div></td>" +
         "<td>" + esc(row.lastIp || "—") + "</td>" +
-        "<td>First seen " + when(row.createdAt) +
-          "<div class='meta'>Last seen " + when(row.lastSeenAt || row.updatedAt) + "</div>" +
-          (row.approvedBy ? "<div class='meta'>Approved by " + esc(row.approvedBy) + " · " + when(row.approvedAt) + "</div>" : "") +
-          (row.revokedBy ? "<div class='meta'>Revoked by " + esc(row.revokedBy) + " · " + when(row.revokedAt) + "</div>" : "") +
+        "<td>" + when(row.lastSeenAt || row.updatedAt) + "</td>" +
+        "<td><div class='actions'>" +
+          "<select data-assign='" + esc(row.id) + "'>" + personOptions(defaultPerson, true) + "</select>" +
+          "<input type='text' data-nick='" + esc(row.id) + "' placeholder='Nickname (optional)' value='" + esc(row.nickname || "") + "'>" +
+          "<button type='button' data-act='approve' data-id='" + esc(row.id) + "'>Approve for person</button>" +
+          "<button class='ghost' type='button' data-act='remove' data-id='" + esc(row.id) + "'>Remove</button>" +
+        "</div></td></tr>";
+    }
+    function approvedRowHtml(row) {
+      return "<tr>" +
+        "<td>" + esc(row.displayLabel || row.label) +
+          "<div class='meta'>" + statusPill(row.status) + " · " + esc(row.label) +
+          " · <code>" + esc(String(row.id || "").slice(0, 10)) + "…</code></div></td>" +
+        "<td><b>" + esc((row.assignedUsers || []).join(", ") || row.assignedTo || "—") + "</b>" +
+          "<div class='meta'>Last login: " + esc(row.lastUser || "—") + "</div>" +
+          ((row.pendingUsers || []).length
+            ? "<div class='meta warn'>Also waiting: " + esc(row.pendingUsers.map((p) => p.name).join(", ")) + "</div>"
+            : "") +
         "</td>" +
-        "<td><div class='actions'>" + actions.join("") + "</div></td>" +
-        "</tr>";
+        "<td>" + esc(row.lastIp || "—") + "</td>" +
+        "<td>Approved " + when(row.approvedAt) +
+          "<div class='meta'>by " + esc(row.approvedBy || "—") + "</div>" +
+          "<div class='meta'>Last seen " + when(row.lastSeenAt) + "</div></td>" +
+        "<td><div class='actions'>" +
+          "<select data-owner='" + esc(row.id) + "'>" + personOptions(row.assignedTo || (row.assignedUsers || [])[0] || "", false) + "</select>" +
+          "<input type='text' data-nick='" + esc(row.id) + "' placeholder='Nickname' value='" + esc(row.nickname || "") + "'>" +
+          "<button class='ghost' type='button' data-act='save' data-id='" + esc(row.id) + "'>Save</button>" +
+          "<button class='danger' type='button' data-act='revoke' data-id='" + esc(row.id) + "'>Revoke</button>" +
+        "</div></td></tr>";
     }
-    function tableFor(rows, mode, emptyText) {
+    function revokedRowHtml(row) {
+      return "<tr>" +
+        "<td>" + esc(row.displayLabel || row.label) + "</td>" +
+        "<td>" + esc((row.assignedUsers || []).join(", ") || "—") +
+          "<div class='meta'>Last user " + esc(row.lastUser || "—") + "</div></td>" +
+        "<td>" + when(row.revokedAt) +
+          "<div class='meta'>by " + esc(row.revokedBy || "—") + "</div></td>" +
+        "<td><div class='actions'>" +
+          "<select data-assign='" + esc(row.id) + "'>" + personOptions(row.assignedTo || row.lastUser || "", true) + "</select>" +
+          "<button type='button' data-act='approve' data-id='" + esc(row.id) + "'>Approve again</button>" +
+          "<button class='ghost' type='button' data-act='remove' data-id='" + esc(row.id) + "'>Remove</button>" +
+        "</div></td></tr>";
+    }
+    function table(rows, renderer, emptyText, heads) {
       if (!(rows || []).length) return "<div class='empty'>" + esc(emptyText) + "</div>";
-      return "<table><thead><tr><th>Device</th><th>Who</th><th>IP</th><th>When</th><th></th></tr></thead><tbody>" +
-        rows.map((row) => rowHtml(row, mode)).join("") + "</tbody></table>";
+      return "<table><thead><tr>" + heads.map((h) => "<th>" + h + "</th>").join("") +
+        "</tr></thead><tbody>" + rows.map(renderer).join("") + "</tbody></table>";
     }
-    function bindActions(box) {
-      box.querySelectorAll("[data-act]").forEach((btn) => {
+    function nickVal(id) {
+      const el = document.querySelector("input[data-nick='" + CSS.escape(id) + "']");
+      return el ? el.value : "";
+    }
+    function assignVal(id) {
+      const el = document.querySelector("select[data-assign='" + CSS.escape(id) + "']")
+        || document.querySelector("select[data-owner='" + CSS.escape(id) + "']");
+      return el ? el.value : "";
+    }
+    function bindActions(root) {
+      root.querySelectorAll("[data-act]").forEach((btn) => {
         btn.onclick = async () => {
           const id = btn.getAttribute("data-id");
           const act = btn.getAttribute("data-act");
           document.getElementById("status").textContent = "Saving…";
           let r;
-          if (act === "approve") r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id) + "/approve", { method: "POST", body: "{}" });
-          else if (act === "revoke") r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id) + "/revoke", { method: "POST", body: "{}" });
-          else r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id), { method: "DELETE" });
+          if (act === "approve") {
+            const assignedTo = assignVal(id);
+            if (!assignedTo) {
+              document.getElementById("status").textContent = "Choose who this device belongs to.";
+              return;
+            }
+            r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id) + "/approve", {
+              method: "POST",
+              body: JSON.stringify({ assignedTo: assignedTo, nickname: nickVal(id) })
+            });
+          } else if (act === "save") {
+            r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id), {
+              method: "PUT",
+              body: JSON.stringify({
+                assignedTo: assignVal(id),
+                nickname: nickVal(id),
+                replaceAssignees: true
+              })
+            });
+          } else if (act === "revoke") {
+            r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id) + "/revoke", {
+              method: "POST",
+              body: "{}"
+            });
+          } else {
+            r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id), { method: "DELETE" });
+          }
           const j = await r.json();
           if (!j.ok) {
             document.getElementById("status").textContent = j.error || "Could not update";
@@ -138,26 +222,30 @@
       });
     }
     function paint(j) {
+      data = j;
+      people = j.people || people || [];
       document.getElementById("pendingCount").textContent = j.pendingCount ? "(" + j.pendingCount + ")" : "";
       document.getElementById("approvedCount").textContent = j.approvedCount ? "(" + j.approvedCount + ")" : "";
       const pendingBox = document.getElementById("pendingBox");
       const approvedBox = document.getElementById("approvedBox");
       const revokedBox = document.getElementById("revokedBox");
-      pendingBox.innerHTML = tableFor(j.pending, "pending", "No devices waiting.");
-      approvedBox.innerHTML = tableFor(j.approved, "approved", "No approved devices yet.");
-      revokedBox.innerHTML = tableFor(j.revoked, "revoked", "No revoked devices.");
+      pendingBox.innerHTML = table(j.pending, pendingRowHtml, "No devices waiting.", ["Device", "Who wants in", "IP", "When", "Assign & approve"]);
+      approvedBox.innerHTML = table(j.approved, approvedRowHtml, "No approved devices yet.", ["Device", "Assigned to", "IP", "When", "Edit"]);
+      revokedBox.innerHTML = table(j.revoked, revokedRowHtml, "No revoked devices.", ["Device", "Was assigned to", "Revoked", ""]);
       bindActions(pendingBox);
       bindActions(approvedBox);
       bindActions(revokedBox);
       const mine = typeof sdDeviceId === "function" ? sdDeviceId() : "";
-      const thisLine = document.getElementById("thisDevice");
       const hit = (j.devices || []).find((row) => row.id === mine);
+      const line = document.getElementById("thisDevice");
       if (hit) {
-        thisLine.innerHTML = "This browser is <b>" + esc(hit.label) + "</b> · " + statusPill(hit.status);
+        line.innerHTML = "This browser is <b>" + esc(hit.displayLabel || hit.label) + "</b> · " +
+          statusPill(hit.status) +
+          (hit.assignedUsers && hit.assignedUsers.length
+            ? " · assigned to <b>" + esc(hit.assignedUsers.join(", ")) + "</b>"
+            : "");
       } else {
-        thisLine.textContent = mine
-          ? "This browser has device id " + mine.slice(0, 10) + "… and is not on the list yet (log in once to register it)."
-          : "";
+        line.textContent = "";
       }
     }
     async function load() {
