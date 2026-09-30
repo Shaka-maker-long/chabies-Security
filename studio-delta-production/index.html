@@ -1976,7 +1976,7 @@
           
           <!-- MISSING CANVAS RESTORED HERE -->
           <div class="bg-white rounded shadow-sm p-4">
-            <p class="small text-muted mb-3 mb-md-2">Select a product to plot a dashed <strong>Estimate</strong> line from Task times. Click the estimate for predicted hours and cost, or an order line for actual vs predicted (profit / loss) by workstation.</p>
+            <p class="small text-muted mb-3 mb-md-2">Select a product to plot a dashed <strong>Estimate</strong> line from Task times. Click the estimate for predicted hours and cost (workstation rates). Click an order line for actual labour cost (Labour rates of who clocked) vs predicted — profit or loss by workstation.</p>
             <canvas id="productionTrendsChart" style="max-height: 500px; cursor:pointer;"></canvas>
           </div>
         </div>
@@ -8623,33 +8623,37 @@
         const processData = order.processes[process];
         let actualMins = 0;
         let labourCost = 0;
+        let workers = [];
         if (processData) {
           if (!filterWeek) {
             actualMins = Number(processData.totalMinutes) || 0;
-            labourCost = Number(processData.totalCost) || 0;
+            labourCost = Math.round((Number(processData.totalCost) || 0) * 100) / 100;
+            workers = processData.workers || [];
           } else if (processData.weeklyData && processData.weeklyData[filterWeek]) {
             actualMins = Number(processData.weeklyData[filterWeek].minutes) || 0;
-            labourCost = Number(processData.weeklyData[filterWeek].cost) || 0;
+            labourCost = Math.round((Number(processData.weeklyData[filterWeek].cost) || 0) * 100) / 100;
+            workers = processData.weeklyData[filterWeek].workers || [];
           }
         }
         const est = trendsEstimateCell(product, process);
-        const actualStationCost = trendsStationCost(actualMins, process);
         const predictedCost = est.cost || trendsStationCost(est.minutes, process);
-        const variance = Math.round((predictedCost - actualStationCost) * 100) / 100;
+        const variance = Math.round((predictedCost - labourCost) * 100) / 100;
+        const effectiveRate = actualMins > 0 ? Math.round((labourCost / (actualMins / 60)) * 100) / 100 : 0;
         return {
           process,
           actualMins,
           predictedMins: est.minutes,
-          rate: est.rate || trendsRateFor(process),
-          actualStationCost,
+          stationRate: est.rate || trendsRateFor(process),
+          effectiveRate,
+          workers: (workers || []).filter(Boolean),
+          actualCost: labourCost,
           predictedCost,
-          labourCost,
           variance
         };
       }).filter((r) => r.actualMins > 0 || r.predictedMins > 0);
       const totalActualMins = rows.reduce((s, r) => s + r.actualMins, 0);
       const totalPredictedMins = rows.reduce((s, r) => s + r.predictedMins, 0);
-      const totalActualCost = rows.reduce((s, r) => s + r.actualStationCost, 0);
+      const totalActualCost = rows.reduce((s, r) => s + r.actualCost, 0);
       const totalPredictedCost = rows.reduce((s, r) => s + r.predictedCost, 0);
       const totalVariance = Math.round((totalPredictedCost - totalActualCost) * 100) / 100;
       const resultLabel = totalVariance > 0.005 ? 'Profit' : (totalVariance < -0.005 ? 'Loss' : 'Break even');
@@ -8657,37 +8661,40 @@
       let html = '<div class="row g-2 mb-3">' +
         '<div class="col-md-3"><div class="border rounded p-3"><div class="small text-muted">Actual hours</div><div class="fs-6 fw-semibold">' + formatDuration(totalActualMins) + '</div></div></div>' +
         '<div class="col-md-3"><div class="border rounded p-3"><div class="small text-muted">Predicted hours</div><div class="fs-6 fw-semibold">' + formatDuration(totalPredictedMins) + '</div></div></div>' +
-        '<div class="col-md-3"><div class="border rounded p-3"><div class="small text-muted">Actual cost</div><div class="fs-6 fw-semibold">' + trendsMoney(totalActualCost) + '</div></div></div>' +
+        '<div class="col-md-3"><div class="border rounded p-3"><div class="small text-muted">Actual labour cost</div><div class="fs-6 fw-semibold">' + trendsMoney(totalActualCost) + '</div></div></div>' +
         '<div class="col-md-3"><div class="border rounded p-3"><div class="small text-muted">Predicted cost</div><div class="fs-6 fw-semibold">' + trendsMoney(totalPredictedCost) + '</div></div></div>' +
         '</div>';
       html += '<div class="border rounded p-3 mb-3 ' + resultClass + '"><span class="small text-uppercase fw-semibold">' + resultLabel + '</span>' +
         '<div class="fs-5 fw-semibold">' + trendsMoney(Math.abs(totalVariance)) + '</div>' +
-        '<div class="small text-muted">Predicted − actual at workstation rates. Under time = profit.</div></div>';
+        '<div class="small text-muted">Predicted (workstation rate) − actual (Labour rates of people who clocked). Under spend = profit.</div></div>';
       html += '<div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr>' +
-        '<th>Workstation</th><th class="text-end">Actual hrs</th><th class="text-end">Pred. hrs</th>' +
-        '<th class="text-end">Rate / hr</th><th class="text-end">Actual cost</th><th class="text-end">Pred. cost</th><th class="text-end">P/L</th>' +
+        '<th>Workstation</th><th>Workers</th><th class="text-end">Actual hrs</th><th class="text-end">Pred. hrs</th>' +
+        '<th class="text-end">Labour / hr</th><th class="text-end">Station / hr</th>' +
+        '<th class="text-end">Actual cost</th><th class="text-end">Pred. cost</th><th class="text-end">P/L</th>' +
         '</tr></thead><tbody>';
       rows.forEach((r) => {
         const pl = r.variance > 0.005 ? 'Profit' : (r.variance < -0.005 ? 'Loss' : '—');
         const plClass = r.variance > 0.005 ? 'text-success' : (r.variance < -0.005 ? 'text-danger' : 'text-muted');
         html += '<tr><td>' + r.process + '</td>' +
+          '<td class="small">' + (r.workers.length ? r.workers.join(', ') : '—') + '</td>' +
           '<td class="text-end">' + formatDuration(r.actualMins) + '</td>' +
           '<td class="text-end">' + formatDuration(r.predictedMins) + '</td>' +
-          '<td class="text-end">' + trendsMoney(r.rate) + '</td>' +
-          '<td class="text-end">' + trendsMoney(r.actualStationCost) + '</td>' +
+          '<td class="text-end">' + (r.actualMins > 0 ? trendsMoney(r.effectiveRate) : '—') + '</td>' +
+          '<td class="text-end">' + trendsMoney(r.stationRate) + '</td>' +
+          '<td class="text-end">' + trendsMoney(r.actualCost) + '</td>' +
           '<td class="text-end">' + trendsMoney(r.predictedCost) + '</td>' +
           '<td class="text-end ' + plClass + '">' + pl + ' ' + (pl === '—' ? '' : trendsMoney(Math.abs(r.variance))) + '</td></tr>';
       });
-      html += '<tr class="fw-semibold"><td>Total</td>' +
+      html += '<tr class="fw-semibold"><td colspan="2">Total</td>' +
         '<td class="text-end">' + formatDuration(totalActualMins) + '</td>' +
-        '<td class="text-end">' + formatDuration(totalPredictedMins) + '</td><td></td>' +
+        '<td class="text-end">' + formatDuration(totalPredictedMins) + '</td><td></td><td></td>' +
         '<td class="text-end">' + trendsMoney(totalActualCost) + '</td>' +
         '<td class="text-end">' + trendsMoney(totalPredictedCost) + '</td>' +
         '<td class="text-end ' + resultClass + '">' + resultLabel + ' ' + trendsMoney(Math.abs(totalVariance)) + '</td></tr>';
       html += '</tbody></table></div>';
       openTrendsCostModal(
         order.orderNum + ' — ' + product,
-        'Actual hours × workstation rate vs Task times prediction.',
+        'Actual cost uses Labour rates for whoever clocked on the order. Predicted cost uses workstation rates × Task times.',
         html
       );
     }
@@ -8782,8 +8789,9 @@
             x: process,
             y: pTime,
             worker: pWorkers,
-            cost: stationCost,
-            labourCost: pCost,
+            cost: Math.round((Number(pCost) || 0) * 100) / 100,
+            labourCost: Math.round((Number(pCost) || 0) * 100) / 100,
+            stationCost: stationCost,
             rate: trendsRateFor(process),
             predictedMinutes: est.minutes,
             predictedCost: est.cost || trendsStationCost(est.minutes, process)
@@ -8872,7 +8880,7 @@
                     context.dataset.label,
                     `Worker: ${context.raw.worker}`,
                     `Time: ${formatDuration(context.raw.y)}`,
-                    `Station cost: ${trendsMoney(context.raw.cost)}`,
+                    `Labour cost: ${trendsMoney(context.raw.labourCost != null ? context.raw.labourCost : context.raw.cost)}`,
                     `Predicted: ${formatDuration(context.raw.predictedMinutes || 0)} · ${trendsMoney(context.raw.predictedCost || 0)}`
                   ];
                 }

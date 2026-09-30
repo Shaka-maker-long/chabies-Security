@@ -903,6 +903,8 @@ assert.ok(floor.indexOf("From Task times") !== -1 || floor.indexOf("Predicted ho
 assert.ok(floor.indexOf("showEstimateCostBreakdown") !== -1, "Click estimate opens predicted cost breakdown");
 assert.ok(floor.indexOf("showOrderCostBreakdown") !== -1, "Click order opens actual vs predicted");
 assert.ok(floor.indexOf("Profit") !== -1 && floor.indexOf("Loss") !== -1, "Order breakdown shows profit or loss");
+assert.ok(floor.indexOf("Labour rates") !== -1, "Actual cost uses Labour rates of who clocked");
+assert.ok(floor.indexOf("Actual labour cost") !== -1, "Order breakdown labels actual as labour cost");
 assert.ok(floor.indexOf("trendsCostModal") !== -1, "Trends cost modal exists");
 assert.ok(codeGs.indexOf("function userManagesIdle") !== -1);
 assert.ok(codeGs.indexOf("function userCountsForIdleAlerts") !== -1, "idle checker must know who counts as shop idle");
