@@ -369,11 +369,11 @@ function assertLoginAllowed(meta) {
   let error;
   if (managerNeedsUnlock) {
     if (!bootstrapCodeConfigured()) {
-      error = "This Manager device is not approved yet. Set DEVICE_BOOTSTRAP_CODE on Railway, restart, then enter that unlock code on the login screen.";
+      error = "This device is not approved for " + forWho + " yet. Ask a Manager who is already logged in to approve it under Users → Devices.";
     } else if (wantsBootstrap) {
-      error = "That unlock code is wrong. Check DEVICE_BOOTSTRAP_CODE on Railway and try again.";
+      error = "That unlock code is wrong, or this device still needs approval under Users → Devices.";
     } else {
-      error = "This Manager device is not approved yet. Enter the first-device unlock code (DEVICE_BOOTSTRAP_CODE from Railway), then try again. After that you can approve everyone else under Users → Devices.";
+      error = "This device is not approved for " + forWho + " yet. Ask a Manager who is already logged in to approve it under Users → Devices.";
     }
   } else if (pending.status === "approved" && assigned) {
     error = "This device is assigned to " + assigned + ". " + forWho +

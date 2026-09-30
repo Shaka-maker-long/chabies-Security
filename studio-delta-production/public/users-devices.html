@@ -53,7 +53,7 @@
   </header>
   <div class="wrap">
     <p class="help">Each phone or computer must be <b>assigned to a person by the Manager</b> before that person can log in. Nothing auto-approves on first login — including staff who already downloaded the app. Nickname devices (e.g. “Johannes iPhone”) so two iPhones are obvious. Revoke lost hardware to end their sessions immediately.</p>
-    <p class="help warn">Manager unlock: set <code>DEVICE_BOOTSTRAP_CODE</code> on Railway. On a new Manager phone, type name + access code + that unlock code once. After the Manager is in, approve everyone else here — including people who already installed the app.</p>
+    <p class="help warn">Nothing auto-approves. When someone tries to log in on a new phone, it appears here — approve it and assign it to them before they can use the app.</p>
     <p class="help" id="thisDevice"></p>
 
     <section class="card">
@@ -73,7 +73,7 @@
       <div id="revokedBox"><div class="empty">Loading…</div></div>
     </section>
   </div>
-  <script src="/office-auth.js?v=login-fix-1"></script>
+  <script src="/office-auth.js?v=login-msg-2"></script>
   <script>
     let people = [];
     let data = { devices: [], pending: [], approved: [], revoked: [] };

@@ -4,7 +4,7 @@ How this app maps to the shop security checklist. Archive a copy of this file wi
 
 | # | Area | What we ship | Status |
 |---|---|---|---|
-| 1 | Login | Hashed access codes (scrypt), min length 4 (prefer 8+), login throttling (5 failures / 15 min per name+IP), **no first-login auto-approve**. Every device must be Manager-approved and assigned to that person. People who already installed the app still cannot log in until linked. First Manager device only: set `DEVICE_BOOTSTRAP_CODE` and type it once. | Critical — done |
+| 1 | Login | Hashed access codes (scrypt), login throttling, **no first-login auto-approve**. Clear on-screen messages for incorrect name/access code vs device waiting for Manager approval. Every device must be Manager-approved and assigned to that person. | Critical — done |
 | 2 | Permissions | Role-based access: Manager / Admin / Marketing / Production. Least privilege on office APIs (`canManageUsers`, debtors, marketing write allow-list). | Critical — done |
 | 3 | Database | SQLite on the private Railway volume (`DATA_DIR`), not a public Postgres URL. Restrict who can download `.db` / `.tgz` (Manager only). | Critical — done (volume-private; use Railway private networking) |
 | 4 | Encryption | HTTPS/TLS via Railway. Access codes hashed at rest. Session cookies `HttpOnly` + `SameSite=Lax` + `Secure` on HTTPS. Full disk / volume encryption is on the host (Railway). | Critical — transit + code hashing done; volume at-rest follows host |
@@ -12,17 +12,19 @@ How this app maps to the shop security checklist. Archive a copy of this file wi
 | 6 | Backups | Automated `.tgz` on the volume + optional Google Drive archive (`BACKUP_DRIVE_FOLDER_ID`). Manager-only download/restore. Download archives to your PC/Drive regularly. | Critical — done |
 | 7 | Sessions | Random tokens, 14-day expiry, logout clears cookie, revoke device drops bound sessions, sessions store `deviceId`. | Critical — done |
 | 8 | API security | Every `/api/office/*` route (except login) requires session + role checks. `/api/run` requires a session except login / user list. Device gate on login. | Critical — done |
-| 9 | Secrets | Env vars only (`.env.example`). Never commit passwords, PATs, or `DEVICE_BOOTSTRAP_CODE`. | Critical — done |
+| 9 | Secrets | Env vars only (`.env.example`). Never commit passwords or PATs. | Critical — done |
 | 10 | Monitoring | Audit log + failed-login throttle events. Review `/api/office/audit` and Users → Devices pending list. | High — foundation done |
 | 11 | Updates | Keep Node 22+, `npm audit` / dependency bumps on a schedule. Patch Railway stack. | High — process |
-| 12 | Recovery | Users → Backup restore (RESTORE + Manager code twice). Keep Drive / local archives. Document who is Manager and where `DEVICE_BOOTSTRAP_CODE` lives (password manager). | High — runbooks in README |
+| 12 | Recovery | Users → Backup restore (RESTORE + Manager code twice). Keep Drive / local archives. | High — runbooks in README |
 
 ## Device approval (no auto-trust)
 
-1. Set a long random `DEVICE_BOOTSTRAP_CODE` on Railway (and keep it offline).
-2. Manager logs in once with name + access code + bootstrap code → that phone/PC is approved for them (works even if other people’s devices are already listed).
-3. Everyone else (including staff who already downloaded the PWA) gets **pending** until the Manager assigns the device under **Users → Devices**.
+1. Manager logs in on an already-approved device.
+2. When someone (or the Manager on a new phone) tries a device that is not linked yet, login shows **waiting for Manager approval**.
+3. Manager opens **Users → Devices**, assigns the phone to that person, and approves it.
 4. Revoke a lost phone → their sessions end immediately.
+
+Optional emergency only: `DEVICE_BOOTSTRAP_CODE` on the server can still unlock a Manager device via API if every Manager phone is lost — it is not shown on the login screen.
 
 ## Archive on your system
 

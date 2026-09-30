@@ -300,21 +300,20 @@ function sdShowLogin(message) {
       (message ? "<p data-login-hint>" + message + "</p>" : "") +
       "<label>Name</label><input name='name' autocomplete='username'>" +
       "<label>Access code</label><input name='password' type='password' autocomplete='current-password'>" +
-      "<label>First-device unlock code <span style='font-weight:400;color:#667085'>(Manager only)</span></label>" +
-      "<input name='bootstrapCode' type='password' autocomplete='off' placeholder='From Railway DEVICE_BOOTSTRAP_CODE'>" +
-      "<p style='font-size:12px;color:#667085;margin:6px 0 0'>Needed once on a new Manager phone. Leave blank if already approved.</p>" +
-      "<p data-login-error style='display:none;color:#b54708;font-size:13px;font-weight:600;margin:12px 0 0'></p>" +
+      "<p data-login-error style='display:none;color:#b42318;font-size:13px;font-weight:600;margin:12px 0 0'></p>" +
       "<button type='submit'>Log in</button>" +
       "<p style='margin:14px 0 0;text-align:center'><a href='/'>Back to floor</a></p></form>";
     document.body.appendChild(wrap);
     const errEl = wrap.querySelector("[data-login-error]");
-    function showErr(msg) {
+    function showErr(msg, pending) {
+      const text = String(msg || "Login failed");
       if (!errEl) {
-        alert(msg);
+        alert(text);
         return;
       }
       errEl.style.display = "";
-      errEl.textContent = msg;
+      errEl.style.color = pending ? "#b54708" : "#b42318";
+      errEl.textContent = text;
     }
     wrap.querySelector("form").onsubmit = async (e) => {
       e.preventDefault();
@@ -324,8 +323,6 @@ function sdShowLogin(message) {
         password: fd.get("password"),
         deviceId: sdDeviceId()
       };
-      const boot = String(fd.get("bootstrapCode") || "").trim();
-      if (boot) body.bootstrapCode = boot;
       let j;
       try {
         const r = await fetch("/api/office/login", {
@@ -340,9 +337,14 @@ function sdShowLogin(message) {
         return;
       }
       if (!j || !j.ok) {
-        showErr((j && j.error) || (j && j.pendingDevice
-          ? "This device is waiting for Manager approval under Users → Devices."
-          : "Login failed"));
+        if (j && j.pendingDevice) {
+          showErr(j.error || "Correct name and access code — this device is waiting for Manager approval under Users → Devices.", true);
+        } else {
+          const err = String((j && j.error) || "").trim();
+          showErr(/incorrect/i.test(err)
+            ? "Incorrect name or access code. Check spelling and try again."
+            : (err || "Login failed. Check your name and access code."));
+        }
         return;
       }
       sdSaveOffice(j);

@@ -1637,12 +1637,7 @@
                 <label class="form-label">Access code</label>
                 <input type="password" id="globalLoginPass" class="form-control" placeholder="Access code" autocomplete="current-password">
               </div>
-              <div class="mb-3" id="bootstrapCodeWrap">
-                <label class="form-label">First-device unlock code <span class="text-muted fw-normal">(Manager only)</span></label>
-                <input type="password" id="globalLoginBootstrap" class="form-control" placeholder="From Railway DEVICE_BOOTSTRAP_CODE" autocomplete="off">
-                <div class="form-text">Needed once on a new Manager phone/computer. Leave blank if this device is already approved.</div>
-              </div>
-              <div id="loginError" class="alert alert-warning d-none py-2 px-3 mb-3" role="alert" style="font-size:0.92rem"></div>
+              <div id="loginError" class="alert d-none py-2 px-3 mb-3" role="alert" style="font-size:0.95rem;font-weight:600"></div>
               <button id="btnGlobalLogin" class="btn btn-primary w-100 py-2 fw-bold" onclick="submitGlobalLogin()">LOG IN</button>
             </div>
           </div>
@@ -2995,12 +2990,13 @@
       }
     }
 
-    function showLoginError(msg) {
+    function showLoginError(msg, kind) {
       const text = String(msg || "").trim() || "Login failed";
       const box = document.getElementById("loginError");
       if (box) {
         box.textContent = text;
-        box.classList.remove("d-none");
+        box.classList.remove("d-none", "alert-warning", "alert-danger", "alert-info");
+        box.classList.add(kind === "pending" ? "alert-warning" : (kind === "info" ? "alert-info" : "alert-danger"));
       }
       try { showAlert(text); } catch (e) {
         try { window.alert(text); } catch (err) {}
@@ -3011,7 +3007,24 @@
       if (box) {
         box.textContent = "";
         box.classList.add("d-none");
+        box.classList.remove("alert-warning", "alert-danger", "alert-info");
       }
+    }
+
+    function loginFailureMessage(res) {
+      if (!res) return { text: "No response from the server. Check your connection and try again.", kind: "danger" };
+      if (res.pendingDevice) {
+        return {
+          text: res.error || "Correct name and access code — this device is waiting for Manager approval under Users → Devices. You cannot log in until it is approved.",
+          kind: "pending"
+        };
+      }
+      const err = String(res.error || "").trim();
+      if (/incorrect name or access code/i.test(err) || /incorrect/i.test(err)) {
+        return { text: "Incorrect name or access code. Check spelling and try again.", kind: "danger" };
+      }
+      if (err) return { text: err, kind: "danger" };
+      return { text: "Login failed. Check your name and access code, or ask the Manager if this device needs approval.", kind: "danger" };
     }
 
     function showAlert(msg) { 
@@ -3503,7 +3516,7 @@
         }
       });
     }
-    function syncOfficeLogin(name, pass, profile, extra) {
+    function syncOfficeLogin(name, pass, profile) {
       if (!profile || !profile.canSeeOffice) {
         try { sessionStorage.removeItem('sd-office'); } catch (e) {}
         try { localStorage.removeItem('sd-office'); } catch (e) {}
@@ -3514,7 +3527,6 @@
         password: pass,
         deviceId: (typeof sdDeviceId === 'function' ? sdDeviceId() : '')
       };
-      if (extra && extra.bootstrapCode) body.bootstrapCode = extra.bootstrapCode;
       return fetch('/api/office/login', {
         method: 'POST',
         credentials: 'same-origin',
@@ -4608,10 +4620,8 @@
     function submitGlobalLogin() {
       const name = document.getElementById('globalLoginName').value;
       const pass = document.getElementById('globalLoginPass').value;
-      const bootEl = document.getElementById('globalLoginBootstrap');
-      const bootstrapCode = bootEl ? String(bootEl.value || '').trim() : '';
       if (!name || !pass) {
-        showLoginError("Please enter both name and access code.");
+        showLoginError("Please enter both name and access code.", "danger");
         return;
       }
       
@@ -4622,9 +4632,6 @@
       btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> LOGGING IN...';
       btn.disabled = true;
 
-      const opts = {};
-      if (bootstrapCode) opts.bootstrapCode = bootstrapCode;
-
       function finishBtn() {
         btn.innerHTML = origText;
         btn.disabled = false;
@@ -4633,33 +4640,21 @@
       google.script.run.withSuccessHandler(res => {
         finishBtn();
         try {
-          if (!res) {
-            showLoginError("No response from the server. Check your connection and try again.");
-            return;
-          }
-          if (res.success) {
+          if (res && res.success) {
             if (res.token) session.token = res.token;
-            // Open the app immediately; sync office cookie in the background.
             applyLoginProfile(res, { welcome: true });
-            try { syncOfficeLogin(name, pass, res, opts); } catch (e) {}
+            try { syncOfficeLogin(name, pass, res); } catch (e) {}
             return;
           }
-          if (res.needsBootstrap) {
-            const wrap = document.getElementById('bootstrapCodeWrap');
-            if (wrap) wrap.classList.remove('d-none');
-            const boot = document.getElementById('globalLoginBootstrap');
-            if (boot) boot.focus();
-          }
-          showLoginError(res.error || (res.pendingDevice
-            ? 'This device is waiting for Manager approval under Users → Devices.'
-            : 'Incorrect name or access code'));
+          const fail = loginFailureMessage(res);
+          showLoginError(fail.text, fail.kind);
         } catch (e) {
-          showLoginError((e && e.message) ? e.message : String(e));
+          showLoginError((e && e.message) ? e.message : String(e), "danger");
         }
       }).withFailureHandler(err => {
         finishBtn();
-        showLoginError("Connection error: " + err);
-      }).verifyGlobalLogin(name, pass, opts);
+        showLoginError("Connection error: " + err, "danger");
+      }).verifyGlobalLogin(name, pass);
     }
 
     function submitPass() {
