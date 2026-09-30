@@ -197,7 +197,7 @@ function sdMountOfficeShell(active) {
     sdApplyNavCollapsed();
     return;
   }
-  sdEnsureSheet("https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css");
+  sdEnsureSheet("/vendor/bootstrap-icons/bootstrap-icons.css");
   sdEnsureSheet("/office-shell.css?v=logged-in");
   document.body.classList.add("office-app");
   const items = [

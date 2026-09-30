@@ -335,7 +335,7 @@ assert.ok(html.indexOf("Back to statuses") !== -1);
 assert.ok(html.indexOf("Delivery this week and next") !== -1);
 assert.ok(html.indexOf("Throughput") !== -1);
 assert.ok(html.indexOf("Blockers") !== -1);
-assert.ok(html.indexOf("chart.js@4.4.7") !== -1);
+assert.ok(html.indexOf("/vendor/chartjs/chart.umd.min.js") !== -1);
 assert.ok(html.indexOf("/api/office/orders/dashboard") !== -1);
 assert.ok(html.indexOf("sdOfficeFetch") !== -1);
 assert.ok(html.indexOf("grouped by the payment date") !== -1);

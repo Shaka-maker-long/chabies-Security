@@ -209,7 +209,7 @@
     if (window.XLSX) return window.XLSX;
     await new Promise((resolve, reject) => {
       const s = document.createElement("script");
-      s.src = "https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js";
+      s.src = "/vendor/sheetjs/xlsx.full.min.js";
       s.onload = resolve;
       s.onerror = () => reject(new Error("Could not load spreadsheet preview"));
       document.head.appendChild(s);

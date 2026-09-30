@@ -155,7 +155,7 @@ assert.ok(html.indexOf("/api/office/marketing/dashboard") !== -1);
 assert.ok(html.indexOf("/api/office/marketing/dashboard/drill") !== -1);
 assert.ok(html.indexOf("openDrill") !== -1);
 assert.ok(html.indexOf("kind: \"provinces\"") !== -1 || html.indexOf('kind: "provinces"') !== -1);
-assert.ok(html.indexOf("chart.js@4.4.7") !== -1);
+assert.ok(html.indexOf("/vendor/chartjs/chart.umd.min.js") !== -1);
 assert.ok(html.indexOf("sdRequireOffice(\"marketing\")") !== -1);
 
 console.log("marketing-dashboard.test.js ok");

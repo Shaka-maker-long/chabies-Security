@@ -1,5 +1,5 @@
 /* Studio Delta PWA — live office/floor data is never cached. */
-const CACHE = "sd-pwa-v13";
+const CACHE = "sd-pwa-v14-offline-vendor";
 const PRECACHE = [
   "/offline.html",
   "/manifest.webmanifest",
@@ -11,7 +11,14 @@ const PRECACHE = [
   "/icons/icon-512.png",
   "/icons/apple-touch-icon.png",
   "/icons/maskable-512.png",
-  "/icons/icon.svg"
+  "/icons/icon.svg",
+  "/vendor/bootstrap/bootstrap.min.css",
+  "/vendor/bootstrap/bootstrap.bundle.min.js",
+  "/vendor/bootstrap-icons/bootstrap-icons.css",
+  "/vendor/bootstrap-icons/fonts/bootstrap-icons.woff2",
+  "/vendor/bootstrap-icons/fonts/bootstrap-icons.woff",
+  "/vendor/chartjs/chart.umd.min.js",
+  "/vendor/sheetjs/xlsx.full.min.js"
 ];
 
 function isApi(url) {

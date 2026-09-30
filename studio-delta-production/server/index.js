@@ -305,6 +305,7 @@ app.get("/offline.html", (_req, res) => {
   res.sendFile(path.join(publicDir, "offline.html"));
 });
 app.use("/icons", express.static(path.join(publicDir, "icons"), { maxAge: "7d" }));
+app.use("/vendor", express.static(path.join(publicDir, "vendor"), { maxAge: "7d" }));
 app.get("/facility-floor.png", (_req, res) => {
   noStore(res);
   res.type("image/png").sendFile(path.join(publicDir, "facility-floor.png"));
