@@ -8,6 +8,15 @@ const { parseMoney, money, formatRand } = require("./db");
 const steelRates = require("./steel-rates");
 const glassRates = require("./glass-rates");
 
+/** Tubes / bars / angle iron are bought as fixed lengths. */
+const STEEL_LENGTH_M = 6;
+
+/**
+ * Auto-deduct (Current → WIP on allocate; WIP → used on deliver) stays off until
+ * on-hand counts are loaded. Helpers are ready; callers must check this flag.
+ */
+const STEEL_AUTO_DEDUCT_ENABLED = false;
+
 function steelPath() {
   return path.join(dataDir(), "inventory-steel.json");
 }
@@ -80,7 +89,58 @@ function extraByName(store) {
   return map;
 }
 
-function decorate(name, extra, priceFromRate, orderedFromOrders) {
+function isPlateName(name) {
+  const s = String(name || "");
+  return /\bplate\b/i.test(s) || /^\s*LATE\b/i.test(s);
+}
+
+function parsePlateSheetMm(name) {
+  const m = String(name || "").match(/(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  return {
+    thicknessMm: Number(m[1]),
+    widthMm: Number(m[2]),
+    lengthMm: Number(m[3])
+  };
+}
+
+function plateSheetAreaM2(name) {
+  const d = parsePlateSheetMm(name);
+  if (!d || !(d.widthMm > 0) || !(d.lengthMm > 0)) return null;
+  return Math.round((d.widthMm / 1000) * (d.lengthMm / 1000) * 10000) / 10000;
+}
+
+function steelBuyUnit(name) {
+  return isPlateName(name) ? "sheet" : "length";
+}
+
+function steelBuyUnitLabel(name) {
+  return isPlateName(name) ? "sheet" : "length (6 m)";
+}
+
+/** Metres allocated → lengths to deduct (6 m = 1 length). */
+function metresToLengths(metres) {
+  const m = Number(metres) || 0;
+  if (!(m > 0)) return 0;
+  return Math.round((m / STEEL_LENGTH_M) * 1000) / 1000;
+}
+
+/** m² allocated → sheets (by sheet area from the name). */
+function m2ToSheets(m2, sheetAreaM2) {
+  const area = Number(sheetAreaM2) || 0;
+  const used = Number(m2) || 0;
+  if (!(area > 0) || !(used > 0)) return 0;
+  return Math.round((used / area) * 1000) / 1000;
+}
+
+function defaultLengthUnitPrice(ratePerM) {
+  if (ratePerM == null || ratePerM === "") return null;
+  const n = Number(ratePerM);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return Math.round(n * STEEL_LENGTH_M * 100) / 100;
+}
+
+function decorateGlass(name, extra, priceFromRate, orderedFromOrders) {
   const stock = extra && extra.stock != null ? Number(extra.stock) || 0 : 0;
   const minThreshold = extra && extra.minThreshold != null ? Number(extra.minThreshold) || 0 : 0;
   const orderedQty = extra && extra.orderedQty != null && String(extra.orderedQty).trim() !== ""
@@ -106,6 +166,60 @@ function decorate(name, extra, priceFromRate, orderedFromOrders) {
     totalValueLabel: totalValue == null ? "—" : formatRand(totalValue),
     low,
     status: low ? "Low" : "OK"
+  };
+}
+
+function decorateSteel(name, extra, ratePerM) {
+  const buyUnit = steelBuyUnit(name);
+  const sheetArea = buyUnit === "sheet" ? plateSheetAreaM2(name) : null;
+  const stock = extra && extra.stock != null ? Number(extra.stock) || 0 : 0;
+  const wipStock = extra && extra.wipStock != null ? Number(extra.wipStock) || 0 : 0;
+  const orderedQty = extra && extra.orderedQty != null ? Number(extra.orderedQty) || 0 : 0;
+  const totalPurchased = extra && extra.totalPurchased != null ? Number(extra.totalPurchased) || 0 : 0;
+  const totalUsed = extra && extra.totalUsed != null ? Number(extra.totalUsed) || 0 : 0;
+  const minThreshold = extra && extra.minThreshold != null ? Number(extra.minThreshold) || 0 : 0;
+  const defaultPrice = buyUnit === "length" ? defaultLengthUnitPrice(ratePerM) : null;
+  const unitPrice = extra && extra.unitPrice != null && extra.unitPrice !== ""
+    ? Number(extra.unitPrice)
+    : defaultPrice;
+  const valueInStock = unitPrice == null ? null : Math.round(stock * unitPrice * 100) / 100;
+  const valueInWip = unitPrice == null ? null : Math.round(wipStock * unitPrice * 100) / 100;
+  const low = minThreshold > 0 && stock <= minThreshold;
+  const rateHint = buyUnit === "length" && ratePerM != null
+    ? formatRand(ratePerM) + "/m → " + (unitPrice == null ? "—" : formatRand(unitPrice)) + "/length"
+    : (buyUnit === "sheet" && sheetArea != null ? sheetArea + " m² / sheet" : "");
+  return {
+    id: extra && extra.id ? extra.id : "",
+    name,
+    buyUnit,
+    buyUnitLabel: steelBuyUnitLabel(name),
+    lengthM: buyUnit === "length" ? STEEL_LENGTH_M : null,
+    sheetAreaM2: sheetArea,
+    stock,
+    stockLabel: formatQty(stock),
+    wipStock,
+    wipLabel: formatQty(wipStock),
+    orderedQty,
+    orderedLabel: formatQty(orderedQty),
+    totalPurchased,
+    purchasedLabel: formatQty(totalPurchased),
+    totalUsed,
+    usedLabel: formatQty(totalUsed),
+    minThreshold,
+    ropLabel: formatQty(minThreshold),
+    unitPrice,
+    priceLabel: unitPrice == null ? "—" : formatRand(unitPrice),
+    ratePerM: ratePerM == null ? null : Number(ratePerM),
+    rateHint,
+    valueInStock,
+    valueInStockLabel: valueInStock == null ? "—" : formatRand(valueInStock),
+    valueInWip,
+    valueInWipLabel: valueInWip == null ? "—" : formatRand(valueInWip),
+    totalValue: valueInStock,
+    totalValueLabel: valueInStock == null ? "—" : formatRand(valueInStock),
+    low,
+    status: low ? "Low" : "OK",
+    autoDeductEnabled: STEEL_AUTO_DEDUCT_ENABLED
   };
 }
 
@@ -140,29 +254,94 @@ function snapshotSteel() {
   const extras = extraByName(store);
   const items = steelProfileNames().map((name) => {
     const rate = steelRates.findRate(name);
-    return decorate(name, extras[nameKey(name)], rate ? rate.ratePerM : null, 0);
+    return decorateSteel(name, extras[nameKey(name)], rate ? rate.ratePerM : null);
   });
-  return { items, itemCount: items.length, lowCount: items.filter((row) => row.low).length };
+  return {
+    items,
+    itemCount: items.length,
+    lowCount: items.filter((row) => row.low).length,
+    lengthM: STEEL_LENGTH_M,
+    autoDeductEnabled: STEEL_AUTO_DEDUCT_ENABLED
+  };
 }
 
 function upsertSteel(body) {
   const name = String((body && body.name) || "").replace(/\s+/g, " ").trim();
   if (!name) throw new Error("Steel name is required.");
   const store = loadKind(steelPath());
-  const want = nameKey(name);
-  let row = store.items.find((item) => nameKey(item.name) === want);
+  const prevName = String((body && body.previousName) || "").replace(/\s+/g, " ").trim();
+  const wantPrev = nameKey(prevName || name);
+  let row = store.items.find((item) => nameKey(item.name) === wantPrev)
+    || store.items.find((item) => nameKey(item.name) === nameKey(name));
   if (!row) {
     row = { id: "sinv_" + crypto.randomBytes(6).toString("hex"), name };
     store.items.push(row);
-  } else {
-    row.name = name;
   }
+  row.name = name;
   if (body && Object.prototype.hasOwnProperty.call(body, "stock")) row.stock = parseStock(body.stock);
+  if (body && Object.prototype.hasOwnProperty.call(body, "wipStock")) row.wipStock = parseStock(body.wipStock);
   if (body && Object.prototype.hasOwnProperty.call(body, "minThreshold")) row.minThreshold = parseThreshold(body.minThreshold);
   if (body && Object.prototype.hasOwnProperty.call(body, "orderedQty")) row.orderedQty = parseStock(body.orderedQty);
+  if (body && Object.prototype.hasOwnProperty.call(body, "totalPurchased")) row.totalPurchased = parseStock(body.totalPurchased);
+  if (body && Object.prototype.hasOwnProperty.call(body, "totalUsed")) row.totalUsed = parseStock(body.totalUsed);
   if (body && Object.prototype.hasOwnProperty.call(body, "unitPrice")) row.unitPrice = parsePrice(body.unitPrice);
   saveKind(steelPath(), store);
   return snapshotSteel();
+}
+
+function findOrCreateSteelRow(store, name) {
+  const want = nameKey(name);
+  let row = store.items.find((item) => nameKey(item.name) === want);
+  if (!row) {
+    row = { id: "sinv_" + crypto.randomBytes(6).toString("hex"), name: String(name || "").replace(/\s+/g, " ").trim() };
+    store.items.push(row);
+  }
+  return row;
+}
+
+/**
+ * Move buy-units from Current → WIP when steel is allocated on a job.
+ * Call with lengths/sheets (not metres). Use metresToLengths / m2ToSheets at the call site.
+ * Disabled until STEEL_AUTO_DEDUCT_ENABLED is true.
+ */
+function allocateSteelToWip(name, qtyBuyUnits) {
+  if (!STEEL_AUTO_DEDUCT_ENABLED) {
+    return { ok: false, skipped: true, reason: "Steel auto-deduct is off until on-hand stock is loaded." };
+  }
+  const qty = parseStock(qtyBuyUnits);
+  if (!(qty > 0)) return { ok: true, stock: 0, wipStock: 0, moved: 0 };
+  const store = loadKind(steelPath());
+  const row = findOrCreateSteelRow(store, name);
+  const stock = Number(row.stock) || 0;
+  const wip = Number(row.wipStock) || 0;
+  if (stock < qty) {
+    throw new Error("Not enough current stock to allocate " + formatQty(qty) + " " + steelBuyUnitLabel(name) + "(s) of " + name + ".");
+  }
+  row.stock = Math.round((stock - qty) * 1000) / 1000;
+  row.wipStock = Math.round((wip + qty) * 1000) / 1000;
+  saveKind(steelPath(), store);
+  return { ok: true, stock: row.stock, wipStock: row.wipStock, moved: qty };
+}
+
+/**
+ * When an order is Delivered, move that job's WIP qty into totalUsed.
+ * Call with lengths/sheets (not metres). Disabled until STEEL_AUTO_DEDUCT_ENABLED is true.
+ */
+function consumeSteelFromWipOnDeliver(name, qtyBuyUnits) {
+  if (!STEEL_AUTO_DEDUCT_ENABLED) {
+    return { ok: false, skipped: true, reason: "Steel auto-deduct is off until on-hand stock is loaded." };
+  }
+  const qty = parseStock(qtyBuyUnits);
+  if (!(qty > 0)) return { ok: true, wipStock: 0, totalUsed: 0, moved: 0 };
+  const store = loadKind(steelPath());
+  const row = findOrCreateSteelRow(store, name);
+  const wip = Number(row.wipStock) || 0;
+  const used = Number(row.totalUsed) || 0;
+  const move = Math.min(wip, qty);
+  row.wipStock = Math.round((wip - move) * 1000) / 1000;
+  row.totalUsed = Math.round((used + move) * 1000) / 1000;
+  saveKind(steelPath(), store);
+  return { ok: true, wipStock: row.wipStock, totalUsed: row.totalUsed, moved: move };
 }
 
 function glassLineName(type, thickness) {
@@ -215,7 +394,7 @@ function snapshotGlass() {
     if (forDecorate && (forDecorate.orderedQty == null || String(forDecorate.orderedQty).trim() === "")) {
       delete forDecorate.orderedQty;
     }
-    return decorate(name, forDecorate, rate ? rate.ratePerM2 : null, computed);
+    return decorateGlass(name, forDecorate, rate ? rate.ratePerM2 : null, computed);
   });
   return { items, itemCount: items.length, lowCount: items.filter((row) => row.low).length };
 }
@@ -241,8 +420,19 @@ function upsertGlass(body) {
 }
 
 module.exports = {
+  STEEL_LENGTH_M,
+  STEEL_AUTO_DEDUCT_ENABLED,
+  isPlateName,
+  parsePlateSheetMm,
+  plateSheetAreaM2,
+  steelBuyUnit,
+  metresToLengths,
+  m2ToSheets,
+  defaultLengthUnitPrice,
   snapshotSteel,
   upsertSteel,
+  allocateSteelToWip,
+  consumeSteelFromWipOnDeliver,
   snapshotGlass,
   upsertGlass
 };

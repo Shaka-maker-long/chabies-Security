@@ -176,22 +176,36 @@
     <section class="card">
       <h2 id="matTitle">Steel</h2>
       <p class="hint" id="matHint"></p>
-      <div id="matList"><div class="empty">Loading…</div></div>
+      <p class="hint" id="matDeductNote" hidden style="color:var(--warn,#b54708)"></p>
+      <div id="matList" style="overflow:auto"><div class="empty">Loading…</div></div>
       <form class="add" id="matForm">
+        <input type="hidden" id="matPreviousName" value="">
         <label>Name
           <input id="matName" required placeholder="Profile or glass type" autocomplete="off">
+        </label>
+        <label id="matUnitWrap" hidden>Buy unit
+          <input id="matBuyUnit" readonly>
         </label>
         <label>Current stock
           <input id="matStock" inputmode="decimal" placeholder="0">
         </label>
+        <label id="matWipWrap" hidden>Stock in WIP
+          <input id="matWip" inputmode="decimal" placeholder="0" readonly title="Filled when auto-deduct is enabled">
+        </label>
         <label>Ordered
           <input id="matOrdered" inputmode="decimal" placeholder="0">
         </label>
-        <label>Unit price (R)
+        <label id="matPriceLabel">Unit price (R)
           <input id="matPrice" inputmode="decimal" placeholder="optional">
         </label>
         <label>ROP
           <input id="matRop" inputmode="decimal" placeholder="0">
+        </label>
+        <label id="matPurchasedWrap" hidden>Total purchased
+          <input id="matPurchased" inputmode="decimal" placeholder="0">
+        </label>
+        <label id="matUsedWrap" hidden>Total used
+          <input id="matUsed" inputmode="decimal" placeholder="0">
         </label>
         <button type="submit">Save line</button>
         <span class="msg" id="matMsg"></span>
@@ -603,27 +617,51 @@
       document.getElementById("q").placeholder = "Search purchase orders";
     }
     if (pathTab === "steel") {
-      document.getElementById("lede").textContent = "Steel profiles from Cost rates and Steel_Profiles. Name, current stock, ordered stock, unit price, ROP, total value.";
+      document.getElementById("lede").textContent = "Steel stock in buy units: lengths (6 m) for tubes/bars/angle, sheets for plates. Unit price is per length or per sheet. Auto-deduct to WIP is off until on-hand counts are loaded.";
       document.getElementById("matTitle").textContent = "Steel";
-      document.getElementById("matHint").textContent = "Name, Current Stock, Ordered Stock, Unit Price, ROP, Total Value.";
+      document.getElementById("matHint").textContent = "Current stock, WIP, ordered, unit price (per length / sheet), ROP, value in stock / WIP, total purchased and used. Click a row to edit name, stock, ordered, price, ROP, purchased, and used.";
+      document.getElementById("matDeductNote").hidden = false;
+      document.getElementById("matDeductNote").textContent = "Auto-deduct is disabled: allocating steel will not move Current → WIP yet, and Delivered will not move WIP → used yet.";
+      document.getElementById("matUnitWrap").hidden = false;
+      document.getElementById("matWipWrap").hidden = false;
+      document.getElementById("matPurchasedWrap").hidden = false;
+      document.getElementById("matUsedWrap").hidden = false;
+      document.getElementById("matPriceLabel").childNodes[0].textContent = "Unit price / length or sheet (R) ";
     }
     if (pathTab === "glass") {
       document.getElementById("lede").textContent = "Glass types from Glass rates. Ordered stock follows outstanding To order quantity unless you type another figure.";
       document.getElementById("matTitle").textContent = "Glass";
       document.getElementById("matHint").textContent = "Name, Current Stock, Ordered Stock, Unit Price, ROP, Total Value.";
+      document.getElementById("matDeductNote").hidden = true;
+      document.getElementById("matUnitWrap").hidden = true;
+      document.getElementById("matWipWrap").hidden = true;
+      document.getElementById("matPurchasedWrap").hidden = true;
+      document.getElementById("matUsedWrap").hidden = true;
+      document.getElementById("matPriceLabel").childNodes[0].textContent = "Unit price (R) ";
     }
 
     let matData = { items: [] };
+    let matEditingName = "";
     function filteredMat() {
       const needle = q();
       return (matData.items || []).filter((row) => !needle || String(row.name).toLowerCase().indexOf(needle) !== -1);
     }
     function fillMat(row) {
+      matEditingName = row.name || "";
+      document.getElementById("matPreviousName").value = row.name || "";
       document.getElementById("matName").value = row.name;
       document.getElementById("matStock").value = row.stockLabel;
       document.getElementById("matOrdered").value = row.orderedLabel;
       document.getElementById("matRop").value = row.ropLabel;
       document.getElementById("matPrice").value = row.unitPrice == null ? "" : String(row.unitPrice);
+      const buy = document.getElementById("matBuyUnit");
+      if (buy) buy.value = row.buyUnitLabel || "";
+      const wip = document.getElementById("matWip");
+      if (wip) wip.value = row.wipLabel != null ? row.wipLabel : "0";
+      const purchased = document.getElementById("matPurchased");
+      if (purchased) purchased.value = row.purchasedLabel != null ? row.purchasedLabel : "0";
+      const used = document.getElementById("matUsed");
+      if (used) used.value = row.usedLabel != null ? row.usedLabel : "0";
     }
     function renderMat() {
       if (!matKind) return;
@@ -639,13 +677,35 @@
         box.innerHTML = '<div class="empty">No items match that search.</div>';
         return;
       }
-      box.innerHTML = "<table><thead><tr><th>Name</th><th class='r'>Current Stock</th><th class='r'>Ordered Stock</th><th class='r'>Unit Price</th><th class='r'>ROP</th><th class='r'>Total Value</th></tr></thead><tbody>" +
-        rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-name=\"" + esc(row.name) + "\"><td>" + esc(row.name) +
-          "</td><td class='r'>" + esc(row.stockLabel) +
-          "</td><td class='r'>" + esc(row.orderedLabel) +
-          "</td><td class='r'>" + esc(row.priceLabel) +
-          "</td><td class='r'>" + esc(row.ropLabel) +
-          "</td><td class='r'>" + esc(row.totalValueLabel || "—") + "</td></tr>").join("") + "</tbody></table>";
+      if (matKind === "steel") {
+        box.innerHTML = "<table><thead><tr>" +
+          "<th>Name</th><th>Unit</th><th class='r'>Current Stock</th><th class='r'>Stock in WIP</th>" +
+          "<th class='r'>Ordered Stock</th><th class='r'>Unit Price</th><th class='r'>ROP</th>" +
+          "<th class='r'>Value in stock</th><th class='r'>Value in WIP</th>" +
+          "<th class='r'>Total purchased</th><th class='r'>Total used</th>" +
+          "</tr></thead><tbody>" +
+          rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-name=\"" + esc(row.name) + "\">" +
+            "<td>" + esc(row.name) + (row.rateHint ? "<div class='hint' style='margin:2px 0 0'>" + esc(row.rateHint) + "</div>" : "") + "</td>" +
+            "<td>" + esc(row.buyUnitLabel || "") + "</td>" +
+            "<td class='r'>" + esc(row.stockLabel) + "</td>" +
+            "<td class='r'>" + esc(row.wipLabel || "0") + "</td>" +
+            "<td class='r'>" + esc(row.orderedLabel) + "</td>" +
+            "<td class='r'>" + esc(row.priceLabel) + "</td>" +
+            "<td class='r'>" + esc(row.ropLabel) + "</td>" +
+            "<td class='r'>" + esc(row.valueInStockLabel || "—") + "</td>" +
+            "<td class='r'>" + esc(row.valueInWipLabel || "—") + "</td>" +
+            "<td class='r'>" + esc(row.purchasedLabel || "0") + "</td>" +
+            "<td class='r'>" + esc(row.usedLabel || "0") + "</td>" +
+            "</tr>").join("") + "</tbody></table>";
+      } else {
+        box.innerHTML = "<table><thead><tr><th>Name</th><th class='r'>Current Stock</th><th class='r'>Ordered Stock</th><th class='r'>Unit Price</th><th class='r'>ROP</th><th class='r'>Total Value</th></tr></thead><tbody>" +
+          rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-name=\"" + esc(row.name) + "\"><td>" + esc(row.name) +
+            "</td><td class='r'>" + esc(row.stockLabel) +
+            "</td><td class='r'>" + esc(row.orderedLabel) +
+            "</td><td class='r'>" + esc(row.priceLabel) +
+            "</td><td class='r'>" + esc(row.ropLabel) +
+            "</td><td class='r'>" + esc(row.totalValueLabel || "—") + "</td></tr>").join("") + "</tbody></table>";
+      }
       box.querySelectorAll("tbody tr").forEach((tr) => {
         tr.onclick = () => {
           const row = (matData.items || []).find((item) => item.name === tr.getAttribute("data-name"));
@@ -659,21 +719,30 @@
       const j = await r.json();
       if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
       matData = j;
+      if (matKind === "steel" && j.autoDeductEnabled === false) {
+        document.getElementById("matDeductNote").hidden = false;
+      }
       renderMat();
       setMsg("status", (j.itemCount || 0) + " item" + ((j.itemCount || 0) === 1 ? "" : "s"));
     }
     document.getElementById("matForm").onsubmit = async (e) => {
       e.preventDefault();
       setMsg("matMsg", "Saving…");
+      const payload = {
+        name: document.getElementById("matName").value,
+        previousName: document.getElementById("matPreviousName").value || matEditingName,
+        stock: document.getElementById("matStock").value,
+        orderedQty: document.getElementById("matOrdered").value,
+        minThreshold: document.getElementById("matRop").value,
+        unitPrice: document.getElementById("matPrice").value
+      };
+      if (matKind === "steel") {
+        payload.totalPurchased = document.getElementById("matPurchased").value;
+        payload.totalUsed = document.getElementById("matUsed").value;
+      }
       const r = await sdOfficeFetch("/api/office/inventory/" + matKind, {
         method: "POST",
-        body: JSON.stringify({
-          name: document.getElementById("matName").value,
-          stock: document.getElementById("matStock").value,
-          orderedQty: document.getElementById("matOrdered").value,
-          minThreshold: document.getElementById("matRop").value,
-          unitPrice: document.getElementById("matPrice").value
-        })
+        body: JSON.stringify(payload)
       });
       const j = await r.json();
       if (!j.ok) { setMsg("matMsg", j.error || "Could not save", true); return; }

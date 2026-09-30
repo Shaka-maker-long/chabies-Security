@@ -33,31 +33,81 @@ let steel = inventory.snapshotSteel();
 const shs = steel.items.find((row) => row.name === "25x25 SHS");
 assert.ok(shs, "steel rates appear on the Steel inventory list");
 assert.strictEqual(shs.stock, 0);
+assert.strictEqual(shs.wipStock, 0);
 assert.strictEqual(shs.orderedQty, 0);
+assert.strictEqual(shs.totalPurchased, 0);
+assert.strictEqual(shs.totalUsed, 0);
 assert.strictEqual(shs.minThreshold, 0);
+assert.strictEqual(shs.buyUnit, "length");
+assert.strictEqual(shs.lengthM, 6);
 assert.strictEqual(shs.low, false, "ROP 0 does not flag steel as low");
-assert.strictEqual(Number(shs.unitPrice), 45.5);
+assert.strictEqual(Number(shs.unitPrice), 273, "default unit price is rate/m × 6 m length");
+assert.strictEqual(steel.autoDeductEnabled, false, "auto-deduct stays off until on-hand stock is loaded");
+assert.strictEqual(inventory.metresToLengths(6), 1);
+assert.strictEqual(inventory.metresToLengths(12), 2);
+assert.ok(inventory.isPlateName("PLATE - 1.6X1500X3000 PLATE"));
+assert.ok(inventory.isPlateName("LATE - 1.2X1220X2450 PLATE"));
+assert.ok(!inventory.isPlateName("25x25 SHS"));
+assert.strictEqual(inventory.plateSheetAreaM2("LATE - 1.2X1220X2450 PLATE"), 2.989);
+assert.strictEqual(inventory.steelBuyUnit("LATE - 1.2X1220X2450 PLATE"), "sheet");
+assert.strictEqual(inventory.allocateSteelToWip("25x25 SHS", 1).skipped, true);
 
 steel = inventory.upsertSteel({
   name: "25x25 SHS",
   stock: "12",
   orderedQty: "8",
   minThreshold: "5",
-  unitPrice: "50"
+  unitPrice: "50",
+  totalPurchased: "20",
+  totalUsed: "3"
 });
 const saved = steel.items.find((row) => row.name === "25x25 SHS");
 assert.strictEqual(saved.stock, 12);
 assert.strictEqual(saved.orderedQty, 8);
 assert.strictEqual(saved.minThreshold, 5);
 assert.strictEqual(Number(saved.unitPrice), 50);
+assert.strictEqual(saved.totalPurchased, 20);
+assert.strictEqual(saved.totalUsed, 3);
+assert.strictEqual(saved.valueInStock, 600);
+assert.strictEqual(saved.valueInWip, 0);
 assert.strictEqual(saved.low, false);
 assert.ok(saved.priceLabel.indexOf("50.00") !== -1);
 
-steel = inventory.upsertSteel({ name: "25x25 SHS", stock: "5", minThreshold: "5" });
-const lowShs = steel.items.find((row) => row.name === "25x25 SHS");
-assert.strictEqual(lowShs.stock, 5);
-assert.strictEqual(lowShs.low, true);
-assert.strictEqual(steel.lowCount, 1);
+steel = inventory.upsertSteel({
+  name: "25x25 SHS",
+  previousName: "25x25 SHS",
+  wipStock: "3",
+  unitPrice: "50"
+});
+const withWip = steel.items.find((row) => row.name === "25x25 SHS");
+assert.strictEqual(withWip.wipStock, 3);
+assert.strictEqual(withWip.valueInWip, 150);
+
+steel = inventory.upsertSteel({
+  name: "LATE - 1.2X1220X2450 PLATE",
+  stock: "4",
+  orderedQty: "2",
+  unitPrice: "160.35",
+  totalPurchased: "4"
+});
+const plate = steel.items.find((row) => row.name === "LATE - 1.2X1220X2450 PLATE");
+assert.ok(plate);
+assert.strictEqual(plate.buyUnit, "sheet");
+assert.strictEqual(plate.sheetAreaM2, 2.989);
+assert.strictEqual(Number(plate.unitPrice), 160.35);
+assert.strictEqual(plate.valueInStock, 641.4);
+
+steel = inventory.upsertSteel({
+  name: "25x25 SHS renamed",
+  previousName: "25x25 SHS",
+  stock: "5",
+  minThreshold: "5"
+});
+const renamed = steel.items.find((row) => row.name === "25x25 SHS renamed");
+assert.ok(renamed, "steel name can be renamed via previousName");
+assert.strictEqual(renamed.stock, 5);
+assert.strictEqual(renamed.low, true);
+assert.ok(steel.lowCount >= 1);
 
 inventory.upsertSteel({ name: "50x50 SHS", stock: "0", minThreshold: "0" });
 const emptyShs = inventory.snapshotSteel().items.find((row) => row.name === "50x50 SHS");
