@@ -2181,6 +2181,7 @@ function copyPipeline(from, to) {
   to.quotes = Array.isArray(from && from.quotes) ? cloneJson(from.quotes, []) : [];
   to.supplier_quotes = Array.isArray(from && from.supplier_quotes) ? cloneJson(from.supplier_quotes, []) : [];
   to.follow_up_assignee = String((from && from.follow_up_assignee) || "").trim();
+  to.follow_up_on = String((from && from.follow_up_on) || "").trim();
   to.quote_assignee = String((from && from.quote_assignee) || "").trim();
   to.correspondence = normalizeCorrespondence(from);
   to.client_outcome = cloneJson(from && from.client_outcome, null);

@@ -1625,4 +1625,53 @@ assert.strictEqual(db.listEnquiries().length, 0);
 assert.ok(db.listOrders().some((o) => String(o.order_number) === "9001"));
 assert.strictEqual(db.nextEnquiryNo(), "#1996");
 
+// Custom follow-up day replaces the 7-day rule until that day
+const scheduled = toQuoted("Schedule Day Client", "SOQ2599");
+assert.ok(scheduled.actions.some((a) => a.id === "schedule_followup"));
+const setDay = pipeline.applyAction(scheduled.row.enquiry_no, "Quoter", {
+  action: "schedule_followup",
+  follow_up_on: "2099-06-15"
+});
+assert.strictEqual(setDay.row.follow_up_on, "2099-06-15");
+assert.strictEqual(setDay.followUpOn, "2099-06-15");
+assert.ok(setDay.row.tasks.some((t) => {
+  return t.kind === "follow_up" && t.status === "open" && t.due_at === pipeline.followUpOnToDueAt("2099-06-15");
+}));
+assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === scheduled.row.enquiry_no),
+  "future scheduled follow-up must not appear on My tasks yet");
+assert.ok(!pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === scheduled.row.enquiry_no));
+
+// Force due day to today → reminds
+{
+  const raw = db.getEnquiryRaw(scheduled.row.enquiry_no);
+  raw.follow_up_on = "2020-01-02";
+  (raw.tasks || []).forEach((t) => {
+    if (t.kind === "follow_up" && t.status === "open") t.due_at = pipeline.followUpOnToDueAt("2020-01-02");
+  });
+  db.saveEnquiryRecord(raw);
+}
+assert.ok(pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === scheduled.row.enquiry_no));
+assert.ok(pipeline.listMyTasks("Pat").some((t) => t.kind === "follow_up" && t.enquiry_no === scheduled.row.enquiry_no));
+
+const loggedWithNext = pipeline.applyAction(scheduled.row.enquiry_no, "Pat", {
+  action: "complete_followup",
+  file_base64: png,
+  file_name: "fu-sched.png",
+  file_confirmed: true,
+  next_follow_up_on: "2099-12-01"
+});
+assert.strictEqual(loggedWithNext.row.follow_up_on, "2099-12-01");
+const expectedDue = pipeline.followUpOnToDueAt("2099-12-01");
+assert.ok(loggedWithNext.row.tasks.some((t) => {
+  return t.kind === "follow_up" && t.status === "open" && t.due_at === expectedDue;
+}));
+assert.ok(!pipeline.listMyTasks("Quoter").some((t) => t.kind === "follow_up" && t.enquiry_no === scheduled.row.enquiry_no));
+
+const cleared = pipeline.applyAction(scheduled.row.enquiry_no, "Quoter", {
+  action: "schedule_followup",
+  clear: "1"
+});
+assert.strictEqual(cleared.row.follow_up_on, "");
+assert.ok(pipeline.followUpDueAt(cleared.row));
+
 console.log("enquiry-pipeline.test.js ok");

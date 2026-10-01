@@ -275,6 +275,8 @@ assert.ok(processJs.indexOf("Create order from this enquiry") !== -1);
 assert.ok(processJs.indexOf("/orders/from-enquiry") !== -1);
 assert.ok(processJs.indexOf("Follow-up") !== -1);
 assert.ok(processJs.indexOf("followUpPeople") !== -1);
+assert.ok(processJs.indexOf("next_follow_up_on") !== -1);
+assert.ok(processJs.indexOf("schedule_followup") !== -1);
 assert.ok(processJs.indexOf("Who follows up after 7 days?") === -1);
 assert.ok(processJs.indexOf("Who owns the next follow-up?") === -1);
 assert.ok(processJs.indexOf("Supplier quotation") !== -1);

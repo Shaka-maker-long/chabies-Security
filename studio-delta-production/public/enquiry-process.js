@@ -39,10 +39,21 @@
   function followUpPeopleNote() {
     const names = (state.snap && state.snap.followUpPeople) || [];
     const max = (state.snap && state.snap.followUpMax) || 3;
+    const scheduled = (state.snap && state.snap.followUpOn) || (state.row && state.row.follow_up_on) || "";
+    const scheduleLine = scheduled
+      ? " Next follow-up is set for <b>" + esc(String(scheduled)) + "</b> (that day replaces the usual 7-day rule)."
+      : " Follow-up starts 7 days after this quote unless you set a specific day.";
     if (!names.length) {
-      return "<p class=\"sd-process-sub\">Tick Follow-up on Users. Follow-up starts 7 days after this quote, up to " + max + " times.</p>";
+      return "<p class=\"sd-process-sub\">Tick Follow-up on Users. Up to " + max + " times on this quote." + scheduleLine + "</p>";
     }
-    return "<p class=\"sd-process-sub\">Follow-up: " + names.map(esc).join(", ") + ". Starts 7 days after this quote, up to " + max + " times on this quote.</p>";
+    return "<p class=\"sd-process-sub\">Follow-up: " + names.map(esc).join(", ") + ". Up to " + max + " times on this quote." + scheduleLine + "</p>";
+  }
+
+  function nextFollowUpDateField(row) {
+    const current = esc(String((row && row.follow_up_on) || (state.snap && state.snap.followUpOn) || ""));
+    return "<label>Next follow-up on <span class=\"sd-process-sub\">(optional)</span>" +
+      "<input type=\"date\" name=\"next_follow_up_on\" value=\"" + current + "\"></label>" +
+      "<p class=\"sd-process-sub\">If the client named a day (for example when they want to order), pick it here. That day replaces the usual 7-day follow-up until then.</p>";
   }
   function openAssignee(row, kind) {
     const t = ((row && row.tasks) || []).find((task) => task.kind === kind && task.status === "open");
@@ -882,7 +893,16 @@
       const n = followUpsThisQuote(row);
       const max = (state.snap && state.snap.followUpMax) || 3;
       return fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "") +
-        "<p class=\"sd-process-sub\">Follow-up " + esc(String(n + 1)) + " of " + esc(String(max)) + " on this quote. Anyone ticked Follow-up on Users can log it; that clears it for the others.</p>";
+        "<p class=\"sd-process-sub\">Follow-up " + esc(String(n + 1)) + " of " + esc(String(max)) + " on this quote. Anyone ticked Follow-up on Users can log it; that clears it for the others.</p>" +
+        nextFollowUpDateField(row);
+    }
+    if (action.id === "schedule_followup") {
+      const current = String((row && row.follow_up_on) || (state.snap && state.snap.followUpOn) || "");
+      return "<p class=\"sd-process-sub\">Use this when the client asks you to come back on a specific day. My tasks will remind you on that day instead of after 7 days.</p>" +
+        "<label>Follow-up day *<input type=\"date\" name=\"follow_up_on\" value=\"" + esc(current) + "\" required></label>" +
+        (current
+          ? "<label class=\"sd-check\"><input type=\"checkbox\" name=\"clear\" value=\"1\"> Clear the set day and go back to the 7-day rule</label>"
+          : "");
     }
     if (action.id === "complete_reject") {
       return "<label>Rejection reason *<textarea name=\"comments\"></textarea></label>";
@@ -913,6 +933,7 @@
       approval: "approve or reject costing",
       quote: "upload the quote PDF",
       follow_up: "log a follow-up",
+      schedule_followup: "set the follow-up day",
       pop: "attach proof of payment or the client outcome",
       drawing: "upload the drawing"
     })[kind] || String(kind || "this step");
@@ -983,6 +1004,14 @@
     if (action.id === "complete_order") {
       body.drawing_required = field(form, "drawing_required");
       body.quote_option = field(form, "quote_option");
+    }
+    if (action.id === "complete_followup") {
+      body.next_follow_up_on = field(form, "next_follow_up_on");
+    }
+    if (action.id === "schedule_followup") {
+      body.follow_up_on = field(form, "follow_up_on");
+      const clear = form.querySelector('[name="clear"]');
+      if (clear && clear.checked) body.clear = "1";
     }
     if (action.id === "close") body.status = field(form, "status");
     if (action.id === "set_status") body.status = field(form, "status");

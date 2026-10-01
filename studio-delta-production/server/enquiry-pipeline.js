@@ -369,6 +369,32 @@ function addDaysIso(fromDate, days) {
   return d.toISOString();
 }
 
+function parseFollowUpOn(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    return m[3] + "-" + m[2].padStart(2, "0") + "-" + m[1].padStart(2, "0");
+  }
+  const d = parseDmy(s) || new Date(s);
+  if (!d || isNaN(d.getTime())) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  const sast = new Date(d.getTime() + 2 * 60 * 60 * 1000);
+  return sast.getUTCFullYear() + "-" + p(sast.getUTCMonth() + 1) + "-" + p(sast.getUTCDate());
+}
+
+function followUpOnToDueAt(ymd) {
+  const on = parseFollowUpOn(ymd);
+  const m = on.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return "";
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  // Start of that day in Africa/Johannesburg (UTC+2)
+  return new Date(Date.UTC(y, mo - 1, d) - 2 * 60 * 60 * 1000).toISOString();
+}
+
 function isOverdue(dueAt) {
   if (!dueAt) return false;
   const d = new Date(dueAt);
@@ -381,6 +407,8 @@ function isOverdue(dueAt) {
 }
 
 function followUpDueAt(row) {
+  const scheduled = parseFollowUpOn(row && row.follow_up_on);
+  if (scheduled) return followUpOnToDueAt(scheduled);
   const list = currentQuoteFollowUps(row);
   if (list.length) {
     const last = list[list.length - 1];
@@ -388,6 +416,18 @@ function followUpDueAt(row) {
   }
   if (row.date_quoted) return addDaysIso(row.date_quoted, FOLLOW_UP_DAYS);
   return "";
+}
+
+function resolveNextFollowUpDue(row, body, fallbackFromIso) {
+  const nextOn = parseFollowUpOn(
+    (body && (body.next_follow_up_on || body.follow_up_on || body.follow_up_date)) || ""
+  );
+  if (nextOn) {
+    row.follow_up_on = nextOn;
+    return followUpOnToDueAt(nextOn);
+  }
+  row.follow_up_on = "";
+  return addDaysIso(fallbackFromIso || db.nowIso(), FOLLOW_UP_DAYS);
 }
 
 function isActionableOpenTask(row, task) {
@@ -508,6 +548,7 @@ const DELIVERABLE_ACTIONS = {
   complete_quote: "quote",
   complete_quote_option: "quote",
   complete_followup: "follow_up",
+  schedule_followup: "follow_up",
   complete_reject: "pop",
   complete_order: "pop",
   complete_drawing: "drawing"
@@ -544,7 +585,7 @@ function canAct(row, actor, actionId) {
   if (actionId === "set_status") return isManagerName(who);
   if (!DELIVERABLE_ACTIONS[actionId]) return true;
   if (!who) return false;
-  if (actionId === "complete_followup") {
+  if (actionId === "complete_followup" || actionId === "schedule_followup") {
     if (isManagerName(who)) return true;
     if (followUpsExhausted(row)) return true;
     if (openFollowUpAssignees(row).some((n) => namesMatch(n, who))) return true;
@@ -642,6 +683,10 @@ function availableActions(row) {
         id: "complete_followup",
         label: n ? ("Log follow-up " + (n + 1) + " of " + MAX_FOLLOW_UPS) : "Log a follow-up screenshot"
       });
+      actions.push({
+        id: "schedule_followup",
+        label: row.follow_up_on ? ("Change follow-up day (" + String(row.follow_up_on) + ")") : "Set follow-up day"
+      });
     }
     actions.push({ id: "complete_order", label: "Client approved — attach POP" });
     actions.push({ id: "complete_reject", label: "Client rejected" });
@@ -683,7 +728,9 @@ function listMyTasks(userName, opts) {
             status: "open",
             created_at: row.date_quoted || "",
             due_at: dueAt,
-            note: "Quote or last follow-up is 7 or more days old"
+            note: parseFollowUpOn(row.follow_up_on)
+              ? ("Follow-up day " + parseFollowUpOn(row.follow_up_on) + " — replaces the 7-day rule")
+              : "Quote or last follow-up is 7 or more days old"
           }, dueAt));
         }
         continue;
@@ -699,7 +746,9 @@ function listMyTasks(userName, opts) {
           status: "open",
           created_at: row.date_quoted || "",
           due_at: dueAt,
-          note: "Quote or last follow-up is 7 or more days old"
+          note: parseFollowUpOn(row.follow_up_on)
+            ? ("Follow-up day " + parseFollowUpOn(row.follow_up_on) + " — replaces the 7-day rule")
+            : "Quote or last follow-up is 7 or more days old"
         }, dueAt));
       }
     }
@@ -771,6 +820,7 @@ function processSnapshot(enquiryNo, actorName) {
     closedStatuses: CLOSED_STATUSES.filter((s) => s !== "Rejected"),
     followUpDays: FOLLOW_UP_DAYS,
     followUpMax: MAX_FOLLOW_UPS,
+    followUpOn: parseFollowUpOn(row.follow_up_on) || "",
     followUpPeople: staff.enquiryRoleHolders("Follow-up"),
     quoteNo: db.quoteNoHint(),
     nextQuoteOption: quoteOptions.nextOptionLetter(row.quotes),
@@ -839,6 +889,7 @@ function applyAction(enquiryNo, actorName, body) {
     complete_quote: completeQuote,
     complete_quote_option: completeQuoteOption,
     complete_followup: completeFollowup,
+    schedule_followup: scheduleFollowup,
     complete_reject: completeReject,
     complete_order: completeOrder,
     complete_drawing: completeDrawing,
@@ -913,6 +964,11 @@ function eventLabel(action, row, fromStatus, body) {
     return "Quote option " + (opt || "") + " issued" + (row.quote_no ? " " + row.quote_no : "");
   }
   if (action === "complete_followup") return "Follow-up logged";
+  if (action === "schedule_followup") {
+    return row.follow_up_on
+      ? ("Follow-up day set to " + row.follow_up_on + " (replaces the 7-day rule)")
+      : "Follow-up day cleared";
+  }
   if (action === "complete_reject") {
     const reason = String((row.client_outcome && row.client_outcome.reason) || "").trim();
     return reason ? "Client rejected — " + reason : "Client rejected";
@@ -1617,7 +1673,7 @@ function completeQuote(row, actor, body) {
   recordIssuedQuote(row, actor, { option, kind });
   closeOpenKind(row, "quote", actor);
   if (!asOption) {
-    const dueAt = addDaysIso(row.date_quoted || db.todayEnquiryDate(), FOLLOW_UP_DAYS);
+    const dueAt = resolveNextFollowUpDue(row, body, row.date_quoted || db.todayEnquiryDate());
     assignFollowUpPool(row, dueAt, "Follow up", body);
   }
   const popOwner = row.quote_assignee || actor;
@@ -1652,10 +1708,37 @@ function completeFollowup(row, actor, body) {
   finishFollowUpPool(row, actor);
   row.status = "Followed Up";
   if (n < MAX_FOLLOW_UPS) {
-    assignFollowUpPool(row, addDaysIso(db.nowIso(), FOLLOW_UP_DAYS), nextFollowUpLabel(n), body);
+    const dueAt = resolveNextFollowUpDue(row, body, db.nowIso());
+    assignFollowUpPool(row, dueAt, nextFollowUpLabel(n), body);
   } else {
+    row.follow_up_on = "";
     cancelOpenKind(row, "follow_up");
   }
+}
+
+function scheduleFollowup(row, actor, body) {
+  if (!statusAllows(row, ["Quoted", "Followed Up"])) {
+    throw new Error("Follow-up days can be set after the quote PDF is issued");
+  }
+  if (followUpsExhausted(row)) {
+    throw new Error("This quote already has " + MAX_FOLLOW_UPS + " follow-ups. Issue another quote to start a new follow-up.");
+  }
+  const clear = !!(body && (body.clear === true || body.clear === "1" || String(body.clear || "").toLowerCase() === "yes"));
+  if (clear) {
+    row.follow_up_on = "";
+    const dueAt = followUpDueAt(row) || addDaysIso(row.date_quoted || db.nowIso(), FOLLOW_UP_DAYS);
+    assignFollowUpPool(row, dueAt, nextFollowUpLabel(currentQuoteFollowUps(row).length), body);
+    return;
+  }
+  const on = parseFollowUpOn(body && (body.follow_up_on || body.next_follow_up_on || body.follow_up_date));
+  if (!on) throw new Error("Pick the follow-up day the client asked for");
+  row.follow_up_on = on;
+  assignFollowUpPool(
+    row,
+    followUpOnToDueAt(on),
+    nextFollowUpLabel(currentQuoteFollowUps(row).length),
+    body
+  );
 }
 
 function completeReject(row, actor, body) {
@@ -1664,6 +1747,7 @@ function completeReject(row, actor, body) {
   if (!reason) throw new Error("A rejection reason is required");
   row.status = "Rejected";
   row.client_outcome = { kind: "rejected", reason, decided_at: db.nowIso(), decided_by: actor };
+  row.follow_up_on = "";
   cancelOpenKind(row, "follow_up");
   cancelOpenKind(row, "pop");
   closeOpenKind(row, "pop", actor, reason);
@@ -1696,6 +1780,7 @@ function completeOrder(row, actor, body) {
   }
   const file = db.saveEnquiryAttachment(row.enquiry_no, "pop", fileRaw, filename);
   row.status = "Ordered";
+  row.follow_up_on = "";
   row.client_outcome = {
     kind: "approved",
     reason: "",
@@ -2152,6 +2237,9 @@ module.exports = {
   TASK_TYPE_LABELS,
   currentQuoteFollowUps,
   followUpsExhausted,
+  followUpDueAt,
+  parseFollowUpOn,
+  followUpOnToDueAt,
   WAITING_STATUSES,
   CLOSED_STATUSES,
   MANUAL_STATUSES,
