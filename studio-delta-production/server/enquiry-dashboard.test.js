@@ -421,6 +421,39 @@ try {
   assert.ok(popOnly.kpis.orderedInPeriod >= 2, "POP without a complete_order event still counts as ordered");
   assert.ok(popOnly.money.orderedExclVat >= 21416, "ordered value includes the POP-only enquiry");
   rows.pop();
+
+  // Scheduled follow-up day must stop the dashboard 7-day overdue KPI until that day
+  const beforeSched = dash.buildDashboard({ grain: "month", range: "6m" }).kpis.overdueFollowUps;
+  rows.push({
+    enquiry_no: "#2099",
+    status: "Quoted",
+    created_at: daysAgo(30),
+    date_quoted: "01/08/2026",
+    date_enquired: "25/07/2026",
+    enquiry_source: "Website",
+    enquiry_type: "Catologue",
+    category: "Chair",
+    product: "Scheduled Follow Chair",
+    province: "Gauteng",
+    follow_up_on: "2099-12-01",
+    events: [
+      { kind: "created", at: daysAgo(30) },
+      { kind: "complete_quote", at: daysAgo(28) }
+    ],
+    tasks: [{ status: "open", assignee: "Pat", kind: "follow_up", due_at: iso(now + 90 * 86400000) }],
+    follow_ups: [],
+    correspondence: { mails: [] }
+  });
+  const withFutureDay = dash.buildDashboard({ grain: "month", range: "6m" });
+  assert.strictEqual(withFutureDay.kpis.overdueFollowUps, beforeSched,
+    "future follow_up_on must not count as overdue follow-up");
+  const drillSched = dash.buildDrill({ grain: "month", range: "6m", kind: "stuck", value: "overdue" });
+  assert.ok(!drillSched.rows.some((r) => r.enquiry_no === "#2099"));
+  rows[rows.length - 1].follow_up_on = "2020-01-02";
+  const withPastDay = dash.buildDashboard({ grain: "month", range: "6m" });
+  assert.ok(withPastDay.kpis.overdueFollowUps > beforeSched,
+    "past follow_up_on must count as overdue");
+  rows.pop();
 } finally {
   db.listEnquiries = orig;
 }

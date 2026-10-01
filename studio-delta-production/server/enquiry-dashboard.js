@@ -3,7 +3,6 @@ const { CLOSED_STATUSES } = require("./enquiry-pipeline");
 const catalog = require("./product-catalog");
 
 const SAST_OFFSET_MS = 2 * 60 * 60 * 1000;
-const FOLLOW_UP_DAYS = 7;
 
 const FUNNEL = [
   { id: "captured", label: "Captured" },
@@ -462,14 +461,11 @@ function followUpOverdue(row) {
     ? list.filter((f) => String((f && f.quote_no) || "").trim() === currentNo)
     : list;
   if (use.length >= 3) return false;
-  let from = 0;
-  if (use.length) from = Date.parse(use[use.length - 1].uploaded_at || "");
-  if (!from) {
-    const d = db.asDate(row.date_quoted);
-    from = d ? d.getTime() : 0;
-  }
-  if (!from) return false;
-  return Date.now() >= from + FOLLOW_UP_DAYS * 86400000;
+  // Same clock as My tasks: scheduled follow_up_on replaces the 7-day rule
+  const dueAt = require("./enquiry-pipeline").followUpDueAt(row);
+  if (!dueAt) return false;
+  const t = Date.parse(dueAt);
+  return !isNaN(t) && Date.now() >= t;
 }
 
 function stageDays(row, fromKind, toKind) {
