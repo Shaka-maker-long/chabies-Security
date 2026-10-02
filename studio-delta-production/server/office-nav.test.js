@@ -1051,7 +1051,9 @@ assert.ok(indexJs.indexOf('"/reworks"') !== -1 || indexJs.indexOf("/reworks") !=
 assert.ok(officeJs.indexOf("/api/office/reworks") !== -1);
 assert.ok(fs.existsSync(path.join(__dirname, "../public/reworks.html")));
 const reworksHtml = fs.readFileSync(path.join(__dirname, "../public/reworks.html"), "utf8");
-assert.ok(reworksHtml.indexOf("Record a rework") !== -1);
+assert.ok(reworksHtml.indexOf("Add rework") !== -1);
+assert.ok(reworksHtml.indexOf("formMask") !== -1, "Add rework opens a modal like Orders");
+assert.ok(reworksHtml.indexOf("Record a rework") === -1, "create form must not sit on the page");
 assert.ok(reworksHtml.indexOf("ASSIGNED OPERATOR") !== -1);
 assert.ok(reworksHtml.indexOf("CATERGORY") !== -1);
 assert.ok(reworksHtml.indexOf("/api/office/orders") !== -1, "order dropdown uses the Orders list");

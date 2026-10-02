@@ -16,19 +16,16 @@
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
     button:disabled { opacity:.55; cursor:not-allowed; }
-    input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-size:13px; }
-    textarea { min-height:72px; width:100%; resize:vertical; }
+    input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-size:13px; width:100%; }
+    textarea { min-height:96px; resize:vertical; }
     .page { padding:16px; display:flex; flex-direction:column; gap:14px; }
-    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
-    .card h2 { margin:0 0 8px; font-size:15px; }
-    .hint { margin:0 0 12px; color:var(--muted); font-size:13px; line-height:1.45; }
-    .form { display:grid; grid-template-columns:1.2fr 1fr auto; gap:10px; align-items:end; }
-    .form label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
-    .form .span2 { grid-column:1 / -1; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:0; overflow:hidden; }
+    .card h2 { margin:0; font-size:15px; }
+    .hint { margin:6px 0 12px; color:var(--muted); font-size:13px; line-height:1.45; }
     .msg { font-size:13px; color:var(--muted); }
     .msg.bad { color:var(--bad); }
     .msg.ok { color:var(--ok); }
-    .wrap { overflow:auto; background:#fff; border:1px solid var(--line); border-radius:10px; }
+    .wrap { overflow:auto; background:#fff; }
     table { border-collapse:separate; border-spacing:0; width:100%; min-width:1180px; font-size:13px; }
     th, td { border-bottom:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
     th { background:var(--head); position:sticky; top:0; font-size:11px; letter-spacing:.03em; white-space:nowrap; }
@@ -42,11 +39,17 @@
     .pill.run { background:#ffedd5; color:#9a3412; }
     .pill.done { background:#ecfdf3; color:var(--ok); }
     .assign { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
-    .assign select { min-width:140px; }
+    .assign select { min-width:140px; width:auto; }
     .empty, .load, .err { padding:36px 16px; text-align:center; color:var(--muted); font-weight:600; }
     .err { color:var(--bad); }
+    .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
+    .mask.open { display:flex; }
+    .sheet { width:min(560px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:24px auto; }
+    .sheet header { position:sticky; top:0; z-index:3; background:#fff; border-radius:12px 12px 0 0; border-bottom:1px solid var(--line); align-items:flex-start; }
+    .sheet .body { padding:16px; display:flex; flex-direction:column; gap:14px; }
+    .sheet label { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+    .form-head-err { margin:8px 0 0; color:var(--bad); font-size:13px; font-weight:600; min-height:18px; width:100%; }
     @media (max-width: 900px) {
-      .form { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
     }
   </style>
@@ -59,31 +62,15 @@
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
-      <input type="search" id="q" placeholder="Search order, product, person, issue">
+      <input type="search" id="q" placeholder="Search order, product, person, issue" style="width:auto; min-width:200px;">
       <button type="button" class="ghost" id="refreshBtn">Refresh</button>
+      <button type="button" id="addBtn">Add rework</button>
     </div>
   </header>
   <div class="page">
     <section class="card">
-      <h2>Record a rework</h2>
-      <p class="hint">Pick an order that is <b>Out for Delivery</b> or <b>Delivered</b>, then describe what needs fixing. Product details copy from the order sheet.</p>
-      <form class="form" id="createForm">
-        <label>Order *
-          <select id="orderSelect" required>
-            <option value="">Choose order…</option>
-          </select>
-        </label>
-        <label class="span2">What was the issue? *
-          <textarea id="issue" required placeholder="e.g. Door warp on left leaf — reweld and grind flush"></textarea>
-        </label>
-        <button type="submit" id="createBtn">Save rework</button>
-      </form>
-      <p class="msg" id="createMsg"></p>
-    </section>
-
-    <section class="card" style="padding:0; overflow:hidden;">
       <div style="padding:14px 16px 0;">
-        <h2 style="margin:0;">Rework sheet</h2>
+        <h2>Rework sheet</h2>
         <p class="hint">ORDER NUMBER · STATUS · ASSIGNED OPERATOR · TYPE · CATERGORY · PRODUCT · VARIATION · DOORS · DETAILED DESCRIPTION · DIMENSIONS · POWDER COATING · Issue comment</p>
       </div>
       <div class="wrap">
@@ -107,9 +94,35 @@
           </thead>
           <tbody id="body"></tbody>
         </table>
-        <div class="empty" id="empty" hidden>No reworks yet.</div>
+        <div class="empty" id="empty" hidden>No reworks yet. Use Add rework to log one.</div>
       </div>
     </section>
+  </div>
+
+  <div class="mask" id="formMask">
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="formTitle">
+      <header>
+        <div>
+          <h1 id="formTitle" style="font-family:Outfit,Inter,sans-serif;font-size:18px;margin:0;">Add rework</h1>
+          <p class="lede">Pick an order that is Out for Delivery or Delivered, then describe what needs fixing.</p>
+        </div>
+        <div class="tools">
+          <button class="ghost" type="button" id="cancelBtn">Cancel</button>
+          <button type="button" id="saveBtn">Save rework</button>
+        </div>
+        <p class="form-head-err" id="formErr" role="alert"></p>
+      </header>
+      <form class="body" id="createForm">
+        <label>Order *
+          <select id="orderSelect" required>
+            <option value="">Choose order…</option>
+          </select>
+        </label>
+        <label>What was the issue? *
+          <textarea id="issue" required placeholder="e.g. Door warp on left leaf — reweld and grind flush"></textarea>
+        </label>
+      </form>
+    </div>
   </div>
 
   <script src="/office-auth.js"></script>
@@ -117,6 +130,7 @@
     let canAssign = false;
     let rows = [];
     let operators = [];
+    let orderOptions = [];
 
     function esc(s) {
       return String(s == null ? "" : s)
@@ -179,7 +193,7 @@
       if (!list.length) {
         grid.hidden = true;
         empty.hidden = false;
-        empty.textContent = rows.length ? "No reworks match this search." : "No reworks yet.";
+        empty.textContent = rows.length ? "No reworks match this search." : "No reworks yet. Use Add rework to log one.";
         return;
       }
       empty.hidden = true;
@@ -208,15 +222,15 @@
     }
 
     function fillOrderSelect(orders) {
+      orderOptions = (orders || []).filter((o) => o && o.order_number && isEligibleStatus(o.status));
       const sel = document.getElementById("orderSelect");
       const cur = sel.value;
-      const list = (orders || []).filter((o) => o && o.order_number && isEligibleStatus(o.status));
-      if (!list.length) {
+      if (!orderOptions.length) {
         sel.innerHTML = "<option value=\"\">No Out for Delivery / Delivered orders</option>";
         return;
       }
       sel.innerHTML = "<option value=\"\">Choose order…</option>" +
-        list.map((o) =>
+        orderOptions.map((o) =>
           "<option value=\"" + esc(o.order_number) + "\">" +
           esc(o.order_number) + (o.product ? " · " + esc(o.product) : "") +
           (o.status ? " · " + esc(o.status) : "") +
@@ -238,6 +252,46 @@
       fillOrderSelect(fallback || []);
     }
 
+    function openForm() {
+      document.getElementById("formErr").textContent = "";
+      document.getElementById("issue").value = "";
+      document.getElementById("orderSelect").value = "";
+      document.getElementById("formMask").classList.add("open");
+      document.getElementById("orderSelect").focus();
+    }
+    function closeForm() {
+      document.getElementById("formMask").classList.remove("open");
+      document.getElementById("formErr").textContent = "";
+    }
+
+    async function saveForm() {
+      const btn = document.getElementById("saveBtn");
+      const err = document.getElementById("formErr");
+      err.textContent = "";
+      const orderNumber = document.getElementById("orderSelect").value;
+      const issue = document.getElementById("issue").value;
+      if (!orderNumber) { err.textContent = "Pick an order."; return; }
+      if (!String(issue || "").trim()) { err.textContent = "Add a comment on what the issue was."; return; }
+      btn.disabled = true;
+      try {
+        const r = await sdOfficeFetch("/api/office/reworks", {
+          method: "POST",
+          body: JSON.stringify({ order_number: orderNumber, issue: issue })
+        });
+        const j = await r.json().catch(function () { return {}; });
+        if (!j || !j.ok) throw new Error((j && j.error) || "Save failed");
+        rows = j.reworks || rows;
+        render();
+        closeForm();
+        setMsg(document.getElementById("status"), "Rework saved — Siya or the Manager can assign it.");
+        await loadOrdersForDropdown(j.orders || orderOptions);
+      } catch (e) {
+        err.textContent = e.message || String(e);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
     async function load() {
       setMsg(document.getElementById("status"), "Loading…");
       const r = await sdOfficeFetch("/api/office/reworks");
@@ -251,34 +305,18 @@
       setMsg(document.getElementById("status"), rows.length + " rework" + (rows.length === 1 ? "" : "s"));
     }
 
-    document.getElementById("createForm").addEventListener("submit", async (e) => {
+    document.getElementById("createForm").addEventListener("submit", (e) => {
       e.preventDefault();
-      const btn = document.getElementById("createBtn");
-      const msg = document.getElementById("createMsg");
-      btn.disabled = true;
-      setMsg(msg, "Saving…");
-      try {
-        const r = await sdOfficeFetch("/api/office/reworks", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            order_number: document.getElementById("orderSelect").value,
-            issue: document.getElementById("issue").value
-          })
-        });
-        const j = await r.json().catch(function () { return {}; });
-        if (!j || !j.ok) throw new Error((j && j.error) || "Save failed");
-        document.getElementById("issue").value = "";
-        document.getElementById("orderSelect").value = "";
-        rows = j.reworks || rows;
-        render();
-        setMsg(msg, "Rework saved — Siya or the Manager can assign it.");
-        await loadOrdersForDropdown(j.orders || []);
-      } catch (err) {
-        setMsg(msg, err.message || String(err), true);
-      } finally {
-        btn.disabled = false;
-      }
+      saveForm();
+    });
+    document.getElementById("addBtn").addEventListener("click", openForm);
+    document.getElementById("cancelBtn").addEventListener("click", closeForm);
+    document.getElementById("saveBtn").addEventListener("click", saveForm);
+    document.getElementById("formMask").addEventListener("click", (e) => {
+      if (e.target.id === "formMask") closeForm();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && document.getElementById("formMask").classList.contains("open")) closeForm();
     });
 
     document.getElementById("body").addEventListener("click", async (e) => {
@@ -291,7 +329,6 @@
       try {
         const r = await sdOfficeFetch("/api/office/reworks/" + encodeURIComponent(id) + "/assign", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ assigned_operator: who })
         });
         const j = await r.json().catch(function () { return {}; });

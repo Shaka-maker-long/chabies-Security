@@ -5896,7 +5896,7 @@ function managerCorrectStart(adminName, workerName, orderNumber, process, actual
     metaNew.targetMinutes = getTaskDurationMinutes(String(orderRow[6] || "").trim(), role);
     metaNew.countdownStartedAt = at.getTime();
     metaNew = applyShiftWindowToMeta(metaNew, at, worker);
-    if (role !== "Plate Cutting") {
+    if (role !== "Plate Cutting" && role !== "Rework") {
       orderSheet.getRange(rowIndex, 3, 1, 2).setValues([[nextStatus, worker]]);
     }
     logSheet.appendRow([
