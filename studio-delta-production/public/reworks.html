@@ -228,7 +228,8 @@
 
     async function loadOrdersForDropdown(fallback) {
       try {
-        const j = await sdOfficeFetch("/api/office/orders");
+        const r = await sdOfficeFetch("/api/office/orders");
+        const j = await r.json().catch(function () { return {}; });
         if (j && j.ok && Array.isArray(j.rows) && j.rows.length) {
           fillOrderSelect(j.rows);
           return;
@@ -239,7 +240,8 @@
 
     async function load() {
       setMsg(document.getElementById("status"), "Loading…");
-      const j = await sdOfficeFetch("/api/office/reworks");
+      const r = await sdOfficeFetch("/api/office/reworks");
+      const j = await r.json().catch(function () { return {}; });
       if (!j || !j.ok) throw new Error((j && j.error) || "Could not load reworks");
       rows = j.reworks || [];
       operators = j.operators || [];
@@ -256,7 +258,7 @@
       btn.disabled = true;
       setMsg(msg, "Saving…");
       try {
-        const j = await sdOfficeFetch("/api/office/reworks", {
+        const r = await sdOfficeFetch("/api/office/reworks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -264,12 +266,14 @@
             issue: document.getElementById("issue").value
           })
         });
+        const j = await r.json().catch(function () { return {}; });
         if (!j || !j.ok) throw new Error((j && j.error) || "Save failed");
         document.getElementById("issue").value = "";
         document.getElementById("orderSelect").value = "";
         rows = j.reworks || rows;
         render();
         setMsg(msg, "Rework saved — Siya or the Manager can assign it.");
+        await loadOrdersForDropdown(j.orders || []);
       } catch (err) {
         setMsg(msg, err.message || String(err), true);
       } finally {
@@ -285,11 +289,12 @@
       const who = select ? select.value : "";
       btn.disabled = true;
       try {
-        const j = await sdOfficeFetch("/api/office/reworks/" + encodeURIComponent(id) + "/assign", {
+        const r = await sdOfficeFetch("/api/office/reworks/" + encodeURIComponent(id) + "/assign", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ assigned_operator: who })
         });
+        const j = await r.json().catch(function () { return {}; });
         if (!j || !j.ok) throw new Error((j && j.error) || "Assign failed");
         rows = j.reworks || rows;
         render();

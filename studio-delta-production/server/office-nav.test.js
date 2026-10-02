@@ -1057,6 +1057,7 @@ assert.ok(reworksHtml.indexOf("CATERGORY") !== -1);
 assert.ok(reworksHtml.indexOf("/api/office/orders") !== -1, "order dropdown uses the Orders list");
 assert.ok(reworksHtml.indexOf("Out for Delivery") !== -1);
 assert.ok(reworksHtml.indexOf("Delivered") !== -1);
+assert.ok(reworksHtml.indexOf(".json()") !== -1, "reworks page must parse API JSON");
 assert.ok(floor.indexOf("Rework") !== -1, "Production Tasks includes Rework");
 assert.ok(codeGs.indexOf("listReworkFloorCards_") !== -1);
 assert.ok(codeGs.indexOf("'Rework'") !== -1 || codeGs.indexOf('"Rework"') !== -1);
