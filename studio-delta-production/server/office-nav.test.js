@@ -1054,6 +1054,9 @@ const reworksHtml = fs.readFileSync(path.join(__dirname, "../public/reworks.html
 assert.ok(reworksHtml.indexOf("Record a rework") !== -1);
 assert.ok(reworksHtml.indexOf("ASSIGNED OPERATOR") !== -1);
 assert.ok(reworksHtml.indexOf("CATERGORY") !== -1);
+assert.ok(reworksHtml.indexOf("/api/office/orders") !== -1, "order dropdown uses the Orders list");
+assert.ok(reworksHtml.indexOf("Out for Delivery") !== -1);
+assert.ok(reworksHtml.indexOf("Delivered") !== -1);
 assert.ok(floor.indexOf("Rework") !== -1, "Production Tasks includes Rework");
 assert.ok(codeGs.indexOf("listReworkFloorCards_") !== -1);
 assert.ok(codeGs.indexOf("'Rework'") !== -1 || codeGs.indexOf('"Rework"') !== -1);

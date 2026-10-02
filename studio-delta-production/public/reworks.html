@@ -66,7 +66,7 @@
   <div class="page">
     <section class="card">
       <h2>Record a rework</h2>
-      <p class="hint">Pick the order and describe what needs fixing. Product details copy from the order sheet.</p>
+      <p class="hint">Pick an order that is <b>Out for Delivery</b> or <b>Delivered</b>, then describe what needs fixing. Product details copy from the order sheet.</p>
       <form class="form" id="createForm">
         <label>Order *
           <select id="orderSelect" required>
@@ -202,6 +202,41 @@
       ).join("");
     }
 
+    function isEligibleStatus(status) {
+      const s = String(status || "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+      return s === "out for delivery" || s === "out on delivery" || s === "delivered" || s === "complete" || s === "completed";
+    }
+
+    function fillOrderSelect(orders) {
+      const sel = document.getElementById("orderSelect");
+      const cur = sel.value;
+      const list = (orders || []).filter((o) => o && o.order_number && isEligibleStatus(o.status));
+      if (!list.length) {
+        sel.innerHTML = "<option value=\"\">No Out for Delivery / Delivered orders</option>";
+        return;
+      }
+      sel.innerHTML = "<option value=\"\">Choose order…</option>" +
+        list.map((o) =>
+          "<option value=\"" + esc(o.order_number) + "\">" +
+          esc(o.order_number) + (o.product ? " · " + esc(o.product) : "") +
+          (o.status ? " · " + esc(o.status) : "") +
+          (o.client_name ? " · " + esc(o.client_name) : "") +
+          "</option>"
+        ).join("");
+      if (cur) sel.value = cur;
+    }
+
+    async function loadOrdersForDropdown(fallback) {
+      try {
+        const j = await sdOfficeFetch("/api/office/orders");
+        if (j && j.ok && Array.isArray(j.rows) && j.rows.length) {
+          fillOrderSelect(j.rows);
+          return;
+        }
+      } catch (e) {}
+      fillOrderSelect(fallback || []);
+    }
+
     async function load() {
       setMsg(document.getElementById("status"), "Loading…");
       const j = await sdOfficeFetch("/api/office/reworks");
@@ -209,16 +244,7 @@
       rows = j.reworks || [];
       operators = j.operators || [];
       canAssign = !!j.canAssign;
-      const sel = document.getElementById("orderSelect");
-      const cur = sel.value;
-      sel.innerHTML = "<option value=\"\">Choose order…</option>" +
-        (j.orders || []).map((o) =>
-          "<option value=\"" + esc(o.order_number) + "\">" +
-          esc(o.order_number) + (o.product ? " · " + esc(o.product) : "") +
-          (o.status ? " · " + esc(o.status) : "") +
-          "</option>"
-        ).join("");
-      if (cur) sel.value = cur;
+      await loadOrdersForDropdown(j.orders || []);
       render();
       setMsg(document.getElementById("status"), rows.length + " rework" + (rows.length === 1 ? "" : "s"));
     }

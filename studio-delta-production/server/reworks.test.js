@@ -34,7 +34,7 @@ staff.upsertUser({
 
 db.upsertOrder({
   order_number: "S260901",
-  status: "Ready for Delivery",
+  status: "Delivered",
   type: "Catalogue",
   category: "Cabinet",
   product: "Ella Arched Cabinet",
@@ -44,6 +44,31 @@ db.upsertOrder({
   dimensions: "1800 x 600",
   powder_coating: "Matt black"
 });
+db.upsertOrder({
+  order_number: "S260902",
+  status: "Out for Delivery",
+  type: "Catalogue",
+  category: "Chair",
+  product: "Air Chair",
+  powder_coating: "White"
+});
+db.upsertOrder({
+  order_number: "S260903",
+  status: "Assembly",
+  type: "Catalogue",
+  category: "Table",
+  product: "Still in shop"
+});
+
+assert.ok(reworks.isEligibleReworkOrderStatus("Delivered"));
+assert.ok(reworks.isEligibleReworkOrderStatus("Out for Delivery"));
+assert.ok(reworks.isEligibleReworkOrderStatus("out on delivery"));
+assert.ok(!reworks.isEligibleReworkOrderStatus("Assembly"));
+
+const eligible = reworks.listEligibleOrders();
+assert.ok(eligible.some((o) => o.order_number === "S260901"));
+assert.ok(eligible.some((o) => o.order_number === "S260902"));
+assert.ok(!eligible.some((o) => o.order_number === "S260903"), "in-shop orders must not appear");
 
 assert.ok(reworks.canAssignReworks(staff.listUsers().find((u) => u.name === "Manager")));
 assert.ok(reworks.canAssignReworks(staff.listUsers().find((u) => u.name === "Siya")));
@@ -52,6 +77,10 @@ assert.ok(!reworks.canAssignReworks(staff.listUsers().find((u) => u.name === "Pa
 assert.throws(
   () => reworks.createRework({ order_number: "S260901" }, "Pat"),
   /comment|issue/i
+);
+assert.throws(
+  () => reworks.createRework({ order_number: "S260903", issue: "Too early" }, "Pat"),
+  /Out for Delivery or Delivered/i
 );
 
 const created = reworks.createRework({
@@ -100,8 +129,11 @@ assert.strictEqual(reworks.listOpenForFloor("Willard").length, 0);
 
 const page = reworks.pagePayload();
 assert.ok(page.orders.some((o) => o.order_number === "S260901"));
+assert.ok(page.orders.some((o) => o.order_number === "S260902"));
+assert.ok(!page.orders.some((o) => o.order_number === "S260903"));
 assert.ok(page.operators.indexOf("Willard") !== -1);
 assert.ok(page.reworks.some((r) => r.id === created.id && r.status === "Done"));
+assert.deepStrictEqual(page.eligibleStatuses, ["Out for Delivery", "Delivered"]);
 
 assert.ok(staff.FLOOR_TASKS.indexOf("Rework") !== -1);
 

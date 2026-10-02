@@ -149,6 +149,9 @@ function createRework(body, actor) {
   if (!issue) throw new Error("Add a comment on what the issue was");
   const order = db.listOrders().find((o) => String(o.order_number || "").trim() === orderNo);
   if (!order) throw new Error("Order not found: " + orderNo);
+  if (!isEligibleReworkOrderStatus(order.status)) {
+    throw new Error("Reworks are only for orders that are Out for Delivery or Delivered (this one is " + (order.status || "blank") + ")");
+  }
   const open = findOpenReworkForOrder(orderNo, false);
   if (open) throw new Error("This order already has an open rework (" + open.status + ")");
 
@@ -232,27 +235,48 @@ function markReworkFinishedForOrder(orderNumber, workerName) {
   return markReworkFinished(open.id, workerName);
 }
 
-function pagePayload() {
-  const orders = db.listOrders()
+const ELIGIBLE_ORDER_STATUSES = ["Out for Delivery", "Delivered"];
+
+function isEligibleReworkOrderStatus(status) {
+  const s = String(status || "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  if (!s) return false;
+  if (s === "out for delivery" || s === "out on delivery") return true;
+  if (s === "delivered" || s === "complete" || s === "completed") return true;
+  return false;
+}
+
+function listEligibleOrders() {
+  return db.listOrders()
+    .filter((o) => {
+      const num = String((o && o.order_number) || "").trim();
+      if (!num) return false;
+      return isEligibleReworkOrderStatus(o && o.status);
+    })
     .map((o) => ({
       order_number: String(o.order_number || "").trim(),
       status: String(o.status || "").trim(),
       product: String(o.product || "").trim(),
       client_name: String(o.client_name || "").trim()
     }))
-    .filter((o) => o.order_number)
     .sort((a, b) => String(b.order_number).localeCompare(String(a.order_number)));
+}
+
+function pagePayload() {
   return {
     reworks: listReworks(),
-    orders,
+    orders: listEligibleOrders(),
     operators: listOperators(),
-    statuses: STATUS
+    statuses: STATUS,
+    eligibleStatuses: ELIGIBLE_ORDER_STATUSES.slice()
   };
 }
 
 module.exports = {
   STATUS,
+  ELIGIBLE_ORDER_STATUSES,
   canAssignReworks,
+  isEligibleReworkOrderStatus,
+  listEligibleOrders,
   listReworks,
   listOperators,
   listOpenForFloor,
