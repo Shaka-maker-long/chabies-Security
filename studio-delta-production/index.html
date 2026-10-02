@@ -709,6 +709,44 @@
     }
     .table-dark .sticky-col, .table-dark .sticky-col-2 { background-color: #212529; }
 
+    .prod-hover {
+      position: relative;
+      display: inline-block;
+      cursor: default;
+      border-bottom: 1px dotted var(--border-strong);
+    }
+    .prod-hover.has-shot { cursor: zoom-in; }
+    .prod-hover-shot {
+      display: none;
+      position: absolute;
+      left: 0;
+      top: calc(100% + 6px);
+      z-index: 30;
+      width: 180px;
+      padding: 6px;
+      background: #fff;
+      border: 1px solid #d0d5dd;
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(16, 24, 40, 0.18);
+      pointer-events: none;
+    }
+    .prod-hover-shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      max-height: 160px;
+      object-fit: contain;
+      background: #f8f9fc;
+      border-radius: 6px;
+    }
+    .prod-hover.has-shot:hover .prod-hover-shot,
+    .prod-hover.has-shot:focus .prod-hover-shot {
+      display: block;
+    }
+    .weld-plate-delay > * { background-color: #fff7ed !important; }
+    .weld-plate-ok > * { background-color: #ecfdf3 !important; }
+    #weldPlateContainer { overflow: auto; }
+
     /* =====================================================
        BATCH CHECKBOX TILE
        ===================================================== */
@@ -1897,6 +1935,9 @@
         <li class="nav-item">
           <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-weekly-completions">Weekly Completions</button>
         </li>
+        <li class="nav-item">
+          <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tab-weld-plate">Weld vs Plate</button>
+        </li>
       </ul>
       
       <div class="tab-content">
@@ -1992,6 +2033,36 @@
             <div class="text-center p-5">
               <div class="spinner-border"></div>
             </div>
+          </div>
+        </div>
+
+        <!-- Weld vs Plate Cutting -->
+        <div class="tab-pane fade" id="tab-weld-plate">
+          <div class="row mb-3 align-items-end">
+            <div class="col-md-4 mb-2">
+              <label for="weldPlateSearch" class="form-label small text-muted mb-1 fw-bold">Search:</label>
+              <input type="text" id="weldPlateSearch" class="form-control border-dark shadow-sm" placeholder="Order # or product" onkeyup="filterWeldPlateMetrics()">
+            </div>
+            <div class="col-md-3 mb-2">
+              <label for="weldPlateFilter" class="form-label small text-muted mb-1 fw-bold">Show:</label>
+              <select id="weldPlateFilter" class="form-select border-dark shadow-sm" onchange="filterWeldPlateMetrics()">
+                <option value="delay">Potential delays only</option>
+                <option value="all">All orders with both</option>
+              </select>
+            </div>
+            <div class="col-md-3 mb-2">
+              <span class="small text-muted d-block mb-1 fw-bold">Summary</span>
+              <div id="weldPlateSummary" class="small text-muted">—</div>
+            </div>
+            <div class="col-md-2 text-md-end mb-2">
+              <button class="btn btn-sm btn-link text-muted text-decoration-none" onclick="loadWeldPlateMetrics(true)">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+              </button>
+            </div>
+          </div>
+          <p class="small text-muted mb-3">Compares <b>Welding</b> and <b>Plate Cutting</b> clocks on the same order. If welding started <b>before</b> or <b>while</b> plate cutting was still running, it is flagged as a potential delay. Hover a product name to see its photo. Actual hours exclude pauses and unpaid lunch/shift gaps.</p>
+          <div id="weldPlateContainer" class="bg-white rounded shadow-sm">
+            <div class="text-center p-5 text-muted">Open this tab to load weld vs plate data.</div>
           </div>
         </div>
 
@@ -9026,7 +9097,93 @@
           }
         });
       }
+      const weldPlateTab = document.querySelector('button[data-bs-target="#tab-weld-plate"]');
+      if (weldPlateTab) {
+        weldPlateTab.addEventListener('shown.bs.tab', function () {
+          if (!weldPlateData) loadWeldPlateMetrics();
+        });
+      }
     });
+
+    let weldPlateData = null;
+
+    function productHoverHtml(name, imageUrl) {
+      const label = String(name || 'Unknown').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+      const url = String(imageUrl || '').trim();
+      if (!url) return '<span class="prod-hover">' + label + '</span>';
+      return '<span class="prod-hover has-shot" tabindex="0">' + label +
+        '<span class="prod-hover-shot"><img src="' + url.replace(/"/g, '&quot;') + '" alt="' + label + '"></span></span>';
+    }
+
+    function loadWeldPlateMetrics(force) {
+      if (weldPlateData && !force) {
+        filterWeldPlateMetrics();
+        return;
+      }
+      const container = document.getElementById('weldPlateContainer');
+      if (!container) return;
+      container.innerHTML = '<div class="text-center p-5"><div class="spinner-border"></div></div>';
+      google.script.run.withSuccessHandler(function (res) {
+        weldPlateData = res || { rows: [], delayCount: 0, orderCount: 0 };
+        filterWeldPlateMetrics();
+      }).withFailureHandler(function (err) {
+        container.innerHTML = '<div class="text-center p-5 text-danger">Could not load weld vs plate metrics' +
+          (err && err.message ? (': ' + err.message) : '') + '</div>';
+      }).getWeldPlateOverlapMetrics();
+    }
+
+    function filterWeldPlateMetrics() {
+      if (!weldPlateData) return;
+      const container = document.getElementById('weldPlateContainer');
+      const summary = document.getElementById('weldPlateSummary');
+      const search = (document.getElementById('weldPlateSearch') && document.getElementById('weldPlateSearch').value || '').toLowerCase().trim();
+      const mode = (document.getElementById('weldPlateFilter') && document.getElementById('weldPlateFilter').value) || 'delay';
+      const all = weldPlateData.rows || [];
+      const list = all.filter(function (row) {
+        if (mode === 'delay' && !row.potentialDelay) return false;
+        if (!search) return true;
+        const blob = (row.orderNum + ' ' + (row.productName || '')).toLowerCase();
+        return blob.indexOf(search) !== -1;
+      });
+      if (summary) {
+        summary.textContent = (weldPlateData.delayCount || 0) + ' potential delay' +
+          ((weldPlateData.delayCount === 1) ? '' : 's') +
+          ' · ' + (weldPlateData.orderCount || 0) + ' orders with both clocks';
+      }
+      if (!list.length) {
+        container.innerHTML = '<div class="text-center p-5 text-muted">' +
+          (all.length ? 'No rows match this filter.' : 'No orders have both Welding and Plate Cutting clocks yet.') +
+          '</div>';
+        return;
+      }
+      let html = '<div class="table-responsive"><table class="table table-sm table-hover align-middle mb-0" style="font-size:0.82rem">' +
+        '<thead class="table-dark"><tr>' +
+        '<th>Order #</th><th>Product</th>' +
+        '<th>Weld start</th><th>Plate start</th>' +
+        '<th class="text-end">Weld hours</th><th class="text-end">Plate hours</th>' +
+        '<th class="text-end">Weld pauses (min)</th><th class="text-end">Plate pauses (min)</th>' +
+        '<th class="text-end">Overlap (h)</th><th>Flag</th>' +
+        '</tr></thead><tbody>';
+      list.forEach(function (row) {
+        const cls = row.potentialDelay ? 'weld-plate-delay' : 'weld-plate-ok';
+        html += '<tr class="' + cls + '">' +
+          '<td><strong>' + String(row.orderNum || '').replace(/</g,'&lt;') + '</strong></td>' +
+          '<td>' + productHoverHtml(row.productName, row.imageUrl) + '</td>' +
+          '<td>' + (row.weldStartLabel || '—') + '</td>' +
+          '<td>' + (row.plateStartLabel || '—') + '</td>' +
+          '<td class="text-end">' + (row.weldActualHours != null ? row.weldActualHours : '—') + '</td>' +
+          '<td class="text-end">' + (row.plateActualHours != null ? row.plateActualHours : '—') + '</td>' +
+          '<td class="text-end">' + (row.weldPauseMinutes != null ? row.weldPauseMinutes : '—') + '</td>' +
+          '<td class="text-end">' + (row.platePauseMinutes != null ? row.platePauseMinutes : '—') + '</td>' +
+          '<td class="text-end">' + (row.overlapHours != null ? row.overlapHours : '—') + '</td>' +
+          '<td>' + (row.potentialDelay
+            ? '<span class="badge text-bg-warning">' + String(row.note || 'Potential delay').replace(/</g,'&lt;') + '</span>'
+            : '<span class="badge text-bg-success">OK</span>') + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table></div>';
+      container.innerHTML = html;
+    }
 
     function loadWeeklyCompletions() {
       const container = document.getElementById('weeklyCompletionsContainer');

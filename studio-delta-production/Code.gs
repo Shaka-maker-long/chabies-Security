@@ -3955,6 +3955,191 @@ function getOrderMetrics() {
   return { processes: processes, weeks: weeks, orders: orders };
 }
 
+function asLogDate_(value) {
+  if (!value) return null;
+  var d = value instanceof Date ? value : new Date(value);
+  if (!d || isNaN(d.getTime())) return null;
+  return d;
+}
+
+function formatSastDateTime_(date) {
+  if (!date) return "";
+  try {
+    return Utilities.formatDate(date, TZ_JOBURG, "dd/MM/yyyy HH:mm");
+  } catch (e) {
+    return "";
+  }
+}
+
+function roundHoursFromMins_(mins) {
+  var n = Number(mins) || 0;
+  return Math.round((n / 60) * 100) / 100;
+}
+
+function pauseMinutesFromLogRow_(row) {
+  var meta = parseLogMeta(row.length > 12 ? row[12] : "");
+  if ((!meta.pauses || !meta.pauses.length) && row[9]) {
+    meta.pauses = getPauseIntervalsForRow(row);
+  }
+  var fromMeta = cumulativePauseMinsFromMeta(meta, row[4] || row[3]);
+  if (fromMeta > 0) return fromMeta;
+  return parseFloat(row[10]) || 0;
+}
+
+/**
+ * Metrics: Welding vs Plate Cutting overlap / potential delay.
+ * If welding started before or during plate cutting on the same order, flag potentialDelay.
+ */
+function getWeldPlateOverlapMetrics() {
+  var ss = getSpreadsheet();
+  var logSheet = getSheetOrDie(ss, TAB_LOGS);
+  var ordersSheet = getSheetOrDie(ss, TAB_ORDERS);
+  var ordersData = ordersSheet.getDataRange().getValues();
+  var orderProducts = {};
+  for (var i = 1; i < ordersData.length; i++) {
+    var orderNum = String(ordersData[i][1] || "").trim();
+    if (!orderNum) continue;
+    orderProducts[orderNum] = String(ordersData[i][6] || "").trim();
+  }
+
+  var logData = logSheet.getDataRange().getValues();
+  var byOrder = {};
+
+  function ensure(order) {
+    if (!byOrder[order]) {
+      byOrder[order] = {
+        orderNum: order,
+        productName: orderProducts[order] || "",
+        plateRows: [],
+        weldRows: []
+      };
+    }
+    return byOrder[order];
+  }
+
+  for (var r = 1; r < logData.length; r++) {
+    var num = String(logData[r][1] || "").trim();
+    if (!num) continue;
+    var role = String(logData[r][3] || "").trim();
+    var task = String(logData[r][4] || "").trim();
+    var processName = orderOverviewProcessName(task) || orderOverviewProcessName(role) || canonicalTaskName(role) || canonicalTaskName(task);
+    if (processName !== "Plate Cutting" && processName !== "Welding") continue;
+    var bucket = ensure(num);
+    if (processName === "Plate Cutting") bucket.plateRows.push(logData[r]);
+    else bucket.weldRows.push(logData[r]);
+  }
+
+  var rows = [];
+  var delayCount = 0;
+  Object.keys(byOrder).sort().forEach(function (key) {
+    var bag = byOrder[key];
+    if (!bag.plateRows.length || !bag.weldRows.length) return;
+
+    var plateStart = null;
+    var plateEnd = null;
+    var plateOpen = false;
+    var plateMins = 0;
+    var platePause = 0;
+    var plateWorkers = [];
+    bag.plateRows.forEach(function (row) {
+      var s = asLogDate_(row[5]);
+      var e = asLogDate_(row[6]);
+      if (s && (!plateStart || s.getTime() < plateStart.getTime())) plateStart = s;
+      if (!e) {
+        plateOpen = true;
+        e = new Date();
+      }
+      if (e && (!plateEnd || e.getTime() > plateEnd.getTime())) plateEnd = e;
+      plateMins += calculateWorkMinutesFromLog(row);
+      platePause += pauseMinutesFromLogRow_(row);
+      var w = String(row[2] || "").trim();
+      if (w && plateWorkers.indexOf(w) === -1) plateWorkers.push(w);
+    });
+
+    var weldStart = null;
+    var weldEnd = null;
+    var weldOpen = false;
+    var weldMins = 0;
+    var weldPause = 0;
+    var weldWorkers = [];
+    bag.weldRows.forEach(function (row) {
+      var s = asLogDate_(row[5]);
+      var e = asLogDate_(row[6]);
+      if (s && (!weldStart || s.getTime() < weldStart.getTime())) weldStart = s;
+      if (!e) {
+        weldOpen = true;
+        e = new Date();
+      }
+      if (e && (!weldEnd || e.getTime() > weldEnd.getTime())) weldEnd = e;
+      weldMins += calculateWorkMinutesFromLog(row);
+      weldPause += pauseMinutesFromLogRow_(row);
+      var w = String(row[2] || "").trim();
+      if (w && weldWorkers.indexOf(w) === -1) weldWorkers.push(w);
+    });
+
+    if (!plateStart || !weldStart) return;
+
+    var plateEndMs = plateEnd ? plateEnd.getTime() : Date.now();
+    var weldStartMs = weldStart.getTime();
+    // Welding started before plate, or while plate was still running.
+    var potentialDelay = weldStartMs < plateEndMs;
+    if (potentialDelay) delayCount += 1;
+
+    var overlapMs = 0;
+    if (potentialDelay) {
+      var weldEndMs = weldEnd ? weldEnd.getTime() : Date.now();
+      var overlapStart = Math.max(plateStart.getTime(), weldStartMs);
+      var overlapEnd = Math.min(plateEndMs, weldEndMs);
+      if (overlapEnd > overlapStart) overlapMs = overlapEnd - overlapStart;
+    }
+
+    var product = bag.productName || "";
+    rows.push({
+      orderNum: bag.orderNum,
+      productName: product,
+      imageUrl: productImageUrl(product),
+      plateStartAt: plateStart.getTime(),
+      plateStartLabel: formatSastDateTime_(plateStart),
+      plateEndAt: plateEnd ? plateEnd.getTime() : 0,
+      plateEndLabel: plateOpen ? "In progress" : formatSastDateTime_(plateEnd),
+      plateOpen: plateOpen,
+      plateActualMinutes: Math.round(plateMins * 10) / 10,
+      plateActualHours: roundHoursFromMins_(plateMins),
+      platePauseMinutes: Math.round(platePause * 10) / 10,
+      plateWorkers: plateWorkers,
+      weldStartAt: weldStart.getTime(),
+      weldStartLabel: formatSastDateTime_(weldStart),
+      weldEndAt: weldEnd ? weldEnd.getTime() : 0,
+      weldEndLabel: weldOpen ? "In progress" : formatSastDateTime_(weldEnd),
+      weldOpen: weldOpen,
+      weldActualMinutes: Math.round(weldMins * 10) / 10,
+      weldActualHours: roundHoursFromMins_(weldMins),
+      weldPauseMinutes: Math.round(weldPause * 10) / 10,
+      weldWorkers: weldWorkers,
+      potentialDelay: potentialDelay,
+      overlapMinutes: Math.round((overlapMs / 60000) * 10) / 10,
+      overlapHours: roundHoursFromMins_(overlapMs / 60000),
+      note: potentialDelay
+        ? (weldStartMs <= plateStart.getTime()
+          ? "Welding started before plate cutting"
+          : "Welding started while plate cutting was still running")
+        : "Plate cutting finished before welding started"
+    });
+  });
+
+  rows.sort(function (a, b) {
+    if (a.potentialDelay !== b.potentialDelay) return a.potentialDelay ? -1 : 1;
+    return String(b.weldStartAt || 0) - String(a.weldStartAt || 0);
+  });
+
+  return {
+    rows: rows,
+    delayCount: delayCount,
+    orderCount: rows.length,
+    generatedAt: Date.now()
+  };
+}
+
 /**
  * Workstation charge-out rates (R/hour) for Production Trends estimate costing.
  * Paint stations stay 0 until rates are set.
