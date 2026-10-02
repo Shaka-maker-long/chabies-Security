@@ -15,6 +15,7 @@ delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
 const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const db = require("./db");
+const staff = require("./staff");
 const { callShopFunction, ALLOWED } = require("./gas");
 
 assert.ok(ALLOWED.has("getWeldPlateOverlapMetrics"));
@@ -34,6 +35,13 @@ db.upsertOrder({
   product: "Air Chair",
   client_name: "Ok Client"
 });
+
+staff.setDurations([
+  { product: "Ella Cabinet", process: "Welding", hours: 2.5 },
+  { product: "Ella Cabinet", process: "Plate Cutting", hours: 1.25 },
+  { product: "Air Chair", process: "Welding", hours: 3 },
+  { product: "Air Chair", process: "Plate Cutting", hours: 0.5 }
+]);
 
 const book = getBook();
 const logs = book.getSheetByName("Production_Log");
@@ -124,11 +132,21 @@ async function main() {
   assert.ok(/while plate cutting was still running|before plate cutting/i.test(delay.note));
   assert.strictEqual(delay.productName, "Ella Cabinet");
   assert.strictEqual(ok.productName, "Air Chair");
+  assert.strictEqual(delay.weldEstimateHours, 2.5);
+  assert.strictEqual(delay.plateEstimateHours, 1.25);
+  assert.strictEqual(ok.weldEstimateHours, 3);
+  assert.strictEqual(ok.plateEstimateHours, 0.5);
+  assert.ok(delay.weldEstimateMinutes > 0);
+  assert.ok(delay.plateEstimateMinutes > 0);
 
   const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
   assert.ok(floor.indexOf("tab-weld-plate") !== -1);
   assert.ok(floor.indexOf("Weld vs Plate") !== -1);
   assert.ok(floor.indexOf("getWeldPlateOverlapMetrics") !== -1);
+  assert.ok(floor.indexOf("Est. weld (h)") !== -1);
+  assert.ok(floor.indexOf("Est. plate (h)") !== -1);
+  assert.ok(floor.indexOf("weldEstimateHours") !== -1);
+  assert.ok(floor.indexOf("plateEstimateHours") !== -1);
   assert.ok(floor.indexOf("Weld pauses (h)") !== -1);
   assert.ok(floor.indexOf("Plate pauses (h)") !== -1);
   assert.ok(floor.indexOf("Weld pauses (min)") === -1);

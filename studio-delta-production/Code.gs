@@ -4094,6 +4094,8 @@ function getWeldPlateOverlapMetrics() {
     }
 
     var product = bag.productName || "";
+    var weldEstMins = getTaskDurationMinutes(product, "Welding");
+    var plateEstMins = getTaskDurationMinutes(product, "Plate Cutting");
     rows.push({
       orderNum: bag.orderNum,
       productName: product,
@@ -4105,6 +4107,8 @@ function getWeldPlateOverlapMetrics() {
       plateOpen: plateOpen,
       plateActualMinutes: Math.round(plateMins * 10) / 10,
       plateActualHours: roundHoursFromMins_(plateMins),
+      plateEstimateMinutes: Math.round(plateEstMins * 10) / 10,
+      plateEstimateHours: roundHoursFromMins_(plateEstMins),
       platePauseMinutes: Math.round(platePause * 10) / 10,
       platePauseHours: roundHoursFromMins_(platePause),
       plateWorkers: plateWorkers,
@@ -4115,6 +4119,8 @@ function getWeldPlateOverlapMetrics() {
       weldOpen: weldOpen,
       weldActualMinutes: Math.round(weldMins * 10) / 10,
       weldActualHours: roundHoursFromMins_(weldMins),
+      weldEstimateMinutes: Math.round(weldEstMins * 10) / 10,
+      weldEstimateHours: roundHoursFromMins_(weldEstMins),
       weldPauseMinutes: Math.round(weldPause * 10) / 10,
       weldPauseHours: roundHoursFromMins_(weldPause),
       weldWorkers: weldWorkers,

@@ -2060,7 +2060,7 @@
               </button>
             </div>
           </div>
-          <p class="small text-muted mb-3">Compares <b>Welding</b> and <b>Plate Cutting</b> clocks on the same order. If welding started <b>before</b> or <b>while</b> plate cutting was still running, it is flagged as a potential delay. Hover a product name to see its photo. Actual hours exclude pauses and unpaid lunch/shift gaps.</p>
+          <p class="small text-muted mb-3">Compares <b>Welding</b> and <b>Plate Cutting</b> clocks on the same order. If welding started <b>before</b> or <b>while</b> plate cutting was still running, it is flagged as a potential delay. Estimated weld and plate hours come from <b>Task times</b> for that product. Hover a product name to see its photo. Actual hours exclude pauses and unpaid lunch/shift gaps.</p>
           <div id="weldPlateContainer" class="bg-white rounded shadow-sm">
             <div class="text-center p-5 text-muted">Open this tab to load weld vs plate data.</div>
           </div>
@@ -9165,6 +9165,7 @@
         '<thead class="table-dark"><tr>' +
         '<th>Order #</th><th>Product</th>' +
         '<th>Weld start</th><th>Plate start</th>' +
+        '<th class="text-end">Est. weld (h)</th><th class="text-end">Est. plate (h)</th>' +
         '<th class="text-end">Weld hours</th><th class="text-end">Plate hours</th>' +
         '<th class="text-end">Weld pauses (h)</th><th class="text-end">Plate pauses (h)</th>' +
         '<th class="text-end">Overlap (h)</th><th>Flag</th>' +
@@ -9173,11 +9174,15 @@
         const cls = row.potentialDelay ? 'weld-plate-delay' : 'weld-plate-ok';
         const weldPauseH = row.weldPauseHours != null ? row.weldPauseHours : roundHoursFromMinsUi(row.weldPauseMinutes);
         const platePauseH = row.platePauseHours != null ? row.platePauseHours : roundHoursFromMinsUi(row.platePauseMinutes);
+        const weldEstH = row.weldEstimateHours != null ? row.weldEstimateHours : roundHoursFromMinsUi(row.weldEstimateMinutes);
+        const plateEstH = row.plateEstimateHours != null ? row.plateEstimateHours : roundHoursFromMinsUi(row.plateEstimateMinutes);
         html += '<tr class="' + cls + '">' +
           '<td><strong>' + String(row.orderNum || '').replace(/</g,'&lt;') + '</strong></td>' +
           '<td>' + productHoverHtml(row.productName, row.imageUrl) + '</td>' +
           '<td>' + (row.weldStartLabel || '—') + '</td>' +
           '<td>' + (row.plateStartLabel || '—') + '</td>' +
+          '<td class="text-end">' + (weldEstH != null && weldEstH > 0 ? weldEstH : '—') + '</td>' +
+          '<td class="text-end">' + (plateEstH != null && plateEstH > 0 ? plateEstH : '—') + '</td>' +
           '<td class="text-end">' + (row.weldActualHours != null ? row.weldActualHours : '—') + '</td>' +
           '<td class="text-end">' + (row.plateActualHours != null ? row.plateActualHours : '—') + '</td>' +
           '<td class="text-end">' + (weldPauseH != null ? weldPauseH : '—') + '</td>' +
