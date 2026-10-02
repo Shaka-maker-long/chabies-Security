@@ -175,6 +175,11 @@ try {
   assert.strictEqual(month.money.quotedExclVat, 16650.5);
   assert.strictEqual(month.money.orderedExclVat, 12000);
   assert.strictEqual(month.money.deliveryExclVat, 1350.5);
+  assert.strictEqual(month.money.openQuotedExclVat, 4650.5, "open quotes = Quoted + Followed Up still waiting");
+  assert.strictEqual(month.kpis.openQuotedExclVat, 4650.5);
+  const drillOpenQuotes = dash.buildDrill({ grain: "month", range: "6m", kind: "openQuotes" });
+  assert.ok(drillOpenQuotes.rows.some((r) => r.enquiry_no === "#1997"));
+  assert.ok(!drillOpenQuotes.rows.some((r) => r.enquiry_no === "#1998"), "Ordered must not appear in open quotes");
   assert.strictEqual(month.kpis.quotedExclVat, 16650.5);
   assert.strictEqual(month.kpis.orderedExclVat, 12000);
   assert.strictEqual(month.kpis.deliveryExclVat, 1350.5);
@@ -268,7 +273,9 @@ try {
   assert.strictEqual(none.kpis.quotedExclVat, 0);
   assert.strictEqual(none.kpis.orderedExclVat, 0);
   assert.strictEqual(none.kpis.deliveryExclVat, 0);
+  assert.strictEqual(none.kpis.openQuotedExclVat, 0);
   assert.strictEqual(none.money.deliveryExclVat, 0);
+  assert.strictEqual(none.money.openQuotedExclVat, 0);
   assert.ok(none.series.length > 0);
   db.listEnquiries = () => rows;
   assert.ok(empty.enquiryCount === 7);

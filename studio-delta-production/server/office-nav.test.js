@@ -1148,6 +1148,8 @@ assert.ok(dashHtml.indexOf("/sd-pwa.js?v=pwa-stg1") !== -1, "dashboard must boot
 assert.ok(dashHtml.indexOf("qs(params)") !== -1, "week-of-month drill must send the clicked month");
 assert.ok(dashHtml.indexOf("drillMoneyHtml") !== -1);
 assert.ok(dashHtml.indexOf("Quoted excl VAT") !== -1);
+assert.ok(dashHtml.indexOf("Open quotes excl VAT") !== -1);
+assert.ok(dashHtml.indexOf("openQuotes") !== -1);
 assert.ok(dashHtml.indexOf("Ordered excl VAT") !== -1);
 assert.ok(dashHtml.indexOf("moneyKpis") !== -1);
 assert.ok(dashHtml.indexOf("close_reason") !== -1);

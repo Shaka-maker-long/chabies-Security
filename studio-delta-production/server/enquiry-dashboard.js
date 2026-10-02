@@ -549,6 +549,7 @@ function buildDashboard(query) {
   let orderedExclVat = 0;
   let quotedDeliveryExclVat = 0;
   let orderedDeliveryExclVat = 0;
+  let openQuotedExclVat = 0;
   let winRejected = 0;
   let winNotInterested = 0;
   let winNotInScope = 0;
@@ -579,6 +580,7 @@ function buildDashboard(query) {
       if (status === "Costing" || status === "Re-Cost") costingOpen += 1;
       if (status === "Quoted") quotedWaiting += 1;
       if (status === "Followed Up") followUpDue += 1;
+      if (status === "Quoted" || status === "Followed Up") openQuotedExclVat += rev;
       if (status === "Waiting on Supplier") waitingOnSupplier += 1;
       if (status === "Costing" || status === "Re-Cost" || status === "Waiting on Supplier") stuck.Costing.push(ageDays);
       if (status === "Quoted") stuck.Quoted.push(ageDays);
@@ -745,7 +747,8 @@ function buildDashboard(query) {
       p80DaysToOrder: round1(percentile(timeToOrderDays, 0.8)),
       quotedExclVat: Math.round(quotedExclVat * 100) / 100,
       orderedExclVat: Math.round(orderedExclVat * 100) / 100,
-      deliveryExclVat: Math.round(quotedDeliveryExclVat * 100) / 100
+      deliveryExclVat: Math.round(quotedDeliveryExclVat * 100) / 100,
+      openQuotedExclVat: Math.round(openQuotedExclVat * 100) / 100
     },
     funnel: [
       { label: "Captured", count: funnelCaptured },
@@ -796,7 +799,8 @@ function buildDashboard(query) {
       quotedExclVat: Math.round(quotedExclVat * 100) / 100,
       orderedExclVat: Math.round(orderedExclVat * 100) / 100,
       deliveryExclVat: Math.round(quotedDeliveryExclVat * 100) / 100,
-      orderedDeliveryExclVat: Math.round(orderedDeliveryExclVat * 100) / 100
+      orderedDeliveryExclVat: Math.round(orderedDeliveryExclVat * 100) / 100,
+      openQuotedExclVat: Math.round(openQuotedExclVat * 100) / 100
     },
     categories: countPairs(category, 12),
     products: productRows,
@@ -831,6 +835,9 @@ function matchesDrill(row, query, win) {
 
   if (kind === "enquiries") return openedIn && inBucket(opened, win.grain, key);
   if (kind === "quotes") return quotedIn && inBucket(quoted, win.grain, key);
+  if (kind === "openQuotes") {
+    return openedIn && (status === "Quoted" || status === "Followed Up");
+  }
   if (kind === "ordered") return orderedIn && inBucket(ordered, win.grain, key);
   if (kind === "funnel") {
     if (!openedIn) return false;
@@ -914,6 +921,7 @@ function drillTitle(query, win) {
   const funnelNames = { captured: "Captured", costing: "Reached costing", quoted: "Quoted", followed: "Followed up", ordered: "Ordered" };
   if (kind === "enquiries") return "Enquiries · " + bucket;
   if (kind === "quotes") return "Quotes · " + bucket;
+  if (kind === "openQuotes") return "Open quotes (Quoted + Followed Up) · " + win.windowLabel;
   if (kind === "ordered") return "Ordered · " + bucket;
   if (kind === "funnel") return (funnelNames[query.stage] || "Funnel") + " · " + win.windowLabel;
   if (kind === "typeSubtype") return (String((query && query.type) || "") + " · " + value + " · " + win.windowLabel).trim();

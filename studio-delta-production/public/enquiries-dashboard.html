@@ -726,6 +726,7 @@
       ).join("");
       const money = d.money || {};
       document.getElementById("moneyKpis").innerHTML = [
+        ["Open quotes excl VAT", money.openQuotedExclVat, "openQuotes"],
         ["Quoted excl VAT", money.quotedExclVat, "quotes"],
         ["Ordered excl VAT", money.orderedExclVat, "ordered"],
         ["Delivery excl VAT", money.deliveryExclVat, "quotes"]
@@ -798,13 +799,13 @@
       mk("money", {
         type: "bar",
         data: {
-          labels: ["Quoted", "Ordered", "Delivery"],
-          datasets: [{ data: [d.money.quotedExclVat, d.money.orderedExclVat, d.money.deliveryExclVat], backgroundColor: [PAL[2], PAL[1], PAL[3]] }]
+          labels: ["Open quotes", "Quoted", "Ordered", "Delivery"],
+          datasets: [{ data: [d.money.openQuotedExclVat, d.money.quotedExclVat, d.money.orderedExclVat, d.money.deliveryExclVat], backgroundColor: [PAL[0], PAL[2], PAL[1], PAL[3]] }]
         },
         options: Object.assign({
           plugins: { legend: { display: false } },
           scales: { y: { beginAtZero: true, ticks: { callback: randTick } } }
-        }, clickOpt((el) => openDrill({ kind: el.index === 1 ? "ordered" : "quotes" })))
+        }, clickOpt((el) => openDrill({ kind: el.index === 0 ? "openQuotes" : el.index === 2 ? "ordered" : "quotes" })))
       });
       bar("cat", d.categories.map((x) => x.label), d.categories.map((x) => x.count), PAL[3], false, (_i, label) => openDrill({ kind: "category", value: label }));
       renderProducts(document.getElementById("prodSearch").value);
