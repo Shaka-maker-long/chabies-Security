@@ -114,9 +114,12 @@ async function main() {
   assert.strictEqual(ok.potentialDelay, false);
   assert.ok(delay.weldStartLabel);
   assert.ok(delay.plateStartLabel);
+  assert.ok(!/HH:mm/.test(delay.weldStartLabel), "clock time must render, got " + delay.weldStartLabel);
+  assert.ok(/\d{2}:\d{2}/.test(delay.weldStartLabel), delay.weldStartLabel);
   assert.ok(delay.weldActualHours > 0);
   assert.ok(delay.plateActualHours > 0);
   assert.ok(delay.platePauseMinutes > 0, "plate pause minutes recorded");
+  assert.ok(delay.platePauseHours > 0, "plate pause hours recorded");
   assert.ok(delay.overlapHours > 0, "overlap while plate still running");
   assert.ok(/while plate cutting was still running|before plate cutting/i.test(delay.note));
   assert.strictEqual(delay.productName, "Ella Cabinet");
@@ -126,8 +129,9 @@ async function main() {
   assert.ok(floor.indexOf("tab-weld-plate") !== -1);
   assert.ok(floor.indexOf("Weld vs Plate") !== -1);
   assert.ok(floor.indexOf("getWeldPlateOverlapMetrics") !== -1);
-  assert.ok(floor.indexOf("prod-hover") !== -1);
-  assert.ok(floor.indexOf("productHoverHtml") !== -1);
+  assert.ok(floor.indexOf("Weld pauses (h)") !== -1);
+  assert.ok(floor.indexOf("Plate pauses (h)") !== -1);
+  assert.ok(floor.indexOf("Weld pauses (min)") === -1);
 
   console.log("weld-plate-metrics.test.js ok");
 }

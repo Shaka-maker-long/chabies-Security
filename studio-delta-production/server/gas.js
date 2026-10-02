@@ -72,11 +72,17 @@ function formatDate(date, _tz, pattern) {
   const y = String(sast.getUTCFullYear());
   const m = String(sast.getUTCMonth() + 1).padStart(2, "0");
   const d = String(sast.getUTCDate()).padStart(2, "0");
+  const hh = String(sast.getUTCHours()).padStart(2, "0");
+  const min = String(sast.getUTCMinutes()).padStart(2, "0");
+  const ss = String(sast.getUTCSeconds()).padStart(2, "0");
   const ww = String(isoWeek(date)).padStart(2, "0");
   return String(pattern)
     .replace(/yyyy/g, y)
     .replace(/MM/g, m)
     .replace(/dd/g, d)
+    .replace(/HH/g, hh)
+    .replace(/mm/g, min)
+    .replace(/ss/g, ss)
     .replace(/ww/g, ww)
     .replace(/'Week'/g, "Week")
     .replace(/'W'/g, "W");

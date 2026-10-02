@@ -9107,6 +9107,11 @@
 
     let weldPlateData = null;
 
+    function roundHoursFromMinsUi(mins) {
+      if (mins == null || mins === '') return null;
+      return Math.round((Number(mins) / 60) * 100) / 100;
+    }
+
     function productHoverHtml(name, imageUrl) {
       const label = String(name || 'Unknown').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
       const url = String(imageUrl || '').trim();
@@ -9161,11 +9166,13 @@
         '<th>Order #</th><th>Product</th>' +
         '<th>Weld start</th><th>Plate start</th>' +
         '<th class="text-end">Weld hours</th><th class="text-end">Plate hours</th>' +
-        '<th class="text-end">Weld pauses (min)</th><th class="text-end">Plate pauses (min)</th>' +
+        '<th class="text-end">Weld pauses (h)</th><th class="text-end">Plate pauses (h)</th>' +
         '<th class="text-end">Overlap (h)</th><th>Flag</th>' +
         '</tr></thead><tbody>';
       list.forEach(function (row) {
         const cls = row.potentialDelay ? 'weld-plate-delay' : 'weld-plate-ok';
+        const weldPauseH = row.weldPauseHours != null ? row.weldPauseHours : roundHoursFromMinsUi(row.weldPauseMinutes);
+        const platePauseH = row.platePauseHours != null ? row.platePauseHours : roundHoursFromMinsUi(row.platePauseMinutes);
         html += '<tr class="' + cls + '">' +
           '<td><strong>' + String(row.orderNum || '').replace(/</g,'&lt;') + '</strong></td>' +
           '<td>' + productHoverHtml(row.productName, row.imageUrl) + '</td>' +
@@ -9173,8 +9180,8 @@
           '<td>' + (row.plateStartLabel || '—') + '</td>' +
           '<td class="text-end">' + (row.weldActualHours != null ? row.weldActualHours : '—') + '</td>' +
           '<td class="text-end">' + (row.plateActualHours != null ? row.plateActualHours : '—') + '</td>' +
-          '<td class="text-end">' + (row.weldPauseMinutes != null ? row.weldPauseMinutes : '—') + '</td>' +
-          '<td class="text-end">' + (row.platePauseMinutes != null ? row.platePauseMinutes : '—') + '</td>' +
+          '<td class="text-end">' + (weldPauseH != null ? weldPauseH : '—') + '</td>' +
+          '<td class="text-end">' + (platePauseH != null ? platePauseH : '—') + '</td>' +
           '<td class="text-end">' + (row.overlapHours != null ? row.overlapHours : '—') + '</td>' +
           '<td>' + (row.potentialDelay
             ? '<span class="badge text-bg-warning">' + String(row.note || 'Potential delay').replace(/</g,'&lt;') + '</span>'
