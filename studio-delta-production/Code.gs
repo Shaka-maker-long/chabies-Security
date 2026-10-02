@@ -59,7 +59,7 @@ var SYSTEM_PAUSE_NOT_SELECTED = "Not working this order now";
 var INDIRECT_TASKS = ["Cleaning", "Maintenance", "Material handling", "Waiting for materials", "Waiting for plate", "Meeting", "Training", "Other"];
 
 
-var KNOWN_FLOOR_TASKS = ["Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding", "Quality Control", "Paint Preparation", "Painting", "Assembly"];
+var KNOWN_FLOOR_TASKS = ["Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding", "Quality Control", "Paint Preparation", "Painting", "Assembly", "Rework"];
 
 var TASK_ALIAS_MAP = {
   "profile cutting": "Profile Cutting",
@@ -218,6 +218,8 @@ function workerCanPerformTask(workerName, task) {
   if (profile.tasks.indexOf(want) !== -1) return true;
   // Assemblers and painters may start Paint Preparation without a separate login task.
   if (want === "Paint Preparation" && (profile.tasks.indexOf("Assembly") !== -1 || profile.tasks.indexOf("Painting") !== -1)) return true;
+  // Anyone assigned an open rework can clock it even if Rework is not ticked on Users.
+  if (want === "Rework" && typeof openReworkAssignedTo_ === "function" && openReworkAssignedTo_(workerName)) return true;
   return false;
 }
 
@@ -225,7 +227,11 @@ function workerCanViewRole(workerName, role) {
   var profile = getUserProfileByName(workerName);
   if (!profile) return false;
   if (profile.isAdmin) return true;
-  return workerCanPerformTask(workerName, role);
+  var want = canonicalTaskName(role) || String(role || "").trim();
+  // Anyone may open the Rework board; startOrder still requires the assignment.
+  if (want === "Rework") return true;
+  if (workerCanPerformTask(workerName, role)) return true;
+  return false;
 }
 
 
@@ -1110,6 +1116,117 @@ function clearPlateCuttingStatus(ss, orderNum) {
   return;
 }
 
+function emptyReworkStatus() {
+  return {status: '', assigned: '', isPaused: false, pauseReason: "", logId: "", batchId: "", isBatched: false, startTime: "", pauseMs: 0, pausedAt: "", batchShare: 1, priorWorkMs: 0, reworkId: ""};
+}
+
+function reworkStatusFromLogRow(row) {
+  var meta = parseLogMeta(row.length > 12 ? row[12] : "");
+  var pauseStart = getOpenPauseStart(meta) || row[9];
+  var pauseReason = "";
+  if (meta.pauses && meta.pauses.length) pauseReason = meta.pauses[meta.pauses.length - 1].reason || "";
+  if (!pauseReason) pauseReason = row.length > 11 ? row[11] : "";
+  var acc = pauseAccounting(meta, pauseStart);
+  if (!row[6]) {
+    return {
+      status: 'Rework',
+      assigned: row[2],
+      isPaused: !!pauseStart,
+      pauseReason: pauseReason || "",
+      logId: row[0],
+      batchId: meta.batchId || "",
+      isBatched: !!(meta.batchId && !meta.batchSplitAt && (meta.batchShare || 1) > 1),
+      startTime: countdownOrigin(row[5], meta) || row[5] || "",
+      pauseMs: acc.pauseMs,
+      pausedAt: acc.pausedAt,
+      batchShare: meta.batchShare || 1,
+      priorWorkMs: Number(meta.priorWorkMs) || 0,
+      reworkId: meta.reworkId || ""
+    };
+  }
+  return emptyReworkStatus();
+}
+
+function buildReworkStatusMap(logData) {
+  var map = {};
+  for (var i = logData.length - 1; i >= 1; i--) {
+    if (String(logData[i][3]).trim() !== 'Rework') continue;
+    var orderNum = String(logData[i][1]);
+    if (map.hasOwnProperty(orderNum)) continue;
+    map[orderNum] = reworkStatusFromLogRow(logData[i]);
+  }
+  return map;
+}
+
+function openReworkAssignedTo_(workerName) {
+  if (typeof listOpenReworksForFloor !== "function") return false;
+  var who = String(workerName || "").trim().toLowerCase();
+  if (!who) return false;
+  var rows = listOpenReworksForFloor("") || [];
+  for (var i = 0; i < rows.length; i++) {
+    if (String(rows[i].assigned_operator || "").trim().toLowerCase() === who) return true;
+  }
+  return false;
+}
+
+function listReworkFloorCards_(role, workerName, data, logData) {
+  if (typeof listOpenReworksForFloor !== "function") return [];
+  var who = String(workerName || "").trim();
+  var admin = !who;
+  var profile = who ? getUserProfileByName(who) : null;
+  if (profile && profile.isAdmin) admin = true;
+  var open = listOpenReworksForFloor(admin ? "" : who) || [];
+  if (!open.length) return [];
+  var reworkMap = buildReworkStatusMap(logData);
+  var orderRowByNum = {};
+  for (var i = 1; i < data.length; i++) {
+    var num = String(data[i][1] || "").trim();
+    if (num) orderRowByNum[num] = i;
+  }
+  var out = [];
+  for (var r = 0; r < open.length; r++) {
+    var rw = open[r];
+    var orderNum = String(rw.order_number || "").trim();
+    if (!orderNum) continue;
+    var rowIdx = orderRowByNum[orderNum];
+    if (rowIdx == null) continue;
+    var live = reworkMap[orderNum] || emptyReworkStatus();
+    var productName = String(data[rowIdx][6] || rw.product || "");
+    var roleMins = getTaskDurationMinutes(productName, "Rework");
+    var cardStatus = live.status === "Rework" ? "Rework" : "Ready for Rework";
+    out.push(decorateOrderTiming({
+      rowIndex: rowIdx + 1,
+      order: orderNum,
+      productName: productName,
+      status: cardStatus,
+      assigned: live.assigned || "",
+      isPaused: !!live.isPaused,
+      pauseReason: live.pauseReason || "",
+      isPlateOrder: false,
+      isReworkOrder: true,
+      reworkId: rw.id || live.reworkId || "",
+      reworkIssue: rw.issue || "",
+      logId: live.logId || "",
+      batchId: live.batchId || "",
+      isBatched: !!live.isBatched,
+      startedAt: live.startTime || "",
+      targetMinutes: roleMins,
+      durationLabel: formatSpokenDuration(roleMins),
+      pauseMs: live.pauseMs || 0,
+      pausedAt: live.pausedAt || "",
+      batchShare: live.batchShare || 1,
+      priorWorkMs: live.priorWorkMs || 0,
+      type: String(data[rowIdx][4] || rw.type || ""),
+      variation: String(data[rowIdx][7] || rw.variation || ""),
+      description: String(rw.issue || data[rowIdx][9] || ""),
+      dimensions: String(data[rowIdx][10] || rw.dimensions || ""),
+      powderCoating: String(data[rowIdx][11] || rw.powder_coating || ""),
+      highlights: parseDescriptionHighlights(rw.issue || data[rowIdx][9])
+    }));
+  }
+  return out;
+}
+
 // --- CORE: USERS & LOGIN ---
 function getUsersAndRoles() {
   var cached = floorCacheGet("users");
@@ -1227,7 +1344,7 @@ function getOrdersForRole(role, workerName, skipCache) {
   if (workerName && role && role !== "Admin" && !workerCanViewRole(workerName, role) && !workLocksDisabled()) {
     return [];
   }
-  var cacheKey = "orders:" + String(role || "");
+  var cacheKey = "orders:" + String(role || "") + (role === "Rework" ? (":" + String(workerName || "")) : "");
   if (!skipCache) {
     var cached = floorCacheGet(cacheKey);
     if (cached) return cached;
@@ -1238,6 +1355,13 @@ function getOrdersForRole(role, workerName, skipCache) {
   var activeAssignments = getActiveAssignmentsFromData(logData);
   var plateMap = (role === 'Plate Cutting') ? buildPlateStatusMap(logData) : {};
   var relevantOrders = [];
+
+  if (role === "Rework") {
+    relevantOrders = listReworkFloorCards_(role, workerName, data, logData);
+    applyPlanningHints_(role, relevantOrders);
+    floorCachePut(cacheKey, relevantOrders, CACHE_TTL_FLOOR);
+    return relevantOrders;
+  }
   
   var mainVisibilityMap = {
     'Profile Cutting': ['Not Yet Started', 'Ready for Steelwork', 'Profile Cutting'],
@@ -2219,7 +2343,7 @@ function tallyFloorCounts(orders, allowStatus) {
 function getFloorTaskCounts() {
   var tasks = [
     "Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding",
-    "Quality Control", "Paint Preparation", "Painting", "Assembly"
+    "Quality Control", "Paint Preparation", "Painting", "Assembly", "Rework"
   ];
   var out = {};
   for (var i = 0; i < tasks.length; i++) {
@@ -2487,7 +2611,8 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
     var started = [];
     var startTime = new Date();
     var plateMap = (role === 'Plate Cutting') ? buildPlateStatusMap(pack.values) : {};
-    var activeAssignments = (role === 'Plate Cutting') ? {} : getActiveAssignmentsFromData(pack.values);
+    var reworkMap = (role === 'Rework') ? buildReworkStatusMap(pack.values) : {};
+    var activeAssignments = (role === 'Plate Cutting' || role === 'Rework') ? {} : getActiveAssignmentsFromData(pack.values);
 
     for (var r = 0; r < rowsToStart.length; r++) {
       var thisRow = rowsToStart[r];
@@ -2495,10 +2620,10 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       var orderNum = orderRow[1];
       var currentStatus = orderRow[2];
 
-      if (isAtPaintShopStatus_(currentStatus)) {
+      if (role !== 'Rework' && isAtPaintShopStatus_(currentStatus)) {
         return { success: false, message: "This order is at the paint shop. Receive it on Paint shop before shop-floor work." };
       }
-      if (String(currentStatus || "").trim().toLowerCase() === "waiting for drawing") {
+      if (role !== 'Rework' && String(currentStatus || "").trim().toLowerCase() === "waiting for drawing") {
         return { success: false, message: "This order is waiting for a drawing. Production starts after Erin uploads it." };
       }
 
@@ -2519,6 +2644,24 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
         }
         if (plateInfo.assigned === workerName) {
           started.push({ order: orderNum, rowIndex: thisRow, logId: plateInfo.logId, newStatus: nextStatus });
+          continue;
+        }
+      } else if (role === 'Rework') {
+        var openRw = (typeof findOpenReworkForOrderFloor === "function")
+          ? findOpenReworkForOrderFloor(orderNum)
+          : null;
+        if (!openRw || !openRw.assigned_operator) {
+          return { success: false, message: "This order has no assigned rework. Log and assign it on Reworks first." };
+        }
+        if (String(openRw.assigned_operator).toLowerCase() !== String(workerName).toLowerCase() && !workLocksDisabled()) {
+          return { success: false, message: "This rework is assigned to " + openRw.assigned_operator };
+        }
+        var reworkInfo = reworkMap[String(orderNum)] || emptyReworkStatus();
+        if (reworkInfo.assigned !== "" && reworkInfo.assigned !== workerName && !workLocksDisabled()) {
+          throw new Error("Rework is already being done by " + reworkInfo.assigned);
+        }
+        if (reworkInfo.assigned === workerName) {
+          started.push({ order: orderNum, rowIndex: thisRow, logId: reworkInfo.logId, newStatus: nextStatus, reworkId: openRw.id });
           continue;
         }
       } else {
@@ -2547,8 +2690,17 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
       meta.targetMinutes = getTaskDurationMinutes(String(orderRow[6] || "").trim(), role);
       meta.countdownStartedAt = startTime.getTime();
       meta = applyShiftWindowToMeta(meta, null, workerName);
+      if (role === 'Rework') {
+        var rwRow = (typeof findOpenReworkForOrderFloor === "function")
+          ? findOpenReworkForOrderFloor(orderNum)
+          : null;
+        if (rwRow && rwRow.id) meta.reworkId = rwRow.id;
+        if (typeof markReworkStartedFloor === "function" && meta.reworkId) {
+          markReworkStartedFloor(meta.reworkId, workerName);
+        }
+      }
 
-      if (role !== 'Plate Cutting') {
+      if (role !== 'Plate Cutting' && role !== 'Rework') {
         sheet.getRange(thisRow, 3, 1, 2).setValues([[nextStatus, workerName]]);
       }
 
@@ -2561,7 +2713,7 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
         overviewSheet.appendRow([uniqueId, orderNum, workerName, nextStatus, startTime, "", ""]);
       }
 
-      started.push({ order: orderNum, rowIndex: thisRow, logId: uniqueId, newStatus: nextStatus });
+      started.push({ order: orderNum, rowIndex: thisRow, logId: uniqueId, newStatus: nextStatus, reworkId: meta.reworkId || "" });
     }
     
     var firstProduct = orderData[parseInt(rowIndex, 10) - 1] ? String(orderData[parseInt(rowIndex, 10) - 1][6] || "").trim() : "";
@@ -2719,8 +2871,15 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
 
     var previousStatus = String(sheet.getRange(rowIndex, 3).getValue() || "");
     var previousAssigned = String(sheet.getRange(rowIndex, 4).getValue() || "");
-    if(role === 'Plate Cutting') {
-        // Plate Cutting Finished -> Do NOT change Order Status
+    if(role === 'Plate Cutting' || role === 'Rework') {
+        // Parallel process — do not change the order's main shop status
+        if (role === 'Rework') {
+          if (meta && meta.reworkId && typeof markReworkFinishedFloor === "function") {
+            markReworkFinishedFloor(meta.reworkId, workerName);
+          } else if (typeof markReworkFinishedForOrderFloor === "function") {
+            markReworkFinishedForOrderFloor(orderNum, workerName);
+          }
+        }
     } else {
         var nextStep = getNextStatus(processName || previousStatus); 
         sheet.getRange(rowIndex, 3).setValue(nextStep);
@@ -3379,6 +3538,7 @@ function getStartStatusForRole(currentStatus, role) {
   var currentLower = String(currentStatus || "").trim().toLowerCase();
   var roleLower = String(role || "").trim().toLowerCase();
   if (roleLower === "plate cutting") return "Plate Cutting";
+  if (roleLower === "rework") return "Rework";
   if (currentLower === "ready for assembly" && (roleLower === "paint preparation" || roleLower === "paint prep")) {
     return "Paint Preparation";
   }
@@ -3413,7 +3573,7 @@ function getActiveAssignmentsFromData(logData) {
     var orderNum = logData[i][1];
     if (!orderNum) continue;
     var roleStr = String(logData[i][3]).trim();
-    if (roleStr === 'Plate Cutting' || roleStr === 'Out for Delivery' || roleStr === 'Indirect') continue;
+    if (roleStr === 'Plate Cutting' || roleStr === 'Rework' || roleStr === 'Out for Delivery' || roleStr === 'Indirect') continue;
     var meta = parseLogMeta(logData[i].length > 12 ? logData[i][12] : "");
     if (meta.entryType === "indirect") continue;
     var pauseStart = getOpenPauseStart(meta) || logData[i][9];

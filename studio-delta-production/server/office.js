@@ -1945,6 +1945,47 @@ function mountOffice(app) {
     res.send(file.buffer);
   });
 
+  app.get("/api/office/reworks", requireOffice, (req, res) => {
+    try {
+      const reworks = require("./reworks");
+      const payload = reworks.pagePayload();
+      res.json({
+        ok: true,
+        ...payload,
+        canAssign: reworks.canAssignReworks(req.office)
+      });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/reworks", requireOffice, (req, res) => {
+    try {
+      const reworks = require("./reworks");
+      const row = reworks.createRework(req.body || {}, req.office && req.office.name);
+      try { require("./gas").clearShopCache(); } catch (e) {}
+      res.json({ ok: true, row, reworks: reworks.listReworks() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/reworks/:id/assign", requireOffice, (req, res) => {
+    try {
+      const reworks = require("./reworks");
+      const row = reworks.assignRework(
+        req.params.id,
+        req.body || {},
+        req.office && req.office.name,
+        req.office
+      );
+      try { require("./gas").clearShopCache(); } catch (e) {}
+      res.json({ ok: true, row, reworks: reworks.listReworks() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.post("/api/office/orders/:orderNumber/payments", requireOffice, requireDebtors, (req, res) => {
     try {
       const row = recordPayment(

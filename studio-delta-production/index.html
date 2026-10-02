@@ -3110,7 +3110,8 @@
       { id: 'Assembly', role: 'Assembly', label: 'Assembly' },
       { id: 'Paint Preparation', role: 'Paint Preparation', label: 'Paint prep' },
       { id: 'Painting', role: 'Painting', label: 'Painting' },
-      { id: 'Final QC', role: 'Quality Control', qcFilter: 'final-qc', label: 'Final QC' }
+      { id: 'Final QC', role: 'Quality Control', qcFilter: 'final-qc', label: 'Final QC' },
+      { id: 'Rework', role: 'Rework', label: 'Rework' }
     ];
     const TASK_ICONS = {
       'Profile Cutting': 'bi-scissors',
@@ -3122,6 +3123,7 @@
       'Paint Preparation': 'bi-brush',
       'Painting': 'bi-palette',
       'Assembly': 'bi-box-seam',
+      'Rework': 'bi-arrow-repeat',
       'Pre-Powder Coating QC': 'bi-clipboard-check',
       'Powder Coating': 'bi-droplet',
       'Final QC': 'bi-shield-check'
@@ -3644,6 +3646,8 @@
       const tasks = session.tasks || [];
       if (step.id === 'New orders') return tasks.indexOf('Profile Cutting') !== -1;
       if (step.role === 'Quality Control') return tasks.indexOf('Quality Control') !== -1;
+      // Rework board: anyone may open it; start is still gated to the assigned person.
+      if (step.role === 'Rework') return true;
       return tasks.indexOf(step.role) !== -1;
     }
     function floorEsc(s) {
@@ -3670,6 +3674,7 @@
       if (/tag/.test(s)) return 'Tagging';
       if (/grind/.test(s)) return 'Grinding';
       if (/assembl/.test(s)) return 'Assembly';
+      if (/rework/.test(s)) return 'Rework';
       if (/paint prep|paint preparation/.test(s)) return 'Paint Preparation';
       if (/paint/.test(s)) return 'Painting';
       if (/plate/.test(s)) return 'Plate Cutting';
@@ -3717,6 +3722,7 @@
         if (session.canSeeOffice) return true;
         if (step.id === 'New orders') return tasks.indexOf('Profile Cutting') !== -1;
         if (step.role === 'Quality Control') return tasks.indexOf('Quality Control') !== -1;
+        if (step.role === 'Rework') return true;
         return tasks.indexOf(step.role) !== -1 || tasks.indexOf(step.id) !== -1;
       });
     }

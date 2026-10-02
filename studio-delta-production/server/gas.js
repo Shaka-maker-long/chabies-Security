@@ -427,6 +427,29 @@ async function callShopFunction(fnName, args) {
     },
     applyInProgressStatusReconcile: function () {
       return require("./in-progress-status").reconcile();
+    },
+    listOpenReworksForFloor: function (workerName) {
+      try {
+        return require("./reworks").listOpenForFloor(workerName);
+      } catch (e) {
+        return [];
+      }
+    },
+    findOpenReworkForOrderFloor: function (orderNumber) {
+      try {
+        return require("./reworks").findOpenReworkForOrder(orderNumber, true);
+      } catch (e) {
+        return null;
+      }
+    },
+    markReworkStartedFloor: function (id, workerName) {
+      return require("./reworks").markReworkStarted(id, workerName);
+    },
+    markReworkFinishedFloor: function (id, workerName) {
+      return require("./reworks").markReworkFinished(id, workerName);
+    },
+    markReworkFinishedForOrderFloor: function (orderNumber, workerName) {
+      return require("./reworks").markReworkFinishedForOrder(orderNumber, workerName);
     }
   };
 

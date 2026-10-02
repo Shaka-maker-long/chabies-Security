@@ -145,6 +145,10 @@ app.get("/orders/paint-shop", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "orders-paint-shop.html"));
 });
+app.get("/reworks", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "reworks.html"));
+});
 app.get("/orders/from-enquiry", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "orders-from-enquiry.html"));

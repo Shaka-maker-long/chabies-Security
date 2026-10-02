@@ -8,7 +8,7 @@ const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 
 const labels = [
   "Home", "Orders", "Inventory Management", "Enquiries", "Marketing", "My tasks", "Dropdowns", "Users",
-  "Task times", "Planning", "Debtors", "Production Tasks", "Production", "Workers", "Metrics",
+  "Task times", "Planning", "Reworks", "Debtors", "Production Tasks", "Production", "Workers", "Metrics",
   "QC Reports", "Activity", "Schedule", "Log Out", "Change access code"
 ];
 labels.forEach((label) => {
@@ -26,6 +26,8 @@ assert.ok(js.indexOf("/inventory") !== -1);
 assert.ok(js.indexOf("Production cost") === -1, "production cost is an Orders subpage");
 assert.ok(js.indexOf('"/schedule"') === -1);
 assert.ok(js.indexOf("/planning") !== -1, "planning is an office page");
+assert.ok(js.indexOf("/reworks") !== -1, "reworks is an office page");
+assert.ok(js.indexOf('"Reworks"') !== -1);
 assert.ok(js.indexOf('"Planning"') !== -1);
 
 const officeJs = fs.readFileSync(path.join(__dirname, "office.js"), "utf8");
@@ -1045,6 +1047,16 @@ assert.ok(indexJs.indexOf('"/planning"') !== -1 || indexJs.indexOf("/planning") 
 assert.ok(officeJs.indexOf("/api/office/planning") !== -1);
 assert.ok(floor.indexOf('href="/planning"') !== -1);
 assert.ok(floor.indexOf("Planning") !== -1);
+assert.ok(indexJs.indexOf('"/reworks"') !== -1 || indexJs.indexOf("/reworks") !== -1);
+assert.ok(officeJs.indexOf("/api/office/reworks") !== -1);
+assert.ok(fs.existsSync(path.join(__dirname, "../public/reworks.html")));
+const reworksHtml = fs.readFileSync(path.join(__dirname, "../public/reworks.html"), "utf8");
+assert.ok(reworksHtml.indexOf("Record a rework") !== -1);
+assert.ok(reworksHtml.indexOf("ASSIGNED OPERATOR") !== -1);
+assert.ok(reworksHtml.indexOf("CATERGORY") !== -1);
+assert.ok(floor.indexOf("Rework") !== -1, "Production Tasks includes Rework");
+assert.ok(codeGs.indexOf("listReworkFloorCards_") !== -1);
+assert.ok(codeGs.indexOf("'Rework'") !== -1 || codeGs.indexOf('"Rework"') !== -1);
 assert.ok(floor.indexOf("Due first:") !== -1, "shop activity cards show the due-first date");
 assert.ok(floor.indexOf("placeDueFirst") !== -1, "shop activity lists keep due-first order");
 assert.ok(floor.indexOf("sd-qc-draft") !== -1, "QC forms keep a per-worker draft");

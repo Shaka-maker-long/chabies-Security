@@ -232,6 +232,7 @@ function sdMountOfficeShell(active) {
     ["/users", "users", "bi-person-plus", "Users", "users"],
     ["/durations", "durations", "bi-hourglass-split", "Task times"],
     ["/planning", "planning", "bi-calendar-range", "Planning"],
+    ["/reworks", "reworks", "bi-arrow-repeat", "Reworks"],
     ["/debtors", "debtors", "bi-cash-coin", "Debtors"],
     ["/?view=production-tasks", "productiontasks", "bi-grid-3x3-gap", "Production Tasks"],
     ["/?view=production", "production", "bi-clipboard-data", "Production"],

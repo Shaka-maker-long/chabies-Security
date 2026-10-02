@@ -6,7 +6,7 @@ const accessCodes = require("./access-codes");
 
 const FLOOR_TASKS = [
   "Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding",
-  "Quality Control", "Paint Preparation", "Painting", "Assembly"
+  "Quality Control", "Paint Preparation", "Painting", "Assembly", "Rework"
 ];
 
 const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval", "Follow-up"];

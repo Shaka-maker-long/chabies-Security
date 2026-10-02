@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Reworks</title>
+  <script src="/sd-pwa.js?v=pwa-stg1"></script>
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; --run:#fff7ed; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:820px; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
+    button.ghost { background:#fff; color:#1d2939; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    input, select, textarea { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-size:13px; }
+    textarea { min-height:72px; width:100%; resize:vertical; }
+    .page { padding:16px; display:flex; flex-direction:column; gap:14px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+    .card h2 { margin:0 0 8px; font-size:15px; }
+    .hint { margin:0 0 12px; color:var(--muted); font-size:13px; line-height:1.45; }
+    .form { display:grid; grid-template-columns:1.2fr 1fr auto; gap:10px; align-items:end; }
+    .form label { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+    .form .span2 { grid-column:1 / -1; }
+    .msg { font-size:13px; color:var(--muted); }
+    .msg.bad { color:var(--bad); }
+    .msg.ok { color:var(--ok); }
+    .wrap { overflow:auto; background:#fff; border:1px solid var(--line); border-radius:10px; }
+    table { border-collapse:separate; border-spacing:0; width:100%; min-width:1180px; font-size:13px; }
+    th, td { border-bottom:1px solid var(--line); padding:8px 10px; text-align:left; vertical-align:top; }
+    th { background:var(--head); position:sticky; top:0; font-size:11px; letter-spacing:.03em; white-space:nowrap; }
+    tr.needs td { background:#fffbeb; }
+    tr.ready td { background:#eff8ff; }
+    tr.running td { background:var(--run); }
+    tr.done td { color:#667085; }
+    .pill { display:inline-block; border-radius:999px; padding:2px 8px; font-size:11px; font-weight:700; background:#f2f4f7; }
+    .pill.needs { background:#fffaeb; color:#b54708; }
+    .pill.ready { background:#eff8ff; color:#175cd3; }
+    .pill.run { background:#ffedd5; color:#9a3412; }
+    .pill.done { background:#ecfdf3; color:var(--ok); }
+    .assign { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+    .assign select { min-width:140px; }
+    .empty, .load, .err { padding:36px 16px; text-align:center; color:var(--muted); font-weight:600; }
+    .err { color:var(--bad); }
+    @media (max-width: 900px) {
+      .form { grid-template-columns:1fr; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Reworks</h1>
+      <p class="lede">Log a rework against an existing order, then Siya or the Manager assigns a production person. Once assigned it shows on Production Tasks under Rework and clocks time like a normal job.</p>
+    </div>
+    <div class="tools">
+      <span class="msg" id="status"></span>
+      <input type="search" id="q" placeholder="Search order, product, person, issue">
+      <button type="button" class="ghost" id="refreshBtn">Refresh</button>
+    </div>
+  </header>
+  <div class="page">
+    <section class="card">
+      <h2>Record a rework</h2>
+      <p class="hint">Pick the order and describe what needs fixing. Product details copy from the order sheet.</p>
+      <form class="form" id="createForm">
+        <label>Order *
+          <select id="orderSelect" required>
+            <option value="">Choose order…</option>
+          </select>
+        </label>
+        <label class="span2">What was the issue? *
+          <textarea id="issue" required placeholder="e.g. Door warp on left leaf — reweld and grind flush"></textarea>
+        </label>
+        <button type="submit" id="createBtn">Save rework</button>
+      </form>
+      <p class="msg" id="createMsg"></p>
+    </section>
+
+    <section class="card" style="padding:0; overflow:hidden;">
+      <div style="padding:14px 16px 0;">
+        <h2 style="margin:0;">Rework sheet</h2>
+        <p class="hint">ORDER NUMBER · STATUS · ASSIGNED OPERATOR · TYPE · CATERGORY · PRODUCT · VARIATION · DOORS · DETAILED DESCRIPTION · DIMENSIONS · POWDER COATING · Issue comment</p>
+      </div>
+      <div class="wrap">
+        <div class="load" id="boot">Loading reworks…</div>
+        <table id="grid" hidden>
+          <thead>
+            <tr>
+              <th>ORDER NUMBER</th>
+              <th>STATUS</th>
+              <th>ASSIGNED OPERATOR</th>
+              <th>TYPE</th>
+              <th>CATERGORY</th>
+              <th>PRODUCT</th>
+              <th>VARIATION</th>
+              <th>DOORS</th>
+              <th>DETAILED DESCRIPTION</th>
+              <th>DIMENSIONS</th>
+              <th>POWDER COATING</th>
+              <th>Issue comment</th>
+            </tr>
+          </thead>
+          <tbody id="body"></tbody>
+        </table>
+        <div class="empty" id="empty" hidden>No reworks yet.</div>
+      </div>
+    </section>
+  </div>
+
+  <script src="/office-auth.js"></script>
+  <script>
+    let canAssign = false;
+    let rows = [];
+    let operators = [];
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+    function setMsg(el, text, bad) {
+      el.textContent = text || "";
+      el.className = "msg" + (bad ? " bad" : text ? " ok" : "");
+    }
+    function pill(status) {
+      const s = String(status || "");
+      let cls = "";
+      if (/needs/i.test(s)) cls = "needs";
+      else if (/ready/i.test(s)) cls = "ready";
+      else if (/^rework$/i.test(s)) cls = "run";
+      else if (/done/i.test(s)) cls = "done";
+      return "<span class=\"pill " + cls + "\">" + esc(s || "—") + "</span>";
+    }
+    function rowClass(status) {
+      const s = String(status || "").toLowerCase();
+      if (s.indexOf("needs") >= 0) return "needs";
+      if (s.indexOf("ready") >= 0) return "ready";
+      if (s === "rework") return "running";
+      if (s === "done") return "done";
+      return "";
+    }
+    function assignCell(row) {
+      if (row.status === "Done") return esc(row.assigned_operator || "—");
+      if (!canAssign) {
+        return esc(row.assigned_operator || "Waiting for Siya / Manager");
+      }
+      const opts = ["<option value=\"\">Assign…</option>"].concat(
+        operators.map((n) => {
+          const sel = String(row.assigned_operator || "") === n ? " selected" : "";
+          return "<option value=\"" + esc(n) + "\"" + sel + ">" + esc(n) + "</option>";
+        })
+      ).join("");
+      return "<div class=\"assign\"><select data-id=\"" + esc(row.id) + "\">" + opts + "</select>" +
+        "<button type=\"button\" data-assign=\"" + esc(row.id) + "\">Save</button></div>";
+    }
+    function filtered() {
+      const q = String(document.getElementById("q").value || "").trim().toLowerCase();
+      if (!q) return rows.slice();
+      return rows.filter((r) => {
+        const blob = [
+          r.order_number, r.status, r.assigned_operator, r.type, r.category, r.product,
+          r.variation, r.doors, r.detailed_description, r.dimensions, r.powder_coating, r.issue
+        ].join(" ").toLowerCase();
+        return blob.indexOf(q) >= 0;
+      });
+    }
+    function render() {
+      const list = filtered();
+      const boot = document.getElementById("boot");
+      const grid = document.getElementById("grid");
+      const empty = document.getElementById("empty");
+      const body = document.getElementById("body");
+      boot.hidden = true;
+      if (!list.length) {
+        grid.hidden = true;
+        empty.hidden = false;
+        empty.textContent = rows.length ? "No reworks match this search." : "No reworks yet.";
+        return;
+      }
+      empty.hidden = true;
+      grid.hidden = false;
+      body.innerHTML = list.map((r) =>
+        "<tr class=\"" + rowClass(r.status) + "\">" +
+        "<td><b>" + esc(r.order_number) + "</b></td>" +
+        "<td>" + pill(r.status) + "</td>" +
+        "<td>" + assignCell(r) + "</td>" +
+        "<td>" + esc(r.type || "—") + "</td>" +
+        "<td>" + esc(r.category || "—") + "</td>" +
+        "<td>" + esc(r.product || "—") + "</td>" +
+        "<td>" + esc(r.variation || "—") + "</td>" +
+        "<td>" + esc(r.doors || "—") + "</td>" +
+        "<td>" + esc(r.detailed_description || "—") + "</td>" +
+        "<td>" + esc(r.dimensions || "—") + "</td>" +
+        "<td>" + esc(r.powder_coating || "—") + "</td>" +
+        "<td>" + esc(r.issue || "—") + "</td>" +
+        "</tr>"
+      ).join("");
+    }
+
+    async function load() {
+      setMsg(document.getElementById("status"), "Loading…");
+      const j = await sdOfficeFetch("/api/office/reworks");
+      if (!j || !j.ok) throw new Error((j && j.error) || "Could not load reworks");
+      rows = j.reworks || [];
+      operators = j.operators || [];
+      canAssign = !!j.canAssign;
+      const sel = document.getElementById("orderSelect");
+      const cur = sel.value;
+      sel.innerHTML = "<option value=\"\">Choose order…</option>" +
+        (j.orders || []).map((o) =>
+          "<option value=\"" + esc(o.order_number) + "\">" +
+          esc(o.order_number) + (o.product ? " · " + esc(o.product) : "") +
+          (o.status ? " · " + esc(o.status) : "") +
+          "</option>"
+        ).join("");
+      if (cur) sel.value = cur;
+      render();
+      setMsg(document.getElementById("status"), rows.length + " rework" + (rows.length === 1 ? "" : "s"));
+    }
+
+    document.getElementById("createForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("createBtn");
+      const msg = document.getElementById("createMsg");
+      btn.disabled = true;
+      setMsg(msg, "Saving…");
+      try {
+        const j = await sdOfficeFetch("/api/office/reworks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            order_number: document.getElementById("orderSelect").value,
+            issue: document.getElementById("issue").value
+          })
+        });
+        if (!j || !j.ok) throw new Error((j && j.error) || "Save failed");
+        document.getElementById("issue").value = "";
+        document.getElementById("orderSelect").value = "";
+        rows = j.reworks || rows;
+        render();
+        setMsg(msg, "Rework saved — Siya or the Manager can assign it.");
+      } catch (err) {
+        setMsg(msg, err.message || String(err), true);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById("body").addEventListener("click", async (e) => {
+      const btn = e.target.closest("[data-assign]");
+      if (!btn) return;
+      const id = btn.getAttribute("data-assign");
+      const select = document.querySelector('select[data-id="' + id + '"]');
+      const who = select ? select.value : "";
+      btn.disabled = true;
+      try {
+        const j = await sdOfficeFetch("/api/office/reworks/" + encodeURIComponent(id) + "/assign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assigned_operator: who })
+        });
+        if (!j || !j.ok) throw new Error((j && j.error) || "Assign failed");
+        rows = j.reworks || rows;
+        render();
+        setMsg(document.getElementById("status"), "Assigned to " + who);
+      } catch (err) {
+        setMsg(document.getElementById("status"), err.message || String(err), true);
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById("q").addEventListener("input", render);
+    document.getElementById("refreshBtn").addEventListener("click", () => load().catch((e) => {
+      setMsg(document.getElementById("status"), e.message || String(e), true);
+    }));
+
+    sdRequireOffice("reworks").then(() => load()).catch((e) => {
+      document.getElementById("boot").textContent = e.message || String(e);
+      document.getElementById("boot").className = "err";
+    });
+  </script>
+</body>
+</html>
