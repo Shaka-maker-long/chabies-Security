@@ -3989,7 +3989,38 @@ function pauseMinutesFromLogRow_(row) {
 /**
  * Metrics: Welding vs Plate Cutting overlap / potential delay.
  * If welding started before or during plate cutting on the same order, flag potentialDelay.
+ * Overlap is concurrent paid work time from work bouts (pauses and unpaid lunch/shift gaps excluded),
+ * not the wall-clock span from first start to last end.
  */
+function collectWorkBoutsMs_(rows) {
+  var out = [];
+  (rows || []).forEach(function (row) {
+    var bouts = getWorkBoutsFromLog(row);
+    for (var i = 0; i < bouts.length; i++) {
+      var startMs = bouts[i].start.getTime();
+      var endMs = bouts[i].end.getTime();
+      if (endMs > startMs) out.push({ startMs: startMs, endMs: endMs });
+    }
+  });
+  return out;
+}
+
+function weldPlateConcurrentMinutes_(plateRows, weldRows) {
+  var plateBouts = collectWorkBoutsMs_(plateRows);
+  var weldBouts = collectWorkBoutsMs_(weldRows);
+  var totalMins = 0;
+  for (var i = 0; i < plateBouts.length; i++) {
+    for (var j = 0; j < weldBouts.length; j++) {
+      var startMs = Math.max(plateBouts[i].startMs, weldBouts[j].startMs);
+      var endMs = Math.min(plateBouts[i].endMs, weldBouts[j].endMs);
+      if (endMs > startMs) {
+        totalMins += calcRawServerMins(new Date(startMs), new Date(endMs), "Welding", false);
+      }
+    }
+  }
+  return totalMins;
+}
+
 function getWeldPlateOverlapMetrics() {
   var ss = getSpreadsheet();
   var logSheet = getSheetOrDie(ss, TAB_LOGS);
@@ -4085,13 +4116,7 @@ function getWeldPlateOverlapMetrics() {
     var potentialDelay = weldStartMs < plateEndMs;
     if (potentialDelay) delayCount += 1;
 
-    var overlapMs = 0;
-    if (potentialDelay) {
-      var weldEndMs = weldEnd ? weldEnd.getTime() : Date.now();
-      var overlapStart = Math.max(plateStart.getTime(), weldStartMs);
-      var overlapEnd = Math.min(plateEndMs, weldEndMs);
-      if (overlapEnd > overlapStart) overlapMs = overlapEnd - overlapStart;
-    }
+    var overlapMins = potentialDelay ? weldPlateConcurrentMinutes_(bag.plateRows, bag.weldRows) : 0;
 
     var product = bag.productName || "";
     var weldEstMins = getTaskDurationMinutes(product, "Welding");
@@ -4125,8 +4150,8 @@ function getWeldPlateOverlapMetrics() {
       weldPauseHours: roundHoursFromMins_(weldPause),
       weldWorkers: weldWorkers,
       potentialDelay: potentialDelay,
-      overlapMinutes: Math.round((overlapMs / 60000) * 10) / 10,
-      overlapHours: roundHoursFromMins_(overlapMs / 60000),
+      overlapMinutes: Math.round(overlapMins * 10) / 10,
+      overlapHours: roundHoursFromMins_(overlapMins),
       note: potentialDelay
         ? (weldStartMs <= plateStart.getTime()
           ? "Welding started before plate cutting"
