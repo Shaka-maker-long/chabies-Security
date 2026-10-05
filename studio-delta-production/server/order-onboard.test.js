@@ -60,12 +60,12 @@ staff.setDurations([
 ]);
 
 const weld = remainingPlanForStatus("Welding");
-assert.deepStrictEqual(weld.processes, ["Plate Cutting", "Welding", "Grinding", "Assembly"]);
+assert.deepStrictEqual(weld.processes, ["Welding", "Grinding", "Pre-Powder Coating", "Assembly", "Final QC"]);
 assert.strictEqual(weld.paintWait, true);
 assert.ok(remainingPlanForStatus("Ready for Welding").processes.indexOf("Welding") !== -1);
 assert.ok(remainingPlanForStatus("Ready for Assembly").processes.indexOf("Assembly") !== -1);
 assert.strictEqual(remainingPlanForStatus("Ready for Assembly").paintWait, false);
-assert.deepStrictEqual(remainingPlanForStatus("Final QC").processes, []);
+assert.deepStrictEqual(remainingPlanForStatus("Final QC").processes, ["Final QC"]);
 
 assert.throws(() => db.onboardExistingOrder({
   order_number: "S260400",
@@ -181,7 +181,7 @@ assert.ok(booked.blocks.some((b) => b.process === "Assembly"));
   });
   const againJson = await again.json();
   assert.ok(againJson.ok, JSON.stringify(againJson));
-  assert.deepStrictEqual(againJson.remaining.processes, ["Assembly"]);
+  assert.deepStrictEqual(againJson.remaining.processes, ["Assembly", "Final QC"]);
   assert.strictEqual(againJson.remaining.paintWait, false);
 
   const put = await fetch(base + "/api/office/orders", {

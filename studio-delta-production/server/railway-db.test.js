@@ -253,35 +253,61 @@ const CONFIRM = { understood: true, highlights: [] };
   assert.strictEqual(janKeep.month_of_sale, "January 2026");
   assert.strictEqual(db.listSchedule().find((r) => r.order_number === "S260226 D").order_date_label, "03-Sep");
 
-  const ilse = db.upsertOrder({
-    order_number: "S260240 A",
-    status: "Ready for Tagging",
-    client_name: "Ilse de Beer",
-    payment_date: "09/11/2026",
-    month_of_sale: "November 2026",
-    source: "#NUM!"
+  function withFrozenNow(iso, fn) {
+    const RealDate = Date;
+    const fixedMs = new RealDate(iso).getTime();
+    function MockDate(...args) {
+      if (new.target) {
+        if (!args.length) return new RealDate(fixedMs);
+        return new RealDate(...args);
+      }
+      if (!args.length) return RealDate(fixedMs);
+      return RealDate(...args);
+    }
+    MockDate.now = () => fixedMs;
+    MockDate.parse = RealDate.parse;
+    MockDate.UTC = RealDate.UTC;
+    MockDate.prototype = RealDate.prototype;
+    global.Date = MockDate;
+    try {
+      return fn();
+    } finally {
+      global.Date = RealDate;
+    }
+  }
+
+  const frozen = withFrozenNow("2026-09-18T12:00:00+02:00", () => {
+    const ilse = db.upsertOrder({
+      order_number: "S260240 A",
+      status: "Ready for Tagging",
+      client_name: "Ilse de Beer",
+      payment_date: "09/11/2026",
+      month_of_sale: "November 2026",
+      source: "#NUM!"
+    });
+    const basson = db.upsertOrder({
+      order_number: "S260237",
+      status: "Ready for Welding",
+      client_name: "Dr TR Basson",
+      payment_date: "09/10/2026",
+      month_of_sale: "October 2026"
+    });
+    const kyle = db.upsertOrder({
+      order_number: "S260235",
+      status: "Ready for Tagging",
+      client_name: "Kyle Roux Interiors (PTY) Ltd",
+      payment_date: "09/09/2026",
+      month_of_sale: "September 2026"
+    });
+    return { ilse, basson, kyle };
   });
-  assert.strictEqual(ilse.payment_date, "11/09/2026", "09/11/2026 in September is 11 September, not 9 November");
-  assert.strictEqual(ilse.month_of_sale, "September 2026");
-  assert.strictEqual(ilse.source, "", "sheet errors are not a source");
-  const basson = db.upsertOrder({
-    order_number: "S260237",
-    status: "Ready for Welding",
-    client_name: "Dr TR Basson",
-    payment_date: "09/10/2026",
-    month_of_sale: "October 2026"
-  });
-  assert.strictEqual(basson.payment_date, "10/09/2026", "09/10/2026 in September is 10 September, not 9 October");
-  assert.strictEqual(basson.month_of_sale, "September 2026");
-  const kyle = db.upsertOrder({
-    order_number: "S260235",
-    status: "Ready for Tagging",
-    client_name: "Kyle Roux Interiors (PTY) Ltd",
-    payment_date: "09/09/2026",
-    month_of_sale: "September 2026"
-  });
-  assert.strictEqual(kyle.payment_date, "09/09/2026");
-  assert.strictEqual(kyle.month_of_sale, "September 2026");
+  assert.strictEqual(frozen.ilse.payment_date, "11/09/2026", "09/11/2026 in September is 11 September, not 9 November");
+  assert.strictEqual(frozen.ilse.month_of_sale, "September 2026");
+  assert.strictEqual(frozen.ilse.source, "", "sheet errors are not a source");
+  assert.strictEqual(frozen.basson.payment_date, "10/09/2026", "09/10/2026 in September is 10 September, not 9 October");
+  assert.strictEqual(frozen.basson.month_of_sale, "September 2026");
+  assert.strictEqual(frozen.kyle.payment_date, "09/09/2026");
+  assert.strictEqual(frozen.kyle.month_of_sale, "September 2026");
   assert.strictEqual(db.listSchedule().find((r) => r.order_number === "S260240 A").order_date_label, "11-Sep");
 
   console.log("railway-db.test.js ok");

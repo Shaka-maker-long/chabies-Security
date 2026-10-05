@@ -14,6 +14,9 @@ const PAINT_WORKER_ID = "__paint_shop__";
 const PAINT_WORKER_NAME = "Paint shop";
 const PAINT_WAIT_DAYS = 5;
 const QUEUE_STATUSES = ["Not Yet Started", "Ready for Steelwork"];
+/** Paid day is 7.5h; plan at 80% productivity → calendar minutes = task ÷ 0.8. */
+const DAY_HOURS = 7.5;
+const PRODUCTIVITY = 0.8;
 
 const PLANNED_PROCESSES = [
   "Profile Cutting",
@@ -21,7 +24,11 @@ const PLANNED_PROCESSES = [
   "Plate Cutting",
   "Welding",
   "Grinding",
-  "Assembly"
+  "Pre-Powder Coating",
+  "Powder coating",
+  "Upholstery",
+  "Assembly",
+  "Final QC"
 ];
 
 const PROCESS_COLORS = {
@@ -30,8 +37,11 @@ const PROCESS_COLORS = {
   "Plate Cutting": { bg: "#ede9fe", fg: "#5b21b6", border: "#7c3aed" },
   "Welding": { bg: "#fee2e2", fg: "#991b1b", border: "#dc2626" },
   "Grinding": { bg: "#dcfce7", fg: "#166534", border: "#16a34a" },
+  "Pre-Powder Coating": { bg: "#ffedd5", fg: "#9a3412", border: "#f97316" },
   "Powder coating": { bg: "#e5e7eb", fg: "#374151", border: "#6b7280" },
-  "Assembly": { bg: "#fae8ff", fg: "#86198f", border: "#c026d3" },
+  Upholstery: { bg: "#dbeafe", fg: "#1e40af", border: "#3b82f6" },
+  Assembly: { bg: "#fae8ff", fg: "#86198f", border: "#c026d3" },
+  "Final QC": { bg: "#fce7f3", fg: "#9d174d", border: "#db2777" },
   Other: { bg: "#ffedd5", fg: "#9a3412", border: "#f97316" }
 };
 
@@ -352,8 +362,11 @@ const JOURNEY_PROCESS_ORDER = {
   "Plate Cutting": 3,
   "Welding": 4,
   "Grinding": 5,
-  "Powder coating": 6,
-  "Assembly": 7
+  "Pre-Powder Coating": 6,
+  "Powder coating": 7,
+  Upholstery: 8,
+  Assembly: 9,
+  "Final QC": 10
 };
 
 const JOURNEY_WEEK_COUNT = 20;
@@ -364,13 +377,22 @@ const PROCESS_CODES = {
   "Plate Cutting": "P",
   "Welding": "W",
   "Grinding": "G",
+  "Pre-Powder Coating": "PQC",
   "Powder coating": "PC",
-  "Assembly": "A",
+  Upholstery: "U",
+  Assembly: "A",
+  "Final QC": "FQC",
   Other: "O"
 };
 
 function processCode(process) {
   return PROCESS_CODES[process] || String(process || "").slice(0, 2).toUpperCase();
+}
+
+function calendarMinutesForTask(taskMinutes) {
+  const mins = Math.max(0, Math.round(Number(taskMinutes) || 0));
+  if (!(mins > 0)) return 0;
+  return Math.max(1, Math.ceil(mins / PRODUCTIVITY));
 }
 
 function formatWeekRange(mondayIso) {
@@ -699,9 +721,13 @@ function productImageUrl(product) {
 function matchJourneyProcess(task) {
   const s = String(task || "").toLowerCase();
   if (!s) return "";
-  if (/pre-powder|final qc|quality control|paint prep|painting/.test(s) && !/powder coating/.test(s)) return "";
+  if (/final qc|finalqc/.test(s)) return "Final QC";
+  if (/pre-powder/.test(s)) return "Pre-Powder Coating";
+  if (/upholstery/.test(s)) return "Upholstery";
   if (/powder coating|paint shop/.test(s)) return "Powder coating";
-  const names = PLANNED_PROCESSES.concat(["Powder coating"]);
+  if (/quality control/.test(s)) return "Pre-Powder Coating";
+  if (/paint prep|painting/.test(s)) return "";
+  const names = PLANNED_PROCESSES.slice();
   return names.find((name) => s.indexOf(name.toLowerCase().split(" ")[0]) !== -1) || "";
 }
 
@@ -1126,9 +1152,13 @@ const USER_ASSIGNED_PROCESSES = [
   "Tagging",
   "Plate Cutting",
   "Welding",
-  "Assembly"
+  "Grinding",
+  "Pre-Powder Coating",
+  "Upholstery",
+  "Assembly",
+  "Final QC"
 ];
-const GRIND_POOL_TASKS = ["Profile Cutting", "Tagging", "Welding"];
+const GRIND_POOL_TASKS = ["Profile Cutting", "Tagging", "Welding", "Grinding"];
 
 function namesEqual(a, b) {
   return String(a || "").trim().toLowerCase() === String(b || "").trim().toLowerCase();
@@ -1143,14 +1173,22 @@ function busyForWorker(blocks, workerId) {
 function minutesByProcessFor(product) {
   const out = {};
   PLANNED_PROCESSES.forEach((process) => {
+    if (process === "Powder coating") {
+      out[process] = 0;
+      return;
+    }
     out[process] = staff.durationMinutes(product, process) || 0;
   });
   return out;
 }
 
 function workersForProcess(process, users) {
-  return (users || staff.listUsers())
-    .filter((u) => (u.tasks || []).indexOf(process) !== -1)
+  const list = users || staff.listUsers();
+  const want = process === "Pre-Powder Coating" || process === "Final QC"
+    ? ["Quality Control", process]
+    : [process];
+  return list
+    .filter((u) => want.some((t) => (u.tasks || []).indexOf(t) !== -1))
     .map((u) => ({ id: u.name, name: u.name }));
 }
 
@@ -1162,14 +1200,27 @@ function findUser(name, users) {
 const DEFAULT_CREW = {
   "Profile Cutting": ["Sam"],
   "Tagging": ["John"],
-  "Welding": ["Muruba", "Willard"],
   "Plate Cutting": ["Thabile"],
-  "Assembly": ["Admire", "Uriah"]
+  "Welding": ["Muruba", "Willard"],
+  "Grinding": ["Thabo"],
+  "Pre-Powder Coating": ["Siya"],
+  Upholstery: ["Admire"],
+  Assembly: ["Admire", "Uriah"],
+  "Final QC": ["Siya"]
 };
 
-function weldingWeekdays(name) {
-  if (namesEqual(name, "Muruba")) return ["Mon", "Wed", "Fri"];
-  return null;
+function weldingWeekdays(_name) {
+  // Both welders only work Mon / Wed / Fri.
+  return ["Mon", "Wed", "Fri"];
+}
+
+function userCanDoProcess(user, process) {
+  if (!user) return false;
+  const tasks = user.tasks || [];
+  if (process === "Pre-Powder Coating" || process === "Final QC") {
+    return tasks.indexOf("Quality Control") !== -1 || tasks.indexOf(process) !== -1;
+  }
+  return tasks.indexOf(process) !== -1;
 }
 
 function defaultCrewNames(process, users) {
@@ -1177,7 +1228,7 @@ function defaultCrewNames(process, users) {
   const list = users || staff.listUsers();
   const named = wanted.filter((name) => {
     const user = findUser(name, list);
-    return user && (user.tasks || []).indexOf(process) !== -1;
+    return userCanDoProcess(user, process);
   });
   if (named.length) return named;
   return workersForProcess(process, list).map((w) => w.name);
@@ -1190,18 +1241,22 @@ function workerNamesFor(assign, process, users) {
   return defaultCrewNames(process, users);
 }
 
+function processTaskMinutes(order, process) {
+  return staff.durationMinutes(order.product, process) || 0;
+}
+
 function placeProcess(order, process, fromMs, workerName, busyBlocks, allowedWeekdays) {
-  const minutes = staff.durationMinutes(order.product, process);
+  const minutes = processTaskMinutes(order, process);
   if (!(minutes > 0)) return { endMs: fromMs, blocks: [] };
   const who = String(workerName || "").trim();
   if (!who) throw new Error("Assign someone for " + process + " on " + order.order_number + ".");
   const user = findUser(who);
   if (!user) throw new Error(who + " is not on Users.");
-  if ((user.tasks || []).indexOf(process) === -1) {
+  if (!userCanDoProcess(user, process)) {
     throw new Error(who + " is not ticked for " + process + " on Users.");
   }
   const days = allowedWeekdays || (process === "Welding" ? weldingWeekdays(who) : null);
-  const placed = placeTask(fromMs, minutes, busyForWorker(busyBlocks, who), days);
+  const placed = placeTask(fromMs, calendarMinutesForTask(minutes), busyForWorker(busyBlocks, who), days);
   if (!placed.segments.length) {
     throw new Error("Could not place " + process + " for " + order.order_number + ".");
   }
@@ -1215,7 +1270,9 @@ function placeProcess(order, process, fromMs, workerName, busyBlocks, allowedWee
     workerName: user.name,
     start: seg.start,
     end: seg.end,
-    kind: "work"
+    kind: "work",
+    taskMinutes: minutes,
+    productivity: PRODUCTIVITY
   }));
   return { endMs: toMs(placed.end), blocks };
 }
@@ -1342,11 +1399,12 @@ function placeGrindingOnOpenSlot(order, minutes, fromMs, busy, users) {
       "Grinding is auto-assigned. On Users, tick Grinding plus Profile cutting, Tagging, or Welding for at least one person."
     );
   }
+  const calendarMins = calendarMinutesForTask(minutes);
   let best = null;
   pool.forEach((user) => {
     const theirs = busyForWorker(busy, user.name);
-    const contiguous = placeContiguousTask(fromMs, minutes, theirs);
-    const placed = contiguous.segments.length ? contiguous : placeTask(fromMs, minutes, theirs);
+    const contiguous = placeContiguousTask(fromMs, calendarMins, theirs);
+    const placed = contiguous.segments.length ? contiguous : placeTask(fromMs, calendarMins, theirs);
     if (!placed.segments.length || !placed.start) return;
     const load = workerBusyMinutes(busy, user.name);
     const split = !contiguous.segments.length;
@@ -1399,88 +1457,83 @@ function scheduleBatch({ jobs, existingBlocks, fromMs, skipGrinding }) {
   const startMs = nextWorkInstant(fromMs != null ? fromMs : Date.now());
   const drafts = [];
   const noAutoGrind = skipGrinding === true;
+  const chain = [
+    "Profile Cutting",
+    "Tagging",
+    "Plate Cutting",
+    "Welding",
+    "Grinding",
+    "Pre-Powder Coating",
+    "Powder coating",
+    "Upholstery",
+    "Assembly",
+    "Final QC"
+  ];
 
+  // First out: jobs are already ordered by LD/LC day from autoPlanFromDeliveries.
   (jobs || []).forEach((job) => {
     const order = job.order;
-    const remaining = remainingPlanForStatus(order.status);
     const minutes = minutesByProcessFor(order.product);
+    const remaining = remainingPlanForStatus(order.status, minutes);
     PLANNED_PROCESSES.forEach((p) => {
       if (remaining.processes.indexOf(p) === -1) minutes[p] = 0;
     });
-    const hasWork = remaining.processes.some((p) => minutes[p] > 0) || (remaining.paintWait && minutes.Assembly > 0);
+    const hasWork = remaining.processes.some((p) => minutes[p] > 0);
     if (!hasWork) {
       throw new Error("No remaining Task times for " + (order.product || order.order_number) + ". Add hours on Task times first.");
     }
     const assign = job.assignments || {};
     const metal = [];
+    const grind = [];
+    const rest = [];
+    let cursor = startMs;
+
     function run(process, from) {
       if (!(minutes[process] > 0)) return from;
-      const placed = placeProcessBest(order, process, from, workerNamesFor(assign, process, users), busy);
-      metal.push.apply(metal, placed.blocks);
+      if (process === "Grinding" && noAutoGrind && !assign.Grinding) return from;
+      let placed;
+      if (process === "Grinding" && !assign.Grinding) {
+        placed = placeGrindingOnOpenSlot(order, minutes.Grinding, from, busy, users);
+      } else {
+        placed = placeProcessBest(order, process, from, workerNamesFor(assign, process, users), busy);
+      }
+      if (process === "Grinding") grind.push.apply(grind, placed.blocks);
+      else if (["Profile Cutting", "Tagging", "Plate Cutting", "Welding"].indexOf(process) !== -1) {
+        metal.push.apply(metal, placed.blocks);
+      } else {
+        rest.push.apply(rest, placed.blocks);
+      }
       busy = busy.concat(placed.blocks);
       return placed.endMs;
     }
-    let afterProfile = startMs;
-    if (minutes["Profile Cutting"] > 0) afterProfile = run("Profile Cutting", startMs);
-    let afterTag = afterProfile;
-    if (minutes.Tagging > 0) afterTag = run("Tagging", afterProfile);
-    let afterWeld = afterTag;
-    if (minutes.Welding > 0) afterWeld = run("Welding", afterTag);
-    if (minutes["Plate Cutting"] > 0) run("Plate Cutting", afterTag);
-    drafts.push({ order, assign, minutes, afterWeld, metal, grind: [], rest: [], paintWait: remaining.paintWait });
-  });
 
-  drafts.forEach((draft) => {
-    const existingGrind = busy.filter((b) => (
-      formatOrderId(b.orderId) === formatOrderId(draft.order.order_number) && b.process === "Grinding"
-    ));
-    const grindEnd = existingGrind.length ? toMs(existingGrind[existingGrind.length - 1].end) : 0;
-    draft.afterGrind = Math.max(draft.afterWeld, grindEnd || 0);
-    if (!(draft.minutes.Grinding > 0)) return;
-    if (noAutoGrind && !draft.assign.Grinding) return;
-    const who = draft.assign.Grinding;
-    const placed = who
-      ? placeProcess(draft.order, "Grinding", draft.afterWeld, who, busy)
-      : placeGrindingOnOpenSlot(draft.order, draft.minutes.Grinding, draft.afterWeld, busy, users);
-    draft.grind = placed.blocks;
-    draft.afterGrind = placed.endMs;
-    busy = busy.concat(placed.blocks);
-  });
+    chain.forEach((process) => {
+      if (process === "Powder coating") {
+        const later = ["Upholstery", "Assembly", "Final QC"].some((p) => minutes[p] > 0);
+        if (!remaining.paintWait || !later) return;
+        const drop = earliestPaintMonday(cursor);
+        const paintEnd = drop + PAINT_WAIT_DAYS * 86400000;
+        const paint = {
+          id: newId(),
+          orderId: formatOrderId(order.order_number),
+          studioNo: formatOrderId(order.order_number),
+          product: String(order.product || ""),
+          process: "Powder coating",
+          workerId: PAINT_WORKER_ID,
+          workerName: PAINT_WORKER_NAME,
+          start: isoFromMs(drop),
+          end: isoFromMs(paintEnd),
+          kind: "paint"
+        };
+        rest.push(paint);
+        busy = busy.concat([paint]);
+        cursor = paintEnd;
+        return;
+      }
+      cursor = run(process, nextWorkInstant(cursor));
+    });
 
-  drafts.forEach((draft) => {
-    const hadMetal = ["Profile Cutting", "Tagging", "Plate Cutting", "Welding", "Grinding"]
-      .some((p) => draft.minutes[p] > 0);
-    let after = draft.afterGrind;
-    if (draft.paintWait && (hadMetal || draft.minutes.Assembly > 0)) {
-      const drop = earliestPaintMonday(after);
-      const paintEnd = drop + PAINT_WAIT_DAYS * 86400000;
-      const paint = {
-        id: newId(),
-        orderId: formatOrderId(draft.order.order_number),
-        studioNo: formatOrderId(draft.order.order_number),
-        product: String(draft.order.product || ""),
-        process: "Powder coating",
-        workerId: PAINT_WORKER_ID,
-        workerName: PAINT_WORKER_NAME,
-        start: isoFromMs(drop),
-        end: isoFromMs(paintEnd),
-        kind: "paint"
-      };
-      draft.rest.push(paint);
-      busy = busy.concat([paint]);
-      after = paintEnd;
-    }
-    if (draft.minutes.Assembly > 0) {
-      const placed = placeProcessBest(
-        draft.order,
-        "Assembly",
-        nextWorkInstant(after),
-        workerNamesFor(draft.assign, "Assembly", users),
-        busy
-      );
-      draft.rest.push.apply(draft.rest, placed.blocks);
-      busy = busy.concat(placed.blocks);
-    }
+    drafts.push({ order, assign, minutes, metal, grind, rest });
   });
 
   const blocks = [];
@@ -1611,10 +1664,10 @@ function autoPlanFromDeliveries(opts) {
   deliveries.forEach((d) => {
     const order = findOrder(d.order_number);
     if (!order) return;
-    const remaining = remainingPlanForStatus(order.status);
     const minutes = minutesByProcessFor(order.product);
+    const remaining = remainingPlanForStatus(order.status, minutes);
     const has = remaining.processes.some((p) => minutes[p] > 0);
-    if (!has && !(remaining.paintWait && minutes.Assembly > 0)) return;
+    if (!has && !(remaining.paintWait && (minutes.Assembly > 0 || minutes["Final QC"] > 0 || minutes.Upholstery > 0))) return;
     jobs.push({
       order,
       assignments: Object.assign({}, assignments[formatOrderId(order.order_number)] || {})
@@ -2151,6 +2204,9 @@ module.exports = {
   PAINT_WORKER_ID,
   PAINT_WORKER_NAME,
   PAINT_WAIT_DAYS,
+  DAY_HOURS,
+  PRODUCTIVITY,
+  calendarMinutesForTask,
   PLANNED_PROCESSES,
   PROCESS_COLORS,
   OTHER_TASKS,

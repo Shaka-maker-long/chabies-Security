@@ -41,18 +41,29 @@ assert.ok(sched.DELIVERY_CODES.indexOf("LC") !== -1);
 assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "LD*" && c.moved));
 assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "LC*" && c.moved));
 assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "LD" && c.label === "Latest Delivery"));
-assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "P" && c.label === "Photograpy"));
-assert.strictEqual(sched.shopProcessToScheduleCode("Welding"), "M");
-assert.strictEqual(sched.shopProcessToScheduleCode("Grinding"), "Gr");
-assert.strictEqual(sched.shopProcessToScheduleCode("Profile Cutting"), "CS");
+assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "P" && c.label === "Plate Cutting"));
+assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "C" && c.label === "Profile Cutting"));
+assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "PQC" && c.label.indexOf("Pre powder") !== -1));
+assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "FQC" && c.label === "Final QC"));
+assert.strictEqual(sched.shopProcessToScheduleCode("Welding"), "W");
+assert.strictEqual(sched.shopProcessToScheduleCode("Grinding"), "G");
+assert.strictEqual(sched.shopProcessToScheduleCode("Profile Cutting"), "C");
+assert.strictEqual(sched.shopProcessToScheduleCode("Plate Cutting"), "P");
 assert.strictEqual(sched.shopProcessToScheduleCode("Powder coating"), "PC");
 assert.strictEqual(sched.shopProcessToScheduleCode("Assembly"), "A");
-assert.strictEqual(sched.shopProcessToScheduleCode("Wrapping"), "Wr");
+assert.strictEqual(sched.shopProcessToScheduleCode("Upholstery"), "U");
+assert.strictEqual(sched.shopProcessToScheduleCode("Final QC"), "FQC");
 assert.strictEqual(sched.plannedDeliveryCode("LD"), "PD");
-assert.strictEqual(sched.plannedDeliveryCode("LC"), "C");
+assert.strictEqual(sched.plannedDeliveryCode("LC"), "PD");
 assert.ok(sched.isProtectedScheduleCode("LD"));
 assert.ok(sched.isProtectedScheduleCode("LC*"));
-assert.ok(!sched.isProtectedScheduleCode("M"));
+assert.ok(sched.isProtectedScheduleCode("PD"));
+assert.ok(sched.isProtectedScheduleCode("LD,LC"));
+assert.ok(!sched.isProtectedScheduleCode("W"));
+assert.ok(!sched.isProtectedScheduleCode("A,PD"), "mixed production + PD stays syncable");
+assert.strictEqual(sched.mergeScheduleCodes("T", "C"), "C,T");
+assert.strictEqual(sched.mergeScheduleCodes("C,T", "P"), "C,T,P");
+assert.strictEqual(sched.formatScheduleCodes(["P", "C", "T"]), "C,T,P");
 
 db.upsertOrder({
   order_number: "S260186",

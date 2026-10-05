@@ -4,60 +4,51 @@ const SCHEDULE_CODES = [
   { code: "LD*", label: "Moved Latest Delivery", group: "Moved", bg: "#d0d5dd", fg: "#667085", moved: true },
   { code: "LC*", label: "Moved Latest Courier", group: "Moved", bg: "#d0d5dd", fg: "#667085", moved: true },
   { code: "PD", label: "Planned Delivery", group: "Delivery", bg: "#00ff00", fg: "#1d2939" },
-  { code: "C", label: "Planned Courier", group: "Delivery", bg: "#00ffff", fg: "#1d2939" },
-  { code: "A", label: "Assemble", group: "Production", bg: "#f4cccc", fg: "#1d2939" },
-  { code: "M", label: "Manufacturing", group: "Production", bg: "#fff2cc", fg: "#1d2939" },
-  { code: "U", label: "Upholstery", group: "Production", bg: "#4a86e8", fg: "#ffffff" },
+  { code: "C", label: "Profile Cutting", group: "Production", bg: "#b45f06", fg: "#ffffff" },
+  { code: "T", label: "Tagging", group: "Production", bg: "#fff2cc", fg: "#1d2939" },
+  { code: "P", label: "Plate Cutting", group: "Production", bg: "#cfe2f3", fg: "#1d2939" },
+  { code: "W", label: "Welding", group: "Production", bg: "#f4cccc", fg: "#1d2939" },
+  { code: "G", label: "Grinding", group: "Production", bg: "#b6d7a8", fg: "#1d2939" },
+  { code: "PQC", label: "Pre powder coating Quality Check", group: "Production", bg: "#fce5cd", fg: "#1d2939" },
   { code: "PC", label: "Powder Coating", group: "Production", bg: "#d9d9d9", fg: "#1d2939" },
-  { code: "P", label: "Photograpy", group: "Production", bg: "#cfe2f3", fg: "#1d2939" },
-  { code: "QC", label: "QC", group: "Production", bg: "#fce5cd", fg: "#1d2939" },
-  { code: "CS", label: "Cutting Steel", group: "Production", bg: "#b45f06", fg: "#ffffff" },
-  { code: "Gr", label: "Grinding", group: "Production", bg: "#b6d7a8", fg: "#1d2939" },
-  { code: "Wr", label: "Wrapping", group: "Production", bg: "#d9ead3", fg: "#1d2939" }
+  { code: "U", label: "Upholstery", group: "Production", bg: "#4a86e8", fg: "#ffffff" },
+  { code: "A", label: "Assembly", group: "Production", bg: "#d5a6bd", fg: "#1d2939" },
+  { code: "FQC", label: "Final QC", group: "Production", bg: "#ead1dc", fg: "#1d2939" }
 ];
 
 const DELIVERY_CODES = ["LD", "LC"];
 const MOVED_DELIVERY_CODES = ["LD*", "LC*"];
+const PROTECTED_SCHEDULE_TOKENS = ["LD", "LC", "LD*", "LC*", "PD"];
 
 /** Shop / planning process → production-schedule letter. */
 const SHOP_PROCESS_TO_SCHEDULE = {
-  "Profile Cutting": "CS",
-  "Cutting Steel": "CS",
-  Tagging: "M",
-  Welding: "M",
-  Manufacturing: "M",
-  "Plate Cutting": "CS",
-  Grinding: "Gr",
+  "Profile Cutting": "C",
+  Tagging: "T",
+  "Plate Cutting": "P",
+  Welding: "W",
+  Grinding: "G",
+  "Pre-Powder Coating": "PQC",
+  "Pre-Powder Coating QC": "PQC",
   "Powder coating": "PC",
   "Powder Coating": "PC",
-  Assembly: "A",
-  Assemble: "A",
   Upholstery: "U",
-  "Quality Control": "QC",
-  "Pre-Powder Coating": "QC",
-  "Final QC": "QC",
-  Photograpy: "P",
-  Photography: "P",
-  Wrapping: "Wr"
+  Assembly: "A",
+  "Final QC": "FQC"
 };
 
-const AUTO_SCHEDULE_PRIORITY = {
-  CS: 1,
-  M: 2,
-  Gr: 3,
-  PC: 4,
-  A: 5,
-  U: 5,
-  QC: 6,
-  P: 6,
-  Wr: 7,
-  PD: 8,
-  C: 8
-};
+const AUTO_SCHEDULE_ORDER = ["C", "T", "P", "W", "G", "PQC", "PC", "U", "A", "FQC"];
+
+const AUTO_SCHEDULE_PRIORITY = AUTO_SCHEDULE_ORDER.reduce((bag, code, i) => {
+  bag[code] = i + 1;
+  return bag;
+}, { PD: 100 });
 
 function liveDeliveryCode(value) {
-  const c = String(value || "").trim().toUpperCase();
-  if (c === "LD" || c === "LC") return c;
+  const tokens = parseScheduleCodes(value);
+  for (let i = 0; i < tokens.length; i++) {
+    const c = tokens[i].toUpperCase();
+    if (c === "LD" || c === "LC") return c;
+  }
   return "";
 }
 
@@ -66,9 +57,47 @@ function starredDeliveryCode(value) {
   return live ? live + "*" : "";
 }
 
+function parseScheduleCodes(value) {
+  return String(value || "")
+    .split(/[,;/|]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function formatScheduleCodes(codes) {
+  const seen = {};
+  const out = [];
+  (codes || []).forEach((raw) => {
+    const c = String(raw || "").trim();
+    if (!c) return;
+    const key = c.toUpperCase();
+    if (seen[key]) return;
+    seen[key] = true;
+    out.push(c);
+  });
+  out.sort((a, b) => {
+    const ai = AUTO_SCHEDULE_ORDER.indexOf(a);
+    const bi = AUTO_SCHEDULE_ORDER.indexOf(b);
+    const av = ai === -1 ? 999 : ai;
+    const bv = bi === -1 ? 999 : bi;
+    if (av !== bv) return av - bv;
+    return a.localeCompare(b);
+  });
+  return out.join(",");
+}
+
+function mergeScheduleCodes(existing, next) {
+  return formatScheduleCodes(parseScheduleCodes(existing).concat(parseScheduleCodes(next)));
+}
+
 function isProtectedScheduleCode(value) {
-  const c = String(value || "").trim().toUpperCase();
-  return c === "LD" || c === "LC" || c === "LD*" || c === "LC*";
+  const tokens = parseScheduleCodes(value).map((c) => c.toUpperCase());
+  if (!tokens.length) {
+    const c = String(value || "").trim().toUpperCase();
+    return PROTECTED_SCHEDULE_TOKENS.indexOf(c) !== -1;
+  }
+  // Protect delivery-only cells (LD / LC / PD / moved). Mixed cells like A,PD stay editable by auto sync.
+  return tokens.every((c) => PROTECTED_SCHEDULE_TOKENS.indexOf(c) !== -1);
 }
 
 function shopProcessToScheduleCode(process) {
@@ -76,6 +105,8 @@ function shopProcessToScheduleCode(process) {
   if (!raw) return "";
   if (SHOP_PROCESS_TO_SCHEDULE[raw]) return SHOP_PROCESS_TO_SCHEDULE[raw];
   const lower = raw.toLowerCase();
+  if (lower === "quality control" || lower.indexOf("pre-powder") !== -1) return "PQC";
+  if (lower.indexOf("final qc") !== -1 || lower === "finalqc") return "FQC";
   const keys = Object.keys(SHOP_PROCESS_TO_SCHEDULE);
   for (let i = 0; i < keys.length; i++) {
     if (keys[i].toLowerCase() === lower) return SHOP_PROCESS_TO_SCHEDULE[keys[i]];
@@ -84,16 +115,18 @@ function shopProcessToScheduleCode(process) {
 }
 
 function plannedDeliveryCode(liveCode) {
-  const c = liveDeliveryCode(liveCode);
-  if (c === "LD") return "PD";
-  if (c === "LC") return "C";
+  const c = liveDeliveryCode(liveCode) || String(liveCode || "").trim().toUpperCase();
+  if (c === "LD" || c === "LC") return "PD";
   return "";
 }
 
 function autoCodePriority(code) {
   const c = String(code || "").trim();
-  return AUTO_SCHEDULE_PRIORITY[c] || 0;
+  if (AUTO_SCHEDULE_PRIORITY[c] != null) return AUTO_SCHEDULE_PRIORITY[c];
+  const first = parseScheduleCodes(c)[0];
+  return AUTO_SCHEDULE_PRIORITY[first] || 0;
 }
+
 const SCHEDULE_WORKDAYS = 180;
 
 function parseDay(iso) {
@@ -180,8 +213,8 @@ function collectDeliveryItems(rows, cells) {
   const byId = new Map((rows || []).map((r) => [r.id, r]));
   const items = [];
   for (const c of cells || []) {
-    const code = String(c.value || "").trim().toUpperCase();
-    if (DELIVERY_CODES.indexOf(code) === -1) continue;
+    const code = liveDeliveryCode(c.value);
+    if (!code) continue;
     const row = byId.get(c.row_id);
     if (!row) continue;
     const day = String(c.day || "").slice(0, 10);
@@ -236,13 +269,18 @@ module.exports = {
   SCHEDULE_CODES,
   DELIVERY_CODES,
   MOVED_DELIVERY_CODES,
+  PROTECTED_SCHEDULE_TOKENS,
   liveDeliveryCode,
   starredDeliveryCode,
+  parseScheduleCodes,
+  formatScheduleCodes,
+  mergeScheduleCodes,
   isProtectedScheduleCode,
   shopProcessToScheduleCode,
   plannedDeliveryCode,
   autoCodePriority,
   SHOP_PROCESS_TO_SCHEDULE,
+  AUTO_SCHEDULE_ORDER,
   SCHEDULE_WORKDAYS,
   mondayOf,
   workdays,

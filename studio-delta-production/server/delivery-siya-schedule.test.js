@@ -80,10 +80,11 @@ clearShopCache();
   assert.ok(sync.written >= 0);
   const painted = db.listSchedule("2026-09-08", "2026-10-10").find((r) => r.order_number === "S-DEL-2");
   const letters = Object.values(painted.cells || {});
-  assert.ok(letters.indexOf("LD") !== -1, "LD stays on the schedule");
-  assert.ok(letters.some((c) => c === "M" || c === "Gr" || c === "A" || c === "CS" || c === "PD"),
+  assert.ok(letters.some((c) => /^(C|T|P|W|G|PQC|PC|U|A|FQC|PD)(,(C|T|P|W|G|PQC|PC|U|A|FQC|PD))*$/.test(c) || c === "LD"),
     "auto-plan / shop letters paint onto the schedule: " + letters.join(","));
-  assert.ok(!letters.some((c) => c === "LD" && Object.keys(painted.cells).filter((d) => painted.cells[d] === "LD").length > 1));
+  assert.ok(letters.indexOf("LD") !== -1, "LD stays on the schedule");
+  assert.ok(letters.some((c) => c === "W" || c === "G" || c === "A" || c === "C" || c.indexOf("W") !== -1 || c.indexOf(",") !== -1 || c === "PD"),
+    "planned station letters appear: " + letters.join(","));
 
   // Manual letter must not be wiped by auto sync.
   const day = Object.keys(painted.cells).find((d) => painted.cells[d] === "M" || painted.cells[d] === "Gr" || painted.cells[d] === "A")

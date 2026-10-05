@@ -160,12 +160,35 @@ const usHint = parseOrderPaste(
 assert.strictEqual(usHint.rows[0].payment_date, "2026-09-03");
 assert.strictEqual(usHint.rows[0].month_of_sale, "September 2026");
 
-const novLeftover = parseOrderPaste(
+function withFrozenNow(iso, fn) {
+  const RealDate = Date;
+  const fixedMs = new RealDate(iso).getTime();
+  function MockDate(...args) {
+    if (new.target) {
+      if (!args.length) return new RealDate(fixedMs);
+      return new RealDate(...args);
+    }
+    if (!args.length) return RealDate(fixedMs);
+    return RealDate(...args);
+  }
+  MockDate.now = () => fixedMs;
+  MockDate.parse = RealDate.parse;
+  MockDate.UTC = RealDate.UTC;
+  MockDate.prototype = RealDate.prototype;
+  global.Date = MockDate;
+  try {
+    return fn();
+  } finally {
+    global.Date = RealDate;
+  }
+}
+
+const novLeftover = withFrozenNow("2026-09-18T12:00:00+02:00", () => parseOrderPaste(
   "QUOTE NUMBER\tORDER NUMBER\tSTATUS\tASSIGNED OPERATOR\tTYPE\tCATERGORY\tPRODUCT\tVARIATION\tDOORS\tDETAILED DESCRIPTION\tDIMENSIONS\tPOWDER COATING\tCLIENT NAME\tCLIENT NUMBER\tEMAIL ADDRESS\tPAYMENT DATE\tADDRESS\tPROVINCE\tPRICE (Excl VAT)\tPRICE (Incl VAT)\tAMOUNT PAID\tMONTH OF SALE\tSOURCE\tCITY\n" +
   "SOQ2936\tS260240 A\tReady for Tagging\t\tStandard\tTable\tBella Side Table\t\tN/A\tBella\tStandard\tFerrograin Black\tIlse de Beer\t082\tilse@test.com\t09/11/2026\t29 Kiaat Street\tLimpopo\t2491.30\t2865\t\tNovember 2026\t#NUM!\tPolokwane\n" +
   "22270\tS260237\tReady for Welding\t\tStandard\tShelf\tTatiana Bookshelf\t\tN/A\tTatiana\tStandard\tFerrograin Black\tDr TR Basson\t083\twouie@test.com\t09/10/2026\t278 3rd St\tWestern Cape\t2173.04\t2499\t\tOctober 2026\tSocial Media\tHermanus",
   { paidInFull: true }
-);
+));
 assert.strictEqual(novLeftover.errors.length, 0, novLeftover.errors.join(" · "));
 assert.strictEqual(novLeftover.rows[0].payment_date, "2026-09-11");
 assert.strictEqual(novLeftover.rows[0].month_of_sale, "September 2026");
@@ -200,7 +223,7 @@ assert.strictEqual(again.skipped.length, 4);
 assert.ok(again.skipped.every((row) => /already on Orders/.test(row.reason)));
 
 const weld = remainingPlanForStatus(saved["S260228 A"].status);
-assert.deepStrictEqual(weld.processes, ["Plate Cutting", "Welding", "Grinding", "Assembly"]);
+assert.deepStrictEqual(weld.processes, ["Welding", "Grinding", "Pre-Powder Coating", "Assembly", "Final QC"]);
 const q = plan.queueOrders().find((row) => row.order_number === "S260228 A");
 assert.ok(q, "pasted in-progress orders stay in Planning for remaining work");
 assert.ok(q.processes.some((p) => p.process === "Welding"), "pasted Welding status still plans welding");

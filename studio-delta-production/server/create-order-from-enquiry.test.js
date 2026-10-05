@@ -127,6 +127,7 @@ const planned = fromEnquiry.planCreate(
   {
     order_number: "S260100",
     delivery_date: "2026-10-15",
+    now,
     shared: {
       client_name: "Split Client",
       province: "Gauteng",
@@ -179,6 +180,7 @@ const withFee = fromEnquiry.planCreate(
   {
     order_number: "S260247",
     delivery_date: "2026-10-15",
+    now,
     shared: {
       client_name: "Helderberg Build and Paint Pty Ltd",
       province: "Western Cape",
@@ -201,6 +203,7 @@ const twoPlusFee = fromEnquiry.planCreate(
   {
     order_number: "S260248",
     delivery_date: "2026-10-15",
+    now,
     shared: {
       client_name: "Helderberg Build and Paint Pty Ltd",
       province: "Western Cape",
@@ -224,6 +227,7 @@ assert.throws(
     {
       order_number: "S260249",
       delivery_date: "2026-10-15",
+      now,
       shared: {
         client_name: "Fee Only",
         province: "Western Cape",
@@ -243,6 +247,7 @@ const standalonePlan = fromEnquiry.planCreate(
     order_number: "S260600",
     quote_number: "SOQ99",
     delivery_date: "2026-10-15",
+    now,
     shared: { client_name: "Walk-in", province: "Gauteng", address: "9 Loop Street", city: "Johannesburg" },
     products: [
       shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "2000" }),
@@ -263,6 +268,7 @@ assert.throws(
     {
       order_number: "S260601",
       delivery_date: "2026-10-15",
+      now,
       shared: { client_name: "No Product", province: "Gauteng", address: "9 Loop Street", city: "Johannesburg" },
       products: [shopFields({ product: "", quantity: 1, price_incl_vat: "1000" })]
     },
@@ -276,6 +282,7 @@ const single = fromEnquiry.planCreate(
   {
     order_number: "S260200",
     delivery_date: "2026-10-13",
+    now,
     shared: { client_name: "One Chair", province: "Western Cape", address: "1 Beach Road", city: "Stellenbosch" },
     products: [shopFields({ product: "Air Chair", type: "Standard", quantity: 1, price_incl_vat: "28750" })]
   },
@@ -291,6 +298,7 @@ assert.throws(
     {
       order_number: "S260300",
       delivery_date: "2026-10-15",
+      now,
       shared: { client_name: "No Address", province: "Gauteng", city: "Sandton" },
       products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000" })]
     },
@@ -304,6 +312,7 @@ assert.throws(
     {
       order_number: "S260300",
       delivery_date: "2026-10-15",
+      now,
       shared: { client_name: "No City", province: "Gauteng", address: "12 Main Road" },
       products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000" })]
     },
@@ -317,6 +326,7 @@ assert.throws(
     {
       order_number: "S260300",
       delivery_date: "2026-10-15",
+      now,
       shared: { client_name: "No Confirm", province: "Gauteng", address: "12 Main Road", city: "Sandton" },
       products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000", qty_price_confirmed: false })]
     },
@@ -330,6 +340,7 @@ assert.throws(
     {
       order_number: "S260300",
       delivery_date: "2026-10-15",
+      now,
       shared: { client_name: "No Paid", province: "Gauteng", address: "12 Main Road", city: "Sandton" },
       products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000", amount_paid: "" })]
     },
@@ -343,6 +354,7 @@ const paidFullPlan = fromEnquiry.planCreate(
   {
     order_number: "S260500",
     delivery_date: "2026-10-15",
+    now,
     shared: { client_name: "Paid Full", province: "Gauteng", address: "12 Main Road", city: "Sandton" },
     products: [shopFields({
       product: "Air Chair",
@@ -368,6 +380,7 @@ assert.throws(
     {
       order_number: "S260300",
       delivery_date: "2026-10-15",
+      now,
       shared: { client_name: "No Doors", province: "Gauteng", address: "12 Main Road", city: "Sandton" },
       products: [shopFields({ product: "Air Chair", quantity: 1, price_incl_vat: "1000", doors: "" })]
     },
@@ -436,6 +449,7 @@ assert.ok(db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#
 const created = db.createOrdersFromEnquiryForm("#5001", {
   order_number: "S260100",
   delivery_date: "2026-10-15",
+  now,
   shared: {
     client_name: "Split Client",
     client_number: "0820000001",
@@ -476,6 +490,7 @@ items.forEach((it) => {
 const again = db.createOrdersFromEnquiryForm("#5001", {
   order_number: "S260199",
   delivery_date: "2026-10-15",
+  now,
   shared: { client_name: "Split Client", province: "Gauteng" },
   products: [{ product: "Air Chair", quantity: 1, price_incl_vat: "1000" }]
 });
@@ -496,6 +511,7 @@ db.upsertEnquiry({
 const one = db.createOrdersFromEnquiryForm("#5002", {
   order_number: "S260200",
   delivery_date: "2026-11-05",
+  now,
   shared: { client_name: "Cape Client", province: "Western Cape", address: "1 Beach Road", city: "Stellenbosch" },
   products: [shopFields({ product: "Custom Table", category: "Table", type: "New Design", quantity: 1, price_incl_vat: "11500" })]
 });
@@ -524,6 +540,7 @@ assert.deepStrictEqual(feeFromDraft.skippedFees, ["Design Fee"]);
 const helderberg = db.createOrdersFromEnquiryForm("#2910", {
   order_number: "S260247",
   delivery_date: "2026-10-15",
+  now,
   shared: {
     client_name: "Helderberg Build and Paint Pty Ltd",
     province: "Western Cape",
@@ -585,6 +602,7 @@ db.upsertEnquiry({
 const winelands = db.createOrdersFromEnquiryForm("#5003", {
   order_number: "S260001",
   delivery_date: "2026-11-05",
+  now,
   shared: {
     client_name: "Winelands Design Studio",
     client_number: "0764405425",
@@ -622,6 +640,7 @@ const stand = db.createOrdersStandalone({
   order_number: "S260700",
   quote_number: "SOQ70",
   delivery_date: "2026-10-15",
+  now,
   shared: { client_name: "Walk-in", province: "Gauteng", address: "9 Loop Street", city: "Johannesburg" },
   products: [
     shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "2000", detailed_description: "Pair" }),
@@ -738,6 +757,7 @@ db.upsertEnquiry({
 const drawingCreated = db.createOrdersFromEnquiryForm("#441", {
   order_number: "S260442",
   delivery_date: "2026-10-15",
+  now,
   shared: {
     client_name: "Needs Drawing",
     province: "Gauteng",

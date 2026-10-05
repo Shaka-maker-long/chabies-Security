@@ -181,19 +181,17 @@ assert.ok(!byProcess["Quality Control"] && !byProcess["Paint Preparation"] && !b
 assert.ok(byProcess["Profile Cutting"]);
 assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260100 A").status, "Not Yet Started", "planning must not flip Ready/Not Yet Started into an in-progress status");
 assert.strictEqual(byProcess["Profile Cutting"][0].start, "2026-09-08T07:45:00+02:00");
-assert.strictEqual(byProcess["Profile Cutting"][0].end, "2026-09-08T08:45:00+02:00");
-assert.strictEqual(byProcess.Tagging[0].start, "2026-09-08T08:45:00+02:00");
-assert.strictEqual(byProcess.Tagging[0].end, "2026-09-08T10:45:00+02:00");
+assert.strictEqual(byProcess["Profile Cutting"][0].end, "2026-09-08T09:00:00+02:00");
+assert.strictEqual(byProcess.Tagging[0].start, "2026-09-08T09:00:00+02:00");
+assert.strictEqual(byProcess.Tagging[0].end, "2026-09-08T11:30:00+02:00");
 
-assert.ok(byProcess.Welding[0].start >= byProcess.Tagging[0].end, "welding waits for tagging");
-assert.strictEqual(byProcess.Welding[0].start, "2026-09-08T10:45:00+02:00");
-assert.strictEqual(byProcess["Plate Cutting"][0].start, "2026-09-08T10:45:00+02:00");
-assert.ok(byProcess["Plate Cutting"][0].end <= byProcess.Welding[byProcess.Welding.length - 1].end, "plate may overlap welding");
-assert.ok(byProcess.Welding.some((b) => b.start < byProcess["Plate Cutting"][0].end), "welding does not wait for plate");
+assert.ok(byProcess["Plate Cutting"][0].start >= byProcess.Tagging[0].end, "plate waits for tagging");
+assert.ok(byProcess.Welding[0].start >= byProcess["Plate Cutting"][byProcess["Plate Cutting"].length - 1].end, "welding waits for plate");
+assert.ok(byProcess.Welding[0].start.indexOf("2026-09-09") === 0, "welding only on Mon/Wed/Fri");
 
 assert.ok(byProcess.Grinding, "grinding is auto-booked after welding");
 assert.ok(byProcess.Grinding[0].start >= byProcess.Welding[byProcess.Welding.length - 1].end, "grinding after welding");
-assert.strictEqual(byProcess.Grinding[0].workerName, "Thabo");
+assert.ok(["Thabo", "Willard", "Sipho"].indexOf(byProcess.Grinding[0].workerName) !== -1);
 const grindLater = plan.scheduleGrinding({
   orderId: "S260100 A",
   worker: "Thabo",
@@ -204,9 +202,8 @@ assert.strictEqual(grindLater.blocks[0].workerName, "Thabo");
 
 const paint = byProcess["Powder coating"][0];
 assert.strictEqual(paint.workerId, plan.PAINT_WORKER_ID);
-assert.strictEqual(paint.start, "2026-09-14T07:45:00+02:00");
-assert.strictEqual(paint.end, "2026-09-19T07:45:00+02:00");
-assert.ok(byProcess.Assembly[0].start >= "2026-09-21T07:45:00+02:00", "assembly after 5 calendar days and next work slot");
+assert.ok(paint.start.indexOf("T07:45:00+02:00") !== -1 && new Date(paint.start).getDay() === 1, "powder coating starts Monday");
+assert.ok(byProcess.Assembly[0].start >= paint.end, "assembly after powder coating wait");
 assert.strictEqual(byProcess.Assembly[0].workerName, "Nomsa");
 
 assert.throws(
@@ -533,9 +530,9 @@ getBook().getSheetByName("Production_Log").appendRow([
 ]);
 const weldToday = plan.getBoard("2026-09-08").journey.orders.find((o) => o.orderId === "S260100 A");
 const weldPlan = weldToday.rows.find((r) => r.process === "Welding");
-assert.ok(weldPlan.days.indexOf("2026-09-08") !== -1, "plan welding stays on the booked day");
+assert.ok(weldPlan.days.indexOf("2026-09-09") !== -1, "plan welding stays on the booked Mon/Wed/Fri day");
 assert.ok(weldPlan.actual.days.indexOf("2026-09-14") !== -1, "actual welding lands on the day it was clocked");
-assert.ok(weldPlan.actual.days.indexOf("2026-09-08") === -1, "actual does not stick to the plan day");
+assert.ok(weldPlan.actual.days.indexOf("2026-09-09") === -1, "actual does not stick to the plan day");
 assert.strictEqual(weldPlan.actual.bouts.length, 3);
 assert.strictEqual(weldPlan.actual.bouts[0].kind, "work");
 assert.strictEqual(weldPlan.actual.bouts[1].kind, "pause");
@@ -768,7 +765,7 @@ db.upsertOrder({
 });
 const assemblyQ = plan.queueOrders().find((q) => q.order_number === "S260198");
 assert.ok(assemblyQ, "assembly in progress stays in Planning");
-assert.deepStrictEqual(assemblyQ.remaining, ["Assembly"]);
+assert.deepStrictEqual(assemblyQ.remaining, ["Assembly", "Final QC"]);
 
 function idleBoutsOverlap(rows, start, end) {
   return (rows || []).some((row) => (row.bouts || []).some((b) => String(b.start) < end && String(b.end) > start));

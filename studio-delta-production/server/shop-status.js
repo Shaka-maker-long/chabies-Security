@@ -23,7 +23,11 @@ const PLANNED_PROCESSES = [
   "Plate Cutting",
   "Welding",
   "Grinding",
-  "Assembly"
+  "Pre-Powder Coating",
+  "Powder coating",
+  "Upholstery",
+  "Assembly",
+  "Final QC"
 ];
 
 const STATUS_ALIASES = {
@@ -58,7 +62,7 @@ function isWaitingForDrawing(status) {
   return normalizeShopStatus(status) === WAITING_FOR_DRAWING;
 }
 
-function remainingPlanForStatus(status) {
+function remainingPlanForStatus(status, productMinutes) {
   const raw = normalizeShopStatus(status) || "Not Yet Started";
   const s = isWaitingForDrawing(raw) ? "Not Yet Started" : raw;
   const skip = {};
@@ -69,12 +73,36 @@ function remainingPlanForStatus(status) {
   // in-progress status (Welding, Assembly, …) still needs a plan.
   if (atOrAfter(s, "Ready for Tagging")) done("Profile Cutting");
   if (atOrAfter(s, "Ready for Welding")) done("Tagging");
+  if (atOrAfter(s, "Welding")) done("Plate Cutting");
   if (atOrAfter(s, "Ready for Grinding")) done("Welding");
   if (atOrAfter(s, "Ready for Grinding")) done("Plate Cutting");
   if (atOrAfter(s, "Ready for Pre-Powder Coating")) done("Grinding");
-  if (atOrAfter(s, "Paint Preparation")) done("Assembly");
-  const processes = PLANNED_PROCESSES.filter((p) => !skip[p]);
-  const paintWait = processes.indexOf("Assembly") !== -1 && !atOrAfter(s, "Ready for Powder Coating");
+  if (atOrAfter(s, "Ready for Powder Coating")) done("Pre-Powder Coating");
+  if (atOrAfter(s, "Ready for Assembly")) done("Powder coating");
+  if (atOrAfter(s, "Ready for Final QC")) done("Assembly");
+  if (atOrAfter(s, "Ready for Final QC")) done("Upholstery");
+  if (atOrAfter(s, "Ready for Delivery")) done("Final QC");
+  // Optional paint loop after Ready for Assembly — only clears assembly when that loop is active.
+  if (s === "Paint Preparation" || s === "Ready for Painting" || s === "Painting") {
+    done("Assembly");
+    done("Upholstery");
+    done("Final QC");
+  }
+
+  const mins = productMinutes && typeof productMinutes === "object" ? productMinutes : null;
+  const processes = PLANNED_PROCESSES.filter((p) => {
+    if (skip[p]) return false;
+    if (p === "Powder coating") return false; // modelled via paintWait + Monday PC block
+    if (p === "Upholstery") {
+      return !!(mins && Number(mins.Upholstery) > 0);
+    }
+    return true;
+  });
+  const paintWait = (
+    processes.indexOf("Assembly") !== -1
+    || processes.indexOf("Final QC") !== -1
+    || processes.indexOf("Upholstery") !== -1
+  ) && !atOrAfter(s, "Ready for Powder Coating");
   return { processes, paintWait, status: raw };
 }
 

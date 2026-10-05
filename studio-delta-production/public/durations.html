@@ -31,12 +31,22 @@
     <button onclick="save()">Save times</button>
   </header>
   <div class="wrap">
-    <p class="help">Type hours. 3.5 is 3 hours 30 minutes — that 3.5 is what we save. The floor counts down 3 hours 30 minutes (pauses do not count). If a cell is empty, the first finished job writes that time here so the next one can count down.</p>
+    <p class="help">Type hours for each station. Leave <b>Upholstery</b> blank when that product has none — auto-planning only books U when hours are set. 3.5 is 3 hours 30 minutes. Planning uses these times at <b>80% productivity</b> of a 7.5-hour day. Chain: C → T → P → W → G → PQC → PC (Mondays) → U? → A → FQC.</p>
     <table id="grid"></table>
   </div>
   <script src="/office-auth.js?v=login-msg-3"></script>
   <script>
-    const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly"];
+    const TASKS = [
+      "Profile Cutting",
+      "Tagging",
+      "Plate Cutting",
+      "Welding",
+      "Grinding",
+      "Pre-Powder Coating",
+      "Upholstery",
+      "Assembly",
+      "Final QC"
+    ];
     let products = [];
     let hours = {};
     function key(p, t) { return p + "||" + t; }

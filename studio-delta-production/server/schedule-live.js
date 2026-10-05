@@ -2,7 +2,8 @@
 
 /**
  * Keep production-schedule letters in sync with Planning + live shop clocks.
- * Never overwrites LD / LC / LD* / LC* or cells the office typed by hand.
+ * Never overwrites LD / LC / LD* / LC* / PD or cells the office typed by hand.
+ * Same-day stations merge as C,T,P.
  */
 
 const sched = require("./office-schedule");
@@ -13,12 +14,6 @@ function todayIso() {
   } catch (e) {
     return new Date().toISOString().slice(0, 10);
   }
-}
-
-function preferCode(prev, next) {
-  if (!next) return prev || "";
-  if (!prev) return next;
-  return sched.autoCodePriority(next) >= sched.autoCodePriority(prev) ? next : prev;
 }
 
 function letterForProcess(process) {
@@ -60,9 +55,11 @@ function collectAutoMarks(db, plan) {
     const dayIso = String(day || "").slice(0, 10);
     const letter = String(code || "").trim();
     if (!orderId || !dayIso || !letter || !/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) return;
-    if (sched.isProtectedScheduleCode(letter)) return;
+    // Never emit live delivery tokens as auto marks. PD is allowed (planned finish).
+    const upper = letter.toUpperCase();
+    if (upper === "LD" || upper === "LC" || upper === "LD*" || upper === "LC*") return;
     const key = orderId + "|" + dayIso;
-    marks.set(key, preferCode(marks.get(key), letter));
+    marks.set(key, sched.mergeScheduleCodes(marks.get(key) || "", letter));
   }
 
   const store = plan.load();
@@ -78,7 +75,7 @@ function collectAutoMarks(db, plan) {
 
   readOpenShopLetters(db, plan).forEach((hit) => put(hit.orderId, hit.day, hit.code));
 
-  // Planned delivery / courier on the last planned work day before LD/LC.
+  // Planned delivery (PD) on the last planned work day before LD/LC — never on the LD/LC cell.
   db.listLiveDeliveries().forEach((d) => {
     const planned = sched.plannedDeliveryCode(d.code);
     if (!planned) return;

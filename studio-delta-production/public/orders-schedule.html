@@ -6,7 +6,7 @@
   <title>Studio Delta — Production schedule</title>
   <script src="/sd-pwa.js?v=pwa-stg1"></script>
   <style>
-    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --warn:#fff4e0; --lock:992px; --day:44px; --week:#1d2939; }
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --warn:#fff4e0; --lock:992px; --day:56px; --week:#1d2939; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
@@ -46,7 +46,7 @@
     #grid tbody tr:last-child td.day { border-bottom:2px solid var(--week); }
     .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; }
     td input { width:100%; border:0; font:inherit; background:transparent; }
-    .code-cell { text-align:center; font-weight:700; cursor:pointer; user-select:none; }
+    .code-cell { text-align:center; font-weight:700; cursor:pointer; user-select:none; font-size:10px; line-height:1.15; white-space:normal; word-break:break-word; }
     .code-cell:focus { outline:2px solid #2f6fed; outline-offset:-2px; }
     .week-lock { font-weight:700; letter-spacing:.02em; text-align:left; }
     tr.unplanned td { background:var(--warn); }
@@ -96,7 +96,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Production schedule</h1>
-      <p class="lede">One live Latest Delivery (LD) or Latest Courier (LC) per order. Move it to another day and you must give a reason — the old cell stays as gray LD* or LC*. Setting LD/LC auto-plans shop tasks (CS, M, Gr, PC, A…) onto the grid. Open clocks also paint today’s letter live. Amber rows still need a latest date.</p>
+      <p class="lede">One live Latest Delivery (LD) or Latest Courier (LC) per order. Setting LD/LC auto-plans the chain C → T → P → W → G → PQC → PC (Mondays) → U? → A → FQC at 80% of a 7.5-hour day, first-out by due date. Same-day stations show as C,T,P. Auto-plan never overwrites PD, LD, or LC. Amber rows still need a latest date.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -159,7 +159,8 @@
     }
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
     function codeStyle(code) {
-      const hit = codes.find((c) => c.code === code);
+      const first = String(code || "").split(/[,;/|]+/)[0].trim();
+      const hit = codes.find((c) => c.code === first);
       if (!hit) return "";
       return "background:" + hit.bg + ";color:" + hit.fg;
     }
@@ -168,8 +169,10 @@
       return row[key];
     }
     function liveCode(value) {
-      const c = String(value || "").trim().toUpperCase();
-      return c === "LD" || c === "LC" ? c : "";
+      const parts = String(value || "").split(/[,;/|]+/).map((s) => s.trim().toUpperCase());
+      if (parts.indexOf("LD") !== -1) return "LD";
+      if (parts.indexOf("LC") !== -1) return "LC";
+      return "";
     }
     function isPlanned(row) {
       if (row.delivery_planned) return true;
@@ -331,7 +334,7 @@
       });
       meta.innerHTML = left + "</tbody>";
       table.innerHTML = cal + "</tbody>";
-      const gridW = Math.max(days.length * 44, 1600);
+      const gridW = Math.max(days.length * 56, 1600);
       table.style.width = gridW + "px";
       table.style.minWidth = gridW + "px";
       meta.onchange = onChange;

@@ -16,7 +16,7 @@ assert.ok(!isShopStatus("In Progress"));
 
 assert.deepStrictEqual(
   remainingPlanForStatus("Not Yet Started").processes,
-  ["Profile Cutting", "Tagging", "Plate Cutting", "Welding", "Grinding", "Assembly"]
+  ["Profile Cutting", "Tagging", "Plate Cutting", "Welding", "Grinding", "Pre-Powder Coating", "Assembly", "Final QC"]
 );
 assert.deepStrictEqual(
   remainingPlanForStatus("Waiting for drawing").processes,
@@ -25,17 +25,19 @@ assert.deepStrictEqual(
 
 assert.ok(remainingPlanForStatus("Profile Cutting").processes.indexOf("Profile Cutting") !== -1);
 assert.ok(remainingPlanForStatus("Welding").processes.indexOf("Welding") !== -1);
-assert.ok(remainingPlanForStatus("Welding").processes.indexOf("Plate Cutting") !== -1);
-assert.ok(remainingPlanForStatus("Welding").processes.indexOf("Profile Cutting") === -1);
+assert.ok(remainingPlanForStatus("Welding").processes.indexOf("Plate Cutting") === -1, "plate finishes before welding");
+assert.ok(remainingPlanForStatus("Ready for Welding").processes.indexOf("Plate Cutting") !== -1);
 assert.ok(remainingPlanForStatus("Welding").processes.indexOf("Tagging") === -1);
 
 assert.ok(remainingPlanForStatus("Ready for Grinding").processes.indexOf("Welding") === -1);
 assert.ok(remainingPlanForStatus("Ready for Grinding").processes.indexOf("Grinding") !== -1);
 
-assert.deepStrictEqual(remainingPlanForStatus("Assembly").processes, ["Assembly"]);
+assert.deepStrictEqual(remainingPlanForStatus("Assembly").processes, ["Assembly", "Final QC"]);
 assert.ok(!remainingPlanForStatus("Assembly").paintWait, "already at assembly means paint already happened");
 assert.deepStrictEqual(remainingPlanForStatus("Paint Preparation").processes, []);
-assert.deepStrictEqual(remainingPlanForStatus("Final QC").processes, []);
+assert.deepStrictEqual(remainingPlanForStatus("Final QC").processes, ["Final QC"]);
+assert.ok(!remainingPlanForStatus("Not Yet Started", { Upholstery: 0 }).processes.includes("Upholstery"));
+assert.ok(remainingPlanForStatus("Not Yet Started", { Upholstery: 60 }).processes.includes("Upholstery"));
 
 assert.ok(remainingPlanForStatus("welding").processes.indexOf("Welding") !== -1);
 assert.strictEqual(waitingStatusIfProfileCuttingIdle("Profile Cutting", false), "Ready for Steelwork");
