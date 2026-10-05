@@ -8593,8 +8593,14 @@
           ? '<span class="badge bg-success">Running</span>'
           : new Date(l.end).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'});
         let durDisplay = formatDuration(l.durationMins);
+        if (Number(l.batchShare) > 1) {
+          durDisplay += ' <span class="text-muted" style="font-size:0.75em">(together ÷' + Math.round(Number(l.batchShare)) + ')</span>';
+        }
         if(running) {
-          durDisplay = `<span class="badge bg-success live-timer" data-start="${l.start}" data-task="${l.task}" data-pmins="${l.pausedMins || 0}" data-pstart="${l.pauseStart || ''}">${durDisplay}</span>`;
+          durDisplay = `<span class="badge bg-success live-timer" data-start="${l.start}" data-task="${l.task}" data-pmins="${l.pausedMins || 0}" data-pstart="${l.pauseStart || ''}">${formatDuration(l.durationMins)}</span>`;
+          if (Number(l.batchShare) > 1) {
+            durDisplay += ' <span class="text-muted" style="font-size:0.75em">(together ÷' + Math.round(Number(l.batchShare)) + ')</span>';
+          }
         }
         h += `<tr data-order="${String(l.order || '').toLowerCase()}"><td>${startDate}</td><td>${finishDate}</td><td><strong>${l.order || ''}</strong></td><td>${l.task || ''}</td><td>${s}</td><td>${e}</td><td style="text-align:right">${durDisplay}</td></tr>`;
       });
