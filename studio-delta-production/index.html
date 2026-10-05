@@ -8038,10 +8038,36 @@
     }
 
     function expandWorkerDaySlices(log) {
+      const batchShare = Math.max(1, Number(log && log.batchShare) || 1);
+      const sharedTotal = (typeof log.durationMins === 'number' && log.durationMins >= 0)
+        ? Number(log.durationMins)
+        : null;
+
+      function scaleSharedDurations(slices, allowShareFallback) {
+        if (!slices || !slices.length) return slices || [];
+        if (sharedTotal == null) {
+          if (allowShareFallback && batchShare > 1) {
+            slices.forEach((s) => { s.durationMins = (Number(s.durationMins) || 0) / batchShare; });
+          }
+          return slices;
+        }
+        const rawTotal = slices.reduce((sum, s) => sum + (Number(s.durationMins) || 0), 0);
+        if (rawTotal <= 0) {
+          slices[0].durationMins = sharedTotal;
+          return slices;
+        }
+        // Keep the server's together-time total (already divided by batchShare),
+        // and split it across days/weeks in proportion to wall/paid time.
+        const factor = sharedTotal / rawTotal;
+        slices.forEach((s) => { s.durationMins = (Number(s.durationMins) || 0) * factor; });
+        return slices;
+      }
+
       if (Array.isArray(log.daySlices) && log.daySlices.length) {
         const jobStartDate = log.start ? sastDayStamp(new Date(log.start)) : (log.daySlices[0].date || null);
         const jobFinishDate = log.end ? sastDayStamp(new Date(log.end)) : null;
-        return log.daySlices.map(s => ({
+        // Server daySlices already apply batchShare; only re-scale if we have a shared total.
+        return scaleSharedDurations(log.daySlices.map(s => ({
           order: log.order,
           worker: log.worker,
           task: log.task,
@@ -8055,13 +8081,14 @@
           stillRunning: !!s.stillRunning,
           stopReason: s.stopReason || '',
           pauseStart: (s.stillRunning && log.pauseStart && (!s.start || log.pauseStart >= s.start)) ? log.pauseStart : null,
-          pausedMins: 0
-        }));
+          pausedMins: 0,
+          batchShare: batchShare
+        })), false);
       }
       if (!log.start) {
-        const dur = (typeof log.durationMins === 'number')
-          ? log.durationMins
-          : calculateWorkMinutes(log.start, log.end, log.task, log.pausedMins, log.pauseStart);
+        const dur = sharedTotal != null
+          ? sharedTotal
+          : calculateWorkMinutes(log.start, log.end, log.task, log.pausedMins, log.pauseStart) / batchShare;
         return [{
           order: log.order,
           worker: log.worker,
@@ -8076,16 +8103,17 @@
           stillRunning: !log.end,
           stopReason: '',
           pauseStart: log.pauseStart,
-          pausedMins: log.pausedMins
+          pausedMins: log.pausedMins,
+          batchShare: batchShare
         }];
       }
 
       const start = new Date(log.start);
       const end = log.end ? new Date(log.end) : new Date();
       if (isNaN(start.getTime()) || isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
-        const dur = (typeof log.durationMins === 'number')
-          ? log.durationMins
-          : calculateWorkMinutes(log.start, log.end, log.task, log.pausedMins, log.pauseStart);
+        const dur = sharedTotal != null
+          ? sharedTotal
+          : calculateWorkMinutes(log.start, log.end, log.task, log.pausedMins, log.pauseStart) / batchShare;
         return [{
           order: log.order,
           worker: log.worker,
@@ -8100,7 +8128,8 @@
           stillRunning: !log.end,
           stopReason: '',
           pauseStart: log.pauseStart,
-          pausedMins: log.pausedMins
+          pausedMins: log.pausedMins,
+          batchShare: batchShare
         }];
       }
 
@@ -8143,17 +8172,18 @@
               stillRunning: stillRunning && isLast,
               stopReason: '',
               pauseStart: pauseStart,
-              pausedMins: pausedMins
+              pausedMins: pausedMins,
+              batchShare: batchShare
             });
           }
         }
         cursor = nextMidnight;
       }
-      if (slices.length) return slices;
+      if (slices.length) return scaleSharedDurations(slices, true);
 
-      const dur = (typeof log.durationMins === 'number')
-        ? log.durationMins
-        : calculateWorkMinutes(log.start, log.end, log.task, log.pausedMins, log.pauseStart);
+      const dur = sharedTotal != null
+        ? sharedTotal
+        : calculateWorkMinutes(log.start, log.end, log.task, log.pausedMins, log.pauseStart) / batchShare;
       return [{
         order: log.order,
         worker: log.worker,
@@ -8168,7 +8198,8 @@
         stillRunning: stillRunning,
         stopReason: '',
         pauseStart: log.pauseStart,
-        pausedMins: log.pausedMins
+        pausedMins: log.pausedMins,
+        batchShare: batchShare
       }];
     }
 

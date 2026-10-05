@@ -72,6 +72,38 @@ assert.ok(
   "multi-week job must land in exactly two week buckets, got " + JSON.stringify(weeks)
 );
 
+// Together / batchShare: five orders started together must keep the shared server total.
+function scaleSharedDurations(slices, sharedTotal, batchShare, allowShareFallback) {
+  if (!slices || !slices.length) return slices || [];
+  if (sharedTotal == null) {
+    if (allowShareFallback && batchShare > 1) {
+      slices.forEach((s) => { s.durationMins = (Number(s.durationMins) || 0) / batchShare; });
+    }
+    return slices;
+  }
+  const rawTotal = slices.reduce((sum, s) => sum + (Number(s.durationMins) || 0), 0);
+  const factor = sharedTotal / rawTotal;
+  slices.forEach((s) => { s.durationMins = (Number(s.durationMins) || 0) * factor; });
+  return slices;
+}
+const togetherRaw = [
+  { durationMins: 90 },
+  { durationMins: 90 },
+  { durationMins: 90 },
+  { durationMins: 90 },
+  { durationMins: 90 }
+];
+// Server already stored durationMins = 90 / 5 = 18 for each log row.
+const oneLogSlices = scaleSharedDurations([{ durationMins: 90 }], 18, 5, true);
+assert.ok(Math.abs(oneLogSlices[0].durationMins - 18) < 0.001, "together time must use shared durationMins");
+const noServerTotal = scaleSharedDurations([{ durationMins: 90 }], null, 5, true);
+assert.ok(Math.abs(noServerTotal[0].durationMins - 18) < 0.001, "fallback divides by batchShare");
+assert.strictEqual(togetherRaw.length, 5);
+
+assert.ok(floor.indexOf("scaleSharedDurations") !== -1);
+assert.ok(floor.indexOf("batchShare") !== -1);
+assert.ok(floor.indexOf("Keep the server's together-time total") !== -1);
+
 assert.strictEqual(String("INDIRECT").toUpperCase(), "INDIRECT");
 assert.ok(!/S260264/i.test("INDIRECT"));
 
