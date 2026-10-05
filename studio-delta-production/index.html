@@ -8007,8 +8007,40 @@
       el.classList.add('active');
     }
 
+    function isoWeekNumber(date) {
+      const sast = asSast(date);
+      const utc = Date.UTC(sast.getUTCFullYear(), sast.getUTCMonth(), sast.getUTCDate());
+      const d = new Date(utc);
+      const dayNum = d.getUTCDay() || 7;
+      d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+      const yearStart = Date.UTC(d.getUTCFullYear(), 0, 1);
+      return Math.ceil(((d.getTime() - yearStart) / 86400000 + 1) / 7);
+    }
+    function weekLabelFromDate(date) {
+      if (!date || isNaN(date.getTime())) return 'Unknown Week';
+      const sast = asSast(date);
+      const y = sast.getUTCFullYear();
+      const ww = String(isoWeekNumber(date)).padStart(2, '0');
+      return y + ' - Week ' + ww;
+    }
+    function formatDayStamp(stamp) {
+      if (!stamp) return '—';
+      const d = new Date(String(stamp) + 'T12:00:00');
+      if (isNaN(d.getTime())) return String(stamp);
+      return d.toLocaleDateString();
+    }
+    function isIndirectWorkerLog(log) {
+      if (!log) return false;
+      if (String(log.order || '').trim().toUpperCase() === 'INDIRECT') return true;
+      if (String(log.role || '').trim() === 'Indirect') return true;
+      if (String(log.entryType || '').trim().toLowerCase() === 'indirect') return true;
+      return false;
+    }
+
     function expandWorkerDaySlices(log) {
       if (Array.isArray(log.daySlices) && log.daySlices.length) {
+        const jobStartDate = log.start ? sastDayStamp(new Date(log.start)) : (log.daySlices[0].date || null);
+        const jobFinishDate = log.end ? sastDayStamp(new Date(log.end)) : null;
         return log.daySlices.map(s => ({
           order: log.order,
           worker: log.worker,
@@ -8016,14 +8048,109 @@
           start: s.start,
           end: s.stillRunning ? null : s.end,
           durationMins: Number(s.durationMins) || 0,
-          week: s.week || log.week,
+          week: s.week || (s.start ? weekLabelFromDate(new Date(s.start)) : log.week),
           date: s.date,
+          startDate: jobStartDate || s.date,
+          finishDate: jobFinishDate,
           stillRunning: !!s.stillRunning,
           stopReason: s.stopReason || '',
           pauseStart: (s.stillRunning && log.pauseStart && (!s.start || log.pauseStart >= s.start)) ? log.pauseStart : null,
           pausedMins: 0
         }));
       }
+      if (!log.start) {
+        const dur = (typeof log.durationMins === 'number')
+          ? log.durationMins
+          : calculateWorkMinutes(log.start, log.end, log.task, log.pausedMins, log.pauseStart);
+        return [{
+          order: log.order,
+          worker: log.worker,
+          task: log.task,
+          start: log.start,
+          end: log.end,
+          durationMins: dur,
+          week: log.week || 'Unknown Week',
+          date: null,
+          startDate: null,
+          finishDate: null,
+          stillRunning: !log.end,
+          stopReason: '',
+          pauseStart: log.pauseStart,
+          pausedMins: log.pausedMins
+        }];
+      }
+
+      const start = new Date(log.start);
+      const end = log.end ? new Date(log.end) : new Date();
+      if (isNaN(start.getTime()) || isNaN(end.getTime()) || end.getTime() <= start.getTime()) {
+        const dur = (typeof log.durationMins === 'number')
+          ? log.durationMins
+          : calculateWorkMinutes(log.start, log.end, log.task, log.pausedMins, log.pauseStart);
+        return [{
+          order: log.order,
+          worker: log.worker,
+          task: log.task,
+          start: log.start,
+          end: log.end,
+          durationMins: dur,
+          week: weekLabelFromDate(start),
+          date: sastDayStamp(start),
+          startDate: sastDayStamp(start),
+          finishDate: log.end ? sastDayStamp(end) : null,
+          stillRunning: !log.end,
+          stopReason: '',
+          pauseStart: log.pauseStart,
+          pausedMins: log.pausedMins
+        }];
+      }
+
+      const stillRunning = !log.end;
+      const jobStartDate = sastDayStamp(start);
+      const jobFinishDate = stillRunning ? null : sastDayStamp(end);
+      const endStamp = sastDayStamp(end);
+      const slices = [];
+      let cursor = sastWallToDate(start, 0, 0);
+      let safety = 0;
+      while (sastDayStamp(cursor) <= endStamp && safety++ < 60) {
+        const dayStamp = sastDayStamp(cursor);
+        const dayStart = sastWallToDate(cursor, 0, 0);
+        const nextMidnight = addSastDays(dayStart, 1);
+        const clipStartMs = Math.max(start.getTime(), dayStart.getTime());
+        const clipEndMs = Math.min(end.getTime(), nextMidnight.getTime());
+        if (clipEndMs > clipStartMs) {
+          const isLast = dayStamp === endStamp;
+          const pauseStart = (stillRunning && isLast && log.pauseStart) ? log.pauseStart : null;
+          const pausedMins = isLast ? (log.pausedMins || 0) : 0;
+          const dur = calculateWorkMinutes(
+            clipStartMs,
+            (stillRunning && isLast) ? null : clipEndMs,
+            log.task,
+            pausedMins,
+            pauseStart
+          );
+          if (dur > 0 || (stillRunning && isLast)) {
+            slices.push({
+              order: log.order,
+              worker: log.worker,
+              task: log.task,
+              start: clipStartMs,
+              end: (stillRunning && isLast) ? null : clipEndMs,
+              durationMins: dur,
+              week: weekLabelFromDate(new Date(clipStartMs)),
+              date: dayStamp,
+              startDate: jobStartDate,
+              finishDate: jobFinishDate,
+              stillRunning: stillRunning && isLast,
+              stopReason: '',
+              pauseStart: pauseStart,
+              pausedMins: pausedMins
+            });
+          }
+        }
+        cursor = nextMidnight;
+      }
+      if (slices.length) return slices;
+
       const dur = (typeof log.durationMins === 'number')
         ? log.durationMins
         : calculateWorkMinutes(log.start, log.end, log.task, log.pausedMins, log.pauseStart);
@@ -8034,9 +8161,11 @@
         start: log.start,
         end: log.end,
         durationMins: dur,
-        week: log.week,
-        date: null,
-        stillRunning: !log.end,
+        week: weekLabelFromDate(start),
+        date: jobStartDate,
+        startDate: jobStartDate,
+        finishDate: jobFinishDate,
+        stillRunning: stillRunning,
         stopReason: '',
         pauseStart: log.pauseStart,
         pausedMins: log.pausedMins
@@ -8056,6 +8185,7 @@
         let workerLogsMap = {};
         rawLogs.forEach(r => {
           if(!r.worker) return;
+          if (isIndirectWorkerLog(r)) return;
           if(!workerLogsMap[r.worker]) workerLogsMap[r.worker] = [];
           workerLogsMap[r.worker].push(r);
         });
@@ -8101,9 +8231,10 @@
            });
         });
 
-        // 3. Build Stats — overnight jobs count on each calendar day, matching Activity
+        // 3. Build Stats — overnight / multi-week jobs split by day into each week bucket
         rawLogs.forEach(r => {
           if(!r.worker) return;
+          if (isIndirectWorkerLog(r)) return;
           if(!appData.workerStats[r.worker]) appData.workerStats[r.worker] = { totalMins: 0, weeks: {} };
           const slices = expandWorkerDaySlices(r);
           r.durationMins = slices.reduce((sum, s) => sum + (s.durationMins || 0), 0);
@@ -8123,7 +8254,9 @@
             }
             appData.workerStats[r.worker].weeks[weekKey].totalMins += dur;
             appData.workerStats[r.worker].weeks[weekKey].logs.push(slice);
-            if(r.order) appData.workerStats[r.worker].weeks[weekKey].uniqueOrders.add(r.order);
+            if (r.order && String(r.order).trim().toUpperCase() !== 'INDIRECT') {
+              appData.workerStats[r.worker].weeks[weekKey].uniqueOrders.add(r.order);
+            }
           });
 
           if (r.isChangeoverTracked) {
@@ -8415,12 +8548,14 @@
         </div>
       </div>`;
 
-      h += '<div class="modern-table-wrap"><table class="modern-table" id="workerLogTable"><thead><tr><th>Date</th><th>Order</th><th>Task</th><th>Start</th><th>End</th><th style="text-align:right">Duration</th></tr></thead><tbody>';
+      h += '<div class="modern-table-wrap"><table class="modern-table" id="workerLogTable"><thead><tr><th>Start date</th><th>Finish date</th><th>Order</th><th>Task</th><th>Start</th><th>End</th><th style="text-align:right">Duration</th></tr></thead><tbody>';
 
       weekData.logs.sort((a, b) => (b.start || 0) - (a.start || 0)).forEach(l => {
-        const d = l.date
-          ? new Date(l.date + 'T12:00:00').toLocaleDateString()
-          : (l.start ? new Date(l.start).toLocaleDateString() : '-');
+        if (isIndirectWorkerLog(l)) return;
+        const startDate = formatDayStamp(l.startDate || l.date || (l.start ? sastDayStamp(new Date(l.start)) : ''));
+        const finishDate = (l.stillRunning || !l.end)
+          ? '—'
+          : formatDayStamp(l.finishDate || (l.end ? sastDayStamp(new Date(l.end)) : l.date));
         const s = l.start ? new Date(l.start).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'}) : '-';
         const running = l.stillRunning || !l.end;
         const e = running
@@ -8430,7 +8565,7 @@
         if(running) {
           durDisplay = `<span class="badge bg-success live-timer" data-start="${l.start}" data-task="${l.task}" data-pmins="${l.pausedMins || 0}" data-pstart="${l.pauseStart || ''}">${durDisplay}</span>`;
         }
-        h += `<tr data-order="${String(l.order || '').toLowerCase()}"><td>${d}</td><td><strong>${l.order || ''}</strong></td><td>${l.task || ''}</td><td>${s}</td><td>${e}</td><td style="text-align:right">${durDisplay}</td></tr>`;
+        h += `<tr data-order="${String(l.order || '').toLowerCase()}"><td>${startDate}</td><td>${finishDate}</td><td><strong>${l.order || ''}</strong></td><td>${l.task || ''}</td><td>${s}</td><td>${e}</td><td style="text-align:right">${durDisplay}</td></tr>`;
       });
 
       h += '</tbody></table></div>';
