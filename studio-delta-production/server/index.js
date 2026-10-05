@@ -6,8 +6,6 @@ const { initWorkbook, persistWorkbook, hasGoogleAuth, storageInfo, googleMigrate
 const { migrateJsonOrdersToWorkbook, normalizeOrdersSheet, persistenceInfo } = require("./db");
 
 initWorkbook();
-migrateJsonOrdersToWorkbook();
-normalizeOrdersSheet();
 
 const app = express();
 app.disable("x-powered-by");
@@ -339,14 +337,7 @@ const PORT = Number(process.env.PORT) || 8080;
 let server;
 
 async function boot() {
-  try {
-    await Promise.race([
-      maybeImportGoogleOnce(),
-      new Promise((resolve) => setTimeout(resolve, 25000))
-    ]);
-  } catch (e) {
-    console.error("[boot] google copy failed", e && e.message ? e.message : e);
-  }
+  // Listen first so Railway healthchecks pass while migrations finish.
   try {
     const staff = require("./staff");
     staff.usersSheet();
@@ -356,22 +347,41 @@ async function boot() {
     let envLabel = "production";
     try { envLabel = require("./app-env").appEnv(); } catch (e) {}
     console.log("Studio Delta " + envLabel + " listening on " + PORT + " (" + process.env.TZ + ")");
-    try {
-      const info = persistenceInfo();
-      if (info.warning) console.error("[persist]", info.warning);
-      else console.log("[persist] dataDir", info.dataDir, "enquiries", info.enquiryCount, "workbook", info.workbookExists);
-      try {
-        console.log("[boot] users", require("./staff").listUsers().length);
-      } catch (err) {}
-      try {
-        require("./enquiry-pipeline").syncDrawingQueue();
-      } catch (err) {
-        console.error("[boot] drawing queue", err && err.message ? err.message : err);
-      }
-    } catch (e) {
-      console.error("[persist] could not read storage info", e && e.message ? e.message : e);
-    }
   });
+
+  try {
+    migrateJsonOrdersToWorkbook();
+  } catch (e) {
+    console.error("[boot] migrate orders failed", e && e.message ? e.message : e);
+  }
+  try {
+    normalizeOrdersSheet();
+  } catch (e) {
+    console.error("[boot] normalize orders failed", e && e.message ? e.message : e);
+  }
+  try {
+    await Promise.race([
+      maybeImportGoogleOnce(),
+      new Promise((resolve) => setTimeout(resolve, 25000))
+    ]);
+  } catch (e) {
+    console.error("[boot] google copy failed", e && e.message ? e.message : e);
+  }
+  try {
+    const info = persistenceInfo();
+    if (info.warning) console.error("[persist]", info.warning);
+    else console.log("[persist] dataDir", info.dataDir, "enquiries", info.enquiryCount, "workbook", info.workbookExists);
+    try {
+      console.log("[boot] users", require("./staff").listUsers().length);
+    } catch (err) {}
+    try {
+      require("./enquiry-pipeline").syncDrawingQueue();
+    } catch (err) {
+      console.error("[boot] drawing queue", err && err.message ? err.message : err);
+    }
+  } catch (e) {
+    console.error("[persist] could not read storage info", e && e.message ? e.message : e);
+  }
 }
 boot();
 
