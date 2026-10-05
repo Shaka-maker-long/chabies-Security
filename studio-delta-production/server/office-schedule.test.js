@@ -42,6 +42,17 @@ assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "LD*" && c.moved));
 assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "LC*" && c.moved));
 assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "LD" && c.label === "Latest Delivery"));
 assert.ok(sched.SCHEDULE_CODES.some((c) => c.code === "P" && c.label === "Photograpy"));
+assert.strictEqual(sched.shopProcessToScheduleCode("Welding"), "M");
+assert.strictEqual(sched.shopProcessToScheduleCode("Grinding"), "Gr");
+assert.strictEqual(sched.shopProcessToScheduleCode("Profile Cutting"), "CS");
+assert.strictEqual(sched.shopProcessToScheduleCode("Powder coating"), "PC");
+assert.strictEqual(sched.shopProcessToScheduleCode("Assembly"), "A");
+assert.strictEqual(sched.shopProcessToScheduleCode("Wrapping"), "Wr");
+assert.strictEqual(sched.plannedDeliveryCode("LD"), "PD");
+assert.strictEqual(sched.plannedDeliveryCode("LC"), "C");
+assert.ok(sched.isProtectedScheduleCode("LD"));
+assert.ok(sched.isProtectedScheduleCode("LC*"));
+assert.ok(!sched.isProtectedScheduleCode("M"));
 
 db.upsertOrder({
   order_number: "S260186",

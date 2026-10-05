@@ -1606,6 +1606,9 @@ function mountOffice(app) {
     const days = workdays(start, SCHEDULE_WORKDAYS);
     const fromDay = days[0];
     const toDay = days[days.length - 1];
+    if (String(req.query.live || "") === "1" || String(req.query.sync || "") === "1") {
+      try { require("./schedule-live").syncLiveScheduleCodes(); } catch (e) {}
+    }
     res.json({
       ok: true,
       start,
@@ -1613,6 +1616,15 @@ function mountOffice(app) {
       rows: listSchedule(fromDay, toDay),
       codes: SCHEDULE_CODES
     });
+  });
+
+  app.post("/api/office/schedule/sync", requireOffice, (_req, res) => {
+    try {
+      const live = require("./schedule-live").syncLiveScheduleCodes();
+      res.json({ ok: true, ...live });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
   });
 
   app.get("/api/office/schedule/delivery", requireOffice, (_req, res) => {

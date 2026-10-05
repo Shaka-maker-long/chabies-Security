@@ -812,6 +812,13 @@ function listSchedule(fromDay, toDay) {
           if (c.row_id === r.id && c.reason) bag[c.day] = c.reason;
         });
         return bag;
+      })(),
+      cell_sources: (function () {
+        const bag = {};
+        (state.schedule_cells || []).forEach((c) => {
+          if (c.row_id === r.id && c.source) bag[c.day] = c.source;
+        });
+        return bag;
       })()
     };
   });
@@ -899,6 +906,7 @@ function setScheduleCell(rowId, day, value, persist = true, extra) {
   const live = sched.liveDeliveryCode(code);
   const extraObj = extra && typeof extra === "object" ? extra : {};
   const reason = String(extraObj.reason || "").trim();
+  const source = String(extraObj.source || "").trim().toLowerCase() === "auto" ? "auto" : "manual";
   const prev = (state.schedule_cells || []).find((c) => c.row_id === id && String(c.day).slice(0, 10) === dayIso);
   const prevLive = prev ? sched.liveDeliveryCode(prev.value) : "";
   if (live) {
@@ -912,19 +920,25 @@ function setScheduleCell(rowId, day, value, persist = true, extra) {
       others.forEach((c) => {
         c.value = sched.starredDeliveryCode(c.value);
         c.reason = reason;
+        c.source = "manual";
       });
     }
   }
   state.schedule_cells = (state.schedule_cells || []).filter((c) => !(c.row_id === id && String(c.day).slice(0, 10) === dayIso));
   if (code) {
-    const cell = { row_id: id, day: dayIso, value: code };
+    const cell = { row_id: id, day: dayIso, value: code, source: live ? "manual" : source };
     if (reason && live) cell.reason = reason;
     state.schedule_cells.push(cell);
   }
   if (persist) save();
   if (!extraObj.skipPlan && (live || prevLive || !code)) {
     try { require("./floor-planning").autoPlanFromDeliveries(); } catch (e) {}
+    try { require("./schedule-live").syncLiveScheduleCodes(); } catch (eSync) {}
   }
+}
+
+function persistOffice() {
+  save();
 }
 
 function countOrders() {
@@ -3201,6 +3215,7 @@ module.exports = {
   listDeliveryItems,
   upsertScheduleRow,
   setScheduleCell,
+  persistOffice,
   listLiveDeliveries,
   syncScheduleFromOrders,
   deleteScheduleForOrder,

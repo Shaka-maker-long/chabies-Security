@@ -2340,6 +2340,107 @@ function tallyFloorCounts(orders, allowStatus) {
   return { ready: ready, active: active, paused: paused };
 }
 
+function deliveryAssigneeName_() {
+  var users = getUsersAndRoles() || [];
+  for (var i = 0; i < users.length; i++) {
+    var n = String(users[i].name || "").trim();
+    if (n && n.toLowerCase() === "siya") return n;
+  }
+  return "Siya";
+}
+
+function isOutForDeliveryStatus_(status) {
+  return String(status || "").trim().toLowerCase() === "out for delivery";
+}
+
+function isDeliveryProcess_(role, processName) {
+  var roleStr = String(role || "").trim().toLowerCase();
+  var proc = String(processName || "").trim().toLowerCase();
+  if (roleStr === "out for delivery") return true;
+  if (proc === "out for delivery") return true;
+  if (roleStr === "quality control" && proc === "ready for delivery") return true;
+  return false;
+}
+
+/**
+ * Orders already Out for Delivery belong to Siya on Delivery (My task)
+ * so he can mark them Delivered when the van is done.
+ */
+function assignOutForDeliveryToSiya_() {
+  var who = deliveryAssigneeName_();
+  var ss = getSpreadsheet();
+  var sheet = getSheetOrDie(ss, TAB_ORDERS);
+  var logSheet = getSheetOrDie(ss, TAB_LOGS);
+  var grid = getSheetGrid(ss, TAB_ORDERS, 4);
+  var pack = getLogPack(ss);
+  var changed = 0;
+  var logsFixed = 0;
+  var created = 0;
+  var startTime = new Date();
+
+  for (var r = 1; r < grid.length; r++) {
+    if (!isOutForDeliveryStatus_(grid[r][2])) continue;
+    var orderNum = grid[r][1];
+    if (!orderNum) continue;
+    var sheetRow = r + 1;
+    var assigned = String(grid[r][3] || "").trim();
+    if (assigned.toLowerCase() !== who.toLowerCase()) {
+      sheet.getRange(sheetRow, 4).setValue(who);
+      changed += 1;
+    }
+
+    var openIdx = -1;
+    for (var i = 1; i < pack.values.length; i++) {
+      var row = pack.values[i];
+      if (row[6]) continue;
+      if (String(row[1]) !== String(orderNum)) continue;
+      if (!isDeliveryProcess_(row[3], row[4])) continue;
+      openIdx = i;
+      break;
+    }
+
+    if (openIdx !== -1) {
+      var open = pack.values[openIdx];
+      var logRow = packSheetRow(pack, openIdx);
+      if (String(open[2] || "").trim().toLowerCase() !== who.toLowerCase()) {
+        logSheet.getRange(logRow, 3).setValue(who);
+        open[2] = who;
+        logsFixed += 1;
+      }
+      var proc = String(open[4] || "").trim();
+      if (proc.toLowerCase() !== "out for delivery") {
+        logSheet.getRange(logRow, 5).setValue("Out for Delivery");
+        open[4] = "Out for Delivery";
+      }
+      if (String(open[3] || "").trim() !== "Quality Control") {
+        logSheet.getRange(logRow, 4).setValue("Quality Control");
+        open[3] = "Quality Control";
+      }
+      continue;
+    }
+
+    var uniqueId = Utilities.getUuid();
+    var meta = defaultLogMeta();
+    meta.entryType = "production";
+    meta.targetMinutes = 0;
+    meta.countdownStartedAt = startTime.getTime();
+    logSheet.appendRow([
+      uniqueId, orderNum, who, "Quality Control", "Out for Delivery",
+      startTime, "", "", "", "", "", "", JSON.stringify(meta)
+    ]);
+    pack.values.push([
+      uniqueId, orderNum, who, "Quality Control", "Out for Delivery",
+      startTime, "", "", "", "", "", "", JSON.stringify(meta)
+    ]);
+    created += 1;
+  }
+
+  if (changed || logsFixed || created) {
+    try { bumpFloorCache(); } catch (ignore) {}
+  }
+  return { assignee: who, reassigned: changed, logsFixed: logsFixed, created: created };
+}
+
 function getFloorTaskCounts() {
   var tasks = [
     "Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding",
@@ -2365,6 +2466,10 @@ function getFloorTaskCounts() {
   out["Final QC"] = tallyFloorCounts(qc, [
     "Ready for Final QC", "Final QC"
   ]);
+  out["Delivery"] = tallyFloorCounts(qc, [
+    "Ready for Delivery", "Out for Delivery"
+  ]);
+  try { assignOutForDeliveryToSiya_(); } catch (e) {}
   var fresh = 0;
   var grid = getSheetGrid(getSpreadsheet(), TAB_ORDERS, 3);
   for (var r = 1; r < grid.length; r++) {
@@ -2387,7 +2492,7 @@ function floorReadyPileId(status) {
   if (s === "paint preparation" || s === "ready for painting") return "prep";
   if (s === "painting") return "painting";
   if (s === "ready for assembly" || s === "assembly") return "assembly";
-  if (s === "ready for final qc") return "delivery";
+  if (s === "ready for final qc") return "finalqc";
   if (s === "final qc") return "finalqc";
   if (s === "ready for delivery" || s === "out for delivery") return "delivery";
   return "other";
@@ -2700,20 +2805,33 @@ function startOrder(rowIndex, workerName, role, batchRowIndices, switchReason, w
         }
       }
 
+      var logWorker = workerName;
+      if (isOutForDeliveryStatus_(nextStatus)) {
+        logWorker = deliveryAssigneeName_();
+      }
+
       if (role !== 'Plate Cutting' && role !== 'Rework') {
-        sheet.getRange(thisRow, 3, 1, 2).setValues([[nextStatus, workerName]]);
+        sheet.getRange(thisRow, 3, 1, 2).setValues([[nextStatus, logWorker]]);
       }
 
       logSheet.appendRow([
-        uniqueId, orderNum, workerName, role, nextStatus, startTime, "", "", "",
+        uniqueId, orderNum, logWorker, role, nextStatus, startTime, "", "", "",
         "", "", "", JSON.stringify(meta)
       ]);
 
       if (overviewSheet) {
-        overviewSheet.appendRow([uniqueId, orderNum, workerName, nextStatus, startTime, "", ""]);
+        overviewSheet.appendRow([uniqueId, orderNum, logWorker, nextStatus, startTime, "", ""]);
       }
 
       started.push({ order: orderNum, rowIndex: thisRow, logId: uniqueId, newStatus: nextStatus, reworkId: meta.reworkId || "" });
+    }
+
+    var anyDelivery = false;
+    for (var d = 0; d < started.length; d++) {
+      if (isOutForDeliveryStatus_(started[d].newStatus)) anyDelivery = true;
+    }
+    if (anyDelivery) {
+      try { assignOutForDeliveryToSiya_(); } catch (eAssign) {}
     }
     
     var firstProduct = orderData[parseInt(rowIndex, 10) - 1] ? String(orderData[parseInt(rowIndex, 10) - 1][6] || "").trim() : "";

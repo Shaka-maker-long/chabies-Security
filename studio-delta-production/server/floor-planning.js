@@ -1641,7 +1641,9 @@ function autoPlanFromDeliveries(opts) {
   }
   store.blocks = keep.concat(created);
   save(store);
-  return { count: created.length, orders: jobs.length };
+  let live = { cleared: 0, written: 0, marks: 0 };
+  try { live = require("./schedule-live").syncLiveScheduleCodes(); } catch (e) {}
+  return { count: created.length, orders: jobs.length, schedule: live };
 }
 
 function unscheduleOrder(orderNumber) {

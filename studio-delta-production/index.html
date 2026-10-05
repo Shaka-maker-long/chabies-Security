@@ -3166,7 +3166,7 @@
       { id: 'painting', label: 'Ready for painting', x: 76, y: 62, role: 'Painting' },
       { id: 'assembly', label: 'Ready for assembly', x: 28, y: 58, role: 'Assembly' },
       { id: 'finalqc', label: 'Final QC', x: 20, y: 78, role: 'Quality Control', qcFilter: 'final-qc' },
-      { id: 'delivery', label: 'Ready for final QC', x: 17, y: 72, role: 'Quality Control', qcFilter: 'final-qc', landmark: true },
+      { id: 'delivery', label: 'Out for delivery', x: 17, y: 72, role: 'Quality Control', qcFilter: 'delivery', landmark: true },
       { id: 'other', label: 'Other on floor', x: 55, y: 60, role: 'Profile Cutting' }
     ];
     const ROAD_STOPS = [
@@ -3182,6 +3182,7 @@
       { id: 'Paint Preparation', role: 'Paint Preparation', label: 'Paint prep' },
       { id: 'Painting', role: 'Painting', label: 'Painting' },
       { id: 'Final QC', role: 'Quality Control', qcFilter: 'final-qc', label: 'Final QC' },
+      { id: 'Delivery', role: 'Quality Control', qcFilter: 'delivery', label: 'Delivery' },
       { id: 'Rework', role: 'Rework', label: 'Rework' }
     ];
     const TASK_ICONS = {
@@ -3197,7 +3198,8 @@
       'Rework': 'bi-arrow-repeat',
       'Pre-Powder Coating QC': 'bi-clipboard-check',
       'Powder Coating': 'bi-droplet',
-      'Final QC': 'bi-shield-check'
+      'Final QC': 'bi-shield-check',
+      'Delivery': 'bi-truck'
     };
 
     function persistSession() {
@@ -3799,7 +3801,7 @@
     }
     function stopCountKey(step) {
       if (!step) return '';
-      if (step.id === 'New orders' || step.id === 'Pre-Powder Coating QC' || step.id === 'Powder Coating' || step.id === 'Final QC') return step.id;
+      if (step.id === 'New orders' || step.id === 'Pre-Powder Coating QC' || step.id === 'Powder Coating' || step.id === 'Final QC' || step.id === 'Delivery') return step.id;
       return step.role;
     }
     function renderMyTaskChooser(counts) {

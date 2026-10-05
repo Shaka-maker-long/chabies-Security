@@ -19,6 +19,42 @@ const SCHEDULE_CODES = [
 const DELIVERY_CODES = ["LD", "LC"];
 const MOVED_DELIVERY_CODES = ["LD*", "LC*"];
 
+/** Shop / planning process → production-schedule letter. */
+const SHOP_PROCESS_TO_SCHEDULE = {
+  "Profile Cutting": "CS",
+  "Cutting Steel": "CS",
+  Tagging: "M",
+  Welding: "M",
+  Manufacturing: "M",
+  "Plate Cutting": "CS",
+  Grinding: "Gr",
+  "Powder coating": "PC",
+  "Powder Coating": "PC",
+  Assembly: "A",
+  Assemble: "A",
+  Upholstery: "U",
+  "Quality Control": "QC",
+  "Pre-Powder Coating": "QC",
+  "Final QC": "QC",
+  Photograpy: "P",
+  Photography: "P",
+  Wrapping: "Wr"
+};
+
+const AUTO_SCHEDULE_PRIORITY = {
+  CS: 1,
+  M: 2,
+  Gr: 3,
+  PC: 4,
+  A: 5,
+  U: 5,
+  QC: 6,
+  P: 6,
+  Wr: 7,
+  PD: 8,
+  C: 8
+};
+
 function liveDeliveryCode(value) {
   const c = String(value || "").trim().toUpperCase();
   if (c === "LD" || c === "LC") return c;
@@ -28,6 +64,35 @@ function liveDeliveryCode(value) {
 function starredDeliveryCode(value) {
   const live = liveDeliveryCode(value);
   return live ? live + "*" : "";
+}
+
+function isProtectedScheduleCode(value) {
+  const c = String(value || "").trim().toUpperCase();
+  return c === "LD" || c === "LC" || c === "LD*" || c === "LC*";
+}
+
+function shopProcessToScheduleCode(process) {
+  const raw = String(process || "").trim();
+  if (!raw) return "";
+  if (SHOP_PROCESS_TO_SCHEDULE[raw]) return SHOP_PROCESS_TO_SCHEDULE[raw];
+  const lower = raw.toLowerCase();
+  const keys = Object.keys(SHOP_PROCESS_TO_SCHEDULE);
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i].toLowerCase() === lower) return SHOP_PROCESS_TO_SCHEDULE[keys[i]];
+  }
+  return "";
+}
+
+function plannedDeliveryCode(liveCode) {
+  const c = liveDeliveryCode(liveCode);
+  if (c === "LD") return "PD";
+  if (c === "LC") return "C";
+  return "";
+}
+
+function autoCodePriority(code) {
+  const c = String(code || "").trim();
+  return AUTO_SCHEDULE_PRIORITY[c] || 0;
 }
 const SCHEDULE_WORKDAYS = 180;
 
@@ -173,6 +238,11 @@ module.exports = {
   MOVED_DELIVERY_CODES,
   liveDeliveryCode,
   starredDeliveryCode,
+  isProtectedScheduleCode,
+  shopProcessToScheduleCode,
+  plannedDeliveryCode,
+  autoCodePriority,
+  SHOP_PROCESS_TO_SCHEDULE,
   SCHEDULE_WORKDAYS,
   mondayOf,
   workdays,

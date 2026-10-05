@@ -6,7 +6,7 @@
   <title>Studio Delta — Production schedule</title>
   <script src="/sd-pwa.js?v=pwa-stg1"></script>
   <style>
-    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --warn:#fff4e0; --lock:992px; --day:44px; }
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --warn:#fff4e0; --lock:992px; --day:44px; --week:#1d2939; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
@@ -34,6 +34,16 @@
     thead tr:nth-child(3) th { top:68px; }
     body.office-app #grid thead th.day { text-transform:none; letter-spacing:0; }
     #grid th.day, #grid td.day { width:var(--day); min-width:var(--day); max-width:var(--day); text-align:center; padding:4px 2px; }
+    #grid thead tr:first-child th.day {
+      border-top:2px solid var(--week);
+      border-left:2px solid var(--week);
+      border-right:2px solid var(--week);
+    }
+    #grid th.day.wk-start, #grid td.day.wk-start { border-left:2px solid var(--week); }
+    #grid th.day.wk-end, #grid td.day.wk-end { border-right:2px solid var(--week); }
+    #grid tbody tr:last-child td.day.wk-start { border-bottom:2px solid var(--week); }
+    #grid tbody tr:last-child td.day.wk-end { border-bottom:2px solid var(--week); }
+    #grid tbody tr:last-child td.day { border-bottom:2px solid var(--week); }
     .cell-text { display:block; overflow:hidden; text-overflow:ellipsis; }
     td input { width:100%; border:0; font:inherit; background:transparent; }
     .code-cell { text-align:center; font-weight:700; cursor:pointer; user-select:none; }
@@ -86,7 +96,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Production schedule</h1>
-      <p class="lede">One live Latest Delivery (LD) or Latest Courier (LC) per order. Move it to another day and you must give a reason — the old cell stays as gray LD* or LC*. Amber rows still need a latest date.</p>
+      <p class="lede">One live Latest Delivery (LD) or Latest Courier (LC) per order. Move it to another day and you must give a reason — the old cell stays as gray LD* or LC*. Setting LD/LC auto-plans shop tasks (CS, M, Gr, PC, A…) onto the grid. Open clocks also paint today’s letter live. Amber rows still need a latest date.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -178,7 +188,14 @@
     function renderLegend() {
       document.getElementById("legend").innerHTML = codes.map((c) => {
         return "<span><b class=\"swatch\" style=\"" + codeStyle(c.code) + "\">" + esc(c.code) + "</b>" + esc(c.label) + "</span>";
-      }).join("") + "<span class=\"hint\">Amber rows have no live LD or LC. Gray LD* / LC* is a date that moved.</span>";
+      }).join("") + "<span class=\"hint\">Amber rows have no live LD or LC. Gray LD* / LC* is a date that moved. Dark borders mark each week. Shop letters refresh every 30s.</span>";
+    }
+
+    function dayWeekClass(iso) {
+      const d = new Date(iso + "T12:00:00").getDay();
+      if (d === 1) return " wk-start";
+      if (d === 5) return " wk-end";
+      return "";
     }
 
     function paintCell(td, value, reason) {
@@ -280,8 +297,9 @@
         cursor += n;
       }
       days.forEach((d) => {
-        drow += "<th class=\"day\" data-day=\"" + d + "\">" + dow(d) + "</th>";
-        dates += "<th class=\"day\" data-day=\"" + d + "\">" + pretty(d) + "</th>";
+        const wk = dayWeekClass(d);
+        drow += "<th class=\"day" + wk + "\" data-day=\"" + d + "\">" + dow(d) + "</th>";
+        dates += "<th class=\"day" + wk + "\" data-day=\"" + d + "\">" + pretty(d) + "</th>";
       });
       const frozen = weekLabel(start || days[0]);
       let left = "<thead><tr><th class=\"week-lock\" id=\"frozenWeek\" colspan=\"" + LEFT.length + "\">" + frozen + "</th></tr><tr>";
@@ -306,7 +324,8 @@
         days.forEach((d) => {
           const v = (row.cells && row.cells[d]) || "";
           const why = (row.cell_reasons && row.cell_reasons[d]) || "";
-          cal += "<td class=\"day code-cell\" data-day=\"" + d + "\" data-code=\"" + esc(v) + "\" tabindex=\"0\" style=\"" + codeStyle(v) + "\"" + (why ? " title=\"" + esc(why) + "\"" : "") + ">" + esc(v) + "</td>";
+          const wk = dayWeekClass(d);
+          cal += "<td class=\"day code-cell" + wk + "\" data-day=\"" + d + "\" data-code=\"" + esc(v) + "\" tabindex=\"0\" style=\"" + codeStyle(v) + "\"" + (why ? " title=\"" + esc(why) + "\"" : "") + ">" + esc(v) + "</td>";
         });
         cal += "</tr>";
       });
@@ -437,10 +456,15 @@
       });
     }
 
-    async function load() {
-      document.getElementById("status").textContent = "Loading orders…";
-      closePicker();
-      const r = await sdOfficeFetch("/api/office/schedule?start=" + encodeURIComponent(start));
+    async function load(opts) {
+      const quiet = !!(opts && opts.quiet);
+      if (!quiet) document.getElementById("status").textContent = "Loading orders…";
+      if (!quiet) closePicker();
+      const scroller = document.getElementById("scroller");
+      const metaPane = document.getElementById("metaPane");
+      const keepX = quiet ? scroller.scrollLeft : 0;
+      const keepY = quiet ? scroller.scrollTop : 0;
+      const r = await sdOfficeFetch("/api/office/schedule?start=" + encodeURIComponent(start) + "&live=1");
       const j = await r.json();
       start = j.start;
       days = j.days;
@@ -449,7 +473,13 @@
       renderLegend();
       renderPicker();
       render();
-      scrollToWeek(start);
+      if (quiet) {
+        scroller.scrollLeft = keepX;
+        scroller.scrollTop = keepY;
+        metaPane.scrollTop = keepY;
+      } else {
+        scrollToWeek(start);
+      }
     }
     function shift(n) {
       const base = start || days[0];
@@ -493,7 +523,14 @@
       closePicker();
     });
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") closePicker(); });
-    sdRequireOffice("orders").then((p) => { if (p) load(); });
+    sdRequireOffice("orders").then((p) => {
+      if (!p) return;
+      load();
+      setInterval(function () {
+        if (document.getElementById("picker").classList.contains("open")) return;
+        load({ quiet: true });
+      }, 30000);
+    });
   </script>
 </body>
 </html>
