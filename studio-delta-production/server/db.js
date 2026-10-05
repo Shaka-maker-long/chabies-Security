@@ -110,6 +110,96 @@ function orderOwing(order) {
   return cents / 100;
 }
 
+function countPaymentEntries(map) {
+  let n = 0;
+  Object.keys(map || {}).forEach((key) => {
+    const arr = map[key];
+    if (!Array.isArray(arr)) return;
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i] && typeof arr[i] === "object") n += 1;
+    }
+  });
+  return n;
+}
+
+function paymentsFromMap(map, orderNumber) {
+  const want = formatOrderId(orderNumber);
+  if (!want || !map) return [];
+  if (Array.isArray(map[want])) return map[want];
+  const keys = Object.keys(map);
+  for (let i = 0; i < keys.length; i++) {
+    if (formatOrderId(keys[i]) === want) return map[keys[i]] || [];
+  }
+  return [];
+}
+
+function pruneEmptyPaymentKeys(map) {
+  const out = {};
+  Object.keys(map || {}).forEach((key) => {
+    const arr = Array.isArray(map[key])
+      ? map[key].filter((p) => p && typeof p === "object")
+      : [];
+    if (!arr.length) return;
+    const want = formatOrderId(key) || String(key || "").trim();
+    if (!want) return;
+    out[want] = arr;
+  });
+  return out;
+}
+
+function mergePaymentMaps(primary, secondary) {
+  const out = pruneEmptyPaymentKeys(primary);
+  const other = pruneEmptyPaymentKeys(secondary);
+  Object.keys(other).forEach((key) => {
+    const incoming = other[key];
+    const existing = paymentsFromMap(out, key).slice();
+    if (!existing.length) {
+      out[key] = incoming.slice();
+      return;
+    }
+    const byId = {};
+    const noId = [];
+    existing.forEach((p) => {
+      if (p && p.id) byId[p.id] = p;
+      else if (p) noId.push(p);
+    });
+    incoming.forEach((p) => {
+      if (!p) return;
+      if (p.id) {
+        if (!byId[p.id]) byId[p.id] = p;
+        return;
+      }
+      noId.push(p);
+    });
+    out[key] = Object.keys(byId).map((id) => byId[id]).concat(noId);
+  });
+  return out;
+}
+
+function setPaymentsForOrder(orderNumber, payments) {
+  if (!state.paymentsByOrder) state.paymentsByOrder = {};
+  const num = formatOrderId(orderNumber);
+  if (!num) return [];
+  const cleaned = (Array.isArray(payments) ? payments : []).filter((p) => p && typeof p === "object");
+  Object.keys(state.paymentsByOrder).forEach((key) => {
+    if (key === num || formatOrderId(key) === num) delete state.paymentsByOrder[key];
+  });
+  if (cleaned.length) state.paymentsByOrder[num] = cleaned;
+  return cleaned;
+}
+
+function paymentHistoryAt(order) {
+  const raw = order && order.payment_date;
+  const d = asDate(raw);
+  if (d) {
+    const day = dates.isoFromDate(d);
+    if (day) return day + "T10:00:00.000Z";
+  }
+  const updated = String((order && order.updated_at) || "").trim();
+  if (updated) return updated;
+  return nowIso();
+}
+
 function applyPriceAndPayments(payload, row, existing) {
   const pair = vatPair(payload.price_incl_vat, payload.price_excl_vat);
   if (pair.incl || pair.excl) {
@@ -174,9 +264,18 @@ function applyParsedState(parsed) {
       if (Array.isArray(parsed.dropdowns[key])) dropdowns[key] = parsed.dropdowns[key];
     }
   }
-  const paymentsByOrder = parsed && parsed.paymentsByOrder && typeof parsed.paymentsByOrder === "object"
-    ? parsed.paymentsByOrder
-    : {};
+  let paymentsByOrder = pruneEmptyPaymentKeys(
+    parsed && parsed.paymentsByOrder && typeof parsed.paymentsByOrder === "object"
+      ? parsed.paymentsByOrder
+      : {}
+  );
+  if (Array.isArray(parsed && parsed.orders)) {
+    parsed.orders.forEach((o) => {
+      if (o && o.order_number && Array.isArray(o.payments) && o.payments.length) {
+        paymentsByOrder = mergePaymentMaps(paymentsByOrder, { [o.order_number]: o.payments });
+      }
+    });
+  }
   state = {
     ...emptyState(),
     ...(parsed || {}),
@@ -190,29 +289,39 @@ function applyParsedState(parsed) {
       ? parsed.enquiry_dropdowns
       : {}
   };
-  if (!Object.keys(state.paymentsByOrder).length && Array.isArray(parsed && parsed.orders)) {
-    parsed.orders.forEach((o) => {
-      if (o && o.order_number && Array.isArray(o.payments) && o.payments.length) {
-        state.paymentsByOrder[o.order_number] = o.payments;
-      }
-    });
-  }
+}
+
+function mergePaymentsFromSqlite_() {
+  try {
+    const sqlite = require("./sqlite-store");
+    const fromSql = sqlite.loadOffice();
+    if (!fromSql || !fromSql.paymentsByOrder) return;
+    const before = countPaymentEntries(state.paymentsByOrder);
+    state.paymentsByOrder = mergePaymentMaps(state.paymentsByOrder, fromSql.paymentsByOrder);
+    const after = countPaymentEntries(state.paymentsByOrder);
+    if (after > before) {
+      console.log("[db] merged", after - before, "payment(s) from SQLite into office state");
+    }
+  } catch (e) {}
 }
 
 function reloadOfficeState() {
   try {
     const sqlite = require("./sqlite-store");
     const fromSql = sqlite.loadOffice();
-    if (fromSql && ((fromSql.enquiries || []).length || Object.keys(fromSql.dropdowns || {}).length || (fromSql.schedule_rows || []).length || (fromSql.orders || []).length)) {
+    if (fromSql && ((fromSql.enquiries || []).length || Object.keys(fromSql.dropdowns || {}).length || (fromSql.schedule_rows || []).length || (fromSql.orders || []).length || countPaymentEntries(fromSql.paymentsByOrder))) {
       applyParsedState(fromSql);
+      mergePaymentsFromSqlite_();
       save();
       return state;
     }
   } catch (e) {}
   try {
     applyParsedState(JSON.parse(fs.readFileSync(dbPath, "utf8")));
+    mergePaymentsFromSqlite_();
   } catch (e) {
     state = emptyState();
+    mergePaymentsFromSqlite_();
   }
   return state;
 }
@@ -240,8 +349,9 @@ try {
           }
         }
         state = { ...emptyState(), ...fromSql, dropdowns };
+        state.paymentsByOrder = pruneEmptyPaymentKeys(state.paymentsByOrder);
         console.log("[db] opened SQLite", sqlite.sqlitePath(), "enquiries", state.enquiries.length);
-      } else if (fromSql && (Object.keys(fromSql.dropdowns || {}).length || (fromSql.schedule_rows || []).length)) {
+      } else if (fromSql && (Object.keys(fromSql.dropdowns || {}).length || (fromSql.schedule_rows || []).length || countPaymentEntries(fromSql.paymentsByOrder))) {
         const dropdowns = JSON.parse(JSON.stringify(DEFAULT_DROPDOWNS));
         if (fromSql.dropdowns && typeof fromSql.dropdowns === "object") {
           for (const key of DROPDOWN_KEYS) {
@@ -249,6 +359,7 @@ try {
           }
         }
         state = { ...emptyState(), ...fromSql, dropdowns };
+        state.paymentsByOrder = pruneEmptyPaymentKeys(state.paymentsByOrder);
         console.log("[db] opened SQLite", sqlite.sqlitePath(), "dropdowns");
       } else {
         console.log("[db] new file", dbPath);
@@ -258,6 +369,7 @@ try {
     }
   }
 }
+mergePaymentsFromSqlite_();
 try {
   require("./sqlite-store").saveOffice(state);
 } catch (e) {}
@@ -418,14 +530,7 @@ function listOrders() {
 }
 
 function paymentsForOrder(orderNumber) {
-  const want = formatOrderId(orderNumber);
-  if (!want || !state.paymentsByOrder) return [];
-  if (Array.isArray(state.paymentsByOrder[want])) return state.paymentsByOrder[want];
-  const keys = Object.keys(state.paymentsByOrder);
-  for (let i = 0; i < keys.length; i++) {
-    if (formatOrderId(keys[i]) === want) return state.paymentsByOrder[keys[i]] || [];
-  }
-  return [];
+  return paymentsFromMap(state.paymentsByOrder, orderNumber);
 }
 
 function findOrderSheetRow(sheet, idx, orderNumber) {
@@ -538,12 +643,10 @@ function upsertOrder(row) {
     current[idx[f]] = payload[f] == null ? "" : payload[f];
   }
   sheet.getRange(rowNum, 1, 1, current.length).setValues([current]);
-  if (!state.paymentsByOrder) state.paymentsByOrder = {};
-  state.paymentsByOrder[orderNumber] = payload.payments || [];
+  payload.payments = setPaymentsForOrder(orderNumber, payload.payments);
   save();
   persistWorkbook();
   payload.id = rowNum;
-  payload.payments = state.paymentsByOrder[orderNumber];
   syncScheduleFromOrders();
   return payload;
 }
@@ -910,12 +1013,15 @@ function listDebtorHistory() {
     byNumber[formatOrderId(order.order_number)] = order;
   });
   const pay = state.paymentsByOrder || {};
+  const covered = {};
   Object.keys(pay).forEach((key) => {
     const orderNumber = formatOrderId(key);
     const order = byNumber[orderNumber] || { order_number: orderNumber, client_name: "", product: "" };
     const payments = Array.isArray(pay[key]) ? pay[key] : [];
+    let any = false;
     payments.forEach((p) => {
       if (!p || typeof p !== "object") return;
+      any = true;
       rows.push({
         id: p.id || "",
         at: p.at || "",
@@ -926,8 +1032,30 @@ function listDebtorHistory() {
         has_file: !!(p.id && p.storedAs),
         order_number: order.order_number || orderNumber,
         client_name: order.client_name || "",
-        product: order.product || ""
+        product: order.product || "",
+        synthetic: false
       });
+    });
+    if (any) covered[orderNumber] = true;
+  });
+  // Recover History for paid orders after ledger wipe / amount_paid-only edits.
+  orders.forEach((order) => {
+    const orderNumber = formatOrderId(order.order_number);
+    if (!orderNumber || covered[orderNumber]) return;
+    const paid = orderPaid(order);
+    if (paid <= 0) return;
+    rows.push({
+      id: "",
+      at: paymentHistoryAt(order),
+      amount: formatRand(paid),
+      note: "Recorded on order (no proof of payment file)",
+      filename: "",
+      mime: "",
+      has_file: false,
+      order_number: order.order_number || orderNumber,
+      client_name: order.client_name || "",
+      product: order.product || "",
+      synthetic: true
     });
   });
   rows.sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")));
@@ -3033,11 +3161,7 @@ function recordPayment(orderNumber, amount, note, proof) {
     mime: savedFile.mime,
     size: savedFile.size
   });
-  state.paymentsByOrder[num] = history;
-  // Drop any legacy unformatted key so history is not duplicated.
-  Object.keys(state.paymentsByOrder).forEach((key) => {
-    if (key !== num && formatOrderId(key) === num) delete state.paymentsByOrder[key];
-  });
+  setPaymentsForOrder(num, history);
   const saved = upsertOrder({
     ...existing,
     amount_paid: money(orderPaid(existing) + add),

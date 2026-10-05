@@ -64,9 +64,47 @@ assert.strictEqual(edited.payments[0].id, rec.id);
 assert.ok(db.listDebtorHistory().some((h) => h.order_number === "S-D1" && h.id === rec.id && h.has_file));
 assert.ok(db.readPaymentProof(rec.id));
 
+// Paid on the order with no ledger entry still shows on History (recovery after wipe).
+db.upsertOrder({
+  order_number: "S-D2",
+  status: "Not Yet Started",
+  product: "Serena Sideboard",
+  client_name: "Paid Client",
+  price_excl_vat: "2000.00",
+  amount_paid: "500.00",
+  payment_date: "24/09/2026",
+  payments: []
+});
+const recovered = db.listDebtorHistory().filter((h) => h.order_number === "S-D2");
+assert.strictEqual(recovered.length, 1, "paid order without POP still appears in history");
+assert.strictEqual(recovered[0].synthetic, true);
+assert.ok(db.parseMoney(recovered[0].amount) === 500);
+assert.ok(!recovered[0].has_file);
+assert.ok(/no proof/i.test(recovered[0].note));
+
+// Ledger payment must not also synthesize a duplicate for the same order.
+const d1Rows = db.listDebtorHistory().filter((h) => h.order_number === "S-D1");
+assert.strictEqual(d1Rows.length, 1);
+assert.strictEqual(d1Rows[0].synthetic, false);
+
+// Empty payment placeholders must not create synthetic history for unpaid orders.
+db.upsertOrder({
+  order_number: "S-D3",
+  status: "Not Yet Started",
+  product: "Air Chair",
+  client_name: "Zero Paid",
+  price_excl_vat: "100.00",
+  amount_paid: "0",
+  payments: []
+});
+assert.ok(!db.listDebtorHistory().some((h) => h.order_number === "S-D3"));
+
 db.deleteOrder("S-D1");
 assert.ok(!db.readPaymentProof(rec.id));
 assert.ok(!db.listDebtorHistory().some((h) => h.order_number === "S-D1"));
 assert.ok(!db.listDebtors().some((o) => o.order_number === "S-D1"), "removing the order also takes it off Debtors");
+
+db.deleteOrder("S-D2");
+db.deleteOrder("S-D3");
 
 console.log("debtors.test.js ok");

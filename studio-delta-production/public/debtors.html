@@ -227,7 +227,7 @@
         ? rows.length + " payment" + (rows.length === 1 ? "" : "s")
         : (historyRows.length ? "No payments for this client" : "No payments recorded");
       if (!historyRows.length) {
-        wrap.innerHTML = "<div class=\"empty\">No debtor history yet. Record a payment on Owing and the proof of payment will be kept here.</div>";
+        wrap.innerHTML = "<div class=\"empty\">No debtor history yet. Payments recorded on Owing (with proof) appear here. Orders that already show an amount paid also appear here even if no proof file was attached.</div>";
         return;
       }
       if (!rows.length) {
@@ -238,7 +238,7 @@
       rows.forEach((row) => {
         const file = row.has_file && row.id
           ? "<a class=\"file\" href=\"/api/office/debtors/payments/" + encodeURIComponent(row.id) + "\" target=\"_blank\" rel=\"noopener\">" + esc(row.filename || "Open attachment") + "</a>"
-          : "<span class=\"muted\">No attachment</span>";
+          : "<span class=\"muted\">" + (row.synthetic ? "No proof file" : "No attachment") + "</span>";
         html += "<tr>";
         html += "<td>" + esc(pretty(row.at)) + "</td>";
         html += "<td>" + esc(row.order_number) + "</td>";
