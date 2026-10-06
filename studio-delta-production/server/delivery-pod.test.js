@@ -133,6 +133,8 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
 
   const depotPin = delivery.defaultGeocode(delivery.THIRD_PARTY_DEPOT.full_address);
   assert.ok(Math.abs(depotPin.lat - delivery.THIRD_PARTY_DEPOT.lat) < 0.01);
+  assert.ok(String(delivery.FACTORY.address || "").indexOf("Derdepoort") !== -1);
+  assert.ok(delivery.FACTORY.lat < -25.7 && delivery.FACTORY.lat > -25.8, "factory is Silverton / Pretoria");
 
   const route = await delivery.buildRoute({
     now: new Date("2026-10-06T08:00:00+02:00"),
@@ -145,6 +147,8 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   assert.ok(clientStop, "Gauteng still goes to the client");
   assert.ok(depotStop.orders.length >= 3, "Cape Town splits and Hermanus share the depot");
   assert.ok(depotStop.address.indexOf("Milkyway") !== -1);
+  assert.ok(Math.abs(route.origin.lat - delivery.FACTORY.lat) < 0.001, "route starts at Studio Delta");
+  assert.ok(String(route.origin.address || "").indexOf("Derdepoort") !== -1);
   assert.ok(route.stops.every((s) => s.eta_label), "each stop has an ETA");
   assert.ok(route.stops[0].minutes >= 4);
 

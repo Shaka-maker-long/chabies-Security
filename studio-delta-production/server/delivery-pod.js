@@ -21,9 +21,10 @@ const LAYOUT = 1;
 const AVG_KMH = 25;
 const STOP_MINUTES = 8;
 const FACTORY = {
-  lat: Number(process.env.STUDIO_DELTA_LAT) || -26.1076,
-  lng: Number(process.env.STUDIO_DELTA_LNG) || 28.0567,
-  label: "Studio Delta"
+  lat: Number(process.env.STUDIO_DELTA_LAT) || -25.7254893,
+  lng: Number(process.env.STUDIO_DELTA_LNG) || 28.2948254,
+  label: "Studio Delta",
+  address: "309 Derdepoort Rd, Silverton, Pretoria, 0184"
 };
 const THIRD_PARTY_DEPOT = {
   address: "26 Milkyway Ave",
@@ -265,7 +266,10 @@ function defaultGeocode(query) {
   if (/milkyway|milky way|frankenwald/.test(q)) {
     return { lat: THIRD_PARTY_DEPOT.lat, lng: THIRD_PARTY_DEPOT.lng };
   }
-  if (/sandton|johannesburg|gauteng|loop street/.test(q)) return { lat: -26.1076, lng: 28.0567 };
+  if (/derdepoort|silverton|silvertondale/.test(q)) {
+    return { lat: FACTORY.lat, lng: FACTORY.lng };
+  }
+  if (/sandton|johannesburg|loop street/.test(q)) return { lat: -26.1076, lng: 28.0567 };
   if (/cape town|stellenbosch|western cape|beach road/.test(q)) return { lat: -33.9249, lng: 18.4241 };
   if (/durban|kwazulu/.test(q)) return { lat: -29.8587, lng: 31.0218 };
   if (/polokwane|limpopo/.test(q)) return { lat: -23.9045, lng: 29.4689 };

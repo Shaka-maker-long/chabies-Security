@@ -243,7 +243,12 @@
         if (map && mapLayer) { map.removeLayer(mapLayer); mapLayer = null; }
         return;
       }
-      box.innerHTML = route.stops.map((s, i) => {
+      const origin = route.origin || {};
+      const startLine = origin.label || origin.address
+        ? "<div><b>Start.</b> " + esc(origin.label || "Studio Delta") +
+          (origin.address ? " · " + esc(origin.address) : "") + "</div>"
+        : "";
+      box.innerHTML = startLine + route.stops.map((s, i) => {
         const nums = (s.orders || []).map((o) => o.order_number).join(", ");
         const kind = s.drop_kind === "third_party" ? " · 3rd party" : "";
         return "<div><b>" + (i + 1) + ".</b> " + esc(nums) + " · " + esc(s.address || "") + kind +
@@ -260,9 +265,10 @@
       if (mapLayer) map.removeLayer(mapLayer);
       mapLayer = L.layerGroup();
       const pts = [];
-      const origin = route.origin || {};
       if (origin.lat != null) {
-        const o = L.marker([origin.lat, origin.lng]).bindPopup(origin.label || "Start");
+        const o = L.marker([origin.lat, origin.lng]).bindPopup(
+          (origin.label || "Studio Delta") + (origin.address ? "<br>" + origin.address : "")
+        );
         mapLayer.addLayer(o);
         pts.push([origin.lat, origin.lng]);
       }
@@ -400,8 +406,7 @@
         state.grouped = groupOrders(state.orders);
         document.getElementById("whoName").textContent = state.driver || "Driver";
         renderUnits();
-        const origin = (state.lat != null && state.lng != null) ? ("?lat=" + state.lat + "&lng=" + state.lng) : "";
-        const rr = await fetch("/api/delivery/route" + origin, { credentials: "same-origin" });
+        const rr = await fetch("/api/delivery/route", { credentials: "same-origin" });
         const rj = await rr.json().catch(() => ({}));
         state.route = (rj && rj.route) || null;
         if (state.tab === "map") renderMap();
