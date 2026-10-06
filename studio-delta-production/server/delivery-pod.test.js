@@ -295,6 +295,45 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   assert.strictEqual(delivery.podStatusForDrop("client"), "Delivered");
   assert.ok(/S/.test(delivery.formatGps(-25.76822, 28.26716)));
 
+  db.upsertOrder({
+    order_number: "S260405",
+    status: "Out for Delivery",
+    product: "Air Chair",
+    client_name: "Ada",
+    address: "1 Test Street",
+    city: "Pretoria",
+    province: "Gauteng",
+    assigned_operator: "Lebo"
+  });
+  const offlineId = "offline-pod-1";
+  const firstOffline = await delivery.submitPod({
+    order_number: "S260405",
+    client_is_receiver: true,
+    client_submit_id: offlineId,
+    photos: [{ name: "door.jpg", mime: "image/jpeg", data: jpegB64 }],
+    signature: pngDataUrl,
+    lat: -25.74,
+    lng: 28.21
+  }, "Lebo");
+  assert.ok(firstOffline.id);
+  const againOffline = await delivery.submitPod({
+    order_number: "S260405",
+    client_is_receiver: true,
+    client_submit_id: offlineId,
+    photos: [{ name: "door.jpg", mime: "image/jpeg", data: jpegB64 }],
+    signature: pngDataUrl
+  }, "Lebo");
+  assert.ok(againOffline.already);
+  assert.strictEqual(againOffline.id, firstOffline.id);
+  const replay = await delivery.submitPod({
+    order_number: "S260404",
+    client_is_receiver: true,
+    photos: [{ name: "door.jpg", mime: "image/jpeg", data: jpegB64 }],
+    signature: pngDataUrl
+  }, "Lebo");
+  assert.ok(replay.already, "already-delivered Gauteng POD can replay after reconnect");
+  assert.strictEqual(replay.id, gautengPod.id);
+
   console.log("delivery-pod.test.js ok", { splits: loaded.count, forms: listedForms.length });
 })().catch((e) => {
   console.error(e && e.stack ? e.stack : e);

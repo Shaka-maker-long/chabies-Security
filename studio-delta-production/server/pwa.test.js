@@ -43,12 +43,18 @@ assert.ok(/offline/i.test(offline));
 assert.ok(offline.indexOf("Studio Delta") !== -1);
 assert.ok(fs.existsSync(path.join(publicDir, "facility-floor.png")), "Home twin needs facility-floor.png");
 assert.ok(sw.indexOf("facility-floor.png") !== -1, "PWA precaches the facility floor image");
+assert.ok(sw.indexOf("/delivery-run") !== -1, "PWA precaches the driver run for no-signal drops");
+assert.ok(sw.indexOf("sd-delivery-pod") !== -1, "background sync flushes saved PODs");
+assert.ok(sw.indexOf("/vendor/leaflet/leaflet.js") !== -1);
+assert.ok(fs.existsSync(path.join(publicDir, "vendor/leaflet/leaflet.js")));
+assert.ok(fs.existsSync(path.join(publicDir, "delivery-offline.js")));
 
 const indexJs = fs.readFileSync(path.join(__dirname, "index.js"), "utf8");
 assert.ok(indexJs.indexOf("/manifest.webmanifest") !== -1);
 assert.ok(indexJs.indexOf("/sw.js") !== -1);
 assert.ok(indexJs.indexOf("Service-Worker-Allowed") !== -1);
 assert.ok(indexJs.indexOf("/sd-pwa.js") !== -1);
+assert.ok(indexJs.indexOf("/delivery-offline.js") !== -1);
 assert.ok(indexJs.indexOf("/icons") !== -1);
 
 const pages = [

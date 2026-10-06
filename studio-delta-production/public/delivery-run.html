@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Driver run</title>
   <script src="/sd-pwa.js?v=pwa-stg1"></script>
+  <script src="/delivery-offline.js?v=del-off1"></script>
   <link rel="stylesheet" href="/vendor/bootstrap-icons/bootstrap-icons.css">
   <link rel="stylesheet" href="/sd-brand.css?v=logged-in-2">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
   <style>
     :root { --ink:#1c1917; --muted:#6b645b; --line:#d7d1c6; --brass:#b08948; --paper:#fcfbf8; --ok:#3f6b4a; --bad:#9f2d2d; }
     * { box-sizing: border-box; }
@@ -69,6 +70,12 @@
     .form-err { color:var(--bad); font-weight:700; min-height:18px; font-size:13px; text-transform:none; letter-spacing:0; }
     .top-links { display:flex; gap:8px; width:100%; }
     .top-links a, .top-links button { color:#c4a574; background:none; border:0; font-weight:700; font-size:12px; text-decoration:none; cursor:pointer; padding:0; }
+    .netbar { margin:8px 16px 0; padding:10px 12px; border-radius:8px; background:#f3efe6; color:var(--ink); font-size:13px; font-weight:600; border:1px solid var(--line); }
+    .netbar.warn { background:#f8f1e3; border-color:var(--brass); }
+    .netbar.bad { background:#fbeaea; border-color:var(--bad); color:var(--bad); }
+    .section-label { margin:4px 0 0; font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); }
+    .unit.waiting button { background:#fff; color:var(--ink); }
+    .unit .pending { margin-top:8px; font-size:12px; font-weight:700; color:var(--brass); }
     @media (max-width: 640px) {
       .unit { grid-template-columns: 1fr; }
       .unit img, .unit .no-shot { width:100%; height:160px; }
@@ -80,7 +87,7 @@
   <header>
     <div>
       <h1>Driver run</h1>
-      <p>Units on the truck · Gauteng to the client · other provinces to Frankenwald</p>
+      <p>Units on the truck · Gauteng to the client · other provinces to Frankenwald. Works with no signal — forms send when you have data.</p>
     </div>
     <div class="who">
       <div id="whoName">—</div>
@@ -90,6 +97,7 @@
       </div>
     </div>
   </header>
+  <div class="netbar" id="netBar">Open this page at the factory so today’s run stays on the phone if signal drops.</div>
   <div class="tabs">
     <button type="button" class="on" data-tab="units">Loaded units</button>
     <button type="button" data-tab="map">Map &amp; ETA</button>
@@ -159,12 +167,14 @@
       </div>
     </form>
   </div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
     const state = {
       driver: "",
       orders: [],
       grouped: [],
+      queuedGroups: [],
+      queue: [],
       route: null,
       tab: "units",
       photos: [],
@@ -174,9 +184,12 @@
       lat: null,
       lng: null,
       deliveredAt: "",
-      signed: false
+      signed: false,
+      offline: false,
+      authNeeded: false
     };
-    let map, mapLayer;
+    let map, mapLayer, flushing = false;
+    const off = window.sdDeliveryOffline;
     const params = new URLSearchParams(location.search);
 
     function esc(s) {
@@ -211,35 +224,104 @@
       });
       return Object.keys(groups).map((k) => groups[k]);
     }
-    function renderUnits() {
-      const box = document.getElementById("unitsPage");
-      if (!state.orders.length) {
-        box.innerHTML = '<div class="empty">Nothing is on the truck yet. QC loads Ready for Delivery units after Final QC.</div>';
+    function unitCard(g, queued) {
+      const nums = g.orders.map((o) => o.order_number).join(", ");
+      const shot = g.imageUrl
+        ? '<img src="' + esc(g.imageUrl) + '" alt="">'
+        : '<div class="no-shot">No photo</div>';
+      const third = g.drop_kind === "third_party";
+      const tag = third ? '<div class="tag">3rd party · Frankenwald</div>' : "";
+      const clientLine = third && g.client_address
+        ? '<p class="client-addr">Client address: ' + esc(g.client_address) + "</p>"
+        : "";
+      const stop = ((state.route && state.route.stops) || []).find((s) =>
+        (s.orders || []).some((o) => o.base === g.base || o.order_number === (g.orders[0] && g.orders[0].order_number))
+      );
+      const wazeBtn = stop && stop.waze_url
+        ? '<a class="waze" href="' + esc(stop.waze_url) + '" target="_blank" rel="noopener">Open in Waze</a>'
+        : "";
+      const action = queued
+        ? '<div class="pending">Saved on this phone · sends when you have signal</div>'
+        : '<button type="button" data-stop="' + esc(g.base) + '">Arrive · proof of delivery</button>';
+      return '<article class="card unit' + (queued ? " waiting" : "") + '">' + shot +
+        '<div class="body"><h2>' + esc(nums) + '</h2>' +
+        '<p>' + esc(g.client_name) + '</p>' +
+        '<p class="meta">' + esc(g.address || "No address on the order") + '</p>' +
+        clientLine + tag + wazeBtn + action + '</div></article>';
+    }
+    function paintNet() {
+      const el = document.getElementById("netBar");
+      if (!el) return;
+      const n = (state.queue || []).length;
+      if (state.authNeeded && n) {
+        el.className = "netbar warn";
+        el.textContent = n + " delivery form" + (n === 1 ? "" : "s") + " saved on this phone. Log in on the floor, then reopen Driver run to send them.";
         return;
       }
-      box.innerHTML = state.grouped.map((g) => {
-        const nums = g.orders.map((o) => o.order_number).join(", ");
-        const shot = g.imageUrl
-          ? '<img src="' + esc(g.imageUrl) + '" alt="">'
-          : '<div class="no-shot">No photo</div>';
-        const third = g.drop_kind === "third_party";
-        const tag = third ? '<div class="tag">3rd party · Frankenwald</div>' : "";
-        const clientLine = third && g.client_address
-          ? '<p class="client-addr">Client address: ' + esc(g.client_address) + "</p>"
-          : "";
-        const stop = ((state.route && state.route.stops) || []).find((s) =>
-          (s.orders || []).some((o) => o.base === g.base || o.order_number === (g.orders[0] && g.orders[0].order_number))
-        );
-        const wazeBtn = stop && stop.waze_url
-          ? '<a class="waze" href="' + esc(stop.waze_url) + '" target="_blank" rel="noopener">Open in Waze</a>'
-          : "";
-        return '<article class="card unit">' + shot +
-          '<div class="body"><h2>' + esc(nums) + '</h2>' +
-          '<p>' + esc(g.client_name) + '</p>' +
-          '<p class="meta">' + esc(g.address || "No address on the order") + '</p>' +
-          clientLine + tag + wazeBtn +
-          '<button type="button" data-stop="' + esc(g.base) + '">Arrive · proof of delivery</button></div></article>';
-      }).join("");
+      if (state.offline) {
+        el.className = "netbar warn";
+        el.textContent = n
+          ? ("No signal. " + n + " form" + (n === 1 ? "" : "s") + " saved on this phone — they send as soon as you have data.")
+          : "No signal. Using the run saved on this phone. GPS, photos, and signatures still work.";
+        return;
+      }
+      if (n) {
+        el.className = "netbar warn";
+        el.textContent = n + " saved form" + (n === 1 ? "" : "s") + " waiting to send. They go as soon as this phone has data.";
+        return;
+      }
+      el.className = "netbar";
+      el.textContent = "Today’s run is saved on this phone for no-signal drops.";
+    }
+    function applyOrders(orders, route, queue) {
+      state.orders = orders || [];
+      state.route = route || null;
+      state.queue = queue || [];
+      const split = off ? off.splitRunOrders(state.orders, state.queue) : { live: state.orders, waiting: [] };
+      state.grouped = groupOrders(split.live);
+      const fromQueue = (state.queue || []).map((item) => ({
+        base: (item.bases && item.bases[0]) || "",
+        orders: (item.order_numbers || []).map((n) => ({ order_number: n })),
+        client_name: item.client_name || "",
+        address: item.address || "",
+        client_address: item.client_address || "",
+        drop_kind: item.drop_kind || "client",
+        drop_label: "",
+        imageUrl: item.imageUrl || ""
+      }));
+      const waitingLive = groupOrders(split.waiting);
+      const seen = {};
+      state.queuedGroups = waitingLive.concat(fromQueue).filter((g) => {
+        const key = g.base || (g.orders[0] && g.orders[0].order_number);
+        if (!key || seen[key]) return false;
+        seen[key] = true;
+        return true;
+      });
+      document.getElementById("whoName").textContent = state.driver || "Driver";
+      renderUnits();
+      if (state.tab === "map") renderMap();
+      paintNet();
+    }
+    function renderUnits() {
+      const box = document.getElementById("unitsPage");
+      if (!state.grouped.length && !state.queuedGroups.length) {
+        box.innerHTML = '<div class="empty">' +
+          (state.offline
+            ? "No run is saved on this phone yet. Open Driver run while you still have signal (at the factory) so the list stays here."
+            : "Nothing is on the truck yet. QC loads Ready for Delivery units after Final QC.") +
+          "</div>";
+        return;
+      }
+      let html = "";
+      if (state.queuedGroups.length) {
+        html += '<div class="section-label">Waiting to send</div>' +
+          state.queuedGroups.map((g) => unitCard(g, true)).join("");
+      }
+      if (state.grouped.length) {
+        html += '<div class="section-label">On the truck</div>' +
+          state.grouped.map((g) => unitCard(g, false)).join("");
+      }
+      box.innerHTML = html;
       box.querySelectorAll("[data-stop]").forEach((btn) => {
         btn.onclick = () => openPod(btn.getAttribute("data-stop"));
       });
@@ -268,6 +350,9 @@
       }).join("");
       if (route.on_roads === false) {
         box.innerHTML += '<div class="hint">Road path could not load — the line is as the crow flies until Waze is opened.</div>';
+      }
+      if (state.offline) {
+        box.innerHTML += '<div class="hint">Map tiles need data. The stops and Waze links still work from the saved run.</div>';
       }
       if (!window.L) return;
       if (!map) {
@@ -411,32 +496,71 @@
       document.getElementById("podMask").classList.remove("open");
       state.stop = null;
     }
-    async function loadRun() {
-      const boot = document.getElementById("boot");
+    async function flushQueue() {
+      if (!off || flushing) return;
+      if (navigator.onLine === false) return;
+      flushing = true;
       try {
+        const result = await off.flushQueue();
+        state.queue = await off.listQueue().catch(() => []);
+        state.authNeeded = !!result.auth;
+        paintNet();
+        if (result.sent) await loadRun({ skipFlush: true });
+        else renderUnits();
+      } catch (e) {
+        paintNet();
+      } finally {
+        flushing = false;
+      }
+    }
+    async function loadRun(opts) {
+      const boot = document.getElementById("boot");
+      const skipFlush = opts && opts.skipFlush;
+      try {
+        const queue = off ? await off.listQueue().catch(() => []) : [];
         const r = await fetch("/api/delivery/run", { credentials: "same-origin" });
-        const j = await r.json().catch(() => ({}));
         if (r.status === 401) {
+          if (queue.length) {
+            state.authNeeded = true;
+            state.offline = false;
+            const snap = off ? await off.loadRun().catch(() => null) : null;
+            state.driver = (snap && snap.driver) || state.driver;
+            applyOrders((snap && snap.orders) || [], (snap && snap.route) || null, queue);
+            return;
+          }
           location.href = "/";
           return;
         }
+        const j = await r.json().catch(() => ({}));
         if (!j.ok) throw new Error(j.error || "Could not load the run");
+        state.authNeeded = false;
+        state.offline = false;
         state.driver = j.driver || "";
-        state.orders = j.orders || [];
-        state.grouped = groupOrders(state.orders);
-        document.getElementById("whoName").textContent = state.driver || "Driver";
-        renderUnits();
-        const rr = await fetch("/api/delivery/route", { credentials: "same-origin" });
-        const rj = await rr.json().catch(() => ({}));
-        state.route = (rj && rj.route) || null;
-        renderUnits();
-        if (state.tab === "map") renderMap();
+        let route = null;
+        try {
+          const rr = await fetch("/api/delivery/route", { credentials: "same-origin" });
+          const rj = await rr.json().catch(() => ({}));
+          route = (rj && rj.route) || null;
+        } catch (e2) {}
+        if (off) {
+          await off.saveRun({ driver: state.driver, orders: j.orders || [], route: route }).catch(() => {});
+        }
+        applyOrders(j.orders || [], route, queue);
         const want = params.get("stop");
         if (want && state.grouped.some((g) => g.base === want || g.orders.some((o) => o.order_number === want))) {
           const hit = state.grouped.find((g) => g.base === want || g.orders.some((o) => o.order_number === want));
           if (hit) openPod(hit.base);
         }
+        if (!skipFlush) await flushQueue();
       } catch (e) {
+        const queue = off ? await off.listQueue().catch(() => []) : [];
+        const snap = off ? await off.loadRun().catch(() => null) : null;
+        if (snap || queue.length) {
+          state.offline = true;
+          state.driver = (snap && snap.driver) || state.driver;
+          applyOrders((snap && snap.orders) || [], (snap && snap.route) || null, queue);
+          return;
+        }
         if (boot) boot.className = "err";
         if (boot) boot.textContent = e.message || String(e);
         else document.getElementById("unitsPage").innerHTML = '<div class="err">' + esc(e.message || e) + "</div>";
@@ -475,33 +599,61 @@
       }
       const btn = document.getElementById("podSave");
       btn.disabled = true;
+      const payload = {
+        client_submit_id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
+        order_number: state.stop.orders[0].order_number,
+        client_name: document.getElementById("clientName").value,
+        client_is_receiver: state.clientIsReceiver,
+        receiver_name: document.getElementById("receiverName").value,
+        photos: state.photos,
+        signature: document.getElementById("sigCanvas").toDataURL("image/png"),
+        lat: state.lat,
+        lng: state.lng,
+        delivered_at: state.deliveredAt || new Date().toISOString(),
+        rating_delivery: state.ratings.delivery,
+        rating_sales: state.ratings.sales,
+        rating_craft: state.ratings.craft,
+        comments: document.getElementById("comments").value
+      };
       try {
         const r = await fetch("/api/delivery/pod", {
           method: "POST",
           credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            order_number: state.stop.orders[0].order_number,
-            client_name: document.getElementById("clientName").value,
-            client_is_receiver: state.clientIsReceiver,
-            receiver_name: document.getElementById("receiverName").value,
-            photos: state.photos,
-            signature: document.getElementById("sigCanvas").toDataURL("image/png"),
-            lat: state.lat,
-            lng: state.lng,
-            delivered_at: state.deliveredAt || new Date().toISOString(),
-            rating_delivery: state.ratings.delivery,
-            rating_sales: state.ratings.sales,
-            rating_craft: state.ratings.craft,
-            comments: document.getElementById("comments").value
-          })
+          body: JSON.stringify(payload)
         });
         const j = await r.json().catch(() => ({}));
-        if (!j.ok) throw new Error(j.error || "Could not save the delivery form");
+        if (r.status === 401) throw new Error("Log in first.");
+        if (!r.ok || !j.ok) {
+          if (off && (off.isNetworkError(j.error, r.status) || r.status >= 500 || r.status === 0)) {
+            throw new Error("offline");
+          }
+          throw new Error(j.error || "Could not save the delivery form");
+        }
         closePod();
         await loadRun();
       } catch (err2) {
-        err.textContent = err2.message || String(err2);
+        const network = off && (off.isNetworkError(err2) || String(err2.message || err2) === "offline" || navigator.onLine === false);
+        if (network && off) {
+          await off.enqueue({
+            id: payload.client_submit_id,
+            payload: payload,
+            bases: [state.stop.base],
+            order_numbers: state.stop.orders.map((o) => o.order_number),
+            client_name: state.stop.client_name,
+            address: state.stop.address,
+            client_address: state.stop.client_address,
+            drop_kind: state.stop.drop_kind,
+            imageUrl: state.stop.imageUrl
+          });
+          await off.requestBackgroundSync();
+          closePod();
+          state.offline = navigator.onLine === false;
+          await loadRun({ skipFlush: true });
+          await flushQueue();
+        } else {
+          err.textContent = err2.message || String(err2);
+        }
       } finally {
         btn.disabled = false;
       }
@@ -513,6 +665,17 @@
         state.lat = pos.coords.latitude;
         state.lng = pos.coords.longitude;
       }, () => {}, { timeout: 4000 });
+    }
+    window.addEventListener("online", () => { state.offline = false; paintNet(); flushQueue(); });
+    window.addEventListener("offline", () => { state.offline = true; paintNet(); });
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") flushQueue();
+    });
+    if (navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener("message", (ev) => {
+        const data = ev.data || {};
+        if (data.type === "sd-delivery-offline") loadRun({ skipFlush: true });
+      });
     }
     loadRun();
   </script>

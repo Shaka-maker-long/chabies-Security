@@ -1,7 +1,14 @@
-/* Studio Delta PWA — live office/floor data is never cached. */
-const CACHE = "sd-pwa-v18-login-msg";
+/* Studio Delta PWA — live office/floor data is never cached.
+   Driver run HTML/assets are cached so PODs can be filled with no signal. */
+importScripts("/delivery-offline.js");
+
+const CACHE = "sd-pwa-v19-delivery-offline";
 const PRECACHE = [
   "/offline.html",
+  "/delivery-run",
+  "/delivery-offline.js",
+  "/vendor/leaflet/leaflet.css",
+  "/vendor/leaflet/leaflet.js",
   "/manifest.webmanifest",
   "/sd-pwa.js?v=pwa-stg1",
   "/sd-brand.css?v=logged-in-2",
@@ -76,4 +83,28 @@ self.addEventListener("fetch", (event) => {
       return hit || fresh;
     })
   );
+});
+
+function notifyDeliveryClients(payload) {
+  return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+    list.forEach((client) => {
+      try { client.postMessage(Object.assign({ type: "sd-delivery-offline" }, payload || {})); } catch (e) {}
+    });
+  });
+}
+
+self.addEventListener("sync", (event) => {
+  if (event.tag !== "sd-delivery-pod") return;
+  event.waitUntil(
+    self.sdDeliveryOffline.flushQueue().then((result) => notifyDeliveryClients({ flushed: result }))
+  );
+});
+
+self.addEventListener("message", (event) => {
+  const data = event.data || {};
+  if (data.type === "sd-delivery-flush") {
+    event.waitUntil(
+      self.sdDeliveryOffline.flushQueue().then((result) => notifyDeliveryClients({ flushed: result }))
+    );
+  }
 });

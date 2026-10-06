@@ -428,6 +428,10 @@ app.get("/sd-pwa.js", (_req, res) => {
   noStore(res);
   res.type("application/javascript").sendFile(path.join(publicDir, "sd-pwa.js"));
 });
+app.get("/delivery-offline.js", (_req, res) => {
+  noStore(res);
+  res.type("application/javascript").sendFile(path.join(publicDir, "delivery-offline.js"));
+});
 app.get("/ar-measure.js", (_req, res) => {
   res.type("application/javascript").sendFile(path.join(publicDir, "ar-measure.js"));
 });

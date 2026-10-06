@@ -752,11 +752,40 @@ function writePhotoFiles(id, photos, signatureBuf) {
   }
 }
 
+function formsForOrder(orderNumber) {
+  const id = db.formatOrderId(orderNumber);
+  const base = orderBase(orderNumber);
+  return loadStore().records.filter((row) => {
+    if (row && row.base && String(row.base).toUpperCase() === String(base || "").toUpperCase()) return true;
+    return (row.order_numbers || []).some((n) => db.formatOrderId(n) === id || orderBase(n) === base);
+  });
+}
+
+function alreadySubmittedResult(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    url: row.pdf_url || pdfUrlFor(row.id),
+    order_numbers: row.order_numbers,
+    receiver_name: row.receiver_name,
+    already: true
+  };
+}
+
 async function submitPod(body, actorName) {
   const orderNumber = db.formatOrderId(body && body.order_number);
   if (!orderNumber) throw new Error("Order is required.");
-  const units = relatedUnits(orderNumber, "out for delivery");
-  if (!units.length) throw new Error("That order is not loaded on the truck.");
+  const clientSubmitId = String((body && (body.client_submit_id || body.offline_id)) || "").trim();
+  if (clientSubmitId) {
+    const dup = loadStore().records.find((row) => row && String(row.client_submit_id || "") === clientSubmitId);
+    if (dup) return alreadySubmittedResult(dup);
+  }
+  let units = relatedUnits(orderNumber, "out for delivery");
+  if (!units.length) {
+    const existing = formsForOrder(orderNumber)[0];
+    if (existing) return alreadySubmittedResult(existing);
+    throw new Error("That order is not loaded on the truck.");
+  }
   const clientName = String((body && body.client_name) || units[0].client_name || "").trim();
   const clientIsReceiver = body && (body.client_is_receiver === true || body.client_is_receiver === "yes");
   const receiverName = clientIsReceiver
@@ -796,6 +825,7 @@ async function submitPod(body, actorName) {
     rating_sales: Number(body && body.rating_sales) || 0,
     rating_craft: Number(body && body.rating_craft) || 0,
     comments: String((body && body.comments) || "").trim(),
+    client_submit_id: clientSubmitId,
     pdf_url: pdfUrlFor(id),
     created_at: new Date().toISOString(),
     layout: LAYOUT
@@ -884,6 +914,7 @@ module.exports = {
   wazeUrl,
   parseOsrmRoute,
   fetchOsrmDrive,
+  formsForOrder,
   submitPod,
   listForms,
   readPdf,
