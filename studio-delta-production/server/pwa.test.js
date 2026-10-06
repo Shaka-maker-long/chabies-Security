@@ -44,6 +44,8 @@ assert.ok(offline.indexOf("Studio Delta") !== -1);
 assert.ok(fs.existsSync(path.join(publicDir, "facility-floor.png")), "Home twin needs facility-floor.png");
 assert.ok(sw.indexOf("facility-floor.png") !== -1, "PWA precaches the facility floor image");
 assert.ok(sw.indexOf("/delivery-run") !== -1, "PWA precaches the driver run for no-signal drops");
+assert.ok(sw.indexOf('\n  "/",\n') !== -1 || sw.indexOf('"/",') !== -1, "PWA precaches Home so login is available offline");
+assert.ok(sw.indexOf("sd-pwa-v20-delivery-login") !== -1, "new cache so phones pick up offline login");
 assert.ok(sw.indexOf("sd-delivery-pod") !== -1, "background sync flushes saved PODs");
 assert.ok(sw.indexOf("/vendor/leaflet/leaflet.js") !== -1);
 assert.ok(fs.existsSync(path.join(publicDir, "vendor/leaflet/leaflet.js")));

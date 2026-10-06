@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Driver run</title>
   <script src="/sd-pwa.js?v=pwa-stg1"></script>
-  <script src="/delivery-offline.js?v=del-off1"></script>
+  <script src="/delivery-offline.js?v=del-off2"></script>
   <link rel="stylesheet" href="/vendor/bootstrap-icons/bootstrap-icons.css">
   <link rel="stylesheet" href="/sd-brand.css?v=logged-in-2">
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
@@ -520,11 +520,12 @@
         const queue = off ? await off.listQueue().catch(() => []) : [];
         const r = await fetch("/api/delivery/run", { credentials: "same-origin" });
         if (r.status === 401) {
-          if (queue.length) {
+          const snap = off ? await off.loadRun().catch(() => null) : null;
+          const saved = off && off.loadDeliverySession ? off.loadDeliverySession() : null;
+          if (queue.length || snap || saved) {
             state.authNeeded = true;
-            state.offline = false;
-            const snap = off ? await off.loadRun().catch(() => null) : null;
-            state.driver = (snap && snap.driver) || state.driver;
+            state.offline = typeof navigator !== "undefined" && navigator.onLine === false;
+            state.driver = (snap && snap.driver) || (saved && saved.profile && saved.profile.name) || state.driver;
             applyOrders((snap && snap.orders) || [], (snap && snap.route) || null, queue);
             return;
           }

@@ -335,7 +335,11 @@ function sdShowLogin(message) {
         });
         j = await r.json();
       } catch (err) {
-        showErr("Connection error. Try again.");
+        const net = String((err && err.message) || err || "").toLowerCase();
+        const offline = /failed to fetch|networkerror|load failed|offline|internet/.test(net);
+        showErr(offline
+          ? "No signal. Open Home and log in once with data. Drivers who have already logged in on this phone can unlock the run from there."
+          : "Could not reach Studio Delta. Try again.");
         return;
       }
       if (!j || !j.ok) {

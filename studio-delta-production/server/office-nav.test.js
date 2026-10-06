@@ -1298,6 +1298,14 @@ assert.ok(floor.indexOf('id="view-global-login"') !== -1 && /id="view-global-log
 assert.ok(floor.indexOf("event.preventDefault(); goHome();") !== -1, "Home in the floor menu must not reload the tab");
 assert.ok(floor.indexOf("navTo('view-roles')") !== -1);
 assert.ok(floor.indexOf("sessionStorage.getItem('sd-session')") !== -1 || floor.indexOf('sessionStorage.getItem("sd-session")') !== -1);
+assert.ok(floor.indexOf("sd-delivery-session") !== -1 || floor.indexOf("unlockDeliverySession") !== -1, "drivers can unlock the run with no signal");
+assert.ok(floor.indexOf("tryUnlockOfflineLogin") !== -1, "offline login must retry from the phone instead of Connection error");
+assert.ok(floor.indexOf("rememberDeliveryLogin") !== -1);
+assert.ok(floor.indexOf("adoptOfflineDeliverySession") !== -1);
+assert.ok(floor.indexOf("connectionLoginError") !== -1);
+assert.ok(floor.indexOf('"Connection error: " + err') === -1, "do not show Connection error: Failed to fetch on login");
+assert.ok(floor.indexOf("/delivery-offline.js") !== -1, "Home loads delivery offline unlock helpers");
+assert.ok(floor.indexOf("Drivers who have logged in on this phone") !== -1);
 assert.ok(floor.indexOf("sessionStorage.getItem('sd-office')") !== -1 || floor.indexOf('sessionStorage.getItem("sd-office")') !== -1);
 assert.ok(floor.indexOf("showFloorLogin()") !== -1);
 assert.ok(floor.indexOf("requestedView") !== -1);

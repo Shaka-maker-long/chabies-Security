@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta</title>
   <script src="/sd-pwa.js?v=pwa-stg1"></script>
+  <script src="/delivery-offline.js?v=del-off2"></script>
   <script src="/ar-measure.js?v=ar-measure-2"></script>
   
   <link href="/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
@@ -1681,6 +1682,7 @@
               </div>
               <div id="loginError" class="alert d-none py-2 px-3 mb-3" role="alert" style="font-size:0.95rem;font-weight:600"></div>
               <button id="btnGlobalLogin" class="btn btn-primary w-100 py-2 fw-bold" onclick="submitGlobalLogin()">LOG IN</button>
+              <p class="text-muted small mt-3 mb-0 text-center">Drivers who have logged in on this phone can open the run without signal. Floor clocks still need a connection.</p>
             </div>
           </div>
         </div>
@@ -3248,9 +3250,61 @@
       } catch (e) {}
       try { localStorage.removeItem('sd-session'); } catch (e) {}
     }
+    function deliveryOffline() {
+      try { return window.sdDeliveryOffline || null; } catch (e) { return null; }
+    }
+    function looksOffline() {
+      try { return typeof navigator !== 'undefined' && navigator.onLine === false; } catch (e) { return false; }
+    }
+    function rememberDeliveryLogin(res, name, pass) {
+      const off = deliveryOffline();
+      if (!off || typeof off.saveDeliverySession !== 'function') return;
+      const profile = Object.assign({}, res || {}, {
+        name: (res && res.name) || name,
+        token: (res && res.token) || session.token || '',
+        jobTitle: (res && (res.jobTitle || res.role)) || session.jobTitle || '',
+        tasks: (res && res.tasks) || session.tasks || []
+      });
+      try { off.saveDeliverySession(profile, pass); } catch (e) {}
+    }
+    function adoptOfflineDeliverySession() {
+      const off = deliveryOffline();
+      if (!off || typeof off.loadDeliverySession !== 'function') return false;
+      const saved = off.loadDeliverySession();
+      if (!saved || !saved.profile || !saved.profile.name) return false;
+      applyLoginProfile(saved.profile);
+      return true;
+    }
+    function tryUnlockOfflineLogin(name, pass, err) {
+      const off = deliveryOffline();
+      if (!off || typeof off.isNetworkError !== 'function' || !off.isNetworkError(err)) {
+        return Promise.resolve(false);
+      }
+      if (typeof off.unlockDeliverySession !== 'function') return Promise.resolve(false);
+      return off.unlockDeliverySession(name, pass).then(function (profile) {
+        if (!profile) return false;
+        applyLoginProfile(profile);
+        return true;
+      }).catch(function () { return false; });
+    }
+    function connectionLoginError(err) {
+      const off = deliveryOffline();
+      const saved = off && typeof off.loadDeliverySession === 'function' ? off.loadDeliverySession() : null;
+      if (off && typeof off.offlineLoginMessage === 'function') {
+        return off.offlineLoginMessage({ hasSaved: !!(saved && saved.profile) });
+      }
+      if (off && typeof off.isNetworkError === 'function' && off.isNetworkError(err)) {
+        return "No signal. Log in once with data on this phone, then a driver can open the run without a connection.";
+      }
+      return "Could not reach Studio Delta. Check the connection and try again.";
+    }
     function clearPersistedSession() {
       try { sessionStorage.removeItem('sd-session'); } catch (e) {}
       try { localStorage.removeItem('sd-session'); } catch (e) {}
+      try {
+        const off = deliveryOffline();
+        if (off && typeof off.clearDeliverySession === 'function') off.clearDeliverySession();
+      } catch (e) {}
     }
     function restoreSession() {
       try {
@@ -4667,6 +4721,14 @@
       applyAdminLinks();
       updateFloorLink();
       navTo('view-global-login');
+      try {
+        const off = deliveryOffline();
+        const saved = off && typeof off.loadDeliverySession === 'function' ? off.loadDeliverySession() : null;
+        const nameEl = document.getElementById('globalLoginName');
+        if (nameEl && !nameEl.value && saved && saved.profile && saved.profile.name) {
+          nameEl.value = saved.profile.name;
+        }
+      } catch (e) {}
     }
     function officeLooksLoggedIn(office) {
       return !!(office && office.name && office.token && (office.canSeeOffice || office.isAdmin));
@@ -4720,6 +4782,7 @@
       prefetchSupportData();
       try { document.getElementById('loader').classList.add('d-none'); } catch (e) {}
       if (adoptSavedSession()) return;
+      if (looksOffline() && adoptOfflineDeliverySession()) return;
       resumeOfficeSession((ok) => { if (!ok) showFloorLogin(); });
     }
 
@@ -4764,6 +4827,7 @@
           if (res && res.success) {
             if (res.token) session.token = res.token;
             applyLoginProfile(res, { welcome: true });
+            try { rememberDeliveryLogin(res, name, pass); } catch (e) {}
             try { syncOfficeLogin(name, pass, res); } catch (e) {}
             return;
           }
@@ -4773,8 +4837,13 @@
           showLoginError((e && e.message) ? e.message : String(e), "danger");
         }
       }).withFailureHandler(err => {
-        finishBtn();
-        showLoginError("Connection error: " + err, "danger");
+        tryUnlockOfflineLogin(name, pass, err).then(function (ok) {
+          finishBtn();
+          if (!ok) showLoginError(connectionLoginError(err), "danger");
+        }).catch(function () {
+          finishBtn();
+          showLoginError(connectionLoginError(err), "danger");
+        });
       }).verifyGlobalLogin(name, pass);
     }
 

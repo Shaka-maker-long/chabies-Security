@@ -211,6 +211,137 @@
     }).catch(function () { return false; });
   }
 
+  var SESSION_KEY = "sd-delivery-session";
+  var memoryStore = {};
+
+  function storage() {
+    try {
+      if (root.localStorage) return root.localStorage;
+    } catch (e) {}
+    return {
+      getItem: function (k) { return Object.prototype.hasOwnProperty.call(memoryStore, k) ? memoryStore[k] : null; },
+      setItem: function (k, v) { memoryStore[k] = String(v); },
+      removeItem: function (k) { delete memoryStore[k]; }
+    };
+  }
+
+  function normalizeLoginName(name) {
+    return String(name || "").trim().toLowerCase();
+  }
+
+  function pinMaterial(name, pin) {
+    return "sd-delivery-v1|" + normalizeLoginName(name) + "|" + String(pin || "");
+  }
+
+  function fnv1aHex(str) {
+    var h = 2166136261;
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return ("00000000" + h.toString(16)).slice(-8);
+  }
+
+  function hashPin(name, pin) {
+    var material = pinMaterial(name, pin);
+    function fnv() { return Promise.resolve("fnv:" + fnv1aHex(material)); }
+    if (!(root.crypto && root.crypto.subtle && typeof root.TextEncoder === "function")) return fnv();
+    try {
+      return root.crypto.subtle.digest("SHA-256", new TextEncoder().encode(material)).then(function (buf) {
+        var bytes = new Uint8Array(buf);
+        var hex = "";
+        for (var i = 0; i < bytes.length; i++) hex += ("0" + bytes[i].toString(16)).slice(-2);
+        return "sha256:" + hex;
+      }).catch(fnv);
+    } catch (e) {
+      return fnv();
+    }
+  }
+
+  function hashesEqual(a, b) {
+    a = String(a || "");
+    b = String(b || "");
+    if (a.length !== b.length) return false;
+    var diff = 0;
+    for (var i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+    return diff === 0;
+  }
+
+  function isDriverProfile(profile) {
+    if (!profile) return false;
+    if (profile.canSeeOffice) return false;
+    var title = String(profile.jobTitle || profile.role || "").trim().toLowerCase();
+    if (title === "driver") return true;
+    return (profile.tasks || []).some(function (t) {
+      return String(t).trim().toLowerCase() === "delivery";
+    });
+  }
+
+  function profileSnapshot(profile) {
+    return {
+      success: true,
+      token: profile.token || "",
+      name: profile.name,
+      jobTitle: profile.jobTitle || profile.role || "Driver",
+      isAdmin: false,
+      canSeeOffice: false,
+      canSeeDebtors: !!profile.canSeeDebtors,
+      canSeeIdleAlerts: !!profile.canSeeIdleAlerts,
+      canManageUsers: !!profile.canManageUsers,
+      access: profile.access || "Production",
+      isQcOnly: !!profile.isQcOnly,
+      tasks: Array.isArray(profile.tasks) && profile.tasks.length ? profile.tasks.slice() : ["Delivery"],
+      role: profile.role || null
+    };
+  }
+
+  function loadDeliverySession() {
+    try {
+      var raw = JSON.parse(storage().getItem(SESSION_KEY) || "null");
+      if (!raw || !raw.pinHash || !raw.profile || !raw.profile.name) return null;
+      return raw;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearDeliverySession() {
+    try { storage().removeItem(SESSION_KEY); } catch (e) {}
+  }
+
+  function saveDeliverySession(profile, pin) {
+    if (!isDriverProfile(profile) || !String(pin || "").length) return Promise.resolve(false);
+    return hashPin(profile.name, pin).then(function (pinHash) {
+      var payload = {
+        v: 1,
+        pinHash: pinHash,
+        nameKey: normalizeLoginName(profile.name),
+        savedAt: Date.now(),
+        profile: profileSnapshot(profile)
+      };
+      storage().setItem(SESSION_KEY, JSON.stringify(payload));
+      return true;
+    }).catch(function () { return false; });
+  }
+
+  function unlockDeliverySession(name, pin) {
+    var saved = loadDeliverySession();
+    if (!saved || !saved.pinHash) return Promise.resolve(null);
+    return hashPin(name, pin).then(function (hash) {
+      if (!hashesEqual(hash, saved.pinHash)) return null;
+      if (saved.nameKey && saved.nameKey !== normalizeLoginName(name)) return null;
+      return saved.profile || null;
+    }).catch(function () { return null; });
+  }
+
+  function offlineLoginMessage(opts) {
+    opts = opts || {};
+    if (opts.hasSaved) {
+      return "No signal. Use the same name and access code as the last driver login on this phone.";
+    }
+    return "No signal. Log in once with data on this phone. After that a driver can open the run without a connection. Floor clocks still need signal.";
+  }
+
   var api = {
     queuedOrderKeys: queuedOrderKeys,
     splitRunOrders: splitRunOrders,
@@ -222,7 +353,14 @@
     removeItem: removeItem,
     markItem: markItem,
     flushQueue: flushQueue,
-    requestBackgroundSync: requestBackgroundSync
+    requestBackgroundSync: requestBackgroundSync,
+    isDriverProfile: isDriverProfile,
+    hashPin: hashPin,
+    loadDeliverySession: loadDeliverySession,
+    saveDeliverySession: saveDeliverySession,
+    clearDeliverySession: clearDeliverySession,
+    unlockDeliverySession: unlockDeliverySession,
+    offlineLoginMessage: offlineLoginMessage
   };
 
   root.sdDeliveryOffline = api;
