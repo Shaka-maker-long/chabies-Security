@@ -25,6 +25,39 @@ const FACTORY = {
   lng: Number(process.env.STUDIO_DELTA_LNG) || 28.0567,
   label: "Studio Delta"
 };
+const THIRD_PARTY_DEPOT = {
+  address: "26 Milkyway Ave",
+  city: "Frankenwald",
+  province: "Gauteng",
+  full_address: "26 Milkyway Ave, Frankenwald, Sandton",
+  label: "3rd party depot",
+  lat: -26.0674,
+  lng: 28.1112
+};
+
+function isGautengProvince(province) {
+  const p = String(province || "").trim().toLowerCase();
+  if (!p) return false;
+  return p === "gauteng" || p === "gp" || p === "gauteng province";
+}
+
+function dropForOrder(order) {
+  const clientAddress = fullAddress(order);
+  if (isGautengProvince(order && order.province)) {
+    return {
+      drop_kind: "client",
+      drop_label: "Client",
+      drop_address: clientAddress,
+      client_address: clientAddress
+    };
+  }
+  return {
+    drop_kind: "third_party",
+    drop_label: THIRD_PARTY_DEPOT.label,
+    drop_address: THIRD_PARTY_DEPOT.full_address,
+    client_address: clientAddress
+  };
+}
 
 function storePath() {
   return path.join(dataDir(), "delivery-forms.json");
@@ -140,6 +173,7 @@ function fullAddress(order) {
 function decorateOrder(order) {
   if (!order) return null;
   const product = catalog.lookupProduct(order.product) || {};
+  const drop = dropForOrder(order);
   return {
     order_number: db.formatOrderId(order.order_number),
     base: orderBase(order.order_number),
@@ -151,6 +185,10 @@ function decorateOrder(order) {
     city: String(order.city || ""),
     province: String(order.province || ""),
     full_address: fullAddress(order),
+    client_address: drop.client_address,
+    drop_kind: drop.drop_kind,
+    drop_label: drop.drop_label,
+    drop_address: drop.drop_address,
     imageUrl: product.imageUrl || "",
     assigned_operator: String(order.assigned_operator || "")
   };
@@ -224,6 +262,9 @@ function haversineKm(a, b) {
 function defaultGeocode(query) {
   const q = String(query || "").toLowerCase();
   if (!q) return null;
+  if (/milkyway|milky way|frankenwald/.test(q)) {
+    return { lat: THIRD_PARTY_DEPOT.lat, lng: THIRD_PARTY_DEPOT.lng };
+  }
   if (/sandton|johannesburg|gauteng|loop street/.test(q)) return { lat: -26.1076, lng: 28.0567 };
   if (/cape town|stellenbosch|western cape|beach road/.test(q)) return { lat: -33.9249, lng: 18.4241 };
   if (/durban|kwazulu/.test(q)) return { lat: -29.8587, lng: 31.0218 };
@@ -265,12 +306,26 @@ function travelMinutes(km) {
   return Math.max(4, Math.round((km / AVG_KMH) * 60));
 }
 
+function routeStopKey(row) {
+  if (row && row.drop_kind === "third_party") return "third_party";
+  return String((row && (row.drop_address || row.full_address || row.base)) || "").trim().toLowerCase();
+}
+
 async function buildRoute(opts) {
   const loaded = listLoaded();
   const groups = {};
   loaded.forEach((row) => {
-    const key = row.base || row.order_number;
-    if (!groups[key]) groups[key] = { base: key, orders: [], address: row.full_address, client_name: row.client_name };
+    const key = routeStopKey(row) || (row.base || row.order_number);
+    if (!groups[key]) {
+      groups[key] = {
+        base: key,
+        drop_kind: row.drop_kind,
+        drop_label: row.drop_label,
+        address: row.drop_address || row.full_address,
+        client_name: row.client_name,
+        orders: []
+      };
+    }
     groups[key].orders.push(row);
   });
   const stops = Object.keys(groups).map((k) => groups[k]);
@@ -430,8 +485,15 @@ async function renderPdf(record, dest) {
     kv(doc, "CLIENT", record.client_name, MARGIN, y, inner / 2 - 8);
     kv(doc, "RECEIVED BY", record.receiver_name, MARGIN + inner / 2, y, inner / 2);
     y += 40;
-    kv(doc, "ADDRESS", record.address, MARGIN, y, inner);
-    y += 40;
+    if (record.drop_kind === "third_party") {
+      kv(doc, "DROPPED AT  3rd party depot", record.address, MARGIN, y, inner);
+      y += 40;
+      kv(doc, "CLIENT ADDRESS", record.client_address || "", MARGIN, y, inner);
+      y += 40;
+    } else {
+      kv(doc, "ADDRESS", record.address, MARGIN, y, inner);
+      y += 40;
+    }
     kv(doc, "DATE / TIME", formatWhen(record.delivered_at), MARGIN, y, inner / 2 - 8);
     kv(doc, "DRIVER", record.driver, MARGIN + inner / 2, y, inner / 2);
     y += 40;
@@ -529,7 +591,10 @@ async function submitPod(body, actorName) {
     client_name: clientName,
     receiver_name: receiverName,
     client_is_receiver: !!clientIsReceiver,
-    address: units[0].full_address,
+    drop_kind: units[0].drop_kind,
+    drop_label: units[0].drop_label,
+    address: units[0].drop_address || units[0].full_address,
+    client_address: units[0].client_address || units[0].full_address,
     driver,
     lat: Number.isFinite(lat) ? lat : null,
     lng: Number.isFinite(lng) ? lng : null,
@@ -571,6 +636,9 @@ function listForms() {
     client_name: row.client_name,
     receiver_name: row.receiver_name,
     address: row.address,
+    client_address: row.client_address || "",
+    drop_kind: row.drop_kind || "client",
+    drop_label: row.drop_label || "",
     driver: row.driver,
     delivered_at: row.delivered_at,
     delivered_label: formatWhen(row.delivered_at),
@@ -602,6 +670,8 @@ function bundleForOrder(orderNumber) {
 
 module.exports = {
   FACTORY,
+  THIRD_PARTY_DEPOT,
+  isGautengProvince,
   isDriverProfile,
   canLoadTruck,
   canSubmitPod,

@@ -2187,7 +2187,7 @@
     <div class="modal-dialog modal-dialog-centered">
       <div class="modal-content p-4">
         <h3 class="mb-2">Load on truck</h3>
-        <p class="text-muted" id="loadTruckCopy">This unit is Ready for Delivery. Load it on the truck now? Split pieces on the same order go together. Status becomes Out for Delivery for the driver.</p>
+        <p class="text-muted" id="loadTruckCopy">This unit is Ready for Delivery. Load it on the truck now? Split pieces on the same order go together. Status becomes Out for Delivery. Gauteng goes to the client; other provinces go to the 3rd party at 26 Milkyway Ave, Frankenwald, Sandton.</p>
         <p class="small text-danger mb-3" id="loadTruckErr"></p>
         <div class="d-flex gap-2">
           <button type="button" class="btn btn-outline-dark flex-grow-1" data-bs-dismiss="modal">Not now</button>
@@ -5637,8 +5637,8 @@
       if (err) err.textContent = '';
       if (copy) {
         copy.textContent = pendingLoadOrders.length
-          ? ('Load ' + pendingLoadOrders.join(', ') + ' on the truck now? Split pieces on the same order go together. Status becomes Out for Delivery for the driver.')
-          : 'Load this unit on the truck now? Status becomes Out for Delivery for the driver.';
+          ? ('Load ' + pendingLoadOrders.join(', ') + ' on the truck now? Split pieces on the same order go together. Status becomes Out for Delivery. Gauteng goes to the client; other provinces go to the 3rd party at 26 Milkyway Ave, Frankenwald, Sandton.')
+          : 'Load this unit on the truck now? Status becomes Out for Delivery. Gauteng goes to the client; other provinces go to the 3rd party at 26 Milkyway Ave, Frankenwald, Sandton.';
       }
       if (loadTruckModal) loadTruckModal.show();
     }

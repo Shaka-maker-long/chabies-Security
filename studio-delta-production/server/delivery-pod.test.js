@@ -89,6 +89,17 @@ db.upsertOrder({
   assigned_operator: "Willard"
 });
 
+db.upsertOrder({
+  order_number: "S260404",
+  status: "Ready for Delivery",
+  product: "Air Chair",
+  client_name: "Thandi",
+  address: "9 Rivonia Road",
+  city: "Sandton",
+  province: "Gauteng",
+  assigned_operator: ""
+});
+
 assert.ok(ALLOWED.has("loadOrdersOnTruck"));
 assert.ok(ALLOWED.has("submitDeliveryPod"));
 
@@ -110,6 +121,32 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   delivery.loadOnTruck(["S260402"], "Lebo");
   const hermanus = db.listOrders().find((o) => o.order_number === "S260402");
   assert.strictEqual(String(hermanus.status), "Out for Delivery");
+  delivery.loadOnTruck(["S260404"], "Lebo");
+
+  const capeDrop = delivery.decorateOrder(db.listOrders().find((o) => db.formatOrderId(o.order_number) === "S260401 A"));
+  assert.strictEqual(capeDrop.drop_kind, "third_party");
+  assert.ok(capeDrop.drop_address.indexOf("Milkyway") !== -1, "non-Gauteng drops at Frankenwald");
+  assert.ok(capeDrop.client_address.indexOf("Cape Town") !== -1);
+  const gautengDrop = delivery.decorateOrder(db.listOrders().find((o) => o.order_number === "S260404"));
+  assert.strictEqual(gautengDrop.drop_kind, "client");
+  assert.ok(gautengDrop.drop_address.indexOf("Rivonia") !== -1);
+
+  const depotPin = delivery.defaultGeocode(delivery.THIRD_PARTY_DEPOT.full_address);
+  assert.ok(Math.abs(depotPin.lat - delivery.THIRD_PARTY_DEPOT.lat) < 0.01);
+
+  const route = await delivery.buildRoute({
+    now: new Date("2026-10-06T08:00:00+02:00"),
+    geocodeFn: async (q) => delivery.defaultGeocode(q)
+  });
+  assert.strictEqual(route.stops.length, 2, "Gauteng client stop plus one 3rd party depot: " + route.stops.length);
+  const depotStop = route.stops.find((s) => s.drop_kind === "third_party");
+  const clientStop = route.stops.find((s) => s.drop_kind === "client");
+  assert.ok(depotStop, "out-of-Gauteng units share the Frankenwald stop");
+  assert.ok(clientStop, "Gauteng still goes to the client");
+  assert.ok(depotStop.orders.length >= 3, "Cape Town splits and Hermanus share the depot");
+  assert.ok(depotStop.address.indexOf("Milkyway") !== -1);
+  assert.ok(route.stops.every((s) => s.eta_label), "each stop has an ETA");
+  assert.ok(route.stops[0].minutes >= 4);
 
   let blocked = null;
   try {
@@ -118,14 +155,6 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
     blocked = e;
   }
   assert.ok(blocked, "welding orders cannot load");
-
-  const route = await delivery.buildRoute({
-    now: new Date("2026-10-06T08:00:00+02:00"),
-    geocodeFn: async (q) => delivery.defaultGeocode(q)
-  });
-  assert.ok(route.stops.length >= 2, "route has loaded stops");
-  assert.ok(route.stops.every((s) => s.eta_label), "each stop has an ETA");
-  assert.ok(route.stops[0].minutes >= 4);
 
   clearShopCache();
   const listed = await callShopFunction("listDeliveryRun", []);
@@ -154,6 +183,8 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   const forms = delivery.listForms();
   assert.strictEqual(forms.length, 1);
   assert.strictEqual(forms[0].receiver_name, "Naledi Botha");
+  assert.ok(String(forms[0].address || "").indexOf("Milkyway") !== -1, "PDF stop is the 3rd party depot");
+  assert.ok(String(forms[0].client_address || "").indexOf("Cape Town") !== -1);
   const pdf = delivery.readPdf(pod.id);
   assert.ok(pdf && pdf.buffer && pdf.buffer.slice(0, 4).toString() === "%PDF");
   const latin = pdf.buffer.toString("latin1");
@@ -166,6 +197,7 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   const pdfText = latin + "\n" + decoded.join("");
   assert.ok(pdfText.indexOf("STUDIO DELTA") !== -1 || /STUDIO/.test(pdfText), "delivery PDF letterhead");
   assert.ok(/DELIVERY/.test(pdfText), "delivery PDF title");
+  assert.ok(/Milkyway|Frankenwald|3rd party/i.test(pdfText), "non-Gauteng PDF names the Frankenwald depot");
 
   let missingPhoto = null;
   try {

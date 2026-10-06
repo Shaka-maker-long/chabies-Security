@@ -29,6 +29,8 @@
     .unit h2 { margin:0 0 4px; font-size:16px; }
     .unit p { margin:0; font-size:13px; color:var(--muted); line-height:1.4; }
     .unit .meta { margin-top:6px; font-size:12px; color:var(--ink); }
+    .unit .client-addr { margin-top:4px; font-size:12px; color:var(--muted); }
+    .tag { display:inline-block; margin-top:6px; font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--brass); }
     .unit button { margin-top:8px; border:1px solid #1c1917; background:#1c1917; color:#fff; border-radius:6px; padding:8px 12px; font-weight:700; cursor:pointer; width:100%; }
     .empty, .load, .err { padding:40px 16px; text-align:center; color:var(--muted); font-weight:600; }
     .err { color:var(--bad); }
@@ -75,7 +77,7 @@
   <header>
     <div>
       <h1>Driver run</h1>
-      <p>Units on the truck · suggested route · proof of delivery</p>
+      <p>Units on the truck · Gauteng to the client · other provinces to Frankenwald</p>
     </div>
     <div class="who">
       <div id="whoName">—</div>
@@ -194,7 +196,10 @@
             base: key,
             orders: [],
             client_name: row.client_name,
-            address: row.full_address || row.address,
+            address: row.drop_address || row.full_address || row.address,
+            client_address: row.client_address || row.full_address || "",
+            drop_kind: row.drop_kind || "client",
+            drop_label: row.drop_label || "",
             imageUrl: row.imageUrl || ""
           };
         }
@@ -214,10 +219,16 @@
         const shot = g.imageUrl
           ? '<img src="' + esc(g.imageUrl) + '" alt="">'
           : '<div class="no-shot">No photo</div>';
+        const third = g.drop_kind === "third_party";
+        const tag = third ? '<div class="tag">3rd party · Frankenwald</div>' : "";
+        const clientLine = third && g.client_address
+          ? '<p class="client-addr">Client address: ' + esc(g.client_address) + "</p>"
+          : "";
         return '<article class="card unit">' + shot +
           '<div class="body"><h2>' + esc(nums) + '</h2>' +
           '<p>' + esc(g.client_name) + '</p>' +
           '<p class="meta">' + esc(g.address || "No address on the order") + '</p>' +
+          clientLine + tag +
           '<button type="button" data-stop="' + esc(g.base) + '">Arrive · proof of delivery</button></div></article>';
       }).join("");
       box.querySelectorAll("[data-stop]").forEach((btn) => {
@@ -234,7 +245,8 @@
       }
       box.innerHTML = route.stops.map((s, i) => {
         const nums = (s.orders || []).map((o) => o.order_number).join(", ");
-        return "<div><b>" + (i + 1) + ".</b> " + esc(nums) + " · " + esc(s.address || "") +
+        const kind = s.drop_kind === "third_party" ? " · 3rd party" : "";
+        return "<div><b>" + (i + 1) + ".</b> " + esc(nums) + " · " + esc(s.address || "") + kind +
           " · ETA " + esc(s.eta_label || "") + " · " + esc(String(s.km || 0)) + " km</div>";
       }).join("");
       if (!window.L) return;
@@ -351,7 +363,10 @@
       state.signed = false;
       document.getElementById("podTitle").textContent = "Proof of delivery";
       document.getElementById("podOrders").textContent = group.orders.map((o) => o.order_number).join(", ");
-      document.getElementById("podAddress").textContent = group.address || "";
+      const third = group.drop_kind === "third_party";
+      document.getElementById("podAddress").textContent = third
+        ? ("3rd party depot: " + (group.address || "") + (group.client_address ? ". Client: " + group.client_address : ""))
+        : (group.address || "");
       document.getElementById("clientName").value = group.client_name || "";
       document.getElementById("receiverName").value = "";
       document.getElementById("comments").value = "";
@@ -360,7 +375,7 @@
       document.getElementById("podErr").textContent = "";
       const canvas = document.getElementById("sigCanvas");
       canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
-      setReceiver(true);
+      setReceiver(!third);
       initStars();
       captureGps();
       document.getElementById("podMask").classList.add("open");
