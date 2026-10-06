@@ -155,9 +155,17 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   assert.strictEqual(forms.length, 1);
   assert.strictEqual(forms[0].receiver_name, "Naledi Botha");
   const pdf = delivery.readPdf(pod.id);
-  assert.ok(pdf && pdf.buffer && pdf.buffer.length > 400);
-  const pdfText = pdf.buffer.toString("latin1");
-  assert.ok(/DELIVERY/.test(pdfText) || /STUDIO/.test(pdfText), "PDF letterhead");
+  assert.ok(pdf && pdf.buffer && pdf.buffer.slice(0, 4).toString() === "%PDF");
+  const latin = pdf.buffer.toString("latin1");
+  assert.ok(/DCTDecode/.test(latin), "JPEG photo must be embedded");
+  const decoded = [];
+  latin.replace(/<([0-9A-Fa-f]+)>/g, (_, hex) => {
+    try { decoded.push(Buffer.from(hex, "hex").toString("latin1")); } catch (e) {}
+    return "";
+  });
+  const pdfText = latin + "\n" + decoded.join("");
+  assert.ok(pdfText.indexOf("STUDIO DELTA") !== -1 || /STUDIO/.test(pdfText), "delivery PDF letterhead");
+  assert.ok(/DELIVERY/.test(pdfText), "delivery PDF title");
 
   let missingPhoto = null;
   try {

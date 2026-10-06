@@ -887,7 +887,7 @@ assert.ok(floor.indexOf("Start at that time") !== -1);
 assert.ok(floor.indexOf("If a name is missing from the list, add that person on Users") !== -1);
 const codeGs = fs.readFileSync(path.join(__dirname, "../Code.gs"), "utf8");
 assert.ok(codeGs.indexOf("assignOutForDeliveryToSiya_") !== -1, "legacy Siya delivery helper stays but is a no-op");
-assert.ok(codeGs.indexOf("Load on truck owns Out for Delivery") !== -1);
+assert.ok(codeGs.indexOf("Out for Delivery is set by Load on truck") !== -1);
 assert.ok(floor.indexOf("LOAD ON TRUCK") !== -1, "Ready for Delivery loads the truck");
 assert.ok(floor.indexOf("offerLoadOnTruck") !== -1);
 assert.ok(floor.indexOf("openDeliveryRun") !== -1);
