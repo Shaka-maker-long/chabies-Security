@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Driver run</title>
+  <script src="/sd-pwa.js?v=pwa-stg1"></script>
+  <link rel="stylesheet" href="/vendor/bootstrap-icons/bootstrap-icons.css">
+  <link rel="stylesheet" href="/sd-brand.css?v=logged-in-2">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <style>
+    :root { --ink:#1c1917; --muted:#6b645b; --line:#d7d1c6; --brass:#b08948; --paper:#fcfbf8; --ok:#3f6b4a; --bad:#9f2d2d; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:var(--paper); }
+    header { background:#1c1917; color:#f3efe6; padding:14px 16px 12px; display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap; }
+    header h1 { margin:0; font-size:18px; font-weight:700; letter-spacing:.04em; }
+    header p { margin:4px 0 0; color:#c4a574; font-size:12px; }
+    .who { margin-left:auto; font-size:12px; color:#c4a574; text-align:right; }
+    .tabs { display:flex; gap:8px; padding:12px 16px 0; }
+    .tabs button { flex:1; border:1px solid var(--line); background:#fff; color:var(--ink); border-radius:8px; padding:10px 12px; font-weight:700; cursor:pointer; }
+    .tabs button.on { background:#1c1917; color:#f3efe6; border-color:#1c1917; }
+    .page { padding:12px 16px 28px; display:flex; flex-direction:column; gap:12px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    .unit { display:grid; grid-template-columns: 96px 1fr; gap:0; }
+    .unit img, .unit .no-shot { width:96px; height:96px; object-fit:cover; background:#ece7dc; display:block; }
+    .no-shot { display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:11px; }
+    .unit .body { padding:10px 12px; }
+    .unit h2 { margin:0 0 4px; font-size:16px; }
+    .unit p { margin:0; font-size:13px; color:var(--muted); line-height:1.4; }
+    .unit .meta { margin-top:6px; font-size:12px; color:var(--ink); }
+    .unit button { margin-top:8px; border:1px solid #1c1917; background:#1c1917; color:#fff; border-radius:6px; padding:8px 12px; font-weight:700; cursor:pointer; width:100%; }
+    .empty, .load, .err { padding:40px 16px; text-align:center; color:var(--muted); font-weight:600; }
+    .err { color:var(--bad); }
+    #map { height:min(70vh, 560px); width:100%; background:#ece7dc; }
+    .eta { padding:10px 14px; border-top:1px solid var(--line); font-size:13px; }
+    .eta b { color:var(--brass); }
+    .mask { position:fixed; inset:0; background:rgba(16,24,40,.5); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:16px 12px; overflow:auto; }
+    .mask.open { display:flex; }
+    .sheet { width:min(560px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:12px auto 32px; }
+    .sheet header { background:#fff; color:var(--ink); border-radius:12px 12px 0 0; border-bottom:1px solid var(--line); }
+    .sheet header h1 { color:var(--ink); }
+    .sheet header p { color:var(--muted); }
+    .sheet .body { padding:16px; display:flex; flex-direction:column; gap:14px; }
+    label { display:flex; flex-direction:column; gap:6px; font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
+    input, textarea, select { border:1px solid var(--line); border-radius:6px; padding:10px; font:inherit; font-size:15px; width:100%; color:var(--ink); text-transform:none; letter-spacing:0; font-weight:500; }
+    textarea { min-height:80px; }
+    .row2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .choice { display:flex; gap:8px; }
+    .choice button { flex:1; border:1px solid var(--line); background:#fff; border-radius:8px; padding:12px; font-weight:700; cursor:pointer; }
+    .choice button.on { background:#1c1917; color:#fff; border-color:#1c1917; }
+    .stars { display:flex; gap:6px; }
+    .stars button { width:40px; height:40px; border:1px solid var(--line); background:#fff; border-radius:8px; font-size:18px; cursor:pointer; color:var(--muted); }
+    .stars button.on { background:#f8f1e3; border-color:var(--brass); color:var(--brass); }
+    canvas { width:100%; height:140px; border:1px solid var(--line); border-radius:8px; background:#fff; touch-action:none; }
+    .photos { display:flex; flex-wrap:wrap; gap:8px; }
+    .photos img { width:72px; height:72px; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
+    .actions { display:flex; gap:8px; }
+    .actions button { flex:1; border:1px solid #1c1917; background:#1c1917; color:#fff; border-radius:6px; padding:12px; font-weight:700; cursor:pointer; }
+    .actions button.ghost { background:#fff; color:#1c1917; }
+    .actions button:disabled { opacity:.55; }
+    .hint { font-size:13px; color:var(--muted); font-weight:500; text-transform:none; letter-spacing:0; }
+    .form-err { color:var(--bad); font-weight:700; min-height:18px; font-size:13px; text-transform:none; letter-spacing:0; }
+    .top-links { display:flex; gap:8px; width:100%; }
+    .top-links a, .top-links button { color:#c4a574; background:none; border:0; font-weight:700; font-size:12px; text-decoration:none; cursor:pointer; padding:0; }
+    @media (max-width: 640px) {
+      .unit { grid-template-columns: 1fr; }
+      .unit img, .unit .no-shot { width:100%; height:160px; }
+      .row2 { grid-template-columns:1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Driver run</h1>
+      <p>Units on the truck · suggested route · proof of delivery</p>
+    </div>
+    <div class="who">
+      <div id="whoName">—</div>
+      <div class="top-links">
+        <a href="/">Floor</a>
+        <button type="button" id="refreshBtn">Refresh</button>
+      </div>
+    </div>
+  </header>
+  <div class="tabs">
+    <button type="button" class="on" data-tab="units">Loaded units</button>
+    <button type="button" data-tab="map">Map &amp; ETA</button>
+  </div>
+  <div class="page" id="unitsPage">
+    <div class="load" id="boot">Loading today’s run…</div>
+  </div>
+  <div class="page" id="mapPage" hidden>
+    <div class="card">
+      <div id="map"></div>
+      <div class="eta" id="etaBox">Route loads from the addresses on the truck.</div>
+    </div>
+  </div>
+  <div class="mask" id="podMask">
+    <form class="sheet" id="podForm">
+      <header>
+        <div>
+          <h1 id="podTitle">Proof of delivery</h1>
+          <p id="podOrders">—</p>
+        </div>
+      </header>
+      <div class="body">
+        <p class="hint" id="podAddress"></p>
+        <label>Client
+          <input id="clientName" readonly>
+        </label>
+        <div>
+          <div class="hint" style="margin-bottom:6px">Is the person receiving this the client?</div>
+          <div class="choice">
+            <button type="button" class="on" id="recvYes">Yes</button>
+            <button type="button" id="recvNo">No</button>
+          </div>
+        </div>
+        <label id="recvWrap" hidden>Name of the person receiving
+          <input id="receiverName" autocomplete="name">
+        </label>
+        <label>Photos <span class="hint">(at least one)</span>
+          <input type="file" id="photoInput" accept="image/*" multiple>
+        </label>
+        <div class="photos" id="photoPreview"></div>
+        <div class="row2">
+          <label>Date / time
+            <input id="whenLabel" readonly>
+          </label>
+          <label>Location
+            <input id="gpsLabel" readonly>
+          </label>
+        </div>
+        <label>Receiver signature
+          <canvas id="sigCanvas" width="500" height="160"></canvas>
+        </label>
+        <button type="button" class="ghost" id="clearSig" style="align-self:flex-start;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">Clear signature</button>
+        <div>
+          <div class="hint" style="margin-bottom:6px">Ratings (optional)</div>
+          <label>Delivery team<div class="stars" data-rate="delivery"></div></label>
+          <label>Sales team<div class="stars" data-rate="sales"></div></label>
+          <label>Craftsmanship<div class="stars" data-rate="craft"></div></label>
+        </div>
+        <label>Comments
+          <textarea id="comments" placeholder="Anything the office should know"></textarea>
+        </label>
+        <p class="form-err" id="podErr"></p>
+        <div class="actions">
+          <button type="button" class="ghost" id="podCancel">Cancel</button>
+          <button type="submit" id="podSave">Save delivery form</button>
+        </div>
+      </div>
+    </form>
+  </div>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    const state = {
+      driver: "",
+      orders: [],
+      grouped: [],
+      route: null,
+      tab: "units",
+      photos: [],
+      ratings: { delivery: 0, sales: 0, craft: 0 },
+      clientIsReceiver: true,
+      stop: null,
+      lat: null,
+      lng: null,
+      deliveredAt: "",
+      signed: false
+    };
+    let map, mapLayer;
+    const params = new URLSearchParams(location.search);
+
+    function esc(s) {
+      return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+    }
+    function fileToDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+    }
+    function groupOrders(orders) {
+      const groups = {};
+      (orders || []).forEach((row) => {
+        const key = row.base || row.order_number;
+        if (!groups[key]) {
+          groups[key] = {
+            base: key,
+            orders: [],
+            client_name: row.client_name,
+            address: row.full_address || row.address,
+            imageUrl: row.imageUrl || ""
+          };
+        }
+        groups[key].orders.push(row);
+        if (row.imageUrl && !groups[key].imageUrl) groups[key].imageUrl = row.imageUrl;
+      });
+      return Object.keys(groups).map((k) => groups[k]);
+    }
+    function renderUnits() {
+      const box = document.getElementById("unitsPage");
+      if (!state.orders.length) {
+        box.innerHTML = '<div class="empty">Nothing is on the truck yet. QC loads Ready for Delivery units after Final QC.</div>';
+        return;
+      }
+      box.innerHTML = state.grouped.map((g) => {
+        const nums = g.orders.map((o) => o.order_number).join(", ");
+        const shot = g.imageUrl
+          ? '<img src="' + esc(g.imageUrl) + '" alt="">'
+          : '<div class="no-shot">No photo</div>';
+        return '<article class="card unit">' + shot +
+          '<div class="body"><h2>' + esc(nums) + '</h2>' +
+          '<p>' + esc(g.client_name) + '</p>' +
+          '<p class="meta">' + esc(g.address || "No address on the order") + '</p>' +
+          '<button type="button" data-stop="' + esc(g.base) + '">Arrive · proof of delivery</button></div></article>';
+      }).join("");
+      box.querySelectorAll("[data-stop]").forEach((btn) => {
+        btn.onclick = () => openPod(btn.getAttribute("data-stop"));
+      });
+    }
+    function renderMap() {
+      const box = document.getElementById("etaBox");
+      const route = state.route;
+      if (!route || !(route.stops || []).length) {
+        box.textContent = "No loaded addresses to route yet.";
+        if (map && mapLayer) { map.removeLayer(mapLayer); mapLayer = null; }
+        return;
+      }
+      box.innerHTML = route.stops.map((s, i) => {
+        const nums = (s.orders || []).map((o) => o.order_number).join(", ");
+        return "<div><b>" + (i + 1) + ".</b> " + esc(nums) + " · " + esc(s.address || "") +
+          " · ETA " + esc(s.eta_label || "") + " · " + esc(String(s.km || 0)) + " km</div>";
+      }).join("");
+      if (!window.L) return;
+      if (!map) {
+        map = L.map("map");
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 18,
+          attribution: "&copy; OpenStreetMap"
+        }).addTo(map);
+      }
+      if (mapLayer) map.removeLayer(mapLayer);
+      mapLayer = L.layerGroup();
+      const pts = [];
+      const origin = route.origin || {};
+      if (origin.lat != null) {
+        const o = L.marker([origin.lat, origin.lng]).bindPopup(origin.label || "Start");
+        mapLayer.addLayer(o);
+        pts.push([origin.lat, origin.lng]);
+      }
+      route.stops.forEach((s, i) => {
+        if (s.lat == null) return;
+        const m = L.marker([s.lat, s.lng]).bindPopup((i + 1) + ". " + (s.address || "") + "<br>ETA " + (s.eta_label || ""));
+        mapLayer.addLayer(m);
+        pts.push([s.lat, s.lng]);
+      });
+      if (pts.length > 1) mapLayer.addLayer(L.polyline(pts, { color: "#b08948", weight: 4 }));
+      mapLayer.addTo(map);
+      if (pts.length) map.fitBounds(pts, { padding: [28, 28] });
+      setTimeout(() => { if (map) map.invalidateSize(); }, 80);
+    }
+    function setTab(id) {
+      state.tab = id;
+      document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("on", b.getAttribute("data-tab") === id));
+      document.getElementById("unitsPage").hidden = id !== "units";
+      document.getElementById("mapPage").hidden = id !== "map";
+      if (id === "map") renderMap();
+    }
+    function starRow(el, key) {
+      el.innerHTML = "";
+      for (let n = 1; n <= 5; n++) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = "★";
+        b.onclick = () => {
+          state.ratings[key] = state.ratings[key] === n ? 0 : n;
+          starRow(el, key);
+        };
+        if (n <= state.ratings[key]) b.classList.add("on");
+        el.appendChild(b);
+      }
+    }
+    function initStars() {
+      document.querySelectorAll(".stars").forEach((el) => starRow(el, el.getAttribute("data-rate")));
+    }
+    function initSig() {
+      const canvas = document.getElementById("sigCanvas");
+      const ctx = canvas.getContext("2d");
+      let drawing = false;
+      function pos(e) {
+        const r = canvas.getBoundingClientRect();
+        const p = e.touches ? e.touches[0] : e;
+        return { x: (p.clientX - r.left) * (canvas.width / r.width), y: (p.clientY - r.top) * (canvas.height / r.height) };
+      }
+      function start(e) { e.preventDefault(); drawing = true; const p = pos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); }
+      function move(e) {
+        if (!drawing) return;
+        e.preventDefault();
+        const p = pos(e);
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = "round";
+        ctx.strokeStyle = "#1c1917";
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        state.signed = true;
+      }
+      function end() { drawing = false; }
+      canvas.addEventListener("pointerdown", start);
+      canvas.addEventListener("pointermove", move);
+      canvas.addEventListener("pointerup", end);
+      canvas.addEventListener("pointerleave", end);
+      document.getElementById("clearSig").onclick = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        state.signed = false;
+      };
+    }
+    function setReceiver(yes) {
+      state.clientIsReceiver = yes;
+      document.getElementById("recvYes").classList.toggle("on", yes);
+      document.getElementById("recvNo").classList.toggle("on", !yes);
+      document.getElementById("recvWrap").hidden = yes;
+    }
+    function captureGps() {
+      state.deliveredAt = new Date().toISOString();
+      document.getElementById("whenLabel").value = new Date().toLocaleString("en-ZA", { hour12: false });
+      if (!navigator.geolocation) {
+        document.getElementById("gpsLabel").value = "GPS not available";
+        return;
+      }
+      document.getElementById("gpsLabel").value = "Getting location…";
+      navigator.geolocation.getCurrentPosition((pos) => {
+        state.lat = pos.coords.latitude;
+        state.lng = pos.coords.longitude;
+        document.getElementById("gpsLabel").value = state.lat.toFixed(5) + ", " + state.lng.toFixed(5);
+      }, () => {
+        document.getElementById("gpsLabel").value = "Location not granted";
+      }, { enableHighAccuracy: true, timeout: 8000 });
+    }
+    function openPod(base) {
+      const group = state.grouped.find((g) => g.base === base);
+      if (!group) return;
+      state.stop = group;
+      state.photos = [];
+      state.ratings = { delivery: 0, sales: 0, craft: 0 };
+      state.signed = false;
+      document.getElementById("podTitle").textContent = "Proof of delivery";
+      document.getElementById("podOrders").textContent = group.orders.map((o) => o.order_number).join(", ");
+      document.getElementById("podAddress").textContent = group.address || "";
+      document.getElementById("clientName").value = group.client_name || "";
+      document.getElementById("receiverName").value = "";
+      document.getElementById("comments").value = "";
+      document.getElementById("photoPreview").innerHTML = "";
+      document.getElementById("photoInput").value = "";
+      document.getElementById("podErr").textContent = "";
+      const canvas = document.getElementById("sigCanvas");
+      canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+      setReceiver(true);
+      initStars();
+      captureGps();
+      document.getElementById("podMask").classList.add("open");
+    }
+    function closePod() {
+      document.getElementById("podMask").classList.remove("open");
+      state.stop = null;
+    }
+    async function loadRun() {
+      const boot = document.getElementById("boot");
+      try {
+        const r = await fetch("/api/delivery/run", { credentials: "same-origin" });
+        const j = await r.json().catch(() => ({}));
+        if (r.status === 401) {
+          location.href = "/";
+          return;
+        }
+        if (!j.ok) throw new Error(j.error || "Could not load the run");
+        state.driver = j.driver || "";
+        state.orders = j.orders || [];
+        state.grouped = groupOrders(state.orders);
+        document.getElementById("whoName").textContent = state.driver || "Driver";
+        renderUnits();
+        const origin = (state.lat != null && state.lng != null) ? ("?lat=" + state.lat + "&lng=" + state.lng) : "";
+        const rr = await fetch("/api/delivery/route" + origin, { credentials: "same-origin" });
+        const rj = await rr.json().catch(() => ({}));
+        state.route = (rj && rj.route) || null;
+        if (state.tab === "map") renderMap();
+        const want = params.get("stop");
+        if (want && state.grouped.some((g) => g.base === want || g.orders.some((o) => o.order_number === want))) {
+          const hit = state.grouped.find((g) => g.base === want || g.orders.some((o) => o.order_number === want));
+          if (hit) openPod(hit.base);
+        }
+      } catch (e) {
+        if (boot) boot.className = "err";
+        if (boot) boot.textContent = e.message || String(e);
+        else document.getElementById("unitsPage").innerHTML = '<div class="err">' + esc(e.message || e) + "</div>";
+      }
+    }
+    document.querySelectorAll(".tabs button").forEach((b) => {
+      b.onclick = () => setTab(b.getAttribute("data-tab"));
+    });
+    document.getElementById("refreshBtn").onclick = () => loadRun();
+    document.getElementById("recvYes").onclick = () => setReceiver(true);
+    document.getElementById("recvNo").onclick = () => setReceiver(false);
+    document.getElementById("podCancel").onclick = closePod;
+    document.getElementById("podMask").addEventListener("click", (e) => {
+      if (e.target.id === "podMask") closePod();
+    });
+    document.getElementById("photoInput").addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files || []);
+      for (const file of files) {
+        const data = await fileToDataUrl(file);
+        state.photos.push({ name: file.name, mime: file.type, data: data });
+      }
+      document.getElementById("photoPreview").innerHTML = state.photos.map((p) =>
+        '<img src="' + p.data + '" alt="">'
+      ).join("");
+    });
+    document.getElementById("podForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const err = document.getElementById("podErr");
+      err.textContent = "";
+      if (!state.stop) return;
+      if (!state.photos.length) { err.textContent = "Take at least one photo."; return; }
+      if (!state.signed) { err.textContent = "Receiver signature is required."; return; }
+      if (!state.clientIsReceiver && !String(document.getElementById("receiverName").value || "").trim()) {
+        err.textContent = "Type the name of the person receiving.";
+        return;
+      }
+      const btn = document.getElementById("podSave");
+      btn.disabled = true;
+      try {
+        const r = await fetch("/api/delivery/pod", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            order_number: state.stop.orders[0].order_number,
+            client_name: document.getElementById("clientName").value,
+            client_is_receiver: state.clientIsReceiver,
+            receiver_name: document.getElementById("receiverName").value,
+            photos: state.photos,
+            signature: document.getElementById("sigCanvas").toDataURL("image/png"),
+            lat: state.lat,
+            lng: state.lng,
+            delivered_at: state.deliveredAt || new Date().toISOString(),
+            rating_delivery: state.ratings.delivery,
+            rating_sales: state.ratings.sales,
+            rating_craft: state.ratings.craft,
+            comments: document.getElementById("comments").value
+          })
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!j.ok) throw new Error(j.error || "Could not save the delivery form");
+        closePod();
+        await loadRun();
+      } catch (err2) {
+        err.textContent = err2.message || String(err2);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    initStars();
+    initSig();
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition((pos) => {
+        state.lat = pos.coords.latitude;
+        state.lng = pos.coords.longitude;
+      }, () => {}, { timeout: 4000 });
+    }
+    loadRun();
+  </script>
+</body>
+</html>

@@ -38,6 +38,7 @@ The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume
 | `DATA_DIR/floor-planning.json` | Planning calendars: who is booked for which order and process |
 | `DATA_DIR/job-cards.json` / `job-cards/` / `job-card-images/` | Job cards, PDFs, and product images |
 | `DATA_DIR/qc-pdfs.json` / `qc-pdfs/` | Pre-powder and Final QC PDFs (PO-style letterhead, checklist, one photo per page, signature on the last page). A report is not saved without photos. Open them from Shop → **QC Reports**, the clipboard icon on **Orders**, or **Open QC PDF** on Production Tasks → Completed |
+| `DATA_DIR/delivery-forms.json` / `delivery-forms/` | Proof-of-delivery PDFs from the van (photos, GPS, receiver signature, optional ratings). After Final QC, **Load on truck** sets Out for Delivery. A Production user with job title **Driver** (task **Delivery**) opens `/delivery-run`. Office stores the PDFs on **Delivery Forms** |
 | `DATA_DIR/email-replies.json` | Outlook reply templates |
 | `DATA_DIR/showroom-bookings.json` | Showroom bookings |
 | `DATA_DIR/standard-cutting-lists.json` | Standard job-card cutting lists |

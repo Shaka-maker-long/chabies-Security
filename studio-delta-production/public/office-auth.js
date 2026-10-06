@@ -239,6 +239,7 @@ function sdMountOfficeShell(active) {
     ["/?view=workers", "workers", "bi-people", "Workers"],
     ["/?view=metrics", "metrics", "bi-bar-chart", "Metrics"],
     ["/?view=qc", "qc", "bi-file-earmark-pdf", "QC Reports"],
+    ["/delivery-forms", "deliveryforms", "bi-truck", "Delivery Forms"],
     ["/?view=activity", "activity", "bi-calendar3", "Activity"],
     ["/?view=schedule", "floorschedule", "bi-calendar-week", "Schedule"]
   ];

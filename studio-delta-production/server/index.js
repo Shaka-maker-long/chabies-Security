@@ -266,6 +266,140 @@ app.get("/api/qc-pdfs/:id/pdf", (req, res) => {
     res.status(400).json({ ok: false, error: e.message || String(e) });
   }
 });
+app.get("/delivery-run", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "delivery-run.html"));
+});
+app.get("/delivery-forms", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "delivery-forms.html"));
+});
+function shopProfile(req, res) {
+  const staff = require("./staff");
+  const profile = staff.readSession(req);
+  if (!profile) {
+    res.status(401).json({ ok: false, error: "Log in first." });
+    return null;
+  }
+  return profile;
+}
+app.get("/api/delivery/run", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const delivery = require("./delivery-pod");
+      if (!delivery.canSubmitPod(profile) && !delivery.canLoadTruck(profile)) {
+        res.status(403).json({ ok: false, error: "Delivery is for the driver, QC, or office." });
+        return;
+      }
+      res.json({
+        ok: true,
+        driver: profile.name,
+        isDriver: delivery.isDriverProfile(profile),
+        canLoad: delivery.canLoadTruck(profile),
+        orders: delivery.listLoaded(),
+        ready: delivery.canLoadTruck(profile) ? delivery.listReadyToLoad() : []
+      });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
+app.get("/api/delivery/route", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const delivery = require("./delivery-pod");
+      if (!delivery.canSubmitPod(profile) && !delivery.canLoadTruck(profile)) {
+        res.status(403).json({ ok: false, error: "Delivery is for the driver, QC, or office." });
+        return;
+      }
+      const origin = (req.query && req.query.lat != null && req.query.lng != null)
+        ? { lat: Number(req.query.lat), lng: Number(req.query.lng) }
+        : null;
+      const route = await delivery.buildRoute({ origin: origin && Number.isFinite(origin.lat) ? origin : null });
+      res.json({ ok: true, route: route });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
+app.post("/api/delivery/load", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const delivery = require("./delivery-pod");
+      if (!delivery.canLoadTruck(profile)) {
+        res.status(403).json({ ok: false, error: "Only QC, the driver, or office can load the truck." });
+        return;
+      }
+      const body = req.body || {};
+      const numbers = body.order_numbers || body.orders || body.order_number;
+      const result = delivery.loadOnTruck(numbers, profile.name);
+      try { require("./gas").clearShopCache(); } catch (e) {}
+      res.json(Object.assign({ ok: true }, result));
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
+app.post("/api/delivery/pod", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const delivery = require("./delivery-pod");
+      if (!delivery.canSubmitPod(profile)) {
+        res.status(403).json({ ok: false, error: "Only the driver, QC, or office can submit a delivery form." });
+        return;
+      }
+      const result = await delivery.submitPod(req.body || {}, profile.name);
+      try { require("./gas").clearShopCache(); } catch (e) {}
+      res.json(Object.assign({ ok: true }, result));
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
+app.get("/api/delivery/forms", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const delivery = require("./delivery-pod");
+      if (!profile.canSeeOffice && !profile.isAdmin && !delivery.canSubmitPod(profile)) {
+        res.status(403).json({ ok: false, error: "Delivery forms are for office, QC, and the driver." });
+        return;
+      }
+      res.json({ ok: true, rows: delivery.listForms() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
+app.get("/api/delivery-forms/:id/pdf", (req, res) => {
+  noStore(res);
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const file = require("./delivery-pod").readPdf(req.params.id);
+      if (!file) {
+        res.status(404).json({ ok: false, error: "No delivery form for that id." });
+        return;
+      }
+      const download = String((req.query && req.query.download) || "") === "1";
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", (download ? "attachment" : "inline") + "; filename=\"" + file.filename + "\"");
+      res.send(file.buffer);
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
 app.get("/office-auth.js", (_req, res) => {
   noStore(res);
   res.type("application/javascript").sendFile(path.join(publicDir, "office-auth.js"));

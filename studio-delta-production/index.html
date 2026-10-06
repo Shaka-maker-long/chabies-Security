@@ -1628,6 +1628,10 @@
         <i class="bi bi-file-earmark-pdf"></i>
         <span class="link-text">QC Reports</span>
       </a>
+      <a id="link-delivery-forms" class="sidebar-link" href="/delivery-forms">
+        <i class="bi bi-truck"></i>
+        <span class="link-text">Delivery Forms</span>
+      </a>
       <a id="link-activity" class="sidebar-link" onclick="loadActivityReport()">
         <i class="bi bi-calendar3"></i>
         <span class="link-text">Activity</span>
@@ -1740,6 +1744,7 @@
         <span id="batchCount" class="fw-bold text-primary">0 Selected</span>
         <div>
             <button id="btnBatchStart" class="btn btn-sm btn-primary d-none fw-bold px-3" onclick="batchStart()">START SELECTED</button>
+            <button id="btnBatchLoad" class="btn btn-sm btn-dark d-none fw-bold px-3" onclick="batchLoadTruck()">LOAD ON TRUCK</button>
             <button id="btnBatchFinish" class="btn btn-sm btn-success d-none fw-bold px-3" onclick="batchFinish()">FINISH SELECTED</button>
         </div>
       </div>
@@ -1762,6 +1767,9 @@
         <div class="text-end flex-grow-1 d-flex justify-content-end align-items-center gap-2">
           <button id="btnQcPdfs" type="button" class="btn btn-sm btn-outline-dark d-none" onclick="loadQCReports()">
             <i class="bi bi-file-earmark-pdf"></i> QC PDFs
+          </button>
+          <button id="btnDriverRun" type="button" class="btn btn-sm btn-dark d-none" onclick="openDeliveryRun()">
+            <i class="bi bi-truck"></i> Driver run
           </button>
           <button class="btn btn-sm btn-link text-muted text-decoration-none" onclick="loadDashboard()">
             <i class="bi bi-arrow-clockwise"></i> Refresh
@@ -2175,6 +2183,19 @@
   </div>
 
   <div class="modal fade" id="passModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content text-center p-4"><h3 class="mb-3">Access Code</h3><p class="text-muted" id="passPromptName">Enter code</p><input type="password" id="inputPass" class="form-control text-center mb-3"><button class="btn btn-primary w-100" onclick="submitPass()">ENTER</button></div></div></div>
+  <div class="modal fade" id="loadTruckModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content p-4">
+        <h3 class="mb-2">Load on truck</h3>
+        <p class="text-muted" id="loadTruckCopy">This unit is Ready for Delivery. Load it on the truck now? Split pieces on the same order go together. Status becomes Out for Delivery for the driver.</p>
+        <p class="small text-danger mb-3" id="loadTruckErr"></p>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-dark flex-grow-1" data-bs-dismiss="modal">Not now</button>
+          <button type="button" class="btn btn-dark flex-grow-1" id="loadTruckGo" onclick="confirmLoadTruck()">LOAD ON TRUCK</button>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="modal fade" id="trendsCostModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
       <div class="modal-content">
@@ -2847,8 +2868,9 @@
       'Final QC': ['Front', 'Level 1', 'Back', 'Left Side', 'Right Side', 'Job Card', 'Open', 'Top (Optional)', 'Level 2 (Optional)']
     };
 
-    let passModal, changePassModal, startModal, pauseModal, qcModal, qcAttachPhotosModal, alertModal, confirmModal, noPlateModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, editSteelModal, editBackboardModal, welderSteelModal, canvas, ctx, isDrawing = false;
+    let passModal, changePassModal, startModal, pauseModal, qcModal, qcAttachPhotosModal, alertModal, confirmModal, noPlateModal, floorListModal, glassCheckModal, weeklyDetailsModal, steelSelectionModal, editSteelModal, editBackboardModal, welderSteelModal, loadTruckModal, canvas, ctx, isDrawing = false;
     let pendingNoPlateOrder = "";
+    let pendingLoadOrders = [];
 
     // =====================================================
     // THEME MANAGEMENT
@@ -2910,6 +2932,7 @@
         alertModal = bindModal('#alertModal');
         confirmModal = bindModal('#confirmModal');
         noPlateModal = bindModal('#noPlateModal');
+        loadTruckModal = bindModal('#loadTruckModal');
         floorListModal = bindModal('#floorListModal');
         weeklyDetailsModal = bindModal('#weeklyDetailsModal');
         steelSelectionModal = bindModal('#steelModal');
@@ -3681,6 +3704,13 @@
         if (view === 'activity') { loadActivityReport(); return; }
         if (view === 'schedule') { loadScheduleBoard(); return; }
       }
+      if (isDriverSession() && !session.canSeeOffice) {
+        const extra = (session.tasks || []).filter((t) => String(t) !== 'Delivery' && String(t) !== 'Quality Control');
+        if (!extra.length || String(session.jobTitle || '').toLowerCase() === 'driver') {
+          openDeliveryRun();
+          return;
+        }
+      }
       if (session.canSeeOffice) {
         showTaskPicker();
         return;
@@ -3718,8 +3748,8 @@
       if (session.canSeeOffice) return true;
       const tasks = session.tasks || [];
       if (step.id === 'New orders') return tasks.indexOf('Profile Cutting') !== -1;
+      if (step.id === 'Delivery') return tasks.indexOf('Quality Control') !== -1 || tasks.indexOf('Delivery') !== -1 || isDriverSession();
       if (step.role === 'Quality Control') return tasks.indexOf('Quality Control') !== -1;
-      // Rework board: anyone may open it; start is still gated to the assigned person.
       if (step.role === 'Rework') return true;
       return tasks.indexOf(step.role) !== -1;
     }
@@ -3753,6 +3783,7 @@
       if (/plate/.test(s)) return 'Plate Cutting';
       if (/profile|steel|cut/.test(s)) return 'Profile Cutting';
       if (/qc|quality|powder/.test(s)) return 'Quality Control';
+      if (/driver|delivery/.test(s)) return 'Delivery';
       return '';
     }
     function stationTaskStep(workerName, assignedRows) {
@@ -3781,6 +3812,10 @@
         return true;
       }
       if (mine && stops.length === 1) {
+        if (stops[0].id === 'Delivery' && isDriverSession() && !hasQcFloorAccess()) {
+          openDeliveryRun();
+          return true;
+        }
         openFloorBoard(stops[0].role, stops[0].id, stops[0].qcFilter || '');
         return true;
       }
@@ -3794,6 +3829,7 @@
       return ROAD_STOPS.filter((step) => {
         if (session.canSeeOffice) return true;
         if (step.id === 'New orders') return tasks.indexOf('Profile Cutting') !== -1;
+        if (step.id === 'Delivery') return tasks.indexOf('Quality Control') !== -1 || tasks.indexOf('Delivery') !== -1;
         if (step.role === 'Quality Control') return tasks.indexOf('Quality Control') !== -1;
         if (step.role === 'Rework') return true;
         return tasks.indexOf(step.role) !== -1 || tasks.indexOf(step.id) !== -1;
@@ -4041,8 +4077,10 @@
       if (!canOpenRoadStep(step) && !session.canSeeOffice) return false;
       if (!session.canSeeOffice) {
         const tasks = session.tasks || [];
-        if (step.role === 'Quality Control' && tasks.indexOf('Quality Control') === -1) return false;
-        if (step.role !== 'Quality Control' && tasks.indexOf(step.role) === -1 && step.id !== 'New orders') return false;
+        if (step.id === 'Delivery' && (tasks.indexOf('Delivery') !== -1 || isDriverSession())) {
+          // drivers open the van page from selectRoadStep; QC still uses this board
+        } else if (step.role === 'Quality Control' && tasks.indexOf('Quality Control') === -1) return false;
+        if (step.role !== 'Quality Control' && tasks.indexOf(step.role) === -1 && step.id !== 'New orders' && step.id !== 'Delivery') return false;
       }
       session.role = role;
       session.roadLabel = label || role;
@@ -4499,6 +4537,10 @@
     function selectRoadStep(id) {
       const step = ROAD_STOPS.filter((s) => s.id === id)[0];
       if (!step || !canOpenRoadStep(step)) return;
+      if (id === 'Delivery' && isDriverSession() && !hasQcFloorAccess()) {
+        openDeliveryRun();
+        return;
+      }
       openFloorBoard(step.role, step.id, step.qcFilter || '');
     }
     function selectFloorTask(r) {
@@ -4807,6 +4849,7 @@
         const container = document.getElementById('batchActionContainer');
         const btnStart = document.getElementById('btnBatchStart');
         const btnFinish = document.getElementById('btnBatchFinish');
+        const btnLoad = document.getElementById('btnBatchLoad');
         
         if(selected.length === 0) {
             container.classList.add('d-none');
@@ -4818,24 +4861,26 @@
         
         let canStart = false;
         let canFinish = false;
+        let canLoad = false;
         
         selected.forEach(chk => {
             const s = chk.getAttribute('data-status');
-            if(s === 'ready for powder coating' || s === 'ready for delivery') canStart = true;
-            if(s === 'powder coating' || s === 'out for delivery') canFinish = true;
+            if(s === 'ready for powder coating') canStart = true;
+            if(s === 'powder coating') canFinish = true;
+            if(s === 'ready for delivery') canLoad = true;
         });
         
         // Show the correct button based on selection
-        if(canStart && !canFinish) {
+        btnStart.classList.add('d-none');
+        btnFinish.classList.add('d-none');
+        if (btnLoad) btnLoad.classList.add('d-none');
+        if(canLoad && !canStart && !canFinish) {
+            if (btnLoad) btnLoad.classList.remove('d-none');
+        } else if(canStart && !canFinish && !canLoad) {
             btnStart.classList.remove('d-none');
-            btnFinish.classList.add('d-none');
-        } else if(canFinish && !canStart) {
+        } else if(canFinish && !canStart && !canLoad) {
             btnFinish.classList.remove('d-none');
-            btnStart.classList.add('d-none');
         } else {
-            // Cannot start and finish mixed items at the same time
-            btnStart.classList.add('d-none');
-            btnFinish.classList.add('d-none');
             document.getElementById('batchCount').innerText = `${selected.length} Selected (Mixed types!)`;
         }
     }
@@ -5328,6 +5373,11 @@
           const showQcPdfs = session.role === 'Quality Control' || hasQcFloorAccess() || !!session.canSeeOffice;
           btnQcPdfs.classList.toggle('d-none', !showQcPdfs);
         }
+        const btnDriverRun = document.getElementById('btnDriverRun');
+        if (btnDriverRun) {
+          const showRun = isDriverSession() || hasQcFloorAccess() || !!session.canSeeOffice || session.qcMapFilter === 'delivery' || session.roadLabel === 'Delivery';
+          btnDriverRun.classList.toggle('d-none', !showRun);
+        }
 
         // 2. Populate Production Phase Filter for QC roles
         const filterContainer = document.getElementById('qcPhaseFilterContainer');
@@ -5397,7 +5447,10 @@
           const productShot = productShotHtml(o);
 
           let innerBtn = '';
-          if (adminIsLookOnlyOnBoard()) {
+          const deliveryStatus = String(o.status || '').toLowerCase();
+          if (deliveryStatus === 'ready for delivery' || deliveryStatus === 'out for delivery') {
+             innerBtn = availableStartButtons(o);
+          } else if (adminIsLookOnlyOnBoard()) {
              innerBtn = `<button class="btn btn-secondary w-100 position-relative" style="z-index: 10;" disabled><i class="bi bi-eye-fill"></i> ADMIN VIEW ONLY</button>`;
           } else {
              if (isMine) {
@@ -5424,13 +5477,15 @@
              statusBadge += `<span class="badge bg-warning text-dark me-2">Paused: ${o.pauseReason}</span>`;
           }
           const lowerStatus = String(o.status).toLowerCase();
-          const batchStartStatuses =['ready for powder coating', 'ready for delivery'];
-          const batchFinishStatuses =['powder coating', 'out for delivery'];
+          const batchStartStatuses =['ready for powder coating'];
+          const batchFinishStatuses =['powder coating'];
+          const batchLoadStatuses =['ready for delivery'];
           let isSelectable = false;
           if (!isLocked && !adminIsLookOnlyOnBoard()) {
              if ((!isMine && batchStartStatuses.includes(lowerStatus)) || (isMine && batchFinishStatuses.includes(lowerStatus))) {
                  isSelectable = true;
              }
+             if (batchLoadStatuses.includes(lowerStatus)) isSelectable = true;
           }
 
           if (existingCard) {
@@ -5564,6 +5619,65 @@
       return (session.tasks || []).indexOf('Quality Control') !== -1;
     }
 
+    function isDriverSession() {
+      const title = String(session.jobTitle || session.role || '').trim().toLowerCase();
+      if (title === 'driver') return true;
+      return (session.tasks || []).some((t) => String(t).trim().toLowerCase() === 'delivery');
+    }
+
+    function openDeliveryRun(order) {
+      const q = order ? ('?stop=' + encodeURIComponent(order)) : '';
+      location.href = '/delivery-run' + q;
+    }
+
+    function offerLoadOnTruck(orderNumbers) {
+      pendingLoadOrders = Array.isArray(orderNumbers) ? orderNumbers.filter(Boolean) : [orderNumbers].filter(Boolean);
+      const copy = document.getElementById('loadTruckCopy');
+      const err = document.getElementById('loadTruckErr');
+      if (err) err.textContent = '';
+      if (copy) {
+        copy.textContent = pendingLoadOrders.length
+          ? ('Load ' + pendingLoadOrders.join(', ') + ' on the truck now? Split pieces on the same order go together. Status becomes Out for Delivery for the driver.')
+          : 'Load this unit on the truck now? Status becomes Out for Delivery for the driver.';
+      }
+      if (loadTruckModal) loadTruckModal.show();
+    }
+
+    async function confirmLoadTruck() {
+      const err = document.getElementById('loadTruckErr');
+      const btn = document.getElementById('loadTruckGo');
+      if (err) err.textContent = '';
+      if (!pendingLoadOrders.length) return;
+      if (btn) btn.disabled = true;
+      try {
+        const r = await fetch('/api/delivery/load', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_numbers: pendingLoadOrders })
+        });
+        const j = await r.json().catch(function () { return {}; });
+        if (!j.ok) throw new Error(j.error || 'Could not load the truck');
+        if (loadTruckModal) loadTruckModal.hide();
+        showAlert((j.count || pendingLoadOrders.length) + ' unit' + ((j.count || pendingLoadOrders.length) === 1 ? '' : 's') + ' loaded. Driver run has the addresses.');
+        pendingLoadOrders = [];
+        loadDashboard(true);
+      } catch (e) {
+        if (err) err.textContent = e.message || String(e);
+        else showAlert(e.message || String(e));
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function batchLoadTruck() {
+      const selected = Array.from(document.querySelectorAll('.batch-select:checked')).map(function (el) {
+        return el.getAttribute('data-order');
+      }).filter(Boolean);
+      if (!selected.length) return;
+      offerLoadOnTruck(selected);
+    }
+
     function adminIsLookOnlyOnBoard() {
       if (WORK_LOCKS_DISABLED) return false;
       if (!(session.isAdmin || session.role === 'Admin')) return false;
@@ -5655,6 +5769,14 @@
       }
       if (st === 'sent to paint shop') {
         return `<button class="btn btn-secondary w-100 position-relative" style="z-index: 10;" disabled>AT THE PAINT SHOP</button>`;
+      }
+      if (st === 'ready for delivery') {
+        const num = String(o.order || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `<button class="btn btn-dark w-100 position-relative" style="z-index: 10;" onclick="event.stopPropagation(); event.preventDefault(); offerLoadOnTruck(['${num}'])">LOAD ON TRUCK</button>`;
+      }
+      if (st === 'out for delivery') {
+        const num = String(o.order || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+        return `<button class="btn btn-dark w-100 position-relative" style="z-index: 10;" onclick="event.stopPropagation(); event.preventDefault(); openDeliveryRun('${num}')">PROOF OF DELIVERY</button>`;
       }
       return start('START', startTaskForOrder(o));
     }
@@ -6476,6 +6598,10 @@
       // 1. GET STATUS FROM CARD BADGE
       const card = document.getElementById(`card-${row}`);
       const statusText = card ? card.querySelector('.badge.bg-dark').innerText.toLowerCase().trim() : "";
+      if (statusText === 'out for delivery') {
+        openDeliveryRun(ord);
+        return;
+      }
       
       // 2. DETERMINE WHICH CHECKLIST TO USE
       let qcKey = 'Profile Cutting'; // Default fallback
@@ -7603,6 +7729,9 @@
                   showAlert('Finished within the estimated time.');
                 }
                 loadCompletedWork(true);
+                if (willGeneratePdf && session.currentQcKey === 'Final QC' && session.activeOrder) {
+                  offerLoadOnTruck([session.activeOrder]);
+                }
               }
               loadDashboard(true);
             })

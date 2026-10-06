@@ -64,8 +64,9 @@
       <option value="Marketing"></option>
       <option value="Welding"></option>
       <option value="Quality Control"></option>
+      <option value="Driver"></option>
     </datalist>
-    <p class="help">Tick <b>Quality Control</b> on an Admin if they do pre-powder, powder, or final QC. Other shop clocks stay look-only for Admin. Anyone on Production Tasks can see completion times. Only Admin can edit completed steel. <b>Marketing</b> access can view Enquiries and Orders. Open any row to update Source and Campaign (Save Source &amp; Campaign at the top).</p>
+    <p class="help">Tick <b>Quality Control</b> on an Admin if they do pre-powder, powder, or final QC. Other shop clocks stay look-only for Admin. Anyone on Production Tasks can see completion times. Only Admin can edit completed steel. Give the van person job title <b>Driver</b> and tick <b>Delivery</b> — they log in on Production and see loaded units. <b>Marketing</b> access can view Enquiries and Orders. Open any row to update Source and Campaign (Save Source &amp; Campaign at the top).</p>
     <table id="usersTable">
       <thead>
         <tr><th>Name</th><th>Access</th><th>Job title</th><th>Enquiry roles</th><th>Access code</th><th>Floor tasks</th><th>See debtors</th><th></th></tr>
@@ -75,7 +76,7 @@
   </div>
   <script src="/office-auth.js?v=login-msg-3"></script>
   <script>
-    const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly","Rework"];
+    const TASKS = ["Profile Cutting","Plate Cutting","Tagging","Welding","Grinding","Quality Control","Paint Preparation","Painting","Assembly","Rework","Delivery"];
     const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval", "Follow-up"];
     let rows = [];
     let canManage = false;

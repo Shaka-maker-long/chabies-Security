@@ -9,7 +9,7 @@ const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 const labels = [
   "Home", "Orders", "Inventory Management", "Enquiries", "Marketing", "My tasks", "Dropdowns", "Users",
   "Task times", "Planning", "Reworks", "Debtors", "Production Tasks", "Production", "Workers", "Metrics",
-  "QC Reports", "Activity", "Schedule", "Log Out", "Change access code"
+  "QC Reports", "Delivery Forms", "Activity", "Schedule", "Log Out", "Change access code"
 ];
 labels.forEach((label) => {
   assert.ok(js.indexOf('"' + label + '"') !== -1 || js.indexOf(">" + label + "<") !== -1, "office menu missing " + label);
@@ -27,6 +27,7 @@ assert.ok(js.indexOf("Production cost") === -1, "production cost is an Orders su
 assert.ok(js.indexOf('"/schedule"') === -1);
 assert.ok(js.indexOf("/planning") !== -1, "planning is an office page");
 assert.ok(js.indexOf("/reworks") !== -1, "reworks is an office page");
+assert.ok(js.indexOf("/delivery-forms") !== -1, "delivery forms is an office page");
 assert.ok(js.indexOf('"Reworks"') !== -1);
 assert.ok(js.indexOf('"Planning"') !== -1);
 
@@ -885,7 +886,21 @@ assert.ok(floor.indexOf("managerCorrectStart") !== -1);
 assert.ok(floor.indexOf("Start at that time") !== -1);
 assert.ok(floor.indexOf("If a name is missing from the list, add that person on Users") !== -1);
 const codeGs = fs.readFileSync(path.join(__dirname, "../Code.gs"), "utf8");
-assert.ok(codeGs.indexOf("assignOutForDeliveryToSiya_") !== -1, "Out for Delivery orders are handed to Siya");
+assert.ok(codeGs.indexOf("assignOutForDeliveryToSiya_") !== -1, "legacy Siya delivery helper stays but is a no-op");
+assert.ok(codeGs.indexOf("Load on truck owns Out for Delivery") !== -1);
+assert.ok(floor.indexOf("LOAD ON TRUCK") !== -1, "Ready for Delivery loads the truck");
+assert.ok(floor.indexOf("offerLoadOnTruck") !== -1);
+assert.ok(floor.indexOf("openDeliveryRun") !== -1);
+assert.ok(indexJs.indexOf("/delivery-run") !== -1);
+assert.ok(indexJs.indexOf("/delivery-forms") !== -1);
+assert.ok(indexJs.indexOf("/api/delivery/pod") !== -1);
+assert.ok(fs.existsSync(path.join(__dirname, "../public/delivery-run.html")));
+assert.ok(fs.existsSync(path.join(__dirname, "../public/delivery-forms.html")));
+const deliveryRunHtml = fs.readFileSync(path.join(__dirname, "../public/delivery-run.html"), "utf8");
+assert.ok(deliveryRunHtml.indexOf("Proof of delivery") !== -1);
+assert.ok(deliveryRunHtml.indexOf("/api/delivery/pod") !== -1);
+const deliveryFormsHtml = fs.readFileSync(path.join(__dirname, "../public/delivery-forms.html"), "utf8");
+assert.ok(deliveryFormsHtml.indexOf("Delivery Forms") !== -1);
 assert.ok(codeGs.indexOf("deliveryAssigneeName_") !== -1);
 assert.ok(codeGs.indexOf('out["Delivery"]') !== -1);
 assert.ok(codeGs.indexOf("p === \"assembly\" || p === \"final qc\"") === -1, "Final QC must not require backboard size");
@@ -1206,7 +1221,8 @@ assert.ok(adminFn.indexOf("daySlices") === -1, "admin dashboard must not ship da
 const usersHtml = fs.readFileSync(path.join(__dirname, "../public/users.html"), "utf8");
 assert.ok(usersHtml.indexOf("Enquiry roles") !== -1);
 assert.ok(usersHtml.indexOf("job title") !== -1 || usersHtml.indexOf("Job title") !== -1);
-assert.ok(usersHtml.indexOf("Manager") !== -1);
+assert.ok(usersHtml.indexOf("Driver") !== -1);
+assert.ok(usersHtml.indexOf('"Delivery"') !== -1 || usersHtml.indexOf("Delivery") !== -1);
 assert.ok(usersHtml.indexOf('list="jobTitles"') !== -1 || usersHtml.indexOf("list='jobTitles'") !== -1);
 assert.ok(usersHtml.indexOf("data-k='manageUsers'") === -1, "Users table must not use a Manage users checkbox");
 assert.ok(usersHtml.indexOf("Change access code") !== -1);

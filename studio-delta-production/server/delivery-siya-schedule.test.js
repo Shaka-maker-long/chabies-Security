@@ -74,7 +74,7 @@ clearShopCache();
   const assigned = await callShopFunction("getFloorTaskCounts", []);
   assert.ok(assigned.Delivery, "Delivery pile is counted");
   const after = db.listOrders().find((o) => o.order_number === "S-DEL-1");
-  assert.strictEqual(String(after.assigned_operator || "").toLowerCase(), "siya", "Out for Delivery is assigned to Siya");
+  assert.strictEqual(String(after.assigned_operator || ""), "Willard", "counts do not steal Out for Delivery for Siya");
 
   const sync = live.syncLiveScheduleCodes();
   assert.ok(sync.written >= 0);

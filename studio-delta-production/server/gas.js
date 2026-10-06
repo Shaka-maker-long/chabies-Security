@@ -274,6 +274,7 @@ const ALLOWED = new Set([
   "getActivityReport", "getScheduleBoard", "generateWorkerSchedule", "insertScheduleTask", "clearWorkerScheduleFrom",
   "checkIdleWorkers", "enforceShiftHours", "lazySetup", "getTaskDuration", "getTaskTimeEstimate",   "getMyCompletedWork", "getWorkerDayWork", "facilityShiftState", "updateCompletedSteelUsage", "updateCompletedBackboardUsage",
   "attachQcPhotos",
+  "loadOrdersOnTruck", "listDeliveryRun", "getDeliveryRoute", "submitDeliveryPod",
   "workerMinutesToday", "floorChangeGate",
   "getGlassTypes", "getWoodTypes", "listMaterialsToOrder", "markMaterialOrdered",
   "listCostingLogs", "markOrderNoPlate"
@@ -322,6 +323,26 @@ async function callShopFunction(fnName, args) {
   }
   if (fnName === "generatePowderCoatingList") {
     return require("./powder-list").createList(args && args[0], args && args[1]);
+  }
+  if (fnName === "loadOrdersOnTruck") {
+    const delivery = require("./delivery-pod");
+    const result = delivery.loadOnTruck(args && args[0], args && args[1]);
+    clearShopCache();
+    return result;
+  }
+  if (fnName === "listDeliveryRun") {
+    const delivery = require("./delivery-pod");
+    return { orders: delivery.listLoaded(), ready: delivery.listReadyToLoad() };
+  }
+  if (fnName === "getDeliveryRoute") {
+    const delivery = require("./delivery-pod");
+    return delivery.buildRoute((args && args[0]) || {});
+  }
+  if (fnName === "submitDeliveryPod") {
+    const delivery = require("./delivery-pod");
+    const result = await delivery.submitPod(args && args[0], args && args[1]);
+    clearShopCache();
+    return result;
   }
   if (fnName === "verifyGlobalLogin" || fnName === "verifyLogin") {
     const staff = require("./staff");

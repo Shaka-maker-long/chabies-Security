@@ -6,7 +6,7 @@ const accessCodes = require("./access-codes");
 
 const FLOOR_TASKS = [
   "Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding",
-  "Quality Control", "Paint Preparation", "Painting", "Assembly", "Rework"
+  "Quality Control", "Paint Preparation", "Painting", "Assembly", "Rework", "Delivery"
 ];
 
 const ENQUIRY_ROLES = ["Costing", "Quoting", "Approval", "Follow-up"];
@@ -431,6 +431,9 @@ function upsertUser(body) {
   const tasks = access === "Marketing"
     ? []
     : (Array.isArray(body.tasks) ? body.tasks.filter((t) => FLOOR_TASKS.indexOf(t) !== -1) : parseTasks(body.tasks));
+  if (String(role).trim().toLowerCase() === "driver" && tasks.indexOf("Delivery") === -1) {
+    tasks.push("Delivery");
+  }
   const seeDebtors = parseSeeDebtors(body, access);
   const enquiryRoles = access === "Marketing" ? [] : parseEnquiryRoles(body.enquiryRoles != null ? body.enquiryRoles : body.enquiry_roles, access);
   const manageUsers = isManagerTitle(role) ? "Yes" : "No";
