@@ -104,7 +104,7 @@
       <header>
         <div>
           <h1 id="formTitle" style="font-family:Outfit,Inter,sans-serif;font-size:18px;margin:0;">Add rework</h1>
-          <p class="lede">Pick an order that is Out for Delivery or Delivered, then describe what needs fixing.</p>
+          <p class="lede">Pick an order that is Out for Delivery, At couriers, or Delivered, then describe what needs fixing.</p>
         </div>
         <div class="tools">
           <button class="ghost" type="button" id="cancelBtn">Cancel</button>
@@ -226,7 +226,7 @@
       const sel = document.getElementById("orderSelect");
       const cur = sel.value;
       if (!orderOptions.length) {
-        sel.innerHTML = "<option value=\"\">No Out for Delivery / Delivered orders</option>";
+        sel.innerHTML = "<option value=\"\">No Out for Delivery / At couriers / Delivered orders</option>";
         return;
       }
       sel.innerHTML = "<option value=\"\">Choose order…</option>" +

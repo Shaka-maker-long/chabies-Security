@@ -63,6 +63,8 @@ db.upsertOrder({
 assert.ok(reworks.isEligibleReworkOrderStatus("Delivered"));
 assert.ok(reworks.isEligibleReworkOrderStatus("Out for Delivery"));
 assert.ok(reworks.isEligibleReworkOrderStatus("out on delivery"));
+assert.ok(reworks.isEligibleReworkOrderStatus("At couriers"));
+assert.ok(reworks.isEligibleReworkOrderStatus("at courier"));
 assert.ok(!reworks.isEligibleReworkOrderStatus("Assembly"));
 
 const eligible = reworks.listEligibleOrders();
@@ -80,7 +82,7 @@ assert.throws(
 );
 assert.throws(
   () => reworks.createRework({ order_number: "S260903", issue: "Too early" }, "Pat"),
-  /Out for Delivery or Delivered/i
+  /Out for Delivery, At couriers, or Delivered/i
 );
 
 const created = reworks.createRework({
@@ -133,7 +135,7 @@ assert.ok(page.orders.some((o) => o.order_number === "S260902"));
 assert.ok(!page.orders.some((o) => o.order_number === "S260903"));
 assert.ok(page.operators.indexOf("Willard") !== -1);
 assert.ok(page.reworks.some((r) => r.id === created.id && r.status === "Done"));
-assert.deepStrictEqual(page.eligibleStatuses, ["Out for Delivery", "Delivered"]);
+assert.deepStrictEqual(page.eligibleStatuses, ["Out for Delivery", "At couriers", "Delivered"]);
 
 assert.ok(staff.FLOOR_TASKS.indexOf("Rework") !== -1);
 

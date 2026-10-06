@@ -16,8 +16,9 @@ const MARGIN = 36;
 const INK = "#1c1917";
 const BRASS = "#b08948";
 const MUTED = "#6b645b";
+const CREAM = "#fcfbf8";
 const RULE = "#d7d1c6";
-const LAYOUT = 1;
+const LAYOUT = 2;
 const AVG_KMH = 25;
 const STOP_MINUTES = 8;
 const FACTORY = {
@@ -453,6 +454,17 @@ async function buildRoute(opts) {
   };
 }
 
+function podStatusForDrop(dropKind) {
+  return dropKind === "third_party" ? "At couriers" : "Delivered";
+}
+
+function formatGps(lat, lng) {
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return "Not captured";
+  const ns = Number(lat) < 0 ? "S" : "N";
+  const ew = Number(lng) < 0 ? "W" : "E";
+  return Math.abs(Number(lat)).toFixed(5) + "° " + ns + "    " + Math.abs(Number(lng)).toFixed(5) + "° " + ew;
+}
+
 function closeOpenDeliveryLogs(orderNumbers, when, driver) {
   try {
     const sheet = getBook().getSheetByName("Production_Log");
@@ -478,10 +490,232 @@ function closeOpenDeliveryLogs(orderNumbers, when, driver) {
   }
 }
 
-function starLine(n) {
-  const v = Math.max(0, Math.min(5, Number(n) || 0));
-  if (!v) return "—";
-  return String(v) + " / 5";
+function bundledLogoPath() {
+  const p = path.join(__dirname, "..", "assets", "studio-delta-logo.jpg");
+  if (fs.existsSync(p) && fs.statSync(p).size > 400) return p;
+  return null;
+}
+
+async function logoPathForPdf() {
+  const dest = path.join(dataDir(), "pdf-images", "studio-delta-logo.jpg");
+  try { fs.mkdirSync(path.dirname(dest), { recursive: true }); } catch (e) {}
+  if (fs.existsSync(dest) && fs.statSync(dest).size > 400) return dest;
+  const bundled = bundledLogoPath();
+  if (bundled) {
+    try {
+      fs.copyFileSync(bundled, dest);
+      return dest;
+    } catch (e) {
+      return bundled;
+    }
+  }
+  const url = catalog.COMPANY_LOGO_URL;
+  if (!url) return null;
+  try {
+    const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(1500) });
+    if (!res.ok) return fs.existsSync(dest) ? dest : null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length) fs.writeFileSync(dest, buf);
+    return dest;
+  } catch (e) {
+    return fs.existsSync(dest) ? dest : bundledLogoPath();
+  }
+}
+
+function drawPdfBox(doc, x, y, w, h) {
+  doc.save().lineWidth(0.7).strokeColor(INK).rect(x, y, w, h).stroke().restore();
+}
+
+function fieldHeight(doc, value, w, opts) {
+  const padX = 8;
+  const text = String(value == null || String(value).trim() === "" ? "—" : value);
+  const size = (opts && opts.size) || 10;
+  const bold = !!(opts && opts.bold);
+  doc.font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(size);
+  const textH = Math.max(12, doc.heightOfString(text, { width: w - padX * 2 }));
+  return Math.max((opts && opts.minH) || 50, 28 + textH + 8);
+}
+
+function fieldBox(doc, label, value, x, y, w, opts) {
+  const padX = 8;
+  const text = String(value == null || String(value).trim() === "" ? "—" : value);
+  const size = (opts && opts.size) || 10;
+  const bold = !!(opts && opts.bold);
+  const h = (opts && opts.height) || fieldHeight(doc, value, w, opts);
+  doc.save().fillColor(CREAM).rect(x, y, w, h).fill().restore();
+  drawPdfBox(doc, x, y, w, h);
+  doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(7.5).text(label, x + padX, y + 8, { width: w - padX * 2 });
+  doc.fillColor(INK).font(bold ? "Helvetica-Bold" : "Helvetica").fontSize(size)
+    .text(text, x + padX, y + 22, { width: w - padX * 2 });
+  return h;
+}
+
+function drawStar(doc, cx, cy, r, filled) {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const ang = -Math.PI / 2 + i * Math.PI / 5;
+    const rad = i % 2 === 0 ? r : r * 0.42;
+    pts.push([cx + Math.cos(ang) * rad, cy + Math.sin(ang) * rad]);
+  }
+  doc.save();
+  doc.moveTo(pts[0][0], pts[0][1]);
+  pts.slice(1).forEach((p) => doc.lineTo(p[0], p[1]));
+  doc.closePath();
+  if (filled) doc.fillColor(BRASS).fill();
+  else doc.lineWidth(0.8).strokeColor(RULE).stroke();
+  doc.restore();
+}
+
+function drawStars(doc, x, y, n) {
+  const filled = Math.max(0, Math.min(5, Number(n) || 0));
+  for (let i = 0; i < 5; i++) {
+    drawStar(doc, x + 8 + i * 16, y, 6, i < filled);
+  }
+}
+
+function drawReportHeader(doc, record, logoPath) {
+  const inner = PAGE_W - MARGIN * 2;
+  const courier = record.drop_kind === "third_party";
+  const title = courier ? "COURIER HANDOVER" : "DELIVERY NOTE";
+  doc.save().fillColor(CREAM).rect(MARGIN, MARGIN, 72, 72).fill().restore();
+  drawPdfBox(doc, MARGIN, MARGIN, 72, 72);
+  if (logoPath) {
+    try {
+      doc.image(logoPath, MARGIN + 4, MARGIN + 4, { fit: [64, 64] });
+    } catch (e) {
+      doc.fillColor(INK).font("Helvetica-Bold").fontSize(9).text("STUDIO\nDELTA", MARGIN, MARGIN + 26, { width: 72, align: "center" });
+    }
+  } else {
+    doc.fillColor(INK).font("Helvetica-Bold").fontSize(9).text("STUDIO\nDELTA", MARGIN, MARGIN + 26, { width: 72, align: "center" });
+  }
+  doc.fillColor(INK).font("Helvetica-Bold").fontSize(16).text("STUDIO DELTA", MARGIN + 88, MARGIN + 8);
+  doc.fillColor(MUTED).font("Helvetica").fontSize(9).text("Furniture  ·  Steel  ·  Glass", MARGIN + 88, MARGIN + 28);
+  doc.fillColor(MUTED).font("Helvetica").fontSize(8).text("studiodelta.co.za", MARGIN + 88, MARGIN + 42);
+  doc.fillColor(INK).font("Helvetica-Bold").fontSize(14).text(title, MARGIN, MARGIN + 8, { width: inner, align: "right" });
+  doc.fillColor(BRASS).font("Helvetica-Bold").fontSize(10).text(record.order_label || "", MARGIN, MARGIN + 30, { width: inner, align: "right" });
+  doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(record.status || podStatusForDrop(record.drop_kind), MARGIN, MARGIN + 46, { width: inner, align: "right" });
+  doc.save().strokeColor(BRASS).lineWidth(2).moveTo(MARGIN, MARGIN + 84).lineTo(MARGIN + inner, MARGIN + 84).stroke().restore();
+}
+
+async function renderPdf(record, dest) {
+  const PDFDocument = require("pdfkit");
+  const logoPath = await logoPathForPdf();
+  const inner = PAGE_W - MARGIN * 2;
+  const photos = (record.photos || []).filter((photo) => photo && photo.buf);
+  if (!photos.length) throw new Error("Delivery form needs at least one photo.");
+  const courier = record.drop_kind === "third_party";
+  await new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: "A4",
+      margin: MARGIN,
+      compress: false,
+      info: {
+        Title: (record.order_label || "Delivery") + " delivery form",
+        Author: "Studio Delta"
+      }
+    });
+    const stream = fs.createWriteStream(dest);
+    doc.pipe(stream);
+    stream.on("finish", resolve);
+    stream.on("error", reject);
+    drawReportHeader(doc, record, logoPath);
+    let y = MARGIN + 96;
+    const gap = 8;
+    const half = (inner - gap) / 2;
+    const hClient = Math.max(
+      fieldHeight(doc, record.client_name, half, { bold: true }),
+      fieldHeight(doc, record.receiver_name, half, { bold: true })
+    );
+    fieldBox(doc, "CLIENT", record.client_name, MARGIN, y, half, { bold: true, height: hClient });
+    fieldBox(doc, "RECEIVED BY", record.receiver_name, MARGIN + half + gap, y, half, { bold: true, height: hClient });
+    y += hClient + 8;
+    const statusLabel = record.status || podStatusForDrop(record.drop_kind);
+    const hStatus = Math.max(
+      fieldHeight(doc, statusLabel, half, { bold: true }),
+      fieldHeight(doc, formatWhen(record.delivered_at), half)
+    );
+    fieldBox(doc, "STATUS", statusLabel, MARGIN, y, half, { bold: true, height: hStatus });
+    fieldBox(doc, "DATE / TIME", formatWhen(record.delivered_at), MARGIN + half + gap, y, half, { height: hStatus });
+    y += hStatus + 8;
+    if (courier) {
+      const hDepot = Math.max(
+        fieldHeight(doc, "Third-party courier", half),
+        fieldHeight(doc, record.address, half)
+      );
+      fieldBox(doc, "HANDED TO", "Third-party courier", MARGIN, y, half, { height: hDepot });
+      fieldBox(doc, "COURIER DEPOT", record.address, MARGIN + half + gap, y, half, { height: hDepot });
+      y += hDepot + 8;
+      y += fieldBox(doc, "CLIENT DESTINATION", record.client_address || "", MARGIN, y, inner) + 8;
+    } else {
+      y += fieldBox(doc, "DELIVERED TO", record.address, MARGIN, y, inner) + 8;
+    }
+    const hDriver = Math.max(
+      fieldHeight(doc, record.driver, half),
+      fieldHeight(doc, formatGps(record.lat, record.lng), half)
+    );
+    fieldBox(doc, "DRIVER", record.driver, MARGIN, y, half, { height: hDriver });
+    fieldBox(doc, "GPS PIN", formatGps(record.lat, record.lng), MARGIN + half + gap, y, half, { height: hDriver });
+    y += hDriver + 12;
+    const rateH = 78;
+    doc.save().fillColor(CREAM).rect(MARGIN, y, inner, rateH).fill().restore();
+    drawPdfBox(doc, MARGIN, y, inner, rateH);
+    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(7.5).text("RATINGS", MARGIN + 8, y + 8);
+    const rows = [
+      ["Delivery team", record.rating_delivery],
+      ["Sales team", record.rating_sales],
+      ["Craftsmanship", record.rating_craft]
+    ];
+    rows.forEach((row, i) => {
+      const ry = y + 26 + i * 16;
+      doc.fillColor(INK).font("Helvetica").fontSize(10).text(row[0], MARGIN + 8, ry - 4, { width: 140 });
+      drawStars(doc, MARGIN + 150, ry + 2, row[1]);
+    });
+    y += rateH + 10;
+    if (record.comments) {
+      y += fieldBox(doc, "COMMENTS", record.comments, MARGIN, y, inner, { minH: 54 }) + 8;
+    }
+    doc.fillColor(MUTED).font("Helvetica").fontSize(7.5)
+      .text("Studio Delta  ·  309 Derdepoort Rd, Silverton, Pretoria, 0184  ·  studiodelta.co.za", MARGIN, PAGE_H - MARGIN - 10, { width: inner, align: "center" });
+    photos.forEach((photo, i) => {
+      doc.addPage();
+      doc.fillColor(INK).font("Helvetica-Bold").fontSize(11).text("STUDIO DELTA", MARGIN, MARGIN);
+      doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(
+        (record.order_label || "") + "  ·  " + (courier ? "COURIER HANDOVER" : "DELIVERY NOTE"),
+        MARGIN, MARGIN + 16
+      );
+      doc.fillColor(INK).font("Helvetica-Bold").fontSize(12).text(photo.name || "Photo", MARGIN, MARGIN, { width: inner, align: "right" });
+      doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(
+        "Photo " + String(i + 1) + " of " + String(photos.length),
+        MARGIN, MARGIN + 16, { width: inner, align: "right" }
+      );
+      doc.save().strokeColor(BRASS).lineWidth(2).moveTo(MARGIN, MARGIN + 36).lineTo(MARGIN + inner, MARGIN + 36).stroke().restore();
+      try {
+        doc.image(photo.buf, MARGIN, MARGIN + 48, { fit: [inner, PAGE_H - MARGIN * 2 - 48] });
+      } catch (e) {
+        doc.fillColor(MUTED).text("Photo could not be placed.", MARGIN, MARGIN + 60);
+      }
+    });
+    doc.addPage();
+    drawReportHeader(doc, record, logoPath);
+    y = MARGIN + 96;
+    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("SIGN-OFF", MARGIN, y);
+    doc.fillColor(INK).font("Helvetica-Bold").fontSize(14).text(record.receiver_name || "—", MARGIN, y + 16);
+    doc.fillColor(MUTED).font("Helvetica").fontSize(10).text(formatWhen(record.delivered_at), MARGIN, y + 36);
+    const sigH = PAGE_H - (y + 58) - MARGIN;
+    doc.save().fillColor(CREAM).rect(MARGIN, y + 48, inner, sigH).fill().restore();
+    drawPdfBox(doc, MARGIN, y + 48, inner, sigH);
+    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("SIGNATURE", MARGIN + 12, y + 60);
+    if (record.signatureBuf) {
+      try {
+        doc.image(record.signatureBuf, MARGIN + 24, y + 88, { fit: [inner - 48, sigH - 72] });
+      } catch (e) {
+        doc.fillColor(MUTED).text("Signature could not be placed.", MARGIN + 16, y + 88);
+      }
+    } else {
+      doc.save().strokeColor(RULE).lineWidth(0.6).moveTo(MARGIN + 24, y + sigH).lineTo(MARGIN + inner - 24, y + sigH).stroke().restore();
+    }
+    doc.end();
+  });
 }
 
 function photoRaw(file) {
@@ -504,130 +738,6 @@ async function encodePhotos(files) {
     out.push({ name: "Photo " + (out.length + 1), buf: jpeg });
   }
   return out;
-}
-
-async function logoPathForPdf() {
-  const dest = path.join(dataDir(), "pdf-images", "studio-delta-logo.jpg");
-  if (fs.existsSync(dest) && fs.statSync(dest).size > 400) return dest;
-  return null;
-}
-
-function drawPdfBox(doc, x, y, w, h) {
-  doc.save().lineWidth(0.7).strokeColor(INK).rect(x, y, w, h).stroke().restore();
-}
-
-function drawReportHeader(doc, record, logoPath) {
-  const inner = PAGE_W - MARGIN * 2;
-  drawPdfBox(doc, MARGIN, MARGIN, 72, 72);
-  if (logoPath) {
-    try {
-      doc.image(logoPath, MARGIN + 4, MARGIN + 4, { fit: [64, 64] });
-    } catch (e) {
-      doc.fillColor(INK).font("Helvetica-Bold").fontSize(9).text("STUDIO\nDELTA", MARGIN, MARGIN + 26, { width: 72, align: "center" });
-    }
-  } else {
-    doc.fillColor(INK).font("Helvetica-Bold").fontSize(9).text("STUDIO\nDELTA", MARGIN, MARGIN + 26, { width: 72, align: "center" });
-  }
-  doc.fillColor(INK).font("Helvetica-Bold").fontSize(16).text("STUDIO DELTA", MARGIN + 88, MARGIN + 8);
-  doc.fillColor(MUTED).font("Helvetica").fontSize(9).text("Furniture  ·  Steel  ·  Glass", MARGIN + 88, MARGIN + 28);
-  doc.fillColor(MUTED).font("Helvetica").fontSize(8).text("studiodelta.co.za", MARGIN + 88, MARGIN + 42);
-  doc.fillColor(INK).font("Helvetica-Bold").fontSize(18).text("DELIVERY", MARGIN, MARGIN + 8, { width: inner, align: "right" });
-  doc.fillColor(BRASS).font("Helvetica-Bold").fontSize(11).text(record.order_label || "", MARGIN, MARGIN + 34, { width: inner, align: "right" });
-  doc.save().strokeColor(BRASS).lineWidth(2).moveTo(MARGIN, MARGIN + 84).lineTo(MARGIN + inner, MARGIN + 84).stroke().restore();
-}
-
-function kv(doc, label, value, x, y, w) {
-  doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text(label, x, y, { width: w });
-  doc.fillColor(INK).font("Helvetica").fontSize(11).text(value || "—", x, y + 12, { width: w });
-}
-
-async function renderPdf(record, dest) {
-  const PDFDocument = require("pdfkit");
-  const logoPath = await logoPathForPdf();
-  const inner = PAGE_W - MARGIN * 2;
-  const photos = (record.photos || []).filter((photo) => photo && photo.buf);
-  if (!photos.length) throw new Error("Delivery form needs at least one photo.");
-  await new Promise((resolve, reject) => {
-    const doc = new PDFDocument({
-      size: "A4",
-      margin: MARGIN,
-      compress: false,
-      info: {
-        Title: (record.order_label || "Delivery") + " delivery form",
-        Author: "Studio Delta"
-      }
-    });
-    const stream = fs.createWriteStream(dest);
-    doc.pipe(stream);
-    stream.on("finish", resolve);
-    stream.on("error", reject);
-    drawReportHeader(doc, record, logoPath);
-    let y = MARGIN + 96;
-    kv(doc, "CLIENT", record.client_name, MARGIN, y, inner / 2 - 8);
-    kv(doc, "RECEIVED BY", record.receiver_name, MARGIN + inner / 2, y, inner / 2);
-    y += 40;
-    if (record.drop_kind === "third_party") {
-      kv(doc, "DROPPED AT  3rd party depot", record.address, MARGIN, y, inner);
-      y += 40;
-      kv(doc, "CLIENT ADDRESS", record.client_address || "", MARGIN, y, inner);
-      y += 40;
-    } else {
-      kv(doc, "ADDRESS", record.address, MARGIN, y, inner);
-      y += 40;
-    }
-    kv(doc, "DATE / TIME", formatWhen(record.delivered_at), MARGIN, y, inner / 2 - 8);
-    kv(doc, "DRIVER", record.driver, MARGIN + inner / 2, y, inner / 2);
-    y += 40;
-    const geo = record.lat != null
-      ? Number(record.lat).toFixed(5) + ", " + Number(record.lng).toFixed(5)
-      : "—";
-    kv(doc, "LOCATION", geo, MARGIN, y, inner);
-    y += 44;
-    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("RATINGS", MARGIN, y);
-    y += 14;
-    doc.fillColor(INK).font("Helvetica").fontSize(10)
-      .text("Delivery team  " + starLine(record.rating_delivery), MARGIN, y)
-      .text("Sales team  " + starLine(record.rating_sales), MARGIN, y + 16)
-      .text("Craftsmanship  " + starLine(record.rating_craft), MARGIN, y + 32);
-    y += 58;
-    if (record.comments) {
-      doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("COMMENTS", MARGIN, y);
-      doc.fillColor(INK).font("Helvetica").fontSize(10).text(record.comments, MARGIN, y + 14, { width: inner });
-    }
-    photos.forEach((photo, i) => {
-      doc.addPage();
-      doc.fillColor(INK).font("Helvetica-Bold").fontSize(11).text("STUDIO DELTA", MARGIN, MARGIN);
-      doc.fillColor(MUTED).font("Helvetica").fontSize(8).text(
-        (record.order_label || "") + "  ·  DELIVERY",
-        MARGIN, MARGIN + 16
-      );
-      doc.fillColor(INK).font("Helvetica-Bold").fontSize(12).text(photo.name || "Photo", MARGIN, MARGIN, { width: inner, align: "right" });
-      doc.save().strokeColor(BRASS).lineWidth(2).moveTo(MARGIN, MARGIN + 36).lineTo(MARGIN + inner, MARGIN + 36).stroke().restore();
-      try {
-        doc.image(photo.buf, MARGIN, MARGIN + 48, { fit: [inner, PAGE_H - MARGIN * 2 - 48] });
-      } catch (e) {
-        doc.fillColor(MUTED).text("Photo could not be placed.", MARGIN, MARGIN + 60);
-      }
-    });
-    doc.addPage();
-    drawReportHeader(doc, record, logoPath);
-    y = MARGIN + 96;
-    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("SIGN-OFF", MARGIN, y);
-    doc.fillColor(INK).font("Helvetica-Bold").fontSize(14).text(record.receiver_name || "—", MARGIN, y + 16);
-    const sigH = PAGE_H - (y + 58) - MARGIN;
-    drawPdfBox(doc, MARGIN, y + 48, inner, sigH);
-    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(8).text("SIGNATURE", MARGIN + 12, y + 60);
-    if (record.signatureBuf) {
-      try {
-        doc.image(record.signatureBuf, MARGIN + 24, y + 88, { fit: [inner - 48, sigH - 72] });
-      } catch (e) {
-        doc.fillColor(MUTED).text("Signature could not be placed.", MARGIN + 16, y + 88);
-      }
-    } else {
-      doc.save().strokeColor(RULE).lineWidth(0.6).moveTo(MARGIN + 24, y + sigH).lineTo(MARGIN + inner - 24, y + sigH).stroke().restore();
-    }
-    doc.end();
-  });
 }
 
 function writePhotoFiles(id, photos, signatureBuf) {
@@ -663,6 +773,7 @@ async function submitPod(body, actorName) {
   const driver = String(actorName || (body && body.driver) || "").trim();
   const id = newId();
   const orderLabel = units.map((u) => u.order_number).join(", ");
+  const nextStatus = podStatusForDrop(units[0].drop_kind);
   const record = {
     id,
     kind: "Delivery",
@@ -680,6 +791,7 @@ async function submitPod(body, actorName) {
     lat: Number.isFinite(lat) ? lat : null,
     lng: Number.isFinite(lng) ? lng : null,
     delivered_at: deliveredAt,
+    status: nextStatus,
     rating_delivery: Number(body && body.rating_delivery) || 0,
     rating_sales: Number(body && body.rating_sales) || 0,
     rating_craft: Number(body && body.rating_craft) || 0,
@@ -697,7 +809,7 @@ async function submitPod(body, actorName) {
   saveStore(store);
   units.forEach((unit) => {
     const live = db.listOrders().find((row) => db.formatOrderId(row.order_number) === unit.order_number);
-    if (live) setOrderStatus(live, "Delivered", driver);
+    if (live) setOrderStatus(live, nextStatus, driver);
   });
   closeOpenDeliveryLogs(record.order_numbers, deliveredAt, driver);
   try { db.persistOffice(); } catch (e) {}
@@ -720,6 +832,7 @@ function listForms() {
     client_address: row.client_address || "",
     drop_kind: row.drop_kind || "client",
     drop_label: row.drop_label || "",
+    status: row.status || podStatusForDrop(row.drop_kind),
     driver: row.driver,
     delivered_at: row.delivered_at,
     delivered_label: formatWhen(row.delivered_at),
@@ -753,6 +866,8 @@ module.exports = {
   FACTORY,
   THIRD_PARTY_DEPOT,
   isGautengProvince,
+  podStatusForDrop,
+  formatGps,
   isDriverProfile,
   canLoadTruck,
   canSubmitPod,

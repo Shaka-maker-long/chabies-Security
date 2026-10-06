@@ -51,6 +51,7 @@
             <tr>
               <th>Delivered</th>
               <th>Orders</th>
+              <th>Status</th>
               <th>Client</th>
               <th>Received by</th>
               <th>Address</th>
@@ -71,8 +72,9 @@
       return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
     }
     function stars(n) {
-      const v = Number(n) || 0;
-      return v ? (String(v) + "/5") : "—";
+      const v = Math.max(0, Math.min(5, Number(n) || 0));
+      if (!v) return "—";
+      return "★★★★★".slice(0, v) + "☆☆☆☆☆".slice(0, 5 - v);
     }
     function render() {
       const q = String(document.getElementById("q").value || "").toLowerCase();
@@ -85,7 +87,7 @@
       document.getElementById("boot").hidden = true;
       document.getElementById("grid").hidden = false;
       if (!shown.length) {
-        body.innerHTML = '<tr><td colspan="8"><div class="empty">' +
+        body.innerHTML = '<tr><td colspan="9"><div class="empty">' +
           (rows.length ? "No forms match that search." : "No delivery forms yet. They appear when the driver submits proof of delivery.") +
           "</div></td></tr>";
         return;
@@ -95,6 +97,7 @@
         return "<tr>" +
           "<td>" + esc(row.delivered_label || "") + "</td>" +
           "<td>" + esc(row.order_label || "") + "</td>" +
+          "<td>" + esc(row.status || "") + "</td>" +
           "<td>" + esc(row.client_name || "") + "</td>" +
           "<td>" + esc(row.receiver_name || "") + "</td>" +
           "<td>" + esc(row.address || "") + "</td>" +

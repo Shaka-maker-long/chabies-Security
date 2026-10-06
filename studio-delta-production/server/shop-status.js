@@ -13,7 +13,7 @@ const SHOP_STATUSES = [
   "Ready for Powder Coating", "Sent to Paint Shop", "Paint Shop", "Powder Coating",
   "Ready for Assembly", "Assembly", "Paint Preparation", "Ready for Painting", "Painting",
   "Ready for Final QC", "Final QC",
-  "Ready for Delivery", "Out for Delivery",
+  "Ready for Delivery", "Out for Delivery", "At couriers",
   "Delivered"
 ];
 
@@ -37,7 +37,17 @@ const STATUS_ALIASES = {
   "paintshop": "Paint Shop",
   "powder coaters": "Paint Shop",
   "at powder coaters": "Paint Shop",
-  "at the powder coaters": "Paint Shop"
+  "at the powder coaters": "Paint Shop",
+  "at courier": "At couriers",
+  "at couriers": "At couriers",
+  "at the courier": "At couriers",
+  "at the couriers": "At couriers",
+  "with courier": "At couriers",
+  "with couriers": "At couriers",
+  "at 3rd party": "At couriers",
+  "at third party": "At couriers",
+  "third party": "At couriers",
+  "3rd party": "At couriers"
 };
 
 function normalizeShopStatus(status) {
@@ -115,6 +125,15 @@ function isAtPaintShop(status) {
   return s === "Paint Shop" || s === "Sent to Paint Shop";
 }
 
+function isAtCouriers(status) {
+  return normalizeShopStatus(status) === "At couriers";
+}
+
+function isHandedOff(status) {
+  const s = normalizeShopStatus(status);
+  return s === "Out for Delivery" || s === "At couriers" || s === "Delivered";
+}
+
 const PROFILE_CUTTING_WAITING = "Ready for Steelwork";
 
 function isProfileCuttingInProgress(status, hasOpenProfileClock) {
@@ -138,6 +157,8 @@ module.exports = {
   remainingPlanForStatus,
   isShopStatus,
   isAtPaintShop,
+  isAtCouriers,
+  isHandedOff,
   isWaitingForDrawing,
   isProfileCuttingInProgress,
   waitingStatusIfProfileCuttingIdle

@@ -3556,7 +3556,7 @@ function getNextStatus(current) {
     "Powder Coating", 
     "Ready for Assembly", "Assembly", 
     "Ready for Final QC", "Final QC",
-    "Ready for Delivery", "Out for Delivery", 
+    "Ready for Delivery", "Out for Delivery", "At couriers",
     "Delivered"
   ];
 

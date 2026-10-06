@@ -232,6 +232,10 @@ function isDelivered(status) {
   return shop.normalizeShopStatus(status) === "Delivered";
 }
 
+function isDoneForDeliveryDate(status) {
+  return shop.isHandedOff(status);
+}
+
 function isOpen(status) {
   return !isDelivered(status);
 }
@@ -249,7 +253,7 @@ function pipelineId(status) {
   if (PAINT.indexOf(s) >= 0 || shop.isAtPaintShop(status)) return "paint";
   if (ASSEMBLY.indexOf(s) >= 0) return "assembly";
   if (s === "Ready for Final QC" || s === "Final QC") return "qc";
-  if (s === "Ready for Delivery" || s === "Out for Delivery") return "delivery";
+  if (s === "Ready for Delivery" || s === "Out for Delivery" || s === "At couriers") return "delivery";
   if (s === "Delivered") return "delivered";
   return "other";
 }
@@ -386,7 +390,7 @@ function deliveryWeekSummary(items, weekKeyValue, today) {
     if (it.weekKey !== weekKeyValue) return;
     const weekday = it.weekday || sched.weekdayLong(it.day);
     if (days[weekday] != null) days[weekday] += 1;
-    const done = isDelivered(it.status) || shop.normalizeShopStatus(it.status) === "Out for Delivery";
+    const done = isDoneForDeliveryDate(it.status);
     const isLate = it.day < today && !done;
     if (isLate) late += 1;
     rows.push({
@@ -533,7 +537,7 @@ function buildDashboard(query) {
   const thisWeek = deliveryWeekSummary(deliveryItems, thisWeekKey, today);
   const nextWeek = deliveryWeekSummary(deliveryItems, nextWeekKey, today);
   const lateItems = deliveryItems.filter((it) => {
-    const done = isDelivered(it.status) || shop.normalizeShopStatus(it.status) === "Out for Delivery";
+    const done = isDoneForDeliveryDate(it.status);
     return it.day < today && !done;
   });
 
@@ -659,7 +663,7 @@ function deliveryDrill(query) {
   const weekday = String((query && query.weekday) || "");
   const filtered = items.filter((it) => {
     if (kind === "late") {
-      const done = isDelivered(it.status) || shop.normalizeShopStatus(it.status) === "Out for Delivery";
+      const done = isDoneForDeliveryDate(it.status);
       return it.day < today && !done;
     }
     if (week && it.weekKey !== week) return false;
@@ -673,7 +677,7 @@ function deliveryDrill(query) {
     const card = cardOf(order);
     card.delivery_day = it.day;
     card.delivery_code = it.code;
-    card.late = it.day < today && !(isDelivered(it.status) || shop.normalizeShopStatus(it.status) === "Out for Delivery");
+    card.late = it.day < today && !isDoneForDeliveryDate(it.status);
     return card;
   });
   const title = kind === "late"

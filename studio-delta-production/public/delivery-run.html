@@ -53,6 +53,8 @@
     .choice { display:flex; gap:8px; }
     .choice button { flex:1; border:1px solid var(--line); background:#fff; border-radius:8px; padding:12px; font-weight:700; cursor:pointer; }
     .choice button.on { background:#1c1917; color:#fff; border-color:#1c1917; }
+    .rate { display:flex; flex-direction:column; gap:6px; }
+    .rate .name { font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
     .stars { display:flex; gap:6px; }
     .stars button { width:40px; height:40px; border:1px solid var(--line); background:#fff; border-radius:8px; font-size:18px; cursor:pointer; color:var(--muted); }
     .stars button.on { background:#f8f1e3; border-color:var(--brass); color:var(--brass); }
@@ -142,9 +144,9 @@
         <button type="button" class="ghost" id="clearSig" style="align-self:flex-start;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">Clear signature</button>
         <div>
           <div class="hint" style="margin-bottom:6px">Ratings (optional)</div>
-          <label>Delivery team<div class="stars" data-rate="delivery"></div></label>
-          <label>Sales team<div class="stars" data-rate="sales"></div></label>
-          <label>Craftsmanship<div class="stars" data-rate="craft"></div></label>
+          <div class="rate"><div class="name">Delivery team</div><div class="stars" data-rate="delivery" role="group" aria-label="Delivery team rating"></div></div>
+          <div class="rate"><div class="name">Sales team</div><div class="stars" data-rate="sales" role="group" aria-label="Sales team rating"></div></div>
+          <div class="rate"><div class="name">Craftsmanship</div><div class="stars" data-rate="craft" role="group" aria-label="Craftsmanship rating"></div></div>
         </div>
         <label>Comments
           <textarea id="comments" placeholder="Anything the office should know"></textarea>
@@ -311,10 +313,13 @@
         const b = document.createElement("button");
         b.type = "button";
         b.textContent = "★";
-        b.onclick = () => {
+        b.setAttribute("aria-label", n + " star" + (n === 1 ? "" : "s"));
+        b.addEventListener("click", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
           state.ratings[key] = state.ratings[key] === n ? 0 : n;
           starRow(el, key);
-        };
+        });
         if (n <= state.ratings[key]) b.classList.add("on");
         el.appendChild(b);
       }

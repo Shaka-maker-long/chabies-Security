@@ -207,8 +207,8 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   assert.ok(pod.url.indexOf("/api/delivery-forms/") === 0);
   const deliveredA = db.listOrders().find((o) => db.formatOrderId(o.order_number) === "S260401 A");
   const deliveredB = db.listOrders().find((o) => db.formatOrderId(o.order_number) === "S260401 B");
-  assert.strictEqual(String(deliveredA.status), "Delivered");
-  assert.strictEqual(String(deliveredB.status), "Delivered");
+  assert.strictEqual(String(deliveredA.status), "At couriers");
+  assert.strictEqual(String(deliveredB.status), "At couriers");
 
   const forms = delivery.listForms();
   assert.strictEqual(forms.length, 1);
@@ -226,8 +226,13 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   });
   const pdfText = latin + "\n" + decoded.join("");
   assert.ok(pdfText.indexOf("STUDIO DELTA") !== -1 || /STUDIO/.test(pdfText), "delivery PDF letterhead");
-  assert.ok(/DELIVERY/.test(pdfText), "delivery PDF title");
-  assert.ok(/Milkyway|Frankenwald|3rd party/i.test(pdfText), "non-Gauteng PDF names the Frankenwald depot");
+  assert.ok(/COURIER HANDOVER/.test(pdfText), "third-party PDF is a courier handover");
+  assert.ok(/At couriers/.test(pdfText), "third-party PDF shows At couriers");
+  assert.ok(/COURIER DEPOT/.test(pdfText), "depot field is labelled");
+  assert.ok(/CLIENT DESTINATION/.test(pdfText), "client destination is labelled");
+  assert.ok(/Milkyway|Frankenwald/i.test(pdfText), "non-Gauteng PDF names the Frankenwald depot");
+  assert.ok(!/DROPPED AT/i.test(pdfText), "PDF must not use informal dropped-at copy");
+  assert.ok(/GPS PIN/.test(pdfText), "GPS is labelled as a pin, not raw LOCATION");
 
   let missingPhoto = null;
   try {
@@ -253,10 +258,42 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   }, "Lebo");
   assert.ok(other.id);
   const hermanusDone = db.listOrders().find((o) => o.order_number === "S260402");
-  assert.strictEqual(String(hermanusDone.status), "Delivered");
+  assert.strictEqual(String(hermanusDone.status), "At couriers");
   const listedForms = delivery.listForms();
   assert.strictEqual(listedForms[0].receiver_name, "Gate guard");
   assert.strictEqual(listedForms.length, 2);
+  assert.strictEqual(listedForms[0].status, "At couriers");
+
+  const gautengPod = await delivery.submitPod({
+    order_number: "S260404",
+    client_is_receiver: true,
+    photos: [{ name: "door.jpg", mime: "image/jpeg", data: jpegB64 }],
+    signature: pngDataUrl,
+    lat: -26.1076,
+    lng: 28.0567,
+    delivered_at: "2026-10-06T12:00:00.000Z",
+    rating_delivery: 4,
+    rating_sales: 5,
+    rating_craft: 3
+  }, "Lebo");
+  assert.ok(gautengPod.id);
+  const gautengDone = db.listOrders().find((o) => o.order_number === "S260404");
+  assert.strictEqual(String(gautengDone.status), "Delivered");
+  const gautengPdf = delivery.readPdf(gautengPod.id);
+  const gautengLatin = gautengPdf.buffer.toString("latin1");
+  const gautengDecoded = [];
+  gautengLatin.replace(/<([0-9A-Fa-f]+)>/g, (_, hex) => {
+    try { gautengDecoded.push(Buffer.from(hex, "hex").toString("latin1")); } catch (e) {}
+    return "";
+  });
+  const gautengText = gautengLatin + "\n" + gautengDecoded.join("");
+  assert.ok(/DELIVERY NOTE/.test(gautengText), "Gauteng PDF is a delivery note");
+  assert.ok(/Delivered/.test(gautengText));
+  assert.ok(/DELIVERED TO/.test(gautengText));
+  assert.ok(!/COURIER HANDOVER/.test(gautengText));
+  assert.strictEqual(delivery.podStatusForDrop("third_party"), "At couriers");
+  assert.strictEqual(delivery.podStatusForDrop("client"), "Delivered");
+  assert.ok(/S/.test(delivery.formatGps(-25.76822, 28.26716)));
 
   console.log("delivery-pod.test.js ok", { splits: loaded.count, forms: listedForms.length });
 })().catch((e) => {

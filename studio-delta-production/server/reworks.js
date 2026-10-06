@@ -150,7 +150,7 @@ function createRework(body, actor) {
   const order = db.listOrders().find((o) => String(o.order_number || "").trim() === orderNo);
   if (!order) throw new Error("Order not found: " + orderNo);
   if (!isEligibleReworkOrderStatus(order.status)) {
-    throw new Error("Reworks are only for orders that are Out for Delivery or Delivered (this one is " + (order.status || "blank") + ")");
+    throw new Error("Reworks are only for orders that are Out for Delivery, At couriers, or Delivered (this one is " + (order.status || "blank") + ")");
   }
   const open = findOpenReworkForOrder(orderNo, false);
   if (open) throw new Error("This order already has an open rework (" + open.status + ")");
@@ -235,12 +235,13 @@ function markReworkFinishedForOrder(orderNumber, workerName) {
   return markReworkFinished(open.id, workerName);
 }
 
-const ELIGIBLE_ORDER_STATUSES = ["Out for Delivery", "Delivered"];
+const ELIGIBLE_ORDER_STATUSES = ["Out for Delivery", "At couriers", "Delivered"];
 
 function isEligibleReworkOrderStatus(status) {
   const s = String(status || "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
   if (!s) return false;
   if (s === "out for delivery" || s === "out on delivery") return true;
+  if (s === "at courier" || s === "at couriers" || s === "at the courier" || s === "at the couriers") return true;
   if (s === "delivered" || s === "complete" || s === "completed") return true;
   return false;
 }

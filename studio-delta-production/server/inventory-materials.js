@@ -175,7 +175,8 @@ function orderDeliveredById() {
     listOrders().forEach((order) => {
       const id = formatOrderId(order.order_number) || String(order.order_number || "").trim();
       if (!id) return;
-      map[id] = normalizeShopStatus(order.status) === "Delivered";
+      const s = normalizeShopStatus(order.status);
+      map[id] = s === "Delivered" || s === "At couriers";
     });
   } catch (e) {}
   return map;
