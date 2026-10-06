@@ -55,7 +55,39 @@
 
   function registerWorker() {
     if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(function () {});
+    var refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", function () {
+      if (refreshing) return;
+      refreshing = true;
+      try { root.location.reload(); } catch (e) {}
+    });
+    navigator.serviceWorker.addEventListener("message", function (event) {
+      var data = (event && event.data) || {};
+      if (data.type === "sd-sw-updated" && navigator.onLine !== false) {
+        if (refreshing) return;
+        refreshing = true;
+        try { root.location.reload(); } catch (e) {}
+      }
+    });
+    navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).then(function (reg) {
+      function askWaiting() {
+        if (reg.waiting) {
+          try { reg.waiting.postMessage({ type: "SKIP_WAITING" }); } catch (e) {}
+        }
+      }
+      askWaiting();
+      reg.addEventListener("updatefound", function () {
+        var worker = reg.installing;
+        if (!worker) return;
+        worker.addEventListener("statechange", function () {
+          if (worker.state === "installed") askWaiting();
+        });
+      });
+      try { reg.update(); } catch (e) {}
+      root.addEventListener("online", function () {
+        try { reg.update(); } catch (e2) {}
+      });
+    }).catch(function () {});
   }
 
   function showInstall(deferred) {

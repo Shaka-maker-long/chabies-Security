@@ -2,16 +2,17 @@
    Driver run HTML/assets are cached so PODs can be filled with no signal. */
 importScripts("/delivery-offline.js");
 
-const CACHE = "sd-pwa-v20-delivery-login";
+const CACHE = "sd-pwa-v21-offline-login";
 const PRECACHE = [
   "/",
   "/offline.html",
   "/delivery-run",
+  "/delivery-offline.js?v=del-off2",
   "/delivery-offline.js",
   "/vendor/leaflet/leaflet.css",
   "/vendor/leaflet/leaflet.js",
   "/manifest.webmanifest",
-  "/sd-pwa.js?v=pwa-stg1",
+  "/sd-pwa.js?v=pwa-offlogin",
   "/sd-brand.css?v=logged-in-2",
   "/sd-splash.js?v=erp-shell",
   "/office-auth.js?v=login-msg-3",
@@ -50,6 +51,12 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
+      .then(() => self.clients.matchAll({ type: "window", includeUncontrolled: true }))
+      .then((list) => {
+        list.forEach((client) => {
+          try { client.postMessage({ type: "sd-sw-updated", cache: CACHE }); } catch (e) {}
+        });
+      })
   );
 });
 
@@ -103,6 +110,10 @@ self.addEventListener("sync", (event) => {
 
 self.addEventListener("message", (event) => {
   const data = event.data || {};
+  if (data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+    return;
+  }
   if (data.type === "sd-delivery-flush") {
     event.waitUntil(
       self.sdDeliveryOffline.flushQueue().then((result) => notifyDeliveryClients({ flushed: result }))
