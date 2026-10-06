@@ -3086,7 +3086,7 @@
       }
     }
 
-    function showLoginError(msg, kind) {
+    function showLoginError(msg, kind, opts) {
       const text = String(msg || "").trim() || "Login failed";
       const box = document.getElementById("loginError");
       if (box) {
@@ -3094,6 +3094,7 @@
         box.classList.remove("d-none", "alert-warning", "alert-danger", "alert-info");
         box.classList.add(kind === "pending" ? "alert-warning" : (kind === "info" ? "alert-info" : "alert-danger"));
       }
+      if (opts && opts.quiet) return;
       try { showAlert(text); } catch (e) {
         try { window.alert(text); } catch (err) {}
       }
@@ -4839,10 +4840,10 @@
       }).withFailureHandler(err => {
         tryUnlockOfflineLogin(name, pass, err).then(function (ok) {
           finishBtn();
-          if (!ok) showLoginError(connectionLoginError(err), "danger");
+          if (!ok) showLoginError(connectionLoginError(err), "danger", { quiet: true });
         }).catch(function () {
           finishBtn();
-          showLoginError(connectionLoginError(err), "danger");
+          showLoginError(connectionLoginError(err), "danger", { quiet: true });
         });
       }).verifyGlobalLogin(name, pass);
     }

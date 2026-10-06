@@ -1303,6 +1303,7 @@ assert.ok(floor.indexOf("tryUnlockOfflineLogin") !== -1, "offline login must ret
 assert.ok(floor.indexOf("rememberDeliveryLogin") !== -1);
 assert.ok(floor.indexOf("adoptOfflineDeliverySession") !== -1);
 assert.ok(floor.indexOf("connectionLoginError") !== -1);
+assert.ok(floor.indexOf("quiet: true") !== -1, "offline login keeps the message on the form, not a blocking popup");
 assert.ok(floor.indexOf('"Connection error: " + err') === -1, "do not show Connection error: Failed to fetch on login");
 assert.ok(floor.indexOf("/delivery-offline.js") !== -1, "Home loads delivery offline unlock helpers");
 assert.ok(floor.indexOf("Drivers who have logged in on this phone") !== -1);
