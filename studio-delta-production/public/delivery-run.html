@@ -31,12 +31,13 @@
     .unit .meta { margin-top:6px; font-size:12px; color:var(--ink); }
     .unit .client-addr { margin-top:4px; font-size:12px; color:var(--muted); }
     .tag { display:inline-block; margin-top:6px; font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--brass); }
+    .waze { display:inline-block; margin-top:8px; font-size:13px; font-weight:700; color:var(--brass); text-decoration:none; }
     .unit button { margin-top:8px; border:1px solid #1c1917; background:#1c1917; color:#fff; border-radius:6px; padding:8px 12px; font-weight:700; cursor:pointer; width:100%; }
     .empty, .load, .err { padding:40px 16px; text-align:center; color:var(--muted); font-weight:600; }
     .err { color:var(--bad); }
     #map { height:min(70vh, 560px); width:100%; background:#ece7dc; }
     .eta { padding:10px 14px; border-top:1px solid var(--line); font-size:13px; }
-    .eta b { color:var(--brass); }
+    .eta a { color: var(--brass); font-weight: 700; text-decoration: none; }
     .mask { position:fixed; inset:0; background:rgba(16,24,40,.72); z-index:80; display:none; align-items:flex-start; justify-content:center; padding:16px 12px; overflow:auto; }
     .mask.open { display:flex; }
     .sheet { width:min(560px, 96vw); background:#fff; border-radius:12px; border:1px solid var(--line); margin:12px auto 32px; }
@@ -224,11 +225,17 @@
         const clientLine = third && g.client_address
           ? '<p class="client-addr">Client address: ' + esc(g.client_address) + "</p>"
           : "";
+        const stop = ((state.route && state.route.stops) || []).find((s) =>
+          (s.orders || []).some((o) => o.base === g.base || o.order_number === (g.orders[0] && g.orders[0].order_number))
+        );
+        const wazeBtn = stop && stop.waze_url
+          ? '<a class="waze" href="' + esc(stop.waze_url) + '" target="_blank" rel="noopener">Open in Waze</a>'
+          : "";
         return '<article class="card unit">' + shot +
           '<div class="body"><h2>' + esc(nums) + '</h2>' +
           '<p>' + esc(g.client_name) + '</p>' +
           '<p class="meta">' + esc(g.address || "No address on the order") + '</p>' +
-          clientLine + tag +
+          clientLine + tag + wazeBtn +
           '<button type="button" data-stop="' + esc(g.base) + '">Arrive · proof of delivery</button></div></article>';
       }).join("");
       box.querySelectorAll("[data-stop]").forEach((btn) => {
@@ -251,9 +258,15 @@
       box.innerHTML = startLine + route.stops.map((s, i) => {
         const nums = (s.orders || []).map((o) => o.order_number).join(", ");
         const kind = s.drop_kind === "third_party" ? " · 3rd party" : "";
+        const waze = s.waze_url
+          ? ' · <a href="' + esc(s.waze_url) + '" target="_blank" rel="noopener">Open in Waze</a>'
+          : "";
         return "<div><b>" + (i + 1) + ".</b> " + esc(nums) + " · " + esc(s.address || "") + kind +
-          " · ETA " + esc(s.eta_label || "") + " · " + esc(String(s.km || 0)) + " km</div>";
+          " · ETA " + esc(s.eta_label || "") + " · " + esc(String(s.km || 0)) + " km" + waze + "</div>";
       }).join("");
+      if (route.on_roads === false) {
+        box.innerHTML += '<div class="hint">Road path could not load — the line is as the crow flies until Waze is opened.</div>';
+      }
       if (!window.L) return;
       if (!map) {
         map = L.map("map");
@@ -274,13 +287,15 @@
       }
       route.stops.forEach((s, i) => {
         if (s.lat == null) return;
-        const m = L.marker([s.lat, s.lng]).bindPopup((i + 1) + ". " + (s.address || "") + "<br>ETA " + (s.eta_label || ""));
+        const waze = s.waze_url ? '<br><a href="' + esc(s.waze_url) + '" target="_blank" rel="noopener">Open in Waze</a>' : "";
+        const m = L.marker([s.lat, s.lng]).bindPopup((i + 1) + ". " + (s.address || "") + "<br>ETA " + (s.eta_label || "") + waze);
         mapLayer.addLayer(m);
         pts.push([s.lat, s.lng]);
       });
-      if (pts.length > 1) mapLayer.addLayer(L.polyline(pts, { color: "#b08948", weight: 4 }));
+      const line = (route.path && route.path.length > 1) ? route.path : pts;
+      if (line.length > 1) mapLayer.addLayer(L.polyline(line, { color: "#b08948", weight: 5, opacity: 0.92 }));
       mapLayer.addTo(map);
-      if (pts.length) map.fitBounds(pts, { padding: [28, 28] });
+      if (line.length) map.fitBounds(line, { padding: [28, 28] });
       setTimeout(() => { if (map) map.invalidateSize(); }, 80);
     }
     function setTab(id) {
@@ -409,6 +424,7 @@
         const rr = await fetch("/api/delivery/route", { credentials: "same-origin" });
         const rj = await rr.json().catch(() => ({}));
         state.route = (rj && rj.route) || null;
+        renderUnits();
         if (state.tab === "map") renderMap();
         const want = params.get("stop");
         if (want && state.grouped.some((g) => g.base === want || g.orders.some((o) => o.order_number === want))) {

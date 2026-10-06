@@ -904,6 +904,8 @@ assert.ok(deliveryRunHtml.indexOf("label[hidden] { display:none !important; }") 
 assert.ok(deliveryRunHtml.indexOf("3rd party") !== -1, "driver run marks out-of-Gauteng drops");
 assert.ok(deliveryRunHtml.indexOf("Frankenwald") !== -1);
 assert.ok(deliveryRunHtml.indexOf("origin.address") !== -1, "map starts at Studio Delta’s address");
+assert.ok(deliveryRunHtml.indexOf("Open in Waze") !== -1);
+assert.ok(deliveryRunHtml.indexOf("route.path") !== -1, "map draws the road path, not only stop-to-stop");
 const deliveryFormsHtml = fs.readFileSync(path.join(__dirname, "../public/delivery-forms.html"), "utf8");
 assert.ok(deliveryFormsHtml.indexOf("Delivery Forms") !== -1);
 assert.ok(deliveryFormsHtml.indexOf("Frankenwald") !== -1);

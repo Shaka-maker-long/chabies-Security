@@ -138,7 +138,8 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
 
   const route = await delivery.buildRoute({
     now: new Date("2026-10-06T08:00:00+02:00"),
-    geocodeFn: async (q) => delivery.defaultGeocode(q)
+    geocodeFn: async (q) => delivery.defaultGeocode(q),
+    driveFn: null
   });
   assert.strictEqual(route.stops.length, 2, "Gauteng client stop plus one 3rd party depot: " + route.stops.length);
   const depotStop = route.stops.find((s) => s.drop_kind === "third_party");
@@ -151,6 +152,31 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   assert.ok(String(route.origin.address || "").indexOf("Derdepoort") !== -1);
   assert.ok(route.stops.every((s) => s.eta_label), "each stop has an ETA");
   assert.ok(route.stops[0].minutes >= 4);
+  assert.ok(depotStop.waze_url.indexOf("waze.com") !== -1);
+  assert.strictEqual(route.on_roads, false);
+
+  const roaded = await delivery.buildRoute({
+    now: new Date("2026-10-06T08:00:00+02:00"),
+    geocodeFn: async (q) => delivery.defaultGeocode(q),
+    driveFn: async (pts) => ({
+      path: [[-25.725, 28.295], [-25.8, 28.22], [-26.067, 28.111]],
+      legs: pts.slice(1).map(() => ({ km: 18.4, minutes: 22 }))
+    })
+  });
+  assert.strictEqual(roaded.on_roads, true);
+  assert.ok(roaded.path.length > 2);
+  assert.strictEqual(roaded.stops[0].km, 18.4);
+  assert.ok(roaded.stops[0].minutes >= 22);
+
+  const parsed = delivery.parseOsrmRoute({
+    code: "Ok",
+    routes: [{
+      geometry: { coordinates: [[28.29, -25.72], [28.11, -26.06]] },
+      legs: [{ distance: 54200, duration: 2736 }]
+    }]
+  }, 2);
+  assert.strictEqual(parsed.path[0][0], -25.72);
+  assert.strictEqual(parsed.legs[0].km, 54.2);
 
   let blocked = null;
   try {

@@ -310,6 +310,43 @@ function travelMinutes(km) {
   return Math.max(4, Math.round((km / AVG_KMH) * 60));
 }
 
+function osrmBaseUrl() {
+  return String(process.env.OSRM_URL || "https://router.project-osrm.org").replace(/\/+$/, "");
+}
+
+function wazeUrl(lat, lng) {
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return "";
+  return "https://waze.com/ul?ll=" + Number(lat).toFixed(6) + "," + Number(lng).toFixed(6) + "&navigate=yes";
+}
+
+function parseOsrmRoute(json, pointCount) {
+  if (!json || json.code !== "Ok" || !json.routes || !json.routes[0]) return null;
+  const route = json.routes[0];
+  const coords = (((route.geometry || {}).coordinates) || []).map((pair) => [Number(pair[1]), Number(pair[0])]);
+  const legs = Array.isArray(route.legs) ? route.legs : [];
+  if (pointCount && legs.length !== pointCount - 1) return null;
+  return {
+    path: coords.filter((p) => Number.isFinite(p[0]) && Number.isFinite(p[1])),
+    legs: legs.map((leg) => ({
+      km: Math.round((Number(leg.distance) || 0) / 100) / 10,
+      minutes: Math.max(1, Math.round((Number(leg.duration) || 0) / 60))
+    }))
+  };
+}
+
+async function fetchOsrmDrive(points) {
+  const pins = (points || []).filter((p) => p && Number.isFinite(Number(p.lat)) && Number.isFinite(Number(p.lng)));
+  if (pins.length < 2) return null;
+  const loc = pins.map((p) => Number(p.lng).toFixed(6) + "," + Number(p.lat).toFixed(6)).join(";");
+  const url = osrmBaseUrl() + "/route/v1/driving/" + loc + "?overview=full&geometries=geojson&steps=false";
+  const res = await fetch(url, {
+    headers: { "User-Agent": "StudioDeltaDelivery/1.0 (shop floor)" },
+    signal: AbortSignal.timeout(4000)
+  });
+  if (!res.ok) return null;
+  return parseOsrmRoute(await res.json(), pins.length);
+}
+
 function routeStopKey(row) {
   if (row && row.drop_kind === "third_party") return "third_party";
   return String((row && (row.drop_address || row.full_address || row.base)) || "").trim().toLowerCase();
@@ -368,10 +405,50 @@ async function buildRoute(opts) {
     cursor = next;
     elapsed += STOP_MINUTES;
   }
+  ordered.forEach((stop) => {
+    stop.waze_url = wazeUrl(stop.lat, stop.lng);
+  });
+  let path = [];
+  let onRoads = false;
+  const driveFn = opts && Object.prototype.hasOwnProperty.call(opts, "driveFn")
+    ? opts.driveFn
+    : fetchOsrmDrive;
+  if (typeof driveFn === "function") {
+    try {
+      const drive = await driveFn([origin].concat(ordered));
+      if (drive && Array.isArray(drive.path) && drive.path.length > 1) {
+        path = drive.path;
+        onRoads = true;
+      }
+      const legs = drive && Array.isArray(drive.legs) ? drive.legs : [];
+      if (legs.length === ordered.length) {
+        elapsed = 0;
+        cursor = origin;
+        ordered.forEach((stop, i) => {
+          const leg = legs[i] || {};
+          elapsed += Number(leg.minutes) || travelMinutes(haversineKm(cursor, stop));
+          const eta = new Date(now.getTime() + elapsed * 60000);
+          stop.km = Number.isFinite(Number(leg.km)) ? Number(leg.km) : stop.km;
+          stop.eta = eta.toISOString();
+          stop.eta_label = formatWhen(eta);
+          stop.minutes = elapsed;
+          cursor = stop;
+          elapsed += STOP_MINUTES;
+        });
+      }
+    } catch (e) {
+      onRoads = false;
+    }
+  }
+  if (!path.length) {
+    path = [origin].concat(ordered).filter((p) => p && p.lat != null).map((p) => [Number(p.lat), Number(p.lng)]);
+  }
   return {
     origin,
     stops: ordered,
     orders: loaded,
+    path,
+    on_roads: onRoads,
     average_kmh: AVG_KMH
   };
 }
@@ -689,6 +766,9 @@ module.exports = {
   geocodeAddress,
   defaultGeocode,
   haversineKm,
+  wazeUrl,
+  parseOsrmRoute,
+  fetchOsrmDrive,
   submitPod,
   listForms,
   readPdf,
