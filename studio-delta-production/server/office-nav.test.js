@@ -899,6 +899,8 @@ assert.ok(fs.existsSync(path.join(__dirname, "../public/delivery-forms.html")));
 const deliveryRunHtml = fs.readFileSync(path.join(__dirname, "../public/delivery-run.html"), "utf8");
 assert.ok(deliveryRunHtml.indexOf("Proof of delivery") !== -1);
 assert.ok(deliveryRunHtml.indexOf("/api/delivery/pod") !== -1);
+assert.ok(deliveryRunHtml.indexOf(".page[hidden] { display:none !important; }") !== -1, "map tab must hide the loaded-units list");
+assert.ok(deliveryRunHtml.indexOf("label[hidden] { display:none !important; }") !== -1, "receiver name only shows when the client is not signing");
 const deliveryFormsHtml = fs.readFileSync(path.join(__dirname, "../public/delivery-forms.html"), "utf8");
 assert.ok(deliveryFormsHtml.indexOf("Delivery Forms") !== -1);
 assert.ok(codeGs.indexOf("deliveryAssigneeName_") !== -1);
