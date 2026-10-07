@@ -98,6 +98,7 @@
     </div>
   </header>
   <div class="netbar" id="netBar">Open this page at the factory so today’s run stays on the phone if signal drops.</div>
+  <div class="netbar" id="trackBar">Location for the office map is off until you allow it on this phone.</div>
   <div class="tabs">
     <button type="button" class="on" data-tab="units">Loaded units</button>
     <button type="button" data-tab="map">Map &amp; ETA</button>
@@ -186,9 +187,11 @@
       deliveredAt: "",
       signed: false,
       offline: false,
-      authNeeded: false
+      authNeeded: false,
+      tracking: "off",
+      watchId: null
     };
-    let map, mapLayer, flushing = false;
+    let map, mapLayer, flushing = false, trackTimer = null, lastTrackSent = 0;
     const off = window.sdDeliveryOffline;
     const params = new URLSearchParams(location.search);
 
@@ -283,6 +286,99 @@
         '<p>' + esc(g.client_name) + '</p>' +
         '<p class="meta">' + esc(g.address || "No address on the order") + '</p>' +
         clientLine + tag + wazeBtn + action + '</div></article>';
+    }
+    function paintTrack() {
+      const el = document.getElementById("trackBar");
+      if (!el) return;
+      if (state.tracking === "live") {
+        el.className = "netbar";
+        el.textContent = "Sharing live location with the office Driver tracker. Keep Driver run open.";
+        return;
+      }
+      if (state.tracking === "denied") {
+        el.className = "netbar bad";
+        el.textContent = "Location blocked on this phone. Allow location for Studio Delta, then tap Refresh.";
+        return;
+      }
+      if (state.tracking === "error") {
+        el.className = "netbar warn";
+        el.textContent = "Could not read GPS yet. Move outside or tap Refresh, then allow location when asked.";
+        return;
+      }
+      el.className = "netbar warn";
+      el.textContent = "Allow location when asked so the office can see your live pin on Driver tracker.";
+    }
+    async function postLocation(coords, sharing) {
+      if (!state.driver) return;
+      try {
+        const body = sharing === false
+          ? { sharing: false }
+          : {
+              sharing: true,
+              lat: coords.latitude,
+              lng: coords.longitude,
+              accuracy: coords.accuracy,
+              heading: coords.heading,
+              speed: coords.speed
+            };
+        const r = await fetch("/api/delivery/location", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        });
+        if (r.status === 401) return;
+        if (r.ok && sharing !== false) {
+          state.tracking = "live";
+          lastTrackSent = Date.now();
+          paintTrack();
+        }
+      } catch (e) {}
+    }
+    function onTrackPosition(pos) {
+      if (!pos || !pos.coords) return;
+      state.lat = pos.coords.latitude;
+      state.lng = pos.coords.longitude;
+      const now = Date.now();
+      if (now - lastTrackSent < 12000 && state.tracking === "live") return;
+      postLocation(pos.coords, true);
+    }
+    function onTrackError(err) {
+      if (err && (err.code === 1 || /denied/i.test(String(err.message || "")))) state.tracking = "denied";
+      else state.tracking = "error";
+      paintTrack();
+    }
+    function startLiveTracking() {
+      paintTrack();
+      if (!navigator.geolocation) {
+        state.tracking = "error";
+        paintTrack();
+        return;
+      }
+      if (state.watchId != null) return;
+      state.watchId = navigator.geolocation.watchPosition(onTrackPosition, onTrackError, {
+        enableHighAccuracy: true,
+        maximumAge: 10000,
+        timeout: 15000
+      });
+      if (trackTimer) clearInterval(trackTimer);
+      trackTimer = setInterval(() => {
+        if (state.tracking === "denied") return;
+        navigator.geolocation.getCurrentPosition(onTrackPosition, onTrackError, {
+          enableHighAccuracy: true,
+          maximumAge: 15000,
+          timeout: 12000
+        });
+      }, 20000);
+    }
+    function stopLiveTracking() {
+      if (state.watchId != null && navigator.geolocation) {
+        try { navigator.geolocation.clearWatch(state.watchId); } catch (e) {}
+      }
+      state.watchId = null;
+      if (trackTimer) clearInterval(trackTimer);
+      trackTimer = null;
+      postLocation(null, false);
     }
     function paintNet() {
       const el = document.getElementById("netBar");
@@ -610,6 +706,7 @@
           await off.saveRun({ driver: state.driver, orders: j.orders || [], route: route }).catch(() => {});
         }
         applyOrders(j.orders || [], route, queue);
+        startLiveTracking();
         const want = params.get("stop");
         if (want && state.grouped.some((g) => g.base === want || g.orders.some((o) => o.order_number === want))) {
           const hit = state.grouped.find((g) => g.base === want || g.orders.some((o) => o.order_number === want));
@@ -623,6 +720,7 @@
           state.offline = true;
           state.driver = (snap && snap.driver) || state.driver;
           applyOrders((snap && snap.orders) || [], (snap && snap.route) || null, queue);
+          startLiveTracking();
           return;
         }
         if (boot) boot.className = "err";
@@ -746,11 +844,15 @@
         state.lng = pos.coords.longitude;
       }, () => {}, { timeout: 4000 });
     }
-    window.addEventListener("online", () => { state.offline = false; paintNet(); flushQueue(); });
+    window.addEventListener("online", () => { state.offline = false; paintNet(); flushQueue(); startLiveTracking(); });
     window.addEventListener("offline", () => { state.offline = true; paintNet(); });
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") flushQueue();
+      if (document.visibilityState === "visible") {
+        flushQueue();
+        startLiveTracking();
+      }
     });
+    window.addEventListener("pagehide", () => { stopLiveTracking(); });
     if (navigator.serviceWorker) {
       navigator.serviceWorker.addEventListener("message", (ev) => {
         const data = ev.data || {};

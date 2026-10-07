@@ -274,6 +274,10 @@ app.get("/delivery-forms", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "delivery-forms.html"));
 });
+app.get("/driver-tracker", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "driver-tracker.html"));
+});
 function shopProfile(req, res) {
   const staff = require("./staff");
   const profile = staff.readSession(req);
@@ -375,6 +379,45 @@ app.get("/api/delivery/forms", (req, res) => {
         return;
       }
       res.json({ ok: true, rows: delivery.listForms() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
+app.post("/api/delivery/location", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const delivery = require("./delivery-pod");
+      if (!delivery.canSubmitPod(profile)) {
+        res.status(403).json({ ok: false, error: "Only the driver, QC, or office can share a delivery location." });
+        return;
+      }
+      const track = require("./delivery-track");
+      const row = track.saveLocation(profile.name, req.body || {});
+      res.json({ ok: true, location: row });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
+app.get("/api/delivery/locations", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const delivery = require("./delivery-pod");
+      if (!profile.canSeeOffice && !profile.isAdmin && !delivery.canLoadTruck(profile)) {
+        res.status(403).json({ ok: false, error: "Driver tracker is for office and QC." });
+        return;
+      }
+      const track = require("./delivery-track");
+      res.json({
+        ok: true,
+        factory: track.FACTORY,
+        drivers: track.listLocations()
+      });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

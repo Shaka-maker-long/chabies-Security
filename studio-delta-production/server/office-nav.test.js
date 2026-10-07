@@ -9,7 +9,7 @@ const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 const labels = [
   "Home", "Orders", "Inventory Management", "Enquiries", "Marketing", "My tasks", "Dropdowns", "Users",
   "Task times", "Planning", "Reworks", "Debtors", "Production Tasks", "Production", "Workers", "Metrics",
-  "QC Reports", "Delivery Forms", "Activity", "Schedule", "Log Out", "Change access code"
+  "QC Reports", "Delivery Forms", "Driver tracker", "Activity", "Schedule", "Log Out", "Change access code"
 ];
 labels.forEach((label) => {
   assert.ok(js.indexOf('"' + label + '"') !== -1 || js.indexOf(">" + label + "<") !== -1, "office menu missing " + label);
@@ -28,6 +28,8 @@ assert.ok(js.indexOf('"/schedule"') === -1);
 assert.ok(js.indexOf("/planning") !== -1, "planning is an office page");
 assert.ok(js.indexOf("/reworks") !== -1, "reworks is an office page");
 assert.ok(js.indexOf("/delivery-forms") !== -1, "delivery forms is an office page");
+assert.ok(js.indexOf("/driver-tracker") !== -1, "driver tracker is an office page");
+assert.ok(js.indexOf('"Driver tracker"') !== -1);
 assert.ok(js.indexOf('"Reworks"') !== -1);
 assert.ok(js.indexOf('"Planning"') !== -1);
 
@@ -893,9 +895,13 @@ assert.ok(floor.indexOf("offerLoadOnTruck") !== -1);
 assert.ok(floor.indexOf("openDeliveryRun") !== -1);
 assert.ok(indexJs.indexOf("/delivery-run") !== -1);
 assert.ok(indexJs.indexOf("/delivery-forms") !== -1);
+assert.ok(indexJs.indexOf("/driver-tracker") !== -1);
 assert.ok(indexJs.indexOf("/api/delivery/pod") !== -1);
+assert.ok(indexJs.indexOf("/api/delivery/location") !== -1);
+assert.ok(indexJs.indexOf("/api/delivery/locations") !== -1);
 assert.ok(fs.existsSync(path.join(__dirname, "../public/delivery-run.html")));
 assert.ok(fs.existsSync(path.join(__dirname, "../public/delivery-forms.html")));
+assert.ok(fs.existsSync(path.join(__dirname, "../public/driver-tracker.html")));
 const deliveryRunHtml = fs.readFileSync(path.join(__dirname, "../public/delivery-run.html"), "utf8");
 assert.ok(deliveryRunHtml.indexOf("Proof of delivery") !== -1);
 assert.ok(deliveryRunHtml.indexOf("Courier handover") !== -1, "third-party uses a courier handover form");
@@ -904,8 +910,8 @@ assert.ok(deliveryRunHtml.indexOf("Arrive · courier handover") !== -1);
 assert.ok(deliveryRunHtml.indexOf("ratingsWrap") !== -1, "ratings hide on courier handover");
 assert.ok(deliveryRunHtml.indexOf("(one photo)") !== -1, "courier handover asks for one photo");
 assert.ok(deliveryRunHtml.indexOf("/api/delivery/pod") !== -1);
-assert.ok(deliveryRunHtml.indexOf(".page[hidden] { display:none !important; }") !== -1, "map tab must hide the loaded-units list");
-assert.ok(deliveryRunHtml.indexOf("label[hidden] { display:none !important; }") !== -1, "receiver name only shows when the client is not signing");
+assert.ok(deliveryRunHtml.indexOf(".page[hidden]") !== -1 && /display:\s*none\s*!important/.test(deliveryRunHtml), "map tab must hide the loaded-units list");
+assert.ok(deliveryRunHtml.indexOf("label[hidden]") !== -1, "receiver name only shows when the client is not signing");
 assert.ok(deliveryRunHtml.indexOf("3rd party") !== -1, "driver run marks out-of-Gauteng drops");
 assert.ok(deliveryRunHtml.indexOf("Frankenwald") !== -1);
 assert.ok(deliveryRunHtml.indexOf("origin.address") !== -1, "map starts at Studio Delta’s address");
@@ -915,6 +921,13 @@ assert.ok(deliveryRunHtml.indexOf("<label>Delivery team") === -1, "star buttons 
 assert.ok(deliveryRunHtml.indexOf('data-rate="delivery"') !== -1);
 assert.ok(deliveryRunHtml.indexOf("sdDeliveryOffline") !== -1, "driver run queues PODs on the phone");
 assert.ok(deliveryRunHtml.indexOf("Saved on this phone") !== -1);
+assert.ok(deliveryRunHtml.indexOf("startLiveTracking") !== -1, "driver run shares a live pin");
+assert.ok(deliveryRunHtml.indexOf("/api/delivery/location") !== -1);
+const driverTrackerHtml = fs.readFileSync(path.join(__dirname, "../public/driver-tracker.html"), "utf8");
+assert.ok(driverTrackerHtml.indexOf("Driver tracker") !== -1);
+assert.ok(driverTrackerHtml.indexOf("/api/delivery/locations") !== -1);
+assert.ok(driverTrackerHtml.indexOf("leaflet") !== -1);
+assert.ok(floor.indexOf("/driver-tracker") !== -1, "floor menu links Driver tracker");
 assert.ok(deliveryRunHtml.indexOf("/vendor/leaflet/leaflet.js") !== -1, "leaflet is local so the map works without unpkg");
 assert.ok(deliveryRunHtml.indexOf("unpkg.com/leaflet") === -1);
 const shopStatusJs = fs.readFileSync(path.join(__dirname, "shop-status.js"), "utf8");
