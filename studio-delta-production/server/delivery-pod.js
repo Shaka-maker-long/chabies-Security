@@ -207,6 +207,54 @@ function relatedUnits(orderNumber, statusWanted) {
     .sort((a, b) => String(a.order_number).localeCompare(String(b.order_number)));
 }
 
+function requestedOrderNumbers(body) {
+  const out = [];
+  const seen = {};
+  function push(n) {
+    const id = db.formatOrderId(n);
+    if (!id || seen[id]) return;
+    seen[id] = true;
+    out.push(id);
+  }
+  if (Array.isArray(body && body.order_numbers)) body.order_numbers.forEach(push);
+  if (body && body.order_number) push(body.order_number);
+  return out;
+}
+
+function unitsForPodSubmit(body) {
+  const nums = requestedOrderNumbers(body);
+  if (!nums.length) throw new Error("Order is required.");
+  const batchThird = !!(body && (body.batch_third_party === true || body.batch_third_party === "yes"));
+  const loaded = listLoaded();
+  const byNumber = {};
+  loaded.forEach((row) => { byNumber[row.order_number] = row; });
+  const seed = byNumber[nums[0]] || relatedUnits(nums[0], "out for delivery")[0] || null;
+  if (!seed) return [];
+  if (seed.drop_kind === "third_party") {
+    const wantNums = {};
+    const wantBases = {};
+    nums.forEach((n) => {
+      wantNums[n] = true;
+      wantBases[orderBase(n)] = true;
+    });
+    const allTp = loaded.filter((row) => row.drop_kind === "third_party");
+    if (batchThird || nums.length > 1) {
+      const picked = allTp.filter((row) => wantNums[row.order_number] || wantBases[row.base]);
+      return (picked.length ? picked : allTp)
+        .sort((a, b) => String(a.order_number).localeCompare(String(b.order_number)));
+    }
+    return relatedUnits(nums[0], "out for delivery").filter((row) => row.drop_kind === "third_party");
+  }
+  return relatedUnits(nums[0], "out for delivery");
+}
+
+function thirdPartyDestinations(units) {
+  return (units || []).map((u) => {
+    const dest = String(u.client_address || u.full_address || "").trim();
+    return u.order_number + (dest ? " → " + dest : "") + (u.client_name ? " (" + u.client_name + ")" : "");
+  }).join("\n");
+}
+
 function listReadyToLoad() {
   return db.listOrders()
     .filter((row) => String(row.status || "").trim().toLowerCase() === "ready for delivery")
@@ -656,21 +704,25 @@ async function renderPdf(record, dest) {
     fieldBox(doc, "DRIVER", record.driver, MARGIN, y, half, { height: hDriver });
     fieldBox(doc, "GPS PIN", formatGps(record.lat, record.lng), MARGIN + half + gap, y, half, { height: hDriver });
     y += hDriver + 12;
-    const rateH = 78;
-    doc.save().fillColor(CREAM).rect(MARGIN, y, inner, rateH).fill().restore();
-    drawPdfBox(doc, MARGIN, y, inner, rateH);
-    doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(7.5).text("RATINGS", MARGIN + 8, y + 8);
-    const rows = [
-      ["Delivery team", record.rating_delivery],
-      ["Sales team", record.rating_sales],
-      ["Craftsmanship", record.rating_craft]
-    ];
-    rows.forEach((row, i) => {
-      const ry = y + 26 + i * 16;
-      doc.fillColor(INK).font("Helvetica").fontSize(10).text(row[0], MARGIN + 8, ry - 4, { width: 140 });
-      drawStars(doc, MARGIN + 150, ry + 2, row[1]);
-    });
-    y += rateH + 10;
+    if (!courier) {
+      const rateH = 78;
+      doc.save().fillColor(CREAM).rect(MARGIN, y, inner, rateH).fill().restore();
+      drawPdfBox(doc, MARGIN, y, inner, rateH);
+      doc.fillColor(MUTED).font("Helvetica-Bold").fontSize(7.5).text("RATINGS", MARGIN + 8, y + 8);
+      const rows = [
+        ["Delivery team", record.rating_delivery],
+        ["Sales team", record.rating_sales],
+        ["Craftsmanship", record.rating_craft]
+      ];
+      rows.forEach((row, i) => {
+        const ry = y + 26 + i * 16;
+        doc.fillColor(INK).font("Helvetica").fontSize(10).text(row[0], MARGIN + 8, ry - 4, { width: 140 });
+        drawStars(doc, MARGIN + 150, ry + 2, row[1]);
+      });
+      y += rateH + 10;
+    } else if ((record.order_numbers || []).length > 1) {
+      y += fieldBox(doc, "ORDERS ON THIS HANDOVER", record.order_label || "", MARGIN, y, inner, { minH: 40 }) + 8;
+    }
     if (record.comments) {
       y += fieldBox(doc, "COMMENTS", record.comments, MARGIN, y, inner, { minH: 54 }) + 8;
     }
@@ -773,27 +825,34 @@ function alreadySubmittedResult(row) {
 }
 
 async function submitPod(body, actorName) {
-  const orderNumber = db.formatOrderId(body && body.order_number);
+  const nums = requestedOrderNumbers(body);
+  const orderNumber = nums[0] || "";
   if (!orderNumber) throw new Error("Order is required.");
   const clientSubmitId = String((body && (body.client_submit_id || body.offline_id)) || "").trim();
   if (clientSubmitId) {
     const dup = loadStore().records.find((row) => row && String(row.client_submit_id || "") === clientSubmitId);
     if (dup) return alreadySubmittedResult(dup);
   }
-  let units = relatedUnits(orderNumber, "out for delivery");
+  let units = unitsForPodSubmit(body);
   if (!units.length) {
-    const existing = formsForOrder(orderNumber)[0];
+    const existing = formsForOrder(orderNumber)[0] || nums.map((n) => formsForOrder(n)[0]).find(Boolean);
     if (existing) return alreadySubmittedResult(existing);
     throw new Error("That order is not loaded on the truck.");
   }
-  const clientName = String((body && body.client_name) || units[0].client_name || "").trim();
-  const clientIsReceiver = body && (body.client_is_receiver === true || body.client_is_receiver === "yes");
-  const receiverName = clientIsReceiver
-    ? clientName
-    : String((body && body.receiver_name) || "").trim();
-  if (!receiverName) throw new Error("Name of the person receiving is required.");
-  const photos = await encodePhotos(body && body.photos);
-  if (!photos.length) throw new Error("At least one photo is required.");
+  const courier = units[0].drop_kind === "third_party";
+  const clientNames = Array.from(new Set(units.map((u) => String(u.client_name || "").trim()).filter(Boolean)));
+  const clientName = String((body && body.client_name) || "").trim()
+    || (clientNames.length === 1 ? clientNames[0] : (clientNames.length ? "Several clients" : ""));
+  const clientIsReceiver = !courier && body && (body.client_is_receiver === true || body.client_is_receiver === "yes");
+  const receiverName = courier
+    ? String((body && body.receiver_name) || "").trim()
+    : (clientIsReceiver ? clientName : String((body && body.receiver_name) || "").trim());
+  if (!receiverName) throw new Error(courier
+    ? "Name of the person receiving at the courier depot is required."
+    : "Name of the person receiving is required.");
+  let photos = await encodePhotos(body && body.photos);
+  if (!photos.length) throw new Error(courier ? "Take one photo of the handover." : "At least one photo is required.");
+  if (courier && photos.length > 1) photos = photos.slice(0, 1);
   const signatureBuf = await toJpeg(photoRaw(body && body.signature));
   if (!signatureBuf) throw new Error("Signature is required.");
   const lat = body && body.lat != null && body.lat !== "" ? Number(body.lat) : null;
@@ -808,22 +867,22 @@ async function submitPod(body, actorName) {
     kind: "Delivery",
     order_numbers: units.map((u) => u.order_number),
     order_label: orderLabel,
-    base: units[0].base,
+    base: courier ? "third_party" : units[0].base,
     client_name: clientName,
     receiver_name: receiverName,
     client_is_receiver: !!clientIsReceiver,
     drop_kind: units[0].drop_kind,
     drop_label: units[0].drop_label,
     address: units[0].drop_address || units[0].full_address,
-    client_address: units[0].client_address || units[0].full_address,
+    client_address: courier ? thirdPartyDestinations(units) : (units[0].client_address || units[0].full_address),
     driver,
     lat: Number.isFinite(lat) ? lat : null,
     lng: Number.isFinite(lng) ? lng : null,
     delivered_at: deliveredAt,
     status: nextStatus,
-    rating_delivery: Number(body && body.rating_delivery) || 0,
-    rating_sales: Number(body && body.rating_sales) || 0,
-    rating_craft: Number(body && body.rating_craft) || 0,
+    rating_delivery: courier ? 0 : (Number(body && body.rating_delivery) || 0),
+    rating_sales: courier ? 0 : (Number(body && body.rating_sales) || 0),
+    rating_craft: courier ? 0 : (Number(body && body.rating_craft) || 0),
     comments: String((body && body.comments) || "").trim(),
     client_submit_id: clientSubmitId,
     pdf_url: pdfUrlFor(id),

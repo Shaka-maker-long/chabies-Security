@@ -121,20 +121,20 @@
       </header>
       <div class="body">
         <p class="hint" id="podAddress"></p>
-        <label>Client
+        <label id="clientWrap">Client
           <input id="clientName" readonly>
         </label>
-        <div>
+        <div id="recvChoice">
           <div class="hint" style="margin-bottom:6px">Is the person receiving this the client?</div>
           <div class="choice">
             <button type="button" class="on" id="recvYes">Yes</button>
             <button type="button" id="recvNo">No</button>
           </div>
         </div>
-        <label id="recvWrap" hidden>Name of the person receiving
+        <label id="recvWrap" hidden><span id="recvNameLabel">Name of the person receiving</span>
           <input id="receiverName" autocomplete="name">
         </label>
-        <label>Photos <span class="hint">(at least one)</span>
+        <label id="photoLabel">Photos <span class="hint" id="photoHint">(at least one)</span>
           <input type="file" id="photoInput" accept="image/*" multiple>
         </label>
         <div class="photos" id="photoPreview"></div>
@@ -150,7 +150,7 @@
           <canvas id="sigCanvas" width="500" height="160"></canvas>
         </label>
         <button type="button" class="ghost" id="clearSig" style="align-self:flex-start;border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:6px;padding:8px 12px;font-weight:700;cursor:pointer">Clear signature</button>
-        <div>
+        <div id="ratingsWrap">
           <div class="hint" style="margin-bottom:6px">Ratings (optional)</div>
           <div class="rate"><div class="name">Delivery team</div><div class="stars" data-rate="delivery" role="group" aria-label="Delivery team rating"></div></div>
           <div class="rate"><div class="name">Sales team</div><div class="stars" data-rate="sales" role="group" aria-label="Sales team rating"></div></div>
@@ -205,7 +205,32 @@
     }
     function groupOrders(orders) {
       const groups = {};
+      let third = null;
       (orders || []).forEach((row) => {
+        if ((row.drop_kind || "client") === "third_party") {
+          if (!third) {
+            third = {
+              base: "third_party",
+              orders: [],
+              client_name: "Several clients",
+              address: row.drop_address || row.full_address || row.address,
+              client_address: "",
+              destinations: [],
+              drop_kind: "third_party",
+              drop_label: row.drop_label || "3rd party depot",
+              imageUrl: row.imageUrl || "",
+              batch_third_party: true
+            };
+          }
+          third.orders.push(row);
+          if (row.imageUrl && !third.imageUrl) third.imageUrl = row.imageUrl;
+          const dest = String(row.client_address || row.full_address || "").trim();
+          const who = String(row.client_name || "").trim();
+          third.destinations.push(
+            String(row.order_number || "") + (who ? " · " + who : "") + (dest ? " → " + dest : "")
+          );
+          return;
+        }
         const key = row.base || row.order_number;
         if (!groups[key]) {
           groups[key] = {
@@ -216,12 +241,19 @@
             client_address: row.client_address || row.full_address || "",
             drop_kind: row.drop_kind || "client",
             drop_label: row.drop_label || "",
-            imageUrl: row.imageUrl || ""
+            imageUrl: row.imageUrl || "",
+            batch_third_party: false
           };
         }
         groups[key].orders.push(row);
         if (row.imageUrl && !groups[key].imageUrl) groups[key].imageUrl = row.imageUrl;
       });
+      if (third) {
+        const names = Array.from(new Set(third.orders.map((o) => String(o.client_name || "").trim()).filter(Boolean)));
+        third.client_name = names.length === 1 ? names[0] : (names.length ? "Several clients" : "3rd party handover");
+        third.client_address = third.destinations.join("\n");
+        groups.third_party = third;
+      }
       return Object.keys(groups).map((k) => groups[k]);
     }
     function unitCard(g, queued) {
@@ -230,19 +262,22 @@
         ? '<img src="' + esc(g.imageUrl) + '" alt="">'
         : '<div class="no-shot">No photo</div>';
       const third = g.drop_kind === "third_party";
-      const tag = third ? '<div class="tag">3rd party · Frankenwald</div>' : "";
+      const tag = third ? '<div class="tag">3rd party · Frankenwald · one handover form</div>' : "";
       const clientLine = third && g.client_address
-        ? '<p class="client-addr">Client address: ' + esc(g.client_address) + "</p>"
+        ? '<p class="client-addr">' + esc(g.client_address).replace(/\n/g, "<br>") + "</p>"
         : "";
       const stop = ((state.route && state.route.stops) || []).find((s) =>
-        (s.orders || []).some((o) => o.base === g.base || o.order_number === (g.orders[0] && g.orders[0].order_number))
+        s.drop_kind === "third_party" && third
+          ? true
+          : (s.orders || []).some((o) => o.base === g.base || o.order_number === (g.orders[0] && g.orders[0].order_number))
       );
       const wazeBtn = stop && stop.waze_url
         ? '<a class="waze" href="' + esc(stop.waze_url) + '" target="_blank" rel="noopener">Open in Waze</a>'
         : "";
       const action = queued
         ? '<div class="pending">Saved on this phone · sends when you have signal</div>'
-        : '<button type="button" data-stop="' + esc(g.base) + '">Arrive · proof of delivery</button>';
+        : '<button type="button" data-stop="' + esc(g.base) + '">' +
+          (third ? "Arrive · courier handover" : "Arrive · proof of delivery") + "</button>";
       return '<article class="card unit' + (queued ? " waiting" : "") + '">' + shot +
         '<div class="body"><h2>' + esc(nums) + '</h2>' +
         '<p>' + esc(g.client_name) + '</p>' +
@@ -280,14 +315,15 @@
       const split = off ? off.splitRunOrders(state.orders, state.queue) : { live: state.orders, waiting: [] };
       state.grouped = groupOrders(split.live);
       const fromQueue = (state.queue || []).map((item) => ({
-        base: (item.bases && item.bases[0]) || "",
+        base: item.drop_kind === "third_party" ? "third_party" : ((item.bases && item.bases[0]) || ""),
         orders: (item.order_numbers || []).map((n) => ({ order_number: n })),
         client_name: item.client_name || "",
         address: item.address || "",
         client_address: item.client_address || "",
         drop_kind: item.drop_kind || "client",
         drop_label: "",
-        imageUrl: item.imageUrl || ""
+        imageUrl: item.imageUrl || "",
+        batch_third_party: item.drop_kind === "third_party"
       }));
       const waitingLive = groupOrders(split.waiting);
       const seen = {};
@@ -465,6 +501,32 @@
         document.getElementById("gpsLabel").value = "Location not granted";
       }, { enableHighAccuracy: true, timeout: 8000 });
     }
+    function configurePodForm(third) {
+      document.getElementById("podTitle").textContent = third ? "Courier handover" : "Proof of delivery";
+      document.getElementById("clientWrap").hidden = !!third;
+      document.getElementById("recvChoice").hidden = !!third;
+      document.getElementById("recvWrap").hidden = !third && state.clientIsReceiver;
+      document.getElementById("ratingsWrap").hidden = !!third;
+      document.getElementById("photoHint").textContent = third ? "(one photo)" : "(at least one)";
+      const input = document.getElementById("photoInput");
+      if (third) {
+        input.removeAttribute("multiple");
+        input.setAttribute("capture", "environment");
+      } else {
+        input.setAttribute("multiple", "multiple");
+        input.removeAttribute("capture");
+      }
+      document.getElementById("podSave").textContent = third ? "Save courier handover" : "Save delivery form";
+      document.getElementById("comments").placeholder = third
+        ? "Anything the office should know about this depot drop"
+        : "Anything the office should know";
+      const recvLabel = document.getElementById("recvNameLabel");
+      if (recvLabel) {
+        recvLabel.textContent = third
+          ? "Name of the person receiving at the depot"
+          : "Name of the person receiving";
+      }
+    }
     function openPod(base) {
       const group = state.grouped.find((g) => g.base === base);
       if (!group) return;
@@ -472,11 +534,11 @@
       state.photos = [];
       state.ratings = { delivery: 0, sales: 0, craft: 0 };
       state.signed = false;
-      document.getElementById("podTitle").textContent = "Proof of delivery";
-      document.getElementById("podOrders").textContent = group.orders.map((o) => o.order_number).join(", ");
       const third = group.drop_kind === "third_party";
+      document.getElementById("podOrders").textContent = group.orders.map((o) => o.order_number).join(", ");
       document.getElementById("podAddress").textContent = third
-        ? ("3rd party depot: " + (group.address || "") + (group.client_address ? ". Client: " + group.client_address : ""))
+        ? ("3rd party depot: " + (group.address || "") +
+          (group.client_address ? ". Orders still go on to:\n" + group.client_address : ""))
         : (group.address || "");
       document.getElementById("clientName").value = group.client_name || "";
       document.getElementById("receiverName").value = "";
@@ -487,7 +549,8 @@
       const canvas = document.getElementById("sigCanvas");
       canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
       setReceiver(!third);
-      initStars();
+      configurePodForm(third);
+      if (!third) initStars();
       captureGps();
       document.getElementById("podMask").classList.add("open");
       document.getElementById("podMask").scrollTop = 0;
@@ -578,8 +641,11 @@
       if (e.target.id === "podMask") closePod();
     });
     document.getElementById("photoInput").addEventListener("change", async (e) => {
+      const third = state.stop && state.stop.drop_kind === "third_party";
       const files = Array.from(e.target.files || []);
-      for (const file of files) {
+      const pick = third ? files.slice(0, 1) : files;
+      state.photos = [];
+      for (const file of pick) {
         const data = await fileToDataUrl(file);
         state.photos.push({ name: file.name, mime: file.type, data: data });
       }
@@ -592,28 +658,41 @@
       const err = document.getElementById("podErr");
       err.textContent = "";
       if (!state.stop) return;
-      if (!state.photos.length) { err.textContent = "Take at least one photo."; return; }
+      const third = state.stop.drop_kind === "third_party";
+      if (!state.photos.length) {
+        err.textContent = third ? "Take one photo of the handover." : "Take at least one photo.";
+        return;
+      }
+      if (third && state.photos.length > 1) state.photos = state.photos.slice(0, 1);
       if (!state.signed) { err.textContent = "Receiver signature is required."; return; }
-      if (!state.clientIsReceiver && !String(document.getElementById("receiverName").value || "").trim()) {
+      const receiverName = String(document.getElementById("receiverName").value || "").trim();
+      if (third && !receiverName) {
+        err.textContent = "Type the name of the person receiving at the depot.";
+        return;
+      }
+      if (!third && !state.clientIsReceiver && !receiverName) {
         err.textContent = "Type the name of the person receiving.";
         return;
       }
       const btn = document.getElementById("podSave");
       btn.disabled = true;
+      const orderNumbers = state.stop.orders.map((o) => o.order_number);
       const payload = {
         client_submit_id: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now()),
-        order_number: state.stop.orders[0].order_number,
+        order_number: orderNumbers[0],
+        order_numbers: orderNumbers,
+        batch_third_party: !!third,
         client_name: document.getElementById("clientName").value,
-        client_is_receiver: state.clientIsReceiver,
-        receiver_name: document.getElementById("receiverName").value,
+        client_is_receiver: third ? false : state.clientIsReceiver,
+        receiver_name: receiverName,
         photos: state.photos,
         signature: document.getElementById("sigCanvas").toDataURL("image/png"),
         lat: state.lat,
         lng: state.lng,
         delivered_at: state.deliveredAt || new Date().toISOString(),
-        rating_delivery: state.ratings.delivery,
-        rating_sales: state.ratings.sales,
-        rating_craft: state.ratings.craft,
+        rating_delivery: third ? 0 : state.ratings.delivery,
+        rating_sales: third ? 0 : state.ratings.sales,
+        rating_craft: third ? 0 : state.ratings.craft,
         comments: document.getElementById("comments").value
       };
       try {
@@ -639,8 +718,8 @@
           await off.enqueue({
             id: payload.client_submit_id,
             payload: payload,
-            bases: [state.stop.base],
-            order_numbers: state.stop.orders.map((o) => o.order_number),
+            bases: third ? orderNumbers.map(() => "third_party") : [state.stop.base],
+            order_numbers: orderNumbers,
             client_name: state.stop.client_name,
             address: state.stop.address,
             client_address: state.stop.client_address,

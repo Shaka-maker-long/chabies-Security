@@ -190,31 +190,53 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   const listed = await callShopFunction("listDeliveryRun", []);
   assert.ok((listed.orders || []).length >= 3);
 
+  let missingName = null;
+  try {
+    await delivery.submitPod({
+      order_numbers: ["S260401 A", "S260402"],
+      batch_third_party: true,
+      photos: [{ name: "unit.jpg", mime: "image/jpeg", data: jpegB64 }],
+      signature: pngDataUrl
+    }, "Lebo");
+  } catch (e) {
+    missingName = e;
+  }
+  assert.ok(missingName, "courier handover needs the depot receiver name");
+
   const pod = await delivery.submitPod({
-    order_number: "S260401 A",
-    client_is_receiver: true,
-    photos: [{ name: "unit.jpg", mime: "image/jpeg", data: jpegB64 }],
+    order_numbers: ["S260401 A", "S260401 B", "S260402"],
+    batch_third_party: true,
+    receiver_name: "Depot clerk",
+    photos: [
+      { name: "unit.jpg", mime: "image/jpeg", data: jpegB64 },
+      { name: "extra.jpg", mime: "image/jpeg", data: jpegB64 }
+    ],
     signature: pngDataUrl,
-    lat: -33.9249,
-    lng: 18.4241,
+    lat: -26.0674,
+    lng: 28.1112,
     delivered_at: "2026-10-06T10:15:00.000Z",
     rating_delivery: 5,
     rating_sales: 4,
     rating_craft: 5,
-    comments: "Left with the client."
+    comments: "Handed to Frankenwald together."
   }, "Lebo");
   assert.ok(pod.id);
   assert.ok(pod.url.indexOf("/api/delivery-forms/") === 0);
+  assert.ok((pod.order_numbers || []).length >= 3, "all third-party units share one handover");
   const deliveredA = db.listOrders().find((o) => db.formatOrderId(o.order_number) === "S260401 A");
   const deliveredB = db.listOrders().find((o) => db.formatOrderId(o.order_number) === "S260401 B");
+  const hermanusDone = db.listOrders().find((o) => o.order_number === "S260402");
   assert.strictEqual(String(deliveredA.status), "At couriers");
   assert.strictEqual(String(deliveredB.status), "At couriers");
+  assert.strictEqual(String(hermanusDone.status), "At couriers");
 
   const forms = delivery.listForms();
-  assert.strictEqual(forms.length, 1);
-  assert.strictEqual(forms[0].receiver_name, "Naledi Botha");
+  assert.strictEqual(forms.length, 1, "one form for the whole third-party batch");
+  assert.strictEqual(forms[0].receiver_name, "Depot clerk");
+  assert.strictEqual(forms[0].rating_delivery, 0, "courier handover has no ratings");
   assert.ok(String(forms[0].address || "").indexOf("Milkyway") !== -1, "PDF stop is the 3rd party depot");
   assert.ok(String(forms[0].client_address || "").indexOf("Cape Town") !== -1);
+  assert.ok(String(forms[0].client_address || "").indexOf("Hermanus") !== -1);
   const pdf = delivery.readPdf(pod.id);
   assert.ok(pdf && pdf.buffer && pdf.buffer.slice(0, 4).toString() === "%PDF");
   const latin = pdf.buffer.toString("latin1");
@@ -233,11 +255,13 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   assert.ok(/Milkyway|Frankenwald/i.test(pdfText), "non-Gauteng PDF names the Frankenwald depot");
   assert.ok(!/DROPPED AT/i.test(pdfText), "PDF must not use informal dropped-at copy");
   assert.ok(/GPS PIN/.test(pdfText), "GPS is labelled as a pin, not raw LOCATION");
+  assert.ok(!/\bRATINGS\b/.test(pdfText), "courier handover PDF has no ratings block");
+  assert.ok(/S260401 A/.test(pdfText) && /S260402/.test(pdfText), "batched orders appear on the PDF");
 
   let missingPhoto = null;
   try {
     await delivery.submitPod({
-      order_number: "S260402",
+      order_number: "S260404",
       client_is_receiver: true,
       photos: [],
       signature: pngDataUrl
@@ -247,21 +271,8 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   }
   assert.ok(missingPhoto, "POD needs a photo");
 
-  const other = await delivery.submitPod({
-    order_number: "S260402",
-    client_is_receiver: false,
-    receiver_name: "Gate guard",
-    photos: [{ name: "door.jpg", mime: "image/jpeg", data: jpegB64 }],
-    signature: pngDataUrl,
-    lat: -34.4187,
-    lng: 19.2345
-  }, "Lebo");
-  assert.ok(other.id);
-  const hermanusDone = db.listOrders().find((o) => o.order_number === "S260402");
-  assert.strictEqual(String(hermanusDone.status), "At couriers");
   const listedForms = delivery.listForms();
-  assert.strictEqual(listedForms[0].receiver_name, "Gate guard");
-  assert.strictEqual(listedForms.length, 2);
+  assert.strictEqual(listedForms.length, 1);
   assert.strictEqual(listedForms[0].status, "At couriers");
 
   const gautengPod = await delivery.submitPod({
