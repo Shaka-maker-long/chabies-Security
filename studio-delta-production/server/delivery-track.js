@@ -58,6 +58,9 @@ function publicRow(row) {
     live: live,
     stale: !live,
     age_seconds: Number.isFinite(age) ? Math.max(0, Math.round(age / 1000)) : null,
+    device_id: row.device_id || "",
+    device_label: row.device_label || "",
+    pinned_phone: !!row.pinned_phone,
     factory: {
       lat: FACTORY.lat,
       lng: FACTORY.lng,
@@ -75,17 +78,53 @@ function prune(store) {
   return store;
 }
 
-function saveLocation(actorName, body) {
-  const name = String(actorName || "").trim();
+function resolveActor(actorName, body, req) {
+  const trusted = require("./trusted-devices");
+  const headerId = req && req.headers ? req.headers["x-sd-device-id"] : "";
+  const deviceId = trusted.normalizeDeviceId((body && body.deviceId) || headerId);
+  const phone = deviceId ? trusted.driverPhoneByDeviceId(deviceId) : null;
+  const sessionName = String(actorName || "").trim();
+  if (phone) {
+    const owner = phone.assignedTo || (phone.assignedUsers && phone.assignedUsers[0]) || "";
+    return {
+      name: owner || sessionName,
+      deviceId: phone.id,
+      deviceLabel: phone.displayLabel || phone.nickname || phone.label || "Driver phone",
+      pinned: true
+    };
+  }
+  return {
+    name: sessionName,
+    deviceId: deviceId || "",
+    deviceLabel: "",
+    pinned: false
+  };
+}
+
+function saveLocation(actorName, body, req) {
+  const resolved = resolveActor(actorName, body, req);
+  const name = String(resolved.name || "").trim();
   if (!name) throw new Error("Driver name is required.");
   const sharing = !(body && (body.sharing === false || body.sharing === "no"));
   const store = prune(loadStore());
   const key = nameKey(name);
   const prev = store.drivers[key] || { name: name };
+  if (!resolved.pinned) {
+    const trusted = require("./trusted-devices");
+    const mine = trusted.driverPhoneForUser(name);
+    if (mine) {
+      if (prev && prev.lat != null) return publicRow(prev);
+      throw new Error("Share location from the pinned driver phone (" +
+        (mine.displayLabel || mine.nickname || mine.label || "Users → Devices") + ").");
+    }
+  }
   if (!sharing) {
     store.drivers[key] = Object.assign({}, prev, {
       name: name,
       sharing: false,
+      device_id: resolved.deviceId || prev.device_id || "",
+      device_label: resolved.deviceLabel || prev.device_label || "",
+      pinned_phone: resolved.pinned || !!prev.pinned_phone,
       updated_at: new Date().toISOString()
     });
     saveStore(store);
@@ -106,6 +145,9 @@ function saveLocation(actorName, body) {
     heading: Number.isFinite(heading) ? heading : null,
     speed: Number.isFinite(speed) ? speed : null,
     sharing: true,
+    device_id: resolved.deviceId || "",
+    device_label: resolved.deviceLabel || "",
+    pinned_phone: !!resolved.pinned,
     updated_at: new Date().toISOString()
   };
   saveStore(store);
@@ -129,11 +171,38 @@ function getLocation(name) {
   return publicRow(store.drivers[nameKey(name)]);
 }
 
+function trackerStatus(profile, req) {
+  const trusted = require("./trusted-devices");
+  const delivery = require("./delivery-pod");
+  const headerId = req && req.headers ? req.headers["x-sd-device-id"] : "";
+  const deviceId = trusted.normalizeDeviceId(headerId);
+  const phone = deviceId ? trusted.driverPhoneByDeviceId(deviceId) : null;
+  const mine = profile && profile.name ? trusted.driverPhoneForUser(profile.name) : null;
+  const isDriver = !!(profile && delivery.isDriverProfile(profile));
+  const canPost = !!(profile && delivery.canSubmitPod(profile));
+  const onPinnedPhone = !!(phone && profile && phone.assignedUsers
+    && phone.assignedUsers.some((n) => nameKey(n) === nameKey(profile.name)));
+  const deviceIsDriverPhone = !!phone;
+  return {
+    isDriver: isDriver,
+    deviceId: deviceId || "",
+    driverPhone: deviceIsDriverPhone,
+    onPinnedPhone: onPinnedPhone,
+    pinnedForMe: !!mine,
+    deviceLabel: deviceIsDriverPhone
+      ? (phone.displayLabel || phone.nickname || phone.label || "Driver phone")
+      : (mine ? (mine.displayLabel || mine.nickname || mine.label || "") : ""),
+    shouldShare: !!(canPost && (deviceIsDriverPhone || (isDriver && !mine))),
+    alwaysShare: !!(canPost && deviceIsDriverPhone)
+  };
+}
+
 module.exports = {
   LIVE_MS,
   saveLocation,
   listLocations,
   getLocation,
+  trackerStatus,
   publicRow,
   FACTORY
 };

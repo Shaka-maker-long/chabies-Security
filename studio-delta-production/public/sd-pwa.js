@@ -167,15 +167,127 @@
       .catch(function () {});
   }
 
+  function deviceId() {
+    try {
+      if (typeof root.sdDeviceId === "function") {
+        var fromGlobal = root.sdDeviceId();
+        if (fromGlobal) return fromGlobal;
+      }
+      var id = String(localStorage.getItem("sd-device-id") || "").trim();
+      if (/^[A-Za-z0-9_-]{8,80}$/.test(id)) return id;
+      if (root.crypto && typeof root.crypto.randomUUID === "function") {
+        id = "d_" + root.crypto.randomUUID().replace(/-/g, "");
+      } else {
+        id = "d_";
+        for (var i = 0; i < 24; i++) id += Math.floor(Math.random() * 16).toString(16);
+      }
+      localStorage.setItem("sd-device-id", id);
+      return id;
+    } catch (e) {
+      return "";
+    }
+  }
+
+  var driverTrack = { watchId: null, timer: null, lastSent: 0, active: false };
+
+  function driverTrackHeaders() {
+    return {
+      "Content-Type": "application/json",
+      "x-sd-device-id": deviceId()
+    };
+  }
+
+  function postDriverLocation(coords, sharing) {
+    var body = sharing === false
+      ? { sharing: false, deviceId: deviceId() }
+      : {
+          sharing: true,
+          deviceId: deviceId(),
+          lat: coords.latitude,
+          lng: coords.longitude,
+          accuracy: coords.accuracy,
+          heading: coords.heading,
+          speed: coords.speed
+        };
+    return fetch("/api/delivery/location", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: driverTrackHeaders(),
+      body: JSON.stringify(body),
+      cache: "no-store"
+    }).then(function (r) {
+      if (r.status === 401 || r.status === 403) stopDriverTrack(false);
+      return r;
+    }).catch(function () {});
+  }
+
+  function onDriverPosition(pos) {
+    if (!pos || !pos.coords) return;
+    var now = Date.now();
+    if (now - driverTrack.lastSent < 12000) return;
+    driverTrack.lastSent = now;
+    postDriverLocation(pos.coords, true);
+  }
+
+  function startDriverTrack() {
+    if (driverTrack.active) return;
+    if (!navigator.geolocation) return;
+    var path = String((root.location && root.location.pathname) || "");
+    if (path.indexOf("/delivery-run") !== -1) return;
+    driverTrack.active = true;
+    driverTrack.watchId = navigator.geolocation.watchPosition(onDriverPosition, function () {}, {
+      enableHighAccuracy: true,
+      maximumAge: 10000,
+      timeout: 15000
+    });
+    driverTrack.timer = setInterval(function () {
+      navigator.geolocation.getCurrentPosition(onDriverPosition, function () {}, {
+        enableHighAccuracy: true,
+        maximumAge: 15000,
+        timeout: 12000
+      });
+    }, 20000);
+  }
+
+  function stopDriverTrack(sendOff) {
+    if (driverTrack.watchId != null && navigator.geolocation) {
+      try { navigator.geolocation.clearWatch(driverTrack.watchId); } catch (e) {}
+    }
+    driverTrack.watchId = null;
+    if (driverTrack.timer) clearInterval(driverTrack.timer);
+    driverTrack.timer = null;
+    var wasActive = driverTrack.active;
+    driverTrack.active = false;
+    if (sendOff && wasActive) postDriverLocation(null, false);
+  }
+
+  function bootDriverTrack() {
+    var id = deviceId();
+    if (!id) return;
+    fetch("/api/delivery/tracker-status", {
+      credentials: "same-origin",
+      headers: { "x-sd-device-id": id },
+      cache: "no-store"
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.ok && j.alwaysShare) startDriverTrack();
+        else stopDriverTrack(false);
+      })
+      .catch(function () {});
+  }
+
   ensureHead();
   registerWorker();
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", function () {
       bootInstall();
       bootStagingBanner();
+      bootDriverTrack();
     });
   } else {
     bootInstall();
     bootStagingBanner();
+    bootDriverTrack();
   }
 })(typeof window !== "undefined" ? window : this);

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Driver tracker</title>
-  <script src="/sd-pwa.js?v=pwa-offlogin"></script>
+  <script src="/sd-pwa.js?v=pwa-driverpin"></script>
   <link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
   <style>
     :root { --ink:#1c1917; --muted:#6b645b; --line:#d7d1c6; --brass:#b08948; --paper:#fcfbf8; --ok:#3f6b4a; --bad:#9f2d2d; }
@@ -16,6 +16,9 @@
     .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     button { border:1px solid #1c1917; background:#1c1917; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1c1917; }
+    button.on { background:#b08948; border-color:#b08948; color:#1c1917; }
+    .map-wrap { position:relative; }
+    .map-toggle { position:absolute; top:10px; right:10px; z-index:500; display:flex; gap:6px; }
     a.link { color:var(--brass); font-weight:700; text-decoration:none; font-size:13px; }
     .page { padding:16px; display:grid; grid-template-columns: minmax(240px, 320px) 1fr; gap:12px; min-height:calc(100vh - 88px); }
     .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
@@ -43,10 +46,11 @@
   <header>
     <div>
       <h1>Driver tracker</h1>
-      <p class="lede">Live pin from the driver’s phone while Driver run is open and location is allowed. Green is live (updated in the last 90 seconds). Brass is the last known place. Starts at Studio Delta, 309 Derdepoort Rd.</p>
+      <p class="lede">Live pin from the driver’s pinned phone (Users → Devices → Pin as driver phone) while Studio Delta is open and location is allowed. Green is live (updated in the last 90 seconds). Brass is the last known place. Switch Streets / Satellite on the map. Starts at Studio Delta, 309 Derdepoort Rd.</p>
     </div>
     <div class="tools">
       <a class="link" href="/delivery-forms">Delivery Forms</a>
+      <a class="link" href="/users/devices">Devices</a>
       <span class="msg" id="status"></span>
       <button type="button" class="ghost" id="refreshBtn">Refresh</button>
     </div>
@@ -56,7 +60,11 @@
       <div class="load" id="boot">Loading drivers…</div>
       <ul class="list" id="driverList" hidden></ul>
     </section>
-    <section class="card">
+    <section class="card map-wrap">
+      <div class="map-toggle">
+        <button type="button" class="ghost on" id="btnStreets" data-basemap="streets">Streets</button>
+        <button type="button" class="ghost" id="btnSat" data-basemap="satellite">Satellite</button>
+      </div>
       <div id="map"></div>
     </section>
   </div>
@@ -65,8 +73,13 @@
   <script>
     let drivers = [];
     let factory = null;
-    let map, layer, selected = "";
+    let map, layer, baseLayer, selected = "";
+    let basemap = "streets";
     let timer = null;
+    const STREET_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
+    const STREET_ATTR = "&copy; OpenStreetMap";
+    const SAT_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+    const SAT_ATTR = "Tiles &copy; Esri";
 
     function esc(s) {
       return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
@@ -87,15 +100,18 @@
       boot.hidden = true;
       list.hidden = false;
       if (!drivers.length) {
-        list.innerHTML = '<li><strong>No driver pin yet</strong><span>When the driver opens Driver run and allows location, their pin appears here.</span></li>';
+        list.innerHTML = '<li><strong>No driver pin yet</strong><span>Pin the driver’s phone in Users → Devices, open Studio Delta on that phone, and allow location.</span></li>';
         return;
       }
       list.innerHTML = drivers.map((row) => {
         const on = selected === row.name ? " on" : "";
         const age = row.live ? "Updating now" : (row.updated_label ? ("Updated " + row.updated_label) : "No update yet");
+        const phone = row.device_label
+          ? (" · " + row.device_label + (row.pinned_phone ? " (pinned)" : ""))
+          : "";
         return '<li class="' + on.trim() + '" data-name="' + esc(row.name) + '">' +
           "<strong>" + esc(row.name) + "</strong>" +
-          "<span>" + esc(age) + "</span>" +
+          "<span>" + esc(age + phone) + "</span>" +
           pill(row) +
           "</li>";
       }).join("");
@@ -107,14 +123,22 @@
         };
       });
     }
+    function setBasemap(kind) {
+      basemap = kind === "satellite" ? "satellite" : "streets";
+      document.getElementById("btnStreets").classList.toggle("on", basemap === "streets");
+      document.getElementById("btnSat").classList.toggle("on", basemap === "satellite");
+      if (!map || !window.L) return;
+      if (baseLayer) map.removeLayer(baseLayer);
+      baseLayer = basemap === "satellite"
+        ? L.tileLayer(SAT_URL, { maxZoom: 19, attribution: SAT_ATTR })
+        : L.tileLayer(STREET_URL, { maxZoom: 18, attribution: STREET_ATTR });
+      baseLayer.addTo(map);
+    }
     function renderMap(focusSelected) {
       if (!window.L) return;
       if (!map) {
         map = L.map("map");
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          maxZoom: 18,
-          attribution: "&copy; OpenStreetMap"
-        }).addTo(map);
+        setBasemap(basemap);
       }
       if (layer) map.removeLayer(layer);
       layer = L.layerGroup();
@@ -139,6 +163,7 @@
         }).bindPopup(
           "<b>" + esc(row.name) + "</b><br>" +
           (row.live ? "Live now" : ("Last seen " + esc(row.updated_label || ""))) +
+          (row.device_label ? ("<br>" + esc(row.device_label) + (row.pinned_phone ? " · pinned driver phone" : "")) : "") +
           (row.accuracy != null ? "<br>±" + Math.round(row.accuracy) + " m" : "")
         );
         layer.addLayer(m);
@@ -181,6 +206,8 @@
     document.getElementById("refreshBtn").onclick = () => {
       load().catch((e) => setMsg(e.message || String(e), true));
     };
+    document.getElementById("btnStreets").onclick = () => setBasemap("streets");
+    document.getElementById("btnSat").onclick = () => setBasemap("satellite");
     sdMountOfficeShell("drivertracker");
     sdRequireOffice("reworks").then(() => {
       load().then(startPoll).catch((e) => {

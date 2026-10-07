@@ -261,6 +261,24 @@ assert.strictEqual(devices.sessionStillValid("Sam Floor", "d_phone2abcdefghijklm
   });
   assert.strictEqual(second.json.ok, true, JSON.stringify(second.json));
 
+  const pin = await api("/api/office/devices/d_tablet111222333444/driver-phone", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ on: true })
+  });
+  assert.strictEqual(pin.json.ok, true, JSON.stringify(pin.json));
+  const pinnedRow = (pin.json.approved || []).find((row) => row.id === "d_tablet111222333444");
+  assert.ok(pinnedRow && pinnedRow.driverPhone, "Manager can pin an approved device as the driver phone");
+  assert.ok(devices.driverPhoneByDeviceId("d_tablet111222333444"));
+
+  const unpin = await api("/api/office/devices/d_tablet111222333444/driver-phone", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ on: false })
+  });
+  assert.strictEqual(unpin.json.ok, true);
+  assert.ok(!devices.driverPhoneByDeviceId("d_tablet111222333444"));
+
   const bossOnTablet = await api("/api/office/login", {
     method: "POST",
     headers: { "content-type": "application/json", "x-sd-device-id": "d_tablet111222333444" },

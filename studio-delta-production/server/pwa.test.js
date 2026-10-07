@@ -46,7 +46,10 @@ assert.ok(fs.existsSync(path.join(publicDir, "facility-floor.png")), "Home twin 
 assert.ok(sw.indexOf("facility-floor.png") !== -1, "PWA precaches the facility floor image");
 assert.ok(sw.indexOf("/delivery-run") !== -1, "PWA precaches the driver run for no-signal drops");
 assert.ok(sw.indexOf('\n  "/",\n') !== -1 || sw.indexOf('"/",') !== -1, "PWA precaches Home so login is available offline");
-assert.ok(sw.indexOf("sd-pwa-v21-offline-login") !== -1, "new cache so phones pick up offline login");
+assert.ok(sw.indexOf("sd-pwa-v22-driver-pin") !== -1, "new cache so phones pick up driver-phone pin sharing");
+assert.ok(pwaJs.indexOf("alwaysShare") !== -1 || pwaJs.indexOf("bootDriverTrack") !== -1, "PWA shares location from the pinned driver phone");
+assert.ok(pwaJs.indexOf("/api/delivery/tracker-status") !== -1);
+assert.ok(pwaJs.indexOf("/api/delivery/location") !== -1);
 assert.ok(sw.indexOf("SKIP_WAITING") !== -1, "new service worker can take over immediately");
 assert.ok(sw.indexOf("sd-delivery-pod") !== -1, "background sync flushes saved PODs");
 assert.ok(sw.indexOf("/vendor/leaflet/leaflet.js") !== -1);
@@ -91,7 +94,7 @@ const pages = [
 ];
 pages.forEach((rel) => {
   const html = fs.readFileSync(path.join(root, rel), "utf8");
-  assert.ok(html.indexOf("/sd-pwa.js?v=pwa-offlogin") !== -1 || html.indexOf("/sd-pwa.js") !== -1, rel + " must boot the PWA");
+  assert.ok(html.indexOf("/sd-pwa.js?v=pwa-driverpin") !== -1 || html.indexOf("/sd-pwa.js") !== -1, rel + " must boot the PWA");
 });
 
 const outlook = fs.readFileSync(path.join(publicDir, "outlook-addin/taskpane.html"), "utf8");

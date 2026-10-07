@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Driver run</title>
-  <script src="/sd-pwa.js?v=pwa-offlogin"></script>
+  <script src="/sd-pwa.js?v=pwa-driverpin"></script>
   <script src="/delivery-offline.js?v=del-off2"></script>
   <link rel="stylesheet" href="/vendor/bootstrap-icons/bootstrap-icons.css">
   <link rel="stylesheet" href="/sd-brand.css?v=logged-in-2">
@@ -308,13 +308,24 @@
       el.className = "netbar warn";
       el.textContent = "Allow location when asked so the office can see your live pin on Driver tracker.";
     }
+    function deviceId() {
+      try {
+        if (typeof sdDeviceId === "function") return sdDeviceId() || "";
+        const id = String(localStorage.getItem("sd-device-id") || "").trim();
+        return /^[A-Za-z0-9_-]{8,80}$/.test(id) ? id : "";
+      } catch (e) {
+        return "";
+      }
+    }
     async function postLocation(coords, sharing) {
       if (!state.driver) return;
       try {
+        const id = deviceId();
         const body = sharing === false
-          ? { sharing: false }
+          ? { sharing: false, deviceId: id }
           : {
               sharing: true,
+              deviceId: id,
               lat: coords.latitude,
               lng: coords.longitude,
               accuracy: coords.accuracy,
@@ -324,7 +335,7 @@
         const r = await fetch("/api/delivery/location", {
           method: "POST",
           credentials: "same-origin",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-sd-device-id": id },
           body: JSON.stringify(body)
         });
         if (r.status === 401) return;
@@ -348,8 +359,27 @@
       else state.tracking = "error";
       paintTrack();
     }
-    function startLiveTracking() {
+    async function startLiveTracking() {
       paintTrack();
+      try {
+        const id = deviceId();
+        const st = await fetch("/api/delivery/tracker-status", {
+          credentials: "same-origin",
+          headers: { "x-sd-device-id": id },
+          cache: "no-store"
+        }).then((r) => r.json());
+        if (st && st.ok && st.pinnedForMe && !st.driverPhone) {
+          state.tracking = "other-phone";
+          const el = document.getElementById("trackBar");
+          if (el) {
+            el.className = "netbar warn";
+            el.textContent = "Live pin uses your pinned driver phone" +
+              (st.deviceLabel ? (" (“" + st.deviceLabel + "”)") : "") +
+              ". Open Studio Delta on that phone to share location.";
+          }
+          return;
+        }
+      } catch (e) {}
       if (!navigator.geolocation) {
         state.tracking = "error";
         paintTrack();

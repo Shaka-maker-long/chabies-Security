@@ -395,7 +395,7 @@ app.post("/api/delivery/location", (req, res) => {
         return;
       }
       const track = require("./delivery-track");
-      const row = track.saveLocation(profile.name, req.body || {});
+      const row = track.saveLocation(profile.name, req.body || {}, req);
       res.json({ ok: true, location: row });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
@@ -418,6 +418,18 @@ app.get("/api/delivery/locations", (req, res) => {
         factory: track.FACTORY,
         drivers: track.listLocations()
       });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
+app.get("/api/delivery/tracker-status", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const track = require("./delivery-track");
+      res.json({ ok: true, ...track.trackerStatus(profile, req) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

@@ -347,6 +347,24 @@ function mountOffice(app) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
   });
+  app.post("/api/office/devices/:id/driver-phone", requireOffice, (req, res) => {
+    if (!staff.canManageUsers(req.office)) {
+      res.status(403).json({ ok: false, error: "Only the Manager can pin the driver phone." });
+      return;
+    }
+    try {
+      const on = !(req.body && (req.body.on === false || req.body.on === "no"));
+      const snap = trustedDevices.setDriverPhone(req.params.id, on);
+      auditLog.record(on ? "device.driver_phone" : "device.driver_phone_clear", {
+        actor: req.office.name,
+        target: req.params.id,
+        deviceId: req.params.id
+      }, req);
+      res.json({ ok: true, people: staff.listUsers().map((u) => u.name).filter(Boolean), ...snap });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
   app.post("/api/office/devices/:id/revoke", requireOffice, (req, res) => {
     if (!staff.canManageUsers(req.office)) {
       res.status(403).json({ ok: false, error: "Only the Manager can revoke devices." });

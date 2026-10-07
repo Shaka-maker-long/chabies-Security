@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Devices</title>
-  <script src="/sd-pwa.js?v=pwa-offlogin"></script>
+  <script src="/sd-pwa.js?v=pwa-driverpin"></script>
   <style>
     :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; --warn:#b54708; }
     * { box-sizing: border-box; }
@@ -64,7 +64,7 @@
 
     <section class="card">
       <h2>Approved devices by person <span id="approvedCount"></span></h2>
-      <p class="help">Rename a device (e.g. “Johannes iPhone”) and change who it belongs to. Revoke a lost phone.</p>
+      <p class="help">Rename a device (e.g. “Johannes iPhone”) and change who it belongs to. For the van, <b>Pin as driver phone</b> — that phone shares live location on Driver tracker whenever Studio Delta is open and location is allowed. One pinned phone per driver. Revoke a lost phone.</p>
       <div id="approvedBox"><div class="empty">Loading…</div></div>
     </section>
 
@@ -91,6 +91,9 @@
       if (status === "approved") return "<span class='pill ok'>Approved</span>";
       if (status === "pending") return "<span class='pill warn'>Pending</span>";
       return "<span class='pill bad'>Revoked</span>";
+    }
+    function driverPhonePill(row) {
+      return row && row.driverPhone ? " <span class='pill ok'>Driver phone</span>" : "";
     }
     function personOptions(selected, includeBlank) {
       const names = people.slice();
@@ -132,7 +135,7 @@
     function approvedRowHtml(row) {
       return "<tr>" +
         "<td>" + esc(row.displayLabel || row.label) +
-          "<div class='meta'>" + statusPill(row.status) + " · " + esc(row.label) +
+          "<div class='meta'>" + statusPill(row.status) + driverPhonePill(row) + " · " + esc(row.label) +
           " · <code>" + esc(String(row.id || "").slice(0, 10)) + "…</code></div></td>" +
         "<td><b>" + esc((row.assignedUsers || []).join(", ") || row.assignedTo || "—") + "</b>" +
           "<div class='meta'>Last login: " + esc(row.lastUser || "—") + "</div>" +
@@ -148,6 +151,9 @@
           "<select data-owner='" + esc(row.id) + "'>" + personOptions(row.assignedTo || (row.assignedUsers || [])[0] || "", false) + "</select>" +
           "<input type='text' data-nick='" + esc(row.id) + "' placeholder='Nickname' value='" + esc(row.nickname || "") + "'>" +
           "<button class='ghost' type='button' data-act='save' data-id='" + esc(row.id) + "'>Save</button>" +
+          (row.driverPhone
+            ? "<button class='ghost' type='button' data-act='driver-phone-off' data-id='" + esc(row.id) + "'>Unpin driver phone</button>"
+            : "<button type='button' data-act='driver-phone' data-id='" + esc(row.id) + "'>Pin as driver phone</button>") +
           "<button class='danger' type='button' data-act='revoke' data-id='" + esc(row.id) + "'>Revoke</button>" +
         "</div></td></tr>";
     }
@@ -208,6 +214,11 @@
             r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id) + "/revoke", {
               method: "POST",
               body: "{}"
+            });
+          } else if (act === "driver-phone" || act === "driver-phone-off") {
+            r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id) + "/driver-phone", {
+              method: "POST",
+              body: JSON.stringify({ on: act === "driver-phone" })
             });
           } else {
             r = await sdOfficeFetch("/api/office/devices/" + encodeURIComponent(id), { method: "DELETE" });

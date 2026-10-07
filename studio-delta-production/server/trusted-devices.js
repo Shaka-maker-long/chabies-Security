@@ -92,6 +92,7 @@ function ensureRowShape(row) {
     if (fallback) row.assignedUsers = [fallback];
   }
   row.assignedTo = row.assignedUsers[0] || "";
+  row.driverPhone = !!row.driverPhone;
   const rawPending = Array.isArray(row.pendingUsers) ? row.pendingUsers : [];
   const mapped = [];
   const seen = {};
@@ -137,7 +138,8 @@ function publicDevice(row) {
     approvedBy: row.approvedBy || "",
     lastSeenAt: row.lastSeenAt || "",
     revokedAt: row.revokedAt || "",
-    revokedBy: row.revokedBy || ""
+    revokedBy: row.revokedBy || "",
+    driverPhone: !!row.driverPhone
   };
 }
 
@@ -462,6 +464,57 @@ function approveDevice(deviceId, actorName, body) {
   return snapshot();
 }
 
+function clearDriverPhoneForUser(store, userName, exceptId) {
+  const want = nameKey(userName);
+  if (!want) return;
+  (store.devices || []).forEach((item) => {
+    if (!item || item.id === exceptId) return;
+    ensureRowShape(item);
+    if (!item.driverPhone) return;
+    if ((item.assignedUsers || []).some((name) => nameKey(name) === want)) {
+      item.driverPhone = false;
+    }
+  });
+}
+
+function setDriverPhone(deviceId, on) {
+  const store = loadStore();
+  const row = findDevice(store, deviceId);
+  if (!row) throw new Error("Device not found.");
+  if (row.status !== "approved") throw new Error("Only an approved device can be the driver phone.");
+  ensureRowShape(row);
+  const owner = row.assignedTo || (row.assignedUsers && row.assignedUsers[0]) || "";
+  if (!owner) throw new Error("Assign this device to the driver first.");
+  if (on) {
+    clearDriverPhoneForUser(store, owner, row.id);
+    row.driverPhone = true;
+  } else {
+    row.driverPhone = false;
+  }
+  row.updatedAt = nowIso();
+  saveStore(store);
+  return snapshot();
+}
+
+function driverPhoneForUser(userName) {
+  const store = loadStore();
+  const want = nameKey(userName);
+  if (!want) return null;
+  const row = (store.devices || []).find((item) => {
+    if (!item || item.status !== "approved" || !item.driverPhone) return false;
+    ensureRowShape(item);
+    return (item.assignedUsers || []).some((name) => nameKey(name) === want);
+  });
+  return row ? publicDevice(row) : null;
+}
+
+function driverPhoneByDeviceId(deviceId) {
+  const store = loadStore();
+  const row = findDevice(store, deviceId);
+  if (!row || row.status !== "approved" || !row.driverPhone) return null;
+  return publicDevice(row);
+}
+
 function updateDevice(deviceId, body) {
   const store = loadStore();
   const row = findDevice(store, deviceId);
@@ -475,6 +528,18 @@ function updateDevice(deviceId, body) {
       : [body.assignedTo];
     if (body.replaceAssignees) assignUsers(row, list);
     else assignUsers(row, (row.assignedUsers || []).concat(list));
+  }
+  if (body && Object.prototype.hasOwnProperty.call(body, "driverPhone")) {
+    const on = body.driverPhone === true || body.driverPhone === "yes" || body.driverPhone === 1;
+    if (on) {
+      if (row.status !== "approved") throw new Error("Only an approved device can be the driver phone.");
+      const owner = row.assignedTo || (row.assignedUsers && row.assignedUsers[0]) || "";
+      if (!owner) throw new Error("Assign this device to the driver first.");
+      clearDriverPhoneForUser(store, owner, row.id);
+      row.driverPhone = true;
+    } else {
+      row.driverPhone = false;
+    }
   }
   row.updatedAt = nowIso();
   saveStore(store);
@@ -491,6 +556,7 @@ function revokeDevice(deviceId, actorName) {
   row.revokedBy = cleanName(actorName) || "Manager";
   row.updatedAt = now;
   row.pendingUsers = [];
+  row.driverPhone = false;
   saveStore(store);
   return snapshot();
 }
@@ -533,6 +599,9 @@ module.exports = {
   snapshot,
   approveDevice,
   updateDevice,
+  setDriverPhone,
+  driverPhoneForUser,
+  driverPhoneByDeviceId,
   revokeDevice,
   removeDevice,
   metaFromReq,
