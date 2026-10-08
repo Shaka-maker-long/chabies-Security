@@ -933,6 +933,7 @@ assert.ok(indexJs.indexOf("/api/delivery/tracker-status") !== -1);
 assert.ok(deliveryRunHtml.indexOf("x-sd-device-id") !== -1, "driver run sends device id with live pin");
 assert.ok(deliveryRunHtml.indexOf("/api/delivery/tracker-status") !== -1);
 assert.ok(deliveryRunHtml.indexOf("takePhotoBtn") !== -1, "POD form uses Take photo");
+assert.ok(deliveryRunHtml.indexOf("Add another photo") !== -1, "POD form can add more camera photos");
 assert.ok(deliveryRunHtml.indexOf("getUserMedia") !== -1, "POD form opens the camera, not the gallery");
 assert.ok(deliveryRunHtml.indexOf('capture="environment"') !== -1, "camera capture attribute stays as fallback");
 assert.ok(deliveryRunHtml.indexOf("updateMeOnMap") !== -1, "driver map shows a live you-are-here pin");

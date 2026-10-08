@@ -160,10 +160,10 @@
         </label>
         <div class="photo-tools" id="photoTools">
           <span class="hint">Photos <span id="photoHint">(at least one)</span> — camera only, no gallery</span>
+          <div class="photos" id="photoPreview"></div>
           <button type="button" class="take" id="takePhotoBtn">Take photo</button>
           <input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
         </div>
-        <div class="photos" id="photoPreview"></div>
         <div class="row2">
           <label>Date / time
             <input id="whenLabel" readonly>
@@ -717,7 +717,6 @@
       input.removeAttribute("multiple");
       input.setAttribute("accept", "image/*");
       input.setAttribute("capture", "environment");
-      document.getElementById("takePhotoBtn").textContent = third ? "Take handover photo" : "Take photo";
       document.getElementById("podSave").textContent = third ? "Save courier handover" : "Save delivery form";
       document.getElementById("comments").placeholder = third
         ? "Anything the office should know about this depot drop"
@@ -732,6 +731,7 @@
     }
     function paintPhotoPreview() {
       const third = state.stop && state.stop.drop_kind === "third_party";
+      const n = state.photos.length;
       document.getElementById("photoPreview").innerHTML = state.photos.map((p, i) =>
         '<div class="shot"><img src="' + p.data + '" alt=""><button type="button" data-del-photo="' + i + '" aria-label="Remove photo">×</button></div>'
       ).join("");
@@ -743,7 +743,16 @@
         };
       });
       const take = document.getElementById("takePhotoBtn");
-      take.disabled = !!(third && state.photos.length >= 1);
+      const full = !!(third && n >= 1);
+      take.hidden = false;
+      take.disabled = full;
+      if (full) {
+        take.textContent = "Photo added · remove to retake";
+      } else if (n > 0) {
+        take.textContent = "Add another photo";
+      } else {
+        take.textContent = third ? "Take handover photo" : "Take photo";
+      }
     }
     function stopCamera() {
       if (camStream) {
