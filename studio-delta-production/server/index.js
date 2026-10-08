@@ -274,6 +274,10 @@ app.get("/delivery-forms", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "delivery-forms.html"));
 });
+app.get("/delivery-forms/cost", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "delivery-forms.html"));
+});
 app.get("/driver-tracker", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "driver-tracker.html"));
@@ -379,6 +383,23 @@ app.get("/api/delivery/forms", (req, res) => {
         return;
       }
       res.json({ ok: true, rows: delivery.listForms() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
+app.delete("/api/delivery/forms/:id", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const delivery = require("./delivery-pod");
+      if (!profile.canSeeOffice && !profile.isAdmin) {
+        res.status(403).json({ ok: false, error: "Only office can delete delivery forms." });
+        return;
+      }
+      const result = delivery.deleteForm(req.params.id);
+      res.json({ ok: true, ...result });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

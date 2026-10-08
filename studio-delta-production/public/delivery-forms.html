@@ -12,11 +12,17 @@
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
     header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
     .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:820px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; margin-bottom:8px; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; border:1px solid transparent; }
+    .tabs a.on { background:#1d2939; color:#fff; }
     .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
+    button.danger { background:#fff; color:var(--bad); border-color:var(--bad); }
+    button.danger:disabled { opacity:.55; cursor:default; }
     input { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-size:13px; }
     .page { padding:16px; display:flex; flex-direction:column; gap:12px; }
+    .page[hidden] { display:none !important; }
     .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
     .cost { padding:14px 16px; }
     .cost h2 { margin:0 0 6px; font-size:15px; font-family: Outfit, Inter, sans-serif; }
@@ -24,7 +30,7 @@
     .cost .totals { display:flex; flex-wrap:wrap; gap:16px; margin-bottom:10px; }
     .cost .totals strong { display:block; font-size:18px; }
     .cost .totals span { font-size:12px; color:var(--muted); }
-    .cost table { min-width:640px; }
+    .cost table { min-width:820px; }
     .wrap { overflow:auto; }
     table { border-collapse:separate; border-spacing:0; width:100%; min-width:980px; font-size:13px; }
     th, td { border-bottom:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top; }
@@ -34,14 +40,19 @@
     .err { color:var(--bad); }
     .stars { color:#b08948; font-weight:700; letter-spacing:.04em; }
     .msg { font-size:13px; color:var(--muted); }
+    .actions { display:flex; gap:6px; flex-wrap:wrap; }
     @media (max-width: 900px) { .tools { width:100%; margin-left:0; } }
   </style>
 </head>
 <body>
   <header>
     <div>
-      <h1>Delivery Forms</h1>
-      <p class="lede">Proof-of-delivery PDFs from the van: photos, GPS, receiver signature, and optional ratings. Today’s batch cost uses the GPS pin on each form (facility → drops → facility) at R6/km. Live van pin is on <a href="/driver-tracker">Driver tracker</a>.</p>
+      <nav class="tabs" aria-label="Delivery forms views">
+        <a id="tabForms" href="/delivery-forms">Forms</a>
+        <a id="tabCost" href="/delivery-forms/cost">Cost</a>
+      </nav>
+      <h1 id="pageTitle">Delivery Forms</h1>
+      <p class="lede" id="pageLede">Proof-of-delivery PDFs from the van: photos, GPS, receiver signature, and optional ratings.</p>
     </div>
     <div class="tools">
       <a href="/driver-tracker" style="font-weight:700;color:#1d2939;text-decoration:none;font-size:13px">Driver tracker</a>
@@ -50,27 +61,7 @@
       <button type="button" class="ghost" id="refreshBtn">Refresh</button>
     </div>
   </header>
-  <div class="page">
-    <section class="card cost" id="costCard">
-      <h2>Today’s delivery cost</h2>
-      <p class="meta" id="costMeta">Loading cost from today’s GPS pins…</p>
-      <div class="totals" id="costTotals" hidden></div>
-      <div class="wrap">
-        <table id="costGrid" hidden>
-          <thead>
-            <tr>
-              <th>Driver</th>
-              <th>Orders</th>
-              <th>Inbound km</th>
-              <th>Return share km</th>
-              <th>Total km</th>
-              <th>Cost (R)</th>
-            </tr>
-          </thead>
-          <tbody id="costBody"></tbody>
-        </table>
-      </div>
-    </section>
+  <div class="page" id="formsPage">
     <section class="card">
       <div class="wrap">
         <div class="load" id="boot">Loading delivery forms…</div>
@@ -86,9 +77,33 @@
               <th>Driver</th>
               <th>Ratings</th>
               <th>PDF</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="body"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+  <div class="page" id="costPage" hidden>
+    <section class="card cost" id="costCard">
+      <h2>Today’s delivery cost</h2>
+      <p class="meta" id="costMeta">Loading cost from today’s GPS pins…</p>
+      <div class="totals" id="costTotals" hidden></div>
+      <div class="wrap">
+        <table id="costGrid" hidden>
+          <thead>
+            <tr>
+              <th>Driver</th>
+              <th>Orders</th>
+              <th>Address</th>
+              <th>Inbound km</th>
+              <th>Return share km</th>
+              <th>Total km</th>
+              <th>Cost (R)</th>
+            </tr>
+          </thead>
+          <tbody id="costBody"></tbody>
         </table>
       </div>
     </section>
@@ -97,6 +112,7 @@
   <script>
     let rows = [];
     let cost = null;
+    let view = "forms";
     function esc(s) {
       return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
     }
@@ -107,6 +123,21 @@
       const v = Math.max(0, Math.min(5, Number(n) || 0));
       if (!v) return "—";
       return "★★★★★".slice(0, v) + "☆☆☆☆☆".slice(0, 5 - v);
+    }
+    function setView(next) {
+      view = next === "cost" ? "cost" : "forms";
+      document.getElementById("formsPage").hidden = view !== "forms";
+      document.getElementById("costPage").hidden = view !== "cost";
+      document.getElementById("tabForms").classList.toggle("on", view === "forms");
+      document.getElementById("tabCost").classList.toggle("on", view === "cost");
+      document.getElementById("pageTitle").textContent = view === "cost" ? "Delivery cost" : "Delivery Forms";
+      document.getElementById("pageLede").textContent = view === "cost"
+        ? "Today’s batch cost from GPS pins on each form (facility → drops → facility) at R6/km. Return to factory is weighted by each stop’s inbound km."
+        : "Proof-of-delivery PDFs from the van: photos, GPS, receiver signature, and optional ratings. Gauteng drops are at the client. Other provinces drop at Frankenwald. Use Cost for today’s R6/km batch.";
+      document.getElementById("q").hidden = view !== "forms";
+      document.title = view === "cost" ? "Studio Delta — Delivery cost" : "Studio Delta — Delivery Forms";
+      if (view === "cost") renderCost();
+      else render();
     }
     function renderCost() {
       const meta = document.getElementById("costMeta");
@@ -125,7 +156,7 @@
       meta.textContent = (cost.day || "Today") + " · R" + money(cost.rate_zar_per_km) + "/km · " +
         (cost.forms_with_gps || 0) + " form" + ((cost.forms_with_gps || 0) === 1 ? "" : "s") + " with GPS" +
         (cost.forms_missing_gps ? (" · " + cost.forms_missing_gps + " missing GPS skipped") : "") +
-        " · " + src + ". Return to factory is weighted by each stop’s inbound km.";
+        " · " + src + ".";
       totals.hidden = false;
       totals.innerHTML =
         "<div><strong>R " + money(cost.total_zar) + "</strong><span>Batch cost</span></div>" +
@@ -137,6 +168,7 @@
             "<tr>" +
             "<td>" + esc(batch.driver) + "</td>" +
             "<td>" + esc(stop.order_label || (stop.order_numbers || []).join(", ")) + "</td>" +
+            "<td>" + esc(stop.address || "—") + "</td>" +
             "<td>" + esc(money(stop.inbound_km)) + "</td>" +
             "<td>" + esc(money(stop.return_share_km)) + "</td>" +
             "<td>" + esc(money(stop.km)) + "</td>" +
@@ -146,7 +178,7 @@
         });
       });
       if (!lines.length) {
-        body.innerHTML = '<tr><td colspan="6"><div class="empty">No GPS pins on today’s forms yet — cost appears when the driver submits delivery forms with location.</div></td></tr>';
+        body.innerHTML = '<tr><td colspan="7"><div class="empty">No GPS pins on today’s forms yet — cost appears when the driver submits delivery forms with location.</div></td></tr>';
       } else {
         body.innerHTML = lines.join("");
       }
@@ -163,14 +195,14 @@
       document.getElementById("boot").hidden = true;
       document.getElementById("grid").hidden = false;
       if (!shown.length) {
-        body.innerHTML = '<tr><td colspan="9"><div class="empty">' +
+        body.innerHTML = '<tr><td colspan="10"><div class="empty">' +
           (rows.length ? "No forms match that search." : "No delivery forms yet. They appear when the driver submits proof of delivery.") +
           "</div></td></tr>";
         return;
       }
       body.innerHTML = shown.map((row) => {
         const rate = "D " + stars(row.rating_delivery) + " · S " + stars(row.rating_sales) + " · C " + stars(row.rating_craft);
-        return "<tr>" +
+        return "<tr data-id='" + esc(row.id) + "'>" +
           "<td>" + esc(row.delivered_label || "") + "</td>" +
           "<td>" + esc(row.order_label || "") + "</td>" +
           "<td>" + esc(row.status || "") + "</td>" +
@@ -180,13 +212,41 @@
           "<td>" + esc(row.driver || "") + "</td>" +
           "<td class='stars'>" + esc(rate) + "</td>" +
           "<td><a class='pdf' href='" + esc(row.pdf_url || "") + "' target='_blank' rel='noopener'>Open PDF</a></td>" +
+          "<td><div class='actions'><button type='button' class='danger' data-del='" + esc(row.id) + "'>Delete</button></div></td>" +
           "</tr>";
       }).join("");
+      body.querySelectorAll("[data-del]").forEach((btn) => {
+        btn.onclick = () => deleteForm(btn.getAttribute("data-del"), btn);
+      });
+    }
+    async function deleteForm(id, btn) {
+      const row = rows.find((r) => r.id === id);
+      const label = (row && (row.order_label || row.client_name)) || id;
+      if (!confirm("Delete delivery form for " + label + "? The PDF and photos are removed. Order status is not changed.")) return;
+      if (btn) btn.disabled = true;
+      try {
+        const r = await sdOfficeFetch("/api/delivery/forms/" + encodeURIComponent(id), { method: "DELETE" });
+        const j = await r.json().catch(() => ({}));
+        if (!j || !j.ok) throw new Error((j && j.error) || "Could not delete form");
+        rows = rows.filter((r) => r.id !== id);
+        render();
+        setMsg("Deleted form for " + label);
+        if (cost) await loadCostOnly();
+      } catch (e) {
+        setMsg(e.message || String(e), true);
+        if (btn) btn.disabled = false;
+      }
     }
     function setMsg(text, bad) {
       const el = document.getElementById("status");
       el.textContent = text || "";
       el.style.color = bad ? "#b42318" : "";
+    }
+    async function loadCostOnly() {
+      const costRes = await sdOfficeFetch("/api/delivery/cost");
+      const cj = await costRes.json().catch(() => ({}));
+      cost = (cj && cj.ok) ? cj.cost : null;
+      if (view === "cost") renderCost();
     }
     async function load() {
       setMsg("Loading…");
@@ -199,8 +259,8 @@
       rows = j.rows || [];
       const cj = await costRes.json().catch(() => ({}));
       cost = (cj && cj.ok) ? cj.cost : null;
-      render();
-      renderCost();
+      if (view === "cost") renderCost();
+      else render();
       setMsg(rows.length + " form" + (rows.length === 1 ? "" : "s") +
         (cost ? (" · today R " + money(cost.total_zar)) : ""));
     }
@@ -208,6 +268,8 @@
     document.getElementById("refreshBtn").addEventListener("click", () => {
       load().catch((e) => setMsg(e.message || String(e), true));
     });
+    const path = location.pathname.replace(/\/+$/, "") || "/delivery-forms";
+    setView(path.indexOf("/delivery-forms/cost") === 0 ? "cost" : "forms");
     sdMountOfficeShell("deliveryforms");
     sdRequireOffice("reworks").then(() => load()).catch((e) => {
       document.getElementById("boot").className = "err";

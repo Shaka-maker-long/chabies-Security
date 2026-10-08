@@ -1006,6 +1006,7 @@ async function costDriverBatch(records, opts) {
       order_numbers: (row.order_numbers || []).slice(),
       order_label: row.order_label || "",
       client_name: row.client_name || "",
+      address: row.address || row.drop_address || row.client_address || "",
       delivered_at: row.delivered_at || "",
       lat: pin.lat,
       lng: pin.lng
@@ -1033,6 +1034,7 @@ async function costDriverBatch(records, opts) {
       form_id: leg.form_id,
       order_label: leg.order_label,
       client_name: leg.client_name,
+      address: leg.address || "",
       delivered_at: leg.delivered_at,
       inbound_km: leg.km,
       return_share_km: kmRound(share),
@@ -1045,6 +1047,7 @@ async function costDriverBatch(records, opts) {
         order_number: num,
         form_id: leg.form_id,
         client_name: leg.client_name,
+        address: leg.address || "",
         km: eachKm,
         zar: eachZar
       });
@@ -1135,6 +1138,34 @@ function readPdf(id) {
   };
 }
 
+function removePathSafe(target) {
+  try {
+    if (!target || !fs.existsSync(target)) return;
+    const st = fs.statSync(target);
+    if (st.isDirectory()) fs.rmSync(target, { recursive: true, force: true });
+    else fs.unlinkSync(target);
+  } catch (e) {
+    console.error("[delivery-pod] remove", target, e.message || e);
+  }
+}
+
+function deleteForm(id) {
+  const want = String(id || "").trim();
+  if (!want) throw new Error("Form id is required.");
+  const store = loadStore();
+  const idx = store.records.findIndex((row) => row && row.id === want);
+  if (idx < 0) throw new Error("Delivery form not found.");
+  const rec = store.records[idx];
+  store.records.splice(idx, 1);
+  saveStore(store);
+  const pdf = rec.pdf_path && fs.existsSync(rec.pdf_path)
+    ? rec.pdf_path
+    : path.join(formsDir(), rec.id + ".pdf");
+  removePathSafe(pdf);
+  removePathSafe(path.join(formsDir(), rec.id));
+  return { id: want, deleted: true };
+}
+
 function bundleForOrder(orderNumber) {
   const loaded = relatedUnits(orderNumber, "out for delivery");
   if (loaded.length) return { status: "Out for Delivery", orders: loaded };
@@ -1168,6 +1199,7 @@ module.exports = {
   formsForOrder,
   submitPod,
   listForms,
+  deleteForm,
   readPdf,
   pdfUrlFor,
   bundleForOrder,

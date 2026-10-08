@@ -357,6 +357,13 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   assert.ok((batch.stops_detail || []).length >= 2);
   const shareSum = batch.stops_detail.reduce((s, row) => s + Number(row.return_share_km || 0), 0);
   assert.ok(Math.abs(shareSum - batch.return_km) < 0.2, "return is fully allocated by weighted shares");
+  assert.ok(batch.stops_detail.every((row) => Object.prototype.hasOwnProperty.call(row, "address")), "cost rows include address");
+
+  const beforeDelete = delivery.listForms().length;
+  const del = delivery.deleteForm(gautengPod.id);
+  assert.ok(del.deleted);
+  assert.strictEqual(delivery.listForms().length, beforeDelete - 1);
+  assert.strictEqual(delivery.readPdf(gautengPod.id), null);
 
   console.log("delivery-pod.test.js ok", { splits: loaded.count, forms: listedForms.length, costZar: cost.total_zar });
 })().catch((e) => {
