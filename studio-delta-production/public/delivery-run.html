@@ -61,7 +61,24 @@
     .stars button.on { background:#f8f1e3; border-color:var(--brass); color:var(--brass); }
     canvas { width:100%; height:140px; border:1px solid var(--line); border-radius:8px; background:#fff; touch-action:none; }
     .photos { display:flex; flex-wrap:wrap; gap:8px; }
-    .photos img { width:72px; height:72px; object-fit:cover; border-radius:8px; border:1px solid var(--line); }
+    .photos .shot { position:relative; width:72px; height:72px; }
+    .photos img { width:72px; height:72px; object-fit:cover; border-radius:8px; border:1px solid var(--line); display:block; }
+    .photos .shot button { position:absolute; top:-6px; right:-6px; width:22px; height:22px; border:0; border-radius:999px; background:#1c1917; color:#fff; font-size:12px; line-height:22px; cursor:pointer; padding:0; }
+    .photo-tools { display:flex; flex-direction:column; gap:8px; }
+    .photo-tools .take { border:1px solid #1c1917; background:#1c1917; color:#fff; border-radius:8px; padding:12px; font-weight:700; cursor:pointer; width:100%; }
+    .photo-tools .take:disabled { opacity:.55; }
+    .cam-mask { position:fixed; inset:0; z-index:120; background:#0b0a09; display:none; flex-direction:column; }
+    .cam-mask.open { display:flex; }
+    .cam-mask video { flex:1; width:100%; object-fit:cover; background:#000; }
+    .cam-mask .cam-bar { display:flex; gap:8px; padding:12px; background:#1c1917; }
+    .cam-mask .cam-bar button { flex:1; border:0; border-radius:8px; padding:14px; font-weight:700; cursor:pointer; }
+    .cam-mask .cam-bar #camSnap { background:var(--brass); color:#1c1917; }
+    .cam-mask .cam-bar #camCancel { background:#fff; color:#1c1917; }
+    .map-wrap { position:relative; }
+    .map-live { position:absolute; left:10px; right:10px; bottom:10px; z-index:500; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    .map-live a, .map-live button { border:1px solid #1c1917; background:#fff; color:#1c1917; border-radius:8px; padding:8px 10px; font-weight:700; font-size:12px; text-decoration:none; cursor:pointer; }
+    .map-live a.on, .map-live button.on { background:#1c1917; color:#f3efe6; }
+    .me-dot { width:18px; height:18px; border-radius:50%; background:#1a73e8; border:3px solid #fff; box-shadow:0 0 0 2px rgba(26,115,232,.35), 0 2px 8px rgba(0,0,0,.28); }
     .actions { display:flex; gap:8px; }
     .actions button { flex:1; border:1px solid #1c1917; background:#1c1917; color:#fff; border-radius:6px; padding:12px; font-weight:700; cursor:pointer; }
     .actions button.ghost { background:#fff; color:#1c1917; }
@@ -108,8 +125,14 @@
   </div>
   <div class="page" id="mapPage" hidden>
     <div class="card">
-      <div id="map"></div>
-      <div class="eta" id="etaBox">Route loads from the addresses on the truck.</div>
+      <div class="map-wrap">
+        <div id="map"></div>
+        <div class="map-live">
+          <button type="button" class="on" id="followMeBtn">Follow me</button>
+          <a id="gmapsLive" href="#" target="_blank" rel="noopener" hidden>Open live location in Google Maps</a>
+        </div>
+      </div>
+      <div class="eta" id="etaBox">Route loads from the addresses on the truck. Your live pin updates here while location is allowed.</div>
     </div>
   </div>
   <div class="mask" id="podMask">
@@ -135,9 +158,11 @@
         <label id="recvWrap" hidden><span id="recvNameLabel">Name of the person receiving</span>
           <input id="receiverName" autocomplete="name">
         </label>
-        <label id="photoLabel">Photos <span class="hint" id="photoHint">(at least one)</span>
-          <input type="file" id="photoInput" accept="image/*" multiple>
-        </label>
+        <div class="photo-tools" id="photoTools">
+          <span class="hint">Photos <span id="photoHint">(at least one)</span> — camera only, no gallery</span>
+          <button type="button" class="take" id="takePhotoBtn">Take photo</button>
+          <input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
+        </div>
         <div class="photos" id="photoPreview"></div>
         <div class="row2">
           <label>Date / time
@@ -168,6 +193,13 @@
       </div>
     </form>
   </div>
+  <div class="cam-mask" id="camMask" aria-hidden="true">
+    <video id="camVideo" playsinline muted autoplay></video>
+    <div class="cam-bar">
+      <button type="button" id="camCancel">Cancel</button>
+      <button type="button" id="camSnap">Capture</button>
+    </div>
+  </div>
   <script src="/vendor/leaflet/leaflet.js"></script>
   <script>
     const state = {
@@ -189,9 +221,12 @@
       offline: false,
       authNeeded: false,
       tracking: "off",
-      watchId: null
+      watchId: null,
+      followMe: true,
+      accuracy: null
     };
-    let map, mapLayer, flushing = false, trackTimer = null, lastTrackSent = 0;
+    let map, mapLayer, meMarker, meCircle, flushing = false, trackTimer = null, lastTrackSent = 0;
+    let camStream = null, camCanvas = null;
     const off = window.sdDeliveryOffline;
     const params = new URLSearchParams(location.search);
 
@@ -346,10 +381,45 @@
         }
       } catch (e) {}
     }
+    function googleMapsUrl(lat, lng) {
+      return "https://www.google.com/maps?q=" + encodeURIComponent(lat + "," + lng);
+    }
+    function paintGmapsLink() {
+      const a = document.getElementById("gmapsLive");
+      if (!a) return;
+      if (state.lat == null || state.lng == null) {
+        a.hidden = true;
+        return;
+      }
+      a.hidden = false;
+      a.href = googleMapsUrl(state.lat, state.lng);
+    }
+    function updateMeOnMap() {
+      if (!window.L || !map || state.lat == null || state.lng == null) return;
+      const latlng = [state.lat, state.lng];
+      const icon = L.divIcon({ className: "", html: '<div class="me-dot"></div>', iconSize: [18, 18], iconAnchor: [9, 9] });
+      if (!meMarker) meMarker = L.marker(latlng, { icon: icon, zIndexOffset: 1000 }).addTo(map).bindPopup("You are here (live)");
+      else meMarker.setLatLng(latlng);
+      const acc = Number(state.accuracy);
+      if (Number.isFinite(acc) && acc > 0) {
+        if (!meCircle) meCircle = L.circle(latlng, { radius: acc, color: "#1a73e8", weight: 1, fillColor: "#1a73e8", fillOpacity: 0.12 }).addTo(map);
+        else { meCircle.setLatLng(latlng); meCircle.setRadius(acc); }
+      }
+      if (state.followMe && state.tab === "map") {
+        map.setView(latlng, Math.max(map.getZoom() || 15, 15), { animate: true });
+      }
+      paintGmapsLink();
+    }
     function onTrackPosition(pos) {
       if (!pos || !pos.coords) return;
       state.lat = pos.coords.latitude;
       state.lng = pos.coords.longitude;
+      state.accuracy = pos.coords.accuracy;
+      updateMeOnMap();
+      const gps = document.getElementById("gpsLabel");
+      if (gps && document.getElementById("podMask").classList.contains("open")) {
+        gps.value = state.lat.toFixed(5) + ", " + state.lng.toFixed(5) + " · live";
+      }
       const now = Date.now();
       if (now - lastTrackSent < 12000 && state.tracking === "live") return;
       postLocation(pos.coords, true);
@@ -523,6 +593,11 @@
           maxZoom: 18,
           attribution: "&copy; OpenStreetMap"
         }).addTo(map);
+        map.on("dragstart", () => {
+          state.followMe = false;
+          const btn = document.getElementById("followMeBtn");
+          if (btn) btn.classList.remove("on");
+        });
       }
       if (mapLayer) map.removeLayer(mapLayer);
       mapLayer = L.layerGroup();
@@ -537,14 +612,18 @@
       route.stops.forEach((s, i) => {
         if (s.lat == null) return;
         const waze = s.waze_url ? '<br><a href="' + esc(s.waze_url) + '" target="_blank" rel="noopener">Open in Waze</a>' : "";
-        const m = L.marker([s.lat, s.lng]).bindPopup((i + 1) + ". " + (s.address || "") + "<br>ETA " + (s.eta_label || "") + waze);
+        const gmaps = s.lat != null
+          ? '<br><a href="' + esc(googleMapsUrl(s.lat, s.lng)) + '" target="_blank" rel="noopener">Open in Google Maps</a>'
+          : "";
+        const m = L.marker([s.lat, s.lng]).bindPopup((i + 1) + ". " + (s.address || "") + "<br>ETA " + (s.eta_label || "") + waze + gmaps);
         mapLayer.addLayer(m);
         pts.push([s.lat, s.lng]);
       });
       const line = (route.path && route.path.length > 1) ? route.path : pts;
       if (line.length > 1) mapLayer.addLayer(L.polyline(line, { color: "#b08948", weight: 5, opacity: 0.92 }));
       mapLayer.addTo(map);
-      if (line.length) map.fitBounds(line, { padding: [28, 28] });
+      if (state.lat != null) updateMeOnMap();
+      else if (line.length) map.fitBounds(line, { padding: [28, 28] });
       setTimeout(() => { if (map) map.invalidateSize(); }, 80);
     }
     function setTab(id) {
@@ -633,15 +712,12 @@
       document.getElementById("recvChoice").hidden = !!third;
       document.getElementById("recvWrap").hidden = !third && state.clientIsReceiver;
       document.getElementById("ratingsWrap").hidden = !!third;
-      document.getElementById("photoHint").textContent = third ? "(one photo)" : "(at least one)";
+      document.getElementById("photoHint").textContent = third ? "(one photo · camera only)" : "(at least one · camera only)";
       const input = document.getElementById("photoInput");
-      if (third) {
-        input.removeAttribute("multiple");
-        input.setAttribute("capture", "environment");
-      } else {
-        input.setAttribute("multiple", "multiple");
-        input.removeAttribute("capture");
-      }
+      input.removeAttribute("multiple");
+      input.setAttribute("accept", "image/*");
+      input.setAttribute("capture", "environment");
+      document.getElementById("takePhotoBtn").textContent = third ? "Take handover photo" : "Take photo";
       document.getElementById("podSave").textContent = third ? "Save courier handover" : "Save delivery form";
       document.getElementById("comments").placeholder = third
         ? "Anything the office should know about this depot drop"
@@ -652,6 +728,86 @@
           ? "Name of the person receiving at the depot"
           : "Name of the person receiving";
       }
+      paintPhotoPreview();
+    }
+    function paintPhotoPreview() {
+      const third = state.stop && state.stop.drop_kind === "third_party";
+      document.getElementById("photoPreview").innerHTML = state.photos.map((p, i) =>
+        '<div class="shot"><img src="' + p.data + '" alt=""><button type="button" data-del-photo="' + i + '" aria-label="Remove photo">×</button></div>'
+      ).join("");
+      document.getElementById("photoPreview").querySelectorAll("[data-del-photo]").forEach((btn) => {
+        btn.onclick = () => {
+          const idx = Number(btn.getAttribute("data-del-photo"));
+          state.photos.splice(idx, 1);
+          paintPhotoPreview();
+        };
+      });
+      const take = document.getElementById("takePhotoBtn");
+      take.disabled = !!(third && state.photos.length >= 1);
+    }
+    function stopCamera() {
+      if (camStream) {
+        try { camStream.getTracks().forEach((t) => t.stop()); } catch (e) {}
+      }
+      camStream = null;
+      const video = document.getElementById("camVideo");
+      if (video) video.srcObject = null;
+      const mask = document.getElementById("camMask");
+      mask.classList.remove("open");
+      mask.setAttribute("aria-hidden", "true");
+    }
+    async function openCamera() {
+      const err = document.getElementById("podErr");
+      err.textContent = "";
+      const third = state.stop && state.stop.drop_kind === "third_party";
+      if (third && state.photos.length >= 1) {
+        err.textContent = "Courier handover uses one photo. Remove it to retake.";
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        const input = document.getElementById("photoInput");
+        input.value = "";
+        input.setAttribute("capture", "environment");
+        input.click();
+        return;
+      }
+      try {
+        camStream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+        });
+        const video = document.getElementById("camVideo");
+        video.srcObject = camStream;
+        await video.play().catch(() => {});
+        const mask = document.getElementById("camMask");
+        mask.classList.add("open");
+        mask.setAttribute("aria-hidden", "false");
+      } catch (e) {
+        const input = document.getElementById("photoInput");
+        input.value = "";
+        input.setAttribute("capture", "environment");
+        input.click();
+      }
+    }
+    function snapCamera() {
+      const video = document.getElementById("camVideo");
+      if (!video || !video.videoWidth) return;
+      if (!camCanvas) camCanvas = document.createElement("canvas");
+      const w = video.videoWidth;
+      const h = video.videoHeight;
+      camCanvas.width = w;
+      camCanvas.height = h;
+      camCanvas.getContext("2d").drawImage(video, 0, 0, w, h);
+      const data = camCanvas.toDataURL("image/jpeg", 0.88);
+      const third = state.stop && state.stop.drop_kind === "third_party";
+      if (third) state.photos = [];
+      state.photos.push({
+        name: "camera-" + String(Date.now()) + ".jpg",
+        mime: "image/jpeg",
+        data: data
+      });
+      paintPhotoPreview();
+      stopCamera();
     }
     function openPod(base) {
       const group = state.grouped.find((g) => g.base === base);
@@ -682,6 +838,7 @@
       document.getElementById("podMask").scrollTop = 0;
     }
     function closePod() {
+      stopCamera();
       document.getElementById("podMask").classList.remove("open");
       state.stop = null;
     }
@@ -768,18 +925,34 @@
     document.getElementById("podMask").addEventListener("click", (e) => {
       if (e.target.id === "podMask") closePod();
     });
+    document.getElementById("takePhotoBtn").onclick = () => openCamera();
+    document.getElementById("camCancel").onclick = () => stopCamera();
+    document.getElementById("camSnap").onclick = () => snapCamera();
+    document.getElementById("followMeBtn").onclick = () => {
+      state.followMe = !state.followMe;
+      document.getElementById("followMeBtn").classList.toggle("on", state.followMe);
+      if (state.followMe) updateMeOnMap();
+    };
     document.getElementById("photoInput").addEventListener("change", async (e) => {
+      // Fallback only when the in-app camera is unavailable; capture=environment prefers the camera.
       const third = state.stop && state.stop.drop_kind === "third_party";
-      const files = Array.from(e.target.files || []);
-      const pick = third ? files.slice(0, 1) : files;
-      state.photos = [];
-      for (const file of pick) {
-        const data = await fileToDataUrl(file);
-        state.photos.push({ name: file.name, mime: file.type, data: data });
+      const files = Array.from(e.target.files || []).slice(0, 1);
+      if (!files.length) return;
+      const file = files[0];
+      if (!String(file.type || "").startsWith("image/")) {
+        document.getElementById("podErr").textContent = "Use the camera to take a photo.";
+        e.target.value = "";
+        return;
       }
-      document.getElementById("photoPreview").innerHTML = state.photos.map((p) =>
-        '<img src="' + p.data + '" alt="">'
-      ).join("");
+      const data = await fileToDataUrl(file);
+      if (third) state.photos = [];
+      state.photos.push({
+        name: "camera-" + String(Date.now()) + ".jpg",
+        mime: file.type || "image/jpeg",
+        data: data
+      });
+      paintPhotoPreview();
+      e.target.value = "";
     });
     document.getElementById("podForm").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -788,7 +961,7 @@
       if (!state.stop) return;
       const third = state.stop.drop_kind === "third_party";
       if (!state.photos.length) {
-        err.textContent = third ? "Take one photo of the handover." : "Take at least one photo.";
+        err.textContent = third ? "Take one camera photo of the handover." : "Take at least one camera photo.";
         return;
       }
       if (third && state.photos.length > 1) state.photos = state.photos.slice(0, 1);

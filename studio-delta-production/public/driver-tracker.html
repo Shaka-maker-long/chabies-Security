@@ -153,7 +153,10 @@
       }
       drivers.forEach((row) => {
         if (row.lat == null || row.lng == null) return;
-        const color = row.live ? "#3f6b4a" : "#b08948";
+        const color = row.live ? "#1a73e8" : "#b08948";
+        const gmaps = '<br><a href="https://www.google.com/maps?q=' +
+          encodeURIComponent(row.lat + "," + row.lng) +
+          '" target="_blank" rel="noopener">Open in Google Maps</a>';
         const m = L.circleMarker([row.lat, row.lng], {
           radius: row.live ? 11 : 8,
           color: color,
@@ -164,7 +167,8 @@
           "<b>" + esc(row.name) + "</b><br>" +
           (row.live ? "Live now" : ("Last seen " + esc(row.updated_label || ""))) +
           (row.device_label ? ("<br>" + esc(row.device_label) + (row.pinned_phone ? " · pinned driver phone" : "")) : "") +
-          (row.accuracy != null ? "<br>±" + Math.round(row.accuracy) + " m" : "")
+          (row.accuracy != null ? "<br>±" + Math.round(row.accuracy) + " m" : "") +
+          gmaps
         );
         layer.addLayer(m);
         pts.push([row.lat, row.lng]);
@@ -174,11 +178,15 @@
       if (focusSelected && selected) {
         const hit = drivers.find((d) => d.name === selected && d.lat != null);
         if (hit) {
-          map.setView([hit.lat, hit.lng], Math.max(map.getZoom(), 13));
+          map.setView([hit.lat, hit.lng], Math.max(map.getZoom(), 14));
           return;
         }
       }
-      if (pts.length) map.fitBounds(pts, { padding: [36, 36], maxZoom: 14 });
+      const liveHit = selected
+        ? drivers.find((d) => d.name === selected && d.live && d.lat != null)
+        : drivers.find((d) => d.live && d.lat != null);
+      if (liveHit) map.setView([liveHit.lat, liveHit.lng], Math.max(map.getZoom() || 14, 14));
+      else if (pts.length) map.fitBounds(pts, { padding: [36, 36], maxZoom: 14 });
       else if (fac && fac.lat != null) map.setView([fac.lat, fac.lng], 11);
       setTimeout(() => { if (map) map.invalidateSize(); }, 80);
     }
@@ -201,7 +209,7 @@
       if (timer) clearInterval(timer);
       timer = setInterval(() => {
         load().catch(() => {});
-      }, 10000);
+      }, 5000);
     }
     document.getElementById("refreshBtn").onclick = () => {
       load().catch((e) => setMsg(e.message || String(e), true));
