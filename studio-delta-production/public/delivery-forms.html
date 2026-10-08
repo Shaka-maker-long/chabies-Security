@@ -216,12 +216,6 @@
       el.textContent = text || "";
       el.style.color = bad ? "#b42318" : "";
     }
-    async function loadCostOnly() {
-      const costRes = await sdOfficeFetch("/api/delivery/cost");
-      const cj = await costRes.json().catch(() => ({}));
-      cost = (cj && cj.ok) ? cj.cost : null;
-      if (view === "cost") renderCost();
-    }
     async function load() {
       setMsg("Loading…");
       const [formsRes, costRes] = await Promise.all([
