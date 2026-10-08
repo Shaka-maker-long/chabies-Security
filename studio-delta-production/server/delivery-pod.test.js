@@ -345,7 +345,20 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   assert.ok(replay.already, "already-delivered Gauteng POD can replay after reconnect");
   assert.strictEqual(replay.id, gautengPod.id);
 
-  console.log("delivery-pod.test.js ok", { splits: loaded.count, forms: listedForms.length });
+  const costDay = delivery.deliveryDayKey("2026-10-06T10:15:00.000Z");
+  const cost = await delivery.deliveryCostForDay(costDay, { rate: 6, road: false });
+  assert.strictEqual(cost.day, costDay);
+  assert.ok(cost.forms_with_gps >= 2, "cost uses GPS pins from the day’s forms");
+  assert.ok(cost.total_km > 0);
+  assert.ok(cost.total_zar > 0);
+  assert.ok((cost.batches || []).length >= 1);
+  const batch = cost.batches[0];
+  assert.ok(batch.return_km > 0, "return to factory is included");
+  assert.ok((batch.stops_detail || []).length >= 2);
+  const shareSum = batch.stops_detail.reduce((s, row) => s + Number(row.return_share_km || 0), 0);
+  assert.ok(Math.abs(shareSum - batch.return_km) < 0.2, "return is fully allocated by weighted shares");
+
+  console.log("delivery-pod.test.js ok", { splits: loaded.count, forms: listedForms.length, costZar: cost.total_zar });
 })().catch((e) => {
   console.error(e && e.stack ? e.stack : e);
   process.exit(1);

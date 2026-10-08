@@ -21,6 +21,7 @@ const RULE = "#d7d1c6";
 const LAYOUT = 2;
 const AVG_KMH = 25;
 const STOP_MINUTES = 8;
+const DEFAULT_ZAR_PER_KM = 6;
 const FACTORY = {
   lat: Number(process.env.STUDIO_DELTA_LAT) || -25.7254893,
   lng: Number(process.env.STUDIO_DELTA_LNG) || 28.2948254,
@@ -910,6 +911,195 @@ async function submitPod(body, actorName) {
   };
 }
 
+function deliveryDayKey(iso) {
+  const d = new Date(iso || Date.now());
+  if (!Number.isFinite(d.getTime())) return "";
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: process.env.TZ || "Africa/Johannesburg",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(d);
+  } catch (e) {
+    return d.toISOString().slice(0, 10);
+  }
+}
+
+function zarPerKm(raw) {
+  const n = Number(raw != null ? raw : (process.env.DELIVERY_ZAR_PER_KM || DEFAULT_ZAR_PER_KM));
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_ZAR_PER_KM;
+}
+
+function money(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
+function kmRound(n) {
+  return Math.round((Number(n) || 0) * 10) / 10;
+}
+
+async function kmBetweenPins(a, b, opts) {
+  if (!a || !b || !Number.isFinite(Number(a.lat)) || !Number.isFinite(Number(b.lat))) return null;
+  const wantRoad = !(opts && opts.road === false);
+  if (wantRoad) {
+    try {
+      const drive = await fetchOsrmDrive([
+        { lat: Number(a.lat), lng: Number(a.lng) },
+        { lat: Number(b.lat), lng: Number(b.lng) }
+      ]);
+      if (drive && drive.legs && drive.legs[0] && Number.isFinite(Number(drive.legs[0].km))) {
+        return { km: kmRound(drive.legs[0].km), source: "road" };
+      }
+    } catch (e) {}
+  }
+  return {
+    km: kmRound(haversineKm(
+      { lat: Number(a.lat), lng: Number(a.lng) },
+      { lat: Number(b.lat), lng: Number(b.lng) }
+    )),
+    source: "straight"
+  };
+}
+
+async function costDriverBatch(records, opts) {
+  const rate = zarPerKm(opts && opts.rate);
+  const sorted = (records || []).slice().sort((a, b) =>
+    String(a.delivered_at || "").localeCompare(String(b.delivered_at || ""))
+  );
+  const withGps = sorted.filter((row) => Number.isFinite(Number(row.lat)) && Number.isFinite(Number(row.lng)));
+  const skipped = sorted.length - withGps.length;
+  if (!withGps.length) {
+    return {
+      driver: String((sorted[0] && sorted[0].driver) || "").trim() || "Driver",
+      stops: 0,
+      skipped_no_gps: skipped,
+      rate_zar_per_km: rate,
+      outbound_km: 0,
+      return_km: 0,
+      total_km: 0,
+      total_zar: 0,
+      km_source: "none",
+      stops_detail: [],
+      orders: []
+    };
+  }
+  const origin = {
+    lat: FACTORY.lat,
+    lng: FACTORY.lng,
+    label: FACTORY.label
+  };
+  const legs = [];
+  let cursor = origin;
+  let kmSource = "road";
+  for (let i = 0; i < withGps.length; i++) {
+    const row = withGps[i];
+    const pin = { lat: Number(row.lat), lng: Number(row.lng) };
+    const leg = await kmBetweenPins(cursor, pin, opts);
+    if (leg.source === "straight") kmSource = "straight";
+    legs.push({
+      kind: "stop",
+      from: cursor.label || "Previous",
+      to: row.order_label || row.client_name || ("Stop " + (i + 1)),
+      km: leg.km,
+      form_id: row.id,
+      order_numbers: (row.order_numbers || []).slice(),
+      order_label: row.order_label || "",
+      client_name: row.client_name || "",
+      delivered_at: row.delivered_at || "",
+      lat: pin.lat,
+      lng: pin.lng
+    });
+    cursor = Object.assign({}, pin, { label: row.order_label || row.client_name || ("Stop " + (i + 1)) });
+  }
+  const home = await kmBetweenPins(cursor, origin, opts);
+  if (home.source === "straight") kmSource = "straight";
+  const returnKm = home.km;
+  const outboundKm = kmRound(legs.reduce((sum, leg) => sum + (Number(leg.km) || 0), 0));
+  const stopsDetail = [];
+  const orders = [];
+  legs.forEach((leg) => {
+    const share = outboundKm > 0
+      ? (Number(leg.km) / outboundKm) * returnKm
+      : (returnKm / Math.max(1, legs.length));
+    const stopKm = kmRound(Number(leg.km) + share);
+    const stopZar = money(stopKm * rate);
+    const nums = (leg.order_numbers && leg.order_numbers.length)
+      ? leg.order_numbers
+      : [leg.order_label || leg.form_id];
+    const eachZar = money(stopZar / nums.length);
+    const eachKm = kmRound(stopKm / nums.length);
+    stopsDetail.push({
+      form_id: leg.form_id,
+      order_label: leg.order_label,
+      client_name: leg.client_name,
+      delivered_at: leg.delivered_at,
+      inbound_km: leg.km,
+      return_share_km: kmRound(share),
+      km: stopKm,
+      zar: stopZar,
+      order_numbers: nums
+    });
+    nums.forEach((num) => {
+      orders.push({
+        order_number: num,
+        form_id: leg.form_id,
+        client_name: leg.client_name,
+        km: eachKm,
+        zar: eachZar
+      });
+    });
+  });
+  const totalKm = kmRound(outboundKm + returnKm);
+  return {
+    driver: String((withGps[0] && withGps[0].driver) || "").trim() || "Driver",
+    stops: withGps.length,
+    skipped_no_gps: skipped,
+    rate_zar_per_km: rate,
+    outbound_km: outboundKm,
+    return_km: returnKm,
+    total_km: totalKm,
+    total_zar: money(totalKm * rate),
+    km_source: kmSource,
+    stops_detail: stopsDetail,
+    orders: orders
+  };
+}
+
+async function deliveryCostForDay(day, opts) {
+  const wantDay = String(day || deliveryDayKey(new Date().toISOString()) || "").trim();
+  const rate = zarPerKm(opts && opts.rate);
+  const records = loadStore().records.filter((row) =>
+    row && deliveryDayKey(row.delivered_at) === wantDay
+  );
+  const byDriver = {};
+  records.forEach((row) => {
+    const key = String(row.driver || "Driver").trim().toLowerCase() || "driver";
+    if (!byDriver[key]) byDriver[key] = [];
+    byDriver[key].push(row);
+  });
+  const batches = [];
+  for (const key of Object.keys(byDriver).sort()) {
+    batches.push(await costDriverBatch(byDriver[key], opts));
+  }
+  const totalKm = kmRound(batches.reduce((sum, b) => sum + (Number(b.total_km) || 0), 0));
+  const totalZar = money(batches.reduce((sum, b) => sum + (Number(b.total_zar) || 0), 0));
+  const missingGps = records.filter((row) => !Number.isFinite(Number(row.lat)) || !Number.isFinite(Number(row.lng))).length;
+  return {
+    day: wantDay,
+    rate_zar_per_km: rate,
+    factory: { lat: FACTORY.lat, lng: FACTORY.lng, label: FACTORY.label, address: FACTORY.address },
+    forms: records.length,
+    forms_with_gps: records.length - missingGps,
+    forms_missing_gps: missingGps,
+    total_km: totalKm,
+    total_zar: totalZar,
+    method: "Facility → each drop (GPS on the form) → facility. Inbound km to that stop; return weighted by inbound km. R" +
+      rate + "/km.",
+    batches: batches
+  };
+}
+
 function listForms() {
   return loadStore().records.map((row) => ({
     id: row.id,
@@ -923,6 +1113,8 @@ function listForms() {
     drop_label: row.drop_label || "",
     status: row.status || podStatusForDrop(row.drop_kind),
     driver: row.driver,
+    lat: Number.isFinite(Number(row.lat)) ? Number(row.lat) : null,
+    lng: Number.isFinite(Number(row.lng)) ? Number(row.lng) : null,
     delivered_at: row.delivered_at,
     delivered_label: formatWhen(row.delivered_at),
     pdf_url: row.pdf_url || pdfUrlFor(row.id),
@@ -979,5 +1171,10 @@ module.exports = {
   readPdf,
   pdfUrlFor,
   bundleForOrder,
-  formatWhen
+  formatWhen,
+  deliveryDayKey,
+  zarPerKm,
+  deliveryCostForDay,
+  costDriverBatch,
+  DEFAULT_ZAR_PER_KM
 };

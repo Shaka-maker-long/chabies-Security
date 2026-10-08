@@ -948,7 +948,11 @@ assert.ok(shopStatusJs.indexOf('"At couriers"') !== -1, "shop validations includ
 assert.ok(js.indexOf("At couriers") !== -1, "office status list includes At couriers");
 const deliveryFormsHtml = fs.readFileSync(path.join(__dirname, "../public/delivery-forms.html"), "utf8");
 assert.ok(deliveryFormsHtml.indexOf("Delivery Forms") !== -1);
-assert.ok(deliveryFormsHtml.indexOf("Frankenwald") !== -1);
+assert.ok(deliveryFormsHtml.indexOf("Frankenwald") !== -1 || deliveryFormsHtml.indexOf("R6/km") !== -1);
+assert.ok(deliveryFormsHtml.indexOf("/api/delivery/cost") !== -1, "delivery forms loads today’s batch cost");
+assert.ok(deliveryFormsHtml.indexOf("Today’s delivery cost") !== -1 || deliveryFormsHtml.indexOf("Today's delivery cost") !== -1);
+assert.ok(indexJs.indexOf("/api/delivery/cost") !== -1);
+assert.ok(fs.readFileSync(path.join(__dirname, "delivery-pod.js"), "utf8").indexOf("deliveryCostForDay") !== -1);
 assert.ok(floor.indexOf("Frankenwald") !== -1, "load-on-truck copy names the 3rd party depot");
 assert.ok(codeGs.indexOf("deliveryAssigneeName_") !== -1);
 assert.ok(codeGs.indexOf('out["Delivery"]') !== -1);

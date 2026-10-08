@@ -6,7 +6,7 @@
   <title>Studio Delta — Delivery Forms</title>
   <script src="/sd-pwa.js?v=pwa-driverpin"></script>
   <style>
-    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; }
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#067647; --brass:#b08948; }
     * { box-sizing: border-box; }
     body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
     header { display:flex; gap:16px; align-items:flex-end; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
@@ -16,8 +16,15 @@
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
     input { border:1px solid var(--line); border-radius:6px; padding:8px 10px; font:inherit; font-size:13px; }
-    .page { padding:16px; }
+    .page { padding:16px; display:flex; flex-direction:column; gap:12px; }
     .card { background:#fff; border:1px solid var(--line); border-radius:12px; overflow:hidden; }
+    .cost { padding:14px 16px; }
+    .cost h2 { margin:0 0 6px; font-size:15px; font-family: Outfit, Inter, sans-serif; }
+    .cost .meta { margin:0 0 10px; font-size:12px; color:var(--muted); line-height:1.45; }
+    .cost .totals { display:flex; flex-wrap:wrap; gap:16px; margin-bottom:10px; }
+    .cost .totals strong { display:block; font-size:18px; }
+    .cost .totals span { font-size:12px; color:var(--muted); }
+    .cost table { min-width:640px; }
     .wrap { overflow:auto; }
     table { border-collapse:separate; border-spacing:0; width:100%; min-width:980px; font-size:13px; }
     th, td { border-bottom:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top; }
@@ -34,7 +41,7 @@
   <header>
     <div>
       <h1>Delivery Forms</h1>
-      <p class="lede">Proof-of-delivery PDFs from the van: photos, GPS, receiver signature, and optional ratings. Gauteng drops are at the client. Other provinces drop at the 3rd party, 26 Milkyway Ave, Frankenwald, Sandton. Live van pin is on <a href="/driver-tracker">Driver tracker</a>.</p>
+      <p class="lede">Proof-of-delivery PDFs from the van: photos, GPS, receiver signature, and optional ratings. Today’s batch cost uses the GPS pin on each form (facility → drops → facility) at R6/km. Live van pin is on <a href="/driver-tracker">Driver tracker</a>.</p>
     </div>
     <div class="tools">
       <a href="/driver-tracker" style="font-weight:700;color:#1d2939;text-decoration:none;font-size:13px">Driver tracker</a>
@@ -44,6 +51,26 @@
     </div>
   </header>
   <div class="page">
+    <section class="card cost" id="costCard">
+      <h2>Today’s delivery cost</h2>
+      <p class="meta" id="costMeta">Loading cost from today’s GPS pins…</p>
+      <div class="totals" id="costTotals" hidden></div>
+      <div class="wrap">
+        <table id="costGrid" hidden>
+          <thead>
+            <tr>
+              <th>Driver</th>
+              <th>Orders</th>
+              <th>Inbound km</th>
+              <th>Return share km</th>
+              <th>Total km</th>
+              <th>Cost (R)</th>
+            </tr>
+          </thead>
+          <tbody id="costBody"></tbody>
+        </table>
+      </div>
+    </section>
     <section class="card">
       <div class="wrap">
         <div class="load" id="boot">Loading delivery forms…</div>
@@ -69,13 +96,61 @@
   <script src="/office-auth.js?v=login-msg-3"></script>
   <script>
     let rows = [];
+    let cost = null;
     function esc(s) {
       return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
+    }
+    function money(n) {
+      return (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
     }
     function stars(n) {
       const v = Math.max(0, Math.min(5, Number(n) || 0));
       if (!v) return "—";
       return "★★★★★".slice(0, v) + "☆☆☆☆☆".slice(0, 5 - v);
+    }
+    function renderCost() {
+      const meta = document.getElementById("costMeta");
+      const totals = document.getElementById("costTotals");
+      const grid = document.getElementById("costGrid");
+      const body = document.getElementById("costBody");
+      if (!cost) {
+        meta.textContent = "Could not load today’s delivery cost.";
+        totals.hidden = true;
+        grid.hidden = true;
+        return;
+      }
+      const src = cost.batches && cost.batches.some((b) => b.km_source === "straight")
+        ? "straight-line where road routing was unavailable"
+        : "road distance where available";
+      meta.textContent = (cost.day || "Today") + " · R" + money(cost.rate_zar_per_km) + "/km · " +
+        (cost.forms_with_gps || 0) + " form" + ((cost.forms_with_gps || 0) === 1 ? "" : "s") + " with GPS" +
+        (cost.forms_missing_gps ? (" · " + cost.forms_missing_gps + " missing GPS skipped") : "") +
+        " · " + src + ". Return to factory is weighted by each stop’s inbound km.";
+      totals.hidden = false;
+      totals.innerHTML =
+        "<div><strong>R " + money(cost.total_zar) + "</strong><span>Batch cost</span></div>" +
+        "<div><strong>" + money(cost.total_km) + " km</strong><span>Facility → drops → facility</span></div>";
+      const lines = [];
+      (cost.batches || []).forEach((batch) => {
+        (batch.stops_detail || []).forEach((stop) => {
+          lines.push(
+            "<tr>" +
+            "<td>" + esc(batch.driver) + "</td>" +
+            "<td>" + esc(stop.order_label || (stop.order_numbers || []).join(", ")) + "</td>" +
+            "<td>" + esc(money(stop.inbound_km)) + "</td>" +
+            "<td>" + esc(money(stop.return_share_km)) + "</td>" +
+            "<td>" + esc(money(stop.km)) + "</td>" +
+            "<td>R " + esc(money(stop.zar)) + "</td>" +
+            "</tr>"
+          );
+        });
+      });
+      if (!lines.length) {
+        body.innerHTML = '<tr><td colspan="6"><div class="empty">No GPS pins on today’s forms yet — cost appears when the driver submits delivery forms with location.</div></td></tr>';
+      } else {
+        body.innerHTML = lines.join("");
+      }
+      grid.hidden = false;
     }
     function render() {
       const q = String(document.getElementById("q").value || "").toLowerCase();
@@ -115,12 +190,19 @@
     }
     async function load() {
       setMsg("Loading…");
-      const r = await sdOfficeFetch("/api/delivery/forms");
-      const j = await r.json().catch(() => ({}));
+      const [formsRes, costRes] = await Promise.all([
+        sdOfficeFetch("/api/delivery/forms"),
+        sdOfficeFetch("/api/delivery/cost")
+      ]);
+      const j = await formsRes.json().catch(() => ({}));
       if (!j || !j.ok) throw new Error((j && j.error) || "Could not load delivery forms");
       rows = j.rows || [];
+      const cj = await costRes.json().catch(() => ({}));
+      cost = (cj && cj.ok) ? cj.cost : null;
       render();
-      setMsg(rows.length + " form" + (rows.length === 1 ? "" : "s"));
+      renderCost();
+      setMsg(rows.length + " form" + (rows.length === 1 ? "" : "s") +
+        (cost ? (" · today R " + money(cost.total_zar)) : ""));
     }
     document.getElementById("q").addEventListener("input", render);
     document.getElementById("refreshBtn").addEventListener("click", () => {

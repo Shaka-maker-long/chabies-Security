@@ -384,6 +384,28 @@ app.get("/api/delivery/forms", (req, res) => {
     }
   });
 });
+app.get("/api/delivery/cost", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const delivery = require("./delivery-pod");
+      if (!profile.canSeeOffice && !profile.isAdmin && !delivery.canLoadTruck(profile)) {
+        res.status(403).json({ ok: false, error: "Delivery cost is for office and QC." });
+        return;
+      }
+      const day = String((req.query && req.query.day) || "").trim()
+        || delivery.deliveryDayKey(new Date().toISOString());
+      const rate = req.query && req.query.rate != null && req.query.rate !== ""
+        ? Number(req.query.rate)
+        : undefined;
+      const cost = await delivery.deliveryCostForDay(day, { rate: rate });
+      res.json({ ok: true, cost: cost });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
 app.post("/api/delivery/location", (req, res) => {
   serialize(async () => {
     try {
