@@ -939,6 +939,7 @@ assert.ok(deliveryRunHtml.indexOf('capture="environment"') !== -1, "camera captu
 assert.ok(deliveryRunHtml.indexOf("updateMeOnMap") !== -1, "driver map shows a live you-are-here pin");
 assert.ok(deliveryRunHtml.indexOf("google.com/maps") !== -1, "driver can open live location in Google Maps");
 assert.ok(driverTrackerHtml.indexOf("google.com/maps") !== -1, "office tracker links Google Maps");
+assert.ok(driverTrackerHtml.indexOf("quiet") !== -1 && driverTrackerHtml.indexOf("userMovedMap") !== -1, "driver tracker silent refresh keeps map view");
 assert.ok(floor.indexOf("/driver-tracker") !== -1, "floor menu links Driver tracker");
 assert.ok(deliveryRunHtml.indexOf("/vendor/leaflet/leaflet.js") !== -1, "leaflet is local so the map works without unpkg");
 assert.ok(deliveryRunHtml.indexOf("unpkg.com/leaflet") === -1);

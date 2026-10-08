@@ -46,7 +46,7 @@
   <header>
     <div>
       <h1>Driver tracker</h1>
-      <p class="lede">Live pin from the driver’s pinned phone (Users → Devices → Pin as driver phone) while Studio Delta is open and location is allowed. Green is live (updated in the last 90 seconds). Brass is the last known place. Switch Streets / Satellite on the map. Starts at Studio Delta, 309 Derdepoort Rd.</p>
+      <p class="lede">Live pin from the driver’s pinned phone (Users → Devices → Pin as driver phone) while Studio Delta is open and location is allowed. Blue is live (updated in the last 90 seconds). Brass is the last known place. Pins refresh quietly so your pan/zoom stays put — tap a driver in the list to jump to them. Switch Streets / Satellite on the map.</p>
     </div>
     <div class="tools">
       <a class="link" href="/delivery-forms">Delivery Forms</a>
@@ -76,6 +76,8 @@
     let map, layer, baseLayer, selected = "";
     let basemap = "streets";
     let timer = null;
+    let mapReady = false;
+    let userMovedMap = false;
     const STREET_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
     const STREET_ATTR = "&copy; OpenStreetMap";
     const SAT_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
@@ -119,7 +121,7 @@
         el.onclick = () => {
           selected = el.getAttribute("data-name");
           renderList();
-          renderMap(true);
+          renderMap({ focusSelected: true });
         };
       });
     }
@@ -134,11 +136,15 @@
         : L.tileLayer(STREET_URL, { maxZoom: 18, attribution: STREET_ATTR });
       baseLayer.addTo(map);
     }
-    function renderMap(focusSelected) {
+    function renderMap(opts) {
+      opts = opts || {};
+      const focusSelected = !!opts.focusSelected;
+      const fit = !!opts.fit;
       if (!window.L) return;
       if (!map) {
         map = L.map("map");
         setBasemap(basemap);
+        map.on("dragstart zoomstart", () => { userMovedMap = true; });
       }
       if (layer) map.removeLayer(layer);
       layer = L.layerGroup();
@@ -172,25 +178,37 @@
         );
         layer.addLayer(m);
         pts.push([row.lat, row.lng]);
-        if (selected === row.name) m.openPopup();
+        if (focusSelected && selected === row.name) m.openPopup();
       });
       layer.addTo(map);
+      // Silent refresh: move pins only — never change pan/zoom while the office is working the map.
+      if (!fit && !focusSelected) {
+        if (!mapReady) {
+          mapReady = true;
+          setTimeout(() => { if (map) map.invalidateSize(); }, 80);
+        }
+        return;
+      }
       if (focusSelected && selected) {
         const hit = drivers.find((d) => d.name === selected && d.lat != null);
         if (hit) {
-          map.setView([hit.lat, hit.lng], Math.max(map.getZoom(), 14));
+          userMovedMap = false;
+          map.setView([hit.lat, hit.lng], Math.max(map.getZoom() || 14, 14));
+          mapReady = true;
+          setTimeout(() => { if (map) map.invalidateSize(); }, 80);
           return;
         }
       }
-      const liveHit = selected
-        ? drivers.find((d) => d.name === selected && d.live && d.lat != null)
-        : drivers.find((d) => d.live && d.lat != null);
-      if (liveHit) map.setView([liveHit.lat, liveHit.lng], Math.max(map.getZoom() || 14, 14));
-      else if (pts.length) map.fitBounds(pts, { padding: [36, 36], maxZoom: 14 });
-      else if (fac && fac.lat != null) map.setView([fac.lat, fac.lng], 11);
+      if (fit && !userMovedMap) {
+        if (pts.length) map.fitBounds(pts, { padding: [36, 36], maxZoom: 14 });
+        else if (fac && fac.lat != null) map.setView([fac.lat, fac.lng], 11);
+      }
+      mapReady = true;
       setTimeout(() => { if (map) map.invalidateSize(); }, 80);
     }
-    async function load() {
+    async function load(opts) {
+      opts = opts || {};
+      const quiet = !!opts.quiet;
       const r = await sdOfficeFetch("/api/delivery/locations");
       const j = await r.json().catch(() => ({}));
       if (!j || !j.ok) throw new Error((j && j.error) || "Could not load driver locations");
@@ -199,7 +217,9 @@
       if (selected && !drivers.some((d) => d.name === selected)) selected = "";
       if (!selected && drivers[0]) selected = drivers[0].name;
       renderList();
-      renderMap(false);
+      if (quiet && mapReady) renderMap({ quiet: true });
+      else if (!mapReady) renderMap({ fit: true });
+      else renderMap({ quiet: true });
       const live = drivers.filter((d) => d.live).length;
       setMsg(live
         ? (live + " live · " + drivers.length + " pin" + (drivers.length === 1 ? "" : "s"))
@@ -208,11 +228,12 @@
     function startPoll() {
       if (timer) clearInterval(timer);
       timer = setInterval(() => {
-        load().catch(() => {});
+        load({ quiet: true }).catch(() => {});
       }, 5000);
     }
     document.getElementById("refreshBtn").onclick = () => {
-      load().catch((e) => setMsg(e.message || String(e), true));
+      // Refresh pins/status only — keep the current map view.
+      load({ quiet: true }).catch((e) => setMsg(e.message || String(e), true));
     };
     document.getElementById("btnStreets").onclick = () => setBasemap("streets");
     document.getElementById("btnSat").onclick = () => setBasemap("satellite");
