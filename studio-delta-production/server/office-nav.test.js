@@ -949,8 +949,12 @@ assert.ok(js.indexOf("At couriers") !== -1, "office status list includes At cour
 const deliveryFormsHtml = fs.readFileSync(path.join(__dirname, "../public/delivery-forms.html"), "utf8");
 assert.ok(deliveryFormsHtml.indexOf("Delivery Forms") !== -1);
 assert.ok(deliveryFormsHtml.indexOf("Frankenwald") !== -1 || deliveryFormsHtml.indexOf("R6/km") !== -1);
-assert.ok(deliveryFormsHtml.indexOf("/api/delivery/cost") !== -1, "delivery forms loads today’s batch cost");
-assert.ok(deliveryFormsHtml.indexOf("Today’s delivery cost") !== -1 || deliveryFormsHtml.indexOf("Today's delivery cost") !== -1);
+assert.ok(deliveryFormsHtml.indexOf("/api/delivery/cost") !== -1, "delivery forms loads batch cost");
+assert.ok(
+  deliveryFormsHtml.indexOf("Year-to-date delivery cost") !== -1
+    || deliveryFormsHtml.indexOf("YTD") !== -1,
+  "delivery cost is year-to-date"
+);
 assert.ok(deliveryFormsHtml.indexOf("/delivery-forms/cost") !== -1, "Cost is a Delivery Forms subpage");
 assert.ok(deliveryFormsHtml.indexOf(">Forms<") !== -1 && deliveryFormsHtml.indexOf(">Cost<") !== -1);
 assert.ok(deliveryFormsHtml.indexOf("data-del") === -1 && deliveryFormsHtml.indexOf(">Delete<") === -1, "no delete buttons on delivery forms");

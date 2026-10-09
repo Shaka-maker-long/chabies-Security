@@ -415,12 +415,17 @@ app.get("/api/delivery/cost", (req, res) => {
         res.status(403).json({ ok: false, error: "Delivery cost is for office and QC." });
         return;
       }
-      const day = String((req.query && req.query.day) || "").trim()
-        || delivery.deliveryDayKey(new Date().toISOString());
       const rate = req.query && req.query.rate != null && req.query.rate !== ""
         ? Number(req.query.rate)
         : undefined;
-      const cost = await delivery.deliveryCostForDay(day, { rate: rate });
+      const range = String((req.query && req.query.range) || "ytd").trim().toLowerCase();
+      const day = String((req.query && req.query.day) || "").trim();
+      const cost = (range === "day" || day)
+        ? await delivery.deliveryCostForDay(day || delivery.deliveryDayKey(new Date().toISOString()), { rate: rate })
+        : await delivery.deliveryCostYtd({
+          rate: rate,
+          year: String((req.query && req.query.year) || "").trim() || undefined
+        });
       res.json({ ok: true, cost: cost });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });

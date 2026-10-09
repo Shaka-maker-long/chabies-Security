@@ -359,6 +359,12 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   assert.ok(Math.abs(shareSum - batch.return_km) < 0.2, "return is fully allocated by weighted shares");
   assert.ok(batch.stops_detail.every((row) => Object.prototype.hasOwnProperty.call(row, "address")), "cost rows include address");
 
+  const ytd = await delivery.deliveryCostYtd({ rate: 6, road: false, asOf: "2026-10-06T23:00:00.000Z", year: "2026" });
+  assert.strictEqual(ytd.range, "ytd");
+  assert.strictEqual(ytd.year, "2026");
+  assert.ok(ytd.total_zar >= cost.total_zar, "YTD includes the day’s cost");
+  assert.ok((ytd.batches || []).every((b) => b.day), "YTD batches keep the delivery day");
+
   const beforeDelete = delivery.listForms().length;
   const del = delivery.deleteForm(gautengPod.id);
   assert.ok(del.deleted);

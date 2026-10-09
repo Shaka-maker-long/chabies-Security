@@ -1069,38 +1069,77 @@ async function costDriverBatch(records, opts) {
   };
 }
 
-async function deliveryCostForDay(day, opts) {
-  const wantDay = String(day || deliveryDayKey(new Date().toISOString()) || "").trim();
+function deliveryYearKey(iso) {
+  const day = deliveryDayKey(iso);
+  return day ? day.slice(0, 4) : "";
+}
+
+async function costRecordsGrouped(records, opts) {
   const rate = zarPerKm(opts && opts.rate);
-  const records = loadStore().records.filter((row) =>
-    row && deliveryDayKey(row.delivered_at) === wantDay
-  );
-  const byDriver = {};
-  records.forEach((row) => {
-    const key = String(row.driver || "Driver").trim().toLowerCase() || "driver";
-    if (!byDriver[key]) byDriver[key] = [];
-    byDriver[key].push(row);
+  const byDayDriver = {};
+  (records || []).forEach((row) => {
+    if (!row) return;
+    const day = deliveryDayKey(row.delivered_at);
+    if (!day) return;
+    const driver = String(row.driver || "Driver").trim().toLowerCase() || "driver";
+    const key = day + "\0" + driver;
+    if (!byDayDriver[key]) byDayDriver[key] = { day: day, rows: [] };
+    byDayDriver[key].rows.push(row);
   });
   const batches = [];
-  for (const key of Object.keys(byDriver).sort()) {
-    batches.push(await costDriverBatch(byDriver[key], opts));
+  const keys = Object.keys(byDayDriver).sort();
+  for (let i = 0; i < keys.length; i++) {
+    const group = byDayDriver[keys[i]];
+    const batch = await costDriverBatch(group.rows, opts);
+    batch.day = group.day;
+    (batch.stops_detail || []).forEach((stop) => { stop.day = group.day; });
+    (batch.orders || []).forEach((order) => { order.day = group.day; });
+    batches.push(batch);
   }
   const totalKm = kmRound(batches.reduce((sum, b) => sum + (Number(b.total_km) || 0), 0));
   const totalZar = money(batches.reduce((sum, b) => sum + (Number(b.total_zar) || 0), 0));
-  const missingGps = records.filter((row) => !Number.isFinite(Number(row.lat)) || !Number.isFinite(Number(row.lng))).length;
+  const missingGps = (records || []).filter((row) =>
+    !Number.isFinite(Number(row.lat)) || !Number.isFinite(Number(row.lng))
+  ).length;
   return {
-    day: wantDay,
     rate_zar_per_km: rate,
     factory: { lat: FACTORY.lat, lng: FACTORY.lng, label: FACTORY.label, address: FACTORY.address },
-    forms: records.length,
-    forms_with_gps: records.length - missingGps,
+    forms: (records || []).length,
+    forms_with_gps: (records || []).length - missingGps,
     forms_missing_gps: missingGps,
     total_km: totalKm,
     total_zar: totalZar,
-    method: "Facility → each drop (GPS on the form) → facility. Inbound km to that stop; return weighted by inbound km. R" +
+    method: "Each delivery day is costed facility → drops → facility from GPS on the forms. Inbound km to that stop; return weighted by inbound km. R" +
       rate + "/km.",
     batches: batches
   };
+}
+
+async function deliveryCostForDay(day, opts) {
+  const wantDay = String(day || deliveryDayKey(new Date().toISOString()) || "").trim();
+  const records = loadStore().records.filter((row) =>
+    row && deliveryDayKey(row.delivered_at) === wantDay
+  );
+  const summary = await costRecordsGrouped(records, opts);
+  return Object.assign({ range: "day", day: wantDay, year: wantDay.slice(0, 4) }, summary);
+}
+
+async function deliveryCostYtd(opts) {
+  const today = deliveryDayKey((opts && opts.asOf) || new Date().toISOString());
+  const year = String((opts && opts.year) || (today && today.slice(0, 4)) || "").trim();
+  const records = loadStore().records.filter((row) => {
+    if (!row) return false;
+    const day = deliveryDayKey(row.delivered_at);
+    return day && day.slice(0, 4) === year && day <= today;
+  });
+  const summary = await costRecordsGrouped(records, opts);
+  return Object.assign({
+    range: "ytd",
+    day: today,
+    year: year,
+    from: year ? (year + "-01-01") : "",
+    to: today
+  }, summary);
 }
 
 function listForms() {
@@ -1205,8 +1244,10 @@ module.exports = {
   bundleForOrder,
   formatWhen,
   deliveryDayKey,
+  deliveryYearKey,
   zarPerKm,
   deliveryCostForDay,
+  deliveryCostYtd,
   costDriverBatch,
   DEFAULT_ZAR_PER_KM
 };

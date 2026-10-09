@@ -83,13 +83,14 @@
   </div>
   <div class="page" id="costPage" hidden>
     <section class="card cost" id="costCard">
-      <h2>Today’s delivery cost</h2>
-      <p class="meta" id="costMeta">Loading cost from today’s GPS pins…</p>
+      <h2>Year-to-date delivery cost</h2>
+      <p class="meta" id="costMeta">Loading YTD cost from delivery GPS pins…</p>
       <div class="totals" id="costTotals" hidden></div>
       <div class="wrap">
         <table id="costGrid" hidden>
           <thead>
             <tr>
+              <th>Date</th>
               <th>Driver</th>
               <th>Orders</th>
               <th>Address</th>
@@ -128,8 +129,8 @@
       document.getElementById("tabCost").classList.toggle("on", view === "cost");
       document.getElementById("pageTitle").textContent = view === "cost" ? "Delivery cost" : "Delivery Forms";
       document.getElementById("pageLede").textContent = view === "cost"
-        ? "Today’s batch cost from GPS pins on each form (facility → drops → facility) at R6/km. Return to factory is weighted by each stop’s inbound km."
-        : "Proof-of-delivery PDFs from the van: photos, GPS, receiver signature, and optional ratings. Gauteng drops are at the client. Other provinces drop at Frankenwald. Use Cost for today’s R6/km batch.";
+        ? "Year-to-date delivery cost from GPS pins on each form. Each day is costed facility → drops → facility at R6/km. Return to factory is weighted by each stop’s inbound km."
+        : "Proof-of-delivery PDFs from the van: photos, GPS, receiver signature, and optional ratings. Gauteng drops are at the client. Other provinces drop at Frankenwald. Use Cost for year-to-date R6/km.";
       document.getElementById("q").hidden = view !== "forms";
       document.title = view === "cost" ? "Studio Delta — Delivery cost" : "Studio Delta — Delivery Forms";
       if (view === "cost") renderCost();
@@ -141,7 +142,7 @@
       const grid = document.getElementById("costGrid");
       const body = document.getElementById("costBody");
       if (!cost) {
-        meta.textContent = "Could not load today’s delivery cost.";
+        meta.textContent = "Could not load year-to-date delivery cost.";
         totals.hidden = true;
         grid.hidden = true;
         return;
@@ -149,19 +150,23 @@
       const src = cost.batches && cost.batches.some((b) => b.km_source === "straight")
         ? "straight-line where road routing was unavailable"
         : "road distance where available";
-      meta.textContent = (cost.day || "Today") + " · R" + money(cost.rate_zar_per_km) + "/km · " +
+      const period = (cost.from && cost.to)
+        ? (cost.from + " → " + cost.to)
+        : (cost.year ? (cost.year + " YTD") : "YTD");
+      meta.textContent = period + " · R" + money(cost.rate_zar_per_km) + "/km · " +
         (cost.forms_with_gps || 0) + " form" + ((cost.forms_with_gps || 0) === 1 ? "" : "s") + " with GPS" +
         (cost.forms_missing_gps ? (" · " + cost.forms_missing_gps + " missing GPS skipped") : "") +
         " · " + src + ".";
       totals.hidden = false;
       totals.innerHTML =
-        "<div><strong>R " + money(cost.total_zar) + "</strong><span>Batch cost</span></div>" +
-        "<div><strong>" + money(cost.total_km) + " km</strong><span>Facility → drops → facility</span></div>";
+        "<div><strong>R " + money(cost.total_zar) + "</strong><span>YTD cost</span></div>" +
+        "<div><strong>" + money(cost.total_km) + " km</strong><span>All delivery days this year</span></div>";
       const lines = [];
-      (cost.batches || []).forEach((batch) => {
+      (cost.batches || []).slice().reverse().forEach((batch) => {
         (batch.stops_detail || []).forEach((stop) => {
           lines.push(
             "<tr>" +
+            "<td>" + esc(stop.day || batch.day || "") + "</td>" +
             "<td>" + esc(batch.driver) + "</td>" +
             "<td>" + esc(stop.order_label || (stop.order_numbers || []).join(", ")) + "</td>" +
             "<td>" + esc(stop.address || "—") + "</td>" +
@@ -174,7 +179,7 @@
         });
       });
       if (!lines.length) {
-        body.innerHTML = '<tr><td colspan="7"><div class="empty">No GPS pins on today’s forms yet — cost appears when the driver submits delivery forms with location.</div></td></tr>';
+        body.innerHTML = '<tr><td colspan="8"><div class="empty">No GPS pins on delivery forms this year yet — cost appears when the driver submits forms with location.</div></td></tr>';
       } else {
         body.innerHTML = lines.join("");
       }
@@ -230,7 +235,7 @@
       if (view === "cost") renderCost();
       else render();
       setMsg(rows.length + " form" + (rows.length === 1 ? "" : "s") +
-        (cost ? (" · today R " + money(cost.total_zar)) : ""));
+        (cost ? (" · YTD R " + money(cost.total_zar)) : ""));
     }
     document.getElementById("q").addEventListener("input", render);
     document.getElementById("refreshBtn").addEventListener("click", () => {
