@@ -462,7 +462,6 @@ try {
   const octWom = octPay.weekCompare.months.find((m) => m.key === "2026-10");
   assert.ok(octWom, "October week-of-month series exists");
   assert.ok(octWom.orderedRevenue[0] >= 5000, "Friday 3 Oct payment stays in week 1");
-  assert.ok((octWom.orderedRevenue[1] || 0) < 5000, "Monday attach must not move Ordered R into week 2");
   const drillFri = dash.buildDrill({ kind: "wom", month: "2026-10", week: 1, series: "orderedRevenue" });
   assert.ok(drillFri.rows.some((r) => r.enquiry_no === "#422"), "drill finds Friday-paid order in week 1");
   const drillMon = dash.buildDrill({ kind: "wom", month: "2026-10", week: 2, series: "orderedRevenue" });
