@@ -1710,6 +1710,27 @@ function unscheduleOrder(orderNumber) {
   return { removed: before - store.blocks.length };
 }
 
+function renameOrder(fromRaw, toRaw) {
+  const fromId = formatOrderId(fromRaw);
+  const toId = formatOrderId(toRaw);
+  if (!fromId || !toId || fromId === toId) return { changed: 0 };
+  const store = load();
+  let changed = 0;
+  store.blocks.forEach((b) => {
+    if (!b || formatOrderId(b.orderId) !== fromId) return;
+    b.orderId = toId;
+    if (b.studioNo && formatOrderId(b.studioNo) === fromId) b.studioNo = toId;
+    changed += 1;
+  });
+  if (store.assignments && store.assignments[fromId]) {
+    store.assignments[toId] = store.assignments[fromId];
+    delete store.assignments[fromId];
+    changed += 1;
+  }
+  if (changed) save(store);
+  return { changed };
+}
+
 function clearAllPlanning() {
   const store = load();
   const removed = (store.blocks || []).length;
@@ -2234,6 +2255,7 @@ module.exports = {
   defaultCrewNames,
   DEFAULT_CREW,
   unscheduleOrder,
+  renameOrder,
   clearAllPlanning,
   moveBlock,
   insertOtherTask,

@@ -76,6 +76,53 @@ function isSentToPaintShop(status) {
   return isAtPaintShop(status) || statusKey(status) === statusKey(SENT_STATUS);
 }
 
+function renameOrder(fromRaw, toRaw) {
+  const fromId = formatOrderId(fromRaw);
+  const toId = formatOrderId(toRaw);
+  if (!fromId || !toId || fromId === toId) return false;
+  const shop = loadShop();
+  let changed = false;
+  if (shop.orders[fromId]) {
+    shop.orders[toId] = shop.orders[fromId];
+    delete shop.orders[fromId];
+    changed = true;
+  }
+  (shop.sends || []).forEach((send) => {
+    if (!send || !Array.isArray(send.orderNumbers)) return;
+    let hit = false;
+    send.orderNumbers = send.orderNumbers.map((n) => {
+      if (formatOrderId(n) !== fromId) return n;
+      hit = true;
+      return toId;
+    });
+    if (hit) changed = true;
+  });
+  (shop.receives || []).forEach((recv) => {
+    if (!recv) return;
+    if (Array.isArray(recv.orderNumbers)) {
+      let hit = false;
+      recv.orderNumbers = recv.orderNumbers.map((n) => {
+        if (formatOrderId(n) !== fromId) return n;
+        hit = true;
+        return toId;
+      });
+      if (hit) changed = true;
+    }
+    if (Array.isArray(recv.lines)) {
+      recv.lines.forEach((line) => {
+        if (!line) return;
+        if (formatOrderId(line.orderNumber || line.order_number) === fromId) {
+          line.orderNumber = toId;
+          if (line.order_number != null) line.order_number = toId;
+          changed = true;
+        }
+      });
+    }
+  });
+  if (changed) saveShop(shop);
+  return changed;
+}
+
 function canMarkAtPaintShop(status) {
   if (isSentToPaintShop(status) || isReadyForPowder(status)) return false;
   const s = normalizeShopStatus(status);
@@ -441,5 +488,6 @@ module.exports = {
   updateReceivedCosts,
   readInvoiceFile,
   loadShop,
+  renameOrder,
   canMarkAtPaintShop
 };

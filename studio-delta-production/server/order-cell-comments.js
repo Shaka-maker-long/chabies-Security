@@ -301,6 +301,21 @@ function dropCommentsForOrder(orderNumber) {
   return removed;
 }
 
+function renameOrder(fromRaw, toRaw) {
+  const fromId = formatOrderId(fromRaw);
+  const toId = formatOrderId(toRaw);
+  if (!fromId || !toId || fromId === toId) return 0;
+  const store = loadStore();
+  let changed = 0;
+  store.comments.forEach((c) => {
+    if (!c || formatOrderId(c.order_number) !== fromId) return;
+    c.order_number = toId;
+    changed += 1;
+  });
+  if (changed) saveStore(store);
+  return changed;
+}
+
 function dropAllComments() {
   const store = loadStore();
   const removed = store.comments.length;
@@ -325,6 +340,7 @@ module.exports = {
   reopenComment,
   reassignComment,
   dropCommentsForOrder,
+  renameOrder,
   dropAllComments,
   assignedTo,
   loadStore,

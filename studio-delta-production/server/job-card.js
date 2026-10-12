@@ -955,6 +955,46 @@ function readJobCardPdf(orderNumber) {
   };
 }
 
+function renameOrder(fromRaw, toRaw) {
+  const fromId = formatOrderId(fromRaw);
+  const toId = formatOrderId(toRaw);
+  if (!fromId || !toId || fromId === toId) return false;
+  const map = loadRecords();
+  const rec = map[fromId];
+  if (rec) {
+    rec.order_number = toId;
+    const oldPdf = rec.pdf_path;
+    const dest = path.join(jobCardsDir(), safeOrderFile(toId) + ".pdf");
+    if (oldPdf && fs.existsSync(oldPdf) && oldPdf !== dest) {
+      try {
+        fs.renameSync(oldPdf, dest);
+        rec.pdf_path = dest;
+      } catch (e) {
+        console.error("[job-card] rename pdf", e.message || e);
+      }
+    }
+    map[toId] = rec;
+    delete map[fromId];
+    saveRecords(map);
+  }
+  try {
+    const std = loadStandardCuttingMap();
+    let changed = false;
+    Object.keys(std || {}).forEach((key) => {
+      const entry = std[key];
+      if (!entry) return;
+      if (formatOrderId(entry.from_order_number) === fromId) {
+        entry.from_order_number = toId;
+        changed = true;
+      }
+    });
+    if (changed) saveStandardCuttingMap(std);
+  } catch (e) {
+    console.error("[job-card] rename standard cutting", e.message || e);
+  }
+  return !!rec;
+}
+
 module.exports = {
   FIRST_STATUSES,
   REGENERATE_STATUSES,
@@ -976,6 +1016,7 @@ module.exports = {
   listGeneratedJobCards,
   getJobCard,
   deleteAllJobCards,
+  renameOrder,
   generateJobCard,
   readJobCardPdf,
   jobCardFrontRows,

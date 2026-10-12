@@ -996,6 +996,22 @@ async function backfillFromLogs() {
   return { saved: saved + (recovered.saved || 0) + (linked.saved || 0) + restyled };
 }
 
+function renameOrder(fromRaw, toRaw) {
+  const fromId = String(fromRaw || "").trim();
+  const toId = String(toRaw || "").trim();
+  if (!fromId || !toId || fromId === toId) return 0;
+  const store = loadStore();
+  let changed = 0;
+  store.records.forEach((rec) => {
+    if (!rec) return;
+    if (String(rec.order_number || "").trim() !== fromId) return;
+    rec.order_number = toId;
+    changed += 1;
+  });
+  if (changed) saveStore(store);
+  return changed;
+}
+
 module.exports = {
   saveFromFinish,
   requiredPhotoCount,
@@ -1003,6 +1019,7 @@ module.exports = {
   listReports,
   readPdf,
   pdfsForOrder,
+  renameOrder,
   pdfUrlFor,
   qcLabel,
   backfillFromLogs,

@@ -469,6 +469,8 @@ assert.ok(ordersHtml.indexOf("dd/mm/yyyy") !== -1, "payment date is shown as Sou
 assert.ok(ordersHtml.indexOf("cents <= 1") !== -1);
 assert.ok(ordersHtml.indexOf("price_incl_vat: document.getElementById(\"f_price_incl_vat\")") !== -1);
 assert.ok(ordersHtml.indexOf("data-edit-order") !== -1);
+assert.ok(ordersHtml.indexOf("previous_order_number") !== -1, "edit can renumber an order and move linked data");
+assert.ok(ordersHtml.indexOf("readOnly = !!existing") === -1, "order number stays editable when opening an existing order");
 assert.ok(ordersHtml.indexOf("data-open-drawing") !== -1);
 assert.ok(ordersHtml.indexOf("data-open-qc") !== -1);
 assert.ok(ordersHtml.indexOf("Waiting for drawing") !== -1);

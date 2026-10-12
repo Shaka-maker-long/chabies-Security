@@ -218,7 +218,7 @@
         <div class="stack-grid four">
           <label>Order number *
             <input id="f_order_number" autocomplete="off">
-            <span class="hint" id="orderNoHint">Next number fills in.</span>
+            <span class="hint" id="orderNoHint">Next number fills in. You can change it if the number on the floor is wrong.</span>
           </label>
           <label>Quote number
             <input id="f_quote_number" autocomplete="off">
@@ -778,8 +778,11 @@
       document.getElementById("linkBox").hidden = !linked;
       document.getElementById("linkLabel").textContent = linked ? "Linked to enquiry " + existing.enquiry_no : "";
       document.getElementById("f_order_number").value = (existing && existing.order_number) || nextOrderNumber;
-      document.getElementById("f_order_number").readOnly = !!existing;
-      document.getElementById("orderNoHint").hidden = !!existing;
+      document.getElementById("f_order_number").readOnly = !!(marketing && existing);
+      document.getElementById("orderNoHint").hidden = !!(marketing && existing);
+      document.getElementById("orderNoHint").textContent = existing
+        ? "Change only if the number on the floor is wrong. Linked job cards, clocks, and delivery forms move with it."
+        : "Next number fills in. You can change it if the number on the floor is wrong.";
       document.getElementById("f_quote_number").value = (existing && existing.quote_number) || "";
       document.getElementById("f_dimensions").value = (existing && existing.dimensions) || "";
       document.getElementById("f_detailed_description").value = (existing && existing.detailed_description) || "";
@@ -838,7 +841,7 @@
     }
     function formPayload() {
       const existing = editingIndex >= 0 ? rows[editingIndex] : {};
-      return {
+      const payload = {
         enquiry_no: document.getElementById("f_enquiry_no").value || existing.enquiry_no || "",
         order_number: document.getElementById("f_order_number").value,
         quote_number: document.getElementById("f_quote_number").value,
@@ -867,6 +870,8 @@
         campaign: document.getElementById("f_campaign").value,
         city: document.getElementById("f_city").value
       };
+      if (existing && existing.order_number) payload.previous_order_number = existing.order_number;
+      return payload;
     }
     async function saveForm() {
       const profile = typeof sdOfficeProfile === "function" ? sdOfficeProfile() : null;
@@ -911,7 +916,7 @@
           const fix = await sdOfficeFetch("/api/office/orders/correct-status", {
             method: "POST",
             body: JSON.stringify({
-              order_number: payload.order_number,
+              order_number: existing.order_number || payload.previous_order_number || payload.order_number,
               status: nextStatus,
               assigned_operator: payload.assigned_operator,
               confirmed: true

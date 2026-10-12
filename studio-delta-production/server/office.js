@@ -980,7 +980,12 @@ function mountOffice(app) {
   app.put("/api/office/orders", requireOffice, (req, res) => {
     try {
       let body = req.body || {};
-      let existing = listOrders().find((o) => o.order_number === formatOrderId(body.order_number)) || null;
+      const want = formatOrderId(body.order_number);
+      const previous = formatOrderId(body.previous_order_number || body.previousOrderNumber || "");
+      let existing = listOrders().find((o) => o.order_number === want) || null;
+      if (!existing && previous) {
+        existing = listOrders().find((o) => o.order_number === previous) || null;
+      }
       if (staff.isMarketing(req.office)) {
         body = staff.applyMarketingFieldPatch(existing, body, {
           createError: "Marketing can only update Source and Campaign on existing orders."

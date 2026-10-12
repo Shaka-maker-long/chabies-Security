@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { dataDir } = require("./workbook-store");
-const { parseMoney, money, formatRand } = require("./db");
+const { parseMoney, money, formatRand, formatOrderId } = require("./db");
 const CATALOG = require("./consumables-catalog");
 
 const UNITS = ["pcs", "box", "pack", "roll", "pair", "set", "ℓ"];
@@ -817,6 +817,23 @@ function cancelPurchase(id, actor) {
   return decoratePurchase(po);
 }
 
+function renameOrder(fromRaw, toRaw) {
+  const fromId = formatOrderId(fromRaw) || String(fromRaw || "").trim();
+  const toId = formatOrderId(toRaw) || String(toRaw || "").trim();
+  if (!fromId || !toId || fromId === toId) return 0;
+  const store = loadStore();
+  let changed = 0;
+  (store.movements || []).forEach((row) => {
+    if (!row) return;
+    const cur = formatOrderId(row.orderNumber) || String(row.orderNumber || "").trim();
+    if (cur !== fromId) return;
+    row.orderNumber = toId;
+    changed += 1;
+  });
+  if (changed) saveStore(store);
+  return changed;
+}
+
 module.exports = {
   UNITS,
   snapshot,
@@ -834,5 +851,6 @@ module.exports = {
   activeOrderNumbers,
   productionWorkers,
   loadStore,
-  formatQty
+  formatQty,
+  renameOrder
 };

@@ -272,6 +272,22 @@ function pagePayload() {
   };
 }
 
+function renameOrder(fromRaw, toRaw) {
+  const fromId = String(fromRaw || "").trim();
+  const toId = String(toRaw || "").trim();
+  if (!fromId || !toId || fromId === toId) return 0;
+  const store = loadStore();
+  let changed = 0;
+  store.reworks.forEach((row) => {
+    if (!row) return;
+    if (String(row.order_number || "").trim() !== fromId) return;
+    row.order_number = toId;
+    changed += 1;
+  });
+  if (changed) saveStore(store);
+  return changed;
+}
+
 module.exports = {
   STATUS,
   ELIGIBLE_ORDER_STATUSES,
@@ -289,5 +305,6 @@ module.exports = {
   markReworkFinished,
   markReworkFinishedForOrder,
   pagePayload,
-  snapshotFromOrder
+  snapshotFromOrder,
+  renameOrder
 };

@@ -67,6 +67,19 @@ function clearNoPlate(orderNumber) {
   return { noPlate: false };
 }
 
+function renameOrder(fromRaw, toRaw) {
+  const fromId = formatOrderId(fromRaw);
+  const toId = formatOrderId(toRaw);
+  if (!fromId || !toId || fromId === toId) return false;
+  const store = loadStore();
+  if (!store.orders[fromId]) return false;
+  store.orders[toId] = store.orders[fromId];
+  delete store.orders[fromId];
+  saveStore(store);
+  try { require("./gas").clearShopCache(); } catch (e) {}
+  return true;
+}
+
 function listNoPlates() {
   const orders = loadStore().orders;
   return Object.keys(orders).filter((id) => orders[id] && orders[id].noPlate);
@@ -85,6 +98,7 @@ module.exports = {
   isNoPlate,
   markNoPlate,
   clearNoPlate,
+  renameOrder,
   listNoPlates,
   canMarkNoPlate
 };

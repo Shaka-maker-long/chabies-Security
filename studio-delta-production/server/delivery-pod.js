@@ -1205,6 +1205,37 @@ function deleteForm(id) {
   return { id: want, deleted: true };
 }
 
+function renameOrder(fromRaw, toRaw) {
+  const fromId = db.formatOrderId(fromRaw);
+  const toId = db.formatOrderId(toRaw);
+  if (!fromId || !toId || fromId === toId) return 0;
+  const store = loadStore();
+  let changed = 0;
+  store.records.forEach((row) => {
+    if (!row) return;
+    let hit = false;
+    if (Array.isArray(row.order_numbers)) {
+      row.order_numbers = row.order_numbers.map((n) => {
+        if (db.formatOrderId(n) !== fromId) return n;
+        hit = true;
+        return toId;
+      });
+    }
+    if (db.formatOrderId(row.order_number) === fromId) {
+      row.order_number = toId;
+      hit = true;
+    }
+    if (hit) {
+      row.order_label = (row.order_numbers && row.order_numbers.length)
+        ? row.order_numbers.join(", ")
+        : (row.order_number || row.order_label || "");
+      changed += 1;
+    }
+  });
+  if (changed) saveStore(store);
+  return changed;
+}
+
 function bundleForOrder(orderNumber) {
   const loaded = relatedUnits(orderNumber, "out for delivery");
   if (loaded.length) return { status: "Out for Delivery", orders: loaded };
@@ -1239,6 +1270,7 @@ module.exports = {
   submitPod,
   listForms,
   deleteForm,
+  renameOrder,
   readPdf,
   pdfUrlFor,
   bundleForOrder,

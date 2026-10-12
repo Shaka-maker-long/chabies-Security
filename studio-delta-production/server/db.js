@@ -609,9 +609,91 @@ function normalizeOrdersSheet() {
   return { rewritten };
 }
 
+function retargetWorkbookOrderNumber(fromId, toId) {
+  const specs = [
+    { title: "Production_Log", col: 2 },
+    { title: "Overview", col: 2 },
+    { title: "Steel_Usage", col: 2 },
+    { title: "Backboard_Usage", col: 2 },
+    { title: "Glass_To_Order", col: 3 },
+    { title: "Wood_To_Order", col: 3 },
+    { title: "Schedule", col: 5 },
+    { title: "Standard_Glass", col: 4 }
+  ];
+  let rewritten = 0;
+  const book = getBook();
+  specs.forEach((spec) => {
+    const sheet = book.getSheetByName(spec.title);
+    if (!sheet || sheet.getLastRow() < 2) return;
+    const values = sheet.getRange(2, spec.col, sheet.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < values.length; i++) {
+      if (formatOrderId(values[i][0]) !== fromId) continue;
+      sheet.getRange(i + 2, spec.col).setValue(toId);
+      rewritten += 1;
+    }
+  });
+  return rewritten;
+}
+
+function renameOrderNumber(fromRaw, toRaw) {
+  const fromId = formatOrderId(fromRaw);
+  const toId = formatOrderId(toRaw);
+  if (!fromId || !toId) throw new Error("Order number is required");
+  if (fromId === toId) {
+    return listOrders().find((o) => formatOrderId(o.order_number) === fromId) || null;
+  }
+  const existingOrders = listOrders();
+  const existing = existingOrders.find((o) => formatOrderId(o.order_number) === fromId);
+  if (!existing) throw new Error("Order " + fromId + " was not found.");
+  if (existingOrders.some((o) => formatOrderId(o.order_number) === toId)) {
+    throw new Error("Order " + toId + " is already on Orders.");
+  }
+  const sheet = ordersSheet();
+  const { idx } = ensureOrderHeaders(sheet);
+  const rowNum = findOrderSheetRow(sheet, idx, fromId);
+  if (!rowNum || idx.order_number == null) throw new Error("Order " + fromId + " was not found.");
+  sheet.getRange(rowNum, idx.order_number + 1).setValue(toId);
+
+  const payments = paymentsForOrder(fromId).slice();
+  setPaymentsForOrder(toId, payments);
+
+  const sched = findScheduleRowByOrder(fromId);
+  if (sched) sched.order_number = toId;
+
+  retargetWorkbookOrderNumber(fromId, toId);
+  persistWorkbook();
+  save();
+
+  [
+    "./floor-planning",
+    "./job-card",
+    "./order-cell-comments",
+    "./no-plates",
+    "./delivery-pod",
+    "./powder-shop",
+    "./qc-pdf",
+    "./reworks",
+    "./consumables"
+  ].forEach((mod) => {
+    try {
+      const api = require(mod);
+      if (typeof api.renameOrder === "function") api.renameOrder(fromId, toId);
+    } catch (e) {
+      console.error("[db] rename cascade", mod, e && e.message ? e.message : e);
+    }
+  });
+
+  syncScheduleFromOrders();
+  return listOrders().find((o) => formatOrderId(o.order_number) === toId) || null;
+}
+
 function upsertOrder(row) {
   const orderNumber = formatOrderId(row.order_number);
   if (!orderNumber) throw new Error("Order number is required");
+  const previous = formatOrderId(row.previous_order_number || row.previousOrderNumber || "");
+  if (previous && previous !== orderNumber) {
+    renameOrderNumber(previous, orderNumber);
+  }
   const payload = {};
   for (const f of ORDER_FIELDS) payload[f] = row[f] == null ? "" : String(row[f]);
   payload.quote_number = formatOrderId(payload.quote_number);
@@ -3209,6 +3291,7 @@ module.exports = {
   vatPair,
   listOrders,
   upsertOrder,
+  renameOrderNumber,
   deleteOrder,
   purgeFeeOrders,
   listSchedule,
