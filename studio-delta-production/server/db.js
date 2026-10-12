@@ -1656,8 +1656,52 @@ function applyDrawingShopStatus(enquiry) {
   return changed;
 }
 
+function paymentDateRawFromEnquiry(row) {
+  if (!row) return "";
+  const outcome = row.client_outcome || {};
+  return String(row.payment_date || outcome.payment_date || "").trim();
+}
+
+function paymentAtFromEnquiry(row) {
+  const raw = paymentDateRawFromEnquiry(row);
+  const d = asDate(raw);
+  if (!d) return "";
+  const day = dates.isoFromDate(d);
+  return day ? (day + "T08:00:00.000Z") : "";
+}
+
+function paymentAtFromLinkedOrders(row) {
+  try {
+    const linked = ordersLinkedToEnquiry(row);
+    let best = null;
+    (linked || []).forEach((order) => {
+      const d = asDate(order && order.payment_date);
+      if (!d) return;
+      if (!best || d.getTime() < best.getTime()) best = d;
+    });
+    if (!best) return "";
+    const day = dates.isoFromDate(best);
+    return day ? (day + "T08:00:00.000Z") : "";
+  } catch (e) {
+    return "";
+  }
+}
+
 function orderedAtFromRow(row, events) {
   const list = events && events.length ? events : normalizeEnquiryEvents(row);
+  const isOrdered = String((row && row.status) || "").trim() === "Ordered"
+    || list.some((e) => e && (e.kind === "complete_order" || e.status === "Ordered"));
+  if (isOrdered) {
+    const paidAt = paymentAtFromEnquiry(row) || paymentAtFromLinkedOrders(row);
+    if (paidAt) {
+      return {
+        kind: "complete_order",
+        status: "Ordered",
+        at: paidAt,
+        at_label: formatSastDateTime(paidAt) || paidAt
+      };
+    }
+  }
   const ev = list.filter((e) => e && (e.kind === "complete_order" || e.status === "Ordered")).slice(-1)[0];
   if (ev && ev.at) return ev;
   if (String((row && row.status) || "").trim() !== "Ordered") return null;
@@ -1869,7 +1913,13 @@ function savePlannedOrders(plan) {
       price_excl_vat: pair.excl,
       price_incl_vat: pair.incl,
       amount_paid: unit.amount_paid,
-      payment_date: paid > 0 ? nowIso().slice(0, 10) : ""
+      payment_date: paid > 0
+        ? (dates.isoFromDate(asDate(
+          (enquiry && enquiry.payment_date)
+            || (enquiry && enquiry.client_outcome && enquiry.client_outcome.payment_date)
+            || ""
+        )) || nowIso().slice(0, 10))
+        : ""
     }));
   });
   rows.forEach((row) => {
@@ -1962,6 +2012,14 @@ function onboardExistingOrder(body) {
   }
   const pair = vatPair(row.price_incl_vat, row.price_excl_vat);
   const paid = parseMoney(row.amount_paid);
+  const linkedEnquiry = enquiryNo ? (getEnquiry(enquiryNo) || getEnquiryRaw(enquiryNo)) : null;
+  const payFromEnquiry = linkedEnquiry
+    ? dates.isoFromDate(asDate(
+      linkedEnquiry.payment_date
+        || (linkedEnquiry.client_outcome && linkedEnquiry.client_outcome.payment_date)
+        || ""
+    ))
+    : "";
   const saved = decorateMoney(upsertOrder({
     enquiry_no: enquiryNo,
     quote_number: row.quote_number || "",
@@ -1986,7 +2044,7 @@ function onboardExistingOrder(body) {
     price_excl_vat: pair.excl,
     price_incl_vat: pair.incl,
     amount_paid: row.amount_paid || "",
-    payment_date: paid > 0 ? nowIso().slice(0, 10) : ""
+    payment_date: paid > 0 ? (payFromEnquiry || nowIso().slice(0, 10)) : ""
   }));
   const deliveryDate = String(row.delivery_date || "").slice(0, 10);
   if (deliveryDate) {
@@ -2765,6 +2823,7 @@ function decorateEnquiry(row) {
     created_at: row.created_at || life.opened_at || "",
     opened_at: life.opened_at,
     opened_at_label: life.opened_at_label,
+    payment_date: paymentDateRawFromEnquiry(row) || "",
     ordered_at: life.ordered_at,
     ordered_at_label: life.ordered_at_label,
     lifespan_ms: life.lifespan_ms,

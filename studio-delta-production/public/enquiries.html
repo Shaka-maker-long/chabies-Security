@@ -536,6 +536,10 @@
             </label>
             <label><input type="checkbox" id="ob_pop_ok"> This is the correct file</label>
           </div>
+          <label>Payment date *
+            <input id="ob_payment_date" type="date">
+            <span class="hint">The day the client paid — Ordered R on the dashboard uses this week.</span>
+          </label>
           <label>Does this order need a drawing?
             <select id="ob_drawing">
               <option value="">Choose</option>
@@ -2544,6 +2548,7 @@
         date_quoted: document.getElementById("ob_date_quoted").value,
         follow_done: document.getElementById("ob_follow_done").value,
         drawing: document.getElementById("ob_drawing").value,
+        payment_date: document.getElementById("ob_payment_date").value,
         approval_needed: document.getElementById("ob_approval_needed").checked,
         chase: document.getElementById("ob_chase").value,
         coster: document.getElementById("ob_coster").value,
@@ -2670,6 +2675,7 @@
       document.getElementById("ob_date_quoted").value = "";
       document.getElementById("ob_follow_done").value = "0";
       document.getElementById("ob_drawing").value = "";
+      document.getElementById("ob_payment_date").value = "";
       document.getElementById("ob_approval_needed").checked = false;
       document.getElementById("ob_quote_ok").checked = false;
       document.getElementById("ob_pop_ok").checked = false;
@@ -2710,6 +2716,7 @@
       document.getElementById("ob_date_quoted").value = d.date_quoted || "";
       document.getElementById("ob_follow_done").value = d.follow_done || "0";
       document.getElementById("ob_drawing").value = d.drawing || "";
+      document.getElementById("ob_payment_date").value = d.payment_date || "";
       document.getElementById("ob_approval_needed").checked = !!d.approval_needed;
       document.getElementById("ob_quote_ok").checked = !!d.quoteOk;
       document.getElementById("ob_pop_ok").checked = !!d.popOk;
@@ -2859,6 +2866,9 @@
             onboard.popName = pop.name;
           }
           if (!onboard.popBase64) { setSheetError("onboardErr", "Upload proof of payment.", "ob_pop_file"); return; }
+          const payDay = String(document.getElementById("ob_payment_date").value || "").trim();
+          if (!payDay) { setSheetError("onboardErr", "Enter the payment date from the proof of payment.", "ob_payment_date"); return; }
+          payload.payment_date = payDay;
           payload.pop_file = {
             file_base64: onboard.popBase64,
             file_name: onboard.popName || "pop.pdf",

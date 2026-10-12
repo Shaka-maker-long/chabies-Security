@@ -910,6 +910,8 @@
     if (action.id === "complete_order") {
       return quoteOptionSelect(row) +
         fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "") +
+        "<label>Payment date *<input type=\"date\" name=\"payment_date\" required>" +
+        "<span class=\"hint\">The day the client paid — use this even if you attach the POP later. Ordered R on the dashboard uses this week.</span></label>" +
         "<label>Requires drawing?<select name=\"drawing_required\" required><option value=\"\" disabled selected>Choose</option><option value=\"no\">No — production can start as Not Yet Started</option><option value=\"yes\">Yes — Erin uploads the drawing</option></select></label>" +
         "<p class=\"sd-process-sub\">Not every order needs a drawing. If yes, Erin gets Upload drawing on My tasks. The order can still go onto Orders as Waiting for drawing. Production becomes Not Yet Started after the file is on.</p>";
     }
@@ -1004,6 +1006,7 @@
     if (action.id === "complete_order") {
       body.drawing_required = field(form, "drawing_required");
       body.quote_option = field(form, "quote_option");
+      body.payment_date = field(form, "payment_date");
     }
     if (action.id === "complete_followup") {
       body.next_follow_up_on = field(form, "next_follow_up_on");

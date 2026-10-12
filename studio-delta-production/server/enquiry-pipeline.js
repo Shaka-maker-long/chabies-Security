@@ -974,7 +974,9 @@ function eventLabel(action, row, fromStatus, body) {
     return reason ? "Client rejected — " + reason : "Client rejected";
   }
   if (action === "complete_order") {
-    return row.drawing && row.drawing.required ? "POP saved — drawing required" : "POP saved — ready for Orders";
+    const paid = String((row && row.payment_date) || "").trim();
+    const base = row.drawing && row.drawing.required ? "POP saved — drawing required" : "POP saved — ready for Orders";
+    return paid ? (base + " · paid " + paid) : base;
   }
   if (action === "complete_drawing") return "Drawing uploaded — Not Yet Started";
   if (action === "close") return "Closed: " + status;
@@ -1753,6 +1755,16 @@ function completeReject(row, actor, body) {
   closeOpenKind(row, "pop", actor, reason);
 }
 
+function requirePaymentDate(body) {
+  const raw = String((body && (body.payment_date || body.paymentDate || body.paid_on)) || "").trim();
+  if (!raw) throw new Error("Enter the payment date from the proof of payment");
+  const d = db.asDate(raw);
+  if (!d) throw new Error("Payment date must look like 03/10/2026 or 2026-10-03");
+  const iso = require("./sast-date").isoFromDate(d);
+  if (!iso) throw new Error("Enter the payment date from the proof of payment");
+  return iso;
+}
+
 function completeOrder(row, actor, body) {
   if (!statusAllows(row, ["Quoted", "Followed Up"])) throw new Error("Attach proof of payment after the client approves the quote");
   const live = quoteOptions.liveQuoteOptions(row.quotes);
@@ -1766,6 +1778,7 @@ function completeOrder(row, actor, body) {
   if (!isImage(filename, "") && !isPdf(filename, "", null)) {
     throw new Error("Proof of payment must be a screenshot or PDF");
   }
+  const paymentDate = requirePaymentDate(body);
   const drawingRaw = body && body.drawing_required;
   const needsDrawing = drawingRaw === true || drawingRaw === "yes" || drawingRaw === "true";
   const noDrawing = drawingRaw === false || drawingRaw === "no" || drawingRaw === "false";
@@ -1781,11 +1794,13 @@ function completeOrder(row, actor, body) {
   const file = db.saveEnquiryAttachment(row.enquiry_no, "pop", fileRaw, filename);
   row.status = "Ordered";
   row.follow_up_on = "";
+  row.payment_date = paymentDate;
   row.client_outcome = {
     kind: "approved",
     reason: "",
     decided_at: db.nowIso(),
     decided_by: actor,
+    payment_date: paymentDate,
     file
   };
   cancelOpenKind(row, "follow_up");
@@ -2171,12 +2186,15 @@ function onboardEnquiry(actorName, body) {
     if (!isImage(pop.filename, "") && !isPdf(pop.filename, "", null)) {
       throw new Error("Proof of payment must be a screenshot or PDF");
     }
+    const paymentDate = requirePaymentDate(incoming);
     const popFile = db.saveEnquiryAttachment(raw.enquiry_no, "pop", pop.raw, pop.filename);
+    raw.payment_date = paymentDate;
     raw.client_outcome = {
       kind: "approved",
       reason: "",
       decided_at: db.nowIso(),
       decided_by: actor,
+      payment_date: paymentDate,
       file: popFile
     };
     const drawingRaw = incoming.drawing_required;

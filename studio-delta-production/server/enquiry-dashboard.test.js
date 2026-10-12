@@ -429,6 +429,46 @@ try {
   assert.ok(popOnly.money.orderedExclVat >= 21416, "ordered value includes the POP-only enquiry");
   rows.pop();
 
+  // Friday payment, Monday Ordered attach — income stays in Friday's week of month
+  rows.push({
+    enquiry_no: "#422",
+    status: "Ordered",
+    created_at: "2026-10-02T08:00:00.000Z",
+    date_enquired: "02/10/2026",
+    date_quoted: "03/10/2026",
+    payment_date: "2026-10-03",
+    client_name: "Friday Pay Client",
+    enquiry_source: "Whatsapp",
+    enquiry_type: "Catologue",
+    category: "Chair",
+    product: "Air Chair",
+    products: [{ product: "Air Chair", category: "Chair", value_excl_vat: "5000" }],
+    quote_total_excl_vat: "5000",
+    province: "Gauteng",
+    client_outcome: {
+      kind: "approved",
+      decided_at: "2026-10-06T08:00:00.000Z",
+      payment_date: "2026-10-03"
+    },
+    events: [
+      { kind: "created", at: "2026-10-02T08:00:00.000Z" },
+      { kind: "complete_quote", at: "2026-10-03T08:00:00.000Z", status: "Quoted" },
+      { kind: "complete_order", at: "2026-10-06T08:00:00.000Z", status: "Ordered" }
+    ],
+    tasks: [],
+    correspondence: { mails: [] }
+  });
+  const octPay = dash.buildDashboard({ grain: "month", month: "2026-10" });
+  const octWom = octPay.weekCompare.months.find((m) => m.key === "2026-10");
+  assert.ok(octWom, "October week-of-month series exists");
+  assert.ok(octWom.orderedRevenue[0] >= 5000, "Friday 3 Oct payment stays in week 1");
+  assert.ok((octWom.orderedRevenue[1] || 0) < 5000, "Monday attach must not move Ordered R into week 2");
+  const drillFri = dash.buildDrill({ kind: "wom", month: "2026-10", week: 1, series: "orderedRevenue" });
+  assert.ok(drillFri.rows.some((r) => r.enquiry_no === "#422"), "drill finds Friday-paid order in week 1");
+  const drillMon = dash.buildDrill({ kind: "wom", month: "2026-10", week: 2, series: "orderedRevenue" });
+  assert.ok(!drillMon.rows.some((r) => r.enquiry_no === "#422"), "Monday attach week must not claim Friday payment");
+  rows.pop();
+
   // Scheduled follow-up day must stop the dashboard 7-day overdue KPI until that day
   const beforeSched = dash.buildDashboard({ grain: "month", range: "6m" }).kpis.overdueFollowUps;
   rows.push({

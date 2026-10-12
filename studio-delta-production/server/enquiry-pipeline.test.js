@@ -386,6 +386,16 @@ assert.throws(
     file_name: "pop.pdf",
     file_confirmed: true
   }),
+  /payment date/i
+);
+assert.throws(
+  () => pipeline.applyAction("#1996", "Quoter", {
+    action: "complete_order",
+    file_base64: pdfB64,
+    file_name: "pop.pdf",
+    file_confirmed: true,
+    payment_date: "2026-10-03"
+  }),
   /drawing/i
 );
 assert.strictEqual(db.getEnquiry("#1996").status, "Followed Up", "missing drawing choice must not mark the enquiry Ordered");
@@ -396,10 +406,13 @@ const ordered = pipeline.applyAction("#1996", "Quoter", {
   file_base64: pdfB64,
   file_name: "pop.pdf",
   file_confirmed: true,
+  payment_date: "2026-10-03",
   drawing_required: "yes",
   assignee: "Coster"
 });
 assert.strictEqual(ordered.row.status, "Ordered");
+assert.strictEqual(ordered.row.payment_date, "2026-10-03");
+assert.ok(String(ordered.row.ordered_at || "").indexOf("2026-10-03") === 0, "ordered_at follows payment date, not attach day");
 assert.strictEqual(ordered.row.ready_for_orders, true);
 assert.strictEqual(ordered.row.drawing.assignee, "Erin");
 assert.ok(pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing"));
@@ -1288,6 +1301,7 @@ assert.throws(
     file_base64: pdfB64,
     file_name: "pop.pdf",
     file_confirmed: true,
+    payment_date: "2026-10-03",
     drawing_required: "no"
   }),
   /which quote option/i
@@ -1298,6 +1312,7 @@ const picked = pipeline.applyAction("#4100", "Quoter", {
   file_base64: pdfB64,
   file_name: "pop.pdf",
   file_confirmed: true,
+  payment_date: "2026-10-03",
   drawing_required: "no"
 });
 assert.strictEqual(picked.row.chosen_option, "B");

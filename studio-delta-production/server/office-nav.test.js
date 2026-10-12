@@ -237,8 +237,13 @@ assert.ok(processJs.indexOf("sd-quote-totals") !== -1);
 assert.ok(processJs.indexOf("delivery_incl_vat") !== -1);
 assert.ok(processJs.indexOf('complete_cost_sheet') !== -1);
 assert.ok(/name=\\"drawing_required\\" required/.test(processJs), "POP form must choose whether a drawing is needed");
+assert.ok(/name=\\"payment_date\\" required/.test(processJs), "POP form must capture the payment date for Ordered R weeks");
 assert.ok(processJs.indexOf("Erin uploads the drawing") !== -1, "drawing tasks always go to Erin");
 assert.ok(!/complete_order[\s\S]{0,400}Drawing assigned to/.test(processJs), "POP must not ask who uploads the drawing");
+assert.ok(
+  fs.readFileSync(path.join(__dirname, "../public/enquiries-dashboard.html"), "utf8").indexOf("payment date on the POP") !== -1,
+  "dashboard explains Ordered R uses payment date"
+);
 assert.ok(!/complete_cost_sheet[\s\S]{0,200}valuesTable/.test(processJs), "cost sheet must not ask for product values");
 assert.ok(processJs.indexOf("Add another cost sheet") !== -1);
 assert.ok(processJs.indexOf("cost_sheets") !== -1);

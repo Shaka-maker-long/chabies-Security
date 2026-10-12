@@ -275,6 +275,18 @@ function parseWhen(row, field) {
     return ev && ev.at ? Date.parse(ev.at) : 0;
   }
   if (field === "ordered") {
+    const outcome = row.client_outcome || {};
+    const payRaw = String(row.payment_date || outcome.payment_date || "").trim();
+    if (payRaw) {
+      const payDay = db.asDate(payRaw);
+      if (payDay) {
+        const iso = require("./sast-date").isoFromDate(payDay);
+        if (iso) {
+          const t = Date.parse(iso + "T08:00:00.000Z");
+          if (Number.isFinite(t) && t > 0) return t;
+        }
+      }
+    }
     if (row.ordered_at) {
       const t = Date.parse(row.ordered_at);
       if (Number.isFinite(t) && t > 0) return t;
@@ -284,7 +296,6 @@ function parseWhen(row, field) {
       const t = Date.parse(ev.at);
       if (Number.isFinite(t)) return t;
     }
-    const outcome = row.client_outcome || {};
     if (String(row.status || "").trim() === "Ordered") {
       const decided = (outcome.kind === "approved" && outcome.decided_at) || row.updated_at || "";
       if (decided) {
