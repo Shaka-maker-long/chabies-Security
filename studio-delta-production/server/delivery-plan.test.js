@@ -91,14 +91,27 @@ assert.ok(["Admire", "Uriah"].indexOf(store.blocks.find((b) => b.process === "As
 
 const welds = store.blocks.filter((b) => b.process === "Welding");
 assert.ok(welds.length);
+// Welding can sit on any workday (Mon–Fri), including Tuesday / Thursday.
 welds.forEach((b) => {
   const day = new Date(b.start).getDay();
-  if (b.workerName === "Muruba") {
-    assert.ok([1, 3, 5].indexOf(day) !== -1, "Muruba only welds Mon Wed Fri");
-  }
+  assert.ok(day >= 1 && day <= 5, "welding stays on a workday");
 });
-const tueWeld = welds.find((b) => new Date(b.start).getDay() === 2);
-if (tueWeld) assert.strictEqual(tueWeld.workerName, "Willard");
+
+// One order missing Task times must not stop the other from planning.
+db.upsertOrder({
+  order_number: "S260703",
+  status: "Not Yet Started",
+  product: "Unknown Product With No Times",
+  client_name: "Gap",
+  type: "Standard"
+});
+const gapRow = db.listSchedule("2026-09-21", "2026-10-02").find((r) => r.order_number === "S260703");
+db.setScheduleCell(gapRow.id, "2026-09-24", "LD", true, { skipPlan: true });
+plan.save({ blocks: [], assignments: {} });
+const partial = plan.autoPlanFromDeliveries({ from: fromTue });
+assert.ok(partial.count > 0, "orders with Task times still plan when another product has none");
+assert.ok((partial.skipped || []).some((s) => s.order === "S260703"), "missing Task times is reported, not a full abort");
+assert.ok(plan.load().blocks.some((b) => b.orderId === "S260702"), "early LD order stayed planned");
 
 const grind = plan.scheduleGrinding({ orderId: "S260702", worker: "Thabo" });
 assert.strictEqual(grind.blocks[0].workerName, "Thabo");

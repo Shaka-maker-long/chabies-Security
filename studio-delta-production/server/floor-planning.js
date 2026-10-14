@@ -1657,11 +1657,13 @@ function scheduleGrinding(body) {
 
 function autoPlanFromDeliveries(opts) {
   const fromMs = opts && opts.from ? toMs(opts.from) : Date.now();
+  const startMs = Number.isFinite(fromMs) ? fromMs : Date.now();
   const deliveries = require("./db").listLiveDeliveries();
   const store = load();
   const assignments = store.assignments || {};
   const jobs = [];
   const finished = new Set();
+  const skipped = [];
   deliveries.forEach((d) => {
     const order = findOrder(d.order_number);
     if (!order) return;
@@ -1675,8 +1677,11 @@ function autoPlanFromDeliveries(opts) {
     const remaining = remainingPlanForStatus(order.status, minutes);
     const has = remaining.processes.some((p) => minutes[p] > 0);
     if (!has && !(remaining.paintWait && (minutes.Assembly > 0 || minutes["Final QC"] > 0 || minutes.Upholstery > 0))) {
-      // Status says no work left (or no task times) — strip stale blocks for this order.
-      if (id) finished.add(id);
+      // Missing Task times — leave any existing blocks; do not treat as finished.
+      skipped.push({
+        order: id,
+        reason: "No Task times for remaining work on " + (order.product || id)
+      });
       return;
     }
     jobs.push({
@@ -1685,7 +1690,7 @@ function autoPlanFromDeliveries(opts) {
     });
   });
   const ids = jobs.map((j) => formatOrderId(j.order.order_number));
-  const keep = store.blocks.filter((b) => {
+  let keep = store.blocks.filter((b) => {
     if (!b) return false;
     if (b.kind === "other") return true;
     const id = formatOrderId(b.orderId);
@@ -1693,32 +1698,34 @@ function autoPlanFromDeliveries(opts) {
     if (ids.indexOf(id) === -1) return true;
     return false;
   });
-  if (!jobs.length) {
-    if (finished.size) {
-      store.blocks = keep;
-      save(store);
-      let live = { cleared: 0, written: 0, marks: 0 };
-      try { live = require("./schedule-live").syncLiveScheduleCodes(); } catch (e) {}
-      return { count: 0, orders: 0, clearedFinished: finished.size, schedule: live };
+  // Plan one order at a time so one bad product/crew failure cannot blank the whole shop.
+  const created = [];
+  jobs.forEach((job) => {
+    const id = formatOrderId(job.order.order_number);
+    try {
+      const batch = scheduleBatch({
+        jobs: [job],
+        existingBlocks: keep.concat(created),
+        fromMs: startMs,
+        skipGrinding: false
+      }).blocks;
+      created.push.apply(created, batch);
+    } catch (e) {
+      skipped.push({ order: id, reason: e && e.message ? e.message : String(e) });
     }
-    return { count: 0, orders: 0 };
-  }
-  let created = [];
-  try {
-    created = scheduleBatch({
-      jobs,
-      existingBlocks: keep,
-      fromMs: Number.isFinite(fromMs) ? fromMs : Date.now(),
-      skipGrinding: false
-    }).blocks;
-  } catch (e) {
-    return { count: 0, orders: jobs.length, error: e.message || String(e) };
-  }
+  });
   store.blocks = keep.concat(created);
   save(store);
   let live = { cleared: 0, written: 0, marks: 0 };
   try { live = require("./schedule-live").syncLiveScheduleCodes(); } catch (e) {}
-  return { count: created.length, orders: jobs.length, schedule: live };
+  return {
+    count: created.length,
+    orders: jobs.length,
+    planned: created.length ? ids.filter((id) => created.some((b) => formatOrderId(b.orderId) === id)) : [],
+    skipped,
+    clearedFinished: finished.size,
+    schedule: live
+  };
 }
 
 function unscheduleOrder(orderNumber) {
