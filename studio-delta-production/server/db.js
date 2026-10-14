@@ -871,7 +871,9 @@ function listSchedule(fromDay, toDay) {
       bag = {};
       cellsByRow.set(c.row_id, bag);
     }
-    bag[c.day] = c.value;
+    const sched = require("./office-schedule");
+    const raw = String(c.value || "").trim();
+    bag[c.day] = raw ? (sched.formatScheduleCodes(sched.parseScheduleCodes(raw)) || raw) : raw;
   }
   const rows = state.schedule_rows.slice().sort((a, b) => (a.sort_order - b.sort_order) || (a.id - b.id));
   return rows.filter((r) => live.has(formatOrderId(r.order_number)) || withCells.has(r.id)).map((r) => {
@@ -983,8 +985,10 @@ function upsertScheduleRow(row) {
 function setScheduleCell(rowId, day, value, persist = true, extra) {
   const id = Number(rowId);
   const dayIso = String(day || "").slice(0, 10);
-  const code = value == null ? "" : String(value).trim();
   const sched = require("./office-schedule");
+  let code = value == null ? "" : String(value).trim();
+  // Persist CS (not legacy C) and keep multi-letter cells sorted.
+  if (code) code = sched.formatScheduleCodes(sched.parseScheduleCodes(code)) || code;
   const live = sched.liveDeliveryCode(code);
   const extraObj = extra && typeof extra === "object" ? extra : {};
   const reason = String(extraObj.reason || "").trim();

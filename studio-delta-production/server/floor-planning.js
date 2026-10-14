@@ -372,7 +372,7 @@ const JOURNEY_PROCESS_ORDER = {
 const JOURNEY_WEEK_COUNT = 20;
 
 const PROCESS_CODES = {
-  "Profile Cutting": "C",
+  "Profile Cutting": "CS",
   "Tagging": "T",
   "Plate Cutting": "P",
   "Welding": "W",

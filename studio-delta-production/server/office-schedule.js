@@ -4,7 +4,7 @@ const SCHEDULE_CODES = [
   { code: "LD*", label: "Moved Latest Delivery", group: "Moved", bg: "#d0d5dd", fg: "#667085", moved: true },
   { code: "LC*", label: "Moved Latest Courier", group: "Moved", bg: "#d0d5dd", fg: "#667085", moved: true },
   { code: "PD", label: "Planned Delivery", group: "Delivery", bg: "#00ff00", fg: "#1d2939" },
-  { code: "C", label: "Profile Cutting", group: "Production", bg: "#b45f06", fg: "#ffffff" },
+  { code: "CS", label: "Profile Cutting", group: "Production", bg: "#b45f06", fg: "#ffffff" },
   { code: "T", label: "Tagging", group: "Production", bg: "#fff2cc", fg: "#1d2939" },
   { code: "P", label: "Plate Cutting", group: "Production", bg: "#cfe2f3", fg: "#1d2939" },
   { code: "W", label: "Welding", group: "Production", bg: "#f4cccc", fg: "#1d2939" },
@@ -19,10 +19,12 @@ const SCHEDULE_CODES = [
 const DELIVERY_CODES = ["LD", "LC"];
 const MOVED_DELIVERY_CODES = ["LD*", "LC*"];
 const PROTECTED_SCHEDULE_TOKENS = ["LD", "LC", "LD*", "LC*", "PD"];
+/** Letters the office may type, but auto-plan / live sync must never write. */
+const NEVER_AUTO_SCHEDULE_TOKENS = ["PD", "CS", "C"];
 
 /** Shop / planning process → production-schedule letter. */
 const SHOP_PROCESS_TO_SCHEDULE = {
-  "Profile Cutting": "C",
+  "Profile Cutting": "CS",
   Tagging: "T",
   "Plate Cutting": "P",
   Welding: "W",
@@ -36,12 +38,12 @@ const SHOP_PROCESS_TO_SCHEDULE = {
   "Final QC": "FQC"
 };
 
-const AUTO_SCHEDULE_ORDER = ["C", "T", "P", "W", "G", "PQC", "PC", "U", "A", "FQC"];
+const AUTO_SCHEDULE_ORDER = ["CS", "T", "P", "W", "G", "PQC", "PC", "U", "A", "FQC"];
 
 const AUTO_SCHEDULE_PRIORITY = AUTO_SCHEDULE_ORDER.reduce((bag, code, i) => {
   bag[code] = i + 1;
   return bag;
-}, { PD: 100 });
+}, { PD: 100, C: 1 });
 
 function liveDeliveryCode(value) {
   const tokens = parseScheduleCodes(value);
@@ -57,10 +59,20 @@ function starredDeliveryCode(value) {
   return live ? live + "*" : "";
 }
 
+function normalizeScheduleToken(raw) {
+  const c = String(raw || "").trim();
+  if (!c) return "";
+  const upper = c.toUpperCase();
+  // Legacy Profile Cutting letter on the production schedule.
+  if (upper === "C") return "CS";
+  const hit = SCHEDULE_CODES.find((row) => row.code.toUpperCase() === upper);
+  return hit ? hit.code : c;
+}
+
 function parseScheduleCodes(value) {
   return String(value || "")
     .split(/[,;/|]+/)
-    .map((s) => s.trim())
+    .map((s) => normalizeScheduleToken(s))
     .filter(Boolean);
 }
 
@@ -68,7 +80,7 @@ function formatScheduleCodes(codes) {
   const seen = {};
   const out = [];
   (codes || []).forEach((raw) => {
-    const c = String(raw || "").trim();
+    const c = normalizeScheduleToken(raw);
     if (!c) return;
     const key = c.toUpperCase();
     if (seen[key]) return;
@@ -84,6 +96,15 @@ function formatScheduleCodes(codes) {
     return a.localeCompare(b);
   });
   return out.join(",");
+}
+
+function isNeverAutoScheduleCode(value) {
+  const tokens = parseScheduleCodes(value).map((c) => c.toUpperCase());
+  if (!tokens.length) {
+    const c = normalizeScheduleToken(value).toUpperCase();
+    return NEVER_AUTO_SCHEDULE_TOKENS.indexOf(c) !== -1;
+  }
+  return tokens.some((c) => NEVER_AUTO_SCHEDULE_TOKENS.indexOf(c) !== -1);
 }
 
 function mergeScheduleCodes(existing, next) {
@@ -270,12 +291,15 @@ module.exports = {
   DELIVERY_CODES,
   MOVED_DELIVERY_CODES,
   PROTECTED_SCHEDULE_TOKENS,
+  NEVER_AUTO_SCHEDULE_TOKENS,
   liveDeliveryCode,
   starredDeliveryCode,
+  normalizeScheduleToken,
   parseScheduleCodes,
   formatScheduleCodes,
   mergeScheduleCodes,
   isProtectedScheduleCode,
+  isNeverAutoScheduleCode,
   shopProcessToScheduleCode,
   plannedDeliveryCode,
   autoCodePriority,

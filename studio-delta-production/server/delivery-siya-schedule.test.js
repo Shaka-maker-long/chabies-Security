@@ -80,10 +80,12 @@ clearShopCache();
   assert.ok(sync.written >= 0);
   const painted = db.listSchedule("2026-09-08", "2026-10-10").find((r) => r.order_number === "S-DEL-2");
   const letters = Object.values(painted.cells || {});
-  assert.ok(letters.some((c) => /^(C|T|P|W|G|PQC|PC|U|A|FQC|PD)(,(C|T|P|W|G|PQC|PC|U|A|FQC|PD))*$/.test(c) || c === "LD"),
+  assert.ok(letters.some((c) => /^(T|P|W|G|PQC|PC|U|A|FQC)(,(T|P|W|G|PQC|PC|U|A|FQC))*$/.test(c) || c === "LD"),
     "auto-plan / shop letters paint onto the schedule: " + letters.join(","));
   assert.ok(letters.indexOf("LD") !== -1, "LD stays on the schedule");
-  assert.ok(letters.some((c) => c === "W" || c === "G" || c === "A" || c === "C" || c.indexOf("W") !== -1 || c.indexOf(",") !== -1 || c === "PD"),
+  assert.ok(letters.every((c) => c !== "PD" && c !== "C" && c !== "CS" && String(c).split(",").indexOf("PD") === -1 && String(c).split(",").indexOf("CS") === -1 && String(c).split(",").indexOf("C") === -1),
+    "auto-plan never writes PD or CS: " + letters.join(","));
+  assert.ok(letters.some((c) => c === "W" || c === "G" || c === "A" || c.indexOf("W") !== -1 || c.indexOf(",") !== -1),
     "planned station letters appear: " + letters.join(","));
 
   // Manual letter must not be wiped by auto sync.

@@ -339,9 +339,9 @@ assert.ok(/Sep/.test(board.journeyWeeks[0].label), "week headers are real dates,
 assert.ok(board.journeyWeeks.every((w) => !/^Week \d+$/.test(w.label)), "week headers are date ranges, not Week 1 / 2 / 3");
 assert.ok(board.firstPlannedWeek, "board can jump to the first week that has planned work");
 assert.strictEqual(board.firstPlannedWeek, plan.weekMondayIso(String(trip.start).slice(0, 10)));
-assert.strictEqual(plan.processCode("Profile Cutting"), "C");
+assert.strictEqual(plan.processCode("Profile Cutting"), "CS");
 assert.strictEqual(plan.processCode("Powder coating"), "PC");
-assert.ok(trip.rows.find((r) => r.process === "Profile Cutting").code === "C");
+assert.ok(trip.rows.find((r) => r.process === "Profile Cutting").code === "CS");
 
 const removed = plan.unscheduleOrder("S260100 A");
 assert.ok(removed.removed > 0);

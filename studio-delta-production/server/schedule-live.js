@@ -3,7 +3,7 @@
 /**
  * Keep production-schedule letters in sync with Planning + live shop clocks.
  * Never overwrites LD / LC / LD* / LC* / PD or cells the office typed by hand.
- * Same-day stations merge as C,T,P.
+ * Never auto-plans PD or CS (Profile Cutting). Same-day stations merge as T,P,W.
  */
 
 const sched = require("./office-schedule");
@@ -53,11 +53,12 @@ function collectAutoMarks(db, plan) {
   function put(orderNumber, day, code) {
     const orderId = db.formatOrderId(orderNumber);
     const dayIso = String(day || "").slice(0, 10);
-    const letter = String(code || "").trim();
+    const letter = sched.normalizeScheduleToken(code);
     if (!orderId || !dayIso || !letter || !/^\d{4}-\d{2}-\d{2}$/.test(dayIso)) return;
-    // Never emit live delivery tokens as auto marks. PD is allowed (planned finish).
+    // Never emit live delivery tokens, PD, or Profile Cutting (CS) as auto marks.
     const upper = letter.toUpperCase();
     if (upper === "LD" || upper === "LC" || upper === "LD*" || upper === "LC*") return;
+    if (sched.isNeverAutoScheduleCode(letter)) return;
     const key = orderId + "|" + dayIso;
     marks.set(key, sched.mergeScheduleCodes(marks.get(key) || "", letter));
   }
@@ -74,22 +75,6 @@ function collectAutoMarks(db, plan) {
   });
 
   readOpenShopLetters(db, plan).forEach((hit) => put(hit.orderId, hit.day, hit.code));
-
-  // Planned delivery (PD) on the last planned work day before LD/LC — never on the LD/LC cell.
-  db.listLiveDeliveries().forEach((d) => {
-    const planned = sched.plannedDeliveryCode(d.code);
-    if (!planned) return;
-    const orderId = db.formatOrderId(d.order_number);
-    const deliveryDay = String(d.day || "").slice(0, 10);
-    let last = "";
-    marks.forEach((_code, key) => {
-      if (key.indexOf(orderId + "|") !== 0) return;
-      const day = key.slice(orderId.length + 1);
-      if (deliveryDay && day >= deliveryDay) return;
-      if (!last || day > last) last = day;
-    });
-    if (last) put(orderId, last, planned);
-  });
 
   return marks;
 }
@@ -109,10 +94,12 @@ function syncLiveScheduleCodes() {
     const sources = row.cell_sources || {};
     Object.keys(row.cells || {}).forEach((day) => {
       const value = row.cells[day];
-      if (sched.isProtectedScheduleCode(value)) return;
       if (sources[day] !== "auto") return;
       const orderId = db.formatOrderId(row.order_number);
       if (marks.get(orderId + "|" + day)) return;
+      // Keep live / moved delivery cells. Clear other auto marks, including PD and CS.
+      const tokens = sched.parseScheduleCodes(value).map((c) => c.toUpperCase());
+      if (tokens.some((c) => c === "LD" || c === "LC" || c === "LD*" || c === "LC*")) return;
       db.setScheduleCell(row.id, day, "", false, { skipPlan: true, source: "auto" });
       cleared += 1;
       delete row.cells[day];
