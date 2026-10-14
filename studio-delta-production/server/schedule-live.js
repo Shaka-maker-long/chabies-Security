@@ -1,15 +1,15 @@
 "use strict";
 
 /**
- * Keep production-schedule letters in sync with Planning + live shop clocks.
+ * Keep production-schedule letters in sync with the Planning page plan.
+ * Paints the same process days as Planning Journey Plan rows (buildJourney).
  * Never overwrites or clears LD / LC / LD* / LC* / PD / C (Courier).
- * Never auto-plans PD or C. Production chain paints as CS → T → P → W → G → PQC → PC → U? → A → FQC.
+ * Never auto-plans PD or C.
  * Ready for Delivery / Out for Delivery / At couriers / Delivered: no auto production letters.
- * Only paints stations still remaining for the order's shop status (so PQC never appears after A).
  */
 
 const sched = require("./office-schedule");
-const { isProductionFinished, remainingPlanForStatus } = require("./shop-status");
+const { isProductionFinished } = require("./shop-status");
 
 function todayIso() {
   try {
@@ -40,19 +40,6 @@ function finishedOrderIds(db) {
     if (isProductionFinished(status)) out.add(id);
   });
   return out;
-}
-
-/** Processes still allowed to paint for this status (letter → true). */
-function allowedLettersForStatus(status) {
-  const remaining = remainingPlanForStatus(status);
-  const bag = {};
-  (remaining.processes || []).forEach((p) => {
-    const letter = letterForProcess(p);
-    if (letter) bag[letter] = true;
-  });
-  // Paint-shop Monday block maps to PC while paintWait is active.
-  if (remaining.paintWait) bag.PC = true;
-  return bag;
 }
 
 function readOpenShopLetters(db, plan) {
@@ -128,16 +115,7 @@ function enforceChainDayOrder(marks) {
 
 function collectAutoMarks(db, plan) {
   const marks = new Map();
-  const statuses = orderStatusById(db);
   const done = finishedOrderIds(db);
-  const allowedByOrder = new Map();
-
-  function allowed(orderId) {
-    if (allowedByOrder.has(orderId)) return allowedByOrder.get(orderId);
-    const bag = allowedLettersForStatus(statuses.get(orderId) || "");
-    allowedByOrder.set(orderId, bag);
-    return bag;
-  }
 
   function put(orderNumber, day, code) {
     const orderId = db.formatOrderId(orderNumber);
@@ -148,25 +126,24 @@ function collectAutoMarks(db, plan) {
     const upper = letter.toUpperCase();
     if (upper === "LD" || upper === "LC" || upper === "LD*" || upper === "LC*") return;
     if (sched.isNeverAutoScheduleCode(letter)) return;
-    // Only paint stations still remaining for this shop status.
-    if (!allowed(orderId)[letter]) return;
     const key = orderId + "|" + dayIso;
     marks.set(key, sched.mergeScheduleCodes(marks.get(key) || "", letter));
   }
 
+  // Mirror Planning Journey Plan days exactly (not Actual / remaining-only).
   const store = plan.load();
-  const journey = plan.attachActuals(plan.buildJourney(store.blocks || []));
+  const journey = plan.buildJourney(store.blocks || []);
   ((journey && journey.orders) || []).forEach((order) => {
     const orderId = db.formatOrderId(order.orderId);
     if (done.has(orderId)) return;
     (order.rows || []).forEach((row) => {
-      const letter = letterForProcess(row.process);
+      const letter = letterForProcess(row.process) || sched.normalizeScheduleToken(row.code);
       if (!letter) return;
       (row.days || []).forEach((iso) => put(order.orderId, iso, letter));
-      ((row.actual && row.actual.days) || []).forEach((iso) => put(order.orderId, iso, letter));
     });
   });
 
+  // Live open clocks still mark today so the grid stays current mid-shift.
   readOpenShopLetters(db, plan).forEach((hit) => put(hit.orderId, hit.day, hit.code));
 
   enforceChainDayOrder(marks);
@@ -205,10 +182,8 @@ function syncLiveScheduleCodes() {
     const orderId = db.formatOrderId(row.order_number);
     Object.keys(row.cells || {}).forEach((day) => {
       const value = row.cells[day];
-      // Never clear LD / LC / moved / Courier / PD cells.
       if (sched.isDeliveryProtectedToken(value)) return;
       if (sources[day] !== "auto") return;
-      // Drop auto production letters once production is finished, or when the mark is gone.
       if (!done.has(orderId) && marks.get(orderId + "|" + day)) return;
       db.setScheduleCell(row.id, day, "", false, { skipPlan: true, source: "auto" });
       cleared += 1;

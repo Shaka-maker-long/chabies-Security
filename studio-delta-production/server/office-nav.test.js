@@ -687,6 +687,7 @@ assert.ok(scheduleHtml.indexOf("live=1") !== -1, "schedule polls live shop lette
 assert.ok(scheduleHtml.indexOf("30000") !== -1, "schedule refreshes on an interval");
 assert.ok(scheduleHtml.indexOf("never writes C (Courier) or PD") !== -1, "schedule lede says auto-plan never writes C or PD");
 assert.ok(scheduleHtml.indexOf("CS → T → P → W → G → PQC → PC") !== -1, "schedule lede shows full CS chain");
+assert.ok(scheduleHtml.indexOf("mirrors those Planning plan days") !== -1, "schedule mirrors Planning plan days");
 assert.ok(scheduleHtml.indexOf("never clears or overwrites LD or LC") !== -1, "schedule never clears LD/LC");
 assert.ok(scheduleHtml.indexOf("Ready for Delivery") !== -1, "schedule skips Ready for Delivery from auto-plan");
 assert.ok(officeJs.indexOf("schedule/sync") !== -1, "office can force a schedule live sync");
