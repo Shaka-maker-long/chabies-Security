@@ -70,6 +70,12 @@ staff.setDurations([
   { product: "Product A", process: "Paint Preparation", hours: 9 },
   { product: "Product A", process: "Painting", hours: 9 },
   { product: "Product A", process: "Assembly", hours: 4 },
+  { product: "Long Bench", process: "Profile Cutting", hours: 12 },
+  { product: "Long Bench", process: "Tagging", hours: 1 },
+  { product: "Long Bench", process: "Plate Cutting", hours: 1 },
+  { product: "Long Bench", process: "Welding", hours: 1 },
+  { product: "Long Bench", process: "Grinding", hours: 1 },
+  { product: "Long Bench", process: "Assembly", hours: 1 },
   { product: "No Tag", process: "Profile Cutting", hours: 1 },
   { product: "No Tag", process: "Plate Cutting", hours: 1 },
   { product: "No Tag", process: "Welding", hours: 1 },
@@ -111,6 +117,38 @@ const hole = plan.placeContiguousTask(plan.sastMs(2026, 9, 8, 7, 45), 60, busy);
 assert.strictEqual(hole.segments.length, 1, "grinding waits for a real idle hole, not 15 minutes before the next job");
 assert.strictEqual(hole.segments[0].start, "2026-09-08T10:00:00+02:00");
 assert.strictEqual(hole.segments[0].end, "2026-09-08T11:00:00+02:00");
+
+// A full workday taken by another order must not leave CS | empty | CS.
+const busyWed = [{ start: "2026-09-09T07:45:00+02:00", end: "2026-09-09T15:45:00+02:00" }];
+const longCut = plan.placeContiguousTask(plan.sastMs(2026, 9, 8, 7, 45), 500, busyWed);
+assert.ok(longCut.segments.length, "long CS finds a contiguous slot");
+const longDays = [];
+longCut.segments.forEach((seg) => {
+  plan.occupiedWorkdays(seg).forEach((d) => {
+    if (longDays.indexOf(d) === -1) longDays.push(d);
+  });
+});
+longDays.sort();
+assert.ok(longDays.indexOf("2026-09-09") === -1, "CS does not paint around the busy Wednesday");
+for (let i = 1; i < longDays.length; i++) {
+  const span = plan.workdaysFromTo(longDays[0], longDays[i]);
+  assert.strictEqual(
+    span.length,
+    i + 1,
+    "CS workdays stay consecutive — no mid-process gap for other orders"
+  );
+}
+const preempted = plan.placeTask(plan.sastMs(2026, 9, 8, 7, 45), 500, busyWed);
+const preemptDays = [];
+preempted.segments.forEach((seg) => {
+  plan.occupiedWorkdays(seg).forEach((d) => {
+    if (preemptDays.indexOf(d) === -1) preemptDays.push(d);
+  });
+});
+assert.ok(
+  preemptDays.indexOf("2026-09-08") !== -1 && preemptDays.indexOf("2026-09-10") !== -1,
+  "old placeTask would have left a Wednesday hole between CS days"
+);
 
 const sat = plan.nextWorkInstant(plan.sastMs(2026, 9, 12, 10, 0));
 assert.strictEqual(plan.isoFromMs(sat), "2026-09-14T07:45:00+02:00");
@@ -250,6 +288,64 @@ assert.ok(
   bProfile.end <= byProcess["Plate Cutting"][0].start || bProfile.start >= byProcess["Plate Cutting"][0].end,
   "Willard cannot overlap the first order's plate cutting"
 );
+
+// Long CS after another order owns a mid week day: finish CS as one block, no CS|gap|CS.
+db.upsertOrder({
+  order_number: "S260300 M",
+  status: "Not Yet Started",
+  product: "Long Bench",
+  type: "Standard",
+  category: "Chair"
+});
+const beforeLong = plan.load();
+plan.save({
+  blocks: (beforeLong.blocks || []).concat([
+    {
+      id: "blocker-wed",
+      orderId: "S260299 Z",
+      studioNo: "S260299 Z",
+      product: "Blocker",
+      process: "Profile Cutting",
+      workerId: "Willard",
+      workerName: "Willard",
+      start: "2026-09-09T07:45:00+02:00",
+      end: "2026-09-09T15:45:00+02:00",
+      kind: "work"
+    }
+  ]),
+  assignments: beforeLong.assignments || {},
+  rulesVersion: plan.PLAN_RULES_VERSION
+});
+const longOrder = plan.scheduleSelected({
+  orderIds: ["S260300 M"],
+  assignments: {
+    "S260300 M": {
+      "Profile Cutting": "Willard",
+      Tagging: "Sipho",
+      "Plate Cutting": "Willard",
+      Welding: "Thabo",
+      Assembly: "Nomsa"
+    }
+  },
+  from: plan.isoFromMs(plan.sastMs(2026, 9, 8, 7, 45))
+});
+const longCs = longOrder.blocks.filter((b) => b.process === "Profile Cutting");
+assert.ok(longCs.length, "long CS is scheduled");
+const csDays = [];
+longCs.forEach((b) => {
+  plan.occupiedWorkdays(b).forEach((d) => {
+    if (csDays.indexOf(d) === -1) csDays.push(d);
+  });
+});
+csDays.sort();
+assert.ok(csDays.indexOf("2026-09-09") === -1, "long CS waits past the busy Wednesday");
+for (let i = 1; i < csDays.length; i++) {
+  assert.strictEqual(
+    plan.workdaysFromTo(csDays[0], csDays[i]).length,
+    i + 1,
+    "scheduled CS workdays are consecutive — no gap for an overlapping order"
+  );
+}
 
 const willardBlocks = plan.load().blocks
   .filter((b) => b.workerId === "Willard")

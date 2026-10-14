@@ -78,7 +78,7 @@ function planningPath() {
 }
 
 /** Bump when booking rules change so live rebuilds saved plans once. */
-const PLAN_RULES_VERSION = 2; // 2 = welding on every workday Mon–Fri
+const PLAN_RULES_VERSION = 3; // 3 = each process is contiguous (no mid-order gaps for other jobs)
 
 function emptyStore() {
   return { blocks: [], assignments: {}, rulesVersion: 0 };
@@ -1298,9 +1298,14 @@ function placeProcess(order, process, fromMs, workerName, busyBlocks, allowedWee
   if (!userCanDoProcess(user, process)) {
     throw new Error(who + " is not ticked for " + process + " on Users.");
   }
-  // Welding uses every shop workday (Mon–Fri), same as CS/T/P/G/A — no weekday lock.
-  const days = allowedWeekdays || null;
-  const placed = placeTask(fromMs, calendarMinutesForTask(minutes), busyForWorker(busyBlocks, who), days);
+  // Finish this order's station before starting another: no mid-process holes for other jobs.
+  // Lunch / overnight / weekend breaks are fine; workday gaps from preemption are not.
+  void allowedWeekdays; // all shop processes use every Mon–Fri workday
+  const placed = placeContiguousTask(
+    fromMs,
+    calendarMinutesForTask(minutes),
+    busyForWorker(busyBlocks, who)
+  );
   if (!placed.segments.length) {
     throw new Error("Could not place " + process + " for " + order.order_number + ".");
   }
@@ -1447,18 +1452,12 @@ function placeGrindingOnOpenSlot(order, minutes, fromMs, busy, users) {
   let best = null;
   pool.forEach((user) => {
     const theirs = busyForWorker(busy, user.name);
-    const contiguous = placeContiguousTask(fromMs, calendarMins, theirs);
-    const placed = contiguous.segments.length ? contiguous : placeTask(fromMs, calendarMins, theirs);
+    const placed = placeContiguousTask(fromMs, calendarMins, theirs);
     if (!placed.segments.length || !placed.start) return;
     const load = workerBusyMinutes(busy, user.name);
-    const split = !contiguous.segments.length;
-    const candidate = { user, placed, load, split };
+    const candidate = { user, placed, load };
     if (!best) {
       best = candidate;
-      return;
-    }
-    if (candidate.split !== best.split) {
-      if (!candidate.split) best = candidate;
       return;
     }
     if (candidate.load !== best.load) {
