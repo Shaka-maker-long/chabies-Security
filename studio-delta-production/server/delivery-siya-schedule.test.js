@@ -119,20 +119,26 @@ clearShopCache();
   assert.strictEqual(again.cells["2026-09-12"], "C", "hand-typed Courier stays");
   assert.strictEqual(again.cells["2026-09-30"], "LD", "LD is never cleared");
 
-  // Delivered orders are not auto-planned.
-  db.upsertOrder(Object.assign({}, weldOrder, { status: "Delivered" }));
-  const deliveredPlan = plan.autoPlanFromDeliveries({ from: "2026-09-08T07:45:00+02:00" });
-  assert.ok((deliveredPlan.orders || 0) === 0 || (deliveredPlan.clearedHandedOff || 0) >= 1,
-    "delivered orders are not re-planned");
+  // Ready for Delivery / Delivered orders are not auto-planned and lose stale production letters.
+  db.upsertOrder(Object.assign({}, weldOrder, { status: "Ready for Delivery" }));
+  const readyPlan = plan.autoPlanFromDeliveries({ from: "2026-09-08T07:45:00+02:00" });
+  assert.ok((readyPlan.orders || 0) === 0 || (readyPlan.clearedFinished || 0) >= 1,
+    "Ready for Delivery orders are not re-planned");
   live.syncLiveScheduleCodes();
-  const afterDelivered = db.listSchedule("2026-09-08", "2026-10-10").find((r) => r.order_number === "S-DEL-2");
-  assert.strictEqual(afterDelivered.cells["2026-09-30"], "LD", "LD survives after deliver");
-  assert.strictEqual(afterDelivered.cells["2026-09-12"], "C", "Courier survives after deliver");
-  const prodLetters = Object.keys(afterDelivered.cells || {}).filter((d) => {
-    const v = afterDelivered.cells[d];
+  const afterReady = db.listSchedule("2026-09-08", "2026-10-10").find((r) => r.order_number === "S-DEL-2");
+  assert.strictEqual(afterReady.cells["2026-09-30"], "LD", "LD survives after Ready for Delivery");
+  assert.strictEqual(afterReady.cells["2026-09-12"], "C", "Courier survives after Ready for Delivery");
+  assert.strictEqual(afterReady.cells["2026-09-11"], "U", "manual U stays");
+  const prodLetters = Object.keys(afterReady.cells || {}).filter((d) => {
+    const v = afterReady.cells[d];
     return v && v !== "LD" && v !== "C" && v !== "U";
   });
-  assert.strictEqual(prodLetters.length, 0, "auto production letters clear once delivered: " + prodLetters.map((d) => afterDelivered.cells[d]).join(","));
+  assert.strictEqual(prodLetters.length, 0, "auto production letters clear once Ready for Delivery: " + prodLetters.map((d) => afterReady.cells[d]).join(","));
+
+  db.upsertOrder(Object.assign({}, weldOrder, { status: "Delivered" }));
+  const deliveredPlan = plan.autoPlanFromDeliveries({ from: "2026-09-08T07:45:00+02:00" });
+  assert.ok((deliveredPlan.orders || 0) === 0 || (deliveredPlan.clearedFinished || 0) >= 1,
+    "delivered orders are not re-planned");
 
   console.log("delivery-siya-schedule.test.js ok", { outOrder: outOrder.order_number, weldOrder: weldOrder.order_number, day });
 })().catch((e) => {

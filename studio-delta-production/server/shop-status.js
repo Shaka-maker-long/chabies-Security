@@ -74,8 +74,8 @@ function isWaitingForDrawing(status) {
 
 function remainingPlanForStatus(status, productMinutes) {
   const raw = normalizeShopStatus(status) || "Not Yet Started";
-  // Already on the truck / with courier / delivered — nothing left to plan.
-  if (isHandedOff(raw)) {
+  // Ready for Delivery / Out for Delivery / At couriers / Delivered — nothing left to plan.
+  if (isProductionFinished(raw)) {
     return { processes: [], paintWait: false, status: raw };
   }
   const s = isWaitingForDrawing(raw) ? "Not Yet Started" : raw;
@@ -138,6 +138,13 @@ function isHandedOff(status) {
   return s === "Out for Delivery" || s === "At couriers" || s === "Delivered";
 }
 
+/** Production work is finished — Ready for Delivery and later. Nothing left to plan or paint. */
+function isProductionFinished(status) {
+  const s = normalizeShopStatus(status);
+  if (!s) return false;
+  return atOrAfter(s, "Ready for Delivery");
+}
+
 const PROFILE_CUTTING_WAITING = "Ready for Steelwork";
 
 function isProfileCuttingInProgress(status, hasOpenProfileClock) {
@@ -163,6 +170,7 @@ module.exports = {
   isAtPaintShop,
   isAtCouriers,
   isHandedOff,
+  isProductionFinished,
   isWaitingForDrawing,
   isProfileCuttingInProgress,
   waitingStatusIfProfileCuttingIdle

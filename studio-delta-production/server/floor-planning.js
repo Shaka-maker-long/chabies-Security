@@ -7,7 +7,7 @@ const { dataDir, getBook } = require("./workbook-store");
 const { listOrders, formatOrderId } = require("./db");
 const staff = require("./staff");
 const catalog = require("./product-catalog");
-const { remainingPlanForStatus, isHandedOff } = require("./shop-status");
+const { remainingPlanForStatus, isHandedOff, isProductionFinished } = require("./shop-status");
 
 const ZONE = "+02:00";
 const PAINT_WORKER_ID = "__paint_shop__";
@@ -1665,20 +1665,24 @@ function autoPlanFromDeliveries(opts) {
   const store = load();
   const assignments = store.assignments || {};
   const jobs = [];
-  const handedOff = new Set();
+  const finished = new Set();
   deliveries.forEach((d) => {
     const order = findOrder(d.order_number);
     if (!order) return;
     const id = formatOrderId(order.order_number);
-    // Delivered / Out for Delivery / At couriers — drop any leftover plan, never re-plan.
-    if (isHandedOff(order.status)) {
-      if (id) handedOff.add(id);
+    // Ready for Delivery and later — drop leftover plan, never re-plan.
+    if (isProductionFinished(order.status) || isHandedOff(order.status)) {
+      if (id) finished.add(id);
       return;
     }
     const minutes = minutesByProcessFor(order.product);
     const remaining = remainingPlanForStatus(order.status, minutes);
     const has = remaining.processes.some((p) => minutes[p] > 0);
-    if (!has && !(remaining.paintWait && (minutes.Assembly > 0 || minutes["Final QC"] > 0 || minutes.Upholstery > 0))) return;
+    if (!has && !(remaining.paintWait && (minutes.Assembly > 0 || minutes["Final QC"] > 0 || minutes.Upholstery > 0))) {
+      // Status says no work left (or no task times) — strip stale blocks for this order.
+      if (id) finished.add(id);
+      return;
+    }
     jobs.push({
       order,
       assignments: Object.assign({}, assignments[id] || {})
@@ -1689,17 +1693,17 @@ function autoPlanFromDeliveries(opts) {
     if (!b) return false;
     if (b.kind === "other") return true;
     const id = formatOrderId(b.orderId);
-    if (handedOff.has(id)) return false;
+    if (finished.has(id)) return false;
     if (ids.indexOf(id) === -1) return true;
     return false;
   });
   if (!jobs.length) {
-    if (handedOff.size) {
+    if (finished.size) {
       store.blocks = keep;
       save(store);
       let live = { cleared: 0, written: 0, marks: 0 };
       try { live = require("./schedule-live").syncLiveScheduleCodes(); } catch (e) {}
-      return { count: 0, orders: 0, clearedHandedOff: handedOff.size, schedule: live };
+      return { count: 0, orders: 0, clearedFinished: finished.size, schedule: live };
     }
     return { count: 0, orders: 0 };
   }
