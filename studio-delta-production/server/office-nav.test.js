@@ -690,6 +690,7 @@ assert.ok(scheduleHtml.indexOf("CS → T → P → W → G → PQC → PC") !== 
 assert.ok(scheduleHtml.indexOf("mirrors those Planning plan days") !== -1, "schedule mirrors Planning plan days");
 assert.ok(scheduleHtml.indexOf("never clears or overwrites LD or LC") !== -1, "schedule never clears LD/LC");
 assert.ok(scheduleHtml.indexOf("Ready for Delivery") !== -1, "schedule skips Ready for Delivery from auto-plan");
+assert.ok(scheduleHtml.indexOf("without LD or LC that order is not auto-planned") !== -1, "schedule says LD/LC is required to plan");
 assert.ok(officeJs.indexOf("schedule/sync") !== -1, "office can force a schedule live sync");
 assert.ok(indexJs.indexOf("/orders/schedule") !== -1);
 assert.ok(indexJs.indexOf("/orders/delivery") !== -1);
