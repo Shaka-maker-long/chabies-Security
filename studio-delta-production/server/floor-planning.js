@@ -1224,8 +1224,8 @@ const DEFAULT_CREW = {
 };
 
 function weldingWeekdays(_name) {
-  // Both welders only work Mon / Wed / Fri.
-  return ["Mon", "Wed", "Fri"];
+  // Welding books any shop workday (Mon–Fri), same as the other stations.
+  return null;
 }
 
 function userCanDoProcess(user, process) {
