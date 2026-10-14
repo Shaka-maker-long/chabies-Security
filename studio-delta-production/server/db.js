@@ -987,7 +987,7 @@ function setScheduleCell(rowId, day, value, persist = true, extra) {
   const dayIso = String(day || "").slice(0, 10);
   const sched = require("./office-schedule");
   let code = value == null ? "" : String(value).trim();
-  // Persist CS (not legacy C) and keep multi-letter cells sorted.
+  // Normalize known letters (CS, C, …) and keep multi-letter cells sorted.
   if (code) code = sched.formatScheduleCodes(sched.parseScheduleCodes(code)) || code;
   const live = sched.liveDeliveryCode(code);
   const extraObj = extra && typeof extra === "object" ? extra : {};
