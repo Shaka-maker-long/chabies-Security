@@ -65,6 +65,10 @@ plan.scheduleSelected({
   from: "2026-09-08T07:45:00+02:00"
 });
 persistWorkbook();
+// Keep this test's booked slots — do not trigger a rules-version full rebuild.
+const pinned = plan.load();
+pinned.rulesVersion = plan.PLAN_RULES_VERSION;
+plan.save(pinned);
 
 function planDayMap(orderId) {
   const journey = plan.buildJourney(plan.load().blocks || []);

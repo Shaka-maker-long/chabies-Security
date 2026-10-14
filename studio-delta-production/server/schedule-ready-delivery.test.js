@@ -41,6 +41,7 @@ db.setScheduleCell(row.id, "2026-09-09", "PQC", true, { skipPlan: true, source: 
 
 // Leftover planning blocks must not keep painting.
 plan.save({
+  rulesVersion: plan.PLAN_RULES_VERSION,
   blocks: [
     {
       id: "b1",

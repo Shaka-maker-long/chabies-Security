@@ -77,6 +77,10 @@ plan.scheduleSelected({
 });
 persistWorkbook();
 clearShopCache();
+// Do not trigger a rules-version rebuild that replaces this fixture plan.
+const pinned = plan.load();
+pinned.rulesVersion = plan.PLAN_RULES_VERSION;
+plan.save(pinned);
 
 (async function main() {
   const assigned = await callShopFunction("getFloorTaskCounts", []);

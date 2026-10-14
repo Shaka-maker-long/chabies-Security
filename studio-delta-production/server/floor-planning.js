@@ -77,8 +77,11 @@ function planningPath() {
   return path.join(dataDir(), "floor-planning.json");
 }
 
+/** Bump when booking rules change so live rebuilds saved plans once. */
+const PLAN_RULES_VERSION = 2; // 2 = welding on every workday Mon–Fri
+
 function emptyStore() {
-  return { blocks: [], assignments: {} };
+  return { blocks: [], assignments: {}, rulesVersion: 0 };
 }
 
 function load() {
@@ -86,7 +89,11 @@ function load() {
     const parsed = JSON.parse(fs.readFileSync(planningPath(), "utf8"));
     const blocks = Array.isArray(parsed.blocks) ? parsed.blocks.filter(Boolean) : [];
     const assignments = parsed.assignments && typeof parsed.assignments === "object" ? parsed.assignments : {};
-    return { blocks, assignments };
+    return {
+      blocks,
+      assignments,
+      rulesVersion: Number(parsed.rulesVersion) || 0
+    };
   } catch (e) {
     if (e && e.code !== "ENOENT") {
       console.error("[planning] could not read", planningPath(), e.message || e);
@@ -101,11 +108,38 @@ function save(store) {
   const tmp = file + ".tmp";
   fs.writeFileSync(tmp, JSON.stringify({
     blocks: (store && store.blocks) || [],
-    assignments: (store && store.assignments) || {}
+    assignments: (store && store.assignments) || {},
+    rulesVersion: store && store.rulesVersion != null ? Number(store.rulesVersion) || 0 : 0
   }, null, 2));
   fs.renameSync(tmp, file);
   try { require("./gas").clearShopCache(); } catch (e) {}
   return store;
+}
+
+/**
+ * When planning rules change (e.g. welding may use Tue/Thu), rebuild LD/LC orders once
+ * so live does not keep the old Mon/Wed/Fri-only slots.
+ */
+function ensureCurrentPlanRules() {
+  const store = load();
+  const current = Number(store.rulesVersion) || 0;
+  if (current >= PLAN_RULES_VERSION) {
+    return { rebuilt: false, rulesVersion: current };
+  }
+  // Mark the new rules first so nested schedule sync cannot loop.
+  store.rulesVersion = PLAN_RULES_VERSION;
+  save(store);
+  let plan = null;
+  try {
+    plan = autoPlanFromDeliveries({ from: Date.now() });
+  } catch (e) {
+    return {
+      rebuilt: false,
+      rulesVersion: PLAN_RULES_VERSION,
+      error: e && e.message ? e.message : String(e)
+    };
+  }
+  return { rebuilt: true, rulesVersion: PLAN_RULES_VERSION, plan };
 }
 
 function newId() {
@@ -1690,6 +1724,12 @@ function autoPlanFromDeliveries(opts) {
     });
   });
   const ids = jobs.map((j) => formatOrderId(j.order.order_number));
+  const priorById = {};
+  ids.forEach((id) => {
+    priorById[id] = store.blocks.filter((b) => (
+      b && b.kind !== "other" && formatOrderId(b.orderId) === id
+    ));
+  });
   let keep = store.blocks.filter((b) => {
     if (!b) return false;
     if (b.kind === "other") return true;
@@ -1712,6 +1752,8 @@ function autoPlanFromDeliveries(opts) {
       created.push.apply(created, batch);
     } catch (e) {
       skipped.push({ order: id, reason: e && e.message ? e.message : String(e) });
+      // Keep the previous plan for this order instead of leaving a blank row.
+      created.push.apply(created, priorById[id] || []);
     }
   });
   store.blocks = keep.concat(created);
@@ -2274,6 +2316,8 @@ module.exports = {
   getBoard,
   load,
   save,
+  PLAN_RULES_VERSION,
+  ensureCurrentPlanRules,
   queueOrders,
   buildJourney,
   readIdleActuals,

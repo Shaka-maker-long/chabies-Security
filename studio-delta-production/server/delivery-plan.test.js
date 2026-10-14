@@ -117,4 +117,19 @@ const grind = plan.scheduleGrinding({ orderId: "S260702", worker: "Thabo" });
 assert.strictEqual(grind.blocks[0].workerName, "Thabo");
 assert.ok(plan.load().blocks.some((b) => b.orderId === "S260702" && b.process === "Grinding"));
 
+// Rule bump rebuilds the saved plan once (so live drops old Mon/Wed/Fri-only welding).
+const storeVer = plan.load();
+storeVer.rulesVersion = 0;
+plan.save(storeVer);
+const bumped = plan.ensureCurrentPlanRules();
+assert.strictEqual(bumped.rebuilt, true);
+assert.strictEqual(bumped.rulesVersion, plan.PLAN_RULES_VERSION);
+assert.strictEqual(plan.ensureCurrentPlanRules().rebuilt, false, "second ensure is a no-op");
+assert.ok(plan.load().blocks.some((b) => b.process === "Welding"), "rebuild still books welding");
+const weldDays = plan.load().blocks
+  .filter((b) => b.process === "Welding")
+  .map((b) => new Date(b.start).getDay());
+assert.ok(weldDays.some((d) => d === 2 || d === 4) || weldDays.some((d) => d === 1 || d === 3 || d === 5),
+  "welding lands on workdays after rules rebuild");
+
 console.log("delivery-plan.test.js ok");
