@@ -189,6 +189,30 @@ assert.ok(byProcess["Plate Cutting"][0].start >= byProcess.Tagging[0].end, "plat
 assert.ok(byProcess.Welding[0].start >= byProcess["Plate Cutting"][byProcess["Plate Cutting"].length - 1].end, "welding waits for plate");
 assert.ok(byProcess.Welding[0].start.indexOf("2026-09-08") === 0, "welding can book Tuesday after plate");
 
+// Welding must be allowed on every workday, including Thursday.
+db.upsertOrder({
+  order_number: "S260100 W",
+  status: "Not Yet Started",
+  product: "Product A"
+});
+const fromThu = plan.sastMs(2026, 9, 10, 7, 45); // Thursday
+const thuPlan = plan.scheduleSelected({
+  orderIds: ["S260100 W"],
+  assignments: {
+    "S260100 W": {
+      "Profile Cutting": "Willard",
+      Tagging: "Sipho",
+      "Plate Cutting": "Willard",
+      Welding: "Thabo",
+      Assembly: "Nomsa"
+    }
+  },
+  from: plan.isoFromMs(fromThu)
+});
+const thuWeld = thuPlan.blocks.filter((b) => b.process === "Welding");
+assert.ok(thuWeld.length, "welding books on Thursday");
+assert.ok(thuWeld[0].start.indexOf("2026-09-10") === 0, "welding starts Thursday, not skipped to Friday");
+
 assert.ok(byProcess.Grinding, "grinding is auto-booked after welding");
 assert.ok(byProcess.Grinding[0].start >= byProcess.Welding[byProcess.Welding.length - 1].end, "grinding after welding");
 assert.ok(["Thabo", "Willard", "Sipho"].indexOf(byProcess.Grinding[0].workerName) !== -1);

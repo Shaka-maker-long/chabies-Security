@@ -1223,11 +1223,6 @@ const DEFAULT_CREW = {
   "Final QC": ["Siya"]
 };
 
-function weldingWeekdays(_name) {
-  // Welding books any shop workday (Mon–Fri), same as the other stations.
-  return null;
-}
-
 function userCanDoProcess(user, process) {
   if (!user) return false;
   const tasks = user.tasks || [];
@@ -1269,7 +1264,8 @@ function placeProcess(order, process, fromMs, workerName, busyBlocks, allowedWee
   if (!userCanDoProcess(user, process)) {
     throw new Error(who + " is not ticked for " + process + " on Users.");
   }
-  const days = allowedWeekdays || (process === "Welding" ? weldingWeekdays(who) : null);
+  // Welding uses every shop workday (Mon–Fri), same as CS/T/P/G/A — no weekday lock.
+  const days = allowedWeekdays || null;
   const placed = placeTask(fromMs, calendarMinutesForTask(minutes), busyForWorker(busyBlocks, who), days);
   if (!placed.segments.length) {
     throw new Error("Could not place " + process + " for " + order.order_number + ".");
