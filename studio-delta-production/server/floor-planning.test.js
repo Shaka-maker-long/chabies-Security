@@ -342,6 +342,13 @@ assert.strictEqual(board.firstPlannedWeek, plan.weekMondayIso(String(trip.start)
 assert.strictEqual(plan.processCode("Profile Cutting"), "CS");
 assert.strictEqual(plan.processCode("Powder coating"), "PC");
 assert.ok(trip.rows.find((r) => r.process === "Profile Cutting").code === "CS");
+assert.deepStrictEqual(plan.chainPreds("Tagging", ["Profile Cutting", "Tagging"]), ["Profile Cutting"]);
+assert.deepStrictEqual(plan.chainPreds("Welding", ["Profile Cutting", "Tagging", "Plate Cutting", "Welding"]), ["Plate Cutting"]);
+assert.deepStrictEqual(plan.chainPreds("Assembly", ["Powder coating", "Assembly", "Final QC"]), ["Powder coating"]);
+assert.deepStrictEqual(plan.chainPreds("Final QC", ["Assembly", "Final QC"]), ["Assembly"]);
+assert.deepStrictEqual(plan.PROCESS_CHAIN.slice(0, 7), [
+  "Profile Cutting", "Tagging", "Plate Cutting", "Welding", "Grinding", "Pre-Powder Coating", "Powder coating"
+]);
 
 const removed = plan.unscheduleOrder("S260100 A");
 assert.ok(removed.removed > 0);

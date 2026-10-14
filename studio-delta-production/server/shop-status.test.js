@@ -52,6 +52,8 @@ assert.ok(isShopStatus("At couriers"));
 assert.strictEqual(normalizeShopStatus("at courier"), "At couriers");
 assert.strictEqual(normalizeShopStatus("At the couriers"), "At couriers");
 assert.deepStrictEqual(remainingPlanForStatus("At couriers").processes, []);
+assert.deepStrictEqual(remainingPlanForStatus("Out for Delivery").processes, []);
+assert.deepStrictEqual(remainingPlanForStatus("Delivered").processes, []);
 assert.ok(!remainingPlanForStatus("Paint Shop").paintWait);
 assert.ok(!remainingPlanForStatus("Sent to Paint Shop").paintWait);
 assert.ok(remainingPlanForStatus("Paint Shop").processes.indexOf("Assembly") !== -1);

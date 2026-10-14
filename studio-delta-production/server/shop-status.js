@@ -74,6 +74,10 @@ function isWaitingForDrawing(status) {
 
 function remainingPlanForStatus(status, productMinutes) {
   const raw = normalizeShopStatus(status) || "Not Yet Started";
+  // Already on the truck / with courier / delivered — nothing left to plan.
+  if (isHandedOff(raw)) {
+    return { processes: [], paintWait: false, status: raw };
+  }
   const s = isWaitingForDrawing(raw) ? "Not Yet Started" : raw;
   const skip = {};
   function done() {

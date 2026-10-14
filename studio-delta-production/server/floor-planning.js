@@ -7,7 +7,7 @@ const { dataDir, getBook } = require("./workbook-store");
 const { listOrders, formatOrderId } = require("./db");
 const staff = require("./staff");
 const catalog = require("./product-catalog");
-const { remainingPlanForStatus } = require("./shop-status");
+const { remainingPlanForStatus, isHandedOff } = require("./shop-status");
 
 const ZONE = "+02:00";
 const PAINT_WORKER_ID = "__paint_shop__";
@@ -368,6 +368,20 @@ const JOURNEY_PROCESS_ORDER = {
   Assembly: 9,
   "Final QC": 10
 };
+
+/** Full production chain — later stations never start before earlier ones on the same order. */
+const PROCESS_CHAIN = [
+  "Profile Cutting",
+  "Tagging",
+  "Plate Cutting",
+  "Welding",
+  "Grinding",
+  "Pre-Powder Coating",
+  "Powder coating",
+  "Upholstery",
+  "Assembly",
+  "Final QC"
+];
 
 const JOURNEY_WEEK_COUNT = 20;
 
@@ -1457,20 +1471,10 @@ function scheduleBatch({ jobs, existingBlocks, fromMs, skipGrinding }) {
   const startMs = nextWorkInstant(fromMs != null ? fromMs : Date.now());
   const drafts = [];
   const noAutoGrind = skipGrinding === true;
-  const chain = [
-    "Profile Cutting",
-    "Tagging",
-    "Plate Cutting",
-    "Welding",
-    "Grinding",
-    "Pre-Powder Coating",
-    "Powder coating",
-    "Upholstery",
-    "Assembly",
-    "Final QC"
-  ];
+  const chain = PROCESS_CHAIN.slice();
 
   // First out: jobs are already ordered by LD/LC day from autoPlanFromDeliveries.
+  // Within each order the chain is always CS → T → P → W → G → PQC → PC → U? → A → FQC.
   (jobs || []).forEach((job) => {
     const order = job.order;
     const minutes = minutesByProcessFor(order.product);
@@ -1661,26 +1665,44 @@ function autoPlanFromDeliveries(opts) {
   const store = load();
   const assignments = store.assignments || {};
   const jobs = [];
+  const handedOff = new Set();
   deliveries.forEach((d) => {
     const order = findOrder(d.order_number);
     if (!order) return;
+    const id = formatOrderId(order.order_number);
+    // Delivered / Out for Delivery / At couriers — drop any leftover plan, never re-plan.
+    if (isHandedOff(order.status)) {
+      if (id) handedOff.add(id);
+      return;
+    }
     const minutes = minutesByProcessFor(order.product);
     const remaining = remainingPlanForStatus(order.status, minutes);
     const has = remaining.processes.some((p) => minutes[p] > 0);
     if (!has && !(remaining.paintWait && (minutes.Assembly > 0 || minutes["Final QC"] > 0 || minutes.Upholstery > 0))) return;
     jobs.push({
       order,
-      assignments: Object.assign({}, assignments[formatOrderId(order.order_number)] || {})
+      assignments: Object.assign({}, assignments[id] || {})
     });
   });
-  if (!jobs.length) return { count: 0, orders: 0 };
   const ids = jobs.map((j) => formatOrderId(j.order.order_number));
   const keep = store.blocks.filter((b) => {
     if (!b) return false;
     if (b.kind === "other") return true;
-    if (ids.indexOf(formatOrderId(b.orderId)) === -1) return true;
+    const id = formatOrderId(b.orderId);
+    if (handedOff.has(id)) return false;
+    if (ids.indexOf(id) === -1) return true;
     return false;
   });
+  if (!jobs.length) {
+    if (handedOff.size) {
+      store.blocks = keep;
+      save(store);
+      let live = { cleared: 0, written: 0, marks: 0 };
+      try { live = require("./schedule-live").syncLiveScheduleCodes(); } catch (e) {}
+      return { count: 0, orders: 0, clearedHandedOff: handedOff.size, schedule: live };
+    }
+    return { count: 0, orders: 0 };
+  }
   let created = [];
   try {
     created = scheduleBatch({
@@ -1780,29 +1802,10 @@ function collectJobs(blocks) {
 
 function chainPreds(process, present) {
   const has = (p) => (present || []).indexOf(p) !== -1;
-  if (process === "Profile Cutting") return [];
-  if (process === "Tagging") return has("Profile Cutting") ? ["Profile Cutting"] : [];
-  if (process === "Plate Cutting" || process === "Welding") {
-    if (has("Tagging")) return ["Tagging"];
-    if (has("Profile Cutting")) return ["Profile Cutting"];
-    return [];
-  }
-  if (process === "Grinding") {
-    if (has("Welding")) return ["Welding"];
-    if (has("Tagging")) return ["Tagging"];
-    return has("Profile Cutting") ? ["Profile Cutting"] : [];
-  }
-  if (process === "Powder coating") {
-    if (has("Grinding")) return ["Grinding"];
-    if (has("Welding")) return ["Welding"];
-    if (has("Tagging")) return ["Tagging"];
-    return has("Profile Cutting") ? ["Profile Cutting"] : [];
-  }
-  if (process === "Assembly") {
-    if (has("Powder coating")) return ["Powder coating"];
-    if (has("Grinding")) return ["Grinding"];
-    if (has("Welding")) return ["Welding"];
-    return has("Tagging") ? ["Tagging"] : (has("Profile Cutting") ? ["Profile Cutting"] : []);
+  const ix = PROCESS_CHAIN.indexOf(process);
+  if (ix <= 0) return [];
+  for (let i = ix - 1; i >= 0; i--) {
+    if (has(PROCESS_CHAIN[i])) return [PROCESS_CHAIN[i]];
   }
   return [];
 }
@@ -2272,6 +2275,8 @@ module.exports = {
   occupiedWorkdays,
   formatDayHeader,
   JOURNEY_PROCESS_ORDER,
+  PROCESS_CHAIN,
+  chainPreds,
   PROCESS_CODES,
   JOURNEY_WEEK_COUNT,
   processCode,

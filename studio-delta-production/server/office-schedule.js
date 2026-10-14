@@ -4,6 +4,7 @@ const SCHEDULE_CODES = [
   { code: "LD*", label: "Moved Latest Delivery", group: "Moved", bg: "#d0d5dd", fg: "#667085", moved: true },
   { code: "LC*", label: "Moved Latest Courier", group: "Moved", bg: "#d0d5dd", fg: "#667085", moved: true },
   { code: "PD", label: "Planned Delivery", group: "Delivery", bg: "#00ff00", fg: "#1d2939" },
+  { code: "C", label: "Courier", group: "Delivery", bg: "#0284c7", fg: "#ffffff" },
   { code: "CS", label: "Profile Cutting", group: "Production", bg: "#b45f06", fg: "#ffffff" },
   { code: "T", label: "Tagging", group: "Production", bg: "#fff2cc", fg: "#1d2939" },
   { code: "P", label: "Plate Cutting", group: "Production", bg: "#cfe2f3", fg: "#1d2939" },
@@ -18,9 +19,10 @@ const SCHEDULE_CODES = [
 
 const DELIVERY_CODES = ["LD", "LC"];
 const MOVED_DELIVERY_CODES = ["LD*", "LC*"];
-const PROTECTED_SCHEDULE_TOKENS = ["LD", "LC", "LD*", "LC*", "PD"];
+/** Delivery / courier marks — auto sync must never overwrite or clear these. */
+const PROTECTED_SCHEDULE_TOKENS = ["LD", "LC", "LD*", "LC*", "PD", "C"];
 /** Letters the office may type, but auto-plan / live sync must never write. */
-const NEVER_AUTO_SCHEDULE_TOKENS = ["PD", "CS", "C"];
+const NEVER_AUTO_SCHEDULE_TOKENS = ["PD", "C"];
 
 /** Shop / planning process → production-schedule letter. */
 const SHOP_PROCESS_TO_SCHEDULE = {
@@ -38,12 +40,13 @@ const SHOP_PROCESS_TO_SCHEDULE = {
   "Final QC": "FQC"
 };
 
+/** Production chain order on the schedule (U only when task hours are set). */
 const AUTO_SCHEDULE_ORDER = ["CS", "T", "P", "W", "G", "PQC", "PC", "U", "A", "FQC"];
 
 const AUTO_SCHEDULE_PRIORITY = AUTO_SCHEDULE_ORDER.reduce((bag, code, i) => {
   bag[code] = i + 1;
   return bag;
-}, { PD: 100, C: 1 });
+}, { PD: 100, C: 100 });
 
 function liveDeliveryCode(value) {
   const tokens = parseScheduleCodes(value);
@@ -63,10 +66,20 @@ function normalizeScheduleToken(raw) {
   const c = String(raw || "").trim();
   if (!c) return "";
   const upper = c.toUpperCase();
-  // Legacy Profile Cutting letter on the production schedule.
-  if (upper === "C") return "CS";
   const hit = SCHEDULE_CODES.find((row) => row.code.toUpperCase() === upper);
   return hit ? hit.code : c;
+}
+
+/** True when a cell holds LD / LC / moved / PD / Courier — never clear or overwrite. */
+function isDeliveryProtectedToken(value) {
+  const tokens = parseScheduleCodes(value).map((c) => c.toUpperCase());
+  if (!tokens.length) {
+    const c = String(value || "").trim().toUpperCase();
+    return PROTECTED_SCHEDULE_TOKENS.indexOf(c) !== -1;
+  }
+  return tokens.some((c) => (
+    c === "LD" || c === "LC" || c === "LD*" || c === "LC*" || c === "C" || c === "PD"
+  ));
 }
 
 function parseScheduleCodes(value) {
@@ -299,6 +312,7 @@ module.exports = {
   formatScheduleCodes,
   mergeScheduleCodes,
   isProtectedScheduleCode,
+  isDeliveryProtectedToken,
   isNeverAutoScheduleCode,
   shopProcessToScheduleCode,
   plannedDeliveryCode,

@@ -96,7 +96,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1>Production schedule</h1>
-      <p class="lede">One live Latest Delivery (LD) or Latest Courier (LC) per order. Setting LD/LC auto-plans the chain T → P → W → G → PQC → PC (Mondays) → U? → A → FQC at 80% of a 7.5-hour day, first-out by due date. Same-day stations show as T,P,W. Auto-plan never writes PD or CS (Profile Cutting), and never overwrites LD or LC. Amber rows still need a latest date.</p>
+      <p class="lede">One live Latest Delivery (LD) or Latest Courier (LC) per order. Setting LD/LC auto-plans the chain CS → T → P → W → G → PQC → PC (Mondays) → U? → A → FQC at 80% of a 7.5-hour day, first-out by due date — later stations never start before earlier ones. Same-day stations show as CS,T,P. Auto-plan never writes C (Courier) or PD, never clears or overwrites LD or LC, and skips orders already Out for Delivery, At couriers, or Delivered. Amber rows still need a latest date.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -158,19 +158,8 @@
       return String(d.getDate()).padStart(2, "0") + "-" + d.toLocaleString("en-GB", { month: "short" }).replace(/\./g, "").slice(0, 3);
     }
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;"); }
-    function displayCode(code) {
-      return String(code || "")
-        .split(/[,;/|]+/)
-        .map((s) => {
-          const t = s.trim();
-          if (!t) return "";
-          return t.toUpperCase() === "C" ? "CS" : t;
-        })
-        .filter(Boolean)
-        .join(",");
-    }
     function codeStyle(code) {
-      const first = displayCode(code).split(",")[0] || "";
+      const first = String(code || "").split(/[,;/|]+/)[0].trim();
       const hit = codes.find((c) => c.code === first);
       if (!hit) return "";
       return "background:" + hit.bg + ";color:" + hit.fg;
@@ -213,10 +202,9 @@
     }
 
     function paintCell(td, value, reason) {
-      const shown = displayCode(value || "");
-      td.dataset.code = shown;
-      td.textContent = shown;
-      td.setAttribute("style", codeStyle(shown));
+      td.dataset.code = value || "";
+      td.textContent = value || "";
+      td.setAttribute("style", codeStyle(value));
       if (reason) td.title = reason;
       else td.removeAttribute("title");
     }
@@ -337,7 +325,7 @@
         left += "</tr>";
         cal += "<tr data-id=\"" + row.id + "\"" + mark + ">";
         days.forEach((d) => {
-          const v = displayCode((row.cells && row.cells[d]) || "");
+          const v = (row.cells && row.cells[d]) || "";
           const why = (row.cell_reasons && row.cell_reasons[d]) || "";
           const wk = dayWeekClass(d);
           cal += "<td class=\"day code-cell" + wk + "\" data-day=\"" + d + "\" data-code=\"" + esc(v) + "\" tabindex=\"0\" style=\"" + codeStyle(v) + "\"" + (why ? " title=\"" + esc(why) + "\"" : "") + ">" + esc(v) + "</td>";
