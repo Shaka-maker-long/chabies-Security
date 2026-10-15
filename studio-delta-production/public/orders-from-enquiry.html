@@ -216,8 +216,19 @@
       if (/^fees?$/i.test(type) || /^design\s+fees?$/i.test(type)) return true;
       return /\bfees?\b/i.test(product);
     }
+    function isDeliveryLine(p) {
+      const cat = String((p && p.category) || "").replace(/\s+/g, " ").trim();
+      const product = String((p && p.product) || "").replace(/\s+/g, " ").trim();
+      if (/^delivery$/i.test(product)) return true;
+      if (/^delivery$/i.test(cat) && (!product || /^delivery$/i.test(product))) return true;
+      return false;
+    }
     function shopProducts(products) {
       return (products || []).filter((p) => !isFeeLine(p));
+    }
+    function fieldVal(el, name) {
+      const node = el && el.querySelector("[data-f=" + name + "]");
+      return node ? node.value : "";
     }
     function splitLetter(i) {
       let n = i + 1, s = "";
@@ -244,22 +255,22 @@
     function collect() {
       const products = [...document.querySelectorAll("[data-product]")].map((el) => {
         const paidInFull = !!(el.querySelector("[data-f=paid_in_full]") && el.querySelector("[data-f=paid_in_full]").checked);
-        const incl = el.querySelector("[data-f=price_incl_vat]").value;
-        const excl = el.querySelector("[data-f=price_excl_vat]").value;
+        const incl = fieldVal(el, "price_incl_vat");
+        const excl = fieldVal(el, "price_excl_vat");
         return {
-          category: ((el.querySelector("[data-f=category]") || {}).value) || el.getAttribute("data-category") || "",
-          product: ((el.querySelector("[data-f=product]") || {}).value) || el.getAttribute("data-name") || "",
-          type: el.querySelector("[data-f=type]").value,
-          variation: el.querySelector("[data-f=variation]").value,
-          doors: el.querySelector("[data-f=doors]").value,
-          detailed_description: el.querySelector("[data-f=detailed_description]").value,
-          dimensions: el.querySelector("[data-f=dimensions]").value,
-          powder_coating: el.querySelector("[data-f=powder_coating]").value,
+          category: fieldVal(el, "category") || el.getAttribute("data-category") || "",
+          product: fieldVal(el, "product") || el.getAttribute("data-name") || "",
+          type: fieldVal(el, "type") || "Standard",
+          variation: fieldVal(el, "variation"),
+          doors: fieldVal(el, "doors"),
+          detailed_description: fieldVal(el, "detailed_description"),
+          dimensions: fieldVal(el, "dimensions"),
+          powder_coating: fieldVal(el, "powder_coating"),
           price_incl_vat: incl,
           price_excl_vat: excl,
           paid_in_full: paidInFull,
-          amount_paid: paidInFull ? (incl || inclFromExcl(excl)) : el.querySelector("[data-f=amount_paid]").value,
-          quantity: el.querySelector("[data-f=quantity]").value,
+          amount_paid: paidInFull ? (incl || inclFromExcl(excl)) : fieldVal(el, "amount_paid"),
+          quantity: fieldVal(el, "quantity") || "1",
           qty_price_confirmed: !!(el.querySelector("[data-f=qty_price_confirmed]") && el.querySelector("[data-f=qty_price_confirmed]").checked)
         };
       });
@@ -304,7 +315,7 @@
       const copy = document.getElementById("deliveryCopy");
       const codeEl = document.getElementById("deliveryCode");
       if (!dateEl || !copy) return;
-      const types = shopProducts(collect().products).map((p) => p.type);
+      const types = shopProducts(collect().products).filter((p) => !isDeliveryLine(p)).map((p) => p.type);
       const province = document.getElementById("f_province").value;
       const used = strictType(types);
       const weeks = isGauteng(province) ? LEAD[used].g : LEAD[used].o;
@@ -414,11 +425,20 @@
     function enquiryProductsForForm(saved, draftProducts) {
       const draftList = draftProducts || [];
       const savedList = (saved && saved.products) || [];
-      if (!savedList.length) return blankEnquiryPrefill(draftList);
-      const draftKeys = {};
-      draftList.forEach((p) => { draftKeys[productKey(p)] = true; });
-      const kept = savedList.filter((p) => draftKeys[productKey(p)]);
-      if (!kept.length) return blankEnquiryPrefill(draftList);
+      let kept;
+      if (!savedList.length) {
+        kept = draftList.slice();
+      } else {
+        const draftKeys = {};
+        draftList.forEach((p) => { draftKeys[productKey(p)] = true; });
+        kept = savedList.filter((p) => draftKeys[productKey(p)]);
+        if (!kept.length) kept = draftList.slice();
+      }
+      // Delivery from the enquiry draft must stay on the form.
+      if (!kept.some(isDeliveryLine)) {
+        const fromDraft = draftList.find(isDeliveryLine);
+        if (fromDraft) kept = kept.concat([Object.assign({}, fromDraft)]);
+      }
       return blankEnquiryPrefill(kept);
     }
     function markSelectedImportant(box) {
@@ -466,12 +486,34 @@
       const name = d.product || p.product || "";
       const category = d.category || p.category || "";
       const title = category ? category + " · " + name : (name || ("Item " + (i + 1)));
-      const remove = count > 1
+      const delivery = isDeliveryLine(d) || isDeliveryLine(p);
+      const remove = count > 1 && !delivery
         ? "<button type=\"button\" class=\"ghost\" data-remove-item>Remove this item</button>"
         : "";
       const head = locked
-        ? "<div class=\"product-head\"><h3>" + esc(title) + "</h3>" + remove + "</div>"
+        ? "<div class=\"product-head\"><h3>" + esc(title) + "</h3>" + remove +
+          (delivery ? "<span class=\"hint\">Required on Orders — from the enquiry delivery amount.</span>" : "") + "</div>"
         : "<div class=\"product-head\"><h3>" + esc(name || ("Item " + (i + 1))) + "</h3>" + remove + "</div>";
+      if (delivery) {
+        return "<article class=\"product\" data-product data-delivery data-name=\"" + esc(name || "Delivery") + "\" data-category=\"" + esc(category || "Delivery") + "\">" +
+          head +
+          "<input type=\"hidden\" data-f=\"product\" value=\"" + esc(name || "Delivery") + "\">" +
+          "<input type=\"hidden\" data-f=\"category\" value=\"" + esc(category || "Delivery") + "\">" +
+          "<div class=\"grid four\">" +
+            "<label>Type<select data-f=\"type\">" + typeOptions(p.type || d.type || "Standard") + "</select></label>" +
+            "<label>Quantity *<input data-f=\"quantity\" type=\"number\" min=\"1\" step=\"1\" value=\"" + esc(p.quantity || 1) + "\" required></label>" +
+            "<label>Price incl VAT<input data-f=\"price_incl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_incl_vat || "") + "\"></label>" +
+            "<label>Price excl VAT *<input data-f=\"price_excl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_excl_vat || exclFromIncl(p.price_incl_vat)) + "\" required></label>" +
+          "</div>" +
+          "<label class=\"confirm\"><input data-f=\"qty_price_confirmed\" type=\"checkbox\"" + (p.qty_price_confirmed ? " checked" : "") + ">" +
+            "<span>Quantity and price excl VAT are correct<span class=\"hint\">Tick this after you check the delivery amount.</span></span></label>" +
+          "<label class=\"confirm\"><input data-f=\"paid_in_full\" type=\"checkbox\"" + (p.paid_in_full ? " checked" : "") + ">" +
+            "<span>Paid in full<span class=\"hint\">Tick if they paid the delivery incl VAT. Type an amount only if they still owe.</span></span></label>" +
+          "<div class=\"grid\" style=\"margin-top:12px\">" +
+            "<label>Amount paid (Incl VAT)<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "") + "\"" + (p.paid_in_full ? " readonly" : " required") + "><span class=\"hint\">Including 15% VAT. Owing is price incl VAT minus this.</span></label>" +
+          "</div>" +
+        "</article>";
+      }
       const identity = locked
         ? "<input type=\"hidden\" data-f=\"product\" value=\"" + esc(name) + "\">" +
           "<input type=\"hidden\" data-f=\"category\" value=\"" + esc(category) + "\">"
@@ -531,6 +573,15 @@
       if (cards.length < 2) return;
       const data = collect();
       const idx = cards.indexOf(card);
+      if (idx < 0) return;
+      if (isDeliveryLine(data.products[idx]) || (card && card.hasAttribute("data-delivery"))) {
+        const msg = document.getElementById("formMsg");
+        if (msg) {
+          msg.textContent = "Delivery is required on Orders — you cannot remove it.";
+          msg.className = "msg bad";
+        }
+        return;
+      }
       data.products.splice(idx, 1);
       paintProducts(data.products);
       refreshDeliveryCopy();
@@ -563,7 +614,7 @@
       const heading = standalone ? "New order" : ("Enquiry " + esc(enquiryNo));
       const productHint = standalone
         ? "Add each product on this order. Quantity 2 of the same chair becomes A and B. A chair plus a stool becomes A and B with different products. Letters run across the whole order. Tick Paid in full if they paid the price incl VAT for that quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required."
-        : "Category and product come from the enquiry. Remove any item the client no longer wants before you create orders — only the items left here are added. Type, quantity, prices, and shop details are yours to set. Design Fee and other fee lines stay on the enquiry — they are not split onto Orders. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.";
+        : "Category and product come from the enquiry. Remove any item the client no longer wants before you create orders — only the items left here are added. Delivery from the quote is required on Orders and cannot be removed. Type, quantity, prices, and shop details are yours to set. Design Fee and other fee lines stay on the enquiry — they are not split onto Orders. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Shop products need variation, doors, powder coating, dimensions, and detailed description. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.";
       page.innerHTML =
         "<form class=\"card\" id=\"form\">" +
           "<h2>" + heading + "</h2>" +
@@ -706,15 +757,21 @@
         msg.className = "msg bad";
         return;
       }
-      const shopProducts = (data.products || []).filter((p) => !isFeeLine(p));
-      if (!shopProducts.length) {
+      const shopList = (data.products || []).filter((p) => !isFeeLine(p));
+      if (!shopList.length) {
         msg.textContent = "Keep at least one product to add to Orders.";
+        msg.className = "msg bad";
+        return;
+      }
+      if (!standalone && !shopList.some(isDeliveryLine)) {
+        msg.textContent = "Delivery is required on Orders. Keep the Delivery line from the enquiry.";
         msg.className = "msg bad";
         return;
       }
       for (const p of data.products) {
         if (isFeeLine(p)) continue;
         const label = p.product || "this product";
+        const delivery = isDeliveryLine(p);
         if (standalone && !String(p.product || "").trim()) {
           msg.textContent = "Product is required on every item.";
           msg.className = "msg bad";
@@ -740,6 +797,7 @@
           msg.className = "msg bad";
           return;
         }
+        if (delivery) continue;
         if (!String(p.variation || "").trim()) {
           msg.textContent = "Variation is required for " + label + ".";
           msg.className = "msg bad";

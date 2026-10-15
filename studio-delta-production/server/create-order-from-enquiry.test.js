@@ -122,6 +122,26 @@ function shopFields(extra) {
   }, extra || {});
 }
 
+function deliveryLine(extra) {
+  return shopFields(Object.assign({
+    product: "Delivery",
+    category: "Delivery",
+    type: "Standard",
+    quantity: 1,
+    price_incl_vat: "1150",
+    amount_paid: "0",
+    variation: "",
+    doors: "",
+    powder_coating: "",
+    dimensions: "",
+    detailed_description: ""
+  }, extra || {}));
+}
+
+assert.ok(fromEnquiry.isDeliveryLine({ product: "Delivery", category: "Delivery" }));
+assert.ok(fromEnquiry.isDeliveryLine({ product: "Delivery" }));
+assert.ok(!fromEnquiry.isDeliveryLine({ product: "Air Chair", category: "Chair" }));
+
 const planned = fromEnquiry.planCreate(
   { enquiry_no: "#5001", quote_no: "SOQ88" },
   {
@@ -137,16 +157,19 @@ const planned = fromEnquiry.planCreate(
     },
     products: [
       shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "2000" }),
-      shopFields({ product: "Air Bar Stool", category: "Chair", type: "Custom", quantity: 1, price_incl_vat: "5000", amount_paid: "0" })
+      shopFields({ product: "Air Bar Stool", category: "Chair", type: "Custom", quantity: 1, price_incl_vat: "5000", amount_paid: "0" }),
+      deliveryLine()
     ]
   },
   []
 );
-assert.strictEqual(planned.units.length, 3);
-assert.deepStrictEqual(planned.units.map((u) => u.order_number), ["S260100 A", "S260100 B", "S260100 C"]);
+assert.strictEqual(planned.units.length, 4);
+assert.deepStrictEqual(planned.units.map((u) => u.order_number), ["S260100 A", "S260100 B", "S260100 C", "S260100 D"]);
 assert.strictEqual(planned.units[0].product, "Air Chair");
 assert.strictEqual(planned.units[1].product, "Air Chair");
 assert.strictEqual(planned.units[2].product, "Air Bar Stool");
+assert.strictEqual(planned.units[3].product, "Delivery");
+assert.strictEqual(planned.units[3].variation, "N/A");
 assert.strictEqual(planned.units[0].price_incl_vat, "10000.00");
 assert.strictEqual(planned.units[1].price_incl_vat, "10000.00");
 assert.strictEqual(planned.units[2].price_incl_vat, "5000.00");
@@ -155,7 +178,7 @@ assert.strictEqual(planned.delivery.scheduleCode, "LD");
 assert.strictEqual(planned.delivery.date, "2026-10-15");
 assert.strictEqual(planned.quote_number, "SOQ88");
 
-// Client paid for the chairs but no longer wants the stool — omit it before create.
+// Client paid for the chairs but no longer wants the stool — omit it; Delivery stays.
 const chairsOnly = fromEnquiry.planCreate(
   { enquiry_no: "#5001", quote_no: "SOQ88" },
   {
@@ -169,14 +192,35 @@ const chairsOnly = fromEnquiry.planCreate(
       city: "Sandton"
     },
     products: [
-      shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "20000", paid_in_full: true })
+      shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "20000", paid_in_full: true }),
+      deliveryLine({ price_incl_vat: "1150", paid_in_full: true, amount_paid: "" })
     ]
   },
   []
 );
-assert.strictEqual(chairsOnly.units.length, 2, "removed enquiry items are not added to Orders");
-assert.deepStrictEqual(chairsOnly.units.map((u) => u.order_number), ["S260101 A", "S260101 B"]);
-assert.ok(chairsOnly.units.every((u) => u.product === "Air Chair"));
+assert.strictEqual(chairsOnly.units.length, 3, "removed enquiry items are not added; Delivery stays");
+assert.deepStrictEqual(chairsOnly.units.map((u) => u.product), ["Air Chair", "Air Chair", "Delivery"]);
+assert.throws(
+  () => fromEnquiry.planCreate(
+    { enquiry_no: "#5001", quote_no: "SOQ88" },
+    {
+      order_number: "S260102",
+      delivery_date: "2026-10-15",
+      now,
+      shared: {
+        client_name: "Split Client",
+        province: "Gauteng",
+        address: "12 Main Road",
+        city: "Sandton"
+      },
+      products: [
+        shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 1, price_incl_vat: "10000", amount_paid: "10000", paid_in_full: true })
+      ]
+    },
+    []
+  ),
+  /Delivery is required on Orders/
+);
 
 assert.ok(fromEnquiry.isFeeLine({ category: "Fee", product: "Design Fee" }));
 assert.ok(fromEnquiry.isFeeLine({ product: "Design Fee" }));
@@ -189,13 +233,16 @@ const feeDraft = fromEnquiry.buildDraft({
   enquiry_no: "#2910",
   quote_no: "SOQ2910",
   enquiry_type: "Custom",
+  delivery_incl_vat: "402.50",
   products: [
     { product: "Helderberg Gate", category: "Gate", value_incl_vat: "11500.00" },
     { product: "Design Fee", category: "Fee", value_incl_vat: "350.00" }
   ]
 }, "S260247");
-assert.strictEqual(feeDraft.products.length, 1);
+assert.strictEqual(feeDraft.products.length, 2, "shop product plus required Delivery");
 assert.strictEqual(feeDraft.products[0].product, "Helderberg Gate");
+assert.strictEqual(feeDraft.products[1].product, "Delivery");
+assert.strictEqual(feeDraft.products[1].price_incl_vat, "402.50");
 assert.deepStrictEqual(feeDraft.skippedFees, ["Design Fee"]);
 
 const withFee = fromEnquiry.planCreate(
@@ -212,14 +259,15 @@ const withFee = fromEnquiry.planCreate(
     },
     products: [
       shopFields({ product: "Helderberg Gate", category: "Gate", type: "Custom", quantity: 1, price_incl_vat: "11500" }),
-      shopFields({ product: "Design Fee", category: "Fee", type: "Custom", quantity: 1, price_incl_vat: "350", amount_paid: "0" })
+      shopFields({ product: "Design Fee", category: "Fee", type: "Custom", quantity: 1, price_incl_vat: "350", amount_paid: "0" }),
+      deliveryLine({ price_incl_vat: "402.50" })
     ]
   },
   []
 );
-assert.strictEqual(withFee.units.length, 1, "split ignores fee lines");
-assert.strictEqual(withFee.units[0].order_number, "S260247");
-assert.strictEqual(withFee.units[0].product, "Helderberg Gate");
+assert.strictEqual(withFee.units.length, 2, "split ignores fee lines; Delivery is kept");
+assert.deepStrictEqual(withFee.units.map((u) => u.product), ["Helderberg Gate", "Delivery"]);
+assert.strictEqual(withFee.units[0].order_number, "S260247 A");
 
 const twoPlusFee = fromEnquiry.planCreate(
   { enquiry_no: "#2910", quote_no: "SOQ2910" },
@@ -236,17 +284,37 @@ const twoPlusFee = fromEnquiry.planCreate(
     products: [
       shopFields({ product: "Gate A", category: "Gate", type: "Custom", quantity: 1, price_incl_vat: "8000" }),
       shopFields({ product: "Design Fee", category: "Fee", type: "Custom", quantity: 1, price_incl_vat: "350" }),
-      shopFields({ product: "Gate B", category: "Gate", type: "Custom", quantity: 1, price_incl_vat: "9000" })
+      shopFields({ product: "Gate B", category: "Gate", type: "Custom", quantity: 1, price_incl_vat: "9000" }),
+      deliveryLine()
     ]
   },
   []
 );
-assert.deepStrictEqual(twoPlusFee.units.map((u) => u.order_number), ["S260248 A", "S260248 B"]);
-assert.deepStrictEqual(twoPlusFee.units.map((u) => u.product), ["Gate A", "Gate B"]);
+assert.deepStrictEqual(twoPlusFee.units.map((u) => u.order_number), ["S260248 A", "S260248 B", "S260248 C"]);
+assert.deepStrictEqual(twoPlusFee.units.map((u) => u.product), ["Gate A", "Gate B", "Delivery"]);
 
 assert.throws(
   () => fromEnquiry.planCreate(
     { enquiry_no: "#2910", quote_no: "SOQ2910" },
+    {
+      order_number: "S260249",
+      delivery_date: "2026-10-15",
+      now,
+      shared: {
+        client_name: "Fee Only",
+        province: "Western Cape",
+        address: "11 Buren Street",
+        city: "Cape Town"
+      },
+      products: [shopFields({ product: "Design Fee", category: "Fee", type: "Custom", quantity: 1, price_incl_vat: "350" })]
+    },
+    []
+  ),
+  /Delivery is required on Orders/
+);
+assert.throws(
+  () => fromEnquiry.planCreate(
+    null,
     {
       order_number: "S260249",
       delivery_date: "2026-10-15",
@@ -307,12 +375,16 @@ const single = fromEnquiry.planCreate(
     delivery_date: "2026-10-13",
     now,
     shared: { client_name: "One Chair", province: "Western Cape", address: "1 Beach Road", city: "Stellenbosch" },
-    products: [shopFields({ product: "Air Chair", type: "Standard", quantity: 1, price_incl_vat: "28750" })]
+    products: [
+      shopFields({ product: "Air Chair", type: "Standard", quantity: 1, price_incl_vat: "28750" }),
+      deliveryLine()
+    ]
   },
   []
 );
-assert.strictEqual(single.units.length, 1);
-assert.strictEqual(single.units[0].order_number, "S260200");
+assert.strictEqual(single.units.length, 2);
+assert.strictEqual(single.units[0].order_number, "S260200 A");
+assert.strictEqual(single.units[1].product, "Delivery");
 assert.strictEqual(single.delivery.scheduleCode, "LC");
 
 assert.throws(
@@ -379,23 +451,27 @@ const paidFullPlan = fromEnquiry.planCreate(
     delivery_date: "2026-10-15",
     now,
     shared: { client_name: "Paid Full", province: "Gauteng", address: "12 Main Road", city: "Sandton" },
-    products: [shopFields({
-      product: "Air Chair",
-      category: "Chair",
-      type: "Standard",
-      quantity: 2,
-      price_incl_vat: "29322.00",
-      amount_paid: "",
-      paid_in_full: true
-    })]
+    products: [
+      shopFields({
+        product: "Air Chair",
+        category: "Chair",
+        type: "Standard",
+        quantity: 2,
+        price_incl_vat: "29322.00",
+        amount_paid: "",
+        paid_in_full: true
+      }),
+      deliveryLine({ paid_in_full: true, amount_paid: "" })
+    ]
   },
   []
 );
-assert.strictEqual(paidFullPlan.units.length, 2);
+assert.strictEqual(paidFullPlan.units.length, 3);
 assert.strictEqual(paidFullPlan.units[0].price_incl_vat, "14661.00");
 assert.strictEqual(paidFullPlan.units[1].price_incl_vat, "14661.00");
 assert.strictEqual(paidFullPlan.units[0].amount_paid, "14661.00");
 assert.strictEqual(paidFullPlan.units[1].amount_paid, "14661.00");
+assert.strictEqual(paidFullPlan.units[2].product, "Delivery");
 
 assert.throws(
   () => fromEnquiry.planCreate(
@@ -419,7 +495,10 @@ const mondayLcPlan = fromEnquiry.planCreate(
     delivery_date: "2026-09-14",
     now: "2026-09-07T10:00:00+02:00",
     shared: { client_name: "Cape Rush", province: "Western Cape", address: "1 Beach Road", city: "Stellenbosch" },
-    products: [shopFields({ product: "Air Chair", type: "Standard", quantity: 1, price_incl_vat: "1000" })]
+    products: [
+      shopFields({ product: "Air Chair", type: "Standard", quantity: 1, price_incl_vat: "1000" }),
+      deliveryLine()
+    ]
   },
   []
 );
@@ -449,6 +528,7 @@ db.upsertEnquiry({
   enquiry_type: "Catologue",
   quote_no: "SOQ88",
   request: "Two chairs and a stool",
+  delivery_incl_vat: "1150.00",
   products: [
     { product: "Air Chair", category: "Chair", value_incl_vat: "23000.00" },
     { product: "Air Bar Stool", category: "Chair", value_incl_vat: "5750.00" }
@@ -459,10 +539,12 @@ db.upsertEnquiry({
 const draft = db.createOrderDraftFromEnquiry("#5001", now);
 assert.strictEqual(draft.quote_number, "SOQ88");
 assert.ok(/^S\d+$/.test(draft.order_number));
-assert.strictEqual(draft.products.length, 2);
+assert.strictEqual(draft.products.length, 3, "chairs, stool, and required Delivery");
 assert.strictEqual(draft.products[0].type, "Standard");
 assert.strictEqual(draft.products[0].quantity, 1);
 assert.strictEqual(draft.products[0].detailed_description, "");
+assert.strictEqual(draft.products[2].product, "Delivery");
+assert.strictEqual(draft.products[2].price_incl_vat, "1150.00");
 assert.strictEqual(draft.shared.city, "");
 assert.strictEqual(draft.delivery.scheduleCode, "LD");
 assert.ok(draft.dropdowns.type.indexOf("Standard") !== -1);
@@ -484,12 +566,13 @@ const created = db.createOrdersFromEnquiryForm("#5001", {
   },
   products: [
     shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "2000", detailed_description: "Pair" }),
-    shopFields({ product: "Air Bar Stool", category: "Chair", type: "Custom", quantity: 1, price_incl_vat: "5000", amount_paid: "0", detailed_description: "Stool" })
+    shopFields({ product: "Air Bar Stool", category: "Chair", type: "Custom", quantity: 1, price_incl_vat: "5000", amount_paid: "0", detailed_description: "Stool" }),
+    deliveryLine({ price_incl_vat: "1150.00" })
   ]
 });
 assert.strictEqual(created.existing, false);
-assert.strictEqual(created.rows.length, 3);
-assert.deepStrictEqual(created.rows.map((r) => r.order_number), ["S260100 A", "S260100 B", "S260100 C"]);
+assert.strictEqual(created.rows.length, 4);
+assert.deepStrictEqual(created.rows.map((r) => r.order_number), ["S260100 A", "S260100 B", "S260100 C", "S260100 D"]);
 assert.strictEqual(created.rows[0].status, "Not Yet Started");
 assert.strictEqual(created.rows[0].quote_number, "SOQ88");
 assert.strictEqual(created.rows[0].enquiry_no, "#5001");
@@ -499,12 +582,13 @@ assert.strictEqual(savedA.price_incl_vat, "10000.00");
 assert.ok(Number(savedA.price_excl_vat) > 0);
 assert.strictEqual(created.rows[2].product, "Air Bar Stool");
 assert.strictEqual(created.rows[2].type, "Custom");
+assert.strictEqual(created.rows[3].product, "Delivery");
 assert.strictEqual(db.getEnquiry("#5001").order_number, "S260100 A");
 assert.strictEqual(db.nextStudioOrderNumber(), "S260101");
 assert.ok(!db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#5001"), "enquiries already on Orders leave the ready-to-add list");
 
 const items = db.listDeliveryItems().items.filter((it) => String(it.order_number).indexOf("S260100") === 0);
-assert.strictEqual(items.length, 3);
+assert.strictEqual(items.length, 4);
 items.forEach((it) => {
   assert.strictEqual(it.day, "2026-10-15");
   assert.strictEqual(it.code, "LD");
@@ -518,7 +602,7 @@ const again = db.createOrdersFromEnquiryForm("#5001", {
   products: [{ product: "Air Chair", quantity: 1, price_incl_vat: "1000" }]
 });
 assert.strictEqual(again.existing, true);
-assert.strictEqual(again.rows.length, 3);
+assert.strictEqual(again.rows.length, 4);
 
 db.upsertEnquiry({
   enquiry_no: "#5002",
@@ -527,6 +611,7 @@ db.upsertEnquiry({
   province: "Western Cape",
   enquiry_type: "New Design",
   quote_no: "SOQ90",
+  delivery_incl_vat: "1150.00",
   products: [{ product: "Custom Table", category: "Table", value_incl_vat: "11500.00" }],
   ready_for_orders: true
 }, { fromPipeline: true, fromMigrate: true });
@@ -536,10 +621,14 @@ const one = db.createOrdersFromEnquiryForm("#5002", {
   delivery_date: "2026-11-05",
   now,
   shared: { client_name: "Cape Client", province: "Western Cape", address: "1 Beach Road", city: "Stellenbosch" },
-  products: [shopFields({ product: "Custom Table", category: "Table", type: "New Design", quantity: 1, price_incl_vat: "11500" })]
+  products: [
+    shopFields({ product: "Custom Table", category: "Table", type: "New Design", quantity: 1, price_incl_vat: "11500" }),
+    deliveryLine()
+  ]
 });
-assert.strictEqual(one.rows.length, 1);
-assert.strictEqual(one.rows[0].order_number, "S260200");
+assert.strictEqual(one.rows.length, 2);
+assert.strictEqual(one.rows[0].order_number, "S260200 A");
+assert.strictEqual(one.rows[1].product, "Delivery");
 
 db.upsertEnquiry({
   enquiry_no: "#2910",
@@ -548,6 +637,7 @@ db.upsertEnquiry({
   province: "Western Cape",
   enquiry_type: "Custom",
   quote_no: "SOQ2910",
+  delivery_incl_vat: "402.50",
   products: [
     { product: "Helderberg Gate", category: "Gate", value_incl_vat: "11500.00" },
     { product: "Design Fee", category: "Fee", value_incl_vat: "350.00" }
@@ -556,8 +646,9 @@ db.upsertEnquiry({
 }, { fromPipeline: true, fromMigrate: true });
 
 const feeFromDraft = db.createOrderDraftFromEnquiry("#2910");
-assert.strictEqual(feeFromDraft.products.length, 1);
+assert.strictEqual(feeFromDraft.products.length, 2);
 assert.strictEqual(feeFromDraft.products[0].product, "Helderberg Gate");
+assert.strictEqual(feeFromDraft.products[1].product, "Delivery");
 assert.deepStrictEqual(feeFromDraft.skippedFees, ["Design Fee"]);
 
 const helderberg = db.createOrdersFromEnquiryForm("#2910", {
@@ -572,18 +663,20 @@ const helderberg = db.createOrdersFromEnquiryForm("#2910", {
   },
   products: [
     shopFields({ product: "Helderberg Gate", category: "Gate", type: "Custom", quantity: 1, price_incl_vat: "11500" }),
-    shopFields({ product: "Design Fee", category: "Fee", type: "Custom", quantity: 1, price_incl_vat: "350", amount_paid: "0" })
+    shopFields({ product: "Design Fee", category: "Fee", type: "Custom", quantity: 1, price_incl_vat: "350", amount_paid: "0" }),
+    deliveryLine({ price_incl_vat: "402.50" })
   ]
 });
-assert.strictEqual(helderberg.rows.length, 1);
-assert.strictEqual(helderberg.rows[0].order_number, "S260247");
+assert.strictEqual(helderberg.rows.length, 2);
+assert.strictEqual(helderberg.rows[0].order_number, "S260247 A");
 assert.strictEqual(helderberg.rows[0].product, "Helderberg Gate");
-assert.ok(!db.listOrders().some((o) => o.order_number === "S260247 B"), "Design Fee must not become unit B");
+assert.strictEqual(helderberg.rows[1].product, "Delivery");
+assert.ok(!db.listOrders().some((o) => o.product === "Design Fee"), "Design Fee must not become an Orders row");
 
 const origIsFee = fromEnquiry.isFeeLine;
 fromEnquiry.isFeeLine = () => false;
 db.upsertOrder({
-  order_number: "S260247 B",
+  order_number: "S260247 C",
   quote_number: "SOQ2910",
   status: "Not Yet Started",
   type: "Custom",
@@ -594,18 +687,21 @@ db.upsertOrder({
   amount_paid: "0"
 });
 fromEnquiry.isFeeLine = origIsFee;
-assert.ok(db.listOrders().some((o) => o.order_number === "S260247 B"));
+assert.ok(db.listOrders().some((o) => o.order_number === "S260247 C"));
 const purgedFees = db.purgeFeeOrders();
 assert.ok(purgedFees.removed >= 1);
-assert.ok(purgedFees.orderNumbers.indexOf("S260247 B") !== -1);
-assert.ok(!db.listOrders().some((o) => o.order_number === "S260247 B"), "purge removes Design Fee from Orders");
-assert.ok(db.listOrders().some((o) => o.order_number === "S260247"), "shop unit stays");
+assert.ok(purgedFees.orderNumbers.indexOf("S260247 C") !== -1);
+assert.ok(!db.listOrders().some((o) => o.order_number === "S260247 C"), "purge removes Design Fee from Orders");
+assert.ok(db.listOrders().some((o) => o.order_number === "S260247 A"), "shop unit stays");
+assert.ok(db.listOrders().some((o) => o.order_number === "S260247 B" && o.product === "Delivery"), "Delivery unit stays");
 
 assert.strictEqual(one.delivery.scheduleCode, "LC");
-const capeItems = db.listDeliveryItems().items.filter((it) => it.order_number === "S260200");
-assert.strictEqual(capeItems.length, 1);
-assert.strictEqual(capeItems[0].code, "LC");
-assert.strictEqual(capeItems[0].day, "2026-11-05");
+const capeItems = db.listDeliveryItems().items.filter((it) => String(it.order_number).indexOf("S260200") === 0);
+assert.strictEqual(capeItems.length, 2);
+capeItems.forEach((it) => {
+  assert.strictEqual(it.code, "LC");
+  assert.strictEqual(it.day, "2026-11-05");
+});
 
 assert.ok(fromEnquiry.orderBaseTaken("S260200", db.listOrders()));
 
@@ -618,6 +714,7 @@ db.upsertEnquiry({
   province: "Western Cape",
   enquiry_type: "Catologue",
   quote_no: "SOQ91",
+  delivery_incl_vat: "1150.00",
   products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "29322.00" }],
   ready_for_orders: true
 }, { fromPipeline: true, fromMigrate: true });
@@ -634,23 +731,27 @@ const winelands = db.createOrdersFromEnquiryForm("#5003", {
     city: "Stellenbosch",
     address: "1 Beach Road"
   },
-  products: [shopFields({
-    product: "Air Chair",
-    category: "Chair",
-    type: "Standard",
-    quantity: 2,
-    price_incl_vat: "29322.00",
-    amount_paid: "29322.00",
-    detailed_description: "Pair"
-  })]
+  products: [
+    shopFields({
+      product: "Air Chair",
+      category: "Chair",
+      type: "Standard",
+      quantity: 2,
+      price_incl_vat: "29322.00",
+      amount_paid: "29322.00",
+      detailed_description: "Pair"
+    }),
+    deliveryLine({ price_incl_vat: "1150.00", paid_in_full: true, amount_paid: "" })
+  ]
 });
-assert.strictEqual(winelands.rows.length, 2);
+assert.strictEqual(winelands.rows.length, 3);
 assert.strictEqual(winelands.rows[0].price_incl_vat, "R 14,661.00");
 assert.strictEqual(winelands.rows[1].price_incl_vat, "R 14,661.00");
 assert.strictEqual(winelands.rows[0].amount_paid, "R 14,661.00");
 assert.strictEqual(winelands.rows[1].amount_paid, "R 14,661.00");
 assert.strictEqual(winelands.rows[0].owing, "R 0.00");
 assert.strictEqual(winelands.rows[1].owing, "R 0.00");
+assert.strictEqual(winelands.rows[2].product, "Delivery");
 assert.ok(!db.listDebtors().some((o) => String(o.order_number).indexOf("S260001") === 0));
 
 const blank = db.createBlankOrderDraft(now);
@@ -703,6 +804,9 @@ assert.ok(page.indexOf("standalone && count > 1") === -1, "enquiry mode may remo
 assert.ok(page.indexOf("count > 1") !== -1);
 assert.ok(page.indexOf("enquiryProductsForForm") !== -1);
 assert.ok(page.indexOf("Remove any item the client no longer wants") !== -1);
+assert.ok(page.indexOf("Delivery from the quote is required on Orders") !== -1);
+assert.ok(page.indexOf("function isDeliveryLine") !== -1);
+assert.ok(page.indexOf("data-delivery") !== -1);
 assert.ok(page.indexOf("Keep at least one product to add to Orders") !== -1);
 assert.ok(page.indexOf("/api/office/orders/create") !== -1);
 assert.ok(page.indexOf("CATERGORY") !== -1);
@@ -780,6 +884,7 @@ db.upsertEnquiry({
   status: "Ordered",
   client_name: "Needs Drawing",
   quote_no: "SOQ2952",
+  delivery_incl_vat: "1150.00",
   products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "11500.00" }],
   drawing: { required: true, file: null },
   ready_for_orders: true
@@ -794,7 +899,10 @@ const drawingCreated = db.createOrdersFromEnquiryForm("#441", {
     city: "Sandton",
     address: "12 Main Road"
   },
-  products: [shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 1, price_incl_vat: "11500" })]
+  products: [
+    shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 1, price_incl_vat: "11500" }),
+    deliveryLine()
+  ]
 });
 assert.strictEqual(drawingCreated.rows[0].status, "Waiting for drawing");
 assert.strictEqual(db.getEnquiry("#441").ready_for_orders, true);

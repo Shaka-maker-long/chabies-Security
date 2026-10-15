@@ -304,8 +304,46 @@ function isFeeLine(p) {
   return false;
 }
 
+/** Delivery charge line — required on Orders from enquiry; not a shop-built product. */
+function isDeliveryLine(p) {
+  const cat = String((p && p.category) || "").replace(/\s+/g, " ").trim();
+  const product = String((p && p.product) || "").replace(/\s+/g, " ").trim();
+  if (/^delivery$/i.test(product)) return true;
+  if (/^delivery$/i.test(cat) && (!product || /^delivery$/i.test(product))) return true;
+  return false;
+}
+
 function shopLines(products) {
   return (products || []).filter((p) => !isFeeLine(p));
+}
+
+function enquiryDeliveryIncl(enquiry) {
+  const incl = String((enquiry && enquiry.delivery_incl_vat) || "").trim();
+  if (incl !== "") return incl;
+  const excl = String((enquiry && enquiry.delivery_excl_vat) || "").trim();
+  if (excl === "") return "";
+  const n = Number(String(excl).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return excl;
+  return (Math.round(n * 1.15 * 100) / 100).toFixed(2);
+}
+
+function ensureDeliveryProduct(products, enquiry, typeDefault) {
+  const list = (products || []).slice();
+  if (list.some(isDeliveryLine)) return list;
+  list.push({
+    category: "Delivery",
+    product: "Delivery",
+    type: typeDefault || "Standard",
+    variation: "",
+    doors: "",
+    detailed_description: "",
+    dimensions: "",
+    powder_coating: "",
+    price_incl_vat: enquiryDeliveryIncl(enquiry),
+    amount_paid: "",
+    quantity: 1
+  });
+  return list;
 }
 
 function namedEnquiryLines(enquiry) {
@@ -331,7 +369,7 @@ function buildDraft(enquiry, nextOrderNumber, now) {
   const chosen = quoteOptions.chosenQuote(enquiry);
   const named = namedEnquiryLines(enquiry);
   const skippedFees = named.filter(isFeeLine).map((p) => String(p.product || p.category || "Fee").trim());
-  const products = named.filter((p) => !isFeeLine(p)).map((p) => ({
+  const mapped = named.filter((p) => !isFeeLine(p)).map((p) => ({
     category: String(p.category || (enquiry && enquiry.category) || "").trim(),
     product: String(p.product || "").trim(),
     type: typeDefault,
@@ -344,6 +382,8 @@ function buildDraft(enquiry, nextOrderNumber, now) {
     amount_paid: "",
     quantity: 1
   }));
+  // Delivery on the quote must land on Orders — inject from enquiry delivery amount if missing.
+  const products = ensureDeliveryProduct(mapped, enquiry, typeDefault);
   return {
     enquiry_no: enquiry && enquiry.enquiry_no || "",
     quote_number: (chosen && chosen.quote_no) || (enquiry && enquiry.quote_no) || "",
@@ -361,7 +401,7 @@ function buildDraft(enquiry, nextOrderNumber, now) {
     products,
     skippedFees,
     delivery: estimateDelivery({
-      types: products.map((p) => p.type),
+      types: products.filter((p) => !isDeliveryLine(p)).map((p) => p.type),
       province: (enquiry && enquiry.province) || "",
       now
     })
@@ -412,18 +452,21 @@ function planUnits(products) {
     if (qty < 1) return;
     const product = String((p && p.product) || "").trim();
     if (!product) return;
+    const delivery = isDeliveryLine(p);
     let incl = lineInclVat(p);
     const paid = lineAmountPaid(p, incl);
     for (let i = 0; i < qty; i++) {
       units.push({
         product,
-        category: String((p && p.category) || "").trim(),
+        category: String((p && p.category) || "").trim() || (delivery ? "Delivery" : ""),
         type: orderTypeFromEnquiryType(p && p.type),
-        variation: String((p && p.variation) || "").trim(),
-        doors: String((p && p.doors) || "").trim(),
-        detailed_description: String((p && p.detailed_description) || "").trim(),
-        dimensions: String((p && p.dimensions) || "").trim(),
-        powder_coating: String((p && p.powder_coating) || "").trim(),
+        variation: delivery ? "N/A" : String((p && p.variation) || "").trim(),
+        doors: delivery ? "N/A" : String((p && p.doors) || "").trim(),
+        detailed_description: delivery
+          ? (String((p && p.detailed_description) || "").trim() || "Delivery")
+          : String((p && p.detailed_description) || "").trim(),
+        dimensions: delivery ? "N/A" : String((p && p.dimensions) || "").trim(),
+        powder_coating: delivery ? "N/A" : String((p && p.powder_coating) || "").trim(),
         price_incl_vat: splitCents(incl, qty, i),
         amount_paid: splitCents(paid, qty, i)
       });
@@ -457,6 +500,7 @@ function assertProductReady(product, index) {
   if (!isFlag(product && product.paid_in_full) && String(product && product.amount_paid == null ? "" : product.amount_paid).trim() === "") {
     throw new Error("Amount paid is required for " + label + " unless you tick Paid in full");
   }
+  if (isDeliveryLine(product)) return;
   requireText(product && product.variation, "Variation is required for " + label);
   requireText(product && product.doors, "Doors is required for " + label);
   requireText(product && product.powder_coating, "Powder coating is required for " + label);
@@ -477,6 +521,16 @@ function planCreate(enquiry, body, existingOrders) {
   }
   const products = Array.isArray(body && body.products) ? body.products : [];
   products.forEach(assertProductReady);
+  // From an enquiry, Delivery must be kept on Orders (price from the quote delivery line).
+  if (enquiry) {
+    const hasDelivery = shopLines(products).some((p) => {
+      const qty = Math.floor(Number(p && p.quantity) || 0);
+      return qty >= 1 && isDeliveryLine(p);
+    });
+    if (!hasDelivery) {
+      throw new Error("Delivery is required on Orders. Keep the Delivery line from the enquiry.");
+    }
+  }
   const units = planUnits(products);
   if (!units.length) {
     const hadFee = (products || []).some(isFeeLine);
@@ -486,7 +540,7 @@ function planCreate(enquiry, body, existingOrders) {
   }
   const province = String(sharedIn.province || "").trim();
   const delivery = estimateDelivery({
-    types: shopLines(products).map((p) => p.type),
+    types: shopLines(products).filter((p) => !isDeliveryLine(p)).map((p) => p.type),
     province,
     now: body && body.now,
     date: body && body.delivery_date,
@@ -531,6 +585,8 @@ module.exports = {
   orderBaseTaken,
   splitLetter,
   isFeeLine,
+  isDeliveryLine,
+  ensureDeliveryProduct,
   shopLines,
   orderTypeFromEnquiryType,
   strictestOrderType,
