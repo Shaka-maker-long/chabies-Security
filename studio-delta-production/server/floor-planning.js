@@ -1701,6 +1701,11 @@ function autoPlanFromDeliveries(opts) {
     const order = findOrder(d.order_number);
     if (!order) return;
     const id = formatOrderId(order.order_number);
+    // Delivery charge rows are not shop-built — never auto-plan CS/T/P/W.
+    if (require("./create-order-from-enquiry").isDeliveryLine(order)) {
+      skipped.push({ order: id, reason: "Delivery charge is not a shop process" });
+      return;
+    }
     // Ready for Delivery and later — drop leftover plan, never re-plan.
     if (isProductionFinished(order.status) || isHandedOff(order.status)) {
       if (id) finished.add(id);

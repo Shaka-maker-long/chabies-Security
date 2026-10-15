@@ -327,23 +327,34 @@ function enquiryDeliveryIncl(enquiry) {
   return (Math.round(n * 1.15 * 100) / 100).toFixed(2);
 }
 
-function ensureDeliveryProduct(products, enquiry, typeDefault) {
-  const list = (products || []).slice();
-  if (list.some(isDeliveryLine)) return list;
-  list.push({
+function readyDeliveryLine(enquiry, typeDefault, existing) {
+  const base = existing && typeof existing === "object" ? existing : {};
+  const incl = lineInclVat(base) || enquiryDeliveryIncl(enquiry);
+  return {
     category: "Delivery",
     product: "Delivery",
-    type: typeDefault || "Standard",
+    type: orderTypeFromEnquiryType(base.type || typeDefault || "Standard"),
     variation: "",
     doors: "",
     detailed_description: "",
     dimensions: "",
     powder_coating: "",
-    price_incl_vat: enquiryDeliveryIncl(enquiry),
+    price_incl_vat: incl,
+    price_excl_vat: String(base.price_excl_vat || "").trim(),
     amount_paid: "",
-    quantity: 1
-  });
-  return list;
+    quantity: 1,
+    qty_price_confirmed: true,
+    paid_in_full: true
+  };
+}
+
+function ensureDeliveryProduct(products, enquiry, typeDefault) {
+  const list = (products || []).slice();
+  const existing = list.find(isDeliveryLine);
+  if (existing) {
+    return list.map((p) => (isDeliveryLine(p) ? readyDeliveryLine(enquiry, typeDefault, p) : p));
+  }
+  return list.concat([readyDeliveryLine(enquiry, typeDefault, null)]);
 }
 
 function namedEnquiryLines(enquiry) {
@@ -491,6 +502,10 @@ function assertProductReady(product, index) {
   if (qty < 1) return;
   const label = String((product && product.product) || "").trim() || ("product " + (index + 1));
   requireText(product && product.product, "Product is required for " + label);
+  if (isDeliveryLine(product)) {
+    // Price comes from the enquiry delivery amount; checked in planCreate after inject.
+    return;
+  }
   const incl = lineInclVat(product);
   const excl = String((product && product.price_excl_vat) || "").trim();
   if (!incl && !excl) throw new Error("Price excl VAT is required for " + label);
@@ -500,7 +515,6 @@ function assertProductReady(product, index) {
   if (!isFlag(product && product.paid_in_full) && String(product && product.amount_paid == null ? "" : product.amount_paid).trim() === "") {
     throw new Error("Amount paid is required for " + label + " unless you tick Paid in full");
   }
-  if (isDeliveryLine(product)) return;
   requireText(product && product.variation, "Variation is required for " + label);
   requireText(product && product.doors, "Doors is required for " + label);
   requireText(product && product.powder_coating, "Powder coating is required for " + label);
@@ -519,16 +533,16 @@ function planCreate(enquiry, body, existingOrders) {
   if (orderBaseTaken(base, existingOrders)) {
     throw new Error("Order number " + base + " is already used");
   }
-  const products = Array.isArray(body && body.products) ? body.products : [];
-  products.forEach(assertProductReady);
-  // From an enquiry, Delivery must be kept on Orders (price from the quote delivery line).
+  let products = Array.isArray(body && body.products) ? body.products.slice() : [];
+  // From an enquiry, Delivery is required on Orders — inject from the quote amount if missing.
   if (enquiry) {
-    const hasDelivery = shopLines(products).some((p) => {
-      const qty = Math.floor(Number(p && p.quantity) || 0);
-      return qty >= 1 && isDeliveryLine(p);
-    });
-    if (!hasDelivery) {
-      throw new Error("Delivery is required on Orders. Keep the Delivery line from the enquiry.");
+    products = ensureDeliveryProduct(products, enquiry, orderTypeFromEnquiryType(enquiry.enquiry_type));
+  }
+  products.forEach(assertProductReady);
+  if (enquiry) {
+    const del = products.find(isDeliveryLine);
+    if (!lineInclVat(del) && !String((del && del.price_excl_vat) || "").trim()) {
+      throw new Error("Delivery including VAT is missing on the enquiry. Add it on the quote first.");
     }
   }
   const units = planUnits(products);
@@ -586,7 +600,9 @@ module.exports = {
   splitLetter,
   isFeeLine,
   isDeliveryLine,
+  readyDeliveryLine,
   ensureDeliveryProduct,
+  enquiryDeliveryIncl,
   shopLines,
   orderTypeFromEnquiryType,
   strictestOrderType,

@@ -274,6 +274,11 @@
           qty_price_confirmed: !!(el.querySelector("[data-f=qty_price_confirmed]") && el.querySelector("[data-f=qty_price_confirmed]").checked)
         };
       });
+      // Delivery is not a shop card — append the enquiry delivery line automatically.
+      if (!standalone) {
+        const del = deliveryLineFromDraft();
+        if (del && !products.some(isDeliveryLine)) products.push(del);
+      }
       return {
         order_number: document.getElementById("f_order_number").value,
         quote_number: (document.getElementById("f_quote_number") || {}).value || "",
@@ -554,11 +559,27 @@
         "</div>" +
       "</article>";
     }
+    function shopProductsOnly(products) {
+      return (products || []).filter((p) => !isFeeLine(p) && !isDeliveryLine(p));
+    }
+    function deliveryLineFromDraft() {
+      const fromDraft = ((draft && draft.products) || []).find(isDeliveryLine);
+      if (!fromDraft) return null;
+      return Object.assign({}, fromDraft, {
+        category: "Delivery",
+        product: "Delivery",
+        quantity: 1,
+        qty_price_confirmed: true,
+        paid_in_full: true,
+        price_excl_vat: fromDraft.price_excl_vat || exclFromIncl(fromDraft.price_incl_vat)
+      });
+    }
     function paintProducts(products) {
       const box = document.getElementById("products");
       if (!box) return;
       const locked = !standalone;
-      box.innerHTML = products.map((p, i) => productCardHtml(p, i, locked, products.length)).join("")
+      const list = standalone ? (products || []) : shopProductsOnly(products);
+      box.innerHTML = list.map((p, i) => productCardHtml(p, i, locked, list.length)).join("")
         || "<p class=\"msg\">Add a product to turn into an order.</p>";
       box.querySelectorAll("[data-product]").forEach((card) => syncPaidInFull(card));
     }
@@ -614,7 +635,17 @@
       const heading = standalone ? "New order" : ("Enquiry " + esc(enquiryNo));
       const productHint = standalone
         ? "Add each product on this order. Quantity 2 of the same chair becomes A and B. A chair plus a stool becomes A and B with different products. Letters run across the whole order. Tick Paid in full if they paid the price incl VAT for that quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required."
-        : "Category and product come from the enquiry. Remove any item the client no longer wants before you create orders — only the items left here are added. Delivery from the quote is required on Orders and cannot be removed. Type, quantity, prices, and shop details are yours to set. Design Fee and other fee lines stay on the enquiry — they are not split onto Orders. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Shop products need variation, doors, powder coating, dimensions, and detailed description. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.";
+        : "Category and product come from the enquiry. Remove any item the client no longer wants before you create orders — only the shop items left here are added. Delivery from the quote is added to Orders automatically — you do not fill variation, doors, or powder coating for it. Type, quantity, prices, and shop details are yours to set. Design Fee and other fee lines stay on the enquiry — they are not split onto Orders. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Shop products need variation, doors, powder coating, dimensions, and detailed description. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.";
+      const delLine = (!standalone && (products.find(isDeliveryLine) || deliveryLineFromDraft())) || null;
+      const delBanner = !standalone
+        ? ("<div class=\"locked\" id=\"deliveryChargeBanner\" style=\"margin-bottom:12px\">" +
+            "<b>Delivery</b> " +
+            (delLine && String(delLine.price_incl_vat || "").trim()
+              ? ("R " + esc(String(delLine.price_incl_vat)) + " incl VAT from the enquiry")
+              : "from the enquiry") +
+            " is added to Orders automatically when you create — no shop fields to fill." +
+          "</div>")
+        : "";
       page.innerHTML =
         "<form class=\"card\" id=\"form\">" +
           "<h2>" + heading + "</h2>" +
@@ -652,6 +683,7 @@
         "<div class=\"card\">" +
           "<h2>Products</h2>" +
           "<p class=\"hint\">" + productHint + "</p>" +
+          delBanner +
           ((draft.skippedFees || []).length
             ? "<p class=\"hint\">Fee on the enquiry (" + esc((draft.skippedFees).join(", ")) + ") stays on the enquiry and is not added to Orders.</p>"
             : "") +
@@ -757,21 +789,20 @@
         msg.className = "msg bad";
         return;
       }
-      const shopList = (data.products || []).filter((p) => !isFeeLine(p));
-      if (!shopList.length) {
+      const shopList = shopProductsOnly(data.products);
+      if (!shopList.length && standalone) {
         msg.textContent = "Keep at least one product to add to Orders.";
         msg.className = "msg bad";
         return;
       }
-      if (!standalone && !shopList.some(isDeliveryLine)) {
-        msg.textContent = "Delivery is required on Orders. Keep the Delivery line from the enquiry.";
+      if (!shopList.length && !standalone) {
+        msg.textContent = "Keep at least one shop product to add to Orders. Delivery is added automatically.";
         msg.className = "msg bad";
         return;
       }
       for (const p of data.products) {
-        if (isFeeLine(p)) continue;
+        if (isFeeLine(p) || isDeliveryLine(p)) continue;
         const label = p.product || "this product";
-        const delivery = isDeliveryLine(p);
         if (standalone && !String(p.product || "").trim()) {
           msg.textContent = "Product is required on every item.";
           msg.className = "msg bad";
@@ -797,7 +828,6 @@
           msg.className = "msg bad";
           return;
         }
-        if (delivery) continue;
         if (!String(p.variation || "").trim()) {
           msg.textContent = "Variation is required for " + label + ".";
           msg.className = "msg bad";

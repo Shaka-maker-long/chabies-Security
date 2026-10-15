@@ -178,9 +178,9 @@ assert.strictEqual(planned.delivery.scheduleCode, "LD");
 assert.strictEqual(planned.delivery.date, "2026-10-15");
 assert.strictEqual(planned.quote_number, "SOQ88");
 
-// Client paid for the chairs but no longer wants the stool — omit it; Delivery stays.
+// Client paid for the chairs but no longer wants the stool — omit it; Delivery is injected from the enquiry.
 const chairsOnly = fromEnquiry.planCreate(
-  { enquiry_no: "#5001", quote_no: "SOQ88" },
+  { enquiry_no: "#5001", quote_no: "SOQ88", delivery_incl_vat: "1150.00" },
   {
     order_number: "S260101",
     delivery_date: "2026-10-15",
@@ -192,14 +192,14 @@ const chairsOnly = fromEnquiry.planCreate(
       city: "Sandton"
     },
     products: [
-      shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "20000", paid_in_full: true }),
-      deliveryLine({ price_incl_vat: "1150", paid_in_full: true, amount_paid: "" })
+      shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "20000", paid_in_full: true })
     ]
   },
   []
 );
-assert.strictEqual(chairsOnly.units.length, 3, "removed enquiry items are not added; Delivery stays");
+assert.strictEqual(chairsOnly.units.length, 3, "removed enquiry items are not added; Delivery is auto-added");
 assert.deepStrictEqual(chairsOnly.units.map((u) => u.product), ["Air Chair", "Air Chair", "Delivery"]);
+assert.strictEqual(chairsOnly.units[2].price_incl_vat, "1150.00");
 assert.throws(
   () => fromEnquiry.planCreate(
     { enquiry_no: "#5001", quote_no: "SOQ88" },
@@ -219,7 +219,7 @@ assert.throws(
     },
     []
   ),
-  /Delivery is required on Orders/
+  /Delivery including VAT is missing on the enquiry/
 );
 
 assert.ok(fromEnquiry.isFeeLine({ category: "Fee", product: "Design Fee" }));
@@ -310,7 +310,7 @@ assert.throws(
     },
     []
   ),
-  /Delivery is required on Orders/
+  /Delivery including VAT is missing on the enquiry/
 );
 assert.throws(
   () => fromEnquiry.planCreate(
@@ -804,9 +804,11 @@ assert.ok(page.indexOf("standalone && count > 1") === -1, "enquiry mode may remo
 assert.ok(page.indexOf("count > 1") !== -1);
 assert.ok(page.indexOf("enquiryProductsForForm") !== -1);
 assert.ok(page.indexOf("Remove any item the client no longer wants") !== -1);
-assert.ok(page.indexOf("Delivery from the quote is required on Orders") !== -1);
+assert.ok(page.indexOf("Delivery from the quote is added to Orders automatically") !== -1);
+assert.ok(page.indexOf("deliveryChargeBanner") !== -1);
 assert.ok(page.indexOf("function isDeliveryLine") !== -1);
-assert.ok(page.indexOf("data-delivery") !== -1);
+assert.ok(page.indexOf("deliveryLineFromDraft") !== -1);
+assert.ok(page.indexOf("no shop fields to fill") !== -1);
 assert.ok(page.indexOf("Keep at least one product to add to Orders") !== -1);
 assert.ok(page.indexOf("/api/office/orders/create") !== -1);
 assert.ok(page.indexOf("CATERGORY") !== -1);
