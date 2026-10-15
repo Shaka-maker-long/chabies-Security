@@ -1,6 +1,7 @@
 process.env.TZ = process.env.TZ || "Africa/Johannesburg";
 
 const express = require("express");
+const fs = require("fs");
 const path = require("path");
 const { initWorkbook, persistWorkbook, hasGoogleAuth, storageInfo, googleMigrateEnabled, maybeImportGoogleOnce } = require("./workbook-store");
 const { migrateJsonOrdersToWorkbook, normalizeOrdersSheet, persistenceInfo } = require("./db");
@@ -28,6 +29,14 @@ app.use((req, res, next) => {
   next();
 });
 
+function readBuildInfo() {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, "..", "public", "build.json"), "utf8"));
+  } catch (e) {
+    return { build: "unknown" };
+  }
+}
+
 function health(_req, res) {
   let persist = {};
   try { persist = persistenceInfo(); } catch (e) {
@@ -36,8 +45,10 @@ function health(_req, res) {
   let appEnvInfo = { appEnv: "production", isStaging: false, stagingBanner: null };
   try { appEnvInfo = require("./app-env"); } catch (e) {}
   const staging = !!(appEnvInfo.isStaging && appEnvInfo.isStaging());
+  const buildInfo = readBuildInfo();
   const payload = {
     ok: true,
+    build: buildInfo.build || "unknown",
     tz: process.env.TZ,
     appEnv: appEnvInfo.appEnv ? appEnvInfo.appEnv() : (staging ? "staging" : "production"),
     isStaging: staging,

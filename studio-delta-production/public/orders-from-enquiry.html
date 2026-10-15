@@ -92,6 +92,7 @@
     const params = new URLSearchParams(location.search);
     const standalone = location.pathname.replace(/\/$/, "") === "/orders/new";
     const enquiryNo = standalone ? "" : (params.get("enquiry") || "");
+    // build: 840fcd2-delivery-only-ready — delivery-only enquiries stay off Ready to add
     let draft = null;
     let dropdowns = {};
     let dateTouched = false;
