@@ -155,6 +155,29 @@ assert.strictEqual(planned.delivery.scheduleCode, "LD");
 assert.strictEqual(planned.delivery.date, "2026-10-15");
 assert.strictEqual(planned.quote_number, "SOQ88");
 
+// Client paid for the chairs but no longer wants the stool — omit it before create.
+const chairsOnly = fromEnquiry.planCreate(
+  { enquiry_no: "#5001", quote_no: "SOQ88" },
+  {
+    order_number: "S260101",
+    delivery_date: "2026-10-15",
+    now,
+    shared: {
+      client_name: "Split Client",
+      province: "Gauteng",
+      address: "12 Main Road",
+      city: "Sandton"
+    },
+    products: [
+      shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 2, price_incl_vat: "20000", amount_paid: "20000", paid_in_full: true })
+    ]
+  },
+  []
+);
+assert.strictEqual(chairsOnly.units.length, 2, "removed enquiry items are not added to Orders");
+assert.deepStrictEqual(chairsOnly.units.map((u) => u.order_number), ["S260101 A", "S260101 B"]);
+assert.ok(chairsOnly.units.every((u) => u.product === "Air Chair"));
+
 assert.ok(fromEnquiry.isFeeLine({ category: "Fee", product: "Design Fee" }));
 assert.ok(fromEnquiry.isFeeLine({ product: "Design Fee" }));
 assert.ok(fromEnquiry.isFeeLine({ category: "Fee", product: "Consultation" }));
@@ -674,6 +697,13 @@ assert.ok(page.indexOf("create-orders") !== -1);
 assert.ok(page.indexOf("standalone") !== -1);
 assert.ok(page.indexOf("/orders/new") !== -1);
 assert.ok(page.indexOf("Add another item") !== -1);
+assert.ok(page.indexOf("data-remove-item") !== -1);
+assert.ok(page.indexOf("Remove this item") !== -1);
+assert.ok(page.indexOf("standalone && count > 1") === -1, "enquiry mode may remove items the client no longer wants");
+assert.ok(page.indexOf("count > 1") !== -1);
+assert.ok(page.indexOf("enquiryProductsForForm") !== -1);
+assert.ok(page.indexOf("Remove any item the client no longer wants") !== -1);
+assert.ok(page.indexOf("Keep at least one product to add to Orders") !== -1);
 assert.ok(page.indexOf("/api/office/orders/create") !== -1);
 assert.ok(page.indexOf("CATERGORY") !== -1);
 assert.ok(page.indexOf("data-f=\\\"quantity\\\"") !== -1);

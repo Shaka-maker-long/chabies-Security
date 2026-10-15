@@ -407,6 +407,20 @@
         return p;
       });
     }
+    function productKey(p) {
+      return String((p && p.category) || "").trim().toLowerCase() + "||" + String((p && p.product) || "").trim().toLowerCase();
+    }
+    /** Keep a trimmed local draft when the user removed items the client no longer wants. */
+    function enquiryProductsForForm(saved, draftProducts) {
+      const draftList = draftProducts || [];
+      const savedList = (saved && saved.products) || [];
+      if (!savedList.length) return blankEnquiryPrefill(draftList);
+      const draftKeys = {};
+      draftList.forEach((p) => { draftKeys[productKey(p)] = true; });
+      const kept = savedList.filter((p) => draftKeys[productKey(p)]);
+      if (!kept.length) return blankEnquiryPrefill(draftList);
+      return blankEnquiryPrefill(kept);
+    }
     function markSelectedImportant(box) {
       const msg = document.getElementById("formMsg");
       if (!box) return;
@@ -452,7 +466,7 @@
       const name = d.product || p.product || "";
       const category = d.category || p.category || "";
       const title = category ? category + " · " + name : (name || ("Item " + (i + 1)));
-      const remove = standalone && count > 1
+      const remove = count > 1
         ? "<button type=\"button\" class=\"ghost\" data-remove-item>Remove this item</button>"
         : "";
       const head = locked
@@ -538,11 +552,7 @@
       const shared = Object.assign({}, draft.shared, saved.shared || {});
       const products = standalone
         ? ((saved.products && saved.products.length) ? saved.products : (draft.products || [emptyProduct()]))
-        : blankEnquiryPrefill(
-          (saved.products && saved.products.length === (draft.products || []).length)
-            ? saved.products
-            : (draft.products || [])
-        );
+        : enquiryProductsForForm(saved, draft.products || []);
       const orderNo = saved.order_number || draft.order_number;
       dateTouched = !!saved.dateTouched;
       const deliveryDate = saved.delivery_date || (draft.delivery && draft.delivery.date) || "";
@@ -553,7 +563,7 @@
       const heading = standalone ? "New order" : ("Enquiry " + esc(enquiryNo));
       const productHint = standalone
         ? "Add each product on this order. Quantity 2 of the same chair becomes A and B. A chair plus a stool becomes A and B with different products. Letters run across the whole order. Tick Paid in full if they paid the price incl VAT for that quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required."
-        : "Category and product come from the enquiry. Type, quantity, prices, and shop details are yours to set. Design Fee and other fee lines stay on the enquiry — they are not split onto Orders. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.";
+        : "Category and product come from the enquiry. Remove any item the client no longer wants before you create orders — only the items left here are added. Type, quantity, prices, and shop details are yours to set. Design Fee and other fee lines stay on the enquiry — they are not split onto Orders. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.";
       page.innerHTML =
         "<form class=\"card\" id=\"form\">" +
           "<h2>" + heading + "</h2>" +
@@ -693,6 +703,12 @@
       }
       if (!/^S\d+/i.test(String(data.order_number || "").trim())) {
         msg.textContent = "Order number must look like S260100.";
+        msg.className = "msg bad";
+        return;
+      }
+      const shopProducts = (data.products || []).filter((p) => !isFeeLine(p));
+      if (!shopProducts.length) {
+        msg.textContent = "Keep at least one product to add to Orders.";
         msg.className = "msg bad";
         return;
       }
