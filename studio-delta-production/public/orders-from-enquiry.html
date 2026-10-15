@@ -18,7 +18,11 @@
     .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
     button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; font:inherit; font-size:13px; }
     button.ghost { background:#fff; color:#1d2939; }
+    button.remove-item { background:#fff; color:var(--bad); border-color:#fda29b; white-space:nowrap; flex:0 0 auto; }
     button:disabled { opacity:.55; cursor:not-allowed; }
+    .split-row { display:flex; gap:10px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin:6px 0; padding:6px 0; border-bottom:1px solid var(--line); }
+    .split-row:last-child { border-bottom:0; }
+    .split-row button { font-size:12px; padding:6px 10px; }
     .page { padding:18px 16px 48px; max-width:1100px; }
     .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px; margin:0 0 16px; }
     .card h2 { margin:0 0 12px; font-size:16px; }
@@ -75,7 +79,7 @@
         <a href="/orders/paint-shop">Paint shop</a>
       </nav>
       <h1 id="pageTitle">Create orders from enquiry</h1>
-      <p class="lede" id="pageLede">One form. Quantity and extra items split into A, B, C across the whole order. Fee lines (including Design Fee) stay on the enquiry and are not added to Orders. Tick Paid in full if they paid the price incl VAT for that quantity — only type an amount if they still owe. Address, city, shop details, and a confirmed quantity and exclusive VAT are required. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
+      <p class="lede" id="pageLede">One form. Quantity and extra items split into A, B, C across the whole order. Use Remove to drop a shop product before create. Delivery and fee lines (including Design Fee) stay on the enquiry — they are not separate Orders rows. Tick Paid in full if they paid the price incl VAT for that quantity — only type an amount if they still owe. Address, city, shop details, and a confirmed quantity and exclusive VAT are required. The delivery date you save is stamped on every unit as Latest Delivery (Gauteng) or Latest Courier (other provinces).</p>
     </div>
     <div class="tools">
       <a href="/orders" id="backLink"><button class="ghost" type="button" id="backBtn">Back to Orders</button></a>
@@ -92,7 +96,7 @@
     const params = new URLSearchParams(location.search);
     const standalone = location.pathname.replace(/\/$/, "") === "/orders/new";
     const enquiryNo = standalone ? "" : (params.get("enquiry") || "");
-    // build: 840fcd2-delivery-only-ready — delivery-only enquiries stay off Ready to add
+    // build: delivery-not-unit-remove — Delivery stays on enquiry; Remove on products + split list
     let draft = null;
     let dropdowns = {};
     let dateTouched = false;
@@ -275,11 +279,6 @@
           qty_price_confirmed: !!(el.querySelector("[data-f=qty_price_confirmed]") && el.querySelector("[data-f=qty_price_confirmed]").checked)
         };
       });
-      // Delivery is not a shop card — append the enquiry delivery line automatically.
-      if (!standalone) {
-        const del = deliveryLineFromDraft();
-        if (del && !products.some(isDeliveryLine)) products.push(del);
-      }
       return {
         order_number: document.getElementById("f_order_number").value,
         quote_number: (document.getElementById("f_quote_number") || {}).value || "",
@@ -308,7 +307,7 @@
     function plannedNumbers(orderNumber, products) {
       const base = String(orderNumber || "").trim().toUpperCase().replace(/\s+[A-Z]+$/, "");
       const units = [];
-      shopProducts(products).forEach((p) => {
+      shopProductsOnly(products).forEach((p) => {
         const qty = Math.max(0, Math.floor(Number(p.quantity) || 0));
         for (let i = 0; i < qty; i++) units.push(p.product);
       });
@@ -364,20 +363,27 @@
       const box = document.getElementById("splitBox");
       if (!box) return;
       const data = collect();
+      const shop = shopProductsOnly(data.products);
       const planned = plannedNumbers(data.order_number, data.products);
       if (!planned.length) {
-        const fees = shopProducts(data.products).length === 0 && (data.products || []).some(isFeeLine);
+        const fees = (data.products || []).some(isFeeLine) || (data.products || []).some(isDeliveryLine);
         box.innerHTML = fees
-          ? "Fee lines stay on the enquiry and are not added to Orders."
+          ? "Delivery and fee lines stay on the enquiry and are not added to Orders. Keep a shop product."
           : "Add a quantity of at least 1 to see the order numbers.";
         return;
       }
+      const canRemove = shop.length > 1;
+      const rows = planned.map((u) => {
+        const btn = canRemove
+          ? "<button type=\"button\" class=\"remove-item\" data-remove-product=\"" + esc(u.product) + "\">Remove</button>"
+          : "";
+        return "<div class=\"split-row\"><span><b>" + esc(u.no) + "</b> — " + esc(u.product) + "</span>" + btn + "</div>";
+      }).join("");
       if (planned.length === 1) {
         box.innerHTML = "One unit — saved as <b>" + esc(planned[0].no) + "</b> (" + esc(planned[0].product) + ").";
         return;
       }
-      box.innerHTML = "More than one unit — letters run across the whole order. Quantity splits price incl VAT and amount paid equally:<ol>" +
-        planned.map((u) => "<li><b>" + esc(u.no) + "</b> — " + esc(u.product) + "</li>").join("") + "</ol>";
+      box.innerHTML = "More than one unit — letters run across the whole order. Quantity splits price incl VAT and amount paid equally. Remove a product to drop it from Orders:" + rows;
     }
     function refreshIncl(input) {
       const card = input.closest("[data-product]");
@@ -429,8 +435,8 @@
     }
     /** Keep a trimmed local draft when the user removed items the client no longer wants. */
     function enquiryProductsForForm(saved, draftProducts) {
-      const draftList = draftProducts || [];
-      const savedList = (saved && saved.products) || [];
+      const draftList = shopProductsOnly(draftProducts || []);
+      const savedList = shopProductsOnly((saved && saved.products) || []);
       let kept;
       if (!savedList.length) {
         kept = draftList.slice();
@@ -439,11 +445,6 @@
         draftList.forEach((p) => { draftKeys[productKey(p)] = true; });
         kept = savedList.filter((p) => draftKeys[productKey(p)]);
         if (!kept.length) kept = draftList.slice();
-      }
-      // Delivery from the enquiry draft must stay on the form.
-      if (!kept.some(isDeliveryLine)) {
-        const fromDraft = draftList.find(isDeliveryLine);
-        if (fromDraft) kept = kept.concat([Object.assign({}, fromDraft)]);
       }
       return blankEnquiryPrefill(kept);
     }
@@ -494,32 +495,12 @@
       const title = category ? category + " · " + name : (name || ("Item " + (i + 1)));
       const delivery = isDeliveryLine(d) || isDeliveryLine(p);
       const remove = count > 1 && !delivery
-        ? "<button type=\"button\" class=\"ghost\" data-remove-item>Remove this item</button>"
+        ? "<button type=\"button\" class=\"remove-item\" data-remove-item>Remove</button>"
         : "";
       const head = locked
-        ? "<div class=\"product-head\"><h3>" + esc(title) + "</h3>" + remove +
-          (delivery ? "<span class=\"hint\">Required on Orders — from the enquiry delivery amount.</span>" : "") + "</div>"
+        ? "<div class=\"product-head\"><h3>" + esc(title) + "</h3>" + remove + "</div>"
         : "<div class=\"product-head\"><h3>" + esc(name || ("Item " + (i + 1))) + "</h3>" + remove + "</div>";
-      if (delivery) {
-        return "<article class=\"product\" data-product data-delivery data-name=\"" + esc(name || "Delivery") + "\" data-category=\"" + esc(category || "Delivery") + "\">" +
-          head +
-          "<input type=\"hidden\" data-f=\"product\" value=\"" + esc(name || "Delivery") + "\">" +
-          "<input type=\"hidden\" data-f=\"category\" value=\"" + esc(category || "Delivery") + "\">" +
-          "<div class=\"grid four\">" +
-            "<label>Type<select data-f=\"type\">" + typeOptions(p.type || d.type || "Standard") + "</select></label>" +
-            "<label>Quantity *<input data-f=\"quantity\" type=\"number\" min=\"1\" step=\"1\" value=\"" + esc(p.quantity || 1) + "\" required></label>" +
-            "<label>Price incl VAT<input data-f=\"price_incl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_incl_vat || "") + "\"></label>" +
-            "<label>Price excl VAT *<input data-f=\"price_excl_vat\" inputmode=\"decimal\" value=\"" + esc(p.price_excl_vat || exclFromIncl(p.price_incl_vat)) + "\" required></label>" +
-          "</div>" +
-          "<label class=\"confirm\"><input data-f=\"qty_price_confirmed\" type=\"checkbox\"" + (p.qty_price_confirmed ? " checked" : "") + ">" +
-            "<span>Quantity and price excl VAT are correct<span class=\"hint\">Tick this after you check the delivery amount.</span></span></label>" +
-          "<label class=\"confirm\"><input data-f=\"paid_in_full\" type=\"checkbox\"" + (p.paid_in_full ? " checked" : "") + ">" +
-            "<span>Paid in full<span class=\"hint\">Tick if they paid the delivery incl VAT. Type an amount only if they still owe.</span></span></label>" +
-          "<div class=\"grid\" style=\"margin-top:12px\">" +
-            "<label>Amount paid (Incl VAT)<input data-f=\"amount_paid\" inputmode=\"decimal\" value=\"" + esc(p.amount_paid || "") + "\"" + (p.paid_in_full ? " readonly" : " required") + "><span class=\"hint\">Including 15% VAT. Owing is price incl VAT minus this.</span></label>" +
-          "</div>" +
-        "</article>";
-      }
+      if (delivery) return "";
       const identity = locked
         ? "<input type=\"hidden\" data-f=\"product\" value=\"" + esc(name) + "\">" +
           "<input type=\"hidden\" data-f=\"category\" value=\"" + esc(category) + "\">"
@@ -563,18 +544,6 @@
     function shopProductsOnly(products) {
       return (products || []).filter((p) => !isFeeLine(p) && !isDeliveryLine(p));
     }
-    function deliveryLineFromDraft() {
-      const fromDraft = ((draft && draft.products) || []).find(isDeliveryLine);
-      if (!fromDraft) return null;
-      return Object.assign({}, fromDraft, {
-        category: "Delivery",
-        product: "Delivery",
-        quantity: 1,
-        qty_price_confirmed: true,
-        paid_in_full: true,
-        price_excl_vat: fromDraft.price_excl_vat || exclFromIncl(fromDraft.price_incl_vat)
-      });
-    }
     function paintProducts(products) {
       const box = document.getElementById("products");
       if (!box) return;
@@ -583,6 +552,26 @@
       box.innerHTML = list.map((p, i) => productCardHtml(p, i, locked, list.length)).join("")
         || "<p class=\"msg\">Add a product to turn into an order.</p>";
       box.querySelectorAll("[data-product]").forEach((card) => syncPaidInFull(card));
+    }
+    function removeProductByName(productName) {
+      const want = String(productName || "").trim().toLowerCase();
+      if (!want) return;
+      const data = collect();
+      const next = (data.products || []).filter((p) => {
+        if (isDeliveryLine(p) || isFeeLine(p)) return false;
+        return String(p.product || "").trim().toLowerCase() !== want;
+      });
+      if (!next.length) {
+        const msg = document.getElementById("formMsg");
+        if (msg) {
+          msg.textContent = "Keep at least one shop product to add to Orders.";
+          msg.className = "msg bad";
+        }
+        return;
+      }
+      paintProducts(next);
+      refreshDeliveryCopy();
+      persist();
     }
     function addProductItem() {
       const data = collect();
@@ -596,17 +585,12 @@
       const data = collect();
       const idx = cards.indexOf(card);
       if (idx < 0) return;
-      if (isDeliveryLine(data.products[idx]) || (card && card.hasAttribute("data-delivery"))) {
-        const msg = document.getElementById("formMsg");
-        if (msg) {
-          msg.textContent = "Delivery is required on Orders — you cannot remove it.";
-          msg.className = "msg bad";
-        }
-        return;
-      }
+      const shop = shopProductsOnly(data.products);
+      if (shop.length < 2) return;
       data.products.splice(idx, 1);
-      paintProducts(data.products);
+      paintProducts(shopProductsOnly(data.products));
       refreshDeliveryCopy();
+      persist();
     }
     function renderExisting(rows) {
       const page = document.getElementById("page");
@@ -636,15 +620,13 @@
       const heading = standalone ? "New order" : ("Enquiry " + esc(enquiryNo));
       const productHint = standalone
         ? "Add each product on this order. Quantity 2 of the same chair becomes A and B. A chair plus a stool becomes A and B with different products. Letters run across the whole order. Tick Paid in full if they paid the price incl VAT for that quantity — type an amount only if they still owe. Variation, doors, powder coating, dimensions, and detailed description are required."
-        : "Category and product come from the enquiry. Remove any item the client no longer wants before you create orders — only the shop items left here are added. Delivery from the quote is added to Orders automatically — you do not fill variation, doors, or powder coating for it. Type, quantity, prices, and shop details are yours to set. Design Fee and other fee lines stay on the enquiry — they are not split onto Orders. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Shop products need variation, doors, powder coating, dimensions, and detailed description. Type the description yourself — it does not copy from the enquiry. Select words production must not miss and mark them as important. Check quantity and exclusive VAT, change them if they are wrong, then confirm.";
-      const delLine = (!standalone && (products.find(isDeliveryLine) || deliveryLineFromDraft())) || null;
+        : "Category and product come from the enquiry. Use <b>Remove</b> on a product (or on the split list below) if the client no longer wants it — only what is left becomes Orders. Delivery stays on the enquiry as a charge; the delivery date above is stamped on every unit. Design Fee and other fee lines also stay on the enquiry. Tick Paid in full if they paid the price incl VAT for this quantity — type an amount only if they still owe. Shop products need variation, doors, powder coating, dimensions, and detailed description.";
+      const delAmt = draft && draft.deliveryAmountIncl;
       const delBanner = !standalone
         ? ("<div class=\"locked\" id=\"deliveryChargeBanner\" style=\"margin-bottom:12px\">" +
             "<b>Delivery</b> " +
-            (delLine && String(delLine.price_incl_vat || "").trim()
-              ? ("R " + esc(String(delLine.price_incl_vat)) + " incl VAT from the enquiry")
-              : "from the enquiry") +
-            " is added to Orders automatically when you create — no shop fields to fill." +
+            (delAmt ? ("R " + esc(String(delAmt)) + " incl VAT ") : "") +
+            "stays on the enquiry — it is not a separate Orders row. Set the delivery date above." +
           "</div>")
         : "";
       page.innerHTML =
@@ -738,6 +720,12 @@
           addProductItem();
           return;
         }
+        const removeProduct = e.target && e.target.closest && e.target.closest("[data-remove-product]");
+        if (removeProduct) {
+          e.preventDefault();
+          removeProductByName(removeProduct.getAttribute("data-remove-product"));
+          return;
+        }
         const remove = e.target && e.target.closest && e.target.closest("[data-remove-item]");
         if (remove) {
           e.preventDefault();
@@ -797,7 +785,7 @@
         return;
       }
       if (!shopList.length && !standalone) {
-        msg.textContent = "Keep at least one shop product to add to Orders. Delivery is added automatically.";
+        msg.textContent = "Keep at least one shop product to add to Orders.";
         msg.className = "msg bad";
         return;
       }

@@ -163,13 +163,11 @@ const planned = fromEnquiry.planCreate(
   },
   []
 );
-assert.strictEqual(planned.units.length, 4);
-assert.deepStrictEqual(planned.units.map((u) => u.order_number), ["S260100 A", "S260100 B", "S260100 C", "S260100 D"]);
+assert.strictEqual(planned.units.length, 3, "Delivery is not an Orders unit");
+assert.deepStrictEqual(planned.units.map((u) => u.order_number), ["S260100 A", "S260100 B", "S260100 C"]);
 assert.strictEqual(planned.units[0].product, "Air Chair");
 assert.strictEqual(planned.units[1].product, "Air Chair");
 assert.strictEqual(planned.units[2].product, "Air Bar Stool");
-assert.strictEqual(planned.units[3].product, "Delivery");
-assert.strictEqual(planned.units[3].variation, "N/A");
 assert.strictEqual(planned.units[0].price_incl_vat, "10000.00");
 assert.strictEqual(planned.units[1].price_incl_vat, "10000.00");
 assert.strictEqual(planned.units[2].price_incl_vat, "5000.00");
@@ -197,30 +195,8 @@ const chairsOnly = fromEnquiry.planCreate(
   },
   []
 );
-assert.strictEqual(chairsOnly.units.length, 3, "removed enquiry items are not added; Delivery is auto-added");
-assert.deepStrictEqual(chairsOnly.units.map((u) => u.product), ["Air Chair", "Air Chair", "Delivery"]);
-assert.strictEqual(chairsOnly.units[2].price_incl_vat, "1150.00");
-assert.throws(
-  () => fromEnquiry.planCreate(
-    { enquiry_no: "#5001", quote_no: "SOQ88" },
-    {
-      order_number: "S260102",
-      delivery_date: "2026-10-15",
-      now,
-      shared: {
-        client_name: "Split Client",
-        province: "Gauteng",
-        address: "12 Main Road",
-        city: "Sandton"
-      },
-      products: [
-        shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 1, price_incl_vat: "10000", amount_paid: "10000", paid_in_full: true })
-      ]
-    },
-    []
-  ),
-  /Delivery including VAT is missing on the enquiry/
-);
+assert.strictEqual(chairsOnly.units.length, 2, "removed enquiry items are not added; Delivery is not an Orders unit");
+assert.deepStrictEqual(chairsOnly.units.map((u) => u.product), ["Air Chair", "Air Chair"]);
 
 assert.ok(fromEnquiry.isFeeLine({ category: "Fee", product: "Design Fee" }));
 assert.ok(fromEnquiry.isFeeLine({ product: "Design Fee" }));
@@ -239,10 +215,9 @@ const feeDraft = fromEnquiry.buildDraft({
     { product: "Design Fee", category: "Fee", value_incl_vat: "350.00" }
   ]
 }, "S260247");
-assert.strictEqual(feeDraft.products.length, 2, "shop product plus required Delivery");
+assert.strictEqual(feeDraft.products.length, 1, "Delivery stays on enquiry, not draft shop products");
 assert.strictEqual(feeDraft.products[0].product, "Helderberg Gate");
-assert.strictEqual(feeDraft.products[1].product, "Delivery");
-assert.strictEqual(feeDraft.products[1].price_incl_vat, "402.50");
+assert.strictEqual(feeDraft.deliveryAmountIncl, "402.50");
 assert.deepStrictEqual(feeDraft.skippedFees, ["Design Fee"]);
 
 const withFee = fromEnquiry.planCreate(
@@ -265,9 +240,9 @@ const withFee = fromEnquiry.planCreate(
   },
   []
 );
-assert.strictEqual(withFee.units.length, 2, "split ignores fee lines; Delivery is kept");
-assert.deepStrictEqual(withFee.units.map((u) => u.product), ["Helderberg Gate", "Delivery"]);
-assert.strictEqual(withFee.units[0].order_number, "S260247 A");
+assert.strictEqual(withFee.units.length, 1, "split ignores fee and Delivery lines");
+assert.strictEqual(withFee.units[0].product, "Helderberg Gate");
+assert.strictEqual(withFee.units[0].order_number, "S260247");
 
 const twoPlusFee = fromEnquiry.planCreate(
   { enquiry_no: "#2910", quote_no: "SOQ2910" },
@@ -290,8 +265,8 @@ const twoPlusFee = fromEnquiry.planCreate(
   },
   []
 );
-assert.deepStrictEqual(twoPlusFee.units.map((u) => u.order_number), ["S260248 A", "S260248 B", "S260248 C"]);
-assert.deepStrictEqual(twoPlusFee.units.map((u) => u.product), ["Gate A", "Gate B", "Delivery"]);
+assert.deepStrictEqual(twoPlusFee.units.map((u) => u.order_number), ["S260248 A", "S260248 B"]);
+assert.deepStrictEqual(twoPlusFee.units.map((u) => u.product), ["Gate A", "Gate B"]);
 
 assert.throws(
   () => fromEnquiry.planCreate(
@@ -310,7 +285,7 @@ assert.throws(
     },
     []
   ),
-  /Delivery including VAT is missing on the enquiry/
+  /Delivery and fee lines stay on the enquiry|Fee lines stay on the enquiry/
 );
 assert.throws(
   () => fromEnquiry.planCreate(
@@ -329,7 +304,7 @@ assert.throws(
     },
     []
   ),
-  /Fee lines stay on the enquiry/
+  /Delivery and fee lines stay on the enquiry|Fee lines stay on the enquiry/
 );
 
 const standalonePlan = fromEnquiry.planCreate(
@@ -382,9 +357,8 @@ const single = fromEnquiry.planCreate(
   },
   []
 );
-assert.strictEqual(single.units.length, 2);
-assert.strictEqual(single.units[0].order_number, "S260200 A");
-assert.strictEqual(single.units[1].product, "Delivery");
+assert.strictEqual(single.units.length, 1);
+assert.strictEqual(single.units[0].order_number, "S260200");
 assert.strictEqual(single.delivery.scheduleCode, "LC");
 
 assert.throws(
@@ -466,12 +440,11 @@ const paidFullPlan = fromEnquiry.planCreate(
   },
   []
 );
-assert.strictEqual(paidFullPlan.units.length, 3);
+assert.strictEqual(paidFullPlan.units.length, 2);
 assert.strictEqual(paidFullPlan.units[0].price_incl_vat, "14661.00");
 assert.strictEqual(paidFullPlan.units[1].price_incl_vat, "14661.00");
 assert.strictEqual(paidFullPlan.units[0].amount_paid, "14661.00");
 assert.strictEqual(paidFullPlan.units[1].amount_paid, "14661.00");
-assert.strictEqual(paidFullPlan.units[2].product, "Delivery");
 
 assert.throws(
   () => fromEnquiry.planCreate(
@@ -539,12 +512,11 @@ db.upsertEnquiry({
 const draft = db.createOrderDraftFromEnquiry("#5001", now);
 assert.strictEqual(draft.quote_number, "SOQ88");
 assert.ok(/^S\d+$/.test(draft.order_number));
-assert.strictEqual(draft.products.length, 3, "chairs, stool, and required Delivery");
+assert.strictEqual(draft.products.length, 2, "shop products only — Delivery stays on enquiry");
 assert.strictEqual(draft.products[0].type, "Standard");
 assert.strictEqual(draft.products[0].quantity, 1);
 assert.strictEqual(draft.products[0].detailed_description, "");
-assert.strictEqual(draft.products[2].product, "Delivery");
-assert.strictEqual(draft.products[2].price_incl_vat, "1150.00");
+assert.strictEqual(draft.deliveryAmountIncl, "1150.00");
 assert.strictEqual(draft.shared.city, "");
 assert.strictEqual(draft.delivery.scheduleCode, "LD");
 assert.ok(draft.dropdowns.type.indexOf("Standard") !== -1);
@@ -571,8 +543,8 @@ const created = db.createOrdersFromEnquiryForm("#5001", {
   ]
 });
 assert.strictEqual(created.existing, false);
-assert.strictEqual(created.rows.length, 4);
-assert.deepStrictEqual(created.rows.map((r) => r.order_number), ["S260100 A", "S260100 B", "S260100 C", "S260100 D"]);
+assert.strictEqual(created.rows.length, 3);
+assert.deepStrictEqual(created.rows.map((r) => r.order_number), ["S260100 A", "S260100 B", "S260100 C"]);
 assert.strictEqual(created.rows[0].status, "Not Yet Started");
 assert.strictEqual(created.rows[0].quote_number, "SOQ88");
 assert.strictEqual(created.rows[0].enquiry_no, "#5001");
@@ -582,13 +554,12 @@ assert.strictEqual(savedA.price_incl_vat, "10000.00");
 assert.ok(Number(savedA.price_excl_vat) > 0);
 assert.strictEqual(created.rows[2].product, "Air Bar Stool");
 assert.strictEqual(created.rows[2].type, "Custom");
-assert.strictEqual(created.rows[3].product, "Delivery");
 assert.strictEqual(db.getEnquiry("#5001").order_number, "S260100 A");
 assert.strictEqual(db.nextStudioOrderNumber(), "S260101");
 assert.ok(!db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#5001"), "enquiries already on Orders leave the ready-to-add list");
 
 const items = db.listDeliveryItems().items.filter((it) => String(it.order_number).indexOf("S260100") === 0);
-assert.strictEqual(items.length, 4);
+assert.strictEqual(items.length, 3);
 items.forEach((it) => {
   assert.strictEqual(it.day, "2026-10-15");
   assert.strictEqual(it.code, "LD");
@@ -602,7 +573,7 @@ const again = db.createOrdersFromEnquiryForm("#5001", {
   products: [{ product: "Air Chair", quantity: 1, price_incl_vat: "1000" }]
 });
 assert.strictEqual(again.existing, true);
-assert.strictEqual(again.rows.length, 4);
+assert.strictEqual(again.rows.length, 3);
 
 db.upsertEnquiry({
   enquiry_no: "#5002",
@@ -626,9 +597,8 @@ const one = db.createOrdersFromEnquiryForm("#5002", {
     deliveryLine()
   ]
 });
-assert.strictEqual(one.rows.length, 2);
-assert.strictEqual(one.rows[0].order_number, "S260200 A");
-assert.strictEqual(one.rows[1].product, "Delivery");
+assert.strictEqual(one.rows.length, 1);
+assert.strictEqual(one.rows[0].order_number, "S260200");
 
 db.upsertEnquiry({
   enquiry_no: "#2910",
@@ -646,9 +616,9 @@ db.upsertEnquiry({
 }, { fromPipeline: true, fromMigrate: true });
 
 const feeFromDraft = db.createOrderDraftFromEnquiry("#2910");
-assert.strictEqual(feeFromDraft.products.length, 2);
+assert.strictEqual(feeFromDraft.products.length, 1);
 assert.strictEqual(feeFromDraft.products[0].product, "Helderberg Gate");
-assert.strictEqual(feeFromDraft.products[1].product, "Delivery");
+assert.strictEqual(feeFromDraft.deliveryAmountIncl, "402.50");
 assert.deepStrictEqual(feeFromDraft.skippedFees, ["Design Fee"]);
 
 const helderberg = db.createOrdersFromEnquiryForm("#2910", {
@@ -667,16 +637,15 @@ const helderberg = db.createOrdersFromEnquiryForm("#2910", {
     deliveryLine({ price_incl_vat: "402.50" })
   ]
 });
-assert.strictEqual(helderberg.rows.length, 2);
-assert.strictEqual(helderberg.rows[0].order_number, "S260247 A");
+assert.strictEqual(helderberg.rows.length, 1);
+assert.strictEqual(helderberg.rows[0].order_number, "S260247");
 assert.strictEqual(helderberg.rows[0].product, "Helderberg Gate");
-assert.strictEqual(helderberg.rows[1].product, "Delivery");
 assert.ok(!db.listOrders().some((o) => o.product === "Design Fee"), "Design Fee must not become an Orders row");
 
 const origIsFee = fromEnquiry.isFeeLine;
 fromEnquiry.isFeeLine = () => false;
 db.upsertOrder({
-  order_number: "S260247 C",
+  order_number: "S260247 B",
   quote_number: "SOQ2910",
   status: "Not Yet Started",
   type: "Custom",
@@ -687,17 +656,16 @@ db.upsertOrder({
   amount_paid: "0"
 });
 fromEnquiry.isFeeLine = origIsFee;
-assert.ok(db.listOrders().some((o) => o.order_number === "S260247 C"));
+assert.ok(db.listOrders().some((o) => o.order_number === "S260247 B"));
 const purgedFees = db.purgeFeeOrders();
 assert.ok(purgedFees.removed >= 1);
-assert.ok(purgedFees.orderNumbers.indexOf("S260247 C") !== -1);
-assert.ok(!db.listOrders().some((o) => o.order_number === "S260247 C"), "purge removes Design Fee from Orders");
-assert.ok(db.listOrders().some((o) => o.order_number === "S260247 A"), "shop unit stays");
-assert.ok(db.listOrders().some((o) => o.order_number === "S260247 B" && o.product === "Delivery"), "Delivery unit stays");
+assert.ok(purgedFees.orderNumbers.indexOf("S260247 B") !== -1);
+assert.ok(!db.listOrders().some((o) => o.order_number === "S260247 B"), "purge removes Design Fee from Orders");
+assert.ok(db.listOrders().some((o) => o.order_number === "S260247"), "shop unit stays");
 
 assert.strictEqual(one.delivery.scheduleCode, "LC");
 const capeItems = db.listDeliveryItems().items.filter((it) => String(it.order_number).indexOf("S260200") === 0);
-assert.strictEqual(capeItems.length, 2);
+assert.strictEqual(capeItems.length, 1);
 capeItems.forEach((it) => {
   assert.strictEqual(it.code, "LC");
   assert.strictEqual(it.day, "2026-11-05");
@@ -744,14 +712,13 @@ const winelands = db.createOrdersFromEnquiryForm("#5003", {
     deliveryLine({ price_incl_vat: "1150.00", paid_in_full: true, amount_paid: "" })
   ]
 });
-assert.strictEqual(winelands.rows.length, 3);
+assert.strictEqual(winelands.rows.length, 2);
 assert.strictEqual(winelands.rows[0].price_incl_vat, "R 14,661.00");
 assert.strictEqual(winelands.rows[1].price_incl_vat, "R 14,661.00");
 assert.strictEqual(winelands.rows[0].amount_paid, "R 14,661.00");
 assert.strictEqual(winelands.rows[1].amount_paid, "R 14,661.00");
 assert.strictEqual(winelands.rows[0].owing, "R 0.00");
 assert.strictEqual(winelands.rows[1].owing, "R 0.00");
-assert.strictEqual(winelands.rows[2].product, "Delivery");
 assert.ok(!db.listDebtors().some((o) => String(o.order_number).indexOf("S260001") === 0));
 
 const blank = db.createBlankOrderDraft(now);
@@ -799,17 +766,19 @@ assert.ok(page.indexOf("standalone") !== -1);
 assert.ok(page.indexOf("/orders/new") !== -1);
 assert.ok(page.indexOf("Add another item") !== -1);
 assert.ok(page.indexOf("data-remove-item") !== -1);
-assert.ok(page.indexOf("Remove this item") !== -1);
+assert.ok(page.indexOf(">Remove</button>") !== -1);
 assert.ok(page.indexOf("standalone && count > 1") === -1, "enquiry mode may remove items the client no longer wants");
 assert.ok(page.indexOf("count > 1") !== -1);
 assert.ok(page.indexOf("enquiryProductsForForm") !== -1);
-assert.ok(page.indexOf("Remove any item the client no longer wants") !== -1);
-assert.ok(page.indexOf("Delivery from the quote is added to Orders automatically") !== -1);
+assert.ok(page.indexOf("Use <b>Remove</b> on a product") !== -1);
+assert.ok(page.indexOf("stays on the enquiry — it is not a separate Orders row") !== -1);
 assert.ok(page.indexOf("deliveryChargeBanner") !== -1);
 assert.ok(page.indexOf("function isDeliveryLine") !== -1);
-assert.ok(page.indexOf("deliveryLineFromDraft") !== -1);
-assert.ok(page.indexOf("no shop fields to fill") !== -1);
-assert.ok(page.indexOf("Keep at least one product to add to Orders") !== -1);
+assert.ok(page.indexOf("data-remove-product") !== -1);
+assert.ok(page.indexOf("removeProductByName") !== -1);
+assert.ok(page.indexOf('class=\"remove-item\"') !== -1 || page.indexOf("remove-item") !== -1);
+assert.ok(page.indexOf("Keep at least one shop product to add to Orders") !== -1);
+assert.ok(page.indexOf("Delivery is added automatically") === -1, "Delivery is not auto-added as an Orders unit");
 assert.ok(page.indexOf("/api/office/orders/create") !== -1);
 assert.ok(page.indexOf("CATERGORY") !== -1);
 assert.ok(page.indexOf("data-f=\\\"quantity\\\"") !== -1);
@@ -821,7 +790,7 @@ assert.ok(page.indexOf("data-f=\\\"paid_in_full\\\"") !== -1);
 assert.ok(page.indexOf("strictest item") !== -1);
 assert.ok(page.indexOf("put LC on Monday") !== -1);
 assert.ok(page.indexOf("Mark selected as important") !== -1);
-assert.ok(page.indexOf("does not copy from the enquiry") !== -1);
+assert.ok(page.indexOf("Type this for the shop") !== -1);
 assert.ok(page.indexOf("Office schedule") === -1);
 
 db.upsertEnquiry({
@@ -935,7 +904,7 @@ assert.ok(officeJs.indexOf("/api/office/orders/create-draft") !== -1);
 assert.ok(officeJs.indexOf("createOrdersStandalone") !== -1);
 const fromHtml = fs.readFileSync(path.join(__dirname, "../public/orders-from-enquiry.html"), "utf8");
 assert.ok(fromHtml.indexOf("function isFeeLine") !== -1);
-assert.ok(fromHtml.indexOf("Fee lines (including Design Fee)") !== -1);
+assert.ok(fromHtml.indexOf("Delivery and fee lines (including Design Fee)") !== -1);
 assert.ok(fromHtml.indexOf("stays on the enquiry and is not added to Orders") !== -1);
 
 console.log("create-order-from-enquiry.test.js ok");

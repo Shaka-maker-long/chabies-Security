@@ -304,7 +304,7 @@ function isFeeLine(p) {
   return false;
 }
 
-/** Delivery charge line — required on Orders from enquiry; not a shop-built product. */
+/** Delivery charge line — stays on the enquiry; not a shop Orders unit. */
 function isDeliveryLine(p) {
   const cat = String((p && p.category) || "").replace(/\s+/g, " ").trim();
   const product = String((p && p.product) || "").replace(/\s+/g, " ").trim();
@@ -314,7 +314,8 @@ function isDeliveryLine(p) {
 }
 
 function shopLines(products) {
-  return (products || []).filter((p) => !isFeeLine(p));
+  // Delivery is a quote charge + schedule date — not a shop order unit.
+  return (products || []).filter((p) => !isFeeLine(p) && !isDeliveryLine(p));
 }
 
 /** True when the enquiry has no shop-built product — only Delivery (and maybe fees). */
@@ -391,7 +392,8 @@ function buildDraft(enquiry, nextOrderNumber, now) {
   const chosen = quoteOptions.chosenQuote(enquiry);
   const named = namedEnquiryLines(enquiry);
   const skippedFees = named.filter(isFeeLine).map((p) => String(p.product || p.category || "Fee").trim());
-  const mapped = named.filter((p) => !isFeeLine(p)).map((p) => ({
+  const skippedDelivery = named.some(isDeliveryLine) || !!enquiryDeliveryIncl(enquiry);
+  const products = named.filter((p) => !isFeeLine(p) && !isDeliveryLine(p)).map((p) => ({
     category: String(p.category || (enquiry && enquiry.category) || "").trim(),
     product: String(p.product || "").trim(),
     type: typeDefault,
@@ -404,8 +406,6 @@ function buildDraft(enquiry, nextOrderNumber, now) {
     amount_paid: "",
     quantity: 1
   }));
-  // Delivery on the quote must land on Orders — inject from enquiry delivery amount if missing.
-  const products = ensureDeliveryProduct(mapped, enquiry, typeDefault);
   return {
     enquiry_no: enquiry && enquiry.enquiry_no || "",
     quote_number: (chosen && chosen.quote_no) || (enquiry && enquiry.quote_no) || "",
@@ -422,8 +422,10 @@ function buildDraft(enquiry, nextOrderNumber, now) {
     },
     products,
     skippedFees,
+    deliveryAmountIncl: enquiryDeliveryIncl(enquiry),
+    deliveryOnEnquiry: skippedDelivery,
     delivery: estimateDelivery({
-      types: products.filter((p) => !isDeliveryLine(p)).map((p) => p.type),
+      types: products.map((p) => p.type),
       province: (enquiry && enquiry.province) || "",
       now
     })
@@ -474,21 +476,18 @@ function planUnits(products) {
     if (qty < 1) return;
     const product = String((p && p.product) || "").trim();
     if (!product) return;
-    const delivery = isDeliveryLine(p);
     let incl = lineInclVat(p);
     const paid = lineAmountPaid(p, incl);
     for (let i = 0; i < qty; i++) {
       units.push({
         product,
-        category: String((p && p.category) || "").trim() || (delivery ? "Delivery" : ""),
+        category: String((p && p.category) || "").trim(),
         type: orderTypeFromEnquiryType(p && p.type),
-        variation: delivery ? "N/A" : String((p && p.variation) || "").trim(),
-        doors: delivery ? "N/A" : String((p && p.doors) || "").trim(),
-        detailed_description: delivery
-          ? (String((p && p.detailed_description) || "").trim() || "Delivery")
-          : String((p && p.detailed_description) || "").trim(),
-        dimensions: delivery ? "N/A" : String((p && p.dimensions) || "").trim(),
-        powder_coating: delivery ? "N/A" : String((p && p.powder_coating) || "").trim(),
+        variation: String((p && p.variation) || "").trim(),
+        doors: String((p && p.doors) || "").trim(),
+        detailed_description: String((p && p.detailed_description) || "").trim(),
+        dimensions: String((p && p.dimensions) || "").trim(),
+        powder_coating: String((p && p.powder_coating) || "").trim(),
         price_incl_vat: splitCents(incl, qty, i),
         amount_paid: splitCents(paid, qty, i)
       });
@@ -544,28 +543,19 @@ function planCreate(enquiry, body, existingOrders) {
   if (orderBaseTaken(base, existingOrders)) {
     throw new Error("Order number " + base + " is already used");
   }
-  let products = Array.isArray(body && body.products) ? body.products.slice() : [];
-  // From an enquiry, Delivery is required on Orders — inject from the quote amount if missing.
-  if (enquiry) {
-    products = ensureDeliveryProduct(products, enquiry, orderTypeFromEnquiryType(enquiry.enquiry_type));
-  }
+  const products = Array.isArray(body && body.products) ? body.products.slice() : [];
   products.forEach(assertProductReady);
-  if (enquiry) {
-    const del = products.find(isDeliveryLine);
-    if (!lineInclVat(del) && !String((del && del.price_excl_vat) || "").trim()) {
-      throw new Error("Delivery including VAT is missing on the enquiry. Add it on the quote first.");
-    }
-  }
   const units = planUnits(products);
   if (!units.length) {
     const hadFee = (products || []).some(isFeeLine);
-    throw new Error(hadFee
-      ? "Fee lines stay on the enquiry. Add a shop product with quantity 1 or more."
+    const hadDelivery = (products || []).some(isDeliveryLine);
+    throw new Error(hadFee || hadDelivery
+      ? "Delivery and fee lines stay on the enquiry. Add a shop product with quantity 1 or more."
       : "Add a quantity of at least 1 for a product");
   }
   const province = String(sharedIn.province || "").trim();
   const delivery = estimateDelivery({
-    types: shopLines(products).filter((p) => !isDeliveryLine(p)).map((p) => p.type),
+    types: shopLines(products).map((p) => p.type),
     province,
     now: body && body.now,
     date: body && body.delivery_date,
