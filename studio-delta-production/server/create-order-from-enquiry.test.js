@@ -882,6 +882,25 @@ db.upsertEnquiry({
 assert.ok(db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#440"));
 
 db.upsertEnquiry({
+  enquiry_no: "#500",
+  status: "Ordered",
+  client_name: "Henri Van Nie",
+  quote_no: "SOQ2999",
+  delivery_incl_vat: "1150.00",
+  products: [{ product: "Delivery", category: "Delivery", value_incl_vat: "1150.00" }],
+  ready_for_orders: true
+}, { fromPipeline: true, fromMigrate: true });
+assert.ok(fromEnquiry.isDeliveryOnlyEnquiry(db.getEnquiry("#500")));
+assert.ok(
+  !db.listEnquiriesWaitingForOrders().some((row) => row.enquiry_no === "#500"),
+  "delivery-only enquiries stay off Ready to add to Orders"
+);
+assert.throws(
+  () => db.createOrderDraftFromEnquiry("#500"),
+  /only Delivery/
+);
+
+db.upsertEnquiry({
   enquiry_no: "#441",
   status: "Ordered",
   client_name: "Needs Drawing",

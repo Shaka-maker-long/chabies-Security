@@ -317,6 +317,17 @@ function shopLines(products) {
   return (products || []).filter((p) => !isFeeLine(p));
 }
 
+/** True when the enquiry has no shop-built product — only Delivery (and maybe fees). */
+function isDeliveryOnlyEnquiry(enquiry) {
+  const named = namedEnquiryLines(enquiry).filter((p) => !isFeeLine(p));
+  if (named.length) return named.every(isDeliveryLine);
+  const product = String((enquiry && enquiry.product) || "").trim();
+  if (/^delivery$/i.test(product)) return true;
+  // Quote has a delivery amount but no furniture lines.
+  if (enquiryDeliveryIncl(enquiry) && !product) return true;
+  return false;
+}
+
 function enquiryDeliveryIncl(enquiry) {
   const incl = String((enquiry && enquiry.delivery_incl_vat) || "").trim();
   if (incl !== "") return incl;
@@ -600,9 +611,11 @@ module.exports = {
   splitLetter,
   isFeeLine,
   isDeliveryLine,
+  isDeliveryOnlyEnquiry,
   readyDeliveryLine,
   ensureDeliveryProduct,
   enquiryDeliveryIncl,
+  namedEnquiryLines,
   shopLines,
   orderTypeFromEnquiryType,
   strictestOrderType,

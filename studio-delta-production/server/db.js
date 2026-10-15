@@ -1827,6 +1827,8 @@ function nextStudioOrderNumber() {
 function listEnquiriesWaitingForOrders() {
   return listEnquiries().filter((row) => {
     if (!row || !row.ready_for_orders) return false;
+    // Delivery-only enquiries are not shop orders — keep them off Ready to add.
+    if (fromEnquiry.isDeliveryOnlyEnquiry(row)) return false;
     return !ordersLinkedToEnquiry(row).length;
   });
 }
@@ -1875,6 +1877,9 @@ function createOrderDraftFromEnquiry(enquiryNo, now) {
   if (!enquiry) throw new Error("Enquiry not found");
   if (!enquiry.ready_for_orders) {
     throw new Error("Attach proof of payment before creating an Orders row");
+  }
+  if (fromEnquiry.isDeliveryOnlyEnquiry(enquiry)) {
+    throw new Error("This enquiry is only Delivery — it is not added to Orders.");
   }
   const existing = ordersLinkedToEnquiry(enquiry);
   return {
@@ -1939,6 +1944,9 @@ function createOrdersFromEnquiryForm(enquiryNo, body) {
   if (!enquiry) throw new Error("Enquiry not found");
   if (!enquiry.ready_for_orders) {
     throw new Error("Attach proof of payment before creating an Orders row");
+  }
+  if (fromEnquiry.isDeliveryOnlyEnquiry(enquiry)) {
+    throw new Error("This enquiry is only Delivery — it is not added to Orders.");
   }
   const existing = ordersLinkedToEnquiry(enquiry);
   if (existing.length) {
