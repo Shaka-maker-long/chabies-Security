@@ -562,10 +562,12 @@ function planCreate(enquiry, body, existingOrders) {
     dateTouched: !!(body && body.dateTouched)
   });
   const total = units.length;
+  const fromStock = body && (body.from_stock === true || body.from_stock === "true" || body.from_stock === 1 || body.from_stock === "1" || body.from_stock === "on");
   return {
     base,
     quote_number: String((body && body.quote_number) || (enquiry && enquiry.quote_no) || "").trim(),
     enquiry_no: String((body && body.enquiry_no) || (enquiry && enquiry.enquiry_no) || "").trim(),
+    from_stock: !!fromStock,
     shared: {
       client_name: client,
       client_number: String(sharedIn.client_number || "").trim(),

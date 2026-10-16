@@ -9,6 +9,7 @@ const SD_ORDER_STATUSES = [
   "Ready for Powder Coating", "Sent to Paint Shop", "Paint Shop", "Powder Coating",
   "Ready for Assembly", "Assembly", "Paint Preparation", "Ready for Painting", "Painting",
   "Ready for Final QC", "Final QC",
+  "In Stock",
   "Ready for Delivery", "Out for Delivery", "At couriers",
   "Delivered"
 ];

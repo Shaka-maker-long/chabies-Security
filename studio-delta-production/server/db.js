@@ -11,7 +11,7 @@ const {
 const { getBook, persistWorkbook, ORDER_HEADERS, dataDir } = require("./workbook-store");
 const fromEnquiry = require("./create-order-from-enquiry");
 const quoteOptions = require("./quote-options");
-const { SHOP_STATUSES, isShopStatus, normalizeShopStatus, WAITING_FOR_DRAWING, isWaitingForDrawing } = require("./shop-status");
+const { SHOP_STATUSES, isShopStatus, normalizeShopStatus, WAITING_FOR_DRAWING, IN_STOCK, isWaitingForDrawing } = require("./shop-status");
 const dates = require("./sast-date");
 
 const ORDER_FIELDS = [
@@ -1895,7 +1895,8 @@ function createOrderDraftFromEnquiry(enquiryNo, now) {
 
 function savePlannedOrders(plan) {
   const enquiry = plan.enquiry_no ? (getEnquiry(plan.enquiry_no) || getEnquiryRaw(plan.enquiry_no)) : null;
-  const status = initialOrderStatus(enquiry);
+  // Already in the warehouse — skip manufacture / auto-plan (overrides Waiting for drawing).
+  const status = plan && plan.from_stock ? IN_STOCK : initialOrderStatus(enquiry);
   const rows = plan.units.map((unit) => {
     const pair = vatPair(unit.price_incl_vat, "");
     const paid = parseMoney(unit.amount_paid);

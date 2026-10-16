@@ -29,6 +29,7 @@ const PIPELINE = [
   { id: "paint", label: "Paint shop" },
   { id: "assembly", label: "Assembly" },
   { id: "qc", label: "QC" },
+  { id: "stock", label: "In stock" },
   { id: "delivery", label: "Delivery" },
   { id: "delivered", label: "Delivered" },
   { id: "other", label: "Other" }
@@ -253,6 +254,7 @@ function pipelineId(status) {
   if (PAINT.indexOf(s) >= 0 || shop.isAtPaintShop(status)) return "paint";
   if (ASSEMBLY.indexOf(s) >= 0) return "assembly";
   if (s === "Ready for Final QC" || s === "Final QC") return "qc";
+  if (shop.isInStock(s)) return "stock";
   if (s === "Ready for Delivery" || s === "Out for Delivery" || s === "At couriers") return "delivery";
   if (s === "Delivered") return "delivered";
   return "other";
@@ -541,10 +543,12 @@ function buildDashboard(query) {
     return it.day < today && !done;
   });
 
+  const inStockCount = rows.filter((r) => shop.isInStock(r.status)).length;
   const blockers = [
     { id: "drawing", label: "Waiting for drawing", count: waitingForDrawing },
     { id: "no_plates", label: "No plates", count: noPlateOpen },
     { id: "paint", label: "At paint shop", count: atPaintShop },
+    { id: "stock", label: "In Stock", count: inStockCount },
     { id: "ready_delivery", label: "Ready for Delivery", count: rows.filter((r) => shop.normalizeShopStatus(r.status) === "Ready for Delivery").length }
   ];
 
@@ -638,6 +642,7 @@ function matchesDrill(row, query, win) {
   if (kind === "open") return isOpen(status);
   if (kind === "drawing") return shop.isWaitingForDrawing(status);
   if (kind === "paint") return shop.isAtPaintShop(status);
+  if (kind === "stock") return shop.isInStock(status);
   if (kind === "ready_delivery") return shop.normalizeShopStatus(status) === "Ready for Delivery";
   if (kind === "readyOrOut") return isReadyOrOut(status);
   if (kind === "unpaid") return isOpen(status) && moneyOf(row).owing > 0;
@@ -724,6 +729,7 @@ function drillTitle(query, win) {
   if (kind === "open") return "Open jobs";
   if (kind === "drawing") return "Waiting for drawing";
   if (kind === "paint") return "At paint shop";
+  if (kind === "stock") return "In Stock";
   if (kind === "ready_delivery") return "Ready for Delivery";
   if (kind === "readyOrOut") return "Ready / out for delivery";
   if (kind === "unpaid") return "Unpaid on open jobs";

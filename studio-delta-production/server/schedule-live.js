@@ -5,7 +5,7 @@
  * Paints the same process days as Planning Journey Plan rows (buildJourney).
  * Never overwrites or clears LD / LC / LD* / LC* / PD / C (Courier).
  * Never auto-plans PD or C.
- * Ready for Delivery / Out for Delivery / At couriers / Delivered: no auto production letters.
+ * In Stock / Ready for Delivery / Out for Delivery / At couriers / Delivered: no auto production letters.
  */
 
 const sched = require("./office-schedule");

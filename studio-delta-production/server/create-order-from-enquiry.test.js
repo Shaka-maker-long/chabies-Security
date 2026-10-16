@@ -360,6 +360,24 @@ const single = fromEnquiry.planCreate(
 assert.strictEqual(single.units.length, 1);
 assert.strictEqual(single.units[0].order_number, "S260200");
 assert.strictEqual(single.delivery.scheduleCode, "LC");
+assert.ok(!single.from_stock);
+
+const stockPlan = fromEnquiry.planCreate(
+  { enquiry_no: "#5002s", quote_no: "SOQ89S" },
+  {
+    order_number: "S260201",
+    delivery_date: "2026-10-15",
+    now,
+    from_stock: true,
+    shared: { client_name: "Stock Client", province: "Gauteng", address: "2 Stock Road", city: "Johannesburg" },
+    products: [
+      shopFields({ product: "Air Chair", type: "Standard", quantity: 1, price_incl_vat: "10000" })
+    ]
+  },
+  []
+);
+assert.ok(stockPlan.from_stock);
+assert.strictEqual(stockPlan.units.length, 1);
 
 assert.throws(
   () => fromEnquiry.planCreate(
@@ -601,6 +619,36 @@ assert.strictEqual(one.rows.length, 1);
 assert.strictEqual(one.rows[0].order_number, "S260200");
 
 db.upsertEnquiry({
+  enquiry_no: "#5802",
+  status: "Ordered",
+  client_name: "Stock Warehouse Client",
+  province: "Gauteng",
+  enquiry_type: "Catologue",
+  quote_no: "SOQ5802",
+  delivery_incl_vat: "500.00",
+  products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "10000.00" }],
+  ready_for_orders: true
+}, { fromPipeline: true, fromMigrate: true });
+const stockCreated = db.createOrdersFromEnquiryForm("#5802", {
+  order_number: "S260205",
+  delivery_date: "2026-10-15",
+  now,
+  from_stock: true,
+  shared: {
+    client_name: "Stock Warehouse Client",
+    province: "Gauteng",
+    address: "9 Stock Lane",
+    city: "Johannesburg"
+  },
+  products: [
+    shopFields({ product: "Air Chair", category: "Chair", type: "Standard", quantity: 1, price_incl_vat: "10000" })
+  ]
+});
+assert.strictEqual(stockCreated.rows.length, 1);
+assert.strictEqual(stockCreated.rows[0].status, "In Stock");
+assert.strictEqual(require("./shop-status").remainingPlanForStatus(stockCreated.rows[0].status).processes.length, 0);
+
+db.upsertEnquiry({
   enquiry_no: "#2910",
   status: "Ordered",
   client_name: "Helderberg Build and Paint Pty Ltd",
@@ -779,6 +827,8 @@ assert.ok(page.indexOf("removeProductByName") !== -1);
 assert.ok(page.indexOf('class=\"remove-item\"') !== -1 || page.indexOf("remove-item") !== -1);
 assert.ok(page.indexOf("Keep at least one shop product to add to Orders") !== -1);
 assert.ok(page.indexOf("Delivery is added automatically") === -1, "Delivery is not auto-added as an Orders unit");
+assert.ok(page.indexOf("f_from_stock") !== -1);
+assert.ok(page.indexOf("Already in stock — do not manufacture") !== -1);
 assert.ok(page.indexOf("/api/office/orders/create") !== -1);
 assert.ok(page.indexOf("CATERGORY") !== -1);
 assert.ok(page.indexOf("data-f=\\\"quantity\\\"") !== -1);

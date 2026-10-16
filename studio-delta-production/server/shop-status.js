@@ -1,6 +1,8 @@
 "use strict";
 
 const WAITING_FOR_DRAWING = "Waiting for drawing";
+/** Already built — fulfil from warehouse; no shop manufacture or auto-plan. */
+const IN_STOCK = "In Stock";
 
 const SHOP_STATUSES = [
   WAITING_FOR_DRAWING,
@@ -13,6 +15,7 @@ const SHOP_STATUSES = [
   "Ready for Powder Coating", "Sent to Paint Shop", "Paint Shop", "Powder Coating",
   "Ready for Assembly", "Assembly", "Paint Preparation", "Ready for Painting", "Painting",
   "Ready for Final QC", "Final QC",
+  IN_STOCK,
   "Ready for Delivery", "Out for Delivery", "At couriers",
   "Delivered"
 ];
@@ -47,7 +50,12 @@ const STATUS_ALIASES = {
   "at 3rd party": "At couriers",
   "at third party": "At couriers",
   "third party": "At couriers",
-  "3rd party": "At couriers"
+  "3rd party": "At couriers",
+  "in stock": IN_STOCK,
+  "from stock": IN_STOCK,
+  "stock": IN_STOCK,
+  "stock item": IN_STOCK,
+  "already in stock": IN_STOCK
 };
 
 function normalizeShopStatus(status) {
@@ -74,7 +82,7 @@ function isWaitingForDrawing(status) {
 
 function remainingPlanForStatus(status, productMinutes) {
   const raw = normalizeShopStatus(status) || "Not Yet Started";
-  // Ready for Delivery / Out for Delivery / At couriers / Delivered — nothing left to plan.
+  // In Stock / Ready for Delivery / Out for Delivery / At couriers / Delivered — nothing left to plan.
   if (isProductionFinished(raw)) {
     return { processes: [], paintWait: false, status: raw };
   }
@@ -138,11 +146,18 @@ function isHandedOff(status) {
   return s === "Out for Delivery" || s === "At couriers" || s === "Delivered";
 }
 
-/** Production work is finished — Ready for Delivery and later. Nothing left to plan or paint. */
+function isInStock(status) {
+  return normalizeShopStatus(status) === IN_STOCK;
+}
+
+/**
+ * No manufacture left — In Stock (warehouse), or Ready for Delivery and later.
+ * Auto-plan clears leftover shop letters and never re-plans these.
+ */
 function isProductionFinished(status) {
   const s = normalizeShopStatus(status);
   if (!s) return false;
-  return atOrAfter(s, "Ready for Delivery");
+  return atOrAfter(s, IN_STOCK);
 }
 
 const PROFILE_CUTTING_WAITING = "Ready for Steelwork";
@@ -163,6 +178,7 @@ module.exports = {
   STATUS_ALIASES,
   PROFILE_CUTTING_WAITING,
   WAITING_FOR_DRAWING,
+  IN_STOCK,
   normalizeShopStatus,
   shopStatusIndex,
   remainingPlanForStatus,
@@ -171,6 +187,7 @@ module.exports = {
   isAtCouriers,
   isHandedOff,
   isProductionFinished,
+  isInStock,
   isWaitingForDrawing,
   isProfileCuttingInProgress,
   waitingStatusIfProfileCuttingIdle
