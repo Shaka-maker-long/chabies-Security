@@ -1,1 +1,1 @@
-{"build":"delivery-not-unit-remove","note":"Delivery stays on enquiry (not Orders letter); Remove on products and split list"}
+{"build":"in-stock-status","note":"In Stock status skips manufacture and auto-plan; checkbox on create-from-enquiry"}
