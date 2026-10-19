@@ -204,7 +204,7 @@
   <header>
     <h1>Inventory prototype</h1>
     <span class="banner">Sandbox — not live inventory</span>
-    <p class="lede">Create a PO for materials A and B, receive it, print an A4 with one QR each, scan on phone, type qty — stock drops and WIP rises on the person’s active job. Data is only in <code>inventory-prototype.json</code>.</p>
+      <p class="lede">Each purchase order creates <b>two PDFs</b>: the purchase order, and (after Receive) a cut-out sheet of <b>5 cm × 5 cm</b> QR codes for lockers. Scan the locker QR, type qty — stock drops and WIP rises on the person’s active job. Sandbox data only.</p>
     <nav class="tabs" id="tabs">
       <button type="button" data-tab="stock" class="on">Stock &amp; WIP</button>
       <button type="button" data-tab="po">Purchase orders</button>
@@ -250,14 +250,15 @@
 
     <section id="tab-labels" class="tab hidden">
       <div class="card">
-        <h2>Print A4 QR sheet</h2>
-        <p class="hint">QR codes appear only after <b>Receive</b> on a purchase order. Each received line becomes one QR (A, B, …) to stick on that material.</p>
+        <h2>QR labels PDF (5 cm × 5 cm)</h2>
+        <p class="hint">After <b>Receive</b>, open the <b>QR PDF</b> — each dashed square is 5 cm × 5 cm to cut and stick on the locker. Preview below is optional.</p>
         <label>Received PO
           <select id="labelPo"></select>
         </label>
         <div class="row" style="margin-top:12px">
-          <button type="button" class="primary" id="loadLabelsBtn">Show labels</button>
-          <button type="button" class="ghost" id="printLabelsBtn" disabled>Print A4</button>
+          <a class="primary" id="openLabelsPdfBtn" href="#" target="_blank" rel="noopener" style="display:none;text-decoration:none">Open QR labels PDF</a>
+          <button type="button" class="ghost" id="loadLabelsBtn">Show on-screen preview</button>
+          <button type="button" class="ghost" id="printLabelsBtn" disabled>Print preview</button>
         </div>
         <div class="label-preview" id="labelPreview" style="margin-top:16px"></div>
       </div>
@@ -404,9 +405,13 @@
             "<td><span class=\"pill " + esc(p.status) + "\">" + esc(p.status) + "</span></td>" +
             "<td>" + esc((p.lines || []).map((l) => l.code + " × " + l.qty).join(", ")) + "</td>" +
             "<td class=\"row\">" +
+              (p.poPdfUrl ? "<a class=\"ghost\" style=\"display:inline-block;padding:8px 12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;font-weight:600\" href=\"" + esc(p.poPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">PO PDF</a>" : "") +
               (p.status !== "received"
                 ? "<button type=\"button\" class=\"primary\" data-receive=\"" + esc(p.id) + "\">Receive</button>"
-                : "<button type=\"button\" class=\"ghost\" data-goto-labels=\"" + esc(p.id) + "\">QR labels</button>") +
+                : (p.labelsPdfUrl
+                    ? "<a class=\"primary\" style=\"display:inline-block;padding:10px 14px;text-decoration:none;border-radius:8px;font-weight:700;background:var(--ink);color:#fff\" href=\"" + esc(p.labelsPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">QR PDF 5×5cm</a>"
+                    : "") +
+                  "<button type=\"button\" class=\"ghost\" data-goto-labels=\"" + esc(p.id) + "\">Preview</button>") +
             "</td></tr>"
           )).join("") + "</tbody></table>"
         : "<p class=\"hint\">No purchase orders yet.</p>";
@@ -415,9 +420,24 @@
       const sel = document.getElementById("labelPo");
       const cur = sel.value;
       sel.innerHTML = received.length
-        ? received.map((p) => "<option value=\"" + esc(p.id) + "\">" + esc(p.number) + "</option>").join("")
+        ? received.map((p) => "<option value=\"" + esc(p.id) + "\" data-pdf=\"" + esc(p.labelsPdfUrl || "") + "\">" + esc(p.number) + "</option>").join("")
         : "<option value=\"\">Receive a PO first</option>";
       if (cur && received.some((p) => p.id === cur)) sel.value = cur;
+      syncLabelsPdfLink();
+    }
+
+    function syncLabelsPdfLink() {
+      const sel = document.getElementById("labelPo");
+      const opt = sel.options[sel.selectedIndex];
+      const url = opt && opt.getAttribute("data-pdf");
+      const btn = document.getElementById("openLabelsPdfBtn");
+      if (url) {
+        btn.href = url;
+        btn.style.display = "inline-block";
+      } else {
+        btn.href = "#";
+        btn.style.display = "none";
+      }
     }
 
     function renderCollect() {
@@ -534,7 +554,8 @@
         state = j;
         renderPos();
         renderStock();
-        flash("Created " + j.purchase.number, true);
+        flash("Created " + j.purchase.number + " — open PO PDF from the list.", true);
+        if (j.purchase && j.purchase.poPdfUrl) window.open(j.purchase.poPdfUrl, "_blank");
       } catch (e) {
         flash(e.message, false);
       }
@@ -551,8 +572,10 @@
           renderStock();
           document.getElementById("labelPo").value = j.purchase.id;
           showTab("labels");
-          await renderLabels(j.labels, j.purchase.number);
-          flash("Received " + j.purchase.number + " — stock updated. Print QR labels.", true);
+          renderLabels(j.labels, j.purchase.number);
+          syncLabelsPdfLink();
+          flash("Received " + j.purchase.number + " — open QR PDF (5×5 cm) to cut for lockers.", true);
+          if (j.purchase && j.purchase.labelsPdfUrl) window.open(j.purchase.labelsPdfUrl, "_blank");
         }
         if (go) {
           document.getElementById("labelPo").value = go.getAttribute("data-goto-labels");
@@ -564,13 +587,15 @@
       }
     });
 
+    document.getElementById("labelPo").onchange = syncLabelsPdfLink;
     document.getElementById("loadLabelsBtn").onclick = async () => {
       try {
         const id = document.getElementById("labelPo").value;
         if (!id) throw new Error("Receive a PO first");
         const j = await api("/api/inventory-prototype/purchases/" + id + "/labels");
-        await renderLabels(j.labels, j.purchase.number);
-        flash("Labels ready for " + j.purchase.number, true);
+        renderLabels(j.labels, j.purchase.number);
+        syncLabelsPdfLink();
+        flash("Preview ready — use Open QR labels PDF for the 5×5 cm cut sheet.", true);
       } catch (e) {
         flash(e.message, false);
       }
