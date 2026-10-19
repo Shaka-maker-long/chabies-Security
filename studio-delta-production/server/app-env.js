@@ -24,7 +24,11 @@ function appEnv() {
 }
 
 function stagingBannerText() {
-  return "STAGING — safe to test updates. Live shop is unchanged. Login Admin / admin";
+  // Keep this explicit so the installed PWA makes it obvious updates were committed.
+  const tip = String(process.env.SD_STAGING_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || "").trim();
+  const short = tip ? tip.slice(0, 7) : "";
+  const commitBit = short ? (" · committed " + short) : " · updates committed";
+  return "STAGING" + commitBit + " — QR PO PDFs live here. Live shop unchanged. Login Admin / admin";
 }
 
 module.exports = {

@@ -20,7 +20,9 @@ appEnv = require("./app-env");
 assert.strictEqual(appEnv.isStaging(), true);
 assert.strictEqual(appEnv.appEnv(), "staging");
 assert.ok(/STAGING/.test(appEnv.stagingBannerText()));
+assert.ok(/committed/i.test(appEnv.stagingBannerText()), "banner must say updates were committed");
 assert.ok(/Admin/.test(appEnv.stagingBannerText()));
+assert.ok(/QR/i.test(appEnv.stagingBannerText()));
 
 process.env.APP_ENV = "production";
 process.env.STAGING = "1";

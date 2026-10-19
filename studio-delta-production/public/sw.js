@@ -2,7 +2,7 @@
    Driver run HTML/assets are cached so PODs can be filled with no signal. */
 importScripts("/delivery-offline.js");
 
-const CACHE = "sd-pwa-v28-staging-splash";
+const CACHE = "sd-pwa-v29-committed-banner";
 const PRECACHE = [
   "/",
   "/offline.html",
@@ -12,9 +12,9 @@ const PRECACHE = [
   "/vendor/leaflet/leaflet.css",
   "/vendor/leaflet/leaflet.js",
   "/manifest.webmanifest",
-  "/sd-pwa.js?v=pwa-driverpin",
-  "/sd-brand.css?v=staging-splash",
-  "/sd-splash.js?v=staging-splash",
+  "/sd-pwa.js?v=pwa-committed-banner",
+  "/sd-brand.css?v=committed-banner",
+  "/sd-splash.js?v=committed-banner",
   "/office-auth.js?v=login-msg-3",
   "/facility-floor.png",
   "/icons/icon-192.png",

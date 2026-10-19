@@ -140,7 +140,7 @@
     var bar = document.createElement("div");
     bar.id = "sdStagingBanner";
     bar.setAttribute("role", "status");
-    bar.textContent = text || "STAGING — safe to test updates. Live shop is unchanged.";
+    bar.textContent = text || "STAGING · updates committed — QR PO PDFs live here. Live shop unchanged.";
     var css = document.createElement("style");
     css.textContent = "#sdStagingBanner{position:sticky;top:0;z-index:12000;background:#7c2d12;color:#fff7ed;border-bottom:2px solid #ea580c;padding:8px 12px;font:700 13px Outfit,Inter,system-ui,sans-serif;letter-spacing:.02em;text-align:center}" +
       "html.sd-staging body{padding-top:0}" +
