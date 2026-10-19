@@ -605,6 +605,7 @@ async function boot() {
     const staff = require("./staff");
     staff.usersSheet();
     staff.seedLocalAdminIfEmpty();
+    staff.ensureStagingAdmin();
   } catch (e) {}
   server = app.listen(PORT, "0.0.0.0", () => {
     let envLabel = "production";
