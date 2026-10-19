@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Inventory prototype</title>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <script src="/vendor/qrcode.min.js"></script>
   <style>
     :root {
       --ink: #1c1914;
@@ -167,7 +167,7 @@
         text-align: center;
         page-break-inside: avoid;
       }
-      .label-card canvas { width: 42mm !important; height: 42mm !important; }
+      .label-card .qr-box img, .label-card .qr-box canvas { width: 42mm !important; height: 42mm !important; }
       .label-card h3 { margin: 0 0 4px; font-size: 18pt; }
       .label-card p { margin: 2px 0; font-size: 10pt; }
     }
@@ -183,9 +183,19 @@
       text-align: center;
       background: #fff;
     }
+    .label-card .qr-box {
+      width: 160px;
+      height: 160px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .label-card .qr-box img, .label-card .qr-box canvas { max-width: 160px; max-height: 160px; }
     .label-card h3 { margin: 8px 0 4px; font-family: "Fraunces", Georgia, serif; }
     .label-card p { margin: 2px 0; font-size: 12px; color: var(--muted); }
     .label-card code { font-size: 11px; word-break: break-all; }
+    .label-card .qr-missing { color: var(--bad); font-size: 12px; font-weight: 700; }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
@@ -426,33 +436,54 @@
       )).join("");
     }
 
-    async function paintQr(canvas, text) {
-      if (!window.QRCode) return;
-      await QRCode.toCanvas(canvas, text, { width: 160, margin: 1, errorCorrectionLevel: "M" });
+    function paintQr(box, text) {
+      if (!box) return;
+      box.innerHTML = "";
+      if (!window.QRCode) {
+        box.innerHTML = "<span class=\"qr-missing\">QR library failed to load</span>";
+        return;
+      }
+      try {
+        // qrcodejs draws into the element (img or table).
+        new QRCode(box, {
+          text: String(text || ""),
+          width: 160,
+          height: 160,
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      } catch (e) {
+        box.innerHTML = "<span class=\"qr-missing\">Could not draw QR</span>";
+      }
     }
 
-    async function renderLabels(labels, poNumber) {
+    function renderLabels(labels, poNumber) {
       labelData = labels;
       const preview = document.getElementById("labelPreview");
       const print = document.getElementById("labelsPrint");
       preview.innerHTML = "";
       print.innerHTML = "";
       document.getElementById("printLabelsBtn").disabled = !labels.length;
+      if (!window.QRCode) {
+        flash("QR library missing — hard-refresh the page after deploy.", false);
+      }
       for (const lab of labels) {
         const card = document.createElement("div");
         card.className = "label-card";
         card.innerHTML =
-          "<canvas></canvas>" +
+          "<div class=\"qr-box\"></div>" +
           "<h3>" + esc(lab.code) + "</h3>" +
           "<p>" + esc(lab.name) + "</p>" +
           "<p>Received " + esc(lab.qtyReceived) + " " + esc(lab.unit) + "</p>" +
           "<p>" + esc(poNumber || lab.poNumber) + "</p>" +
           "<code>" + esc(lab.qr) + "</code>";
         preview.appendChild(card);
+        paintQr(card.querySelector(".qr-box"), lab.qr);
         const printCard = card.cloneNode(true);
+        // Re-draw on the print copy (clone does not copy generated QR img reliably).
+        const printBox = printCard.querySelector(".qr-box");
+        if (printBox) printBox.innerHTML = "";
         print.appendChild(printCard);
-        await paintQr(card.querySelector("canvas"), lab.qr);
-        await paintQr(printCard.querySelector("canvas"), lab.qr);
+        paintQr(printBox, lab.qr);
       }
     }
 
