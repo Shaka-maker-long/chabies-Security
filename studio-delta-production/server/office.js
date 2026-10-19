@@ -683,7 +683,7 @@ function mountOffice(app) {
       res.setHeader("Cache-Control", "no-store");
       res.setHeader(
         "Content-Disposition",
-        "attachment; filename=\"" + String(file.filename || "QR-labels.pdf").replace(/"/g, "") + "\""
+        "inline; filename=\"" + String(file.filename || "QR-labels.pdf").replace(/"/g, "") + "\""
       );
       res.send(file.buffer);
     } catch (e) {
@@ -691,18 +691,19 @@ function mountOffice(app) {
     }
   });
 
-  app.get("/api/office/consumables/purchases/:id/documents.zip", requireOffice, async (req, res) => {
+  app.get("/api/office/consumables/purchases/:id/qr/:itemId", requireOffice, async (req, res) => {
     try {
-      const file = await consumables.readPurchaseDocumentsZip(req.params.id);
+      const itemId = String(req.params.itemId || "").replace(/\.pdf$/i, "");
+      const file = await consumables.readPurchaseLineQrPdf(req.params.id, itemId);
       if (!file) {
-        res.status(404).json({ ok: false, error: "Documents ZIP not found." });
+        res.status(404).json({ ok: false, error: "QR code PDF not found for that item." });
         return;
       }
-      res.setHeader("Content-Type", file.mime || "application/zip");
+      res.setHeader("Content-Type", file.mime || "application/pdf");
       res.setHeader("Cache-Control", "no-store");
       res.setHeader(
         "Content-Disposition",
-        "attachment; filename=\"" + String(file.filename || "documents.zip").replace(/"/g, "") + "\""
+        "inline; filename=\"" + String(file.filename || "QR.pdf").replace(/"/g, "") + "\""
       );
       res.send(file.buffer);
     } catch (e) {

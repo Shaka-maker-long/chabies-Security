@@ -259,7 +259,12 @@ function decoratePurchase(row) {
       priceLabel: unitPrice == null ? "—" : formatRand(unitPrice),
       lineTotal,
       lineTotalLabel: lineTotal == null ? "—" : formatRand(lineTotal),
-      receivedQty: Number(line.receivedQty) || 0
+      receivedQty: Number(line.receivedQty) || 0,
+      qr: qrPayloadForLine(line),
+      // Separate openable QR PDF per item — no ZIP folder.
+      qrPdfUrl: row.id
+        ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/qr/" + encodeURIComponent(line.itemId))
+        : ""
     };
   });
   const total = lines.reduce((sum, line) => sum + (line.lineTotal == null ? 0 : line.lineTotal), 0);
@@ -279,16 +284,9 @@ function decoratePurchase(row) {
     lines,
     totalValue: hasPrices ? Math.round(total * 100) / 100 : null,
     totalValueLabel: hasPrices ? formatRand(total) : "—",
-    pdfUrl: row.hasPdf ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/pdf?download=1") : "",
+    pdfUrl: row.hasPdf ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/pdf") : "",
     hasPdf: !!row.hasPdf,
-    // QR cut-outs are available for every PO that has lines (built on create; regenerated on demand).
-    qrPdfUrl: (row.hasPdf || (row.lines && row.lines.length))
-      ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/qr-labels.pdf?download=1")
-      : "",
-    hasQrPdf: !!(row.hasQrPdf || (row.id && fs.existsSync(qrPdfPathFor(row.id)))),
-    documentsZipUrl: row.hasPdf
-      ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/documents.zip")
-      : ""
+    hasQrPdf: !!(row.hasQrPdf || (row.id && (row.lines || []).some((line) => fs.existsSync(qrLinePdfPath(row.id, line.itemId)))))
   };
 }
 
@@ -332,6 +330,11 @@ function pdfPathFor(id) {
 
 function qrPdfPathFor(id) {
   return path.join(pdfDir(), String(id) + "-qr-labels.pdf");
+}
+
+function qrLinePdfPath(poId, itemId) {
+  const safeItem = String(itemId || "item").replace(/[^\w.-]+/g, "_");
+  return path.join(pdfDir(), String(poId) + "-qr-" + safeItem + ".pdf");
 }
 
 function cmToPt(cm) {
@@ -567,6 +570,60 @@ async function buildPurchasePdf(po) {
     doc.fillColor(ink).font("Helvetica-Bold").fontSize(10)
       .text("Total  " + formatRand(total), margin, y, { width: inner, align: "right" });
   }
+
+  doc.end();
+  return done;
+}
+
+/** One material = one 5cm × 5cm QR PDF page (open anytime, no ZIP). */
+async function buildSingleQrPdf(po, line) {
+  const PDFDocument = require("pdfkit");
+  const QRCode = require("qrcode");
+  const size = cmToPt(5);
+  const page = size + cmToPt(1.2);
+  const chunks = [];
+  const doc = new PDFDocument({
+    size: [page, page],
+    margin: 0,
+    compress: false,
+    info: {
+      Title: "QR " + String((line && line.itemName) || ""),
+      Author: "Studio Delta"
+    }
+  });
+  doc.on("data", (c) => chunks.push(c));
+  const done = new Promise((resolve, reject) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+  });
+
+  const pad = cmToPt(0.35);
+  const x = (page - size) / 2;
+  const y = (page - size) / 2 - 4;
+  const qr = qrPayloadForLine(line);
+  const png = await QRCode.toBuffer(qr, {
+    type: "png",
+    width: 480,
+    margin: 1,
+    errorCorrectionLevel: "M"
+  });
+
+  doc.save()
+    .lineWidth(0.6)
+    .dash(3, { space: 2 })
+    .strokeColor("#9a9080")
+    .rect(x, y, size, size)
+    .stroke()
+    .undash()
+    .restore();
+
+  const imgSize = size - pad * 2 - 18;
+  doc.image(png, x + (size - imgSize) / 2, y + pad, { width: imgSize, height: imgSize });
+  const label = String((line && line.itemName) || line.itemId || "").slice(0, 28);
+  doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(9)
+    .text(label, x + 2, y + size - 16, { width: size - 4, align: "center", lineBreak: false });
+  doc.fillColor("#6b6358").font("Helvetica").fontSize(6)
+    .text(String((po && po.number) || "") + " · 5 cm × 5 cm", 4, page - 12, { width: page - 8, align: "center" });
 
   doc.end();
   return done;
@@ -887,8 +944,11 @@ async function createPurchase(body, actor) {
   const buffer = await buildPurchasePdf(po);
   fs.writeFileSync(pdfPathFor(po.id), buffer);
   po.hasPdf = true;
-  const qrBuffer = await buildQrLabelsPdf(po);
-  fs.writeFileSync(qrPdfPathFor(po.id), qrBuffer);
+  // Separate QR PDF per line so each code can be opened anytime (no ZIP folder).
+  for (const line of lines) {
+    const qrBuf = await buildSingleQrPdf(po, line);
+    fs.writeFileSync(qrLinePdfPath(po.id, line.itemId), qrBuf);
+  }
   po.hasQrPdf = true;
   store.purchases.unshift(po);
   lines.forEach((line) => {
@@ -933,58 +993,52 @@ function readPurchasePdf(id) {
   };
 }
 
-async function ensureQrPdf(po) {
-  if (!po) return null;
-  const file = qrPdfPathFor(po.id);
-  if (!fs.existsSync(file) || !po.hasQrPdf) {
-    const buf = await buildQrLabelsPdf(po);
+async function ensureLineQrPdf(po, line) {
+  if (!po || !line || !line.itemId) return null;
+  const file = qrLinePdfPath(po.id, line.itemId);
+  if (!fs.existsSync(file)) {
+    const buf = await buildSingleQrPdf(po, line);
     fs.writeFileSync(file, buf);
-    po.hasQrPdf = true;
-    const store = loadStore();
-    const row = store.purchases.find((p) => p.id === po.id);
-    if (row) {
-      row.hasQrPdf = true;
-      saveStore(store);
-    }
   }
   return file;
 }
 
-async function readPurchaseQrPdf(id) {
-  const want = String(id || "").trim();
-  if (!want) return null;
+async function readPurchaseLineQrPdf(poId, itemId) {
+  const want = String(poId || "").trim();
+  const itemWant = String(itemId || "").trim();
+  if (!want || !itemWant) return null;
   const store = loadStore();
   const po = store.purchases.find((row) => row.id === want);
   if (!po) return null;
-  await ensureQrPdf(po);
-  const file = qrPdfPathFor(want);
+  const line = (po.lines || []).find((row) => String(row.itemId) === itemWant);
+  if (!line) return null;
+  await ensureLineQrPdf(po, line);
+  const file = qrLinePdfPath(want, itemWant);
   if (!fs.existsSync(file)) return null;
+  const safeName = String(line.itemName || itemWant).replace(/[^\w.-]+/g, "_").slice(0, 40);
   return {
     buffer: fs.readFileSync(file),
-    filename: (po.number || want) + "-QR-labels-5cm.pdf",
+    filename: (po.number || want) + "-QR-" + safeName + "-5cm.pdf",
     mime: "application/pdf"
   };
 }
 
-async function readPurchaseDocumentsZip(id) {
+async function readPurchaseQrPdf(id) {
+  // Kept for older links: build a combined sheet on demand.
   const want = String(id || "").trim();
   if (!want) return null;
   const store = loadStore();
   const po = store.purchases.find((row) => row.id === want);
   if (!po) return null;
-  const poFile = pdfPathFor(want);
-  if (!fs.existsSync(poFile)) return null;
-  await ensureQrPdf(po);
-  const qrFile = qrPdfPathFor(want);
-  if (!fs.existsSync(qrFile)) return null;
-  const num = String(po.number || want).replace(/[^\w.-]+/g, "_");
+  const file = qrPdfPathFor(want);
+  if (!fs.existsSync(file)) {
+    const buf = await buildQrLabelsPdf(po);
+    fs.writeFileSync(file, buf);
+  }
   return {
-    buffer: zipStoreFiles([
-      { name: num + "-purchase-order.pdf", data: fs.readFileSync(poFile) },
-      { name: num + "-QR-labels-5cm.pdf", data: fs.readFileSync(qrFile) }
-    ]),
-    filename: (po.number || want) + "-documents.zip",
-    mime: "application/zip"
+    buffer: fs.readFileSync(file),
+    filename: (po.number || want) + "-QR-labels-5cm.pdf",
+    mime: "application/pdf"
   };
 }
 
@@ -1073,8 +1127,9 @@ module.exports = {
   getPurchase,
   readPurchasePdf,
   readPurchaseQrPdf,
-  readPurchaseDocumentsZip,
+  readPurchaseLineQrPdf,
   buildQrLabelsPdf,
+  buildSingleQrPdf,
   qrPayloadForLine,
   activeOrderNumbers,
   productionWorkers,

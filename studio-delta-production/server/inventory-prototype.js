@@ -98,6 +98,11 @@ function labelsPdfPath(purchaseId) {
   return path.join(pdfDir(), String(purchaseId) + "-qr-labels.pdf");
 }
 
+function lineQrPdfPath(purchaseId, materialId) {
+  const safe = String(materialId || "mat").replace(/[^\w.-]+/g, "_");
+  return path.join(pdfDir(), String(purchaseId) + "-qr-" + safe + ".pdf");
+}
+
 function cmToPt(cm) {
   return (Number(cm) * 72) / 2.54;
 }
@@ -200,6 +205,33 @@ async function buildPurchaseOrderPdf(purchase) {
   return buf;
 }
 
+/** One material = one openable 5cm × 5cm QR PDF (no ZIP folder). */
+async function buildSingleQrPdf(purchase, line) {
+  const PDFDocument = require("pdfkit");
+  const size = cmToPt(5);
+  const page = size + cmToPt(1.2);
+  const doc = new PDFDocument({
+    size: [page, page],
+    margin: 0,
+    info: { Title: "QR " + String((line && line.code) || ""), Author: "Studio Delta" }
+  });
+  const pad = cmToPt(0.35);
+  const x = (page - size) / 2;
+  const y = (page - size) / 2 - 4;
+  const qr = qrPayloadFor(line);
+  const png = await qrPngBuffer(qr);
+  doc.save().lineWidth(0.6).dash(3, { space: 2 }).strokeColor("#9a9080").rect(x, y, size, size).stroke().undash().restore();
+  const imgSize = size - pad * 2 - 18;
+  doc.image(png, x + (size - imgSize) / 2, y + pad, { width: imgSize, height: imgSize });
+  doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(11)
+    .text(String(line.code || ""), x, y + size - 16, { width: size, align: "center" });
+  doc.fillColor("#6b6358").font("Helvetica").fontSize(6)
+    .text(String((purchase && purchase.number) || "") + " · 5 cm × 5 cm", 4, page - 12, { width: page - 8, align: "center" });
+  const buf = await writePdfBuffer(doc);
+  fs.writeFileSync(lineQrPdfPath(purchase.id, line.materialId || line.code), buf);
+  return buf;
+}
+
 /** Cut-out sheet: each QR is exactly 5cm × 5cm for locker labels. */
 async function buildQrLabelsPdf(purchase) {
   const PDFDocument = require("pdfkit");
@@ -295,8 +327,12 @@ function decoratePurchase(p) {
     hasLabelsPdf,
     poPdfUrl: hasPoPdf ? (base + "/po.pdf") : "",
     labelsPdfUrl: hasLabelsPdf ? (base + "/qr-labels.pdf") : "",
-    // One click gets both documents (PO + 5×5 cm QR cut-outs).
-    documentsZipUrl: (hasPoPdf && hasLabelsPdf) ? (base + "/documents.zip") : ""
+    documentsZipUrl: "",
+    lines: (p.lines || []).map((line) => Object.assign({}, line, {
+      qrPdfUrl: p.id
+        ? (base + "/qr/" + encodeURIComponent(line.materialId || line.code))
+        : ""
+    }))
   });
 }
 
@@ -454,8 +490,11 @@ async function createPurchase(body) {
   };
   store.purchases.unshift(purchase);
   saveStore(store);
-  // Two documents per PO: purchase order + cut-out QR locker labels (5cm × 5cm).
+  // Purchase order PDF + a separate QR PDF per line (open anytime, no ZIP).
   await buildPurchaseOrderPdf(purchase);
+  for (const line of purchase.lines || []) {
+    await buildSingleQrPdf(purchase, line);
+  }
   await buildQrLabelsPdf(purchase);
   return decoratePurchase(purchase);
 }
@@ -605,7 +644,7 @@ function mount(app) {
       return;
     }
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+    res.setHeader("Content-Disposition", "inline; filename=\"" + filename + "\"");
     res.setHeader("Cache-Control", "no-store");
     res.send(fs.readFileSync(filePath));
   }
@@ -637,7 +676,7 @@ function mount(app) {
     }
   });
 
-  app.get("/api/inventory-prototype/purchases/:id/documents.zip", async (req, res) => {
+  app.get("/api/inventory-prototype/purchases/:id/qr/:materialId", async (req, res) => {
     try {
       const store = loadStore();
       const purchase = (store.purchases || []).find((p) => p.id === req.params.id);
@@ -645,12 +684,15 @@ function mount(app) {
         res.status(404).json({ ok: false, error: "Purchase order not found" });
         return;
       }
-      const zip = await buildDocumentsZip(purchase);
-      const filename = (purchase.number || "PO") + "-documents.zip";
-      res.setHeader("Content-Type", "application/zip");
-      res.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
-      res.setHeader("Cache-Control", "no-store");
-      res.send(zip);
+      const matId = String(req.params.materialId || "").replace(/\.pdf$/i, "");
+      const line = (purchase.lines || []).find((l) => String(l.materialId) === matId || String(l.code).toUpperCase() === matId.toUpperCase());
+      if (!line) {
+        res.status(404).json({ ok: false, error: "Material not on this PO" });
+        return;
+      }
+      const file = lineQrPdfPath(purchase.id, line.materialId || line.code);
+      if (!fs.existsSync(file)) await buildSingleQrPdf(purchase, line);
+      sendPdf(res, file, (purchase.number || "PO") + "-QR-" + String(line.code || matId) + "-5cm.pdf");
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
