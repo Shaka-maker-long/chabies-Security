@@ -260,15 +260,12 @@ function decoratePurchase(row) {
       lineTotal,
       lineTotalLabel: lineTotal == null ? "—" : formatRand(lineTotal),
       receivedQty: Number(line.receivedQty) || 0,
-      qr: qrPayloadForLine(line),
-      // Separate openable QR PDF per item — no ZIP folder.
-      qrPdfUrl: row.id
-        ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/qr/" + encodeURIComponent(line.itemId))
-        : ""
+      qr: qrPayloadForLine(line)
     };
   });
   const total = lines.reduce((sum, line) => sum + (line.lineTotal == null ? 0 : line.lineTotal), 0);
   const hasPrices = lines.some((line) => line.unitPrice != null);
+  const hasQrPdf = !!(row.hasQrPdf || (row.id && fs.existsSync(qrPdfPathFor(row.id))));
   return {
     id: row.id,
     number: row.number || row.id,
@@ -286,7 +283,11 @@ function decoratePurchase(row) {
     totalValueLabel: hasPrices ? formatRand(total) : "—",
     pdfUrl: row.hasPdf ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/pdf") : "",
     hasPdf: !!row.hasPdf,
-    hasQrPdf: !!(row.hasQrPdf || (row.id && (row.lines || []).some((line) => fs.existsSync(qrLinePdfPath(row.id, line.itemId)))))
+    // One QR PDF for the whole PO — all 5cm × 5cm codes on one sheet.
+    qrPdfUrl: (row.hasPdf || hasQrPdf || lines.length)
+      ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/qr-labels.pdf")
+      : "",
+    hasQrPdf
   };
 }
 
@@ -944,11 +945,9 @@ async function createPurchase(body, actor) {
   const buffer = await buildPurchasePdf(po);
   fs.writeFileSync(pdfPathFor(po.id), buffer);
   po.hasPdf = true;
-  // Separate QR PDF per line so each code can be opened anytime (no ZIP folder).
-  for (const line of lines) {
-    const qrBuf = await buildSingleQrPdf(po, line);
-    fs.writeFileSync(qrLinePdfPath(po.id, line.itemId), qrBuf);
-  }
+  // One QR PDF for the PO: every line as a 5cm × 5cm cut-out on the same sheet.
+  const qrBuffer = await buildQrLabelsPdf(po);
+  fs.writeFileSync(qrPdfPathFor(po.id), qrBuffer);
   po.hasQrPdf = true;
   store.purchases.unshift(po);
   lines.forEach((line) => {
@@ -993,38 +992,7 @@ function readPurchasePdf(id) {
   };
 }
 
-async function ensureLineQrPdf(po, line) {
-  if (!po || !line || !line.itemId) return null;
-  const file = qrLinePdfPath(po.id, line.itemId);
-  if (!fs.existsSync(file)) {
-    const buf = await buildSingleQrPdf(po, line);
-    fs.writeFileSync(file, buf);
-  }
-  return file;
-}
-
-async function readPurchaseLineQrPdf(poId, itemId) {
-  const want = String(poId || "").trim();
-  const itemWant = String(itemId || "").trim();
-  if (!want || !itemWant) return null;
-  const store = loadStore();
-  const po = store.purchases.find((row) => row.id === want);
-  if (!po) return null;
-  const line = (po.lines || []).find((row) => String(row.itemId) === itemWant);
-  if (!line) return null;
-  await ensureLineQrPdf(po, line);
-  const file = qrLinePdfPath(want, itemWant);
-  if (!fs.existsSync(file)) return null;
-  const safeName = String(line.itemName || itemWant).replace(/[^\w.-]+/g, "_").slice(0, 40);
-  return {
-    buffer: fs.readFileSync(file),
-    filename: (po.number || want) + "-QR-" + safeName + "-5cm.pdf",
-    mime: "application/pdf"
-  };
-}
-
 async function readPurchaseQrPdf(id) {
-  // Kept for older links: build a combined sheet on demand.
   const want = String(id || "").trim();
   if (!want) return null;
   const store = loadStore();
@@ -1034,10 +1002,16 @@ async function readPurchaseQrPdf(id) {
   if (!fs.existsSync(file)) {
     const buf = await buildQrLabelsPdf(po);
     fs.writeFileSync(file, buf);
+    po.hasQrPdf = true;
+    const row = store.purchases.find((p) => p.id === want);
+    if (row) {
+      row.hasQrPdf = true;
+      saveStore(store);
+    }
   }
   return {
     buffer: fs.readFileSync(file),
-    filename: (po.number || want) + "-QR-labels-5cm.pdf",
+    filename: (po.number || want) + "-QR-codes-5cm.pdf",
     mime: "application/pdf"
   };
 }
@@ -1127,9 +1101,7 @@ module.exports = {
   getPurchase,
   readPurchasePdf,
   readPurchaseQrPdf,
-  readPurchaseLineQrPdf,
   buildQrLabelsPdf,
-  buildSingleQrPdf,
   qrPayloadForLine,
   activeOrderNumbers,
   productionWorkers,

@@ -204,7 +204,7 @@
   <header>
     <h1>Inventory prototype</h1>
     <span class="banner">Sandbox — not live inventory</span>
-      <p class="lede">Each purchase order keeps a PO PDF plus a <b>separate 5×5 cm QR PDF per material</b> — open any of them anytime (no ZIP folder). Scan the locker QR, type qty — stock drops and WIP rises on the person’s active job. Sandbox data only.</p>
+      <p class="lede">Each purchase order has <b>Open PO</b> and <b>Open QR code</b> — one PDF with every item as a 5×5 cm cut-out. Scan the locker QR, type qty — stock drops and WIP rises on the person’s active job. Sandbox data only.</p>
     <nav class="tabs" id="tabs">
       <button type="button" data-tab="stock" class="on">Stock &amp; WIP</button>
       <button type="button" data-tab="po">Purchase orders</button>
@@ -234,7 +234,7 @@
     <section id="tab-po" class="tab hidden">
       <div class="card">
         <h2>New purchase order</h2>
-        <p class="hint">Example: 20× A and 15× B. After create, open <b>PO</b> or each item <b>QR</b> anytime.</p>
+        <p class="hint">Example: 20× A and 15× B. After create, open <b>PO</b> or <b>QR code</b> (all codes on one 5×5 cm PDF).</p>
         <label>Supplier<input id="poSupplier" value="Prototype Steel &amp; Fasteners"></label>
         <div id="poLines" style="margin-top:12px"></div>
         <div class="row" style="margin-top:10px">
@@ -411,11 +411,7 @@
             "<td>" + esc((p.lines || []).map((l) => l.code + " × " + l.qty).join(", ")) + "</td>" +
             "<td class=\"row\">" +
               (p.poPdfUrl ? "<a class=\"ghost\" style=\"display:inline-block;padding:8px 12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;font-weight:600\" href=\"" + esc(p.poPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">Open PO</a>" : "") +
-              (p.lines || []).map((line) => (
-                line.qrPdfUrl
-                  ? "<a class=\"primary\" style=\"display:inline-block;padding:10px 14px;text-decoration:none;border-radius:8px;font-weight:700;background:var(--ink);color:#fff\" href=\"" + esc(line.qrPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">QR · " + esc(line.code) + "</a>"
-                  : ""
-              )).join("") +
+              ((p.qrPdfUrl || p.labelsPdfUrl) ? "<a class=\"primary\" style=\"display:inline-block;padding:10px 14px;text-decoration:none;border-radius:8px;font-weight:700;background:var(--ink);color:#fff\" href=\"" + esc(p.qrPdfUrl || p.labelsPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">Open QR code</a>" : "") +
               (p.status !== "received"
                 ? "<button type=\"button\" class=\"ghost\" data-receive=\"" + esc(p.id) + "\">Receive stock</button>"
                 : "<button type=\"button\" class=\"ghost\" data-goto-labels=\"" + esc(p.id) + "\">Preview</button>") +
@@ -458,12 +454,11 @@
       document.getElementById("docsPanelTitle").textContent = "Open anytime — " + (purchase.number || "PO");
       const items = [];
       if (purchase.poPdfUrl) {
-        items.push("<a class=\"ghost\" style=\"display:inline-block;padding:12px 16px;text-decoration:none;border:1px solid var(--line);border-radius:8px;font-weight:700\" href=\"" + esc(purchase.poPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">Open PO PDF</a>");
+        items.push("<a class=\"ghost\" style=\"display:inline-block;padding:12px 16px;text-decoration:none;border:1px solid var(--line);border-radius:8px;font-weight:700\" href=\"" + esc(purchase.poPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">Open PO</a>");
       }
-      (purchase.lines || []).forEach((line) => {
-        if (!line.qrPdfUrl) return;
-        items.push("<a class=\"primary\" style=\"display:inline-block;padding:12px 16px;text-decoration:none;border-radius:8px;font-weight:700;background:var(--ink);color:#fff\" href=\"" + esc(line.qrPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">Open QR · " + esc(line.code) + " (5×5 cm)</a>");
-      });
+      if (purchase.qrPdfUrl || purchase.labelsPdfUrl) {
+        items.push("<a class=\"primary\" style=\"display:inline-block;padding:12px 16px;text-decoration:none;border-radius:8px;font-weight:700;background:var(--ink);color:#fff\" href=\"" + esc(purchase.qrPdfUrl || purchase.labelsPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">Open QR code (all 5×5 cm)</a>");
+      }
       links.innerHTML = items.join("");
       panel.style.display = "block";
       try { panel.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (e) {}
@@ -584,7 +579,7 @@
         renderPos();
         renderStock();
         showDocsPanel(j.purchase);
-        flash("Created " + j.purchase.number + " — open PO or each QR anytime (no ZIP).", true);
+        flash("Created " + j.purchase.number + " — Open PO or Open QR code anytime.", true);
         showTab("po");
       } catch (e) {
         flash(e.message, false);

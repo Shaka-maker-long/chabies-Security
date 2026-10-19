@@ -327,12 +327,8 @@ function decoratePurchase(p) {
     hasLabelsPdf,
     poPdfUrl: hasPoPdf ? (base + "/po.pdf") : "",
     labelsPdfUrl: hasLabelsPdf ? (base + "/qr-labels.pdf") : "",
-    documentsZipUrl: "",
-    lines: (p.lines || []).map((line) => Object.assign({}, line, {
-      qrPdfUrl: p.id
-        ? (base + "/qr/" + encodeURIComponent(line.materialId || line.code))
-        : ""
-    }))
+    qrPdfUrl: hasLabelsPdf ? (base + "/qr-labels.pdf") : "",
+    documentsZipUrl: ""
   });
 }
 
@@ -490,11 +486,8 @@ async function createPurchase(body) {
   };
   store.purchases.unshift(purchase);
   saveStore(store);
-  // Purchase order PDF + a separate QR PDF per line (open anytime, no ZIP).
+  // Two openable docs: PO PDF + one QR PDF with every 5cm code for this PO.
   await buildPurchaseOrderPdf(purchase);
-  for (const line of purchase.lines || []) {
-    await buildSingleQrPdf(purchase, line);
-  }
   await buildQrLabelsPdf(purchase);
   return decoratePurchase(purchase);
 }
@@ -671,28 +664,6 @@ function mount(app) {
         await buildQrLabelsPdf(purchase);
       }
       sendPdf(res, labelsPdfPath(purchase.id), (purchase.number || "PO") + "-QR-labels-5cm.pdf");
-    } catch (e) {
-      res.status(400).json({ ok: false, error: e.message || String(e) });
-    }
-  });
-
-  app.get("/api/inventory-prototype/purchases/:id/qr/:materialId", async (req, res) => {
-    try {
-      const store = loadStore();
-      const purchase = (store.purchases || []).find((p) => p.id === req.params.id);
-      if (!purchase) {
-        res.status(404).json({ ok: false, error: "Purchase order not found" });
-        return;
-      }
-      const matId = String(req.params.materialId || "").replace(/\.pdf$/i, "");
-      const line = (purchase.lines || []).find((l) => String(l.materialId) === matId || String(l.code).toUpperCase() === matId.toUpperCase());
-      if (!line) {
-        res.status(404).json({ ok: false, error: "Material not on this PO" });
-        return;
-      }
-      const file = lineQrPdfPath(purchase.id, line.materialId || line.code);
-      if (!fs.existsSync(file)) await buildSingleQrPdf(purchase, line);
-      sendPdf(res, file, (purchase.number || "PO") + "-QR-" + String(line.code || matId) + "-5cm.pdf");
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

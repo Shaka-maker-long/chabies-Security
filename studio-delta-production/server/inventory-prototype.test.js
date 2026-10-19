@@ -28,12 +28,12 @@ async function main() {
   assert.ok(purchase.hasPoPdf, "PO PDF created on purchase");
   assert.ok(purchase.hasLabelsPdf, "QR labels PDF created on purchase (both docs together)");
   assert.ok(purchase.poPdfUrl.indexOf("/po.pdf") !== -1);
-  assert.ok(purchase.lines[0].qrPdfUrl.indexOf("/qr/") !== -1);
-  assert.ok(purchase.lines[1].qrPdfUrl.indexOf("/qr/") !== -1);
+  assert.ok((purchase.qrPdfUrl || purchase.labelsPdfUrl).indexOf("/qr-labels.pdf") !== -1);
   assert.ok(fs.existsSync(path.join(dir, "inventory-prototype-pdfs", purchase.id + "-po.pdf")));
   assert.ok(fs.statSync(path.join(dir, "inventory-prototype-pdfs", purchase.id + "-po.pdf")).size > 500);
-  assert.ok(fs.existsSync(path.join(dir, "inventory-prototype-pdfs", purchase.id + "-qr-mat-a.pdf")));
-  assert.ok(fs.existsSync(path.join(dir, "inventory-prototype-pdfs", purchase.id + "-qr-mat-b.pdf")));
+  const labelsPath = path.join(dir, "inventory-prototype-pdfs", purchase.id + "-qr-labels.pdf");
+  assert.ok(fs.existsSync(labelsPath));
+  assert.ok(fs.statSync(labelsPath).size > 800);
 
   const received = await proto.receivePurchase(purchase.id);
   assert.strictEqual(received.purchase.status, "received");

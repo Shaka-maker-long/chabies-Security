@@ -691,26 +691,6 @@ function mountOffice(app) {
     }
   });
 
-  app.get("/api/office/consumables/purchases/:id/qr/:itemId", requireOffice, async (req, res) => {
-    try {
-      const itemId = String(req.params.itemId || "").replace(/\.pdf$/i, "");
-      const file = await consumables.readPurchaseLineQrPdf(req.params.id, itemId);
-      if (!file) {
-        res.status(404).json({ ok: false, error: "QR code PDF not found for that item." });
-        return;
-      }
-      res.setHeader("Content-Type", file.mime || "application/pdf");
-      res.setHeader("Cache-Control", "no-store");
-      res.setHeader(
-        "Content-Disposition",
-        "inline; filename=\"" + String(file.filename || "QR.pdf").replace(/"/g, "") + "\""
-      );
-      res.send(file.buffer);
-    } catch (e) {
-      res.status(400).json({ ok: false, error: e.message || String(e) });
-    }
-  });
-
   app.post("/api/office/consumables/purchases/:id/receive", requireOffice, (req, res) => {
     try {
       const purchase = consumables.receivePurchase(req.params.id, req.office && req.office.name);

@@ -163,7 +163,7 @@
     </div>
     <section class="card">
       <h2>Purchase orders</h2>
-      <p class="hint">Each PO keeps a purchase order PDF plus a <b>separate QR PDF (5×5 cm)</b> for every item — open any of them anytime. Receive when stock arrives.</p>
+      <p class="hint">Each PO has two documents you can open anytime: <b>Open PO</b>, and <b>Open QR code</b> (one PDF with every item as a 5×5 cm cut-out). Receive when stock arrives.</p>
       <div id="poList"><div class="empty">Loading…</div></div>
     </section>
   </div>
@@ -413,11 +413,7 @@
             "</td><td><span class='pill " + pill + "'>" + esc(po.status) + "</span></td>" +
             "<td class='actions'>" +
             (po.pdfUrl ? "<button class='ghost' type='button' data-open=\"" + esc(po.pdfUrl) + "\">Open PO</button>" : "") +
-            (po.lines || []).map((line) => (
-              line.qrPdfUrl
-                ? "<button type='button' data-open=\"" + esc(line.qrPdfUrl) + "\">QR · " + esc(line.itemName || line.itemId) + "</button>"
-                : ""
-            )).join("") +
+            (po.qrPdfUrl ? "<button type='button' data-open=\"" + esc(po.qrPdfUrl) + "\">Open QR code</button>" : "") +
             (po.status === "Ordered" ? "<button type='button' data-recv-po=\"" + esc(po.id) + "\">Receive</button>" +
               "<button class='danger' type='button' data-cancel-po=\"" + esc(po.id) + "\">Cancel</button>" : "") +
             "</td></tr>";
@@ -603,8 +599,7 @@
       if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
       closePo();
       applySnapshot(j);
-      const qrCount = ((j.purchase && j.purchase.lines) || []).filter((line) => line.qrPdfUrl).length;
-      setMsg("status", "Purchase order " + ((j.purchase && j.purchase.number) || "") + " created — open PO or any QR anytime (" + qrCount + " QR PDF" + (qrCount === 1 ? "" : "s") + ").");
+      setMsg("status", "Purchase order " + ((j.purchase && j.purchase.number) || "") + " created — Open PO or Open QR code anytime.");
       if (pathTab !== "pos") location.href = "/inventory/purchases";
     };
 
@@ -619,7 +614,7 @@
     document.getElementById("btnCreatePo").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
 
     if (pathTab === "pos") {
-      document.getElementById("lede").textContent = "Consumables purchase orders. Open the PO PDF or any item QR PDF (5×5 cm) anytime. Receive stock when the order arrives, or cancel.";
+      document.getElementById("lede").textContent = "Consumables purchase orders. Open PO, or Open QR code (all 5×5 cm labels on one PDF). Receive stock when the order arrives, or cancel.";
       document.getElementById("q").placeholder = "Search purchase orders";
     }
     if (pathTab === "steel") {

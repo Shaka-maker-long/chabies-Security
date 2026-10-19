@@ -524,7 +524,7 @@ assert.ok(inventoryHtml.indexOf("addUseLine") !== -1);
 assert.ok(inventoryHtml.indexOf("General") !== -1);
 assert.ok(inventoryHtml.indexOf("Generate purchase order") !== -1);
 assert.ok(inventoryHtml.indexOf("Open PO") !== -1);
-assert.ok(inventoryHtml.indexOf("QR · ") !== -1 || inventoryHtml.indexOf("qrPdfUrl") !== -1);
+assert.ok(inventoryHtml.indexOf("Open QR code") !== -1);
 assert.ok(inventoryHtml.indexOf("sdRequireOffice(\"inventory\")") !== -1);
 assert.ok(inventoryHtml.indexOf("Steel stock in buy units") !== -1);
 assert.ok(inventoryHtml.indexOf("WIP Qty") !== -1);
