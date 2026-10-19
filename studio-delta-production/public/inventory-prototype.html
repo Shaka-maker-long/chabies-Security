@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Inventory prototype</title>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+  <style>
+    :root {
+      --ink: #1c1914;
+      --muted: #6b6358;
+      --line: #d4cbb8;
+      --paper: #fffdf8;
+      --sand: #f3eee4;
+      --ok: #1f6b3a;
+      --bad: #9b1c1c;
+      --accent: #2c4a6e;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Source Sans 3", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse at top left, #efe6d4 0%, transparent 50%),
+        linear-gradient(180deg, #f7f2e8 0%, #ebe3d4 100%);
+      min-height: 100vh;
+    }
+    header {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,253,248,0.92);
+      backdrop-filter: blur(6px);
+      position: sticky;
+      top: 0;
+      z-index: 5;
+    }
+    header h1 {
+      margin: 0;
+      font-family: "Fraunces", Georgia, serif;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    .banner {
+      margin-top: 8px;
+      display: inline-block;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #7a4a12;
+      background: #f6e2b8;
+      border: 1px solid #e0c07a;
+      border-radius: 999px;
+      padding: 4px 10px;
+    }
+    .lede { margin: 8px 0 0; color: var(--muted); font-size: 14px; max-width: 820px; line-height: 1.4; }
+    .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+    .tabs button {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .tabs button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+    .page { padding: 18px; max-width: 1100px; margin: 0 auto 48px; }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      margin: 0 0 14px;
+    }
+    .card h2 { margin: 0 0 10px; font-family: "Fraunces", Georgia, serif; font-size: 18px; }
+    .hint { font-size: 12px; color: var(--muted); margin: 4px 0 0; }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .grid.three { grid-template-columns: repeat(3, 1fr); }
+    label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 700; }
+    input, select {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 9px 10px;
+      font: inherit;
+      font-weight: 400;
+      font-size: 14px;
+      width: 100%;
+      background: #fff;
+    }
+    button.primary {
+      border: 1px solid var(--ink);
+      background: var(--ink);
+      color: #fff;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button.ghost {
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .msg { font-size: 13px; color: var(--muted); }
+    .msg.ok { color: var(--ok); }
+    .msg.bad { color: var(--bad); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .pill {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--sand);
+      border: 1px solid var(--line);
+    }
+    .pill.received { background: #dcefe2; border-color: #9cccac; color: var(--ok); }
+    .pill.ordered { background: #e8eef6; border-color: #b7c7dd; color: var(--accent); }
+    .stat {
+      background: var(--sand);
+      border-radius: 12px;
+      padding: 12px;
+      border: 1px solid var(--line);
+    }
+    .stat b { display: block; font-family: "Fraunces", Georgia, serif; font-size: 22px; }
+    .stat span { font-size: 12px; color: var(--muted); }
+    .hidden { display: none !important; }
+    .line-row { display: grid; grid-template-columns: 1.4fr 0.7fr auto; gap: 8px; margin-bottom: 8px; align-items: end; }
+    #labelsSheet { display: none; }
+    @media (max-width: 720px) {
+      .grid, .grid.three, .line-row { grid-template-columns: 1fr; }
+    }
+    @media print {
+      body * { visibility: hidden; }
+      #labelsSheet, #labelsSheet * { visibility: visible; }
+      #labelsSheet {
+        display: block !important;
+        position: absolute;
+        left: 0; top: 0; width: 100%;
+        background: #fff;
+        padding: 12mm;
+      }
+      header, .page, .tabs { display: none !important; }
+      .label-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14mm;
+      }
+      .label-card {
+        break-inside: avoid;
+        border: 1px solid #222;
+        padding: 10mm;
+        text-align: center;
+        page-break-inside: avoid;
+      }
+      .label-card canvas { width: 42mm !important; height: 42mm !important; }
+      .label-card h3 { margin: 0 0 4px; font-size: 18pt; }
+      .label-card p { margin: 2px 0; font-size: 10pt; }
+    }
+    .label-preview {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    .label-card {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px;
+      text-align: center;
+      background: #fff;
+    }
+    .label-card h3 { margin: 8px 0 4px; font-family: "Fraunces", Georgia, serif; }
+    .label-card p { margin: 2px 0; font-size: 12px; color: var(--muted); }
+    .label-card code { font-size: 11px; word-break: break-all; }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Source+Sans+3:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header>
+    <h1>Inventory prototype</h1>
+    <span class="banner">Sandbox — not live inventory</span>
+    <p class="lede">Create a PO for materials A and B, receive it, print an A4 with one QR each, scan on phone, type qty — stock drops and WIP rises on the person’s active job. Data is only in <code>inventory-prototype.json</code>.</p>
+    <nav class="tabs" id="tabs">
+      <button type="button" data-tab="stock" class="on">Stock &amp; WIP</button>
+      <button type="button" data-tab="po">Purchase orders</button>
+      <button type="button" data-tab="labels">QR labels</button>
+      <button type="button" data-tab="collect">Collect / scan</button>
+    </nav>
+  </header>
+  <div class="page">
+    <p class="msg" id="flash"></p>
+
+    <section id="tab-stock" class="tab">
+      <div class="grid three" id="stockCards"></div>
+      <div class="card">
+        <h2>WIP by order</h2>
+        <p class="hint">When someone allocates material, on-hand goes down and WIP on that job goes up.</p>
+        <div id="wipBox"></div>
+      </div>
+      <div class="card">
+        <h2>Recent allocations</h2>
+        <div id="allocBox"></div>
+      </div>
+      <div class="row">
+        <button type="button" class="ghost" id="resetBtn">Reset prototype data</button>
+      </div>
+    </section>
+
+    <section id="tab-po" class="tab hidden">
+      <div class="card">
+        <h2>New purchase order</h2>
+        <p class="hint">Example: 20× A and 15× B.</p>
+        <label>Supplier<input id="poSupplier" value="Prototype Steel &amp; Fasteners"></label>
+        <div id="poLines" style="margin-top:12px"></div>
+        <div class="row" style="margin-top:10px">
+          <button type="button" class="ghost" id="addLineBtn">Add line</button>
+          <button type="button" class="primary" id="createPoBtn">Create purchase order</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Purchase orders</h2>
+        <div id="poList"></div>
+      </div>
+    </section>
+
+    <section id="tab-labels" class="tab hidden">
+      <div class="card">
+        <h2>Print A4 QR sheet</h2>
+        <p class="hint">Receive a PO first. Each line becomes one QR to stick on that material.</p>
+        <label>Received PO
+          <select id="labelPo"></select>
+        </label>
+        <div class="row" style="margin-top:12px">
+          <button type="button" class="primary" id="loadLabelsBtn">Show labels</button>
+          <button type="button" class="ghost" id="printLabelsBtn" disabled>Print A4</button>
+        </div>
+        <div class="label-preview" id="labelPreview" style="margin-top:16px"></div>
+      </div>
+    </section>
+
+    <section id="tab-collect" class="tab hidden">
+      <div class="card">
+        <h2>Who is collecting</h2>
+        <div class="grid">
+          <label>Worker
+            <select id="workerSel"></select>
+          </label>
+          <label>Active job (auto-allocated)
+            <select id="jobSel"></select>
+          </label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button type="button" class="ghost" id="saveJobBtn">Set active job</button>
+          <span class="msg" id="jobMsg"></span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Scan material</h2>
+        <p class="hint">Point the phone camera at the QR, or paste / type <code>SDINV|MAT|A</code> or just <code>A</code>.</p>
+        <label>QR / material code
+          <input id="scanInput" placeholder="SDINV|MAT|A" autocomplete="off">
+        </label>
+        <div class="row" style="margin-top:10px">
+          <button type="button" class="ghost" id="lookupBtn">Look up</button>
+        </div>
+        <div id="lookupCard" class="stat" style="margin-top:12px;display:none"></div>
+        <div class="grid" style="margin-top:12px">
+          <label>Quantity to take
+            <input id="allocQty" type="number" min="0.001" step="any" value="1">
+          </label>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <button type="button" class="primary" id="allocBtn" disabled>Allocate to active job</button>
+          <span class="msg" id="allocMsg"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div id="labelsSheet">
+    <div class="label-grid" id="labelsPrint"></div>
+  </div>
+
+  <script>
+    let state = null;
+    let labelData = null;
+    let lookedUp = null;
+
+    async function api(path, opts) {
+      const res = await fetch(path, Object.assign({
+        headers: { "Content-Type": "application/json" }
+      }, opts || {}));
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || j.ok === false) throw new Error(j.error || ("Request failed " + res.status));
+      return j;
+    }
+
+    function flash(text, ok) {
+      const el = document.getElementById("flash");
+      el.textContent = text || "";
+      el.className = "msg" + (text ? (ok ? " ok" : " bad") : "");
+    }
+
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function showTab(name) {
+      document.querySelectorAll(".tab").forEach((el) => el.classList.add("hidden"));
+      document.getElementById("tab-" + name).classList.remove("hidden");
+      document.querySelectorAll(".tabs button").forEach((btn) => {
+        btn.classList.toggle("on", btn.getAttribute("data-tab") === name);
+      });
+    }
+
+    function renderStock() {
+      const box = document.getElementById("stockCards");
+      box.innerHTML = (state.materials || []).map((m) => (
+        "<div class=\"stat\"><span>" + esc(m.code) + " · " + esc(m.name) + "</span>" +
+        "<b>" + esc(m.onHand) + " " + esc(m.unit) + "</b>" +
+        "<span>On hand · WIP " + esc(m.wip) + "</span></div>"
+      )).join("");
+
+      const wip = state.wipByOrder || [];
+      document.getElementById("wipBox").innerHTML = wip.length
+        ? "<table><thead><tr><th>Order</th><th>Materials in WIP</th><th>Total</th></tr></thead><tbody>" +
+          wip.map((row) => (
+            "<tr><td><b>" + esc(row.orderNumber) + "</b></td><td>" +
+            esc((row.lines || []).map((l) => l.code + " × " + l.qty).join(", ")) +
+            "</td><td>" + esc(row.totalQty) + "</td></tr>"
+          )).join("") + "</tbody></table>"
+        : "<p class=\"hint\">No WIP yet — allocate from Collect / scan.</p>";
+
+      const alloc = state.allocations || [];
+      document.getElementById("allocBox").innerHTML = alloc.length
+        ? "<table><thead><tr><th>When</th><th>Who</th><th>Material</th><th>Qty</th><th>Job</th></tr></thead><tbody>" +
+          alloc.map((a) => (
+            "<tr><td>" + esc((a.at || "").replace("T", " ").slice(0, 16)) + "</td>" +
+            "<td>" + esc(a.workerName) + "</td>" +
+            "<td>" + esc(a.materialCode) + "</td>" +
+            "<td>" + esc(a.qty) + " " + esc(a.unit) + "</td>" +
+            "<td><b>" + esc(a.orderNumber) + "</b></td></tr>"
+          )).join("") + "</tbody></table>"
+        : "<p class=\"hint\">No allocations yet.</p>";
+    }
+
+    function materialOptions(selected) {
+      return (state.materials || []).map((m) => (
+        "<option value=\"" + esc(m.id) + "\"" + (m.id === selected ? " selected" : "") + ">" +
+        esc(m.code) + " — " + esc(m.name) + "</option>"
+      )).join("");
+    }
+
+    function ensurePoLines(min) {
+      const box = document.getElementById("poLines");
+      while (box.children.length < min) addPoLine();
+    }
+
+    function addPoLine(materialId, qty) {
+      const mats = state.materials || [];
+      const pick = materialId || (mats[document.getElementById("poLines").children.length] || mats[0] || {}).id;
+      const wrap = document.createElement("div");
+      wrap.className = "line-row";
+      wrap.innerHTML =
+        "<label>Material<select data-f=\"materialId\">" + materialOptions(pick) + "</select></label>" +
+        "<label>Qty<input data-f=\"qty\" type=\"number\" min=\"0.001\" step=\"any\" value=\"" + esc(qty != null ? qty : "") + "\"></label>" +
+        "<button type=\"button\" class=\"ghost\" data-remove-line>Remove</button>";
+      document.getElementById("poLines").appendChild(wrap);
+    }
+
+    function renderPos() {
+      const list = state.purchases || [];
+      document.getElementById("poList").innerHTML = list.length
+        ? "<table><thead><tr><th>PO</th><th>Status</th><th>Lines</th><th></th></tr></thead><tbody>" +
+          list.map((p) => (
+            "<tr><td><b>" + esc(p.number) + "</b><div class=\"hint\">" + esc(p.supplier) + "</div></td>" +
+            "<td><span class=\"pill " + esc(p.status) + "\">" + esc(p.status) + "</span></td>" +
+            "<td>" + esc((p.lines || []).map((l) => l.code + " × " + l.qty).join(", ")) + "</td>" +
+            "<td class=\"row\">" +
+              (p.status !== "received"
+                ? "<button type=\"button\" class=\"primary\" data-receive=\"" + esc(p.id) + "\">Receive</button>"
+                : "<button type=\"button\" class=\"ghost\" data-goto-labels=\"" + esc(p.id) + "\">QR labels</button>") +
+            "</td></tr>"
+          )).join("") + "</tbody></table>"
+        : "<p class=\"hint\">No purchase orders yet.</p>";
+
+      const received = list.filter((p) => p.status === "received");
+      const sel = document.getElementById("labelPo");
+      const cur = sel.value;
+      sel.innerHTML = received.length
+        ? received.map((p) => "<option value=\"" + esc(p.id) + "\">" + esc(p.number) + "</option>").join("")
+        : "<option value=\"\">Receive a PO first</option>";
+      if (cur && received.some((p) => p.id === cur)) sel.value = cur;
+    }
+
+    function renderCollect() {
+      const wSel = document.getElementById("workerSel");
+      const jSel = document.getElementById("jobSel");
+      const workers = state.workers || [];
+      const prevW = wSel.value;
+      wSel.innerHTML = workers.map((w) => (
+        "<option value=\"" + esc(w.id) + "\">" + esc(w.name) + " (job " + esc(w.activeOrderNumber) + ")</option>"
+      )).join("");
+      if (prevW) wSel.value = prevW;
+      const worker = workers.find((w) => w.id === wSel.value) || workers[0];
+      const orders = state.demoOrders || [];
+      jSel.innerHTML = orders.map((o) => (
+        "<option value=\"" + esc(o) + "\"" + (worker && worker.activeOrderNumber === o ? " selected" : "") + ">" + esc(o) + "</option>"
+      )).join("");
+    }
+
+    async function paintQr(canvas, text) {
+      if (!window.QRCode) return;
+      await QRCode.toCanvas(canvas, text, { width: 160, margin: 1, errorCorrectionLevel: "M" });
+    }
+
+    async function renderLabels(labels, poNumber) {
+      labelData = labels;
+      const preview = document.getElementById("labelPreview");
+      const print = document.getElementById("labelsPrint");
+      preview.innerHTML = "";
+      print.innerHTML = "";
+      document.getElementById("printLabelsBtn").disabled = !labels.length;
+      for (const lab of labels) {
+        const card = document.createElement("div");
+        card.className = "label-card";
+        card.innerHTML =
+          "<canvas></canvas>" +
+          "<h3>" + esc(lab.code) + "</h3>" +
+          "<p>" + esc(lab.name) + "</p>" +
+          "<p>Received " + esc(lab.qtyReceived) + " " + esc(lab.unit) + "</p>" +
+          "<p>" + esc(poNumber || lab.poNumber) + "</p>" +
+          "<code>" + esc(lab.qr) + "</code>";
+        preview.appendChild(card);
+        const printCard = card.cloneNode(true);
+        print.appendChild(printCard);
+        await paintQr(card.querySelector("canvas"), lab.qr);
+        await paintQr(printCard.querySelector("canvas"), lab.qr);
+      }
+    }
+
+    async function refresh() {
+      state = await api("/api/inventory-prototype");
+      renderStock();
+      renderPos();
+      renderCollect();
+      if (!document.getElementById("poLines").children.length) {
+        addPoLine((state.materials[0] || {}).id, 20);
+        addPoLine((state.materials[1] || {}).id, 15);
+      }
+    }
+
+    document.getElementById("tabs").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-tab]");
+      if (!btn) return;
+      showTab(btn.getAttribute("data-tab"));
+    });
+
+    document.getElementById("addLineBtn").onclick = () => addPoLine();
+    document.getElementById("poLines").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-remove-line]");
+      if (!btn) return;
+      const row = btn.closest(".line-row");
+      if (row && document.getElementById("poLines").children.length > 1) row.remove();
+    });
+
+    document.getElementById("createPoBtn").onclick = async () => {
+      try {
+        const lines = [...document.querySelectorAll("#poLines .line-row")].map((row) => ({
+          materialId: row.querySelector("[data-f=materialId]").value,
+          qty: row.querySelector("[data-f=qty]").value
+        }));
+        const j = await api("/api/inventory-prototype/purchases", {
+          method: "POST",
+          body: JSON.stringify({ supplier: document.getElementById("poSupplier").value, lines })
+        });
+        state = j;
+        renderPos();
+        renderStock();
+        flash("Created " + j.purchase.number, true);
+      } catch (e) {
+        flash(e.message, false);
+      }
+    };
+
+    document.getElementById("poList").addEventListener("click", async (e) => {
+      const recv = e.target.closest("[data-receive]");
+      const go = e.target.closest("[data-goto-labels]");
+      try {
+        if (recv) {
+          const j = await api("/api/inventory-prototype/purchases/" + recv.getAttribute("data-receive") + "/receive", { method: "POST", body: "{}" });
+          state = j;
+          renderPos();
+          renderStock();
+          document.getElementById("labelPo").value = j.purchase.id;
+          showTab("labels");
+          await renderLabels(j.labels, j.purchase.number);
+          flash("Received " + j.purchase.number + " — stock updated. Print QR labels.", true);
+        }
+        if (go) {
+          document.getElementById("labelPo").value = go.getAttribute("data-goto-labels");
+          showTab("labels");
+          document.getElementById("loadLabelsBtn").click();
+        }
+      } catch (err) {
+        flash(err.message, false);
+      }
+    });
+
+    document.getElementById("loadLabelsBtn").onclick = async () => {
+      try {
+        const id = document.getElementById("labelPo").value;
+        if (!id) throw new Error("Receive a PO first");
+        const j = await api("/api/inventory-prototype/purchases/" + id + "/labels");
+        await renderLabels(j.labels, j.purchase.number);
+        flash("Labels ready for " + j.purchase.number, true);
+      } catch (e) {
+        flash(e.message, false);
+      }
+    };
+    document.getElementById("printLabelsBtn").onclick = () => window.print();
+
+    document.getElementById("saveJobBtn").onclick = async () => {
+      try {
+        const j = await api("/api/inventory-prototype/active-job", {
+          method: "POST",
+          body: JSON.stringify({
+            workerId: document.getElementById("workerSel").value,
+            orderNumber: document.getElementById("jobSel").value
+          })
+        });
+        state = j;
+        renderCollect();
+        document.getElementById("jobMsg").textContent = j.worker.name + " → " + j.worker.activeOrderNumber;
+        document.getElementById("jobMsg").className = "msg ok";
+      } catch (e) {
+        document.getElementById("jobMsg").textContent = e.message;
+        document.getElementById("jobMsg").className = "msg bad";
+      }
+    };
+
+    async function doLookup() {
+      const qr = document.getElementById("scanInput").value;
+      const j = await api("/api/inventory-prototype/lookup?qr=" + encodeURIComponent(qr));
+      lookedUp = j.material;
+      const card = document.getElementById("lookupCard");
+      card.style.display = "block";
+      card.innerHTML =
+        "<span>" + esc(lookedUp.code) + " · " + esc(lookedUp.name) + "</span>" +
+        "<b>" + esc(lookedUp.available) + " " + esc(lookedUp.unit) + " available</b>" +
+        "<span>WIP on jobs: " + esc(lookedUp.wip) + "</span>";
+      document.getElementById("allocBtn").disabled = false;
+      document.getElementById("allocMsg").textContent = "";
+    }
+
+    document.getElementById("lookupBtn").onclick = async () => {
+      try { await doLookup(); flash("", true); }
+      catch (e) {
+        lookedUp = null;
+        document.getElementById("allocBtn").disabled = true;
+        document.getElementById("lookupCard").style.display = "none";
+        flash(e.message, false);
+      }
+    };
+
+    document.getElementById("allocBtn").onclick = async () => {
+      try {
+        const j = await api("/api/inventory-prototype/allocate", {
+          method: "POST",
+          body: JSON.stringify({
+            workerId: document.getElementById("workerSel").value,
+            qr: document.getElementById("scanInput").value,
+            qty: document.getElementById("allocQty").value
+          })
+        });
+        state = j;
+        renderStock();
+        renderCollect();
+        document.getElementById("allocMsg").textContent =
+          "Allocated " + j.allocation.qty + " " + j.allocation.unit + " of " + j.allocation.materialCode +
+          " → " + j.allocation.orderNumber + " (WIP)";
+        document.getElementById("allocMsg").className = "msg ok";
+        await doLookup();
+        flash("Stock deducted · WIP updated on " + j.allocation.orderNumber, true);
+      } catch (e) {
+        document.getElementById("allocMsg").textContent = e.message;
+        document.getElementById("allocMsg").className = "msg bad";
+        flash(e.message, false);
+      }
+    };
+
+    document.getElementById("resetBtn").onclick = async () => {
+      if (!confirm("Reset prototype stock, POs, and allocations?")) return;
+      state = await api("/api/inventory-prototype/reset", { method: "POST", body: "{}" });
+      document.getElementById("poLines").innerHTML = "";
+      addPoLine((state.materials[0] || {}).id, 20);
+      addPoLine((state.materials[1] || {}).id, 15);
+      labelData = null;
+      document.getElementById("labelPreview").innerHTML = "";
+      document.getElementById("labelsPrint").innerHTML = "";
+      renderStock();
+      renderPos();
+      renderCollect();
+      flash("Prototype reset", true);
+    };
+
+    refresh().catch((e) => flash(e.message, false));
+  </script>
+</body>
+</html>

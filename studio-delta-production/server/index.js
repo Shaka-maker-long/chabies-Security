@@ -134,6 +134,10 @@ app.get("/inventory", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "inventory.html"));
 });
+app.get("/inventory/prototype", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "inventory-prototype.html"));
+});
 app.get("/orders/glass-rates", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "orders-glass-rates.html"));
@@ -583,6 +587,13 @@ try {
   mountOffice(app);
 } catch (e) {
   console.error("[boot] office pages failed", e && e.stack ? e.stack : e);
+}
+
+try {
+  // Sandbox inventory flow — isolated JSON store; safe to iterate without touching live stock APIs.
+  require("./inventory-prototype").mount(app);
+} catch (e) {
+  console.error("[boot] inventory prototype failed", e && e.stack ? e.stack : e);
 }
 
 const PORT = Number(process.env.PORT) || 8080;
