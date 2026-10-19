@@ -2,7 +2,7 @@
    Driver run HTML/assets are cached so PODs can be filled with no signal. */
 importScripts("/delivery-offline.js");
 
-const CACHE = "sd-pwa-v26-inv-qr-docs";
+const CACHE = "sd-pwa-v27-inv-qr-live";
 const PRECACHE = [
   "/",
   "/offline.html",
@@ -67,8 +67,8 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (isApi(url) || url.pathname.indexOf("/outlook-addin") === 0) return;
   if (url.pathname === "/sw.js") return;
-  // Always fetch live inventory sandbox UI (PO + QR PDF buttons change often on staging).
-  if (url.pathname.indexOf("/inventory/prototype") === 0) return;
+  // Always fetch live inventory UI (PO + QR PDF buttons must not stick on an old PWA cache).
+  if (url.pathname.indexOf("/inventory") === 0) return;
 
   if (isHtml(request)) {
     event.respondWith(

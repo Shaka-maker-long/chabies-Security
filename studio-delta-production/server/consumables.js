@@ -279,8 +279,16 @@ function decoratePurchase(row) {
     lines,
     totalValue: hasPrices ? Math.round(total * 100) / 100 : null,
     totalValueLabel: hasPrices ? formatRand(total) : "—",
-    pdfUrl: row.hasPdf ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/pdf") : "",
-    hasPdf: !!row.hasPdf
+    pdfUrl: row.hasPdf ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/pdf?download=1") : "",
+    hasPdf: !!row.hasPdf,
+    // QR cut-outs are available for every PO that has lines (built on create; regenerated on demand).
+    qrPdfUrl: (row.hasPdf || (row.lines && row.lines.length))
+      ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/qr-labels.pdf?download=1")
+      : "",
+    hasQrPdf: !!(row.hasQrPdf || (row.id && fs.existsSync(qrPdfPathFor(row.id)))),
+    documentsZipUrl: row.hasPdf
+      ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/documents.zip")
+      : ""
   };
 }
 
@@ -320,6 +328,84 @@ function pdfDir() {
 
 function pdfPathFor(id) {
   return path.join(pdfDir(), String(id) + ".pdf");
+}
+
+function qrPdfPathFor(id) {
+  return path.join(pdfDir(), String(id) + "-qr-labels.pdf");
+}
+
+function cmToPt(cm) {
+  return (Number(cm) * 72) / 2.54;
+}
+
+function qrPayloadForLine(line) {
+  const id = String((line && line.itemId) || "").trim();
+  return "SDINV|C|" + id;
+}
+
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i++) {
+    c ^= buf[i];
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+  }
+  return ~c >>> 0;
+}
+
+function zipStoreFiles(files) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  for (const file of files) {
+    const nameBuf = Buffer.from(String(file.name || "file"), "utf8");
+    const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data || []);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28);
+    const localFull = Buffer.concat([local, nameBuf, data]);
+    localParts.push(localFull);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(Buffer.concat([central, nameBuf]));
+    offset += localFull.length;
+  }
+  const centralDir = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralDir.length, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat(localParts.concat([centralDir, end]));
 }
 
 function formatPoDate(iso) {
@@ -480,6 +566,85 @@ async function buildPurchasePdf(po) {
     y += 12;
     doc.fillColor(ink).font("Helvetica-Bold").fontSize(10)
       .text("Total  " + formatRand(total), margin, y, { width: inner, align: "right" });
+  }
+
+  doc.end();
+  return done;
+}
+
+/** Cut-out sheet: one 5cm × 5cm QR square per PO line for locker stickers. */
+async function buildQrLabelsPdf(po) {
+  const PDFDocument = require("pdfkit");
+  const QRCode = require("qrcode");
+  const size = cmToPt(5);
+  const gap = cmToPt(0.6);
+  const margin = 36;
+  const chunks = [];
+  const doc = new PDFDocument({
+    size: "A4",
+    margin,
+    compress: false,
+    info: { Title: "QR labels " + (po.number || po.id), Author: "Studio Delta" }
+  });
+  doc.on("data", (c) => chunks.push(c));
+  const done = new Promise((resolve, reject) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+  });
+
+  const pageW = doc.page.width;
+  const pageH = doc.page.height;
+  const cols = Math.max(1, Math.floor((pageW - margin * 2 + gap) / (size + gap)));
+  let col = 0;
+  let x = margin;
+  let y = margin + 28;
+
+  doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(12)
+    .text("Studio Delta · Material QR labels — cut on the dashed lines", margin, margin, { width: pageW - margin * 2 });
+  doc.fillColor("#6b6358").font("Helvetica").fontSize(8)
+    .text((po.number || "") + " · each square is 5 cm × 5 cm · stick on the locker", margin, margin + 14, {
+      width: pageW - margin * 2
+    });
+
+  for (const line of po.lines || []) {
+    if (y + size > pageH - margin) {
+      doc.addPage();
+      y = margin;
+      col = 0;
+      x = margin;
+    }
+    const qr = qrPayloadForLine(line);
+    const png = await QRCode.toBuffer(qr, {
+      type: "png",
+      width: 480,
+      margin: 1,
+      errorCorrectionLevel: "M"
+    });
+
+    doc.save()
+      .lineWidth(0.6)
+      .dash(3, { space: 2 })
+      .strokeColor("#9a9080")
+      .rect(x, y, size, size)
+      .stroke()
+      .undash()
+      .restore();
+
+    const pad = cmToPt(0.35);
+    const imgSize = size - pad * 2 - 22;
+    doc.image(png, x + (size - imgSize) / 2, y + pad, { width: imgSize, height: imgSize });
+    const label = String(line.itemName || line.itemId || "").slice(0, 28);
+    doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(9)
+      .text(label, x + 4, y + size - 18, { width: size - 8, align: "center", lineBreak: false });
+
+    col += 1;
+    if (col >= cols) {
+      col = 0;
+      x = margin;
+      y += size + gap;
+    } else {
+      x += size + gap;
+    }
   }
 
   doc.end();
@@ -716,11 +881,15 @@ async function createPurchase(body, actor) {
     note,
     employee: actorName(actor),
     lines,
-    hasPdf: false
+    hasPdf: false,
+    hasQrPdf: false
   };
   const buffer = await buildPurchasePdf(po);
   fs.writeFileSync(pdfPathFor(po.id), buffer);
   po.hasPdf = true;
+  const qrBuffer = await buildQrLabelsPdf(po);
+  fs.writeFileSync(qrPdfPathFor(po.id), qrBuffer);
+  po.hasQrPdf = true;
   store.purchases.unshift(po);
   lines.forEach((line) => {
     addMovement(store, {
@@ -759,8 +928,63 @@ function readPurchasePdf(id) {
   if (!fs.existsSync(file)) return null;
   return {
     buffer: fs.readFileSync(file),
-    filename: (po.number || want) + ".pdf",
+    filename: (po.number || want) + "-purchase-order.pdf",
     mime: "application/pdf"
+  };
+}
+
+async function ensureQrPdf(po) {
+  if (!po) return null;
+  const file = qrPdfPathFor(po.id);
+  if (!fs.existsSync(file) || !po.hasQrPdf) {
+    const buf = await buildQrLabelsPdf(po);
+    fs.writeFileSync(file, buf);
+    po.hasQrPdf = true;
+    const store = loadStore();
+    const row = store.purchases.find((p) => p.id === po.id);
+    if (row) {
+      row.hasQrPdf = true;
+      saveStore(store);
+    }
+  }
+  return file;
+}
+
+async function readPurchaseQrPdf(id) {
+  const want = String(id || "").trim();
+  if (!want) return null;
+  const store = loadStore();
+  const po = store.purchases.find((row) => row.id === want);
+  if (!po) return null;
+  await ensureQrPdf(po);
+  const file = qrPdfPathFor(want);
+  if (!fs.existsSync(file)) return null;
+  return {
+    buffer: fs.readFileSync(file),
+    filename: (po.number || want) + "-QR-labels-5cm.pdf",
+    mime: "application/pdf"
+  };
+}
+
+async function readPurchaseDocumentsZip(id) {
+  const want = String(id || "").trim();
+  if (!want) return null;
+  const store = loadStore();
+  const po = store.purchases.find((row) => row.id === want);
+  if (!po) return null;
+  const poFile = pdfPathFor(want);
+  if (!fs.existsSync(poFile)) return null;
+  await ensureQrPdf(po);
+  const qrFile = qrPdfPathFor(want);
+  if (!fs.existsSync(qrFile)) return null;
+  const num = String(po.number || want).replace(/[^\w.-]+/g, "_");
+  return {
+    buffer: zipStoreFiles([
+      { name: num + "-purchase-order.pdf", data: fs.readFileSync(poFile) },
+      { name: num + "-QR-labels-5cm.pdf", data: fs.readFileSync(qrFile) }
+    ]),
+    filename: (po.number || want) + "-documents.zip",
+    mime: "application/zip"
   };
 }
 
@@ -848,6 +1072,10 @@ module.exports = {
   cancelPurchase,
   getPurchase,
   readPurchasePdf,
+  readPurchaseQrPdf,
+  readPurchaseDocumentsZip,
+  buildQrLabelsPdf,
+  qrPayloadForLine,
   activeOrderNumbers,
   productionWorkers,
   loadStore,

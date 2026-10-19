@@ -163,7 +163,7 @@
     </div>
     <section class="card">
       <h2>Purchase orders</h2>
-      <p class="hint">Create a purchase order from Consumables. Open the PDF, receive when stock arrives, or cancel.</p>
+      <p class="hint">Each PO creates <b>two documents</b>: the purchase order PDF and a <b>QR labels PDF (5×5 cm)</b> to cut and stick on lockers. Download ZIP for both, then receive when stock arrives.</p>
       <div id="poList"><div class="empty">Loading…</div></div>
     </section>
   </div>
@@ -412,16 +412,28 @@
             "</td><td>" + lines + "</td><td class='r'>" + esc(po.totalValueLabel) +
             "</td><td><span class='pill " + pill + "'>" + esc(po.status) + "</span></td>" +
             "<td class='actions'>" +
-            (po.pdfUrl ? "<button class='ghost' type='button' data-pdf=\"" + esc(po.pdfUrl) + "\">Open PDF</button>" : "") +
+            (po.documentsZipUrl ? "<button type='button' data-dl=\"" + esc(po.documentsZipUrl) + "\">ZIP (PO + QR)</button>" : "") +
+            (po.pdfUrl ? "<button class='ghost' type='button' data-dl=\"" + esc(po.pdfUrl) + "\">PO PDF</button>" : "") +
+            (po.qrPdfUrl ? "<button class='ghost' type='button' data-dl=\"" + esc(po.qrPdfUrl) + "\">QR PDF 5×5cm</button>" : "") +
             (po.status === "Ordered" ? "<button type='button' data-recv-po=\"" + esc(po.id) + "\">Receive</button>" +
               "<button class='danger' type='button' data-cancel-po=\"" + esc(po.id) + "\">Cancel</button>" : "") +
             "</td></tr>";
         }).join("") + "</tbody></table>";
-      box.querySelectorAll("[data-pdf]").forEach((btn) => {
-        btn.onclick = () => window.open(btn.getAttribute("data-pdf"), "_blank", "noopener");
+      box.querySelectorAll("[data-dl]").forEach((btn) => {
+        btn.onclick = () => triggerDownload(btn.getAttribute("data-dl"));
       });
       box.querySelectorAll("[data-recv-po]").forEach((btn) => { btn.onclick = () => receivePo(btn.getAttribute("data-recv-po")); });
       box.querySelectorAll("[data-cancel-po]").forEach((btn) => { btn.onclick = () => cancelPo(btn.getAttribute("data-cancel-po")); });
+    }
+    function triggerDownload(url) {
+      if (!url) return;
+      const a = document.createElement("a");
+      a.href = url;
+      a.setAttribute("download", "");
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     }
     function addPoLine(selected) {
       poLineN += 1;
@@ -598,11 +610,17 @@
       if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
       closePo();
       applySnapshot(j);
-      setMsg("status", "Purchase order " + ((j.purchase && j.purchase.number) || "") + " created.");
-      if (j.purchase && j.purchase.pdfUrl) {
-        window.open(j.purchase.pdfUrl, "_blank", "noopener");
-      }
-      if (pathTab !== "pos") location.href = "/inventory/purchases";
+      setMsg("status", "Purchase order " + ((j.purchase && j.purchase.number) || "") + " created — downloading PO PDF + QR labels (5×5 cm).");
+      // PWA-friendly: force both documents (ZIP first, then each PDF). Do not rely on a single popup.
+      // Delay any tab redirect so downloads are not cancelled mid-flight.
+      if (j.purchase && j.purchase.documentsZipUrl) triggerDownload(j.purchase.documentsZipUrl);
+      setTimeout(function () {
+        if (j.purchase && j.purchase.pdfUrl) triggerDownload(j.purchase.pdfUrl);
+      }, 450);
+      setTimeout(function () {
+        if (j.purchase && j.purchase.qrPdfUrl) triggerDownload(j.purchase.qrPdfUrl);
+        if (pathTab !== "pos") location.href = "/inventory/purchases";
+      }, 1000);
     };
 
     document.getElementById("tab-cons").classList.toggle("on", pathTab === "cons");
@@ -616,7 +634,7 @@
     document.getElementById("btnCreatePo").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
 
     if (pathTab === "pos") {
-      document.getElementById("lede").textContent = "Consumables purchase orders. Open the PDF, receive stock when the order arrives, or cancel.";
+      document.getElementById("lede").textContent = "Consumables purchase orders. Each PO downloads two PDFs: the purchase order and 5×5 cm QR locker labels. Receive stock when the order arrives, or cancel.";
       document.getElementById("q").placeholder = "Search purchase orders";
     }
     if (pathTab === "steel") {
