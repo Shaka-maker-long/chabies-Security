@@ -374,7 +374,9 @@ async function createPurchase(body) {
   };
   store.purchases.unshift(purchase);
   saveStore(store);
+  // Two documents per PO: purchase order + cut-out QR locker labels (5cm × 5cm).
   await buildPurchaseOrderPdf(purchase);
+  await buildQrLabelsPdf(purchase);
   return decoratePurchase(purchase);
 }
 
@@ -394,6 +396,7 @@ async function receivePurchase(purchaseId) {
   if (!fs.existsSync(poPdfPath(purchase.id))) {
     await buildPurchaseOrderPdf(purchase);
   }
+  // Refresh QR PDF in case lines changed; always keep both docs available.
   await buildQrLabelsPdf(purchase);
   return {
     purchase: decoratePurchase(purchase),
@@ -545,10 +548,6 @@ function mount(app) {
       const purchase = (store.purchases || []).find((p) => p.id === req.params.id);
       if (!purchase) {
         res.status(404).json({ ok: false, error: "Purchase order not found" });
-        return;
-      }
-      if (purchase.status !== "received") {
-        res.status(400).json({ ok: false, error: "Receive the PO first to generate QR label PDF." });
         return;
       }
       if (!fs.existsSync(labelsPdfPath(purchase.id))) {

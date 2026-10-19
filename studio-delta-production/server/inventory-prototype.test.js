@@ -26,9 +26,14 @@ async function main() {
   assert.ok(/^PROTO-PO-/.test(purchase.number));
   assert.strictEqual(purchase.status, "ordered");
   assert.ok(purchase.hasPoPdf, "PO PDF created on purchase");
+  assert.ok(purchase.hasLabelsPdf, "QR labels PDF created on purchase (both docs together)");
   assert.ok(purchase.poPdfUrl.indexOf("/po.pdf") !== -1);
+  assert.ok(purchase.labelsPdfUrl.indexOf("/qr-labels.pdf") !== -1);
   assert.ok(fs.existsSync(path.join(dir, "inventory-prototype-pdfs", purchase.id + "-po.pdf")));
   assert.ok(fs.statSync(path.join(dir, "inventory-prototype-pdfs", purchase.id + "-po.pdf")).size > 500);
+  const labelsPath = path.join(dir, "inventory-prototype-pdfs", purchase.id + "-qr-labels.pdf");
+  assert.ok(fs.existsSync(labelsPath));
+  assert.ok(fs.statSync(labelsPath).size > 800);
 
   const received = await proto.receivePurchase(purchase.id);
   assert.strictEqual(received.purchase.status, "received");
@@ -36,11 +41,7 @@ async function main() {
   assert.strictEqual(received.labels[0].qr, "SDINV|MAT|A");
   assert.strictEqual(received.labels[1].qr, "SDINV|MAT|B");
   assert.ok(String(received.labels[0].qrImage || "").indexOf("data:image/png") === 0, "server must render QR PNG");
-  assert.ok(received.purchase.hasLabelsPdf, "QR labels PDF created on receive");
-  assert.ok(received.purchase.labelsPdfUrl.indexOf("/qr-labels.pdf") !== -1);
-  const labelsPath = path.join(dir, "inventory-prototype-pdfs", purchase.id + "-qr-labels.pdf");
-  assert.ok(fs.existsSync(labelsPath));
-  assert.ok(fs.statSync(labelsPath).size > 800);
+  assert.ok(received.purchase.hasLabelsPdf, "QR labels PDF still available after receive");
   assert.ok(Math.abs(proto.cmToPt(5) - ((5 * 72) / 2.54)) < 0.01);
 
   snap = proto.snapshot();

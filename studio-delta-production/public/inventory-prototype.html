@@ -251,7 +251,7 @@
     <section id="tab-labels" class="tab hidden">
       <div class="card">
         <h2>QR labels PDF (5 cm × 5 cm)</h2>
-        <p class="hint">After <b>Receive</b>, open the <b>QR PDF</b> — each dashed square is 5 cm × 5 cm to cut and stick on the locker. Preview below is optional.</p>
+        <p class="hint">Created with the PO. Open <b>2. QR PDF 5×5cm</b> on the purchase list — each dashed square is 5 cm × 5 cm to cut and stick on the locker.</p>
         <label>Received PO
           <select id="labelPo"></select>
         </label>
@@ -405,24 +405,22 @@
             "<td><span class=\"pill " + esc(p.status) + "\">" + esc(p.status) + "</span></td>" +
             "<td>" + esc((p.lines || []).map((l) => l.code + " × " + l.qty).join(", ")) + "</td>" +
             "<td class=\"row\">" +
-              (p.poPdfUrl ? "<a class=\"ghost\" style=\"display:inline-block;padding:8px 12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;font-weight:600\" href=\"" + esc(p.poPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">PO PDF</a>" : "") +
+              (p.poPdfUrl ? "<a class=\"ghost\" style=\"display:inline-block;padding:8px 12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;font-weight:600\" href=\"" + esc(p.poPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">1. PO PDF</a>" : "") +
+              (p.labelsPdfUrl ? "<a class=\"primary\" style=\"display:inline-block;padding:10px 14px;text-decoration:none;border-radius:8px;font-weight:700;background:var(--ink);color:#fff\" href=\"" + esc(p.labelsPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">2. QR PDF 5×5cm</a>" : "") +
               (p.status !== "received"
-                ? "<button type=\"button\" class=\"primary\" data-receive=\"" + esc(p.id) + "\">Receive</button>"
-                : (p.labelsPdfUrl
-                    ? "<a class=\"primary\" style=\"display:inline-block;padding:10px 14px;text-decoration:none;border-radius:8px;font-weight:700;background:var(--ink);color:#fff\" href=\"" + esc(p.labelsPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">QR PDF 5×5cm</a>"
-                    : "") +
-                  "<button type=\"button\" class=\"ghost\" data-goto-labels=\"" + esc(p.id) + "\">Preview</button>") +
+                ? "<button type=\"button\" class=\"ghost\" data-receive=\"" + esc(p.id) + "\">Receive stock</button>"
+                : "<button type=\"button\" class=\"ghost\" data-goto-labels=\"" + esc(p.id) + "\">Preview</button>") +
             "</td></tr>"
           )).join("") + "</tbody></table>"
         : "<p class=\"hint\">No purchase orders yet.</p>";
 
-      const received = list.filter((p) => p.status === "received");
+      const withLabels = list.filter((p) => p.labelsPdfUrl);
       const sel = document.getElementById("labelPo");
       const cur = sel.value;
-      sel.innerHTML = received.length
-        ? received.map((p) => "<option value=\"" + esc(p.id) + "\" data-pdf=\"" + esc(p.labelsPdfUrl || "") + "\">" + esc(p.number) + "</option>").join("")
-        : "<option value=\"\">Receive a PO first</option>";
-      if (cur && received.some((p) => p.id === cur)) sel.value = cur;
+      sel.innerHTML = withLabels.length
+        ? withLabels.map((p) => "<option value=\"" + esc(p.id) + "\" data-pdf=\"" + esc(p.labelsPdfUrl || "") + "\">" + esc(p.number) + (p.status === "received" ? " (received)" : "") + "</option>").join("")
+        : "<option value=\"\">Create a PO first</option>";
+      if (cur && withLabels.some((p) => p.id === cur)) sel.value = cur;
       syncLabelsPdfLink();
     }
 
@@ -554,8 +552,12 @@
         state = j;
         renderPos();
         renderStock();
-        flash("Created " + j.purchase.number + " — open PO PDF from the list.", true);
-        if (j.purchase && j.purchase.poPdfUrl) window.open(j.purchase.poPdfUrl, "_blank");
+        const docs = [];
+        if (j.purchase && j.purchase.poPdfUrl) docs.push("<a href=\"" + esc(j.purchase.poPdfUrl) + "\" target=\"_blank\" rel=\"noopener\"><b>1. Purchase order PDF</b></a>");
+        if (j.purchase && j.purchase.labelsPdfUrl) docs.push("<a href=\"" + esc(j.purchase.labelsPdfUrl) + "\" target=\"_blank\" rel=\"noopener\"><b>2. QR labels PDF (5×5 cm)</b></a>");
+        const flashEl = document.getElementById("flash");
+        flashEl.className = "msg ok";
+        flashEl.innerHTML = "Created " + esc(j.purchase.number) + " — download both documents: " + docs.join(" · ");
       } catch (e) {
         flash(e.message, false);
       }
