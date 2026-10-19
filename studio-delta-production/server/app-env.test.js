@@ -36,4 +36,8 @@ const pwa = fs.readFileSync(path.join(__dirname, "..", "public", "sd-pwa.js"), "
 assert.ok(pwa.indexOf("sdStagingBanner") !== -1);
 assert.ok(pwa.indexOf("bootStagingBanner") !== -1);
 
+const splash = fs.readFileSync(path.join(__dirname, "..", "public", "sd-splash.js"), "utf8");
+assert.ok(splash.indexOf("Staging") !== -1);
+assert.ok(splash.indexOf("/health") !== -1);
+
 console.log("app-env.test.js ok");

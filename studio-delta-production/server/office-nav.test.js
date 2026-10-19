@@ -1391,6 +1391,7 @@ assert.ok(floor.indexOf("/sd-pwa.js?v=pwa-driverpin") !== -1 || floor.indexOf("/
 const splash = fs.readFileSync(path.join(__dirname, "../public/sd-splash.js"), "utf8");
 assert.ok(splash.indexOf("Welcome to Studio Delta") !== -1);
 assert.ok(splash.indexOf("sd-s") !== -1);
+assert.ok(splash.indexOf("Staging") !== -1 && splash.indexOf("isStaging") !== -1, "splash must label staging vs production");
 const brand = fs.readFileSync(path.join(__dirname, "../public/sd-brand.css"), "utf8");
 assert.ok(brand.indexOf(".sd-welcome") !== -1);
 assert.ok(brand.indexOf("#b08948") !== -1);
