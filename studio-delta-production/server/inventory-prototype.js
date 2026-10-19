@@ -289,12 +289,92 @@ async function labelRowsForPurchase(store, purchase) {
 function decoratePurchase(p) {
   const hasPoPdf = !!(p && p.id && fs.existsSync(poPdfPath(p.id)));
   const hasLabelsPdf = !!(p && p.id && fs.existsSync(labelsPdfPath(p.id)));
+  const base = "/api/inventory-prototype/purchases/" + encodeURIComponent(p.id);
   return Object.assign({}, p, {
     hasPoPdf,
     hasLabelsPdf,
-    poPdfUrl: hasPoPdf ? ("/api/inventory-prototype/purchases/" + encodeURIComponent(p.id) + "/po.pdf") : "",
-    labelsPdfUrl: hasLabelsPdf ? ("/api/inventory-prototype/purchases/" + encodeURIComponent(p.id) + "/qr-labels.pdf") : ""
+    poPdfUrl: hasPoPdf ? (base + "/po.pdf") : "",
+    labelsPdfUrl: hasLabelsPdf ? (base + "/qr-labels.pdf") : "",
+    // One click gets both documents (PO + 5×5 cm QR cut-outs).
+    documentsZipUrl: (hasPoPdf && hasLabelsPdf) ? (base + "/documents.zip") : ""
   });
+}
+
+/** Minimal ZIP (store-only) so one download contains both PDFs — no extra dependency. */
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i++) {
+    c ^= buf[i];
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+  }
+  return ~c >>> 0;
+}
+
+function zipStoreFiles(files) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  for (const file of files) {
+    const nameBuf = Buffer.from(String(file.name || "file"), "utf8");
+    const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data || []);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8); // store
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28);
+    const localFull = Buffer.concat([local, nameBuf, data]);
+    localParts.push(localFull);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(Buffer.concat([central, nameBuf]));
+    offset += localFull.length;
+  }
+  const centralDir = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralDir.length, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat(localParts.concat([centralDir, end]));
+}
+
+async function buildDocumentsZip(purchase) {
+  if (!fs.existsSync(poPdfPath(purchase.id))) await buildPurchaseOrderPdf(purchase);
+  if (!fs.existsSync(labelsPdfPath(purchase.id))) await buildQrLabelsPdf(purchase);
+  const num = String(purchase.number || "PO").replace(/[^\w.-]+/g, "_");
+  return zipStoreFiles([
+    { name: num + "-purchase-order.pdf", data: fs.readFileSync(poPdfPath(purchase.id)) },
+    { name: num + "-QR-labels-5cm.pdf", data: fs.readFileSync(labelsPdfPath(purchase.id)) }
+  ]);
 }
 
 function parseQrPayload(raw) {
@@ -408,11 +488,8 @@ async function labelsForPurchase(purchaseId) {
   const store = loadStore();
   const purchase = (store.purchases || []).find((p) => p.id === purchaseId);
   if (!purchase) throw new Error("Purchase order not found");
-  if (purchase.status !== "received") {
-    throw new Error("Receive the PO first, then print QR labels.");
-  }
   return {
-    purchase,
+    purchase: decoratePurchase(purchase),
     labels: await labelRowsForPurchase(store, purchase)
   };
 }
@@ -528,7 +605,8 @@ function mount(app) {
       return;
     }
     res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "inline; filename=\"" + filename + "\"");
+    res.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+    res.setHeader("Cache-Control", "no-store");
     res.send(fs.readFileSync(filePath));
   }
 
@@ -539,7 +617,7 @@ function mount(app) {
       res.status(404).json({ ok: false, error: "Purchase order not found" });
       return;
     }
-    sendPdf(res, poPdfPath(purchase.id), (purchase.number || "PO") + ".pdf");
+    sendPdf(res, poPdfPath(purchase.id), (purchase.number || "PO") + "-purchase-order.pdf");
   });
 
   app.get("/api/inventory-prototype/purchases/:id/qr-labels.pdf", async (req, res) => {
@@ -553,7 +631,26 @@ function mount(app) {
       if (!fs.existsSync(labelsPdfPath(purchase.id))) {
         await buildQrLabelsPdf(purchase);
       }
-      sendPdf(res, labelsPdfPath(purchase.id), (purchase.number || "PO") + "-QR-labels.pdf");
+      sendPdf(res, labelsPdfPath(purchase.id), (purchase.number || "PO") + "-QR-labels-5cm.pdf");
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/inventory-prototype/purchases/:id/documents.zip", async (req, res) => {
+    try {
+      const store = loadStore();
+      const purchase = (store.purchases || []).find((p) => p.id === req.params.id);
+      if (!purchase) {
+        res.status(404).json({ ok: false, error: "Purchase order not found" });
+        return;
+      }
+      const zip = await buildDocumentsZip(purchase);
+      const filename = (purchase.number || "PO") + "-documents.zip";
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+      res.setHeader("Cache-Control", "no-store");
+      res.send(zip);
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
@@ -604,5 +701,6 @@ module.exports = {
   qrPayloadFor,
   buildPurchaseOrderPdf,
   buildQrLabelsPdf,
+  buildDocumentsZip,
   cmToPt
 };

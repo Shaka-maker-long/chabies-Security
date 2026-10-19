@@ -204,7 +204,7 @@
   <header>
     <h1>Inventory prototype</h1>
     <span class="banner">Sandbox — not live inventory</span>
-      <p class="lede">Each purchase order creates <b>two PDFs</b>: the purchase order, and (after Receive) a cut-out sheet of <b>5 cm × 5 cm</b> QR codes for lockers. Scan the locker QR, type qty — stock drops and WIP rises on the person’s active job. Sandbox data only.</p>
+      <p class="lede">Each purchase order immediately creates <b>two PDFs</b>: the purchase order, and a cut-out sheet of <b>5 cm × 5 cm</b> QR codes for lockers. Creating a PO downloads a ZIP with both. Scan the locker QR, type qty — stock drops and WIP rises on the person’s active job. Sandbox data only.</p>
     <nav class="tabs" id="tabs">
       <button type="button" data-tab="stock" class="on">Stock &amp; WIP</button>
       <button type="button" data-tab="po">Purchase orders</button>
@@ -234,13 +234,18 @@
     <section id="tab-po" class="tab hidden">
       <div class="card">
         <h2>New purchase order</h2>
-        <p class="hint">Example: 20× A and 15× B.</p>
+        <p class="hint">Example: 20× A and 15× B. Create downloads <b>both</b> PDFs (PO + QR 5×5 cm) in one ZIP.</p>
         <label>Supplier<input id="poSupplier" value="Prototype Steel &amp; Fasteners"></label>
         <div id="poLines" style="margin-top:12px"></div>
         <div class="row" style="margin-top:10px">
           <button type="button" class="ghost" id="addLineBtn">Add line</button>
           <button type="button" class="primary" id="createPoBtn">Create purchase order</button>
         </div>
+      </div>
+      <div class="card" id="docsPanel" style="display:none;border:2px solid var(--ink);background:#fff">
+        <h2 id="docsPanelTitle">Your documents</h2>
+        <p class="hint">Two files every time — open or re-download either one.</p>
+        <div class="row" id="docsPanelLinks" style="flex-wrap:wrap;gap:10px"></div>
       </div>
       <div class="card">
         <h2>Purchase orders</h2>
@@ -405,8 +410,9 @@
             "<td><span class=\"pill " + esc(p.status) + "\">" + esc(p.status) + "</span></td>" +
             "<td>" + esc((p.lines || []).map((l) => l.code + " × " + l.qty).join(", ")) + "</td>" +
             "<td class=\"row\">" +
-              (p.poPdfUrl ? "<a class=\"ghost\" style=\"display:inline-block;padding:8px 12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;font-weight:600\" href=\"" + esc(p.poPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">1. PO PDF</a>" : "") +
-              (p.labelsPdfUrl ? "<a class=\"primary\" style=\"display:inline-block;padding:10px 14px;text-decoration:none;border-radius:8px;font-weight:700;background:var(--ink);color:#fff\" href=\"" + esc(p.labelsPdfUrl) + "\" target=\"_blank\" rel=\"noopener\">2. QR PDF 5×5cm</a>" : "") +
+              (p.documentsZipUrl ? "<a class=\"primary\" style=\"display:inline-block;padding:10px 14px;text-decoration:none;border-radius:8px;font-weight:700;background:var(--ink);color:#fff\" href=\"" + esc(p.documentsZipUrl) + "\" download>ZIP (PO + QR)</a>" : "") +
+              (p.poPdfUrl ? "<a class=\"ghost\" style=\"display:inline-block;padding:8px 12px;text-decoration:none;border:1px solid var(--line);border-radius:8px;font-weight:600\" href=\"" + esc(p.poPdfUrl) + "\" download>PO PDF</a>" : "") +
+              (p.labelsPdfUrl ? "<a class=\"ghost\" style=\"display:inline-block;padding:8px 12px;text-decoration:none;border:1px solid var(--ink);border-radius:8px;font-weight:700\" href=\"" + esc(p.labelsPdfUrl) + "\" download>QR PDF 5×5cm</a>" : "") +
               (p.status !== "received"
                 ? "<button type=\"button\" class=\"ghost\" data-receive=\"" + esc(p.id) + "\">Receive stock</button>"
                 : "<button type=\"button\" class=\"ghost\" data-goto-labels=\"" + esc(p.id) + "\">Preview</button>") +
@@ -432,10 +438,45 @@
       if (url) {
         btn.href = url;
         btn.style.display = "inline-block";
+        btn.setAttribute("download", "");
       } else {
         btn.href = "#";
         btn.style.display = "none";
       }
+    }
+
+    function showDocsPanel(purchase) {
+      const panel = document.getElementById("docsPanel");
+      const links = document.getElementById("docsPanelLinks");
+      if (!panel || !links || !purchase) {
+        if (panel) panel.style.display = "none";
+        return;
+      }
+      document.getElementById("docsPanelTitle").textContent = "Documents for " + (purchase.number || "PO");
+      const items = [];
+      if (purchase.documentsZipUrl) {
+        items.push("<a class=\"primary\" style=\"display:inline-block;padding:14px 18px;text-decoration:none;border-radius:8px;font-weight:700;background:var(--ink);color:#fff;font-size:1rem\" href=\"" + esc(purchase.documentsZipUrl) + "\" download>Download ZIP — both PDFs</a>");
+      }
+      if (purchase.poPdfUrl) {
+        items.push("<a class=\"ghost\" style=\"display:inline-block;padding:12px 16px;text-decoration:none;border:1px solid var(--line);border-radius:8px;font-weight:700\" href=\"" + esc(purchase.poPdfUrl) + "\" download>1. Purchase order PDF</a>");
+      }
+      if (purchase.labelsPdfUrl) {
+        items.push("<a class=\"ghost\" style=\"display:inline-block;padding:12px 16px;text-decoration:none;border:2px solid var(--ink);border-radius:8px;font-weight:700\" href=\"" + esc(purchase.labelsPdfUrl) + "\" download>2. QR labels PDF (5×5 cm)</a>");
+      }
+      links.innerHTML = items.join("");
+      panel.style.display = "block";
+      try { panel.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (e) {}
+    }
+
+    function triggerDownload(url) {
+      if (!url) return;
+      const a = document.createElement("a");
+      a.href = url;
+      a.setAttribute("download", "");
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
     }
 
     function renderCollect() {
@@ -552,12 +593,17 @@
         state = j;
         renderPos();
         renderStock();
-        const docs = [];
-        if (j.purchase && j.purchase.poPdfUrl) docs.push("<a href=\"" + esc(j.purchase.poPdfUrl) + "\" target=\"_blank\" rel=\"noopener\"><b>1. Purchase order PDF</b></a>");
-        if (j.purchase && j.purchase.labelsPdfUrl) docs.push("<a href=\"" + esc(j.purchase.labelsPdfUrl) + "\" target=\"_blank\" rel=\"noopener\"><b>2. QR labels PDF (5×5 cm)</b></a>");
-        const flashEl = document.getElementById("flash");
-        flashEl.className = "msg ok";
-        flashEl.innerHTML = "Created " + esc(j.purchase.number) + " — download both documents: " + docs.join(" · ");
+        showDocsPanel(j.purchase);
+        // Force both files to the device: ZIP first (contains PO + QR), then each PDF.
+        if (j.purchase && j.purchase.documentsZipUrl) triggerDownload(j.purchase.documentsZipUrl);
+        setTimeout(function () {
+          if (j.purchase && j.purchase.poPdfUrl) triggerDownload(j.purchase.poPdfUrl);
+        }, 400);
+        setTimeout(function () {
+          if (j.purchase && j.purchase.labelsPdfUrl) triggerDownload(j.purchase.labelsPdfUrl);
+        }, 900);
+        flash("Created " + j.purchase.number + " — downloading ZIP + PO PDF + QR PDF (5×5 cm).", true);
+        showTab("po");
       } catch (e) {
         flash(e.message, false);
       }
@@ -576,8 +622,9 @@
           showTab("labels");
           renderLabels(j.labels, j.purchase.number);
           syncLabelsPdfLink();
-          flash("Received " + j.purchase.number + " — open QR PDF (5×5 cm) to cut for lockers.", true);
-          if (j.purchase && j.purchase.labelsPdfUrl) window.open(j.purchase.labelsPdfUrl, "_blank");
+          showDocsPanel(j.purchase);
+          flash("Received " + j.purchase.number + " — stock updated. Re-download QR PDF if needed.", true);
+          if (j.purchase && j.purchase.labelsPdfUrl) triggerDownload(j.purchase.labelsPdfUrl);
         }
         if (go) {
           document.getElementById("labelPo").value = go.getAttribute("data-goto-labels");

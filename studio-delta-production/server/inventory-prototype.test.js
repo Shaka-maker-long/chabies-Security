@@ -29,11 +29,15 @@ async function main() {
   assert.ok(purchase.hasLabelsPdf, "QR labels PDF created on purchase (both docs together)");
   assert.ok(purchase.poPdfUrl.indexOf("/po.pdf") !== -1);
   assert.ok(purchase.labelsPdfUrl.indexOf("/qr-labels.pdf") !== -1);
+  assert.ok(purchase.documentsZipUrl.indexOf("/documents.zip") !== -1);
   assert.ok(fs.existsSync(path.join(dir, "inventory-prototype-pdfs", purchase.id + "-po.pdf")));
   assert.ok(fs.statSync(path.join(dir, "inventory-prototype-pdfs", purchase.id + "-po.pdf")).size > 500);
   const labelsPath = path.join(dir, "inventory-prototype-pdfs", purchase.id + "-qr-labels.pdf");
   assert.ok(fs.existsSync(labelsPath));
   assert.ok(fs.statSync(labelsPath).size > 800);
+  const zip = await proto.buildDocumentsZip(purchase);
+  assert.ok(Buffer.isBuffer(zip) && zip.length > 1000);
+  assert.strictEqual(zip.toString("ascii", 0, 2), "PK");
 
   const received = await proto.receivePurchase(purchase.id);
   assert.strictEqual(received.purchase.status, "received");
