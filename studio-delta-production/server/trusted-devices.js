@@ -294,7 +294,12 @@ function fallbackDeviceId(meta) {
 }
 
 function deviceEnforceDisabled() {
-  return String(process.env.SD_TRUST_DEVICES || "").trim() === "0";
+  if (String(process.env.SD_TRUST_DEVICES || "").trim() === "0") return true;
+  // Staging: no device approval — phones/laptops can log in freely for testing.
+  try {
+    if (require("./app-env").isStaging()) return true;
+  } catch (e) {}
+  return false;
 }
 
 function bootstrapCodeConfigured() {
