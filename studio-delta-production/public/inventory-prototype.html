@@ -251,7 +251,7 @@
     <section id="tab-labels" class="tab hidden">
       <div class="card">
         <h2>Print A4 QR sheet</h2>
-        <p class="hint">Receive a PO first. Each line becomes one QR to stick on that material.</p>
+        <p class="hint">QR codes appear only after <b>Receive</b> on a purchase order. Each received line becomes one QR (A, B, …) to stick on that material.</p>
         <label>Received PO
           <select id="labelPo"></select>
         </label>
@@ -436,15 +436,24 @@
       )).join("");
     }
 
-    function paintQr(box, text) {
+    function paintQr(box, text, qrImage) {
       if (!box) return;
       box.innerHTML = "";
+      // Prefer server-rendered PNG so labels work even if browser QR JS fails.
+      if (qrImage) {
+        const img = document.createElement("img");
+        img.src = qrImage;
+        img.alt = String(text || "QR");
+        img.width = 160;
+        img.height = 160;
+        box.appendChild(img);
+        return;
+      }
       if (!window.QRCode) {
-        box.innerHTML = "<span class=\"qr-missing\">QR library failed to load</span>";
+        box.innerHTML = "<span class=\"qr-missing\">QR image missing</span>";
         return;
       }
       try {
-        // qrcodejs draws into the element (img or table).
         new QRCode(box, {
           text: String(text || ""),
           width: 160,
@@ -463,8 +472,9 @@
       preview.innerHTML = "";
       print.innerHTML = "";
       document.getElementById("printLabelsBtn").disabled = !labels.length;
-      if (!window.QRCode) {
-        flash("QR library missing — hard-refresh the page after deploy.", false);
+      if (!labels.length) {
+        preview.innerHTML = "<p class=\"hint\">No labels yet. Create a PO, click <b>Receive</b>, then Show labels.</p>";
+        return;
       }
       for (const lab of labels) {
         const card = document.createElement("div");
@@ -477,13 +487,12 @@
           "<p>" + esc(poNumber || lab.poNumber) + "</p>" +
           "<code>" + esc(lab.qr) + "</code>";
         preview.appendChild(card);
-        paintQr(card.querySelector(".qr-box"), lab.qr);
+        paintQr(card.querySelector(".qr-box"), lab.qr, lab.qrImage);
         const printCard = card.cloneNode(true);
-        // Re-draw on the print copy (clone does not copy generated QR img reliably).
         const printBox = printCard.querySelector(".qr-box");
         if (printBox) printBox.innerHTML = "";
         print.appendChild(printCard);
-        paintQr(printBox, lab.qr);
+        paintQr(printBox, lab.qr, lab.qrImage);
       }
     }
 

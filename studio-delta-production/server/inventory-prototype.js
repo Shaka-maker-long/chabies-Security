@@ -8,6 +8,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const QRCode = require("qrcode");
 const { dataDir } = require("./workbook-store");
 
 const QR_PREFIX = "SDINV|MAT|";
@@ -81,6 +82,34 @@ function materialByCode(store, code) {
 
 function qrPayloadFor(material) {
   return QR_PREFIX + String(material.code || "").toUpperCase();
+}
+
+async function qrDataUrl(payload) {
+  return QRCode.toDataURL(String(payload || ""), {
+    width: 280,
+    margin: 1,
+    errorCorrectionLevel: "M"
+  });
+}
+
+async function labelRowsForPurchase(store, purchase) {
+  const out = [];
+  for (const line of purchase.lines || []) {
+    const mat = materialById(store, line.materialId);
+    const qr = qrPayloadFor(mat || line);
+    out.push({
+      materialId: line.materialId,
+      code: line.code,
+      name: line.name,
+      unit: line.unit,
+      qtyReceived: line.qty,
+      qr,
+      qrImage: await qrDataUrl(qr),
+      poNumber: purchase.number,
+      onHand: mat ? Number(mat.onHand) || 0 : 0
+    });
+  }
+  return out;
 }
 
 function parseQrPayload(raw) {
@@ -163,7 +192,7 @@ function createPurchase(body) {
   return purchase;
 }
 
-function receivePurchase(purchaseId) {
+async function receivePurchase(purchaseId) {
   const store = loadStore();
   const purchase = (store.purchases || []).find((p) => p.id === purchaseId);
   if (!purchase) throw new Error("Purchase order not found");
@@ -178,22 +207,11 @@ function receivePurchase(purchaseId) {
   saveStore(store);
   return {
     purchase,
-    labels: purchase.lines.map((line) => {
-      const mat = materialById(store, line.materialId);
-      return {
-        materialId: line.materialId,
-        code: line.code,
-        name: line.name,
-        unit: line.unit,
-        qtyReceived: line.qty,
-        qr: qrPayloadFor(mat || line),
-        poNumber: purchase.number
-      };
-    })
+    labels: await labelRowsForPurchase(store, purchase)
   };
 }
 
-function labelsForPurchase(purchaseId) {
+async function labelsForPurchase(purchaseId) {
   const store = loadStore();
   const purchase = (store.purchases || []).find((p) => p.id === purchaseId);
   if (!purchase) throw new Error("Purchase order not found");
@@ -202,19 +220,7 @@ function labelsForPurchase(purchaseId) {
   }
   return {
     purchase,
-    labels: purchase.lines.map((line) => {
-      const mat = materialById(store, line.materialId);
-      return {
-        materialId: line.materialId,
-        code: line.code,
-        name: line.name,
-        unit: line.unit,
-        qtyReceived: line.qty,
-        qr: qrPayloadFor(mat || line),
-        poNumber: purchase.number,
-        onHand: mat ? Number(mat.onHand) || 0 : 0
-      };
-    })
+    labels: await labelRowsForPurchase(store, purchase)
   };
 }
 
@@ -306,18 +312,18 @@ function mount(app) {
     }
   });
 
-  app.post("/api/inventory-prototype/purchases/:id/receive", (req, res) => {
+  app.post("/api/inventory-prototype/purchases/:id/receive", async (req, res) => {
     try {
-      const out = receivePurchase(req.params.id);
+      const out = await receivePurchase(req.params.id);
       res.json({ ok: true, ...out, ...snapshot() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
   });
 
-  app.get("/api/inventory-prototype/purchases/:id/labels", (req, res) => {
+  app.get("/api/inventory-prototype/purchases/:id/labels", async (req, res) => {
     try {
-      res.json({ ok: true, ...labelsForPurchase(req.params.id) });
+      res.json({ ok: true, ...(await labelsForPurchase(req.params.id)) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
