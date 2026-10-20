@@ -49,6 +49,18 @@
     .batch h3 { margin:0 0 8px; font-size:14px; }
     .batch table { margin-top:8px; }
     .batch .foot { margin-top:10px; border:1px solid var(--line); border-radius:8px; }
+    .mask { position:fixed; inset:0; background:rgba(15,23,42,.45); z-index:40; display:none; align-items:center; justify-content:center; padding:16px; }
+    .mask.open { display:flex; }
+    .modal { background:#fff; border-radius:12px; max-width:820px; width:100%; max-height:90vh; overflow:auto; border:1px solid var(--line); box-shadow:0 18px 50px rgba(15,23,42,.25); }
+    .modal header { position:sticky; top:0; background:#fff; border-bottom:1px solid var(--line); padding:14px 16px; align-items:center; }
+    .modal header h2 { margin:0; font-size:16px; }
+    .modal .body { padding:14px 16px 18px; display:flex; flex-direction:column; gap:14px; }
+    .modal .section h3 { margin:0 0 6px; font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); }
+    .modal .section p { margin:0 0 8px; font-size:13px; color:var(--ink); }
+    .modal pre { margin:0; padding:10px 12px; background:#f8fafc; border:1px solid var(--line); border-radius:8px; font-size:11px; white-space:pre-wrap; max-height:180px; overflow:auto; }
+    .modal .pill.ok { background:#ecfdf3; color:var(--ok); }
+    .modal .pill.miss { background:#fef3f2; color:var(--bad); }
+    .modal .actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; padding:12px 16px; border-top:1px solid var(--line); background:#f8fafc; position:sticky; bottom:0; }
     @media (max-width: 900px) {
       .cols { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
@@ -85,6 +97,20 @@
     <a href="#received" id="tab-received" data-panel="received">Received batches</a>
     <a href="#ready-delivery" id="tab-ready-delivery" data-panel="ready-delivery">Ready for delivery</a>
   </nav>
+  <div class="mask" id="parseMask" role="dialog" aria-modal="true" aria-labelledby="parseTitle">
+    <div class="modal">
+      <header>
+        <h2 id="parseTitle">Invoice read result</h2>
+        <button class="ghost" type="button" onclick="closeParseModal()">Close</button>
+      </header>
+      <div class="body" id="parseBody"></div>
+      <div class="actions">
+        <button class="ghost" type="button" onclick="closeParseModal()">Close</button>
+        <button type="button" id="parseApplyBtn" onclick="applyParseFromModal()">Use matched costs</button>
+      </div>
+    </div>
+  </div>
+
   <div class="page">
     <div class="panel" id="panel-at-shop">
       <div class="cols">
@@ -334,6 +360,10 @@
         reader.readAsDataURL(file);
       });
     }
+    let lastParse = null;
+    function closeParseModal() {
+      document.getElementById("parseMask").classList.remove("open");
+    }
     function applyParsedCosts(allocations) {
       const rows = Array.isArray(allocations) ? allocations : [];
       let filled = 0;
@@ -341,6 +371,10 @@
       rows.forEach((row) => {
         const num = String(row.orderNumber || "").trim();
         if (!num) return;
+        if (row.atPaintShop === false) {
+          notes.push(num + " (not at paint shop)");
+          return;
+        }
         const input = document.querySelector('#sentBox .cost[data-order="' + num + '"]');
         const chk = document.querySelector('.sent-chk[value="' + num + '"]');
         if (!input) {
@@ -359,6 +393,71 @@
       document.getElementById("recvBtn").disabled = selectedSent().length === 0;
       return { filled, notes };
     }
+    function showParseModal(j) {
+      lastParse = j;
+      const matched = (j.allocations || []).filter((row) => row.atPaintShop);
+      const missed = (j.allocations || []).filter((row) => !row.atPaintShop);
+      const compared = j.comparedWith || [];
+      const tokens = j.orderTokens || [];
+      const unmatched = j.unmatchedLines || [];
+      const body = document.getElementById("parseBody");
+      body.innerHTML =
+        "<div class=\"section\"><h3>File</h3><p>" + esc(j.filename || "invoice.pdf") +
+        " · matched <b>" + esc(matched.length) + "</b> of <b>" + esc((j.allocations || []).length) + "</b> PDF order total(s) to paint-shop list (" +
+        esc(compared.length) + " at shop)</p></div>" +
+        "<div class=\"section\"><h3>Order numbers found on the PDF</h3>" +
+        (tokens.length
+          ? "<p>" + tokens.map((t) => "<span class=\"pill " + (compared.some((c) => c.orderNumber === t) ? "ok" : "miss") + "\">" + esc(t) + "</span> ").join("") + "</p>"
+          : "<p>None detected (looked for codes like S260244).</p>") +
+        "</div>" +
+        "<div class=\"section\"><h3>What the PDF costed (by order)</h3>" +
+        ((j.allocations || []).length
+          ? "<table><thead><tr><th>Order on PDF</th><th>Cost excl</th><th>Lines</th><th>Vs paint shop</th></tr></thead><tbody>" +
+            (j.allocations || []).map((row) => {
+              const lineBits = (row.lines || []).map((l) => esc((l.description || "").slice(0, 48) || "line") + " × " + esc(l.qty) + " = " + esc(l.lineExcl)).join("<br>");
+              return "<tr><td><b>" + esc(row.orderNumber) + "</b></td><td>" + esc(row.costLabel || row.cost) +
+                "</td><td>" + (lineBits || "—") + "</td><td>" +
+                (row.atPaintShop
+                  ? "<span class=\"pill ok\">Matches shop list</span>"
+                  : "<span class=\"pill miss\">Not on At the paint shop</span>") +
+                "</td></tr>";
+            }).join("") + "</tbody></table>"
+          : "<p>No priced order groups found on the PDF.</p>") +
+        "</div>" +
+        "<div class=\"section\"><h3>Compared with orders at the paint shop</h3>" +
+        (compared.length
+          ? "<table><thead><tr><th>Order</th><th>Product</th><th>Colour</th><th>On PDF?</th></tr></thead><tbody>" +
+            compared.map((o) => {
+              const onPdf = tokens.indexOf(o.orderNumber) !== -1 || (j.allocations || []).some((a) => a.orderNumber === o.orderNumber);
+              return "<tr><td><b>" + esc(o.orderNumber) + "</b></td><td>" + esc(o.product || "—") +
+                "</td><td>" + esc(o.powder_coating || "—") + "</td><td>" +
+                (onPdf ? "<span class=\"pill ok\">Found on PDF</span>" : "<span class=\"pill miss\">Not on PDF</span>") +
+                "</td></tr>";
+            }).join("") + "</tbody></table>"
+          : "<p>No orders are currently At the paint shop — send orders first, then read the invoice.</p>") +
+        "</div>" +
+        (unmatched.length
+          ? "<div class=\"section\"><h3>Priced lines with no order number</h3><table><thead><tr><th>Description</th><th>Qty</th><th>Excl</th></tr></thead><tbody>" +
+            unmatched.map((l) => "<tr><td>" + esc(l.description || "—") + "</td><td>" + esc(l.qty) + "</td><td>" + esc(l.lineExcl) + "</td></tr>").join("") +
+            "</tbody></table></div>"
+          : "") +
+        "<div class=\"section\"><h3>Text extracted from PDF</h3><pre>" + esc(j.textPreview || "(empty)") + "</pre></div>";
+      document.getElementById("parseApplyBtn").disabled = matched.length === 0;
+      document.getElementById("parseApplyBtn").textContent = matched.length
+        ? ("Use " + matched.length + " matched cost" + (matched.length === 1 ? "" : "s"))
+        : "No matched costs to use";
+      document.getElementById("parseMask").classList.add("open");
+    }
+    function applyParseFromModal() {
+      if (!lastParse) return;
+      const applied = applyParsedCosts(lastParse.allocations || []);
+      closeParseModal();
+      if (!applied.filled) {
+        setMsg("recvMsg", "No costs matched orders at the paint shop. See the review for what was read vs compared.", true);
+        return;
+      }
+      setMsg("recvMsg", "Filled " + applied.filled + " cost" + (applied.filled === 1 ? "" : "s") + ": " + applied.notes.join("; ") + ". Review, then Receive selected.");
+    }
     async function parseInvoiceCosts() {
       setMsg("recvMsg", "Reading invoice…");
       let invoice;
@@ -375,13 +474,17 @@
       });
       const j = await r.json();
       if (!j.ok) { setMsg("recvMsg", j.error || "Could not read invoice", true); return; }
-      const applied = applyParsedCosts(j.allocations || []);
-      if (!applied.filled) {
-        setMsg("recvMsg", "Read the PDF but no costs matched orders at the paint shop. Check order numbers on the invoice.", true);
+      showParseModal(j);
+      const matched = (j.allocations || []).filter((row) => row.atPaintShop).length;
+      if (!matched) {
+        setMsg("recvMsg", "Read the PDF — open the review to see what was found vs orders at the paint shop.", true);
         return;
       }
-      setMsg("recvMsg", "Filled " + applied.filled + " cost" + (applied.filled === 1 ? "" : "s") + ": " + applied.notes.join("; ") + ". Review, then Receive selected.");
+      setMsg("recvMsg", "Read the PDF — review the match, then Use matched costs.");
     }
+    document.getElementById("parseMask").addEventListener("click", (e) => {
+      if (e.target.id === "parseMask") closeParseModal();
+    });
     document.getElementById("invoiceFile").addEventListener("change", () => {
       const input = document.getElementById("invoiceFile");
       const file = input.files && input.files[0];

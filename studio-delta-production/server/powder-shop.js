@@ -453,14 +453,33 @@ async function parseInvoiceForCosts(payload) {
     preferOrderNumbers: prefer
   });
   if (!parsed.ok) throw new Error(parsed.error || "Could not read that invoice.");
+  const snap = snapshot();
   const sentSet = {};
-  snapshot().sent.forEach((o) => {
-    sentSet[formatOrderId(o.order_number)] = true;
+  const comparedWith = (snap.sent || []).map((o) => {
+    const orderNumber = formatOrderId(o.order_number);
+    sentSet[orderNumber] = true;
+    return {
+      orderNumber,
+      product: o.product || "",
+      powder_coating: o.powder_coating || "",
+      client_name: o.client_name || "",
+      status: o.status || ""
+    };
   });
-  const allocations = (parsed.allocations || []).map((row) => Object.assign({}, row, {
-    atPaintShop: !!sentSet[formatOrderId(row.orderNumber)],
-    costLabel: formatRand(row.cost)
-  }));
+  const preferIds = (prefer || []).map(formatOrderId).filter(Boolean);
+  const allocations = (parsed.allocations || []).map((row) => {
+    const orderNumber = formatOrderId(row.orderNumber);
+    const atPaintShop = !!sentSet[orderNumber];
+    const preferred = preferIds.indexOf(orderNumber) !== -1;
+    return Object.assign({}, row, {
+      orderNumber,
+      atPaintShop,
+      preferred,
+      matchedToShop: atPaintShop,
+      costLabel: formatRand(row.cost)
+    });
+  });
+  const matchedCount = allocations.filter((row) => row.atPaintShop).length;
   return {
     filename: decoded.filename,
     mime: decoded.mime,
@@ -468,7 +487,10 @@ async function parseInvoiceForCosts(payload) {
     allocations,
     unmatchedLines: parsed.unmatchedLines || [],
     textPreview: parsed.textPreview || "",
-    filledCount: allocations.filter((row) => row.atPaintShop || (prefer || []).map(formatOrderId).indexOf(formatOrderId(row.orderNumber)) !== -1).length
+    comparedWith,
+    comparedCount: comparedWith.length,
+    matchedCount,
+    filledCount: matchedCount || allocations.filter((row) => preferIds.indexOf(formatOrderId(row.orderNumber)) !== -1).length
   };
 }
 
