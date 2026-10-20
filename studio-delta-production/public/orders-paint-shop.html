@@ -99,12 +99,13 @@
         </section>
         <section class="card">
           <h2>At the paint shop</h2>
-          <p class="hint">These orders are at the powder coaters (Paint Shop). Receive only what came back. Cost is required on each received order. One invoice covers this received batch.</p>
+          <p class="hint">These orders are at the powder coaters (Paint Shop). Upload the invoice PDF — the system reads order numbers and prices and fills costs. Confirm, then receive. One invoice covers this received batch.</p>
           <div id="sentBox"><div class="load">Loading…</div></div>
           <div class="foot">
             <label class="file">Invoice for this received batch
               <input id="invoiceFile" type="file" accept="application/pdf,image/jpeg,image/png,image/webp">
             </label>
+            <button type="button" class="ghost" id="parseInvBtn" onclick="parseInvoiceCosts()">Read costs from PDF</button>
             <button type="button" id="recvBtn" onclick="receiveSelected()" disabled>Receive selected</button>
             <span class="msg" id="recvMsg"></span>
           </div>
@@ -333,6 +334,61 @@
         reader.readAsDataURL(file);
       });
     }
+    function applyParsedCosts(allocations) {
+      const rows = Array.isArray(allocations) ? allocations : [];
+      let filled = 0;
+      const notes = [];
+      rows.forEach((row) => {
+        const num = String(row.orderNumber || "").trim();
+        if (!num) return;
+        const input = document.querySelector('#sentBox .cost[data-order="' + num + '"]');
+        const chk = document.querySelector('.sent-chk[value="' + num + '"]');
+        if (!input) {
+          notes.push(num + " (not at paint shop)");
+          return;
+        }
+        input.value = String(row.cost != null ? row.cost : "");
+        input.disabled = false;
+        if (chk) {
+          chk.checked = true;
+          input.disabled = !chk.checked;
+        }
+        filled += 1;
+        notes.push(num + " → " + (row.costLabel || ("R " + row.cost)));
+      });
+      document.getElementById("recvBtn").disabled = selectedSent().length === 0;
+      return { filled, notes };
+    }
+    async function parseInvoiceCosts() {
+      setMsg("recvMsg", "Reading invoice…");
+      let invoice;
+      try { invoice = await readInvoice(); }
+      catch (e) { setMsg("recvMsg", e.message || "Attach the invoice PDF.", true); return; }
+      if (!/pdf/i.test(String(invoice.mime || invoice.filename || ""))) {
+        setMsg("recvMsg", "Use a PDF invoice to auto-read costs (images still need typing).", true);
+        return;
+      }
+      const prefer = selectedSent();
+      const r = await sdOfficeFetch("/api/office/paint-shop/parse-invoice", {
+        method: "POST",
+        body: JSON.stringify({ invoice, orderNumbers: prefer.length ? prefer : (data.sent || []).map((o) => o.order_number) })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("recvMsg", j.error || "Could not read invoice", true); return; }
+      const applied = applyParsedCosts(j.allocations || []);
+      if (!applied.filled) {
+        setMsg("recvMsg", "Read the PDF but no costs matched orders at the paint shop. Check order numbers on the invoice.", true);
+        return;
+      }
+      setMsg("recvMsg", "Filled " + applied.filled + " cost" + (applied.filled === 1 ? "" : "s") + ": " + applied.notes.join("; ") + ". Review, then Receive selected.");
+    }
+    document.getElementById("invoiceFile").addEventListener("change", () => {
+      const input = document.getElementById("invoiceFile");
+      const file = input.files && input.files[0];
+      if (file && /pdf/i.test(file.type || file.name || "")) {
+        parseInvoiceCosts().catch((e) => setMsg("recvMsg", (e && e.message) || "Could not read invoice", true));
+      }
+    });
     async function receiveSelected() {
       const orderNumbers = selectedSent();
       if (!orderNumbers.length) return;

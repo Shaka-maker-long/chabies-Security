@@ -28,7 +28,7 @@ function stagingBannerText() {
   const tip = String(process.env.SD_STAGING_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || "").trim();
   const short = tip ? tip.slice(0, 7) : "";
   const commitBit = short ? (" · committed " + short) : " · updates committed";
-  return "STAGING" + commitBit + " — Open PO + Open QR code (one PDF, 5×5 cm). Live shop unchanged. Login Admin / admin";
+  return "STAGING" + commitBit + " — Paint invoice PDF auto-costs + Open PO/QR. Live shop unchanged. Login Admin / admin";
 }
 
 module.exports = {

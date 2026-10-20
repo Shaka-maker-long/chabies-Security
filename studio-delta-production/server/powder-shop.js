@@ -439,6 +439,39 @@ function receiveFromPaintShop(payload, actor) {
   };
 }
 
+async function parseInvoiceForCosts(payload) {
+  const body = payload || {};
+  const decoded = decodeInvoice(body.invoice);
+  if (decoded.mime !== "application/pdf") {
+    throw new Error("Upload a PDF invoice to auto-read costs (photos need typing for now).");
+  }
+  const prefer = Array.isArray(body.orderNumbers)
+    ? body.orderNumbers
+    : (Array.isArray(body.orders) ? body.orders.map((o) => o && (o.orderNumber || o.order_number || o)) : []);
+  const parser = require("./paint-invoice-parse");
+  const parsed = await parser.parsePaintInvoiceBuffer(decoded.buffer, {
+    preferOrderNumbers: prefer
+  });
+  if (!parsed.ok) throw new Error(parsed.error || "Could not read that invoice.");
+  const sentSet = {};
+  snapshot().sent.forEach((o) => {
+    sentSet[formatOrderId(o.order_number)] = true;
+  });
+  const allocations = (parsed.allocations || []).map((row) => Object.assign({}, row, {
+    atPaintShop: !!sentSet[formatOrderId(row.orderNumber)],
+    costLabel: formatRand(row.cost)
+  }));
+  return {
+    filename: decoded.filename,
+    mime: decoded.mime,
+    orderTokens: parsed.orderTokens || [],
+    allocations,
+    unmatchedLines: parsed.unmatchedLines || [],
+    textPreview: parsed.textPreview || "",
+    filledCount: allocations.filter((row) => row.atPaintShop || (prefer || []).map(formatOrderId).indexOf(formatOrderId(row.orderNumber)) !== -1).length
+  };
+}
+
 function updateReceivedCosts(payload, actor) {
   const body = payload || {};
   const receiveId = String(body.receiveId || body.id || "").trim();
@@ -486,6 +519,7 @@ module.exports = {
   markAlreadyAtPaintShop,
   receiveFromPaintShop,
   updateReceivedCosts,
+  parseInvoiceForCosts,
   readInvoiceFile,
   loadShop,
   renameOrder,
