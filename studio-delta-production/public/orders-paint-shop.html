@@ -437,12 +437,19 @@
         "</div>" +
         "<div class=\"section\"><h3>Compared with orders at the paint shop</h3>" +
         (compared.length
-          ? "<table><thead><tr><th>Order</th><th>Product</th><th>Colour</th><th>On PDF?</th></tr></thead><tbody>" +
+          ? "<table><thead><tr><th>Order</th><th>Product</th><th>Colour</th><th>On PDF?</th><th>PDF total excl</th></tr></thead><tbody>" +
             compared.map((o) => {
-              const onPdf = tokens.indexOf(o.orderNumber) !== -1 || (j.allocations || []).some((a) => a.orderNumber === o.orderNumber);
+              const alloc = allocRows.find((a) => a.orderNumber === o.orderNumber);
+              const onPdf = !!alloc || tokens.indexOf(o.orderNumber) !== -1;
               return "<tr><td><b>" + esc(o.orderNumber) + "</b></td><td>" + esc(o.product || "—") +
                 "</td><td>" + esc(o.powder_coating || "—") + "</td><td>" +
-                (onPdf ? "<span class=\"pill ok\">Found on PDF</span>" : "<span class=\"pill miss\">Not on PDF</span>") +
+                (onPdf
+                  ? "<span class=\"pill ok\">Found on PDF</span>"
+                  : "<span class=\"pill miss\">Not on PDF</span>") +
+                "</td><td>" +
+                (alloc
+                  ? "<b>" + esc(alloc.costLabel || ("R " + alloc.cost)) + "</b>"
+                  : (onPdf ? "<span class=\"pill miss\">No total read</span>" : "—")) +
                 "</td></tr>";
             }).join("") + "</tbody></table>"
           : "<p>No orders are currently At the paint shop — send orders first, then read the invoice.</p>") +

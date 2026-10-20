@@ -65,4 +65,18 @@ assert.strictEqual(mashedBy.S260193.cost, 268.9);
 assert.ok(mashedBy.S260131.costLabel);
 assert.strictEqual(mashedParsed.grandTotal, 1334.2);
 
+// One long glued extract (common for some PDF writers) must still split per order.
+const glued = "S260131-F/G BLACK SD-CABINET-110A - CHARLENE ARCHED CABINET (2000X1000X450)1R877.500,00%15,00%R877.50R1,009.13 SD-CABINET-110B - DOOR (450X350)1R93.900,00%15,00%R93.90R107.99 S260193-F/G BLACK SD-SHELF-001 - TALITHA BOOKSHELF (1800X800X300)1R268.900,00%15,00%R268.90R309.24";
+const gluedParsed = parsePaintInvoiceText(glued, {
+  preferOrderNumbers: ["S260131", "S260193"]
+});
+assert.ok(gluedParsed.ok);
+const gluedBy = {};
+gluedParsed.allocations.forEach((row) => { gluedBy[row.orderNumber] = row; });
+assert.ok(gluedBy.S260131, "glued PDF must total S260131");
+assert.ok(gluedBy.S260193, "glued PDF must total S260193");
+assert.strictEqual(gluedBy.S260131.cost, 971.4); // 877.50 + 93.90
+assert.strictEqual(gluedBy.S260193.cost, 268.9);
+assert.strictEqual(gluedParsed.grandTotal, 1240.3);
+
 console.log("paint-invoice-parse.test.js ok");

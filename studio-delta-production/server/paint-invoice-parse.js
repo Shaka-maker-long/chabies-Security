@@ -112,57 +112,114 @@ function parsePaintInvoiceText(text, opts) {
     return allocations[orderNumber];
   }
 
+  const COLOUR_TAG_RE = /\b(S\d{5,})(?:\([A-Za-z0-9,-]+\))?\s*[-–—/]/gi;
+  const ALONE_ORDER_RE = /^\s*(S\d{5,}(?:\([A-Za-z0-9,-]+\))?)\s*$/i;
+  const PRICE_GLOBAL_RE = new RegExp(QTY_PRICE_TAIL_RE.source, "gi");
+
+  function colourTagsIn(text) {
+    const out = [];
+    const re = new RegExp(COLOUR_TAG_RE.source, "gi");
+    let m;
+    while ((m = re.exec(String(text || "")))) {
+      out.push({ index: m.index, orderNumber: normalizeOrderToken(m[1]) });
+    }
+    return out;
+  }
+
+  function orderBefore(tags, atIndex, fallback) {
+    let found = fallback || "";
+    for (let t = 0; t < tags.length; t++) {
+      if (tags[t].index <= atIndex) found = tags[t].orderNumber;
+      else break;
+    }
+    return found;
+  }
+
+  function consumePriceMatch(fullText, match, orderNumber) {
+    const qty = parseMoney(String(match[1]).replace(",", "."));
+    const unit = parseRandToken(match[2]);
+    const excl = parseRandToken(match[3]);
+    const incl = match[4] != null ? parseRandToken(match[4]) : null;
+    if (!Number.isFinite(qty) || qty <= 0 || unit == null) return null;
+    let lineExcl = excl != null ? excl : Number(money(qty * unit));
+    if (excl != null && incl != null && Math.abs(excl - unit) < 0.005 && qty > 1) {
+      lineExcl = Number(money(qty * unit));
+    }
+    const start = match.index;
+    const end = start + match[0].length;
+    const desc = (fullText.slice(Math.max(0, start - 120), start) + " " + fullText.slice(end, end + 40))
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 160);
+    return { qty, unitPrice: unit, lineExcl, lineIncl: incl, description: desc, orderNumber };
+  }
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const next = lines[i + 1] || "";
-    const combo = line + " " + next;
+    const alone = line.match(ALONE_ORDER_RE);
+    if (alone) activeOrder = normalizeOrderToken(alone[1]);
 
-    // Colour / job tags like S260244-MATT BLACK or S260131-F/G BLACK set the active order.
-    const colourHit = line.match(/\b(S\d{5,})(?:\([A-Za-z0-9,-]+\))?\s*[-–—/]/i);
-    if (colourHit) {
-      activeOrder = normalizeOrderToken(colourHit[1]);
-    } else {
-      const alone = line.match(/^\s*(S\d{5,}(?:\([A-Za-z0-9,-]+\))?)\s*$/i);
-      if (alone) activeOrder = normalizeOrderToken(alone[1]);
+    const lineTags = colourTagsIn(line);
+    if (lineTags.length) activeOrder = lineTags[lineTags.length - 1].orderNumber;
+
+    const priceRe = new RegExp(PRICE_GLOBAL_RE.source, "gi");
+    const matches = [];
+    let m;
+    while ((m = priceRe.exec(line))) {
+      matches.push({
+        1: m[1], 2: m[2], 3: m[3], 4: m[4],
+        index: m.index,
+        0: m[0]
+      });
     }
 
-    const candidates = [line, combo];
-    let parsed = null;
-    for (const candidate of candidates) {
-      const m = candidate.match(QTY_PRICE_TAIL_RE);
-      if (!m) continue;
-      const qty = parseMoney(String(m[1]).replace(",", "."));
-      const unit = parseRandToken(m[2]);
-      const excl = parseRandToken(m[3]);
-      const incl = m[4] != null ? parseRandToken(m[4]) : null;
-      if (!Number.isFinite(qty) || qty <= 0 || unit == null) continue;
-      let lineExcl = excl != null ? excl : Number(money(qty * unit));
-      if (excl != null && incl != null && Math.abs(excl - unit) < 0.005 && qty > 1) {
-        lineExcl = Number(money(qty * unit));
+    // If this line has no prices but the next line is only a price tail, join once.
+    if (!matches.length && lines[i + 1]) {
+      const combo = line + " " + lines[i + 1];
+      const comboRe = new RegExp(PRICE_GLOBAL_RE.source, "gi");
+      const comboMatches = [];
+      while ((m = comboRe.exec(combo))) {
+        comboMatches.push({
+          1: m[1], 2: m[2], 3: m[3], 4: m[4],
+          index: m.index,
+          0: m[0]
+        });
       }
-      const desc = candidate
-        .replace(QTY_PRICE_TAIL_RE, " ")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 160);
-      parsed = { qty, unitPrice: unit, lineExcl, lineIncl: incl, description: desc };
-      if (candidate === combo) i += 1;
-      break;
+      if (comboMatches.length) {
+        const tags = colourTagsIn(combo);
+        comboMatches.forEach((hit) => {
+          let orderNumber = orderBefore(tags, hit.index, activeOrder);
+          const parsed = consumePriceMatch(combo, hit, orderNumber);
+          if (!parsed) return;
+          if (!orderNumber) {
+            unmatchedLines.push(parsed);
+            return;
+          }
+          activeOrder = orderNumber;
+          const bucket = ensure(orderNumber);
+          bucket.cost = Number(money(bucket.cost + parsed.lineExcl));
+          bucket.lines.push(parsed);
+          bucket.matched = bucket.matched || !!preferSet[orderNumber];
+        });
+        i += 1;
+        continue;
+      }
     }
 
-    if (!parsed) continue;
-
-    let orderNumber = activeOrder;
-    const inDesc = extractOrderTokens(parsed.description + " " + line);
-    if (inDesc.length) orderNumber = inDesc[0];
-    if (!orderNumber) {
-      unmatchedLines.push(parsed);
-      continue;
-    }
-    const bucket = ensure(orderNumber);
-    bucket.cost = Number(money(bucket.cost + parsed.lineExcl));
-    bucket.lines.push(parsed);
-    bucket.matched = bucket.matched || !!preferSet[orderNumber];
+    matches.forEach((hit) => {
+      let orderNumber = orderBefore(lineTags, hit.index, activeOrder);
+      const parsed = consumePriceMatch(line, hit, orderNumber);
+      if (!parsed) return;
+      if (!orderNumber) {
+        unmatchedLines.push(parsed);
+        return;
+      }
+      activeOrder = orderNumber;
+      const bucket = ensure(orderNumber);
+      bucket.cost = Number(money(bucket.cost + parsed.lineExcl));
+      bucket.lines.push(parsed);
+      bucket.matched = bucket.matched || !!preferSet[orderNumber];
+    });
   }
 
   let list = Object.keys(allocations).map((k) => {
