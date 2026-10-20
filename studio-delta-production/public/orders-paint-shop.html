@@ -401,27 +401,38 @@
       const tokens = j.orderTokens || [];
       const unmatched = j.unmatchedLines || [];
       const body = document.getElementById("parseBody");
+      const allocRows = j.allocations || [];
       body.innerHTML =
         "<div class=\"section\"><h3>File</h3><p>" + esc(j.filename || "invoice.pdf") +
-        " · matched <b>" + esc(matched.length) + "</b> of <b>" + esc((j.allocations || []).length) + "</b> PDF order total(s) to paint-shop list (" +
-        esc(compared.length) + " at shop)</p></div>" +
+        " · matched <b>" + esc(matched.length) + "</b> of <b>" + esc(allocRows.length) + "</b> PDF order total(s) to paint-shop list (" +
+        esc(compared.length) + " at shop)</p>" +
+        "<p><b>PDF grand total (excl): " + esc(j.grandTotalLabel || "—") +
+        "</b>" + (matched.length ? " · matched shop total: <b>" + esc(j.matchedTotalLabel || "—") + "</b>" : "") +
+        "</p></div>" +
         "<div class=\"section\"><h3>Order numbers found on the PDF</h3>" +
         (tokens.length
-          ? "<p>" + tokens.map((t) => "<span class=\"pill " + (compared.some((c) => c.orderNumber === t) ? "ok" : "miss") + "\">" + esc(t) + "</span> ").join("") + "</p>"
+          ? "<p>" + tokens.map((t) => {
+              const row = allocRows.find((a) => a.orderNumber === t);
+              const onShop = compared.some((c) => c.orderNumber === t);
+              return "<span class=\"pill " + (onShop ? "ok" : "miss") + "\">" + esc(t) +
+                (row ? (" · " + esc(row.costLabel || ("R " + row.cost))) : "") + "</span> ";
+            }).join("") + "</p>"
           : "<p>None detected (looked for codes like S260244).</p>") +
         "</div>" +
         "<div class=\"section\"><h3>What the PDF costed (by order)</h3>" +
-        ((j.allocations || []).length
-          ? "<table><thead><tr><th>Order on PDF</th><th>Cost excl</th><th>Lines</th><th>Vs paint shop</th></tr></thead><tbody>" +
-            (j.allocations || []).map((row) => {
+        (allocRows.length
+          ? "<table><thead><tr><th>Order on PDF</th><th>Total excl</th><th>Lines</th><th>Vs paint shop</th></tr></thead><tbody>" +
+            allocRows.map((row) => {
               const lineBits = (row.lines || []).map((l) => esc((l.description || "").slice(0, 48) || "line") + " × " + esc(l.qty) + " = " + esc(l.lineExcl)).join("<br>");
-              return "<tr><td><b>" + esc(row.orderNumber) + "</b></td><td>" + esc(row.costLabel || row.cost) +
-                "</td><td>" + (lineBits || "—") + "</td><td>" +
+              return "<tr><td><b>" + esc(row.orderNumber) + "</b></td><td><b>" + esc(row.costLabel || row.cost) +
+                "</b></td><td>" + (lineBits || "—") + "</td><td>" +
                 (row.atPaintShop
                   ? "<span class=\"pill ok\">Matches shop list</span>"
                   : "<span class=\"pill miss\">Not on At the paint shop</span>") +
                 "</td></tr>";
-            }).join("") + "</tbody></table>"
+            }).join("") +
+            "<tr><td><b>Grand total</b></td><td><b>" + esc(j.grandTotalLabel || "—") + "</b></td><td colspan=\"2\"></td></tr>" +
+            "</tbody></table>"
           : "<p>No priced order groups found on the PDF.</p>") +
         "</div>" +
         "<div class=\"section\"><h3>Compared with orders at the paint shop</h3>" +

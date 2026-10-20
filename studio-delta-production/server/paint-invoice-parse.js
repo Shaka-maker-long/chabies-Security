@@ -5,13 +5,14 @@
  * Works on selectable-text PDFs (not photo scans without OCR).
  */
 
-const { formatOrderId, parseMoney, money } = require("./db");
+const { formatOrderId, parseMoney, money, formatRand } = require("./db");
 
 const ORDER_TOKEN_RE = /\bS\d{5,}(?:\([A-Za-z0-9,-]+\))?/gi;
 // R2,219.80 or R2219.80 (must not stop at R2,21)
 const RAND_NUM = "(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:[.,]\\d{2})";
+// Spaces are often missing in PDF extraction: 1R877.500,00%15,00%R877.50R1,009.13
 const QTY_PRICE_TAIL_RE = new RegExp(
-  "(?:^|\\s)(\\d+(?:[.,]\\d+)?)\\s+R\\s*(" + RAND_NUM + ")(?:\\s+[\\d]+[.,][\\d]+\\s*%){0,2}\\s+R\\s*(" + RAND_NUM + ")(?:\\s+R\\s*(" + RAND_NUM + "))?",
+  "(?:^|\\s)(\\d+(?:[.,]\\d+)?)\\s*R\\s*(" + RAND_NUM + ")(?:\\s*[\\d]+[.,][\\d]+\\s*%){0,2}\\s*R\\s*(" + RAND_NUM + ")(?:\\s*R\\s*(" + RAND_NUM + "))?",
   "i"
 );
 
@@ -54,6 +55,20 @@ function collapsePdfText(text) {
     .trim();
 }
 
+/** Insert spaces where PDF extract glued qty / Rand / % columns together. */
+function relaxInvoiceText(text) {
+  let s = String(text || "");
+  // (2000X1000X450)1R877.50 → ) 1 R877.50
+  s = s.replace(/\)(\d)/g, ") $1");
+  s = s.replace(/(\d)R(\d)/gi, "$1 R$2");
+  // R877.500,00% → R877.50 0,00%
+  s = s.replace(new RegExp("(R\\s*" + RAND_NUM + ")(\\d+[.,]\\d+\\s*%)", "gi"), "$1 $2");
+  s = s.replace(/(%\s*)(\d+[.,]\d+\s*%)/gi, "$1 $2");
+  s = s.replace(/(%)(R)/gi, "$1 $2");
+  s = s.replace(new RegExp("(R\\s*" + RAND_NUM + ")(R)", "gi"), "$1 $2");
+  return s;
+}
+
 /**
  * Walk invoice text and build per-order cost totals (excl VAT when available).
  */
@@ -65,14 +80,16 @@ function parsePaintInvoiceText(text, opts) {
   const preferSet = {};
   preferOrders.forEach((n) => { preferSet[n] = true; });
 
-  const raw = collapsePdfText(text);
+  const raw = relaxInvoiceText(collapsePdfText(text));
   if (!raw) {
     return {
       ok: false,
       error: "No text found in that PDF. Export a text PDF (not a photo scan).",
       allocations: [],
       unmatchedLines: [],
-      orderTokens: []
+      orderTokens: [],
+      grandTotal: 0,
+      grandTotalLabel: formatRand(0)
     };
   }
 
@@ -100,8 +117,8 @@ function parsePaintInvoiceText(text, opts) {
     const next = lines[i + 1] || "";
     const combo = line + " " + next;
 
-    // Colour / job tags like S260244-MATT BLACK SMOOTH set the active order.
-    const colourHit = line.match(/\b(S\d{5,})(?:\([A-Za-z0-9,-]+\))?\s*[-–—]/i);
+    // Colour / job tags like S260244-MATT BLACK or S260131-F/G BLACK set the active order.
+    const colourHit = line.match(/\b(S\d{5,})(?:\([A-Za-z0-9,-]+\))?\s*[-–—/]/i);
     if (colourHit) {
       activeOrder = normalizeOrderToken(colourHit[1]);
     } else {
@@ -119,9 +136,7 @@ function parsePaintInvoiceText(text, opts) {
       const excl = parseRandToken(m[3]);
       const incl = m[4] != null ? parseRandToken(m[4]) : null;
       if (!Number.isFinite(qty) || qty <= 0 || unit == null) continue;
-      // Prefer explicit excl subtotal; else qty × unit.
       let lineExcl = excl != null ? excl : Number(money(qty * unit));
-      // If only two R amounts look like unit + incl, derive excl.
       if (excl != null && incl != null && Math.abs(excl - unit) < 0.005 && qty > 1) {
         lineExcl = Number(money(qty * unit));
       }
@@ -131,14 +146,14 @@ function parsePaintInvoiceText(text, opts) {
         .trim()
         .slice(0, 160);
       parsed = { qty, unitPrice: unit, lineExcl, lineIncl: incl, description: desc };
-      if (candidate === combo) i += 1; // consumed next line
+      if (candidate === combo) i += 1;
       break;
     }
 
     if (!parsed) continue;
 
     let orderNumber = activeOrder;
-    const inDesc = extractOrderTokens(parsed.description);
+    const inDesc = extractOrderTokens(parsed.description + " " + line);
     if (inDesc.length) orderNumber = inDesc[0];
     if (!orderNumber) {
       unmatchedLines.push(parsed);
@@ -150,19 +165,23 @@ function parsePaintInvoiceText(text, opts) {
     bucket.matched = bucket.matched || !!preferSet[orderNumber];
   }
 
-  let list = Object.keys(allocations).map((k) => allocations[k]).sort((a, b) => {
+  let list = Object.keys(allocations).map((k) => {
+    const row = allocations[k];
+    return Object.assign({}, row, {
+      costLabel: formatRand(row.cost)
+    });
+  }).sort((a, b) => {
     if (a.matched !== b.matched) return a.matched ? -1 : 1;
     return String(a.orderNumber).localeCompare(String(b.orderNumber));
   });
 
-  // If nothing keyed by order but we have preferred orders and one preferred + unmatched lines,
-  // dump unmatched onto the single preferred order when only one is selected.
   if (!list.length && unmatchedLines.length && preferOrders.length === 1) {
     const orderNumber = preferOrders[0];
     const cost = unmatchedLines.reduce((sum, row) => sum + Number(row.lineExcl || 0), 0);
     list = [{
       orderNumber,
       cost: Number(money(cost)),
+      costLabel: formatRand(cost),
       matched: true,
       lines: unmatchedLines.slice(),
       assumedSingleOrder: true
@@ -170,12 +189,16 @@ function parsePaintInvoiceText(text, opts) {
     unmatchedLines.length = 0;
   }
 
+  const grandTotal = list.reduce((sum, row) => sum + Number(row.cost || 0), 0);
+
   return {
     ok: true,
     orderTokens: extractOrderTokens(raw),
     allocations: list,
     unmatchedLines,
-    textPreview: raw.slice(0, 1200)
+    grandTotal: Number(money(grandTotal)),
+    grandTotalLabel: formatRand(grandTotal),
+    textPreview: raw.slice(0, 1600)
   };
 }
 
@@ -194,6 +217,7 @@ module.exports = {
   normalizeOrderToken,
   parseRandToken,
   extractOrderTokens,
+  relaxInvoiceText,
   parsePaintInvoiceText,
   extractPdfText,
   parsePaintInvoiceBuffer

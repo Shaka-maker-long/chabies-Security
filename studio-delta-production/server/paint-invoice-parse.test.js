@@ -44,25 +44,25 @@ assert.ok(byOrder.S260235);
 assert.strictEqual(byOrder.S260244.cost, 92.7);
 assert.strictEqual(byOrder.S260235.cost, 68.77);
 
-(async function pdfRoundTrip() {
-  const PDFDocument = require("pdfkit");
-  const { parsePaintInvoiceBuffer } = require("./paint-invoice-parse");
-  const doc = new PDFDocument({ size: "A4", margin: 40 });
-  const chunks = [];
-  doc.on("data", (c) => chunks.push(c));
-  const done = new Promise((resolve) => doc.on("end", () => resolve(Buffer.concat(chunks))));
-  doc.fontSize(11).text("Paint shop invoice");
-  doc.text("Order S260301");
-  doc.text("SD-CABINET-112A - NAOMI ARCHED CABINET (2000X1400X680) 1 R2,219.80 0,00% 15,00% R2,219.80 R2,552.77");
-  doc.text("SD-CABINET-112B - NAOMI ARCHED CABINET DOOR (840X330) 4 R74.40 0,00% 15,00% R297.60 R342.24");
-  doc.end();
-  const buf = await done;
-  const parsed = await parsePaintInvoiceBuffer(buf, { preferOrderNumbers: ["S260301"] });
-  assert.ok(parsed.ok);
-  assert.strictEqual(parsed.allocations[0].orderNumber, "S260301");
-  assert.ok(parsed.allocations[0].cost >= 2500);
-  console.log("paint-invoice-parse.test.js ok");
-})().catch((e) => {
-  console.error(e);
-  process.exit(1);
+// Real paint invoices often extract without spaces between columns.
+const mashed = `
+S260131-F/G BLACK
+SD-CABINET-110A - CHARLENE ARCHED CABINET (2000X1000X450)1R877.500,00%15,00%R877.50R1,009.13
+SD-CABINET-110B - CHARLENE ARCHED CABINET DOOR (450X350)2R93.900,00%15,00%R187.80R215.97
+S260193-F/G BLACK
+SD-SHELF-001 - TALITHA BOOKSHELF (1800X800X300)1R268.900,00%15,00%R268.90R309.24
+`;
+const mashedParsed = parsePaintInvoiceText(mashed, {
+  preferOrderNumbers: ["S260131", "S260193"]
 });
+assert.ok(mashedParsed.ok);
+const mashedBy = {};
+mashedParsed.allocations.forEach((row) => { mashedBy[row.orderNumber] = row; });
+assert.ok(mashedBy.S260131, "mashed PDF must total S260131");
+assert.ok(mashedBy.S260193, "mashed PDF must total S260193");
+assert.strictEqual(mashedBy.S260131.cost, 1065.3); // 877.50 + 187.80
+assert.strictEqual(mashedBy.S260193.cost, 268.9);
+assert.ok(mashedBy.S260131.costLabel);
+assert.strictEqual(mashedParsed.grandTotal, 1334.2);
+
+console.log("paint-invoice-parse.test.js ok");

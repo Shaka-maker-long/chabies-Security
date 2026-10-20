@@ -480,6 +480,9 @@ async function parseInvoiceForCosts(payload) {
     });
   });
   const matchedCount = allocations.filter((row) => row.atPaintShop).length;
+  const matchedTotal = allocations
+    .filter((row) => row.atPaintShop)
+    .reduce((sum, row) => sum + Number(row.cost || 0), 0);
   return {
     filename: decoded.filename,
     mime: decoded.mime,
@@ -490,6 +493,10 @@ async function parseInvoiceForCosts(payload) {
     comparedWith,
     comparedCount: comparedWith.length,
     matchedCount,
+    grandTotal: parsed.grandTotal != null ? parsed.grandTotal : allocations.reduce((sum, row) => sum + Number(row.cost || 0), 0),
+    grandTotalLabel: parsed.grandTotalLabel || formatRand(allocations.reduce((sum, row) => sum + Number(row.cost || 0), 0)),
+    matchedTotal: Number(require("./db").money(matchedTotal)),
+    matchedTotalLabel: formatRand(matchedTotal),
     filledCount: matchedCount || allocations.filter((row) => preferIds.indexOf(formatOrderId(row.orderNumber)) !== -1).length
   };
 }
