@@ -170,4 +170,34 @@ assert.strictEqual(orderOnA.unmatchedLines.length, 0);
 assert.strictEqual(orderOnA.allocations.length, 1);
 assert.strictEqual(orderOnA.allocations[0].cost, 1105.1);
 
+// Ultimate invoice: colour tag sits under the last component, next product has its own tag.
+const ultimate = `
+Copy Tax Invoice
+ULTIMATE POWDER COATERS (PTY) LTD
+SD-CABINET-006A - CHARLENE DISPLAY
+CABINET (2220X980X350)
+1 R877.50 0,00% 15,00% R877.50 R1,009.13
+SD-CABINET-006B - CHARLENE DISPLAY
+CABINET DOOR (1820X400)
+1 R93.90 0,00% 15,00% R93.90 R107.99
+SD-CABINET-006C - ARCHED DISPLAY
+CABINET PLATE (980X350)
+1 R133.70 0,00% 15,00% R133.70 R153.76
+S260131-F/G BLACK
+SD-BOOKSHELF-002 - TALITHA
+BOOKSHELF (1470X260X300)
+1 R268.90 0,00% 15,00% R268.90 R309.24
+S260193-F/G BLACK
+`;
+const ult = parsePaintInvoiceText(ultimate, {
+  preferOrderNumbers: ["S260131", "S260193"]
+});
+assert.strictEqual(ult.unmatchedLines.length, 0, "006A/B must follow 006C onto S260131");
+const ultBy = {};
+ult.allocations.forEach((row) => { ultBy[row.orderNumber] = row; });
+assert.strictEqual(ultBy.S260131.cost, 1105.1);
+assert.strictEqual(ultBy.S260131.lines.length, 3);
+assert.strictEqual(ultBy.S260193.cost, 268.9);
+assert.strictEqual(ult.grandTotal, 1374);
+
 console.log("paint-invoice-parse.test.js ok");

@@ -268,12 +268,9 @@ function parsePaintInvoiceText(text, opts) {
 
   const orderMarks = [];
   const pricedRecords = [];
-  let firstSkuPos = -1;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const skuOnLine = lastSkuIn(line);
-    if (skuOnLine && firstSkuPos < 0) firstSkuPos = posOf(i, Math.max(0, line.toUpperCase().indexOf(skuOnLine.sku)));
 
     const tokenRe = new RegExp(ORDER_TOKEN_RE.source, "gi");
     let tokenHit;
@@ -343,39 +340,25 @@ function parsePaintInvoiceText(text, opts) {
     takeHits(line, matches, i);
   }
 
+  const firstPricePos = pricedRecords.length ? pricedRecords[0].pos : -1;
   const firstMarkPos = orderMarks.length ? orderMarks[0].pos : -1;
-  const colourAfterStyle = firstSkuPos >= 0 && (firstMarkPos < 0 || firstSkuPos < firstMarkPos);
+  // Real Ultimate invoices put colour AFTER the A/B/C parts. Other PDFs put
+  // the colour line first. Decide from whether the first price or first
+  // order tag appears earlier — not from SKU position (SKU often sits above
+  // both the colour and the price).
+  const colourAfterStyle = firstPricePos >= 0 && (firstMarkPos < 0 || firstPricePos < firstMarkPos);
 
-  const groups = [];
   pricedRecords.forEach((row) => {
-    const prev = groups.length ? groups[groups.length - 1] : null;
-    if (prev && row.skuFamily && prev.family === row.skuFamily) {
-      prev.rows.push(row);
-      prev.endPos = row.pos;
-      if (row.skuPos < prev.startPos) prev.startPos = row.skuPos;
-      return;
-    }
-    groups.push({
-      family: row.skuFamily || "",
-      rows: [row],
-      startPos: row.skuPos != null ? Math.min(row.skuPos, row.pos) : row.pos,
-      endPos: row.pos
+    let next = null;
+    let prev = null;
+    orderMarks.forEach((mark) => {
+      if (mark.pos > row.pos && (!next || mark.pos < next.pos)) next = mark;
+      if (mark.pos < row.pos && (!prev || mark.pos > prev.pos)) prev = mark;
     });
-  });
-
-  groups.forEach((group, gi) => {
-    const prevEnd = gi === 0 ? -1 : groups[gi - 1].endPos;
-    const nextStart = gi === groups.length - 1 ? Number.MAX_SAFE_INTEGER : groups[gi + 1].startPos;
-    const onGroup = orderMarks.filter((mark) => mark.pos >= group.startPos && mark.pos <= group.endPos);
-    const before = orderMarks.filter((mark) => mark.pos > prevEnd && mark.pos < group.startPos);
-    const afterInclusive = orderMarks.filter((mark) => mark.pos > group.endPos && mark.pos < nextStart);
     let chosen = [];
-    if (onGroup.length) chosen = onGroup[0].orderNumbers;
-    else if (colourAfterStyle && afterInclusive.length) chosen = afterInclusive[0].orderNumbers;
-    else if (!colourAfterStyle && before.length) chosen = before[before.length - 1].orderNumbers;
-    else if (afterInclusive.length) chosen = afterInclusive[0].orderNumbers;
-    else if (before.length) chosen = before[before.length - 1].orderNumbers;
-    group.rows.forEach((row) => addParsedToOrders(row.parsed, chosen));
+    if (colourAfterStyle) chosen = (next && next.orderNumbers) || (prev && prev.orderNumbers) || [];
+    else chosen = (prev && prev.orderNumbers) || (next && next.orderNumbers) || [];
+    addParsedToOrders(row.parsed, chosen);
   });
 
   let list = Object.keys(allocations).map((k) => {
