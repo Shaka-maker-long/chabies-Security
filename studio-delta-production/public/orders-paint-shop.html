@@ -423,8 +423,15 @@
         (allocRows.length
           ? "<table><thead><tr><th>Order on PDF</th><th>Total excl</th><th>Lines</th><th>Vs paint shop</th></tr></thead><tbody>" +
             allocRows.map((row) => {
-              const lineBits = (row.lines || []).map((l) => esc((l.description || "").slice(0, 48) || "line") + " × " + esc(l.qty) + " = " + esc(l.lineExcl)).join("<br>");
-              return "<tr><td><b>" + esc(row.orderNumber) + "</b></td><td><b>" + esc(row.costLabel || row.cost) +
+              const lineBits = (row.lines || []).map((l) => {
+                const splitNote = l.splitCount
+                  ? (" (split " + esc(l.splitFrom) + " ÷ " + esc(l.splitCount) + ")")
+                  : "";
+                return esc((l.description || "").slice(0, 48) || "line") + " × " + esc(l.qty) + " = " + esc(l.lineExcl) + splitNote;
+              }).join("<br>");
+              return "<tr><td><b>" + esc(row.orderNumber) + "</b>" +
+                (row.fromRange ? "<div class=\"msg\">From invoice (A–L) range</div>" : "") +
+                "</td><td><b>" + esc(row.costLabel || row.cost) +
                 "</b></td><td>" + (lineBits || "—") + "</td><td>" +
                 (row.atPaintShop
                   ? "<span class=\"pill ok\">Matches shop list</span>"
