@@ -1,12 +1,25 @@
 "use strict";
 
 const assert = require("assert");
-const { parsePaintInvoiceText, normalizeOrderToken, parseRandToken } = require("./paint-invoice-parse");
+const {
+  parsePaintInvoiceText,
+  normalizeOrderToken,
+  parseRandToken,
+  expandOrderRef
+} = require("./paint-invoice-parse");
 
 assert.strictEqual(normalizeOrderToken("S260244"), "S260244");
 assert.strictEqual(normalizeOrderToken("S260249(A-L)"), "S260249");
+assert.strictEqual(normalizeOrderToken("S260249 A"), "S260249 A");
 assert.strictEqual(parseRandToken("R2,219.80"), 2219.8);
 assert.strictEqual(parseRandToken("R74.40"), 74.4);
+
+const range = expandOrderRef("S260249(A-L)");
+assert.strictEqual(range.base, "S260249");
+assert.strictEqual(range.letters.length, 12);
+assert.strictEqual(range.orderNumbers[0], "S260249 A");
+assert.strictEqual(range.orderNumbers[11], "S260249 L");
+assert.deepStrictEqual(expandOrderRef("S260249(A)").orderNumbers, ["S260249 A"]);
 
 const cabinetInvoice = `
 Invoice
@@ -78,5 +91,39 @@ assert.ok(gluedBy.S260193, "glued PDF must total S260193");
 assert.strictEqual(gluedBy.S260131.cost, 971.4); // 877.50 + 93.90
 assert.strictEqual(gluedBy.S260193.cost, 268.9);
 assert.strictEqual(gluedParsed.grandTotal, 1240.3);
+
+// Invoice S260249(A-L) must split excl total across shop orders S260249 A … L.
+const letterPrefer = [];
+for (let c = 65; c <= 76; c++) letterPrefer.push("S260249 " + String.fromCharCode(c));
+const chairInvoice = `
+SD-CHAIR-002 - CUSTOM STEEL CHAIR
+(1020X470X430)
+
+12 R232.50 0.00% 15.00% R2,790.00 R3,208.50
+
+S260249(A-L)-ULTRA MARINE BLUE
+`;
+const chairs = parsePaintInvoiceText(chairInvoice, { preferOrderNumbers: letterPrefer });
+assert.ok(chairs.ok);
+assert.strictEqual(chairs.allocations.length, 12, "A–L must become 12 letter orders");
+assert.strictEqual(chairs.grandTotal, 2790);
+const chairBy = {};
+chairs.allocations.forEach((row) => { chairBy[row.orderNumber] = row; });
+assert.ok(chairBy["S260249 A"]);
+assert.ok(chairBy["S260249 L"]);
+assert.strictEqual(chairBy["S260249 A"].cost, 232.5);
+assert.strictEqual(chairBy["S260249 L"].cost, 232.5);
+assert.ok(chairBy["S260249 A"].matched);
+assert.ok(chairs.orderTokens.indexOf("S260249 A") !== -1);
+assert.ok(chairs.orderTokens.indexOf("S260249 L") !== -1);
+
+// Colour tag before the price line must also expand.
+const chairBefore = parsePaintInvoiceText(`
+S260249(A-L)-ULTRA MARINE BLUE
+SD-CHAIR-002 - CUSTOM STEEL CHAIR (1020X470X430)
+12 R232.50 0.00% 15.00% R2,790.00 R3,208.50
+`, { preferOrderNumbers: letterPrefer });
+assert.strictEqual(chairBefore.allocations.length, 12);
+assert.strictEqual(chairBefore.grandTotal, 2790);
 
 console.log("paint-invoice-parse.test.js ok");
