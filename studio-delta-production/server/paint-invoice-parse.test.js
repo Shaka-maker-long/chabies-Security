@@ -126,4 +126,48 @@ SD-CHAIR-002 - CUSTOM STEEL CHAIR (1020X470X430)
 assert.strictEqual(chairBefore.allocations.length, 12);
 assert.strictEqual(chairBefore.grandTotal, 2790);
 
+// 006A / 006B / 006C are one product. Order number may sit only after the last part.
+const components = `
+SD-CABINET-006A - CHARLENE DISPLAY
+CABINET (2220X980X350)
+1 R877.50 0,00% 15,00% R877.50 R1,009.13
+SD-CABINET-006B - CHARLENE DISPLAY
+CABINET DOOR (1820X400)
+1 R93.90 0,00% 15,00% R93.90 R107.99
+SD-CABINET-006C - ARCHED DISPLAY
+CABINET PLATE (980X350)
+1 R133.70 0,00% 15,00% R133.70 R153.76
+S260131-F/G BLACK
+SD-BOOKSHELF-002 - TALITHA BOOKSHELF (1470X260X300)
+1 R268.90 0,00% 15,00% R268.90 R309.24
+S260193-F/G BLACK
+`;
+const parts = parsePaintInvoiceText(components, {
+  preferOrderNumbers: ["S260131", "S260193"]
+});
+assert.ok(parts.ok);
+assert.strictEqual(parts.unmatchedLines.length, 0, "006A/B/C must not be unmatched");
+const partsBy = {};
+parts.allocations.forEach((row) => { partsBy[row.orderNumber] = row; });
+assert.ok(partsBy.S260131);
+assert.ok(partsBy.S260193);
+assert.strictEqual(partsBy.S260131.cost, 1105.1); // 877.50 + 93.90 + 133.70
+assert.strictEqual(partsBy.S260131.lines.length, 3);
+assert.strictEqual(partsBy.S260193.cost, 268.9);
+assert.strictEqual(parts.grandTotal, 1374);
+
+// Order on the first component still covers B and C.
+const orderOnA = parsePaintInvoiceText(`
+SD-CABINET-006A - CHARLENE DISPLAY CABINET (2220X980X350)
+S260131-F/G BLACK
+1 R877.50 0,00% 15,00% R877.50 R1,009.13
+SD-CABINET-006B - CHARLENE DISPLAY CABINET DOOR (1820X400)
+1 R93.90 0,00% 15,00% R93.90 R107.99
+SD-CABINET-006C - ARCHED DISPLAY CABINET PLATE (980X350)
+1 R133.70 0,00% 15,00% R133.70 R153.76
+`, { preferOrderNumbers: ["S260131"] });
+assert.strictEqual(orderOnA.unmatchedLines.length, 0);
+assert.strictEqual(orderOnA.allocations.length, 1);
+assert.strictEqual(orderOnA.allocations[0].cost, 1105.1);
+
 console.log("paint-invoice-parse.test.js ok");

@@ -116,6 +116,19 @@ function relaxInvoiceText(text) {
   return s;
 }
 
+/**
+ * Paint-shop SKUs like SD-CABINET-006A / 006B / 006C are components of one
+ * furniture item (not Studio Delta letter-split orders).
+ */
+function skuFamilyFromText(text) {
+  const s = String(text || "").toUpperCase();
+  const m = s.match(/\b(SD-[A-Z]+-\d+)([A-Z])\b/);
+  if (m) return { family: m[1], part: m[2], sku: m[1] + m[2] };
+  const m2 = s.match(/\b(SD-[A-Z]+-\d+)\b/);
+  if (m2) return { family: m2[1], part: "", sku: m2[1] };
+  return null;
+}
+
 /** Split cents across n orders so the sum still equals the line total. */
 function splitCostShares(total, n) {
   const count = Math.max(1, n | 0);
@@ -176,50 +189,7 @@ function parsePaintInvoiceText(text, opts) {
     return allocations[orderNumber];
   }
 
-  // Capture full token including (A-L) before the colour dash.
-  const COLOUR_TAG_RE = /\b(S\d{5,}(?:\([A-Za-z0-9,-]+\))?)\s*[-–—/]/gi;
-  const ALONE_ORDER_RE = /^\s*(S\d{5,}(?:\([A-Za-z0-9,-]+\)|\s+[A-Z](?![A-Z]))?)\s*$/i;
   const PRICE_GLOBAL_RE = new RegExp(QTY_PRICE_TAIL_RE.source, "gi");
-
-  function colourTagsIn(text) {
-    const out = [];
-    const re = new RegExp(COLOUR_TAG_RE.source, "gi");
-    let m;
-    while ((m = re.exec(String(text || "")))) {
-      const expanded = expandOrderRef(m[1]);
-      out.push({
-        index: m.index,
-        raw: m[1],
-        orderNumbers: expanded.orderNumbers.slice()
-      });
-    }
-    return out;
-  }
-
-  function orderNumbersBefore(tags, atIndex, fallback) {
-    let found = fallback && fallback.length ? fallback.slice() : [];
-    for (let t = 0; t < tags.length; t++) {
-      if (tags[t].index <= atIndex) found = tags[t].orderNumbers.slice();
-      else break;
-    }
-    return found;
-  }
-
-  function colourAhead(fromLine, afterIndexOnLine) {
-    for (let j = fromLine; j < Math.min(lines.length, fromLine + 5); j++) {
-      const tags = colourTagsIn(lines[j]);
-      for (let t = 0; t < tags.length; t++) {
-        if (j === fromLine && tags[t].index <= afterIndexOnLine) continue;
-        if (tags[t].orderNumbers.length) return tags[t].orderNumbers.slice();
-      }
-      const alone = lines[j].match(ALONE_ORDER_RE);
-      if (alone && (j > fromLine || alone.index > afterIndexOnLine)) {
-        const expanded = expandOrderRef(alone[1]);
-        if (expanded.orderNumbers.length) return expanded.orderNumbers;
-      }
-    }
-    return [];
-  }
 
   function consumePriceMatch(fullText, match) {
     const qty = parseMoney(String(match[1]).replace(",", "."));
@@ -269,20 +239,55 @@ function parsePaintInvoiceText(text, opts) {
     });
   }
 
-  function resolveOrders(lineTags, hitIndex, lineIndex) {
-    let orders = orderNumbersBefore(lineTags, hitIndex, activeOrderNumbers);
-    if (!orders.length) orders = colourAhead(lineIndex, hitIndex);
-    return orders;
+  function lastSkuIn(text) {
+    let last = null;
+    const re = /\bSD-[A-Z]+-\d+[A-Z]?\b/g;
+    let m;
+    while ((m = re.exec(String(text || "")))) {
+      last = Object.assign({ index: m.index }, skuFamilyFromText(m[0]) || {});
+    }
+    return last && last.family ? last : null;
   }
+
+  function skuNear(lineIndex, sourceText, atIndex) {
+    const prefix = String(sourceText || "").slice(0, atIndex == null ? undefined : atIndex);
+    const fromPrefix = lastSkuIn(prefix);
+    if (fromPrefix) return Object.assign({ lineIndex: lineIndex }, fromPrefix);
+    const onLine = lastSkuIn(lines[lineIndex]);
+    if (onLine) return Object.assign({ lineIndex: lineIndex }, onLine);
+    const prev = lastSkuIn(lines[lineIndex - 1]);
+    if (prev) return Object.assign({ lineIndex: lineIndex - 1 }, prev);
+    const prev2 = lastSkuIn(lines[lineIndex - 2]);
+    if (prev2) return Object.assign({ lineIndex: lineIndex - 2 }, prev2);
+    return null;
+  }
+
+  function posOf(lineIndex, charIndex) {
+    return (lineIndex * 100000) + (charIndex || 0);
+  }
+
+  const orderMarks = [];
+  const pricedRecords = [];
+  let firstSkuPos = -1;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const alone = line.match(ALONE_ORDER_RE);
-    if (alone) activeOrderNumbers = expandOrderRef(alone[1]).orderNumbers;
+    const skuOnLine = lastSkuIn(line);
+    if (skuOnLine && firstSkuPos < 0) firstSkuPos = posOf(i, Math.max(0, line.toUpperCase().indexOf(skuOnLine.sku)));
 
-    const lineTags = colourTagsIn(line);
-    if (lineTags.length) {
-      activeOrderNumbers = lineTags[lineTags.length - 1].orderNumbers.slice();
+    const tokenRe = new RegExp(ORDER_TOKEN_RE.source, "gi");
+    let tokenHit;
+    while ((tokenHit = tokenRe.exec(line))) {
+      const expanded = expandOrderRef(tokenHit[0]);
+      if (expanded.orderNumbers.length) {
+        activeOrderNumbers = expanded.orderNumbers;
+        orderMarks.push({
+          lineIndex: i,
+          charIndex: tokenHit.index,
+          pos: posOf(i, tokenHit.index),
+          orderNumbers: expanded.orderNumbers.slice()
+        });
+      }
     }
 
     const priceRe = new RegExp(PRICE_GLOBAL_RE.source, "gi");
@@ -296,7 +301,27 @@ function parsePaintInvoiceText(text, opts) {
       });
     }
 
-    // If this line has no prices but the next line is only a price tail, join once.
+    function takeHits(sourceText, hits, lineIndex) {
+      hits.forEach((hit) => {
+        const parsed = consumePriceMatch(sourceText, hit);
+        if (!parsed) return;
+        const sku = skuNear(lineIndex, sourceText, hit.index);
+        const pricePos = posOf(lineIndex, hit.index);
+        const skuPos = sku && sku.index != null
+          ? posOf(sku.lineIndex != null ? sku.lineIndex : lineIndex, sku.index)
+          : pricePos;
+        pricedRecords.push({
+          parsed,
+          lineIndex,
+          charIndex: hit.index,
+          pos: pricePos,
+          skuPos,
+          skuFamily: sku && sku.family,
+          sku: sku && sku.sku
+        });
+      });
+    }
+
     if (!matches.length && lines[i + 1]) {
       const combo = line + " " + lines[i + 1];
       const comboRe = new RegExp(PRICE_GLOBAL_RE.source, "gi");
@@ -309,27 +334,49 @@ function parsePaintInvoiceText(text, opts) {
         });
       }
       if (comboMatches.length) {
-        const tags = colourTagsIn(combo);
-        comboMatches.forEach((hit) => {
-          const orders = resolveOrders(tags, hit.index, i);
-          const parsed = consumePriceMatch(combo, hit);
-          if (!parsed) return;
-          if (orders.length) activeOrderNumbers = orders.slice();
-          addParsedToOrders(parsed, orders);
-        });
+        takeHits(combo, comboMatches, i);
         i += 1;
         continue;
       }
     }
 
-    matches.forEach((hit) => {
-      const orders = resolveOrders(lineTags, hit.index, i);
-      const parsed = consumePriceMatch(line, hit);
-      if (!parsed) return;
-      if (orders.length) activeOrderNumbers = orders.slice();
-      addParsedToOrders(parsed, orders);
-    });
+    takeHits(line, matches, i);
   }
+
+  const firstMarkPos = orderMarks.length ? orderMarks[0].pos : -1;
+  const colourAfterStyle = firstSkuPos >= 0 && (firstMarkPos < 0 || firstSkuPos < firstMarkPos);
+
+  const groups = [];
+  pricedRecords.forEach((row) => {
+    const prev = groups.length ? groups[groups.length - 1] : null;
+    if (prev && row.skuFamily && prev.family === row.skuFamily) {
+      prev.rows.push(row);
+      prev.endPos = row.pos;
+      if (row.skuPos < prev.startPos) prev.startPos = row.skuPos;
+      return;
+    }
+    groups.push({
+      family: row.skuFamily || "",
+      rows: [row],
+      startPos: row.skuPos != null ? Math.min(row.skuPos, row.pos) : row.pos,
+      endPos: row.pos
+    });
+  });
+
+  groups.forEach((group, gi) => {
+    const prevEnd = gi === 0 ? -1 : groups[gi - 1].endPos;
+    const nextStart = gi === groups.length - 1 ? Number.MAX_SAFE_INTEGER : groups[gi + 1].startPos;
+    const onGroup = orderMarks.filter((mark) => mark.pos >= group.startPos && mark.pos <= group.endPos);
+    const before = orderMarks.filter((mark) => mark.pos > prevEnd && mark.pos < group.startPos);
+    const afterInclusive = orderMarks.filter((mark) => mark.pos > group.endPos && mark.pos < nextStart);
+    let chosen = [];
+    if (onGroup.length) chosen = onGroup[0].orderNumbers;
+    else if (colourAfterStyle && afterInclusive.length) chosen = afterInclusive[0].orderNumbers;
+    else if (!colourAfterStyle && before.length) chosen = before[before.length - 1].orderNumbers;
+    else if (afterInclusive.length) chosen = afterInclusive[0].orderNumbers;
+    else if (before.length) chosen = before[before.length - 1].orderNumbers;
+    group.rows.forEach((row) => addParsedToOrders(row.parsed, chosen));
+  });
 
   let list = Object.keys(allocations).map((k) => {
     const row = allocations[k];
@@ -399,6 +446,7 @@ module.exports = {
   lettersFromSpec,
   parseRandToken,
   extractOrderTokens,
+  skuFamilyFromText,
   relaxInvoiceText,
   splitCostShares,
   parsePaintInvoiceText,
