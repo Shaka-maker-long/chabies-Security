@@ -269,7 +269,7 @@ const ALLOWED = new Set([
   "getAdminDashboardData", "adminPauseOrder", "adminResumeOrder",
   "getOrderMetrics", "getProductionTrendsData", "getWeeklyAnalyticsData", "getWeldPlateOverlapMetrics",
   "generatePowderCoatingList", "getQCReportsFast", "processPdfQueue",
-  "undoAutoSwitch", "leaveBatchForOrder", "getIdleWorkers", "pollIdleAlerts", "assignIndirectTask",
+  "undoAutoSwitch", "leaveBatchForOrder", "getIdleWorkers", "pollIdleAlerts", "pollDrawingPrintAlerts", "ackDrawingPrintAlert", "assignIndirectTask",
   "grantOvertime", "listOvertimeGrants", "getOrderJobBrief", "noteMissedResume", "managerCorrectStart", "getFloorAdminDesk", "checkMissedResumes",
   "getActivityReport", "getScheduleBoard", "generateWorkerSchedule", "insertScheduleTask", "clearWorkerScheduleFrom",
   "checkIdleWorkers", "enforceShiftHours", "lazySetup", "getTaskDuration", "getTaskTimeEstimate",   "getMyCompletedWork", "getWorkerDayWork", "facilityShiftState", "updateCompletedSteelUsage", "updateCompletedBackboardUsage",
@@ -323,6 +323,14 @@ async function callShopFunction(fnName, args) {
   }
   if (fnName === "generatePowderCoatingList") {
     return require("./powder-list").createList(args && args[0], args && args[1]);
+  }
+  if (fnName === "pollDrawingPrintAlerts") {
+    return require("./drawing-print-alerts").pollFor(args && args[0]);
+  }
+  if (fnName === "ackDrawingPrintAlert") {
+    const alerts = require("./drawing-print-alerts");
+    const row = alerts.acknowledge(args && args[0], args && args[1]);
+    return { ok: true, row };
   }
   if (fnName === "loadOrdersOnTruck") {
     const delivery = require("./delivery-pod");

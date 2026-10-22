@@ -310,6 +310,29 @@ function shopProfile(req, res) {
   }
   return profile;
 }
+app.get("/api/drawing-print-alerts", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      res.json(require("./drawing-print-alerts").pollFor(profile.name));
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
+app.post("/api/drawing-print-alerts/:id/ack", (req, res) => {
+  serialize(async () => {
+    try {
+      const profile = shopProfile(req, res);
+      if (!profile) return;
+      const row = require("./drawing-print-alerts").acknowledge(req.params.id, profile.name);
+      res.json({ ok: true, row });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+});
 app.get("/api/delivery/run", (req, res) => {
   serialize(async () => {
     try {

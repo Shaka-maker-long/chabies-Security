@@ -43,7 +43,8 @@ const ENQUIRY_STAGES = {
   follow_up: "enquiry",
   complete_order: "money",
   complete_drawing: "enquiry",
-  complete_drawing_approval: "enquiry"
+  complete_drawing_approval: "enquiry",
+  order_drawing_update: "enquiry"
 };
 
 function sameOrder(left, right) {

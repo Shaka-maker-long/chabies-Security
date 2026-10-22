@@ -48,6 +48,8 @@ const {
 } = require("./db");
 const fromEnquiry = require("./create-order-from-enquiry");
 const jobCard = require("./job-card");
+const orderDrawing = require("./order-drawing");
+const drawingPrintAlerts = require("./drawing-print-alerts");
 const { importGoogleWorkbook, tabCounts, googleMigrateEnabled, dataDir } = require("./workbook-store");
 const staff = require("./staff");
 const pipeline = require("./enquiry-pipeline");
@@ -1188,6 +1190,37 @@ function mountOffice(app) {
     }
     try {
       const row = orderLifecycle.resumeOrder(req.params.orderNumber, req.office && req.office.name);
+      res.json({ ok: true, row });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/orders/:orderNumber/drawing", requireOffice, (req, res) => {
+    if (staff.isMarketing(req.office)) {
+      res.status(403).json({ ok: false, error: staff.MARKETING_WRITE_ERROR });
+      return;
+    }
+    try {
+      const result = orderDrawing.updateFromOrder(req.params.orderNumber, req.office && req.office.name, req.body || {});
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      const notFound = /not found/i.test(e.message || "");
+      res.status(notFound ? 404 : 400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/drawing-print-alerts", requireOffice, (req, res) => {
+    try {
+      res.json(drawingPrintAlerts.pollFor(req.office && req.office.name));
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/drawing-print-alerts/:id/ack", requireOffice, (req, res) => {
+    try {
+      const row = drawingPrintAlerts.acknowledge(req.params.id, req.office && req.office.name);
       res.json({ ok: true, row });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
