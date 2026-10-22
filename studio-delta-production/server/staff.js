@@ -307,12 +307,20 @@ function namesEqual(a, b) {
 }
 
 const DRAWING_OWNER = "Erin";
+const DRAWING_APPROVAL_OWNER = "Shabana";
 
 function isDrawingOwnerName(name) {
   const n = String(name || "").trim();
   if (!n) return false;
   const first = n.split(/\s+/)[0];
   return n.toLowerCase() === "erin" || first.toLowerCase() === "erin";
+}
+
+function isDrawingApprovalOwnerName(name) {
+  const n = String(name || "").trim();
+  if (!n) return false;
+  const first = n.split(/\s+/)[0];
+  return n.toLowerCase() === "shabana" || first.toLowerCase() === "shabana";
 }
 
 function enquiryRoleHolders(role) {
@@ -843,6 +851,8 @@ module.exports = {
   canSeeIdleAlerts,
   isDrawingOwnerName,
   DRAWING_OWNER,
+  isDrawingApprovalOwnerName,
+  DRAWING_APPROVAL_OWNER,
   isProductionFloorUser,
   isManagerTitle,
   isMarketingTitle,

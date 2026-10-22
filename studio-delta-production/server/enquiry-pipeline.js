@@ -45,6 +45,7 @@ const TASK_TITLES = {
   follow_up: "Follow up with client",
   pop: "Record client outcome",
   drawing: "Upload drawing",
+  drawing_approval: "Ask client to approve drawing",
   campaign: "Add campaign"
 };
 
@@ -57,6 +58,7 @@ const TASK_TYPE_LABELS = {
   follow_up: "Follow-up",
   pop: "Client outcome",
   drawing: "Drawing",
+  drawing_approval: "Drawing approval",
   campaign: "Campaign"
 };
 
@@ -108,23 +110,36 @@ function requireAssignee(name) {
 }
 
 const DRAWING_OWNER = staff.DRAWING_OWNER || "Erin";
+const DRAWING_APPROVAL_OWNER = staff.DRAWING_APPROVAL_OWNER || "Shabana";
 
 function isDrawingOwnerName(name) {
   return staff.isDrawingOwnerName(name);
 }
 
-function drawingAssignee() {
+function isDrawingApprovalOwnerName(name) {
+  return staff.isDrawingApprovalOwnerName(name);
+}
+
+function namedOfficeOrUser(wanted, isOwnerName) {
   const office = officeAssignees();
-  const exactOffice = office.find((x) => namesMatch(x, DRAWING_OWNER));
+  const exactOffice = office.find((x) => namesMatch(x, wanted));
   if (exactOffice) return exactOffice;
-  const erinOffice = office.find((x) => isDrawingOwnerName(x));
-  if (erinOffice) return erinOffice;
+  const ownerOffice = office.find((x) => isOwnerName(x));
+  if (ownerOffice) return ownerOffice;
   const users = staff.listUsers().filter((u) => u && u.name);
-  const exactUser = users.find((u) => namesMatch(u.name, DRAWING_OWNER));
+  const exactUser = users.find((u) => namesMatch(u.name, wanted));
   if (exactUser) return exactUser.name;
-  const erinUser = users.find((u) => isDrawingOwnerName(u.name));
-  if (erinUser) return erinUser.name;
-  return DRAWING_OWNER;
+  const ownerUser = users.find((u) => isOwnerName(u.name));
+  if (ownerUser) return ownerUser.name;
+  return wanted;
+}
+
+function drawingAssignee() {
+  return namedOfficeOrUser(DRAWING_OWNER, isDrawingOwnerName);
+}
+
+function drawingApprovalAssignee() {
+  return namedOfficeOrUser(DRAWING_APPROVAL_OWNER, isDrawingApprovalOwnerName);
 }
 
 function rawEnquiryForOrder(order) {
@@ -174,13 +189,51 @@ function ensureOpenDrawingTask(row) {
   return dirty;
 }
 
+function ensureOpenDrawingApprovalTask(row) {
+  if (!db.drawingAwaitingClientApproval(row)) return false;
+  const shabana = drawingApprovalAssignee();
+  let dirty = false;
+  if (!row.drawing || typeof row.drawing !== "object") {
+    row.drawing = { required: true, file: row.drawing && row.drawing.file, assignee: drawingAssignee() };
+    dirty = true;
+  }
+  if (!row.drawing.approval || typeof row.drawing.approval !== "object") {
+    row.drawing.approval = { status: "pending", requested_from: shabana, requested_at: db.nowIso() };
+    dirty = true;
+  } else if (!row.drawing.approval.requested_from) {
+    row.drawing.approval.requested_from = shabana;
+    dirty = true;
+  }
+  const open = openOfKind(row, "drawing_approval");
+  if (!open) {
+    addTask(row, "drawing_approval", shabana, {
+      note: "Ask the client to approve the drawing"
+    });
+    dirty = true;
+  } else if (!namesMatch(open.assignee, shabana) && !isDrawingApprovalOwnerName(open.assignee)) {
+    open.assignee = shabana;
+    dirty = true;
+  }
+  return dirty;
+}
+
+function enquiryAllowsDrawingUpload(row) {
+  if (!row) return false;
+  if (db.drawingAwaitingClientApproval(row)) return false;
+  if (db.drawingIsRequired(row.drawing)) return true;
+  return db.enquiryNeedsOpenDrawingTask(row);
+}
+
 function touchDrawingQueueRow(raw, seen) {
   if (!raw || !raw.enquiry_no) return 0;
   const key = String(raw.enquiry_no).trim().toLowerCase();
   if (!key || seen.has(key)) return 0;
   seen.add(key);
   let n = 0;
-  if (db.enquiryNeedsOpenDrawingTask(raw) && ensureOpenDrawingTask(raw)) {
+  let dirty = false;
+  if (db.enquiryNeedsOpenDrawingTask(raw) && ensureOpenDrawingTask(raw)) dirty = true;
+  if (db.drawingAwaitingClientApproval(raw) && ensureOpenDrawingApprovalTask(raw)) dirty = true;
+  if (dirty) {
     raw.updated_at = db.nowIso();
     db.saveEnquiryRecord(raw);
     n = 1;
@@ -551,7 +604,8 @@ const DELIVERABLE_ACTIONS = {
   schedule_followup: "follow_up",
   complete_reject: "pop",
   complete_order: "pop",
-  complete_drawing: "drawing"
+  complete_drawing: "drawing",
+  complete_drawing_approval: "drawing_approval"
 };
 
 function isManagerName(name) {
@@ -576,6 +630,11 @@ function actionOwner(row, actionId) {
     return row.follow_up_assignee || row.quote_assignee || lastAssignee(row, kind) || "";
   }
   if (kind === "drawing") return (row.drawing && row.drawing.assignee) || lastAssignee(row, "drawing") || "";
+  if (kind === "drawing_approval") {
+    return (row.drawing && row.drawing.approval && row.drawing.approval.requested_from)
+      || lastAssignee(row, "drawing_approval")
+      || drawingApprovalAssignee();
+  }
   if (kind === "approval") return (row.approval && row.approval.requested_from) || lastAssignee(row, "approval") || "";
   return lastAssignee(row, kind) || "";
 }
@@ -596,6 +655,7 @@ function canAct(row, actor, actionId) {
   if (!owner) return true;
   if (namesMatch(owner, who)) return true;
   if (actionId === "complete_drawing" && isDrawingOwnerName(who) && isDrawingOwnerName(owner)) return true;
+  if (actionId === "complete_drawing_approval" && isDrawingApprovalOwnerName(who) && isDrawingApprovalOwnerName(owner)) return true;
   if (isManagerName(who)) return true;
   return access.grantedFor(row, who, actionKind(actionId));
 }
@@ -672,7 +732,7 @@ function availableActions(row) {
     if (nextOpt) {
       actions.push({
         id: "complete_quote_option",
-        label: "Add quote option " + nextOpt,
+        label: "Add quote option " + nextOpt + " — recost",
         next_option: nextOpt
       });
     }
@@ -694,8 +754,15 @@ function availableActions(row) {
   if (status === "Ordered" && db.enquiryReadyForOrders(row) && !row.ready_for_orders) {
     row.ready_for_orders = true;
   }
-  if (db.enquiryNeedsOpenDrawingTask(row)) {
-    actions.push({ id: "complete_drawing", label: "Upload drawing" });
+  if (enquiryAllowsDrawingUpload(row)) {
+    const hasFile = db.drawingFilePresent(row.drawing);
+    actions.push({
+      id: "complete_drawing",
+      label: hasFile ? "Update drawing" : "Upload drawing"
+    });
+  }
+  if (db.drawingAwaitingClientApproval(row) || openOfKind(row, "drawing_approval")) {
+    actions.push({ id: "complete_drawing_approval", label: "Client drawing approval" });
   }
   return actions;
 }
@@ -763,7 +830,7 @@ function listMyTasks(userName, opts) {
 
 function decorateTask(row, task, dueAt) {
   const correspondence = db.normalizeCorrespondence(row);
-  const drawingTask = task && task.kind === "drawing";
+  const drawingTask = task && (task.kind === "drawing" || task.kind === "drawing_approval");
   const orders = drawingTask
     ? db.ordersLinkedToEnquiry(row).map((o) => String(o.order_number || "").trim()).filter(Boolean)
     : [];
@@ -893,6 +960,7 @@ function applyAction(enquiryNo, actorName, body) {
     complete_reject: completeReject,
     complete_order: completeOrder,
     complete_drawing: completeDrawing,
+    complete_drawing_approval: completeDrawingApproval,
     close: closeEnquiry,
     reassign: reassignTask,
     set_status: applyManualStatus
@@ -960,8 +1028,8 @@ function eventLabel(action, row, fromStatus, body) {
       (opt ? " (option " + opt + ")" : "");
   }
   if (action === "complete_quote_option") {
-    const opt = quoteOptions.currentOptionLetter(row);
-    return "Quote option " + (opt || "") + " issued" + (row.quote_no ? " " + row.quote_no : "");
+    const opt = String(row.pending_quote_option || "").trim() || quoteOptions.nextOptionLetter(row.quotes) || "B";
+    return "Quote option " + opt + " sent back to costing";
   }
   if (action === "complete_followup") return "Follow-up logged";
   if (action === "schedule_followup") {
@@ -978,7 +1046,12 @@ function eventLabel(action, row, fromStatus, body) {
     const base = row.drawing && row.drawing.required ? "POP saved — drawing required" : "POP saved — ready for Orders";
     return paid ? (base + " · paid " + paid) : base;
   }
-  if (action === "complete_drawing") return "Drawing uploaded — Not Yet Started";
+  if (action === "complete_drawing") return "Drawing uploaded — waiting for client approval";
+  if (action === "complete_drawing_approval") {
+    const s = db.drawingApprovalStatus(row.drawing);
+    if (s === "rejected") return "Client rejected drawing — back to drawing";
+    return "Client approved drawing — Not Yet Started";
+  }
   if (action === "close") return "Closed: " + status;
   if (action === "reassign") return "Task reassigned";
   if (action === "set_status") return "Status corrected: " + (fromStatus || "") + " → " + status;
@@ -1007,7 +1080,12 @@ function assignCosting(row, actor, body) {
     cancelOpenKind(row, "quote");
     access.cancelKind(row, "cost_sheet");
     row.status = "Re-Cost";
-    addTask(row, "cost_sheet", assignee, { note: "Client wants changes — recost for another quote" });
+    const pending = String(row.pending_quote_option || "").trim().toUpperCase();
+    addTask(row, "cost_sheet", assignee, {
+      note: pending
+        ? ("Quote option " + pending + " — recost before the quote PDF")
+        : "Client wants changes — recost for another quote"
+    });
     return;
   }
   if (!statusAllows(row, ["New"].concat(WAITING_STATUSES).concat(["Costing", "Re-Cost"]))) {
@@ -1632,17 +1710,24 @@ function recordIssuedQuote(row, actor, extra) {
 }
 
 function completeQuoteOption(row, actor, body) {
-  completeQuote(row, actor, Object.assign({}, body || {}, { quote_mode: "option" }));
+  if (!statusAllows(row, ["Quoted", "Followed Up"])) {
+    throw new Error("Add another quote option after the first quote is issued");
+  }
+  const nextOpt = quoteOptions.nextOptionLetter(row.quotes);
+  if (!nextOpt) throw new Error("This enquiry already has quote options A, B, and C");
+  row.pending_quote_option = nextOpt;
+  assignCosting(row, actor, body);
 }
 
 function completeQuote(row, actor, body) {
   const revision = statusAllows(row, ["Quoted", "Followed Up"]);
   const asOption = String((body && body.quote_mode) || "").toLowerCase() === "option";
+  const pendingOption = String(row.pending_quote_option || "").trim().toUpperCase();
+  if (asOption) {
+    throw new Error("Send the next quote option back to costing before issuing the quote PDF");
+  }
   if (!revision && (row.status !== "Costed" || !row.approval || row.approval.status !== "approved")) {
     throw new Error("The cost sheet must be approved before a quote PDF is issued");
-  }
-  if (asOption && !revision) {
-    throw new Error("Issue the first quote before adding another option");
   }
   applyPricedBody(row, body);
   requirePricedProducts(row);
@@ -1651,15 +1736,13 @@ function completeQuote(row, actor, body) {
   let option = "A";
   let kind = "option";
   if (!revision) {
-    option = "A";
-    kind = "option";
-  } else if (asOption) {
-    option = quoteOptions.nextOptionLetter(row.quotes);
+    option = pendingOption || "A";
     kind = "option";
   } else {
     option = quoteOptions.currentOptionLetter(row);
     kind = "revision";
   }
+  row.pending_quote_option = "";
   const payload = {
     ...row,
     quote_no: quoteNo,
@@ -1818,9 +1901,14 @@ function completeOrder(row, actor, body) {
 }
 
 function completeDrawing(row, actor, body) {
-  if (!db.enquiryNeedsOpenDrawingTask(row)) {
+  if (!enquiryAllowsDrawingUpload(row) && !db.enquiryNeedsOpenDrawingTask(row)) {
     throw new Error("A drawing is only required when the office said this order needs one");
   }
+  if (!row.drawing || typeof row.drawing !== "object") {
+    row.drawing = { required: true, file: null, assignee: drawingAssignee() };
+  }
+  row.drawing.required = true;
+  row.drawing.assignee = drawingAssignee();
   ensureOpenDrawingTask(row);
   const filename = body.file_name || "drawing.pdf";
   const raw = requireFile(body, "Upload the drawing, check the preview, then confirm it");
@@ -1830,8 +1918,59 @@ function completeDrawing(row, actor, body) {
   row.drawing.file = db.saveEnquiryAttachment(row.enquiry_no, "drawing", raw, filename);
   row.drawing.uploaded_at = db.nowIso();
   row.drawing.uploaded_by = actor;
+  const shabana = drawingApprovalAssignee();
+  row.drawing.approval = {
+    status: "pending",
+    requested_from: shabana,
+    requested_at: db.nowIso()
+  };
   closeOpenKind(row, "drawing", actor);
+  cancelOpenKind(row, "drawing_approval");
+  addTask(row, "drawing_approval", shabana, {
+    note: "Ask the client to approve the drawing"
+  });
   row.ready_for_orders = true;
+  db.applyDrawingShopStatus(row);
+}
+
+function completeDrawingApproval(row, actor, body) {
+  if (!db.drawingAwaitingClientApproval(row) && !openOfKind(row, "drawing_approval")) {
+    throw new Error("There is no drawing waiting for client approval");
+  }
+  const decision = String((body && body.decision) || "").trim().toLowerCase();
+  const reject = decision.indexOf("reject") >= 0 || decision === "no";
+  const approve = !reject && (decision === "approve" || decision === "approved" || decision === "yes");
+  if (!approve && !reject) throw new Error("Choose whether the client approved or rejected the drawing");
+  if (!row.drawing || typeof row.drawing !== "object") {
+    throw new Error("Upload the drawing before asking the client to approve it");
+  }
+  if (approve) {
+    row.drawing.approval = {
+      status: "approved",
+      requested_from: drawingApprovalAssignee(),
+      decided_at: db.nowIso(),
+      decided_by: actor,
+      note: String((body && (body.comments || body.reason)) || "").trim()
+    };
+    closeOpenKind(row, "drawing_approval", actor);
+    cancelOpenKind(row, "drawing");
+    row.ready_for_orders = true;
+    db.applyDrawingShopStatus(row);
+    return;
+  }
+  const reason = String((body && (body.reason || body.comments)) || "").trim();
+  if (!reason) throw new Error("Say why the client rejected the drawing");
+  row.drawing.approval = {
+    status: "rejected",
+    requested_from: drawingApprovalAssignee(),
+    decided_at: db.nowIso(),
+    decided_by: actor,
+    reason,
+    note: reason
+  };
+  closeOpenKind(row, "drawing_approval", actor, reason);
+  row.ready_for_orders = true;
+  ensureOpenDrawingTask(row);
   db.applyDrawingShopStatus(row);
 }
 
@@ -1856,6 +1995,18 @@ function reassignTask(row, _actor, body) {
     const erin = drawingAssignee();
     task.assignee = erin;
     if (row.drawing) row.drawing.assignee = erin;
+    return;
+  }
+  if (task.kind === "drawing_approval") {
+    const shabana = drawingApprovalAssignee();
+    task.assignee = shabana;
+    if (row.drawing) {
+      if (!row.drawing.approval || typeof row.drawing.approval !== "object") {
+        row.drawing.approval = { status: "pending", requested_from: shabana };
+      } else {
+        row.drawing.approval.requested_from = shabana;
+      }
+    }
     return;
   }
   const next = requireAssignee(body.assignee);
@@ -2033,6 +2184,9 @@ function seedOnboardTasks(row, actor, body, status) {
   }
   if (status === "Ordered" && db.enquiryNeedsOpenDrawingTask(row)) {
     ensureOpenDrawingTask(row);
+  }
+  if (status === "Ordered" && db.drawingAwaitingClientApproval(row)) {
+    ensureOpenDrawingApprovalTask(row);
   }
 }
 
@@ -2217,6 +2371,11 @@ function onboardEnquiry(actorName, body) {
         raw.drawing.file = db.saveEnquiryAttachment(raw.enquiry_no, "drawing", got.raw, got.filename);
         raw.drawing.uploaded_at = db.nowIso();
         raw.drawing.uploaded_by = actor;
+        raw.drawing.approval = {
+          status: "pending",
+          requested_from: drawingApprovalAssignee(),
+          requested_at: db.nowIso()
+        };
         raw.ready_for_orders = true;
       }
     }
@@ -2280,7 +2439,10 @@ module.exports = {
   onboardEnquiry,
   isActionableOpenTask,
   drawingAssignee,
+  drawingApprovalAssignee,
   isDrawingOwnerName,
+  isDrawingApprovalOwnerName,
   syncDrawingQueue,
-  DRAWING_OWNER
+  DRAWING_OWNER,
+  DRAWING_APPROVAL_OWNER
 };

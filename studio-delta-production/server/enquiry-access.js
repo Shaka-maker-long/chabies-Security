@@ -23,7 +23,8 @@ function kindLabel(kind) {
     quote: "upload the quote PDF",
     follow_up: "log a follow-up",
     pop: "attach proof of payment or the client outcome",
-    drawing: "upload the drawing"
+    drawing: "upload the drawing",
+    drawing_approval: "ask the client to approve the drawing"
   })[kind] || String(kind || "this step");
 }
 

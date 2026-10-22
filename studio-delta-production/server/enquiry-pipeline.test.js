@@ -21,6 +21,7 @@ staff.upsertUser({ name: "Coster", access: "Admin", role: "Admin", password: "x"
 staff.upsertUser({ name: "Approver", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes" });
 staff.upsertUser({ name: "Quoter", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes" });
 staff.upsertUser({ name: "Erin", access: "Admin", role: "Interior Designer", password: "x", seeDebtors: "Yes" });
+staff.upsertUser({ name: "Shabana", access: "Admin", role: "Admin", password: "x", seeDebtors: "Yes", jobTitle: "Clients Relations Manager" });
 staff.upsertUser({ name: "Welder", access: "Production", role: "Welding", password: "x", tasks: ["Welding"] });
 
 assert.ok(pipeline.officeAssignees().indexOf("Coster") >= 0);
@@ -425,6 +426,38 @@ const drawn = pipeline.applyAction("#1996", "Erin", {
   file_confirmed: true
 });
 assert.strictEqual(drawn.row.ready_for_orders, true);
+assert.strictEqual(drawn.row.drawing.approval.status, "pending");
+assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === "#1996"));
+assert.ok(pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === "#1996"));
+assert.throws(
+  () => pipeline.applyAction("#1996", "Shabana", { action: "complete_drawing_approval" }),
+  /approved or rejected/
+);
+assert.throws(
+  () => pipeline.applyAction("#1996", "Shabana", { action: "complete_drawing_approval", decision: "reject" }),
+  /why the client rejected/
+);
+const rejectedDraw = pipeline.applyAction("#1996", "Shabana", {
+  action: "complete_drawing_approval",
+  decision: "reject",
+  comments: "Client wants the shelf higher"
+});
+assert.strictEqual(rejectedDraw.row.drawing.approval.status, "rejected");
+assert.ok(pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === "#1996"));
+assert.ok(!pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === "#1996"));
+pipeline.applyAction("#1996", "Erin", {
+  action: "complete_drawing",
+  file_base64: pdfB64,
+  file_name: "drawing-2.pdf",
+  file_confirmed: true
+});
+const approvedDraw = pipeline.applyAction("#1996", "Shabana", {
+  action: "complete_drawing_approval",
+  decision: "approve"
+});
+assert.strictEqual(approvedDraw.row.drawing.approval.status, "approved");
+assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === "#1996"));
+assert.ok(!pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === "#1996"));
 assert.ok(db.readEnquiryAttachment("#1996", "drawing"));
 assert.ok(db.readEnquiryAttachment("#1996", "pop"));
 assert.ok(db.readEnquiryAttachment("#1996", "cost_sheet"));
@@ -1281,7 +1314,27 @@ const optionJob = db.upsertEnquiry({
 assert.strictEqual(optionJob.status, "Quoted");
 const optionB = pipeline.applyAction("#4100", "Quoter", {
   action: "complete_quote_option",
-  quote_mode: "option",
+  assignee: "Coster"
+});
+assert.strictEqual(optionB.row.status, "Re-Cost");
+assert.strictEqual(optionB.row.pending_quote_option, "B");
+assert.strictEqual(optionB.row.quotes.length, 1);
+assert.ok(pipeline.listMyTasks("Coster").some((t) => t.kind === "cost_sheet" && t.enquiry_no === "#4100"));
+pipeline.applyAction("#4100", "Coster", {
+  action: "complete_cost_sheet",
+  file_base64: csv,
+  file_name: "cost-b.csv",
+  file_confirmed: true,
+  assignee: "Approver",
+  quote_assignee: "Quoter"
+});
+pipeline.applyAction("#4100", "Approver", {
+  action: "complete_approval",
+  decision: "approve",
+  quote_assignee: "Quoter"
+});
+const optionBQuote = pipeline.applyAction("#4100", "Quoter", {
+  action: "complete_quote",
   quote_no: "SOQ4101",
   products: [{ product: "Air Chair", category: "Chair", variation: "With extra shelf", value_incl_vat: "27600.00" }],
   delivery_incl_vat: "1150.00",
@@ -1289,12 +1342,14 @@ const optionB = pipeline.applyAction("#4100", "Quoter", {
   file_name: "quote-b.pdf",
   file_confirmed: true
 });
-assert.strictEqual(optionB.row.quotes.length, 2);
-assert.strictEqual(optionB.row.quotes[1].option, "B");
-assert.strictEqual(optionB.row.quotes[1].kind, "option");
-assert.strictEqual(optionB.row.quote_options.length, 2);
-assert.ok(/SOQ4100 A/.test(optionB.row.quote_options_label));
-assert.ok(/SOQ4101 B/.test(optionB.row.quote_options_label));
+assert.strictEqual(optionBQuote.row.status, "Quoted");
+assert.strictEqual(optionBQuote.row.pending_quote_option, "");
+assert.strictEqual(optionBQuote.row.quotes.length, 2);
+assert.strictEqual(optionBQuote.row.quotes[1].option, "B");
+assert.strictEqual(optionBQuote.row.quotes[1].kind, "option");
+assert.strictEqual(optionBQuote.row.quote_options.length, 2);
+assert.ok(/SOQ4100 A/.test(optionBQuote.row.quote_options_label));
+assert.ok(/SOQ4101 B/.test(optionBQuote.row.quote_options_label));
 assert.throws(
   () => pipeline.applyAction("#4100", "Quoter", {
     action: "complete_order",
@@ -1412,9 +1467,47 @@ pipeline.applyAction(drawWait.enquiry_no, "Erin", {
   file_name: "drawing.pdf",
   file_confirmed: true
 });
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Waiting for drawing");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").status, "Waiting for drawing");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260412").status, "Welding");
+assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
+assert.ok(pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === drawWait.enquiry_no));
+pipeline.applyAction(drawWait.enquiry_no, "Shabana", {
+  action: "complete_drawing_approval",
+  decision: "approve"
+});
 assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Not Yet Started");
 assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").status, "Not Yet Started");
 assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260412").status, "Welding");
+assert.ok(!pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === drawWait.enquiry_no));
+pipeline.applyAction(drawWait.enquiry_no, "Erin", {
+  action: "complete_drawing",
+  file_base64: pdfDraw,
+  file_name: "drawing-update.pdf",
+  file_confirmed: true
+});
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Waiting for drawing");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").status, "Waiting for drawing");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260412").status, "Welding");
+pipeline.applyAction(drawWait.enquiry_no, "Shabana", {
+  action: "complete_drawing_approval",
+  decision: "reject",
+  comments: "Client wants the frame taller"
+});
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Waiting for drawing");
+assert.ok(pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
+pipeline.applyAction(drawWait.enquiry_no, "Erin", {
+  action: "complete_drawing",
+  file_base64: pdfDraw,
+  file_name: "drawing-final.pdf",
+  file_confirmed: true
+});
+pipeline.applyAction(drawWait.enquiry_no, "Shabana", {
+  action: "complete_drawing_approval",
+  decision: "approve"
+});
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Not Yet Started");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").status, "Not Yet Started");
 assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
 
 const customNeed = db.upsertEnquiry({
@@ -1555,9 +1648,13 @@ assert.strictEqual(laterCost.row.status, "Costing");
 staff.upsertUser({ name: "Erin", access: "Production", role: "Interior Designer", password: "x", tasks: [] });
 assert.ok(pipeline.officeAssignees().indexOf("Erin") === -1, "Production Erin is not an office Admin picker");
 assert.strictEqual(pipeline.drawingAssignee(), "Erin");
+assert.strictEqual(pipeline.drawingApprovalAssignee(), "Shabana");
 assert.ok(staff.isDrawingOwnerName("Erin"));
 assert.ok(staff.isDrawingOwnerName("Erin Naidoo"));
 assert.ok(!staff.isDrawingOwnerName("Coster"));
+assert.ok(staff.isDrawingApprovalOwnerName("Shabana"));
+assert.ok(staff.isDrawingApprovalOwnerName("Shabana Patel"));
+assert.ok(!staff.isDrawingApprovalOwnerName("Erin"));
 staff.upsertUser({ name: "Erin", access: "Admin", role: "Interior Designer", password: "x", seeDebtors: "Yes" });
 
 const splitEnq = db.upsertEnquiry({

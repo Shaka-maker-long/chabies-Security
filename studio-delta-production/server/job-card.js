@@ -300,7 +300,7 @@ function jobCardEligibility(status) {
     return {
       ok: false,
       mode: "blocked",
-      error: "Upload the drawing before generating a job card. The order stays Waiting for drawing until Erin attaches it."
+      error: "Upload the drawing and wait for client approval before generating a job card. The order stays Waiting for drawing until Shabana records that the client approved it."
     };
   }
   if (FIRST_STATUSES.has(s)) return { ok: true, mode: "create" };
