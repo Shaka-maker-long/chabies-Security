@@ -405,7 +405,27 @@ async function sdRequireOffice(page) {
   sdHideUsersLink(!!profile.canManageUsers);
   sdApplyMarketingLock(profile);
   sdWarnPersistence();
+  sdBootDrawingPrintAlerts(profile);
   return profile;
+}
+function sdBootDrawingPrintAlerts(profile) {
+  function run() {
+    if (typeof window.sdStartDrawingPrintAlerts === "function") {
+      window.sdStartDrawingPrintAlerts(profile);
+    }
+  }
+  if (typeof window.sdStartDrawingPrintAlerts === "function") {
+    run();
+    return;
+  }
+  if (document.querySelector("script[data-sd-drawing-print]")) {
+    return;
+  }
+  const s = document.createElement("script");
+  s.src = "/drawing-print-alert.js?v=dpa1";
+  s.setAttribute("data-sd-drawing-print", "1");
+  s.onload = run;
+  document.head.appendChild(s);
 }
 function sdApplyMarketingLock(profile) {
   if (!sdIsMarketing(profile)) return;

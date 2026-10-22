@@ -123,4 +123,4 @@ function attachOrderDocs(rows) {
   return rows;
 }
 
-module.exports = { attachOrderDocs, drawingDoc, collectQcPdfs };
+module.exports = { attachOrderDocs, drawingDoc, collectQcPdfs, findEnquiry, enquiryIndex };

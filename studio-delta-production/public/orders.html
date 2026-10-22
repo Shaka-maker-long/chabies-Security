@@ -349,6 +349,7 @@
           <button class="ghost" type="button" id="viewEnquiryBtn" hidden data-marketing-hide>Open enquiry</button>
           <button class="ghost" type="button" id="viewPrintCardBtn" hidden data-marketing-hide>Open / print job card</button>
           <button class="ghost" type="button" id="viewJobCardBtn" hidden data-marketing-hide>Generate job card</button>
+          <button class="ghost" type="button" id="viewDrawingBtn" hidden data-marketing-hide>Update drawing</button>
           <button class="ghost" type="button" id="viewHoldBtn" hidden data-marketing-hide>Put on hold</button>
           <button class="ghost" type="button" id="viewResumeBtn" hidden data-marketing-hide>Resume</button>
           <button class="danger" type="button" id="viewCancelBtn" hidden data-marketing-hide>Cancel order</button>
@@ -502,6 +503,82 @@
     function canGenerateJobCard(status) {
       const s = String(status || "").trim();
       return !s || s === "Not Yet Started" || s === "Ready for Steelwork" || s === "Profile Cutting";
+    }
+    function drawingPanelHtml(row, marketing) {
+      if (marketing) return "";
+      const href = String(row.drawing_url || "").trim();
+      const hasJob = !!(printedByOrder[row.order_number] && printedByOrder[row.order_number].has_pdf);
+      return "<div class=\"view-item wide\" id=\"orderDrawingPanel\" style=\"margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#f8fafc\">" +
+        "<div class=\"view-label\">Drawing</div>" +
+        (href
+          ? "<p class=\"hint\"><a href=\"" + esc(href) + "\" target=\"_blank\" rel=\"noopener\">Open current drawing</a></p>"
+          : "<p class=\"hint\">No drawing on this order yet.</p>") +
+        "<p class=\"hint\">Office Admin can replace the drawing at any time. If a job card is already printed, Siya must confirm he has seen the new drawing and print it for production.</p>" +
+        (hasJob ? "<p class=\"hint\">This order already has a job card — Siya will be blocked until he confirms the reprint.</p>" : "") +
+        "<label>New drawing file<input id=\"orderDrawingFile\" type=\"file\" accept=\"application/pdf,.pdf,image/*,.png,.jpg,.jpeg,.webp\"></label>" +
+        "<p class=\"hint\" id=\"orderDrawingPreview\"></p>" +
+        "<label class=\"confirm\"><input id=\"orderDrawingOk\" type=\"checkbox\"><span>This is the correct drawing</span></label>" +
+        "<p class=\"hint\" id=\"orderDrawingErr\" style=\"color:var(--bad)\"></p>" +
+        "<button type=\"button\" id=\"orderDrawingSave\">Save drawing</button>" +
+        "</div>";
+    }
+    function bindDrawingPanel(row, marketing) {
+      if (marketing) return;
+      const input = document.getElementById("orderDrawingFile");
+      const preview = document.getElementById("orderDrawingPreview");
+      const save = document.getElementById("orderDrawingSave");
+      const err = document.getElementById("orderDrawingErr");
+      let payload = { file_base64: "", file_name: "" };
+      if (!input || !save) return;
+      input.onchange = () => {
+        const file = input.files && input.files[0];
+        payload = { file_base64: "", file_name: "" };
+        if (preview) preview.textContent = "";
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          payload.file_base64 = String(reader.result || "");
+          payload.file_name = file.name || "drawing.pdf";
+          if (preview) preview.textContent = "Ready: " + payload.file_name;
+        };
+        reader.readAsDataURL(file);
+      };
+      save.onclick = async () => {
+        if (err) err.textContent = "";
+        const ok = document.getElementById("orderDrawingOk");
+        if (!payload.file_base64) {
+          if (err) err.textContent = "Choose the drawing file first.";
+          return;
+        }
+        if (!(ok && ok.checked)) {
+          if (err) err.textContent = "Tick that this is the correct drawing before saving.";
+          return;
+        }
+        save.disabled = true;
+        save.textContent = "Saving…";
+        try {
+          const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(row.order_number) + "/drawing", {
+            method: "POST",
+            body: JSON.stringify({
+              file_base64: payload.file_base64,
+              file_name: payload.file_name,
+              file_confirmed: true
+            })
+          });
+          const j = await r.json();
+          if (!j.ok) throw new Error(j.error || "Could not save drawing");
+          document.getElementById("status").textContent = j.notified_siya
+            ? "Drawing saved on " + row.order_number + ". Siya must print the new drawing."
+            : "Drawing saved on " + row.order_number + ".";
+          await load();
+          const idx = rows.findIndex((o) => o.order_number === row.order_number);
+          if (idx >= 0) openView(idx);
+        } catch (e) {
+          if (err) err.textContent = e.message || String(e);
+          save.disabled = false;
+          save.textContent = "Save drawing";
+        }
+      };
     }
     function statusClass(s) {
       const v = String(s || "").toLowerCase();
@@ -659,6 +736,7 @@
               (row.drawing_url
                 ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Open drawing\" aria-label=\"Open drawing\" data-open-drawing=\"" + esc(row.drawing_url) + "\"><i class=\"bi bi-easel\"></i></button>"
                 : (row.drawing_required ? "<span class=\"ghost icon-btn is-wait\" title=\"Waiting for drawing\" aria-label=\"Waiting for drawing\"><i class=\"bi bi-easel\"></i></span>" : "")) +
+              (isMarketingUser() ? "" : "<button type=\"button\" class=\"ghost icon-btn\" title=\"Update drawing\" aria-label=\"Update drawing\" data-update-drawing=\"" + i + "\" data-marketing-hide><i class=\"bi bi-upload\"></i></button>") +
               (row.qc_pdfs || []).map((pdf) =>
                 "<button type=\"button\" class=\"ghost icon-btn\" title=\"" + esc(pdf.label || "QC PDF") + "\" aria-label=\"" + esc(pdf.label || "QC PDF") + "\" data-open-qc=\"" + esc(pdf.url) + "\"><i class=\"bi bi-clipboard-check\"></i></button>"
               ).join("") +
@@ -1050,8 +1128,10 @@
       html += "<div class=\"view-grid\" style=\"margin-top:8px\"><div class=\"view-item wide\"><div class=\"view-label\">Detailed description</div><div class=\"view-value\">" +
         String(row.detailed_description || "—").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/⟦([^⟧]+)⟧/g, "<mark>$1</mark>").replace(/\[\[([^\]]+)\]\]/g, "<mark>$1</mark>") +
         "</div></div></div>";
+      html += drawingPanelHtml(row, marketing);
       html += "<div class=\"life\" id=\"orderLife\"><h2>Journey</h2><p class=\"life-sub\">Loading the journey…</p></div>";
       document.getElementById("viewBody").innerHTML = html;
+      bindDrawingPanel(row, marketing);
       const enqBtn = document.getElementById("viewEnquiryBtn");
       enqBtn.hidden = !row.enquiry_no || marketing;
       enqBtn.onclick = () => {
@@ -1068,6 +1148,14 @@
       cardBtn.hidden = marketing || !canGenerateJobCard(row.status);
       cardBtn.onclick = () => {
         location.href = "/orders/job-card?order=" + encodeURIComponent(row.order_number || "");
+      };
+      const drawingBtn = document.getElementById("viewDrawingBtn");
+      drawingBtn.hidden = marketing;
+      drawingBtn.onclick = () => {
+        const box = document.getElementById("orderDrawingPanel");
+        if (box) box.scrollIntoView({ behavior: "smooth", block: "center" });
+        const input = document.getElementById("orderDrawingFile");
+        if (input) input.click();
       };
       const editBtn = document.getElementById("viewEditBtn");
       if (marketing) {
@@ -1501,6 +1589,15 @@
       const drawing = e.target.closest("[data-open-drawing]");
       if (drawing) {
         window.open(drawing.getAttribute("data-open-drawing"), "_blank", "noopener");
+        return;
+      }
+      const updateDrawing = e.target.closest("[data-update-drawing]");
+      if (updateDrawing) {
+        openView(Number(updateDrawing.getAttribute("data-update-drawing")));
+        setTimeout(function () {
+          const input = document.getElementById("orderDrawingFile");
+          if (input) input.click();
+        }, 50);
         return;
       }
       const qc = e.target.closest("[data-open-qc]");

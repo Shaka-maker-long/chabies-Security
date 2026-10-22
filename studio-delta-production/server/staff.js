@@ -308,6 +308,7 @@ function namesEqual(a, b) {
 
 const DRAWING_OWNER = "Erin";
 const DRAWING_APPROVAL_OWNER = "Shabana";
+const DRAWING_PRINT_OWNER = "Siya";
 
 function isDrawingOwnerName(name) {
   const n = String(name || "").trim();
@@ -321,6 +322,19 @@ function isDrawingApprovalOwnerName(name) {
   if (!n) return false;
   const first = n.split(/\s+/)[0];
   return n.toLowerCase() === "shabana" || first.toLowerCase() === "shabana";
+}
+
+function isDrawingPrintOwnerName(name) {
+  const n = String(name || "").trim();
+  if (!n) return false;
+  const first = n.split(/\s+/)[0];
+  return n.toLowerCase() === "siya" || first.toLowerCase() === "siya";
+}
+
+function canSeeDrawingPrintAlerts(profile) {
+  if (!profile) return false;
+  if (isMarketing(profile)) return false;
+  return isDrawingPrintOwnerName(profile.name);
 }
 
 function enquiryRoleHolders(role) {
@@ -830,6 +844,9 @@ module.exports = {
   DRAWING_OWNER,
   isDrawingApprovalOwnerName,
   DRAWING_APPROVAL_OWNER,
+  isDrawingPrintOwnerName,
+  DRAWING_PRINT_OWNER,
+  canSeeDrawingPrintAlerts,
   isProductionFloorUser,
   isManagerTitle,
   isMarketingTitle,

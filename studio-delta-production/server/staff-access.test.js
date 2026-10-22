@@ -368,6 +368,8 @@ assert.strictEqual(staff.countdownRemainingMs({ targetMinutes: 10 }, now), null)
     seeDebtors: "Yes"
   });
   assert.strictEqual(staff.canSeeIdleAlerts(siya), true);
+  assert.strictEqual(staff.canSeeDrawingPrintAlerts(siya), true);
+  assert.strictEqual(staff.isDrawingPrintOwnerName("Siya M"), true);
   assert.strictEqual(staff.isProductionFloorUser(siya), false);
   assert.strictEqual(staff.canSeeIdleAlerts({ name: "QC Pat", role: "Quality Control", access: "Production" }), false);
   assert.strictEqual(staff.canSeeIdleAlerts({ name: "Sipho", jobTitle: "Production Manager", role: "Production Manager", access: "Admin" }), true);

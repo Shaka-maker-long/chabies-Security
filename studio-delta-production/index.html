@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta</title>
   <script src="/sd-pwa.js?v=pwa-driverpin"></script>
+  <script src="/drawing-print-alert.js?v=dpa1"></script>
   <script src="/delivery-offline.js?v=del-off2"></script>
   <script src="/ar-measure.js?v=ar-measure-2"></script>
   
@@ -3734,6 +3735,7 @@
         applyAdminLinks();
         updateFloorLink();
         startIdleAlertPolling();
+        if (typeof sdStartDrawingPrintAlerts === "function") sdStartDrawingPrintAlerts(session);
         paintBrandMarks();
         routeAfterLogin();
       };
@@ -4863,6 +4865,7 @@
           persistSession();
           setLoggedIn(true);
           startIdleAlertPolling();
+          if (typeof sdStartDrawingPrintAlerts === "function") sdStartDrawingPrintAlerts(session);
           applyAdminLinks();
           if(session.role === 'Admin' || session.isAdmin) {
             showTaskPicker();
