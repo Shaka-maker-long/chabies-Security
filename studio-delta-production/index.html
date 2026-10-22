@@ -5550,7 +5550,7 @@
           if (o.isPaused && o.pauseReason) {
              statusBadge += `<span class="badge bg-warning text-dark me-2">Paused: ${o.pauseReason}</span>`;
           }
-          if (orderOwes(o)) {
+          if (showDeliveryPayment(o)) {
              statusBadge += `<span class="badge bg-danger me-2">Owes ${String(o.owing_label || '').replace(/</g,'')}</span>`;
           }
           const lowerStatus = String(o.status).toLowerCase();
@@ -5837,8 +5837,19 @@
       const n = Number(o.owing);
       return Number.isFinite(n) && n > 0 ? n : 0;
     }
+    function showingDeliveryBoard() {
+      const label = String((session && session.roadLabel) || '').toLowerCase();
+      const filter = String((session && session.qcMapFilter) || '').toLowerCase();
+      const role = String((session && session.role) || '').toLowerCase();
+      return label === 'delivery' || filter === 'delivery' || role === 'delivery';
+    }
+    function showDeliveryPayment(o) {
+      if (!showingDeliveryBoard()) return false;
+      if (String((o && o.status) || '').toLowerCase() !== 'ready for delivery') return false;
+      return !!orderOwes(o);
+    }
     function paymentLineHtml(o) {
-      if (!orderOwes(o)) return '';
+      if (!showDeliveryPayment(o)) return '';
       const label = String(o.owing_label || '').trim() || 'outstanding';
       return `<div class="product-sub text-danger fw-semibold">Outstanding payment ${label} — cannot load on the truck</div>`;
     }
