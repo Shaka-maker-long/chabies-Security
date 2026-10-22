@@ -574,7 +574,14 @@ async function callShopFunction(fnName, args) {
       db.listOrders().forEach((row) => {
         byId[db.formatOrderId(row.order_number)] = row;
       });
+      const shop = require("./shop-status");
       result.orders.forEach((card) => {
+        if (!shop.isOwesFloorStatus(card && card.status)) {
+          card.owing = 0;
+          card.owing_label = "";
+          card.payment_blocked = false;
+          return;
+        }
         const live = byId[db.formatOrderId(card && (card.order || card.order_number))];
         if (!live) return;
         const owing = db.orderOwing(live);
