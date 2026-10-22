@@ -5543,12 +5543,15 @@
              else if(isLocked) innerBtn = `<button class="btn btn-secondary w-100 position-relative" style="z-index: 10;" disabled>LOCKED BY ${o.assigned}</button>`;
              else innerBtn = availableStartButtons(o);
           }
-          let btn = `<div class="action-btn-container w-100">${innerBtn}${noPlateButton(o)}</div>`;
+          let btn = `<div class="action-btn-container w-100">${paymentLineHtml(o)}${innerBtn}${noPlateButton(o)}</div>`;
 
           let statusBadge = o.isPlateOrder ? `<span class="badge bg-warning text-dark me-2">Plate Cutting</span>` : '';
           if (o.isBatched) statusBadge += `<span class="badge badge-batch me-2">Together</span>`;
           if (o.isPaused && o.pauseReason) {
              statusBadge += `<span class="badge bg-warning text-dark me-2">Paused: ${o.pauseReason}</span>`;
+          }
+          if (orderOwes(o)) {
+             statusBadge += `<span class="badge bg-danger me-2">Owes ${String(o.owing_label || '').replace(/</g,'')}</span>`;
           }
           const lowerStatus = String(o.status).toLowerCase();
           const batchStartStatuses =['ready for powder coating'];
@@ -5559,7 +5562,7 @@
              if ((!isMine && batchStartStatuses.includes(lowerStatus)) || (isMine && batchFinishStatuses.includes(lowerStatus))) {
                  isSelectable = true;
              }
-             if (batchLoadStatuses.includes(lowerStatus)) isSelectable = true;
+             if (batchLoadStatuses.includes(lowerStatus) && !orderOwes(o)) isSelectable = true;
           }
 
           if (existingCard) {
@@ -5828,6 +5831,17 @@
       }).markOrderNoPlate(order, session.name);
     }
 
+    function orderOwes(o) {
+      if (!o) return 0;
+      if (o.payment_blocked) return Number(o.owing) || 1;
+      const n = Number(o.owing);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    }
+    function paymentLineHtml(o) {
+      if (!orderOwes(o)) return '';
+      const label = String(o.owing_label || '').trim() || 'outstanding';
+      return `<div class="product-sub text-danger fw-semibold">Outstanding payment ${label} — cannot load on the truck</div>`;
+    }
     function availableStartButtons(o) {
       const st = String(o.status || '').toLowerCase();
       const start = (label, task, extraClass) =>
@@ -5845,6 +5859,9 @@
         return `<button class="btn btn-secondary w-100 position-relative" style="z-index: 10;" disabled>AT THE PAINT SHOP</button>`;
       }
       if (st === 'ready for delivery') {
+        if (orderOwes(o)) {
+          return `<button class="btn btn-outline-danger w-100 position-relative" style="z-index: 10;" disabled>PAYMENT OUTSTANDING</button>`;
+        }
         const num = String(o.order || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         return `<button class="btn btn-dark w-100 position-relative" style="z-index: 10;" onclick="event.stopPropagation(); event.preventDefault(); offerLoadOnTruck(['${num}'])">LOAD ON TRUCK</button>`;
       }

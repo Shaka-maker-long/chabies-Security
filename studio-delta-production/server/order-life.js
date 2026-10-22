@@ -518,7 +518,16 @@ function shopSideEvents(order) {
     .concat(woodEvents(order))
     .concat(paintEvents(order))
     .concat(paymentEvents(order))
-    .concat(deliveryEvents(order));
+    .concat(deliveryEvents(order))
+    .concat(parkEvents(order));
+}
+
+function parkEvents(order) {
+  try {
+    return require("./order-lifecycle").parkEvents(order) || [];
+  } catch (e) {
+    return [];
+  }
 }
 
 function collectOrderLife(orderNumber) {

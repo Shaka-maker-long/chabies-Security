@@ -673,7 +673,8 @@ function renameOrderNumber(fromRaw, toRaw) {
     "./powder-shop",
     "./qc-pdf",
     "./reworks",
-    "./consumables"
+    "./consumables",
+    "./order-lifecycle"
   ].forEach((mod) => {
     try {
       const api = require(mod);
@@ -937,6 +938,9 @@ function listDeliveryItems() {
   const items = require("./office-schedule").collectDeliveryItems(state.schedule_rows, state.schedule_cells).map((it) => {
     const order = byOrder.get(formatOrderId(it.order_number));
     return Object.assign({}, it, { status: (order && order.status) || it.status || "" });
+  }).filter((it) => {
+    const shop = require("./shop-status");
+    return !shop.isParked(it.status);
   });
   return {
     items,
@@ -1102,7 +1106,8 @@ function decorateMoney(order) {
 }
 
 function listDebtors() {
-  return listOrders().map(decorateMoney).filter((o) => o.is_debtor);
+  const shop = require("./shop-status");
+  return listOrders().map(decorateMoney).filter((o) => o.is_debtor && !shop.isCancelled(o.status));
 }
 
 function listDebtorHistory() {
@@ -3383,6 +3388,7 @@ module.exports = {
   recordPayment,
   readPaymentProof,
   decorateMoney,
+  orderOwing,
   closeReasonOf,
   costingRejectReasonOf,
   migrateJsonOrdersToWorkbook,

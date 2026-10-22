@@ -176,6 +176,7 @@
         <a href="/orders/products">Product photos</a>
         <a href="/orders/cost">Cost</a>
         <a href="/orders/paint-shop">Paint shop</a>
+        <a href="/orders/cancelled">Cancelled</a>
       </nav>
       <h1>Orders</h1>
     </div>
@@ -348,6 +349,9 @@
           <button class="ghost" type="button" id="viewEnquiryBtn" hidden data-marketing-hide>Open enquiry</button>
           <button class="ghost" type="button" id="viewPrintCardBtn" hidden data-marketing-hide>Open / print job card</button>
           <button class="ghost" type="button" id="viewJobCardBtn" hidden data-marketing-hide>Generate job card</button>
+          <button class="ghost" type="button" id="viewHoldBtn" hidden data-marketing-hide>Put on hold</button>
+          <button class="ghost" type="button" id="viewResumeBtn" hidden data-marketing-hide>Resume</button>
+          <button class="danger" type="button" id="viewCancelBtn" hidden data-marketing-hide>Cancel order</button>
           <button class="ghost" type="button" id="viewEditBtn" data-marketing-edit>Edit Source &amp; Campaign</button>
           <button class="danger" type="button" id="viewRemoveBtn" hidden>Remove this order</button>
           <button class="ghost" type="button" data-marketing-close onclick="closeView()">Close</button>
@@ -403,6 +407,25 @@
           <input id="removeConfirm" autocomplete="off">
         </label>
         <div class="err" id="removeErr"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mask" id="parkMask">
+    <div class="sheet" role="dialog" aria-modal="true" style="width:min(520px,96vw)">
+      <header>
+        <h1 id="parkTitle">Cancel order</h1>
+        <div class="tools">
+          <button class="ghost" type="button" onclick="closeParkOrder()">Back</button>
+          <button type="button" id="parkConfirmBtn" onclick="confirmParkOrder()">Save</button>
+        </div>
+      </header>
+      <div class="body stack-form">
+        <p class="hint" id="parkHint"></p>
+        <label>Reason *
+          <textarea id="parkReason" placeholder="Why this order is leaving the floor"></textarea>
+        </label>
+        <div class="err" id="parkErr"></div>
       </div>
     </div>
   </div>
@@ -997,6 +1020,8 @@
       html += viewItem("Order number", row.order_number);
       html += viewItem("Quote number", row.quote_number);
       html += viewItem("Status", row.status);
+      if (row.on_hold && row.hold_reason) html += viewItem("On hold reason", row.hold_reason, true);
+      if (row.cancelled && row.cancel_reason) html += viewItem("Cancel reason", row.cancel_reason, true);
       html += viewItem("Assigned operator", row.assigned_operator);
       html += viewItem("Type", row.type);
       html += viewItem("CATERGORY", row.category);
@@ -1059,6 +1084,16 @@
       const removeBtn = document.getElementById("viewRemoveBtn");
       removeBtn.hidden = !canManage || marketing;
       removeBtn.onclick = () => openRemoveOrder(row.order_number);
+      const holdBtn = document.getElementById("viewHoldBtn");
+      const cancelBtn = document.getElementById("viewCancelBtn");
+      const resumeBtn = document.getElementById("viewResumeBtn");
+      const parked = !!(row.on_hold || row.cancelled || /^(cancelled|on hold)$/i.test(String(row.status || "")));
+      holdBtn.hidden = marketing || parked;
+      cancelBtn.hidden = marketing || parked;
+      resumeBtn.hidden = marketing || !row.on_hold;
+      holdBtn.onclick = () => openParkOrder(row.order_number, "hold");
+      cancelBtn.onclick = () => openParkOrder(row.order_number, "cancel");
+      resumeBtn.onclick = () => resumeParkedOrder(row.order_number);
       if (marketing) {
         const saveBtn = document.getElementById("mktSaveBtn");
         if (saveBtn) saveBtn.onclick = () => saveMarketingOrderFields(i);
@@ -1191,6 +1226,65 @@
     window.openRemoveOrder = openRemoveOrder;
     window.closeRemoveOrder = closeRemoveOrder;
     window.confirmRemoveOrder = confirmRemoveOrder;
+
+    let parkingOrder = "";
+    let parkingKind = "cancel";
+    function openParkOrder(orderNumber, kind) {
+      parkingOrder = String(orderNumber || "").trim();
+      parkingKind = kind === "hold" ? "hold" : "cancel";
+      document.getElementById("parkReason").value = "";
+      document.getElementById("parkErr").textContent = "";
+      document.getElementById("parkTitle").textContent = parkingKind === "hold" ? "Put on hold" : "Cancel order";
+      document.getElementById("parkConfirmBtn").textContent = parkingKind === "hold" ? "Put on hold" : "Cancel order";
+      document.getElementById("parkHint").innerHTML = parkingKind === "hold"
+        ? "This pauses <b>" + esc(parkingOrder) + "</b> on the shop floor. It stays on the Orders sheet as On Hold until you resume it."
+        : "This takes <b>" + esc(parkingOrder) + "</b> off the Orders sheet and dashboards. The record stays on Cancelled with this reason.";
+      document.getElementById("parkMask").classList.add("open");
+      document.getElementById("parkReason").focus();
+    }
+    function closeParkOrder() {
+      document.getElementById("parkMask").classList.remove("open");
+      parkingOrder = "";
+    }
+    async function confirmParkOrder() {
+      const err = document.getElementById("parkErr");
+      err.textContent = "";
+      const reason = String(document.getElementById("parkReason").value || "").trim();
+      if (!parkingOrder) { err.textContent = "No order selected."; return; }
+      if (!reason) { err.textContent = "Enter a reason."; return; }
+      const path = parkingKind === "hold" ? "/hold" : "/cancel";
+      const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(parkingOrder) + path, {
+        method: "POST",
+        body: JSON.stringify({ reason })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) { err.textContent = j.error || "Could not update this order"; return; }
+      closeParkOrder();
+      closeView();
+      await load();
+      document.getElementById("status").textContent = parkingKind === "hold"
+        ? (j.row && j.row.order_number || parkingOrder) + " is on hold."
+        : "Cancelled " + (j.row && j.row.order_number || parkingOrder) + ". It is on the Cancelled page.";
+    }
+    async function resumeParkedOrder(orderNumber) {
+      const num = String(orderNumber || "").trim();
+      if (!num) return;
+      const r = await sdOfficeFetch("/api/office/orders/" + encodeURIComponent(num) + "/resume", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!j.ok) {
+        document.getElementById("status").textContent = j.error || "Could not resume";
+        return;
+      }
+      closeView();
+      await load();
+      document.getElementById("status").textContent = "Resumed " + (j.row && j.row.order_number || num) + " at " + ((j.row && j.row.status) || "its previous status") + ".";
+    }
+    window.openParkOrder = openParkOrder;
+    window.closeParkOrder = closeParkOrder;
+    window.confirmParkOrder = confirmParkOrder;
 
     function fieldLabel(field) {
       const hit = HEADERS.find((h) => h[0] === field);

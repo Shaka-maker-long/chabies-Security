@@ -29,6 +29,7 @@ The live store is **SQLite** at `DATA_DIR/studio-delta.db` on the Railway volume
 | `DATA_DIR/enquiry-files/` | Cost sheets, follow-up screenshots, POP, drawings, supplier quotations |
 | `DATA_DIR/debtor-payments/` | Proof of payment files attached when recording a debtor payment |
 | `DATA_DIR/paint-shop.json` | Paint shop send/receive batches, per-order costs, invoice ids |
+| `DATA_DIR/order-lifecycle.json` | Cancel / on-hold reasons. Cancelled orders leave the Orders sheet and dashboards and live on `/orders/cancelled`. On-hold orders stay on the sheet. Ready for Delivery units with outstanding payment show on the floor delivery board and cannot be loaded on the truck until paid. |
 | `DATA_DIR/paint-shop-invoices/` | Invoice files for received paint-shop batches |
 | `DATA_DIR/glass-pos.json` | Glass purchase orders, receive batches, per-line costs |
 | `DATA_DIR/glass-rates.json` | Glass rates per m² by type and thickness |
