@@ -33,6 +33,9 @@ const PLANNED_PROCESSES = [
   "Final QC"
 ];
 
+const CANCELLED = "Cancelled";
+const ON_HOLD = "On Hold";
+
 const STATUS_ALIASES = {
   "paint shop": "Paint Shop",
   "at paint shop": "Paint Shop",
@@ -55,7 +58,12 @@ const STATUS_ALIASES = {
   "from stock": IN_STOCK,
   "stock": IN_STOCK,
   "stock item": IN_STOCK,
-  "already in stock": IN_STOCK
+  "already in stock": IN_STOCK,
+  cancelled: CANCELLED,
+  canceled: CANCELLED,
+  "on hold": ON_HOLD,
+  hold: ON_HOLD,
+  "on-hold": ON_HOLD
 };
 
 function normalizeShopStatus(status) {
@@ -80,10 +88,22 @@ function isWaitingForDrawing(status) {
   return normalizeShopStatus(status) === WAITING_FOR_DRAWING;
 }
 
+function isCancelled(status) {
+  return normalizeShopStatus(status) === CANCELLED;
+}
+
+function isOnHold(status) {
+  return normalizeShopStatus(status) === ON_HOLD;
+}
+
+function isParked(status) {
+  return isCancelled(status) || isOnHold(status);
+}
+
 function remainingPlanForStatus(status, productMinutes) {
   const raw = normalizeShopStatus(status) || "Not Yet Started";
-  // In Stock / Ready for Delivery / Out for Delivery / At couriers / Delivered — nothing left to plan.
-  if (isProductionFinished(raw)) {
+  // In Stock / Ready for Delivery / Out for Delivery / At couriers / Delivered / Cancelled / On Hold — nothing left to plan.
+  if (isProductionFinished(raw) || isParked(raw)) {
     return { processes: [], paintWait: false, status: raw };
   }
   const s = isWaitingForDrawing(raw) ? "Not Yet Started" : raw;
@@ -157,6 +177,7 @@ function isInStock(status) {
 function isProductionFinished(status) {
   const s = normalizeShopStatus(status);
   if (!s) return false;
+  if (isParked(s)) return true;
   return atOrAfter(s, IN_STOCK);
 }
 
@@ -179,6 +200,8 @@ module.exports = {
   PROFILE_CUTTING_WAITING,
   WAITING_FOR_DRAWING,
   IN_STOCK,
+  CANCELLED,
+  ON_HOLD,
   normalizeShopStatus,
   shopStatusIndex,
   remainingPlanForStatus,
@@ -188,6 +211,9 @@ module.exports = {
   isHandedOff,
   isProductionFinished,
   isInStock,
+  isCancelled,
+  isOnHold,
+  isParked,
   isWaitingForDrawing,
   isProfileCuttingInProgress,
   waitingStatusIfProfileCuttingIdle

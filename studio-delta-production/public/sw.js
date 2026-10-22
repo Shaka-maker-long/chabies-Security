@@ -2,7 +2,7 @@
    Driver run HTML/assets are cached so PODs can be filled with no signal. */
 importScripts("/delivery-offline.js");
 
-const CACHE = "sd-pwa-v25-silent-map";
+const CACHE = "sd-pwa-v26-cancel-hold-pay";
 const PRECACHE = [
   "/",
   "/offline.html",

@@ -186,6 +186,28 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
   }
   assert.ok(blocked, "welding orders cannot load");
 
+  db.upsertOrder({
+    order_number: "S260409",
+    status: "Ready for Delivery",
+    product: "Air Chair",
+    client_name: "Unpaid",
+    address: "10 Rivonia Road",
+    city: "Sandton",
+    province: "Gauteng",
+    price_incl_vat: "5000.00",
+    amount_paid: "100.00"
+  });
+  const unpaidCard = delivery.decorateOrder(db.listOrders().find((o) => o.order_number === "S260409"));
+  assert.ok(unpaidCard.payment_blocked);
+  let unpaidBlocked = null;
+  try {
+    delivery.loadOnTruck(["S260409"], "Lebo");
+  } catch (e) {
+    unpaidBlocked = e;
+  }
+  assert.ok(unpaidBlocked, "outstanding payment cannot load");
+  assert.ok(/owes/i.test(unpaidBlocked.message));
+
   clearShopCache();
   const listed = await callShopFunction("listDeliveryRun", []);
   assert.ok((listed.orders || []).length >= 3);

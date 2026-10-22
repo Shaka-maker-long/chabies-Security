@@ -158,6 +158,9 @@ function correctOrderShop(body) {
   if (!orderNumber) throw new Error("Order number is required.");
   const existing = listOrders().find((o) => formatOrderId(o.order_number) === orderNumber);
   if (!existing) throw new Error(orderNumber + " is not on Orders.");
+  if (require("./shop-status").isParked(existing.status)) {
+    throw new Error("Take " + orderNumber + " off Cancelled or On Hold before correcting shop status.");
+  }
   let status = normalizeShopStatus(row.status);
   if (!isShopStatus(status)) throw new Error("Pick where this order is on the floor now.");
   const assigned = String(row.assigned_operator != null ? row.assigned_operator : row.assignedOperator || "").trim();

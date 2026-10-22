@@ -193,7 +193,11 @@ function decorateOrder(order) {
     drop_label: drop.drop_label,
     drop_address: drop.drop_address,
     imageUrl: product.imageUrl || "",
-    assigned_operator: String(order.assigned_operator || "")
+    assigned_operator: String(order.assigned_operator || ""),
+    owing: db.orderOwing(order),
+    owing_label: db.formatRand(db.orderOwing(order)),
+    payment_blocked: db.orderOwing(order) > 0,
+    is_debtor: db.orderOwing(order) > 0
   };
 }
 
@@ -291,6 +295,12 @@ function loadOnTruck(orderNumbers, actorName) {
       seen[unit.order_number] = true;
       const live = db.listOrders().find((row) => db.formatOrderId(row.order_number) === unit.order_number);
       if (!live) return;
+      const owing = db.orderOwing(live);
+      if (owing > 0) {
+        throw new Error(
+          unit.order_number + " still owes " + db.formatRand(owing) + ". Pay the outstanding amount before loading it on the truck."
+        );
+      }
       setOrderStatus(live, "Out for Delivery", actor);
       loaded.push(decorateOrder(Object.assign({}, live, { status: "Out for Delivery", assigned_operator: actor })));
     });

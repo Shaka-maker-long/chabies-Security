@@ -238,6 +238,7 @@ function isDoneForDeliveryDate(status) {
 }
 
 function isOpen(status) {
+  if (shop.isParked(status)) return false;
   return !isDelivered(status);
 }
 
@@ -460,6 +461,7 @@ function buildDashboard(query) {
   const stuck = [];
 
   rows.forEach((row) => {
+    if (shop.isParked(row.status)) return;
     const money = moneyOf(row);
     const status = row.status;
     const pipe = pipelineId(status);
@@ -553,7 +555,7 @@ function buildDashboard(query) {
   ];
 
   return {
-    orderCount: rows.length,
+    orderCount: rows.filter((r) => !shop.isParked(r.status)).length,
     windowCount,
     windowLabel: win.windowLabel,
     grain: win.grain,
@@ -603,6 +605,7 @@ function buildDashboard(query) {
 }
 
 function matchesDrill(row, query, win) {
+  if (shop.isParked(row && row.status)) return false;
   const kind = String((query && query.kind) || "");
   const value = String((query && query.value) || "");
   const key = String((query && query.key) || "");

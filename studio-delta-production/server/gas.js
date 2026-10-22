@@ -567,6 +567,23 @@ async function callShopFunction(fnName, args) {
       console.error("[qc-pdf] reports", e && e.message ? e.message : e);
     }
   }
+  if (fnName === "pollFloor" && result && Array.isArray(result.orders)) {
+    try {
+      const db = require("./db");
+      const byId = {};
+      db.listOrders().forEach((row) => {
+        byId[db.formatOrderId(row.order_number)] = row;
+      });
+      result.orders.forEach((card) => {
+        const live = byId[db.formatOrderId(card && (card.order || card.order_number))];
+        if (!live) return;
+        const owing = db.orderOwing(live);
+        card.owing = owing;
+        card.owing_label = db.formatRand(owing);
+        card.payment_blocked = owing > 0;
+      });
+    } catch (e) {}
+  }
   if (workbookIsDirty(workbook)) await workbook.flush();
   if (workbookCache && workbookCache.book === workbook) {
     workbookCache.loadedAt = Date.now();

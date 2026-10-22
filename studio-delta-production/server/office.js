@@ -68,6 +68,7 @@ const floorPlanning = require("./floor-planning");
 const orderLife = require("./order-life");
 const orderDocs = require("./order-docs");
 const orderCellComments = require("./order-cell-comments");
+const orderLifecycle = require("./order-lifecycle");
 const fs = require("fs");
 const express = require("express");
 const sqlite = require("./sqlite-store");
@@ -930,8 +931,8 @@ function mountOffice(app) {
     try { require("./in-progress-status").reconcile(); } catch (e) {}
     try { purgeFeeOrders(); } catch (e) {}
     const noPlates = require("./no-plates");
-    const rows = orderCorrect.annotateOrders(listOrders().map((o) => {
-      const copy = decorateMoney(o);
+    const rows = orderCorrect.annotateOrders(listOrders().filter((o) => !orderLifecycle.isSheetHidden(o)).map((o) => {
+      const copy = decorateMoney(orderLifecycle.attach(o));
       delete copy.payments;
       copy.no_plate = noPlates.isNoPlate(copy.order_number);
       return copy;
@@ -1109,6 +1110,65 @@ function mountOffice(app) {
     try {
       const result = await jobCard.generateJobCard(req.body || {});
       res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/orders/cancelled", requireOffice, (_req, res) => {
+    try {
+      res.json({
+        ok: true,
+        cancelled: orderLifecycle.listCancelled(),
+        on_hold: orderLifecycle.listOnHold()
+      });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/orders/:orderNumber/cancel", requireOffice, (req, res) => {
+    if (staff.isMarketing(req.office)) {
+      res.status(403).json({ ok: false, error: "Marketing cannot cancel orders." });
+      return;
+    }
+    try {
+      const row = orderLifecycle.cancelOrder(
+        req.params.orderNumber,
+        req.body && (req.body.reason || req.body.note),
+        req.office && req.office.name
+      );
+      res.json({ ok: true, row });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/orders/:orderNumber/hold", requireOffice, (req, res) => {
+    if (staff.isMarketing(req.office)) {
+      res.status(403).json({ ok: false, error: "Marketing cannot put orders on hold." });
+      return;
+    }
+    try {
+      const row = orderLifecycle.holdOrder(
+        req.params.orderNumber,
+        req.body && (req.body.reason || req.body.note),
+        req.office && req.office.name
+      );
+      res.json({ ok: true, row });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/orders/:orderNumber/resume", requireOffice, (req, res) => {
+    if (staff.isMarketing(req.office)) {
+      res.status(403).json({ ok: false, error: "Marketing cannot resume orders." });
+      return;
+    }
+    try {
+      const row = orderLifecycle.resumeOrder(req.params.orderNumber, req.office && req.office.name);
+      res.json({ ok: true, row });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
