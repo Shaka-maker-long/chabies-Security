@@ -10,8 +10,9 @@
 
 const { formatOrderId, parseMoney, money, formatRand } = require("./db");
 
-// Letter split orders are "S260249 A" (single letter). Do not eat the "S" from "SD-CABINET…".
-const ORDER_TOKEN_RE = /\bS\d{5,}(?:\([A-Za-z0-9,-]+\)|\s+[A-Z](?![A-Z]))?/gi;
+// Letter split orders: "S260249 A", "S260249(A-L)", or glued "S260214A-F/G BLACK".
+// Do not eat the "S" from "SD-CABINET…".
+const ORDER_TOKEN_RE = /\bS\d{5,}(?:\([A-Za-z0-9,-]+\)|[A-Z](?=-|\s|$)| \s+[A-Z](?![A-Z]))?/gi;
 // R2,219.80 or R2219.80 (must not stop at R2,21)
 const RAND_NUM = "(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:[.,]\\d{2})";
 // Spaces are often missing in PDF extraction: 1R877.500,00%15,00%R877.50R1,009.13
@@ -48,8 +49,8 @@ function expandOrderRef(raw) {
   const s = String(raw || "").trim().toUpperCase();
   if (!s) return { base: "", letters: [], orderNumbers: [] };
   // No trailing \b — it would stop at S260249 before "(A-L)" because "(" is a boundary.
-  // Single trailing letter only (S260249 A), never the "S" from "SD-CABINET…".
-  const m = s.match(/\b(S\d{5,})(?:\(([A-Za-z0-9,-]+)\))?(?:\s+([A-Z])(?![A-Z]))?/);
+  // Glued letter (S260214A-F/G) or spaced letter (S260249 A). Never "S" from "SD-CABINET…".
+  const m = s.match(/\b(S\d{5,})(?:\(([A-Za-z0-9,-]+)\))?(?:(?=[A-Z](?:-|\s|$))([A-Z]))?(?:\s+([A-Z])(?![A-Z]))?/);
   if (!m) {
     const id = formatOrderId(s);
     return { base: id, letters: [], orderNumbers: id ? [id] : [] };
@@ -57,6 +58,7 @@ function expandOrderRef(raw) {
   const base = formatOrderId(m[1]);
   let letters = lettersFromSpec(m[2] || "");
   if (!letters.length && m[3]) letters = [m[3]];
+  if (!letters.length && m[4]) letters = [m[4]];
   const orderNumbers = letters.length
     ? letters.map((L) => formatOrderId(base + " " + L))
     : [base];
@@ -348,10 +350,29 @@ function parsePaintInvoiceText(text, opts) {
   // both the colour and the price).
   const colourAfterStyle = firstPricePos >= 0 && (firstMarkPos < 0 || firstPricePos < firstMarkPos);
 
+  // S260214A then S260214B with no prices between = one set of letter orders.
+  const markSets = [];
+  orderMarks.forEach((mark) => {
+    const last = markSets.length ? markSets[markSets.length - 1] : null;
+    const pricesBetween = last && pricedRecords.some((p) => p.pos > last.endPos && p.pos < mark.pos);
+    if (last && !pricesBetween) {
+      last.endPos = mark.pos;
+      mark.orderNumbers.forEach((n) => {
+        if (last.orderNumbers.indexOf(n) === -1) last.orderNumbers.push(n);
+      });
+      return;
+    }
+    markSets.push({
+      pos: mark.pos,
+      endPos: mark.pos,
+      orderNumbers: mark.orderNumbers.slice()
+    });
+  });
+
   pricedRecords.forEach((row) => {
     let next = null;
     let prev = null;
-    orderMarks.forEach((mark) => {
+    markSets.forEach((mark) => {
       if (mark.pos > row.pos && (!next || mark.pos < next.pos)) next = mark;
       if (mark.pos < row.pos && (!prev || mark.pos > prev.pos)) prev = mark;
     });

@@ -11,6 +11,10 @@ const {
 assert.strictEqual(normalizeOrderToken("S260244"), "S260244");
 assert.strictEqual(normalizeOrderToken("S260249(A-L)"), "S260249");
 assert.strictEqual(normalizeOrderToken("S260249 A"), "S260249 A");
+assert.strictEqual(normalizeOrderToken("S260214A"), "S260214 A");
+assert.deepStrictEqual(expandOrderRef("S260214A-F/G BLACK").orderNumbers, ["S260214 A"]);
+assert.deepStrictEqual(expandOrderRef("S260214B-F/G BLACK").orderNumbers, ["S260214 B"]);
+assert.deepStrictEqual(expandOrderRef("S260131-F/G BLACK").orderNumbers, ["S260131"]);
 assert.strictEqual(parseRandToken("R2,219.80"), 2219.8);
 assert.strictEqual(parseRandToken("R74.40"), 74.4);
 
@@ -199,5 +203,27 @@ assert.strictEqual(ultBy.S260131.cost, 1105.1);
 assert.strictEqual(ultBy.S260131.lines.length, 3);
 assert.strictEqual(ultBy.S260193.cost, 268.9);
 assert.strictEqual(ult.grandTotal, 1374);
+
+// Two colour tags S260214A / S260214B after shared 001A+001B components.
+const dualLetters = `
+SD-CABINET-001A - ARCHED DISPLAY
+CABINET (2100X450X1000)	2	R1,406.50	0,00%	15,00%	R2,813.00	R3,234.95
+SD-CABINET-001B - ARCHED DISPLAY
+CABINET DOOR (1820X475X20)	4	R93.90	0,00%	15,00%	R375.60	R431.94
+S260214A-F/G BLACK
+S260214B-F/G BLACK
+`;
+const dual = parsePaintInvoiceText(dualLetters, {
+  preferOrderNumbers: ["S260214 A", "S260214 B"]
+});
+assert.strictEqual(dual.unmatchedLines.length, 0);
+assert.strictEqual(dual.allocations.length, 2);
+const dualBy = {};
+dual.allocations.forEach((row) => { dualBy[row.orderNumber] = row; });
+assert.ok(dualBy["S260214 A"]);
+assert.ok(dualBy["S260214 B"]);
+assert.strictEqual(dualBy["S260214 A"].cost, 1594.3); // 1406.50 + 187.80
+assert.strictEqual(dualBy["S260214 B"].cost, 1594.3);
+assert.strictEqual(dual.grandTotal, 3188.6);
 
 console.log("paint-invoice-parse.test.js ok");
