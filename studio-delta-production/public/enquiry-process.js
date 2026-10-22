@@ -874,20 +874,13 @@
         followUpPeopleNote();
     }
     if (action.id === "complete_quote_option") {
-      const hint = (state.snap && state.snap.quoteNo) || {};
       const nextLetter = action.next_option || (state.snap && state.snap.nextQuoteOption) || "B";
-      const recent = (hint.recent || []).slice();
-      const recentLine = recent.length
-        ? "Last quotation numbers: " + recent.join(", ") + "."
-        : "No quotation numbers yet.";
       const live = (row.quote_options || []).map((q) => "Option " + q.option + " " + (q.quote_no || "")).join(", ");
-      return "<p class=\"sd-process-sub\">This is option <b>" + esc(nextLetter) + "</b> on the same enquiry" +
+      const coster = openAssignee(row, "cost_sheet") || lastCosting(row) || rolePerson("costing");
+      return "<p class=\"sd-process-sub\">Option <b>" + esc(nextLetter) + "</b> goes back to costing first" +
         (live ? " (already issued: " + esc(live) + ")" : "") +
-        ". The client chooses A or B or C — not all of them.</p>" +
-        "<label>Quotation number *<input class=\"sd-quote-no\" name=\"quote_no\" value=\"" + esc(hint.next || "") + "\" autocomplete=\"off\" required></label>" +
-        "<p class=\"sd-process-sub\">" + esc(recentLine) + "</p>" +
-        optionLinesTable(row) +
-        fileBlock("application/pdf,.pdf", "");
+        ". Cost the new option, get it approved, then issue the quote PDF.</p>" +
+        "<label>Costing person *</label>" + assigneeSelect(coster);
     }
     if (action.id === "complete_followup") {
       const n = followUpsThisQuote(row);
@@ -913,10 +906,16 @@
         "<label>Payment date *<input type=\"date\" name=\"payment_date\" required>" +
         "<span class=\"hint\">The day the client paid — use this even if you attach the POP later. Ordered R on the dashboard uses this week.</span></label>" +
         "<label>Requires drawing?<select name=\"drawing_required\" required><option value=\"\" disabled selected>Choose</option><option value=\"no\">No — production can start as Not Yet Started</option><option value=\"yes\">Yes — Erin uploads the drawing</option></select></label>" +
-        "<p class=\"sd-process-sub\">Not every order needs a drawing. If yes, Erin gets Upload drawing on My tasks. The order can still go onto Orders as Waiting for drawing. Production becomes Not Yet Started after the file is on.</p>";
+        "<p class=\"sd-process-sub\">Not every order needs a drawing. If yes, Erin uploads it, then Shabana asks the client to approve. The order stays Waiting for drawing until the client approves — then production can be Not Yet Started. If the client rejects it, Erin draws again.</p>";
     }
     if (action.id === "complete_drawing") {
-      return fileBlock("application/pdf,.pdf,image/*,.png,.jpg,.jpeg,.webp", "");
+      return "<p class=\"sd-process-sub\">Uploading or updating the drawing gives Shabana a task to ask the client for approval. Production stays Waiting for drawing until the client approves.</p>" +
+        fileBlock("application/pdf,.pdf,image/*,.png,.jpg,.jpeg,.webp", "");
+    }
+    if (action.id === "complete_drawing_approval") {
+      return "<p class=\"sd-process-sub\">Ask the client if this drawing is accepted. Approved → Not Yet Started. Rejected → back to Erin for another drawing.</p>" +
+        "<label>Client decision<select name=\"decision\" required><option value=\"approve\">Approved — Not Yet Started</option><option value=\"reject\">Rejected — back to drawing</option></select></label>" +
+        "<label>Note<textarea name=\"comments\"></textarea></label>";
     }
     if (action.id === "close") {
       return "<label>Close as<select name=\"status\">" + closed + "</select></label>" +
@@ -937,7 +936,8 @@
       follow_up: "log a follow-up",
       schedule_followup: "set the follow-up day",
       pop: "attach proof of payment or the client outcome",
-      drawing: "upload the drawing"
+      drawing: "upload the drawing",
+      drawing_approval: "ask the client to approve the drawing"
     })[kind] || String(kind || "this step");
   }
 
@@ -992,14 +992,9 @@
     body.comments = field(form, "comments");
     body.reason = field(form, "reason") || body.comments;
     if (action.id === "complete_chase") body.next = field(form, "next");
-    if (action.id === "complete_approval") body.decision = field(form, "decision");
+    if (action.id === "complete_approval" || action.id === "complete_drawing_approval") body.decision = field(form, "decision");
     if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
     if (action.id === "complete_quote") body.quote_no = field(form, "quote_no");
-    if (action.id === "complete_quote_option") {
-      body.quote_no = field(form, "quote_no");
-      body.quote_mode = "option";
-      Object.assign(body, readOptionValues(form));
-    }
     if (action.id === "assign_costing" || action.id === "complete_chase" || action.id === "add_correspondence") {
       body.correspondence_links = correspondenceLinksValue(form);
     }
@@ -1037,7 +1032,7 @@
           }).filter((f) => f.file_base64)
         };
       });
-    } else if (/complete_quote_option|complete_quote|complete_followup|complete_order|complete_drawing|complete_supplier/.test(action.id)) {
+    } else if (/complete_quote|complete_followup|complete_order|complete_drawing|complete_supplier/.test(action.id)) {
       Object.assign(body, filePayload(form));
     }
     return body;
@@ -1052,7 +1047,8 @@
       quote: "complete_quote",
       follow_up: "complete_followup",
       pop: "complete_order",
-      drawing: "complete_drawing"
+      drawing: "complete_drawing",
+      drawing_approval: "complete_drawing_approval"
     }[kind] || "";
   }
 
@@ -1152,7 +1148,7 @@
       (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_options_label ? " · " + esc(row.quote_options_label) : (row.quote_no ? " · " + esc(row.quote_no) : "")) +
         ((row.quotes || []).length > 1 ? " · " + (row.quotes.length) + " quotes" : "") + "</span>" : "") +
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +
-      (row.drawing && row.drawing.required && !(row.drawing.file && row.drawing.file.stored_as)
+      (row.drawing && row.drawing.required && (!(row.drawing.file && row.drawing.file.stored_as) || (row.drawing.approval && row.drawing.approval.status && row.drawing.approval.status !== "approved"))
         ? "<span>Waiting for drawing</span>" : "") +
       (row.lifespan_label ? "<span class=\"sd-life\">Lifespan <b>" + esc(row.lifespan_label) + "</b></span>" : "") +
       "</div>";
@@ -1166,8 +1162,14 @@
       html += "<p class=\"sd-process-sub\">No open assigned task.</p>";
     }
     if (row.ready_for_orders) {
-      if (row.drawing && row.drawing.required && !(row.drawing.file && row.drawing.file.stored_as)) {
-        html += "<p class=\"sd-process-sub\">Erin still needs to upload the drawing. The order can go onto Orders as Waiting for drawing. Production becomes Not Yet Started after the file is on.</p>";
+      if (row.drawing && row.drawing.required) {
+        const fileOn = !!(row.drawing.file && row.drawing.file.stored_as);
+        const approval = String((row.drawing.approval && row.drawing.approval.status) || "");
+        if (!fileOn || approval === "rejected") {
+          html += "<p class=\"sd-process-sub\">Erin still needs to upload the drawing. The order can go onto Orders as Waiting for drawing. Production becomes Not Yet Started after Shabana records that the client approved it.</p>";
+        } else if (approval === "pending") {
+          html += "<p class=\"sd-process-sub\">Drawing is on. Shabana must ask the client to approve it before production can be Not Yet Started.</p>";
+        }
       }
       html += (row.order_number
           ? "<p class=\"sd-process-sub\">Order <b>" + esc(row.order_number) + "</b> is already on Orders.</p>" +

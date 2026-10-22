@@ -1610,10 +1610,28 @@ function drawingFilePresent(drawing) {
   return !!(drawing && drawing.file && drawing.file.stored_as);
 }
 
+function drawingApprovalStatus(drawing) {
+  return String((drawing && drawing.approval && drawing.approval.status) || "").trim().toLowerCase();
+}
+
+function drawingClientApproved(drawing) {
+  if (!drawingFilePresent(drawing)) return false;
+  const s = drawingApprovalStatus(drawing);
+  if (!s) return true;
+  return s === "approved";
+}
+
+function drawingAwaitingClientApproval(enquiry) {
+  return drawingIsRequired(enquiry && enquiry.drawing)
+    && drawingFilePresent(enquiry.drawing)
+    && drawingApprovalStatus(enquiry.drawing) === "pending";
+}
+
 function drawingStillNeeded(row) {
   const drawing = row && row.drawing;
   if (!drawingIsRequired(drawing)) return false;
-  return !drawingFilePresent(drawing);
+  if (!drawingFilePresent(drawing)) return true;
+  return !drawingClientApproved(drawing);
 }
 
 function linkedOrdersWaitingForDrawing(enquiry) {
@@ -1623,7 +1641,7 @@ function linkedOrdersWaitingForDrawing(enquiry) {
 
 function enquiryNeedsOpenDrawingTask(enquiry) {
   if (!enquiry) return false;
-  if (drawingFilePresent(enquiry.drawing)) return false;
+  if (drawingAwaitingClientApproval(enquiry)) return false;
   if (drawingStillNeeded(enquiry)) return true;
   return linkedOrdersWaitingForDrawing(enquiry).length > 0;
 }
@@ -3410,6 +3428,9 @@ module.exports = {
   ordersLinkedToEnquiry,
   drawingIsRequired,
   drawingFilePresent,
+  drawingApprovalStatus,
+  drawingClientApproved,
+  drawingAwaitingClientApproval,
   drawingStillNeeded,
   linkedOrdersWaitingForDrawing,
   enquiryNeedsOpenDrawingTask,
