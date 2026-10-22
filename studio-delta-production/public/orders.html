@@ -1088,8 +1088,10 @@
       const cancelBtn = document.getElementById("viewCancelBtn");
       const resumeBtn = document.getElementById("viewResumeBtn");
       const parked = !!(row.on_hold || row.cancelled || /^(cancelled|on hold)$/i.test(String(row.status || "")));
+      const st = String(row.status || "").trim().toLowerCase();
+      const canCancel = st === "not yet started" || st === "ready for steelwork";
       holdBtn.hidden = marketing || parked;
-      cancelBtn.hidden = marketing || parked;
+      cancelBtn.hidden = marketing || parked || !canCancel;
       resumeBtn.hidden = marketing || !row.on_hold;
       holdBtn.onclick = () => openParkOrder(row.order_number, "hold");
       cancelBtn.onclick = () => openParkOrder(row.order_number, "cancel");
@@ -1238,7 +1240,7 @@
       document.getElementById("parkConfirmBtn").textContent = parkingKind === "hold" ? "Put on hold" : "Cancel order";
       document.getElementById("parkHint").innerHTML = parkingKind === "hold"
         ? "This pauses <b>" + esc(parkingOrder) + "</b> on the shop floor. It stays on the Orders sheet as On Hold until you resume it."
-        : "This takes <b>" + esc(parkingOrder) + "</b> off the Orders sheet and dashboards. The record stays on Cancelled with this reason.";
+        : "This takes <b>" + esc(parkingOrder) + "</b> off the Orders sheet and dashboards. Only Not Yet Started and Ready for Steelwork can be cancelled. The record stays on Cancelled with this reason.";
       document.getElementById("parkMask").classList.add("open");
       document.getElementById("parkReason").focus();
     }

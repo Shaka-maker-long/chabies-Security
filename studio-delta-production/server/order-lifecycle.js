@@ -64,6 +64,11 @@ function closeShopWork(orderNumber) {
   } catch (e) {}
 }
 
+function canCancelStatus(status) {
+  const s = shop.normalizeShopStatus(status);
+  return s === "Not Yet Started" || s === "Ready for Steelwork";
+}
+
 function persistPark(live, status, rec) {
   const saved = db.upsertOrder(Object.assign({}, live, { status }));
   try { db.persistOffice(); } catch (e) {}
@@ -77,6 +82,12 @@ function cancelOrder(orderNumber, reason, actor) {
   const live = findLiveOrder(orderNumber);
   const id = db.formatOrderId(live.order_number);
   if (shop.isCancelled(live.status)) throw new Error(id + " is already cancelled.");
+  if (!canCancelStatus(live.status)) {
+    throw new Error(
+      "Only Not Yet Started and Ready for Steelwork orders can be cancelled. " +
+      id + " is " + (shop.normalizeShopStatus(live.status) || live.status || "already in production") + "."
+    );
+  }
   const store = loadStore();
   const prev = recOf(store, id) || {};
   const rec = {
@@ -221,6 +232,7 @@ module.exports = {
   CANCELLED,
   ON_HOLD,
   cancelOrder,
+  canCancelStatus,
   holdOrder,
   resumeOrder,
   attach,

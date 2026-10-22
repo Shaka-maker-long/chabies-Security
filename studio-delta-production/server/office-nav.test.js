@@ -547,6 +547,8 @@ assert.ok(ordersHtml.indexOf("/orders/paint-shop") !== -1);
 assert.ok(ordersHtml.indexOf("Paint shop") !== -1);
 assert.ok(ordersHtml.indexOf("/orders/cancelled") !== -1);
 assert.ok(ordersHtml.indexOf("Cancel order") !== -1);
+assert.ok(ordersHtml.indexOf("ready for steelwork") !== -1);
+assert.ok(ordersHtml.indexOf("Only Not Yet Started and Ready for Steelwork") !== -1);
 assert.ok(ordersHtml.indexOf("Put on hold") !== -1);
 assert.ok(officeJs.indexOf("/api/office/orders/cancelled") !== -1);
 assert.ok(officeJs.indexOf("/api/office/orders/:orderNumber/cancel") !== -1);
