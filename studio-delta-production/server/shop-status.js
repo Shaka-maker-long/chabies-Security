@@ -100,6 +100,11 @@ function isParked(status) {
   return isCancelled(status) || isOnHold(status);
 }
 
+function isOwesFloorStatus(status) {
+  const s = normalizeShopStatus(status);
+  return s === "Ready for Final QC" || s === "Final QC" || s === "Ready for Delivery" || s === "Out for Delivery";
+}
+
 function remainingPlanForStatus(status, productMinutes) {
   const raw = normalizeShopStatus(status) || "Not Yet Started";
   // In Stock / Ready for Delivery / Out for Delivery / At couriers / Delivered / Cancelled / On Hold — nothing left to plan.
@@ -214,6 +219,7 @@ module.exports = {
   isCancelled,
   isOnHold,
   isParked,
+  isOwesFloorStatus,
   isWaitingForDrawing,
   isProfileCuttingInProgress,
   waitingStatusIfProfileCuttingIdle
