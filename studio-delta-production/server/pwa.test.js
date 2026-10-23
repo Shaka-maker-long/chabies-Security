@@ -46,7 +46,7 @@ assert.ok(fs.existsSync(path.join(publicDir, "facility-floor.png")), "Home twin 
 assert.ok(sw.indexOf("facility-floor.png") !== -1, "PWA precaches the facility floor image");
 assert.ok(sw.indexOf("/delivery-run") !== -1, "PWA precaches the driver run for no-signal drops");
 assert.ok(sw.indexOf('\n  "/",\n') !== -1 || sw.indexOf('"/",') !== -1, "PWA precaches Home so login is available offline");
-assert.ok(sw.indexOf("sd-pwa-v45-drawing-print") !== -1, "new cache so phones pick up Siya drawing print acknowledgement");
+assert.ok(sw.indexOf("sd-pwa-v46-drawing-reupload") !== -1, "new cache so phones pick up drawing reupload only on drawing orders");
 assert.ok(pwaJs.indexOf("alwaysShare") !== -1 || pwaJs.indexOf("bootDriverTrack") !== -1, "PWA shares location from the pinned driver phone");
 assert.ok(pwaJs.indexOf("/api/delivery/tracker-status") !== -1);
 assert.ok(pwaJs.indexOf("/api/delivery/location") !== -1);

@@ -504,8 +504,11 @@
       const s = String(status || "").trim();
       return !s || s === "Not Yet Started" || s === "Ready for Steelwork" || s === "Profile Cutting";
     }
+    function orderHasDrawing(row) {
+      return !!(row && (row.drawing_url || row.drawing_required));
+    }
     function drawingPanelHtml(row, marketing) {
-      if (marketing) return "";
+      if (marketing || !orderHasDrawing(row)) return "";
       const href = String(row.drawing_url || "").trim();
       const hasJob = !!(printedByOrder[row.order_number] && printedByOrder[row.order_number].has_pdf);
       return "<div class=\"view-item wide\" id=\"orderDrawingPanel\" style=\"margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#f8fafc\">" +
@@ -523,7 +526,7 @@
         "</div>";
     }
     function bindDrawingPanel(row, marketing) {
-      if (marketing) return;
+      if (marketing || !orderHasDrawing(row)) return;
       const input = document.getElementById("orderDrawingFile");
       const preview = document.getElementById("orderDrawingPreview");
       const save = document.getElementById("orderDrawingSave");
@@ -736,7 +739,7 @@
               (row.drawing_url
                 ? "<button type=\"button\" class=\"ghost icon-btn\" title=\"Open drawing\" aria-label=\"Open drawing\" data-open-drawing=\"" + esc(row.drawing_url) + "\"><i class=\"bi bi-easel\"></i></button>"
                 : (row.drawing_required ? "<span class=\"ghost icon-btn is-wait\" title=\"Waiting for drawing\" aria-label=\"Waiting for drawing\"><i class=\"bi bi-easel\"></i></span>" : "")) +
-              (isMarketingUser() ? "" : "<button type=\"button\" class=\"ghost icon-btn\" title=\"Update drawing\" aria-label=\"Update drawing\" data-update-drawing=\"" + i + "\" data-marketing-hide><i class=\"bi bi-upload\"></i></button>") +
+              (isMarketingUser() || !orderHasDrawing(row) ? "" : "<button type=\"button\" class=\"ghost icon-btn\" title=\"Update drawing\" aria-label=\"Update drawing\" data-update-drawing=\"" + i + "\" data-marketing-hide><i class=\"bi bi-upload\"></i></button>") +
               (row.qc_pdfs || []).map((pdf) =>
                 "<button type=\"button\" class=\"ghost icon-btn\" title=\"" + esc(pdf.label || "QC PDF") + "\" aria-label=\"" + esc(pdf.label || "QC PDF") + "\" data-open-qc=\"" + esc(pdf.url) + "\"><i class=\"bi bi-clipboard-check\"></i></button>"
               ).join("") +
@@ -1150,7 +1153,7 @@
         location.href = "/orders/job-card?order=" + encodeURIComponent(row.order_number || "");
       };
       const drawingBtn = document.getElementById("viewDrawingBtn");
-      drawingBtn.hidden = marketing;
+      drawingBtn.hidden = marketing || !orderHasDrawing(row);
       drawingBtn.onclick = () => {
         const box = document.getElementById("orderDrawingPanel");
         if (box) box.scrollIntoView({ behavior: "smooth", block: "center" });
