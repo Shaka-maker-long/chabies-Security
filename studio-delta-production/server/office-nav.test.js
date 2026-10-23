@@ -595,6 +595,8 @@ assert.ok(ordersHtml.indexOf("data-job-card") !== -1);
 assert.ok(ordersHtml.indexOf("data-open-job-card") !== -1);
 assert.ok(ordersHtml.indexOf("Open / print job card") !== -1);
 assert.ok(ordersHtml.indexOf("Update drawing") !== -1);
+assert.ok(ordersHtml.indexOf("function orderHasDrawing") !== -1);
+assert.ok(ordersHtml.indexOf("isMarketingUser() || !orderHasDrawing(row)") !== -1);
 assert.ok(ordersHtml.indexOf("/api/office/orders/") !== -1 && ordersHtml.indexOf("/drawing") !== -1);
 assert.ok(officeJs.indexOf("drawing-print-alerts") !== -1);
 assert.ok(js.indexOf("sdBootDrawingPrintAlerts") !== -1);
