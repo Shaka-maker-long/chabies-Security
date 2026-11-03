@@ -152,5 +152,11 @@ assert.ok(html.indexOf("or a SOQ") === -1);
 assert.ok(html.indexOf("AUG 2026") !== -1);
 assert.ok(html.indexOf("fromForecastMonth") !== -1);
 assert.ok(html.indexOf("trains from") !== -1);
+assert.ok(html.indexOf("function buildBriefing") !== -1);
+assert.ok(html.indexOf("function askPreset") !== -1);
+assert.ok(html.indexOf("Are we on track this month?") !== -1);
+assert.ok(html.indexOf("Which sources convert best?") !== -1);
+assert.ok(html.indexOf("What would 10% more quote-to-order conversion do?") !== -1);
+assert.ok(html.indexOf("aiChips") !== -1);
 
 console.log("ops-hub.test.js ok");

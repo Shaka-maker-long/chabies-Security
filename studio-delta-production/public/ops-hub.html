@@ -55,7 +55,11 @@
     .qa { display:flex; gap:8px; margin-top:8px; }
     .qa input { flex:1; background:#1e293b; border:1px solid #334155; color:#e2e8f0; padding:8px; }
     .qa button { background:#3b82f6; border:0; }
-    #aiAnswer { margin-top:10px; padding:10px; background:#1e293b; border-left:3px solid #8b5cf6; font-size:14px; }
+    .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
+    .chips button { background:#1e293b; color:#cbd5e1; border:1px solid #334155; font-size:11px; padding:5px 8px; font-weight:600; }
+    #aiAnswer { margin-top:10px; padding:10px; background:#1e293b; border-left:3px solid #8b5cf6; font-size:14px; line-height:1.45; }
+    #aiAnswer p { margin:0 0 8px; }
+    #aiAnswer p:last-child { margin:0; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th, td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; }
     .mask { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; z-index:40; padding:20px; overflow:auto; }
@@ -134,8 +138,20 @@
         <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155">
           <div class="label">Ask the forecast</div>
           <div class="qa">
-            <input id="aiQuestion" placeholder="Ask: Why is the forecast down? What are the risks?" onkeydown="if(event.key==='Enter')askAI()">
+            <input id="aiQuestion" placeholder="Ask a stakeholder question: on track, risks, funnel leak, mix, pipeline…" onkeydown="if(event.key==='Enter')askAI()">
             <button type="button" onclick="askAI()">Ask AI</button>
+          </div>
+          <div class="chips" id="aiChips">
+            <button type="button" onclick="askPreset('Are we on track this month?')">On track this month?</button>
+            <button type="button" onclick="askPreset('What are the main risks to the forecast?')">Main risks</button>
+            <button type="button" onclick="askPreset('Where does the funnel leak?')">Funnel leak</button>
+            <button type="button" onclick="askPreset('How much revenue is linked versus unlinked?')">Linked vs unlinked</button>
+            <button type="button" onclick="askPreset('Which sources convert best?')">Sources</button>
+            <button type="button" onclick="askPreset('What is in the open pipeline?')">Pipeline</button>
+            <button type="button" onclick="askPreset('How reliable is this forecast?')">Reliability</button>
+            <button type="button" onclick="askPreset('What would 10% more quote-to-order conversion do?')">+10% conversion</button>
+            <button type="button" onclick="askPreset('Best and worst month since August?')">Best / worst month</button>
+            <button type="button" onclick="askPreset('What does the model assume?')">Model assumptions</button>
           </div>
           <div id="aiAnswer" hidden></div>
         </div>
@@ -484,7 +500,13 @@
         originalForecast: ensemble, next2, nextM, nextM2, incomplete, partial,
         modelA, modelB, modelC, wA, wB, wC, mae, mape, reliability, rangeLo, rangeHi,
         pipe, velocity, avgTTC, maxAge, deadCount: dead.length, openCount: open.length,
-        hist: use, logged: incomplete && partial ? partial.rev : 0
+        hist: use, allHist: hist, logged: incomplete && partial ? partial.rev : 0,
+        briefing: buildBriefing(globalEnq, globalOrd, {
+          hist: use, allHist: hist, open, dead, ensemble, nextM, nextM2, next2,
+          incomplete, partial, logged: incomplete && partial ? partial.rev : 0,
+          wmaQR, wmaOR, wmaAOV, wmaOnline, nextEnqs, pipe, avgTTC, maxAge,
+          modelA, modelB, modelC, wA, wB, wC, mae, mape, reliability, rangeLo, rangeHi
+        })
       };
       const badge = document.getElementById("aiConfidence");
       badge.textContent = "Reliability: " + reliability + "%";
@@ -535,37 +557,231 @@
       document.getElementById("aiDrivers").innerHTML = "<div class='label' style='margin-top:10px'>Key drivers</div>" + notes.join("");
     }
 
+    function pct(n) { return Math.round(Number(n || 0) * 100) + "%"; }
+    function topEntries(map, key, n) {
+      return Object.keys(map).map((k) => Object.assign({ name: k }, map[k]))
+        .sort((a, b) => (b[key] || 0) - (a[key] || 0)).slice(0, n || 5);
+    }
+    function buildBriefing(globalEnq, globalOrd, ctx) {
+      const fEnq = globalEnq.filter((e) => fromForecastMonth(e.month));
+      const fOrd = globalOrd.filter((o) => fromForecastMonth(o.month));
+      const yEnq = globalEnq;
+      const yOrd = globalOrd;
+      const sumRev = (list) => list.reduce((s, x) => s + Number(x.rev || 0), 0);
+      const linked = fOrd.filter((o) => o.isLinked);
+      const unlinked = fOrd.filter((o) => !o.isLinked);
+      const soq = fOrd.filter((o) => o.isSoq);
+      const web = fOrd.filter((o) => !o.isSoq);
+      const quoted = fEnq.filter((e) => e.is_q);
+      const converted = fEnq.filter((e) => e.is_q && e.isLinked);
+      const sources = {};
+      fEnq.forEach((e) => {
+        const s = e.source || "Unknown";
+        sources[s] = sources[s] || { enq: 0, quo: 0, conv: 0, rev: 0 };
+        sources[s].enq += 1;
+        if (e.is_q) sources[s].quo += 1;
+        if (e.isLinked) sources[s].conv += 1;
+      });
+      fOrd.forEach((o) => {
+        const s = o.source || "Unknown";
+        sources[s] = sources[s] || { enq: 0, quo: 0, conv: 0, rev: 0 };
+        sources[s].rev += Number(o.rev || 0);
+      });
+      const clients = {};
+      fOrd.forEach((o) => {
+        const c = o.client || "Unknown";
+        clients[c] = clients[c] || { rev: 0, n: 0 };
+        clients[c].rev += Number(o.rev || 0);
+        clients[c].n += 1;
+      });
+      const complete = (ctx.hist || []).filter((h) => !(ctx.incomplete && ctx.partial && h.month === ctx.partial.month));
+      const best = complete.slice().sort((a, b) => b.rev - a.rev)[0];
+      const worst = complete.slice().sort((a, b) => a.rev - b.rev)[0];
+      const last = complete[complete.length - 1];
+      const prev = complete[complete.length - 2];
+      const ytd = sumRev(yOrd);
+      const fromRev = sumRev(fOrd);
+      const now = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      const dim = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+      const day = now.getUTCDate();
+      const remain = Math.max(0, dim - day);
+      const pacePct = ctx.incomplete && ctx.ensemble ? ctx.logged / ctx.ensemble : 1;
+      const impliedDaily = remain && ctx.incomplete ? Math.max(0, (ctx.ensemble - ctx.logged) / remain) : 0;
+      const topSrcRev = topEntries(sources, "rev", 3);
+      const topSrcConv = Object.keys(sources).filter((k) => sources[k].quo >= 3)
+        .map((k) => ({ name: k, rate: sources[k].quo ? sources[k].conv / sources[k].quo : 0, quo: sources[k].quo, conv: sources[k].conv }))
+        .sort((a, b) => b.rate - a.rate);
+      const topCli = topEntries(clients, "rev", 5);
+      const topCliShare = fromRev ? topCli.slice(0, 3).reduce((s, c) => s + c.rev, 0) / fromRev : 0;
+      return {
+        fEnq: fEnq.length, fQuo: quoted.length, fConv: converted.length, fOrd: fOrd.length,
+        yEnq: yEnq.length, yOrd: yOrd.length, ytd, fromRev,
+        linkedN: linked.length, linkedRev: sumRev(linked),
+        unlinkedN: unlinked.length, unlinkedRev: sumRev(unlinked),
+        soqN: soq.length, soqRev: sumRev(soq), webN: web.length, webRev: sumRev(web),
+        qr: quoted.length && fEnq.length ? quoted.length / fEnq.length : 0,
+        or: quoted.length ? converted.length / quoted.length : 0,
+        cr: fEnq.length ? converted.length / fEnq.length : 0,
+        aov: fOrd.length ? fromRev / fOrd.length : 0,
+        sources, clients, topSrcRev, topSrcConv, topCli, topCliShare,
+        best, worst, last, prev, complete, day, dim, remain, pacePct, impliedDaily
+      };
+    }
+    function hitTargetGap(st, target) {
+      const gap = target - st.originalForecast;
+      if (st.baseEnqs * st.baseQR * st.baseOR * st.baseAOV <= 0) return { gap, convLift: null, enqLift: null };
+      const funnel = st.baseEnqs * st.baseQR * st.baseOR * st.baseAOV;
+      const need = (target - st.baseOnline) / funnel - 1;
+      return { gap, convLift: need, enqLift: need };
+    }
+    function scenarioDelta(st, pEnq, pConv, pAOV) {
+      const sDriver = (st.baseEnqs * (1 + pEnq) * st.baseQR * st.baseOR * (1 + pConv) * st.baseAOV * (1 + pAOV)) + st.baseOnline;
+      return sDriver - st.originalForecast;
+    }
+    function writeAnswer(lines) {
+      const box = document.getElementById("aiAnswer");
+      box.hidden = false;
+      box.innerHTML = lines.filter(Boolean).map((p) => "<p>" + esc(p) + "</p>").join("");
+    }
+    function askPreset(text) {
+      document.getElementById("aiQuestion").value = text;
+      askAI();
+    }
     function askAI() {
       const st = currentForecastState;
       const box = document.getElementById("aiAnswer");
-      const q = (document.getElementById("aiQuestion").value || "").trim().toLowerCase();
+      const raw = (document.getElementById("aiQuestion").value || "").trim();
+      const q = raw.toLowerCase();
       box.hidden = false;
-      if (!st) { box.textContent = "Load the hub first so the forecast has office data to read."; return; }
-      if (!q) { box.textContent = "Ask why the forecast moved, what the risks are, or how conversion and pipeline feed the number."; return; }
-      const bits = ["The model trains from " + FORECAST_FROM + " only; earlier months stay on the funnel and trend."];
-      if (/why|down|drop|low|risk/.test(q)) {
-        bits.push(st.incomplete
-          ? (st.partial.month + " is still in progress, so the engine is pacing to EOM " + zar.format(st.originalForecast) + " rather than treating logged " + zar.format(st.logged) + " as the full month.")
-          : ("The ensemble for " + st.nextM + " is " + zar.format(st.originalForecast) + " (range " + zar.format(st.rangeLo) + " – " + zar.format(st.rangeHi) + ")."));
-        if (st.deadCount) bits.push(st.deadCount + " stale quotes sit outside the pipeline window.");
-        if (st.baseOR < 0.25) bits.push("Quote-to-order conversion is thin at " + Math.round(st.baseOR * 100) + "% — that is the main drag on the funnel driver.");
+      if (!st || !st.briefing) { box.textContent = "Load the hub first so the forecast has office data to read."; return; }
+      if (!q) {
+        writeAnswer([
+          "Ask anything a sales, ops, or finance review would ask. Suggested: are we on track, risks, funnel leak, linked vs unlinked mix, sources, pipeline, reliability, or a what-if.",
+          "The model trains from " + FORECAST_FROM + ". Funnel rates use unique enquiry quotes. Unlinked orders sit in total revenue only."
+        ]);
+        return;
       }
-      if (/conv|quote|funnel|enq/.test(q)) {
-        bits.push("Weighted conversion: " + Math.round(st.baseQR * 100) + "% of enquiries become quotes and " + Math.round(st.baseOR * 100) + "% of quotes become linked orders. AOV " + zar.format(st.baseAOV) + ".");
+      const b = st.briefing;
+      const lines = [];
+      const want = (re) => re.test(q);
+      const pctIn = q.match(/([+-]?\d+(?:\.\d+)?)\s*%/);
+      const lift = pctIn ? Number(pctIn[1]) / 100 : 0.1;
+      let randTarget = 0;
+      const randBits = q.replace(/,/g, " ").match(/r\s*([\d]+(?:\s[\d]{3})*|\d+)/i) || q.match(/\b(\d{5,})\b/);
+      if (randBits) randTarget = Number(String(randBits[1]).replace(/\s/g, ""));
+
+      if (want(/on track|pace|pacing|hit (the )?forecast|this month|eom|end of month|behind|ahead|run[- ]?rate/)) {
+        if (st.incomplete && st.partial) {
+          lines.push(st.partial.month + " is in progress: " + zar.format(st.logged) + " logged so far versus an EOM ensemble of " + zar.format(st.originalForecast) + " (" + Math.round(b.pacePct * 100) + "% of the way, day " + b.day + " of " + b.dim + ").");
+          lines.push(b.remain ? ("To land the forecast you still need about " + zar.format(Math.max(0, st.originalForecast - st.logged)) + " in the next " + b.remain + " day" + (b.remain === 1 ? "" : "s") + " — roughly " + zar.format(b.impliedDaily) + " per remaining day.") : "The month is at the last day, so logged revenue is the outcome unless late invoices still post.");
+        } else {
+          lines.push("The next month the model is aiming at is " + st.nextM + " at " + zar.format(st.originalForecast) + " (range " + zar.format(st.rangeLo) + " – " + zar.format(st.rangeHi) + ").");
+        }
+        if (b.last && b.prev) {
+          const d = b.last.rev - b.prev.rev;
+          lines.push("Last complete month " + b.last.month + " closed at " + zar.format(b.last.rev) + ", " + (d >= 0 ? "up " : "down ") + zar.format(Math.abs(d)) + " versus " + b.prev.month + ".");
+        }
       }
-      if (/pipe|open|lag|stale|dead/.test(q)) {
-        bits.push("Age-weighted open pipeline is " + zar.format(st.pipe) + " across " + st.openCount + " live quotes. Quotes older than " + st.maxAge + " months are dropped.");
+      if (want(/risk|downside|worry|concern|what could go wrong|miss|threat/)) {
+        const risks = [];
+        if (st.incomplete) risks.push(st.partial.month + " is still filling, so treating logged " + zar.format(st.logged) + " as the full month would understate the outlook.");
+        if (st.baseOR < 0.35) risks.push("Quote-to-order conversion is " + pct(st.baseOR) + " (from " + FORECAST_FROM + "). That is the usual leak between a quoted enquiry and a paid order.");
+        if (st.deadCount) risks.push(st.deadCount + " open quote" + (st.deadCount === 1 ? " is" : "s are") + " older than " + st.maxAge + " months and are excluded from pipeline — they will not rescue the month unless someone revives them.");
+        if (b.unlinkedRev > b.linkedRev) risks.push("Unlinked revenue (" + zar.format(b.unlinkedRev) + ") is larger than enquiry-linked revenue (" + zar.format(b.linkedRev) + "). The funnel cannot explain most of the book.");
+        if (b.topCliShare >= 0.4) risks.push("The top " + Math.min(3, b.topCli.length) + " clients are " + pct(b.topCliShare) + " of revenue since " + FORECAST_FROM + " — concentration risk if one of them pauses.");
+        if (st.reliability < 50) risks.push("Reliability is " + st.reliability + "% because the train window from " + FORECAST_FROM + " is short. Treat the range " + zar.format(st.rangeLo) + " – " + zar.format(st.rangeHi) + " as the plan, not the single headline.");
+        if (!risks.length) risks.push("No single red flag dominates. Watch conversion, stale quotes, and how much of the month is still unlogged.");
+        lines.push("Main risks: " + risks.join(" "));
       }
-      if (/reliab|mae|mape|accurate|confidence/.test(q)) {
-        bits.push("Reliability is " + st.reliability + "%" + (st.mae ? (" from a back-test MAE of " + zar.format(st.mae) + " and MAPE of " + Math.round(st.mape) + "%.") : " — not enough complete months for a back-test."));
+      if (want(/leak|funnel leak|where do we lose|drop-?off|enq(uiry|uiries) to quote|closing rate|win rate/) || (want(/\bfunnel\b|quote-to-order|quote to order/) && !want(/what if|would \d|10%|% more|% less/))) {
+        lines.push("Since " + FORECAST_FROM + ": " + b.fEnq + " enquiries → " + b.fQuo + " quotes (" + pct(b.qr) + ") → " + b.fConv + " converted quotes (" + pct(b.or) + " of quotes, " + pct(b.cr) + " closing). AOV " + zar.format(b.aov) + ".");
+        const leakQ = b.fEnq - b.fQuo;
+        const leakO = b.fQuo - b.fConv;
+        lines.push((leakQ >= leakO ? "The bigger drop is enquiry to quote (" + leakQ + " never received a quote number)." : "The bigger drop is quote to order (" + leakO + " quoted enquiries have no matching order).") + " Extra A/B order lines are not counted as extra conversions.");
       }
-      if (/what if|slider|scenario|increase|volume/.test(q)) {
-        bits.push("Use the sliders for enquiry volume, quote-to-order conversion, and average order value. The green/red figure is the change versus the base ensemble, not a new EOM total.");
+      if (want(/link|unlink|direct|walk-?in|website|online|offline|mix|split|not connected|without a quote/)) {
+        const yShare = b.fromRev ? b.linkedRev / b.fromRev : 0;
+        lines.push("From " + FORECAST_FROM + ": " + zar.format(b.fromRev) + " total excl VAT. Enquiry-linked " + zar.format(b.linkedRev) + " (" + pct(yShare) + ", " + b.linkedN + " orders). Unlinked " + zar.format(b.unlinkedRev) + " (" + b.unlinkedN + " orders) — walk-in SOQ, website quotes, or no quote number.");
+        lines.push("SOQ-coded orders " + zar.format(b.soqRev) + " (" + b.soqN + "). Website / non-SOQ " + zar.format(b.webRev) + " (" + b.webN + "). Full-year 2026 revenue is " + zar.format(b.ytd) + ".");
       }
-      if (!bits.length) {
-        bits.push("Base " + st.nextM + " is " + zar.format(st.originalForecast) + " (range " + zar.format(st.rangeLo) + " – " + zar.format(st.rangeHi) + "). Historical " + zar.format(st.modelA) + ", funnel " + zar.format(st.modelB) + ", pipeline " + zar.format(st.modelC) + ".");
+      if (want(/source|channel|google|instagram|facebook|tiktok|campaign|where.*from|which source/)) {
+        if (!b.topSrcRev.length) lines.push("No source labels on the current filter.");
+        else {
+          lines.push("Revenue by source since " + FORECAST_FROM + ": " + b.topSrcRev.map((s) => s.name + " " + zar.format(s.rev)).join("; ") + ".");
+          if (b.topSrcConv.length) {
+            const bestS = b.topSrcConv[0];
+            const worstS = b.topSrcConv[b.topSrcConv.length - 1];
+            lines.push("Among sources with at least 3 quotes, best quote-to-order is " + bestS.name + " at " + pct(bestS.rate) + " (" + bestS.conv + "/" + bestS.quo + ")" + (worstS && worstS.name !== bestS.name ? ("; weakest " + worstS.name + " at " + pct(worstS.rate) + ".") : "."));
+          }
+        }
       }
-      box.textContent = bits.join(" ");
+      if (want(/client|customer|concentration|whale|top account|who is buying/)) {
+        if (!b.topCli.length) lines.push("No client names on orders in this filter.");
+        else {
+          lines.push("Largest clients since " + FORECAST_FROM + ": " + b.topCli.map((c) => c.name + " " + zar.format(c.rev) + " (" + c.n + " order" + (c.n === 1 ? "" : "s") + ")").join("; ") + ".");
+          lines.push("Top three are " + pct(b.topCliShare) + " of that window. Filter them out on the right if you want the rest of the book.");
+        }
+      }
+      if (want(/pipe|open quote|backlog|still to close|cover|lag|stale|dead quote|how long/)) {
+        lines.push("Age-weighted open pipeline is " + zar.format(st.pipe) + " from " + st.openCount + " live quotes since " + FORECAST_FROM + ". Typical quote-to-order lag is " + (Math.round(st.avgTTC * 10) / 10) + " month" + (st.avgTTC === 1 ? "" : "s") + ". Quotes older than " + st.maxAge + " months are dropped (" + st.deadCount + " stale).");
+        lines.push("Pipeline is not a promise: it is discounted by age and by " + pct(st.baseOR) + " conversion. That feeds the open-pipeline model (" + zar.format(st.modelC) + ", weight " + Math.round(st.wC * 100) + "%).");
+      }
+      if (want(/reliab|confident|confidence|mae|mape|accurate|trust|how sure|error/)) {
+        lines.push("Reliability is " + st.reliability + "%" + (st.mae ? (" from a walk-forward back-test: MAE " + zar.format(st.mae) + ", MAPE " + Math.round(st.mape) + "%.") : " — fewer than 4 complete months from " + FORECAST_FROM + ", so this is a prior, not a proven error rate."));
+        lines.push("Use the range " + zar.format(st.rangeLo) + " – " + zar.format(st.rangeHi) + " in a pack. Weights: historical " + Math.round(st.wA * 100) + "%, funnel " + Math.round(st.wB * 100) + "%, pipeline " + Math.round(st.wC * 100) + "%.");
+      }
+      if (want(/what if|scenario|slider|sensitiv|up 10|down 10|more conversion|more enquir|higher aov|lift/) || (pctIn && want(/enq|conv|aov|order value|volume|what would/))) {
+        const onEnq = want(/enq|volume|lead/);
+        const onConv = want(/conv|quote to order|quote-to-order|win/);
+        const onAov = want(/aov|order value|basket|ticket/);
+        const signed = pctIn && String(pctIn[0]).trim().indexOf("-") === 0 ? -Math.abs(lift) : Math.abs(lift);
+        if (!onEnq && !onConv && !onAov) {
+          const dE = scenarioDelta(st, signed, 0, 0);
+          const dC = scenarioDelta(st, 0, signed, 0);
+          const dA = scenarioDelta(st, 0, 0, signed);
+          const lab = (signed >= 0 ? "+" : "") + Math.round(signed * 100) + "%";
+          lines.push("One lever at a time at " + lab + " versus " + zar.format(st.originalForecast) + ": enquiries " + (dE >= 0 ? "+" : "−") + " " + zar.format(Math.abs(dE)) + "; quote-to-order " + (dC >= 0 ? "+" : "−") + " " + zar.format(Math.abs(dC)) + "; AOV " + (dA >= 0 ? "+" : "−") + " " + zar.format(Math.abs(dA)) + ".");
+        } else {
+          const d = scenarioDelta(st, onEnq ? signed : 0, onConv ? signed : 0, onAov ? signed : 0);
+          lines.push("What-if (funnel driver only, not a restated EOM total): " +
+            (onEnq ? ("enquiries " + (signed >= 0 ? "+" : "") + Math.round(signed * 100) + "% ") : "") +
+            (onConv ? ("quote-to-order " + (signed >= 0 ? "+" : "") + Math.round(signed * 100) + "% ") : "") +
+            (onAov ? ("AOV " + (signed >= 0 ? "+" : "") + Math.round(signed * 100) + "% ") : "") +
+            "changes the outlook by " + (d >= 0 ? "+" : "−") + " " + zar.format(Math.abs(d)) + " versus " + zar.format(st.originalForecast) + ".");
+        }
+        lines.push("Unlinked residual (" + zar.format(st.baseOnline) + " WMA) does not move with those levers — use the sliders to keep a scenario on screen.");
+      }
+      if (randTarget >= 1000 && want(/hit|reach|need|target|goal|budget/)) {
+        const g = hitTargetGap(st, randTarget);
+        lines.push("Target " + zar.format(randTarget) + " versus base " + zar.format(st.originalForecast) + " is a gap of " + (g.gap >= 0 ? "+" : "−") + " " + zar.format(Math.abs(g.gap)) + ".");
+        if (g.convLift != null) lines.push("Holding volume and AOV, quote-to-order (or enquiry volume) would need about a " + (g.convLift >= 0 ? "+" : "") + Math.round(g.convLift * 100) + "% move on the funnel driver to close that gap, before unlinked residual.");
+      }
+      if (want(/best|worst|compare|versus last|vs last|trend|since august|from august|month by month|strongest|weakest/)) {
+        if (b.best && b.worst) {
+          lines.push("Complete months from " + FORECAST_FROM + ": best " + b.best.month + " at " + zar.format(b.best.rev) + " (" + b.best.ord + " orders); weakest " + b.worst.month + " at " + zar.format(b.worst.rev) + ".");
+        }
+        const series = (st.hist || []).map((h) => h.month + " " + zar.format(h.rev)).join("; ");
+        if (series) lines.push("Train window: " + series + ".");
+      }
+      if (want(/assume|how does (the )?model|ensemble|holt|weight|what is this number|explain the forecast|methodology|why this number/)) {
+        lines.push("Ensemble for " + (st.incomplete ? (st.partial.month + " EOM") : st.nextM) + " is " + zar.format(st.originalForecast) + ". Historical trend " + zar.format(st.modelA) + " (" + Math.round(st.wA * 100) + "%), funnel (enquiries × quote rate × conversion × AOV + unlinked residual) " + zar.format(st.modelB) + " (" + Math.round(st.wB * 100) + "%), open pipeline " + zar.format(st.modelC) + " (" + Math.round(st.wC * 100) + "%).");
+        lines.push("Assumptions: data is complete from " + FORECAST_FROM + "; cancelled/on-hold orders are out; a conversion is a unique enquiry whose quote number appears on an order; marketing spend is not in this hub.");
+      }
+      if (want(/aov|average order|ticket|basket|deal size/) && !want(/what if|scenario|slider/)) {
+        const lastAov = b.last && b.last.ord ? b.last.rev / b.last.ord : 0;
+        lines.push("Average order value since " + FORECAST_FROM + " is " + zar.format(b.aov) + ". The forecast uses a weighted " + zar.format(st.baseAOV) + "." + (lastAov ? (" Last complete month was " + zar.format(lastAov) + ".") : ""));
+      }
+      if (want(/year|ytd|annual|full year|2026 total|to date/)) {
+        lines.push("2026 year-to-date (all months, excl VAT) is " + zar.format(b.ytd) + " on " + b.yOrd + " orders. The forecast window from " + FORECAST_FROM + " is " + zar.format(b.fromRev) + " on " + b.fOrd + " orders. Jan–Jul is shown on the trend but does not train the model.");
+      }
+      if (want(/next month|december|outlook|going forward|forecast for/)) {
+        lines.push("Base " + st.nextM + " is " + zar.format(st.originalForecast) + " (range " + zar.format(st.rangeLo) + " – " + zar.format(st.rangeHi) + "). Simple next step " + st.nextM2 + " is " + zar.format(st.next2) + " (holds a mild +2% on the ensemble, not a second full model).");
+      }
+      if (!lines.length) {
+        lines.push("I did not match a specialist topic, so here is the pack summary: " + (st.incomplete ? ("pacing " + st.partial.month + " to ") : (st.nextM + " ")) + zar.format(st.originalForecast) + " (range " + zar.format(st.rangeLo) + " – " + zar.format(st.rangeHi) + ").");
+        lines.push("Try: on track, risks, funnel leak, linked vs unlinked, sources, clients, pipeline, reliability, best/worst month, or a % what-if.");
+      }
+      writeAnswer(lines);
     }
 
     function updateScenario() {
