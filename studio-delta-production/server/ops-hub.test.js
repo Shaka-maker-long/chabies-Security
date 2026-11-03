@@ -90,5 +90,11 @@ assert.ok(html.indexOf("2026 Linked conversion funnel") !== -1);
 assert.ok(html.indexOf("MARKETING_STATS") === -1);
 assert.ok(html.indexOf("/api/office/ops-hub") !== -1);
 assert.ok(html.indexOf("Total Ad Spend") === -1);
+assert.ok(html.indexOf("Expected range") !== -1);
+assert.ok(html.indexOf("Logged so far") !== -1);
+assert.ok(html.indexOf("Key drivers") !== -1);
+assert.ok(html.indexOf("function askAI") !== -1);
+assert.ok(html.indexOf("Reliability:") !== -1);
+assert.ok(html.indexOf("Reset sliders") !== -1);
 
 console.log("ops-hub.test.js ok");

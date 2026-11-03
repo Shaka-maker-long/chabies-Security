@@ -43,7 +43,19 @@
     .diag { font-size:13px; border-left:3px solid var(--blue); padding-left:10px; margin:6px 0; }
     .diag.good { border-color:var(--green); }
     .diag.bad { border-color:var(--red); }
+    .diag.neutral { border-color:#f59e0b; }
     .warn { background:rgba(245,158,11,.12); border-left:3px solid #f59e0b; color:#fde68a; padding:8px 10px; margin:8px 0; font-size:13px; }
+    .ai-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; flex-wrap:wrap; }
+    .badge { background:#3b82f6; color:#fff; font-size:11px; font-weight:800; padding:4px 8px; cursor:help; }
+    .range { font-size:13px; color:#cbd5e1; }
+    .track { height:8px; background:#334155; border-radius:4px; overflow:hidden; margin-top:6px; }
+    .fill { height:100%; background:#3b82f6; }
+    .funnel2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; }
+    .funnel2 div { background:#0f172a; border:1px solid #334155; padding:10px; text-align:center; }
+    .qa { display:flex; gap:8px; margin-top:8px; }
+    .qa input { flex:1; background:#1e293b; border:1px solid #334155; color:#e2e8f0; padding:8px; }
+    .qa button { background:#3b82f6; border:0; }
+    #aiAnswer { margin-top:10px; padding:10px; background:#1e293b; border-left:3px solid #8b5cf6; font-size:14px; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th, td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; }
     .mask { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; z-index:40; padding:20px; overflow:auto; }
@@ -92,14 +104,20 @@
     <div id="err" class="err" hidden></div>
     <div id="app" hidden>
       <div class="ai" id="aiBox">
-        <div class="label">Forecast &amp; diagnostic</div>
-        <div id="aiHeadline" style="font-weight:800;font-size:18px;color:#fff;margin-bottom:8px;">Working…</div>
+        <div class="ai-head">
+          <div>
+            <div class="label" style="color:#60a5fa">Forecast &amp; diagnostic engine</div>
+            <div id="aiHeadline" style="font-weight:800;font-size:18px;color:#fff;">Working…</div>
+          </div>
+          <span class="badge" id="aiConfidence" title="">Reliability: --%</span>
+        </div>
         <div id="aiWarnings"></div>
         <div class="row">
           <div id="aiPrediction"></div>
           <div>
-            <div class="label">Model breakdown</div>
+            <div class="label">Model breakdown &amp; explanation</div>
             <div id="aiModels"></div>
+            <div id="aiDrivers"></div>
             <div class="sliders">
               <div class="label" style="margin-top:12px">What if?</div>
               <label><span>Enquiries volume</span><span id="valScenEnq">0%</span></label>
@@ -109,8 +127,17 @@
               <label><span>Average order value</span><span id="valScenAOV">0%</span></label>
               <input type="range" id="scenAOV" min="-30" max="50" value="0" oninput="updateScenario()">
               <div class="impact">Expected change vs base forecast<div id="scenarioResult" style="font-size:22px;font-weight:800;color:#22c55e">+ R 0</div></div>
+              <button type="button" class="ghost" style="margin-top:8px;background:#1e293b;color:#e2e8f0;border-color:#334155" onclick="resetScenario()">Reset sliders</button>
             </div>
           </div>
+        </div>
+        <div style="margin-top:16px;padding-top:12px;border-top:1px solid #334155">
+          <div class="label">Ask the forecast</div>
+          <div class="qa">
+            <input id="aiQuestion" placeholder="Ask: Why is the forecast down? What are the risks?" onkeydown="if(event.key==='Enter')askAI()">
+            <button type="button" onclick="askAI()">Ask AI</button>
+          </div>
+          <div id="aiAnswer" hidden></div>
         </div>
       </div>
       <div class="row">
@@ -327,6 +354,9 @@
       const active = MONTHS.filter((m) => globalEnq.some((d) => d.month === m) || globalOrd.some((d) => d.month === m));
       if (active.length < 1) {
         document.getElementById("aiHeadline").textContent = "Not enough 2026 data for a forecast.";
+        document.getElementById("aiConfidence").textContent = "Reliability: --%";
+        document.getElementById("aiPrediction").innerHTML = "";
+        document.getElementById("aiDrivers").innerHTML = "";
         return;
       }
       const hist = active.map((m) => {
@@ -392,22 +422,124 @@
         wA = a / s; wB = b / s; wC = c / s;
       }
       const ensemble = modelA * wA + modelB * wB + modelC * wC;
-      currentForecastState = { baseEnqs: nextEnqs, baseQR: wmaQR, baseOR: wmaOR, baseAOV: wmaAOV, baseOnline: wmaOnline, originalForecast: ensemble };
+      const next2 = ensemble * 1.02;
+      let mae = 0, mape = 0;
+      if (use.length >= 4) {
+        const absErr = [], pctErr = [];
+        for (let i = 3; i < use.length; i++) {
+          const sub = use.slice(0, i);
+          const a = predictTimeSeries(sub.map((x) => x.rev), 1)[0];
+          const fb = (predictTimeSeries(sub.map((x) => x.enq), 1)[0] *
+            getWMA(sub.map((h) => h.enq ? h.quo / h.enq : 0)) *
+            getWMA(sub.map((h) => h.quo ? h.linkedOrd / h.quo : 0)) *
+            getWMA(sub.map((h) => h.aov))) + getWMA(sub.map((h) => h.rev - h.linkedRev));
+          const pred = a * wA + fb * wB + fb * wC;
+          const actual = use[i].rev || 0;
+          absErr.push(Math.abs(pred - actual));
+          if (actual > 0) pctErr.push(Math.abs(pred - actual) / actual);
+        }
+        mae = average(absErr);
+        mape = average(pctErr) * 100;
+      }
+      let reliability = 35;
+      if (use.length >= 4) reliability = Math.round(Math.max(25, Math.min(92, 100 - mape)));
+      else if (use.length === 3) reliability = 45;
+      const models = [modelA, modelB, modelC].filter((n) => n > 0);
+      const spread = models.length ? (Math.max.apply(null, models) - Math.min.apply(null, models)) / 2 : ensemble * 0.12;
+      const rangeLo = Math.max(0, ensemble - Math.max(spread, mae || ensemble * 0.1));
+      const rangeHi = ensemble + Math.max(spread, mae || ensemble * 0.1);
+      const dead = [];
+      open.forEach((q) => {
+        const age = Math.max(0, lastIdx + 1 - MONTHS.indexOf(q.month));
+        if (age > maxAge) dead.push(q);
+      });
+      currentForecastState = {
+        baseEnqs: nextEnqs, baseQR: wmaQR, baseOR: wmaOR, baseAOV: wmaAOV, baseOnline: wmaOnline,
+        originalForecast: ensemble, next2, nextM, nextM2, incomplete, partial,
+        modelA, modelB, modelC, wA, wB, wC, mae, mape, reliability, rangeLo, rangeHi,
+        pipe, velocity, avgTTC, maxAge, deadCount: dead.length, openCount: open.length,
+        hist: use, logged: incomplete && partial ? partial.rev : 0
+      };
+      const badge = document.getElementById("aiConfidence");
+      badge.textContent = "Reliability: " + reliability + "%";
+      badge.title = (use.length >= 4
+        ? ("Back-test MAE " + zar.format(mae) + " · MAPE " + Math.round(mape) + "%")
+        : "Fewer than 4 complete months — reliability is a prior, not a back-test.");
       document.getElementById("aiHeadline").textContent = incomplete
         ? ("End-of-month pacing for " + (partial && partial.month))
         : ("Ensemble forecast: " + nextM);
-      document.getElementById("aiWarnings").innerHTML = incomplete
-        ? "<div class='warn'>" + esc(partial.month) + " looks incomplete. Forecast treats it as in progress.</div>"
-        : (use.length < 3 ? "<div class='warn'>Fewer than 3 complete months — forecast is a simple average.</div>" : "");
+      let warn = "";
+      if (incomplete) warn += "<div class='warn'>" + esc(partial.month) + " looks incomplete. Forecast treats it as in progress.</div>";
+      else if (use.length < 3) warn += "<div class='warn'>Fewer than 3 complete months — forecast is a simple average.</div>";
+      if (dead.length) warn += "<div class='warn'>" + dead.length + " open quote" + (dead.length === 1 ? "" : "s") + " older than " + maxAge + " month" + (maxAge === 1 ? "" : "s") + " are treated as stale and left out of pipeline.</div>";
+      document.getElementById("aiWarnings").innerHTML = warn;
+      let pace = "";
+      if (incomplete && partial) {
+        const pct = ensemble > 0 ? Math.min(100, Math.round(partial.rev / ensemble * 100)) : 0;
+        pace = "<div class='label' style='margin-top:10px'>Logged so far</div><div>" + zar.format(partial.rev) + " (" + pct + "% of EOM forecast)</div>" +
+          "<div class='track'><div class='fill' style='width:" + pct + "%'></div></div>";
+      }
       document.getElementById("aiPrediction").innerHTML =
         "<div class='pred'><div class='label'>Base projection " + esc(nextM) + (incomplete ? " (EOM)" : "") + "</div><b>" + zar.format(ensemble) + "</b>" +
-        "<div class='label' style='margin-top:10px'>Next month " + esc(nextM2) + "</div><div>" + zar.format(ensemble * 1.02) + "</div></div>";
+        "<div class='range'>Expected range " + zar.format(rangeLo) + " – " + zar.format(rangeHi) + "</div>" +
+        pace +
+        "<div class='label' style='margin-top:10px'>Next month " + esc(nextM2) + "</div><div>" + zar.format(next2) + "</div></div>";
       document.getElementById("aiModels").innerHTML =
         "<table><tr><th>Model</th><th>Projection</th><th>Weight</th></tr>" +
         "<tr><td>Historical</td><td>" + zar.format(modelA) + "</td><td>" + Math.round(wA * 100) + "%</td></tr>" +
         "<tr><td>Funnel driver</td><td>" + zar.format(modelB) + "</td><td>" + Math.round(wB * 100) + "%</td></tr>" +
         "<tr><td>Open pipeline</td><td>" + zar.format(modelC) + "</td><td>" + Math.round(wC * 100) + "%</td></tr></table>";
-      updateScenario();
+      renderDrivers(currentForecastState);
+      resetScenario();
+    }
+
+    function renderDrivers(st) {
+      const last = st.hist[st.hist.length - 1] || {};
+      const prev = st.hist[st.hist.length - 2];
+      const notes = [];
+      notes.push("<div class='funnel2'><div><b>" + Math.round(st.baseQR * 100) + "%</b><span class='label'>Enq → quote (WMA)</span></div><div><b>" + Math.round(st.baseOR * 100) + "%</b><span class='label'>Quote → order (WMA)</span></div></div>");
+      notes.push("<div class='diag'>Average order value (WMA): <b>" + zar.format(st.baseAOV) + "</b></div>");
+      notes.push("<div class='diag'>Open pipeline (age-weighted): <b>" + zar.format(st.pipe) + "</b> from " + st.openCount + " live quote" + (st.openCount === 1 ? "" : "s") + ".</div>");
+      notes.push("<div class='diag'>Typical quote-to-order lag: <b>" + (Math.round(st.avgTTC * 10) / 10) + " month" + (st.avgTTC === 1 ? "" : "s") + "</b>.</div>");
+      if (prev && last.rev) {
+        const d = last.rev - prev.rev;
+        notes.push("<div class='diag " + (d >= 0 ? "good" : "bad") + "'>Last complete month vs prior: " + (d >= 0 ? "+" : "−") + " " + zar.format(Math.abs(d)) + ".</div>");
+      }
+      if (st.mae) notes.push("<div class='diag neutral'>Back-test MAE " + zar.format(st.mae) + " · MAPE " + Math.round(st.mape) + "%.</div>");
+      document.getElementById("aiDrivers").innerHTML = "<div class='label' style='margin-top:10px'>Key drivers</div>" + notes.join("");
+    }
+
+    function askAI() {
+      const st = currentForecastState;
+      const box = document.getElementById("aiAnswer");
+      const q = (document.getElementById("aiQuestion").value || "").trim().toLowerCase();
+      box.hidden = false;
+      if (!st) { box.textContent = "Load the hub first so the forecast has office data to read."; return; }
+      if (!q) { box.textContent = "Ask why the forecast moved, what the risks are, or how conversion and pipeline feed the number."; return; }
+      const bits = [];
+      if (/why|down|drop|low|risk/.test(q)) {
+        bits.push(st.incomplete
+          ? (st.partial.month + " is still in progress, so the engine is pacing to EOM " + zar.format(st.originalForecast) + " rather than treating logged " + zar.format(st.logged) + " as the full month.")
+          : ("The ensemble for " + st.nextM + " is " + zar.format(st.originalForecast) + " (range " + zar.format(st.rangeLo) + " – " + zar.format(st.rangeHi) + ")."));
+        if (st.deadCount) bits.push(st.deadCount + " stale quotes sit outside the pipeline window.");
+        if (st.baseOR < 0.25) bits.push("Quote-to-order conversion is thin at " + Math.round(st.baseOR * 100) + "% — that is the main drag on the funnel driver.");
+      }
+      if (/conv|quote|funnel|enq/.test(q)) {
+        bits.push("Weighted conversion: " + Math.round(st.baseQR * 100) + "% of enquiries become quotes and " + Math.round(st.baseOR * 100) + "% of quotes become linked orders. AOV " + zar.format(st.baseAOV) + ".");
+      }
+      if (/pipe|open|lag|stale|dead/.test(q)) {
+        bits.push("Age-weighted open pipeline is " + zar.format(st.pipe) + " across " + st.openCount + " live quotes. Quotes older than " + st.maxAge + " months are dropped.");
+      }
+      if (/reliab|mae|mape|accurate|confidence/.test(q)) {
+        bits.push("Reliability is " + st.reliability + "%" + (st.mae ? (" from a back-test MAE of " + zar.format(st.mae) + " and MAPE of " + Math.round(st.mape) + "%.") : " — not enough complete months for a back-test."));
+      }
+      if (/what if|slider|scenario|increase|volume/.test(q)) {
+        bits.push("Use the sliders for enquiry volume, quote-to-order conversion, and average order value. The green/red figure is the change versus the base ensemble, not a new EOM total.");
+      }
+      if (!bits.length) {
+        bits.push("Base " + st.nextM + " is " + zar.format(st.originalForecast) + " (range " + zar.format(st.rangeLo) + " – " + zar.format(st.rangeHi) + "). Historical " + zar.format(st.modelA) + ", funnel " + zar.format(st.modelB) + ", pipeline " + zar.format(st.modelC) + ".");
+      }
+      box.textContent = bits.join(" ");
     }
 
     function updateScenario() {
@@ -423,6 +555,12 @@
       const el = document.getElementById("scenarioResult");
       el.textContent = (diff >= 0 ? "+ " : "- ") + zar.format(Math.abs(diff));
       el.style.color = diff >= 0 ? "#22c55e" : "#ef4444";
+    }
+    function resetScenario() {
+      document.getElementById("scenEnq").value = "0";
+      document.getElementById("scenConv").value = "0";
+      document.getElementById("scenAOV").value = "0";
+      updateScenario();
     }
 
     function showDrillDown() {
