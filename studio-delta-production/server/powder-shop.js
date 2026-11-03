@@ -439,6 +439,85 @@ function receiveFromPaintShop(payload, actor) {
   };
 }
 
+async function parseInvoiceForCosts(payload) {
+  const body = payload || {};
+  const decoded = decodeInvoice(body.invoice);
+  if (decoded.mime !== "application/pdf") {
+    throw new Error("Upload a PDF invoice to auto-read costs (photos need typing for now).");
+  }
+  const prefer = Array.isArray(body.orderNumbers)
+    ? body.orderNumbers
+    : (Array.isArray(body.orders) ? body.orders.map((o) => o && (o.orderNumber || o.order_number || o)) : []);
+  const parser = require("./paint-invoice-parse");
+  const parsed = await parser.parsePaintInvoiceBuffer(decoded.buffer, {
+    preferOrderNumbers: prefer
+  });
+  if (!parsed.ok) throw new Error(parsed.error || "Could not read that invoice.");
+  const snap = snapshot();
+  const sentSet = {};
+  const comparedWith = (snap.sent || []).map((o) => {
+    const orderNumber = formatOrderId(o.order_number);
+    sentSet[orderNumber] = true;
+    return {
+      orderNumber,
+      product: o.product || "",
+      powder_coating: o.powder_coating || "",
+      client_name: o.client_name || "",
+      status: o.status || ""
+    };
+  });
+  const preferIds = (prefer || []).map(formatOrderId).filter(Boolean);
+  const allocations = (parsed.allocations || []).map((row) => {
+    const orderNumber = formatOrderId(row.orderNumber);
+    const atPaintShop = !!sentSet[orderNumber];
+    const preferred = preferIds.indexOf(orderNumber) !== -1;
+    return Object.assign({}, row, {
+      orderNumber,
+      atPaintShop,
+      preferred,
+      matchedToShop: atPaintShop,
+      costLabel: formatRand(row.cost)
+    });
+  });
+  const matchedCount = allocations.filter((row) => row.atPaintShop).length;
+  const matchedTotal = allocations
+    .filter((row) => row.atPaintShop)
+    .reduce((sum, row) => sum + Number(row.cost || 0), 0);
+  const allocatedTotal = parsed.allocatedTotal != null
+    ? parsed.allocatedTotal
+    : allocations.reduce((sum, row) => sum + Number(row.cost || 0), 0);
+  const invoiceTotal = parsed.invoiceTotal != null ? parsed.invoiceTotal : allocatedTotal;
+  const difference = parsed.difference != null
+    ? parsed.difference
+    : Number(require("./db").money(invoiceTotal - allocatedTotal));
+  return {
+    filename: decoded.filename,
+    mime: decoded.mime,
+    orderTokens: parsed.orderTokens || [],
+    allocations,
+    unmatchedLines: parsed.unmatchedLines || [],
+    textPreview: parsed.textPreview || "",
+    comparedWith,
+    comparedCount: comparedWith.length,
+    matchedCount,
+    grandTotal: allocatedTotal,
+    grandTotalLabel: parsed.allocatedTotalLabel || formatRand(allocatedTotal),
+    invoiceTotal,
+    invoiceTotalLabel: parsed.invoiceTotalLabel || formatRand(invoiceTotal),
+    allocatedTotal,
+    allocatedTotalLabel: parsed.allocatedTotalLabel || formatRand(allocatedTotal),
+    unmatchedTotal: parsed.unmatchedTotal || 0,
+    unmatchedTotalLabel: parsed.unmatchedTotalLabel || formatRand(parsed.unmatchedTotal || 0),
+    difference,
+    differenceLabel: parsed.differenceLabel || formatRand(difference),
+    totalsMatch: parsed.totalsMatch !== false && Math.abs(difference) < 0.02,
+    totalsSource: parsed.totalsSource || "priced-lines",
+    matchedTotal: Number(require("./db").money(matchedTotal)),
+    matchedTotalLabel: formatRand(matchedTotal),
+    filledCount: matchedCount || allocations.filter((row) => preferIds.indexOf(formatOrderId(row.orderNumber)) !== -1).length
+  };
+}
+
 function updateReceivedCosts(payload, actor) {
   const body = payload || {};
   const receiveId = String(body.receiveId || body.id || "").trim();
@@ -486,6 +565,7 @@ module.exports = {
   markAlreadyAtPaintShop,
   receiveFromPaintShop,
   updateReceivedCosts,
+  parseInvoiceForCosts,
   readInvoiceFile,
   loadShop,
   renameOrder,
