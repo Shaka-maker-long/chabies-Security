@@ -61,6 +61,14 @@
     .modal .pill.ok { background:#ecfdf3; color:var(--ok); }
     .modal .pill.miss { background:#fef3f2; color:var(--bad); }
     .modal .actions { display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end; padding:12px 16px; border-top:1px solid var(--line); background:#f8fafc; position:sticky; bottom:0; }
+    .totals-bar { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; width:100%; }
+    .totals-bar .cell { background:#fff; border:1px solid var(--line); border-radius:8px; padding:8px 10px; }
+    .totals-bar .lbl { display:block; font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    .totals-bar b { font-size:15px; }
+    .totals-bar.ok .cell.diff { border-color:#abefc6; background:#ecfdf3; }
+    .totals-bar.bad .cell.diff { border-color:#fecdca; background:#fef3f2; }
+    .totals-bar.bad .cell.diff b { color:var(--bad); }
+    .totals-bar.ok .cell.diff b { color:var(--ok); }
     @media (max-width: 900px) {
       .cols { grid-template-columns:1fr; }
       .tools { width:100%; margin-left:0; }
@@ -126,7 +134,7 @@
         </section>
         <section class="card">
           <h2>At the paint shop</h2>
-          <p class="hint">These orders are at the powder coaters (Paint Shop). Upload the invoice PDF — the system reads order numbers and prices and fills costs. Confirm, then receive. One invoice covers this received batch.</p>
+          <p class="hint">These orders are at the powder coaters (Paint Shop). Tick an order and type its cost, same as before. Or upload a text PDF to fill costs — glued numbers like S260001A still match S260001 A. Check invoice excl against allocated before you receive. One invoice covers this received batch.</p>
           <div id="sentBox"><div class="load">Loading…</div></div>
           <div class="foot">
             <label class="file">Invoice for this received batch
@@ -135,6 +143,11 @@
             <button type="button" class="ghost" id="parseInvBtn" onclick="parseInvoiceCosts()">Read costs from PDF</button>
             <button type="button" id="recvBtn" onclick="receiveSelected()" disabled>Receive selected</button>
             <span class="msg" id="recvMsg"></span>
+            <div class="totals-bar" id="allocTotals" hidden>
+              <div class="cell"><span class="lbl">Invoice excl</span><b id="invTotal">—</b></div>
+              <div class="cell"><span class="lbl">Allocated to selected</span><b id="allocTotal">—</b></div>
+              <div class="cell diff"><span class="lbl">Difference</span><b id="diffTotal">—</b></div>
+            </div>
           </div>
         </section>
       </div>
@@ -161,6 +174,7 @@
   <script src="/office-auth.js?v=login-msg-3"></script>
   <script>
     let data = { ready: [], sent: [], received: [], readyForDelivery: [] };
+    let lastParse = null;
     function esc(s) {
       return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
     }
@@ -182,6 +196,49 @@
       el.textContent = text || "";
       el.classList.toggle("bad", !!bad);
       el.classList.toggle("ok", !bad && !!text);
+    }
+    function formatR(n) {
+      const v = Number(n);
+      if (!Number.isFinite(v)) return "—";
+      const neg = v < 0 ? "-" : "";
+      const [whole, frac] = Math.abs(Math.round(v * 100) / 100).toFixed(2).split(".");
+      return neg + "R " + whole.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + "." + frac;
+    }
+    function selectedAllocatedTotal() {
+      let sum = 0;
+      document.querySelectorAll("#sentBox .cost").forEach((input) => {
+        const num = input.getAttribute("data-order");
+        const chk = document.querySelector('.sent-chk[value="' + num + '"]');
+        if (!chk || !chk.checked) return;
+        const raw = String(input.value || "").replace(/,/g, "").trim();
+        if (!raw) return;
+        const n = Number(raw);
+        if (Number.isFinite(n)) sum += n;
+      });
+      return Math.round(sum * 100) / 100;
+    }
+    function renderAllocTotals() {
+      const bar = document.getElementById("allocTotals");
+      if (!bar) return;
+      const allocated = selectedAllocatedTotal();
+      const invoice = lastParse && lastParse.invoiceTotal != null ? Number(lastParse.invoiceTotal) : null;
+      if (invoice == null && allocated === 0 && !selectedSent().length) {
+        bar.hidden = true;
+        return;
+      }
+      bar.hidden = false;
+      document.getElementById("invTotal").textContent = invoice == null ? "Read a PDF to fill" : formatR(invoice);
+      document.getElementById("allocTotal").textContent = formatR(allocated);
+      if (invoice == null) {
+        bar.classList.remove("ok", "bad");
+        document.getElementById("diffTotal").textContent = "—";
+        return;
+      }
+      const diff = Math.round((invoice - allocated) * 100) / 100;
+      document.getElementById("diffTotal").textContent = formatR(diff);
+      const match = Math.abs(diff) < 0.02;
+      bar.classList.toggle("ok", match);
+      bar.classList.toggle("bad", !match);
     }
     function panelFromHash() {
       const h = String(location.hash || "").replace(/^#/, "").toLowerCase();
@@ -235,6 +292,7 @@
           "<td><input class='cost' data-order=\"" + esc(o.order_number) + "\" inputmode='decimal' placeholder='Required' disabled></td></tr>").join("") +
         "</tbody></table>";
       box.querySelectorAll(".sent-chk").forEach((el) => { el.onchange = syncButtons; });
+      box.querySelectorAll(".cost").forEach((el) => { el.oninput = renderAllocTotals; });
       syncButtons();
     }
     function renderReceived() {
@@ -311,6 +369,7 @@
         if (!on) input.value = "";
       });
       document.getElementById("recvBtn").disabled = !picked.length;
+      renderAllocTotals();
     }
     async function load() {
       setMsg("status", "Loading…");
@@ -361,7 +420,6 @@
         reader.readAsDataURL(file);
       });
     }
-    let lastParse = null;
     function closeParseModal() {
       document.getElementById("parseMask").classList.remove("open");
     }
@@ -407,8 +465,15 @@
         "<div class=\"section\"><h3>File</h3><p>" + esc(j.filename || "invoice.pdf") +
         " · matched <b>" + esc(matched.length) + "</b> of <b>" + esc(allocRows.length) + "</b> PDF order total(s) to paint-shop list (" +
         esc(compared.length) + " at shop)</p>" +
-        "<p><b>PDF grand total (excl): " + esc(j.grandTotalLabel || "—") +
-        "</b>" + (matched.length ? " · matched shop total: <b>" + esc(j.matchedTotalLabel || "—") + "</b>" : "") +
+        "<div class=\"totals-bar " + (j.totalsMatch ? "ok" : "bad") + "\">" +
+        "<div class=\"cell\"><span class=\"lbl\">Invoice excl</span><b>" + esc(j.invoiceTotalLabel || j.grandTotalLabel || "—") + "</b></div>" +
+        "<div class=\"cell\"><span class=\"lbl\">Allocated to orders</span><b>" + esc(j.allocatedTotalLabel || j.grandTotalLabel || "—") + "</b></div>" +
+        "<div class=\"cell diff\"><span class=\"lbl\">Difference</span><b>" + esc(j.differenceLabel || "R 0.00") + "</b></div>" +
+        "</div>" +
+        "<p>" + (j.totalsMatch
+          ? "Allocated total matches the invoice excl — every invoiced amount is on an order."
+          : "Allocated total does not match the invoice excl. Type the missing costs, or check unmatched lines below.") +
+        (matched.length ? " Matched shop total: <b>" + esc(j.matchedTotalLabel || "—") + "</b>." : "") +
         "</p></div>" +
         "<div class=\"section\"><h3>Order numbers found on the PDF</h3>" +
         (tokens.length
@@ -439,7 +504,7 @@
                   : "<span class=\"pill miss\">Not on At the paint shop</span>") +
                 "</td></tr>";
             }).join("") +
-            "<tr><td><b>Grand total</b></td><td><b>" + esc(j.grandTotalLabel || "—") + "</b></td><td colspan=\"2\"></td></tr>" +
+            "<tr><td><b>Allocated total</b></td><td><b>" + esc(j.allocatedTotalLabel || j.grandTotalLabel || "—") + "</b></td><td colspan=\"2\">Invoice excl " + esc(j.invoiceTotalLabel || "—") + "</td></tr>" +
             "</tbody></table>"
           : "<p>No priced order groups found on the PDF.</p>") +
         "</div>" +
@@ -482,7 +547,8 @@
         setMsg("recvMsg", "No costs matched orders at the paint shop. See the review for what was read vs compared.", true);
         return;
       }
-      setMsg("recvMsg", "Filled " + applied.filled + " cost" + (applied.filled === 1 ? "" : "s") + ": " + applied.notes.join("; ") + ". Review, then Receive selected.");
+      renderAllocTotals();
+      setMsg("recvMsg", "Filled " + applied.filled + " cost" + (applied.filled === 1 ? "" : "s") + ": " + applied.notes.join("; ") + ". Type any missing amounts, then Receive selected.");
     }
     async function parseInvoiceCosts() {
       setMsg("recvMsg", "Reading invoice…");
@@ -501,12 +567,15 @@
       const j = await r.json();
       if (!j.ok) { setMsg("recvMsg", j.error || "Could not read invoice", true); return; }
       showParseModal(j);
+      renderAllocTotals();
       const matched = (j.allocations || []).filter((row) => row.atPaintShop).length;
       if (!matched) {
-        setMsg("recvMsg", "Read the PDF — open the review to see what was found vs orders at the paint shop.", true);
+        setMsg("recvMsg", "Read the PDF — review it, then type costs on the selected orders if needed.", true);
         return;
       }
-      setMsg("recvMsg", "Read the PDF — review the match, then Use matched costs.");
+      setMsg("recvMsg", j.totalsMatch
+        ? "Read the PDF — review the match, then Use matched costs, or type costs yourself."
+        : "Read the PDF — invoice excl and allocated total differ. Review, then fill the rest by hand.");
     }
     document.getElementById("parseMask").addEventListener("click", (e) => {
       if (e.target.id === "parseMask") closeParseModal();
@@ -531,6 +600,15 @@
       let invoice;
       try { invoice = await readInvoice(); }
       catch (e) { setMsg("recvMsg", e.message || "Attach the invoice.", true); return; }
+      if (lastParse && lastParse.invoiceTotal != null) {
+        const allocated = selectedAllocatedTotal();
+        const diff = Math.round((Number(lastParse.invoiceTotal) - allocated) * 100) / 100;
+        if (Math.abs(diff) >= 0.02) {
+          if (!confirm("Invoice excl is " + (lastParse.invoiceTotalLabel || formatR(lastParse.invoiceTotal)) +
+            " but selected costs add up to " + formatR(allocated) +
+            " (difference " + formatR(diff) + "). Receive anyway?")) return;
+        }
+      }
       if (!confirm("Receive " + orders.length + " order" + (orders.length === 1 ? "" : "s") + " and attach this invoice to that batch?")) return;
       document.getElementById("recvBtn").disabled = true;
       setMsg("recvMsg", "Saving…");
@@ -542,6 +620,7 @@
       if (!j.ok) { setMsg("recvMsg", j.error || "Could not receive", true); document.getElementById("recvBtn").disabled = false; return; }
       data = j;
       document.getElementById("invoiceFile").value = "";
+      lastParse = null;
       paintAll();
       setMsg("recvMsg", "Received " + (j.orderNumbers || []).length + " with one invoice.");
       setMsg("status", statusLine());

@@ -483,6 +483,13 @@ async function parseInvoiceForCosts(payload) {
   const matchedTotal = allocations
     .filter((row) => row.atPaintShop)
     .reduce((sum, row) => sum + Number(row.cost || 0), 0);
+  const allocatedTotal = parsed.allocatedTotal != null
+    ? parsed.allocatedTotal
+    : allocations.reduce((sum, row) => sum + Number(row.cost || 0), 0);
+  const invoiceTotal = parsed.invoiceTotal != null ? parsed.invoiceTotal : allocatedTotal;
+  const difference = parsed.difference != null
+    ? parsed.difference
+    : Number(require("./db").money(invoiceTotal - allocatedTotal));
   return {
     filename: decoded.filename,
     mime: decoded.mime,
@@ -493,8 +500,18 @@ async function parseInvoiceForCosts(payload) {
     comparedWith,
     comparedCount: comparedWith.length,
     matchedCount,
-    grandTotal: parsed.grandTotal != null ? parsed.grandTotal : allocations.reduce((sum, row) => sum + Number(row.cost || 0), 0),
-    grandTotalLabel: parsed.grandTotalLabel || formatRand(allocations.reduce((sum, row) => sum + Number(row.cost || 0), 0)),
+    grandTotal: allocatedTotal,
+    grandTotalLabel: parsed.allocatedTotalLabel || formatRand(allocatedTotal),
+    invoiceTotal,
+    invoiceTotalLabel: parsed.invoiceTotalLabel || formatRand(invoiceTotal),
+    allocatedTotal,
+    allocatedTotalLabel: parsed.allocatedTotalLabel || formatRand(allocatedTotal),
+    unmatchedTotal: parsed.unmatchedTotal || 0,
+    unmatchedTotalLabel: parsed.unmatchedTotalLabel || formatRand(parsed.unmatchedTotal || 0),
+    difference,
+    differenceLabel: parsed.differenceLabel || formatRand(difference),
+    totalsMatch: parsed.totalsMatch !== false && Math.abs(difference) < 0.02,
+    totalsSource: parsed.totalsSource || "priced-lines",
     matchedTotal: Number(require("./db").money(matchedTotal)),
     matchedTotalLabel: formatRand(matchedTotal),
     filledCount: matchedCount || allocations.filter((row) => preferIds.indexOf(formatOrderId(row.orderNumber)) !== -1).length

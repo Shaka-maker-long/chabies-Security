@@ -226,4 +226,51 @@ assert.strictEqual(dualBy["S260214 A"].cost, 1594.3); // 1406.50 + 187.80
 assert.strictEqual(dualBy["S260214 B"].cost, 1594.3);
 assert.strictEqual(dual.grandTotal, 3188.6);
 
+assert.deepStrictEqual(expandOrderRef("S260001A").orderNumbers, ["S260001 A"]);
+assert.deepStrictEqual(expandOrderRef("S260001B").orderNumbers, ["S260001 B"]);
+assert.strictEqual(normalizeOrderToken("S260001A"), "S260001 A");
+const gluedLetters = parsePaintInvoiceText(`
+S260001A
+1 R100.00 0,00% 15,00% R100.00 R115.00
+S260001B
+1 R80.00 0,00% 15,00% R80.00 R92.00
+Subtotal R180.00
+VAT 15% R27.00
+Total R207.00
+`, { preferOrderNumbers: ["S260001 A", "S260001 B"] });
+assert.ok(gluedLetters.ok);
+const gluedLetterBy = {};
+gluedLetters.allocations.forEach((row) => { gluedLetterBy[row.orderNumber] = row; });
+assert.strictEqual(gluedLetterBy["S260001 A"].cost, 100);
+assert.strictEqual(gluedLetterBy["S260001 B"].cost, 80);
+assert.ok(gluedLetterBy["S260001 A"].matched);
+assert.ok(gluedLetterBy["S260001 B"].matched);
+assert.strictEqual(gluedLetters.invoiceTotal, 180);
+assert.strictEqual(gluedLetters.allocatedTotal, 180);
+assert.strictEqual(gluedLetters.difference, 0);
+assert.strictEqual(gluedLetters.totalsMatch, true);
+assert.strictEqual(gluedLetters.totalsSource, "footer-excl");
+
+const shortInvoice = parsePaintInvoiceText(`
+S260001A
+1 R100.00 0,00% 15,00% R100.00 R115.00
+Subtotal R250.00
+VAT 15% R37.50
+Total R287.50
+`, { preferOrderNumbers: ["S260001 A"] });
+assert.strictEqual(shortInvoice.allocatedTotal, 100);
+assert.strictEqual(shortInvoice.invoiceTotal, 250);
+assert.strictEqual(shortInvoice.difference, 150);
+assert.strictEqual(shortInvoice.totalsMatch, false);
+
+const inclOnly = parsePaintInvoiceText(`
+S260001A
+1 R100.00 0,00% 15,00% R100.00 R115.00
+Amount due R115.00
+`, { preferOrderNumbers: ["S260001 A"] });
+assert.strictEqual(inclOnly.allocatedTotal, 100);
+assert.strictEqual(inclOnly.totalsSource, "footer-incl");
+assert.ok(Math.abs(inclOnly.invoiceTotal - 100) < 0.02);
+assert.strictEqual(inclOnly.totalsMatch, true);
+
 console.log("paint-invoice-parse.test.js ok");

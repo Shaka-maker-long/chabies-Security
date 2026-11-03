@@ -8,11 +8,14 @@
  * split orders: S260249 A … S260249 L, with the line excl total split across them.
  */
 
-const { formatOrderId, parseMoney, money, formatRand } = require("./db");
+const { formatOrderId, parseMoney, money, formatRand, VAT_RATE } = require("./db");
 
-// Letter split orders: "S260249 A", "S260249(A-L)", or glued "S260214A-F/G BLACK".
+// Letter split orders: "S260249 A", "S260249(A-L)", or glued "S260001A" / "S260214A-F/G BLACK".
 // Do not eat the "S" from "SD-CABINET…".
-const ORDER_TOKEN_RE = /\bS\d{5,}(?:\([A-Za-z0-9,-]+\)|[A-Z](?=-|\s|$)| \s+[A-Z](?![A-Z]))?/gi;
+const ORDER_TOKEN_RE = new RegExp(
+  "\\bS\\d{5,}(?:\\([A-Za-z0-9,-]+\\)|[A-Z](?=[\\s\\/,;-]|$)|\\s+[A-Z](?![A-Z]))?",
+  "gi"
+);
 // R2,219.80 or R2219.80 (must not stop at R2,21)
 const RAND_NUM = "(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:[.,]\\d{2})";
 // Spaces are often missing in PDF extraction: 1R877.500,00%15,00%R877.50R1,009.13
@@ -50,7 +53,7 @@ function expandOrderRef(raw) {
   if (!s) return { base: "", letters: [], orderNumbers: [] };
   // No trailing \b — it would stop at S260249 before "(A-L)" because "(" is a boundary.
   // Glued letter (S260214A-F/G) or spaced letter (S260249 A). Never "S" from "SD-CABINET…".
-  const m = s.match(/\b(S\d{5,})(?:\(([A-Za-z0-9,-]+)\))?(?:(?=[A-Z](?:-|\s|$))([A-Z]))?(?:\s+([A-Z])(?![A-Z]))?/);
+  const m = s.match(/\b(S\d{5,})(?:\(([A-Za-z0-9,-]+)\))?(?:(?=[A-Z](?:-|\s|\/|,|;|$))([A-Z]))?(?:\s+([A-Z])(?![A-Z]))?/);
   if (!m) {
     const id = formatOrderId(s);
     return { base: id, letters: [], orderNumbers: id ? [id] : [] };
@@ -131,6 +134,79 @@ function skuFamilyFromText(text) {
   return null;
 }
 
+function randAmountsIn(text) {
+  const re = new RegExp("R\\s*" + RAND_NUM, "gi");
+  const out = [];
+  let m;
+  const src = String(text || "");
+  while ((m = re.exec(src))) {
+    const n = parseRandToken(m[0]);
+    if (n != null) out.push(n);
+  }
+  return out;
+}
+
+/**
+ * Invoice footer excl (and incl if present). Skips qty/price line items.
+ * Ultimate invoices: Subtotal R1,374.00 / VAT 15% / Total R1,580.10
+ */
+function extractDocumentTotals(text) {
+  const lines = collapsePdfText(text).split(/\n+/).map((l) => l.trim()).filter(Boolean);
+  let labeledExcl = null;
+  let labeledIncl = null;
+  const start = Math.max(0, lines.length - 30);
+  for (let i = lines.length - 1; i >= start; i--) {
+    const line = lines[i];
+    const looksPriced = QTY_PRICE_TAIL_RE.test(line);
+    const labeled = /sub\s*-?\s*totals?|totals?\s*(?:excl|ex\s*vat)|amount\s*excl|excl(?:uding)?\s*vat|(?:grand\s*)?totals?|amount\s*(?:due|payable)|incl(?:uding)?\s*vat|\bvat\b/i.test(line);
+    if (looksPriced && !labeled) continue;
+    const amounts = randAmountsIn(line);
+    if (!amounts.length) continue;
+    const amount = amounts[amounts.length - 1];
+    if (/sub\s*-?\s*totals?|totals?\s*(?:excl|ex\s*vat)|amount\s*excl|excl(?:uding)?\s*vat/i.test(line)) {
+      labeledExcl = amount;
+      continue;
+    }
+    if (/^\s*vat\b|\bvat\s*\d/i.test(line) && !/total/i.test(line)) continue;
+    if (/(?:grand\s*)?totals?|amount\s*(?:due|payable)|incl(?:uding)?\s*vat/i.test(line)) {
+      labeledIncl = amount;
+    }
+  }
+  let invoiceExcl = labeledExcl;
+  let source = labeledExcl != null ? "footer-excl" : "";
+  if (invoiceExcl == null && labeledIncl != null) {
+    invoiceExcl = Number(money(labeledIncl / (1 + VAT_RATE)));
+    source = "footer-incl";
+  }
+  return {
+    labeledExcl: labeledExcl == null ? null : Number(money(labeledExcl)),
+    labeledIncl: labeledIncl == null ? null : Number(money(labeledIncl)),
+    invoiceExcl: invoiceExcl == null ? null : Number(money(invoiceExcl)),
+    source
+  };
+}
+
+function totalsClose(a, b) {
+  return Math.abs(Number(money(a || 0)) - Number(money(b || 0))) < 0.02;
+}
+
+function emptyTotals() {
+  return {
+    invoiceTotal: 0,
+    invoiceTotalLabel: formatRand(0),
+    allocatedTotal: 0,
+    allocatedTotalLabel: formatRand(0),
+    unmatchedTotal: 0,
+    unmatchedTotalLabel: formatRand(0),
+    difference: 0,
+    differenceLabel: formatRand(0),
+    totalsMatch: true,
+    totalsSource: "priced-lines",
+    labeledExcl: null,
+    labeledIncl: null
+  };
+}
+
 /** Split cents across n orders so the sum still equals the line total. */
 function splitCostShares(total, n) {
   const count = Math.max(1, n | 0);
@@ -159,7 +235,7 @@ function parsePaintInvoiceText(text, opts) {
 
   const raw = relaxInvoiceText(collapsePdfText(text));
   if (!raw) {
-    return {
+    return Object.assign({
       ok: false,
       error: "No text found in that PDF. Export a text PDF (not a photo scan).",
       allocations: [],
@@ -167,7 +243,7 @@ function parsePaintInvoiceText(text, opts) {
       orderTokens: [],
       grandTotal: 0,
       grandTotalLabel: formatRand(0)
-    };
+    }, emptyTotals());
   }
 
   const lines = raw.split(/\n+/).map((l) => l.trim()).filter(Boolean);
@@ -406,7 +482,12 @@ function parsePaintInvoiceText(text, opts) {
     unmatchedLines.length = 0;
   }
 
-  const grandTotal = list.reduce((sum, row) => sum + Number(row.cost || 0), 0);
+  const allocatedTotal = list.reduce((sum, row) => sum + Number(row.cost || 0), 0);
+  const unmatchedTotal = unmatchedLines.reduce((sum, row) => sum + Number(row.lineExcl || 0), 0);
+  const pricedTotal = Number(money(allocatedTotal + unmatchedTotal));
+  const footer = extractDocumentTotals(raw);
+  const invoiceTotal = footer.invoiceExcl != null ? footer.invoiceExcl : pricedTotal;
+  const difference = Number(money(invoiceTotal - allocatedTotal));
   const tokenSeen = {};
   const orderTokens = [];
   extractOrderTokens(raw).forEach((id) => {
@@ -427,8 +508,22 @@ function parsePaintInvoiceText(text, opts) {
     orderTokens,
     allocations: list,
     unmatchedLines,
-    grandTotal: Number(money(grandTotal)),
-    grandTotalLabel: formatRand(grandTotal),
+    grandTotal: Number(money(allocatedTotal)),
+    grandTotalLabel: formatRand(allocatedTotal),
+    invoiceTotal: Number(money(invoiceTotal)),
+    invoiceTotalLabel: formatRand(invoiceTotal),
+    allocatedTotal: Number(money(allocatedTotal)),
+    allocatedTotalLabel: formatRand(allocatedTotal),
+    unmatchedTotal: Number(money(unmatchedTotal)),
+    unmatchedTotalLabel: formatRand(unmatchedTotal),
+    pricedTotal,
+    pricedTotalLabel: formatRand(pricedTotal),
+    difference,
+    differenceLabel: formatRand(difference),
+    totalsMatch: totalsClose(invoiceTotal, allocatedTotal),
+    totalsSource: footer.source || "priced-lines",
+    labeledExcl: footer.labeledExcl,
+    labeledIncl: footer.labeledIncl,
     textPreview: raw.slice(0, 1600)
   };
 }
@@ -453,6 +548,7 @@ module.exports = {
   skuFamilyFromText,
   relaxInvoiceText,
   splitCostShares,
+  extractDocumentTotals,
   parsePaintInvoiceText,
   extractPdfText,
   parsePaintInvoiceBuffer
