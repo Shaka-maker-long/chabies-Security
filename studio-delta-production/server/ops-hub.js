@@ -5,6 +5,7 @@ const shop = require("./shop-status");
 const orderDash = require("./order-dashboard");
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const FORECAST_FROM = "AUG 2026";
 
 function sastYear(d) {
   const x = d instanceof Date ? d : new Date();
@@ -149,6 +150,7 @@ function build(query) {
   return {
     year,
     months,
+    forecastFrom: FORECAST_FROM,
     enquiries,
     orders,
     enquiryCount: enquiries.length,
@@ -158,6 +160,7 @@ function build(query) {
 
 module.exports = {
   MONTHS,
+  FORECAST_FROM,
   monthTag,
   quoteToken,
   quoteTokens,

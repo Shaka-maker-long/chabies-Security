@@ -82,7 +82,7 @@
         <a href="/orders">Orders</a>
       </nav>
       <h1>Studio Delta // <span>2026 Ops hub</span></h1>
-      <p class="lede">Conversion funnel only counts orders that share a quote number with a 2026 enquiry. Walk-in SOQ jobs, website quotes, and orders with no quote stay in total revenue — they are not conversions. No ad-spend sheet.</p>
+      <p class="lede">Conversion funnel only counts orders that share a quote number with a 2026 enquiry. Walk-in SOQ jobs, website quotes, and orders with no quote stay in total revenue — they are not conversions. The forecast trains from August 2026, when office data is complete. No ad-spend sheet.</p>
     </div>
     <div class="tools">
       <label><input type="checkbox" id="showEnqQuo" checked onchange="applyFilters()"> Show enquiries &amp; quotes</label>
@@ -198,6 +198,7 @@
   <script>
     const zar = new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR", maximumFractionDigits: 0 });
     let ENQ_DATA = [], ORDER_DATA = [], ENQ_MAP = {}, ORDER_MAP = {}, MONTHS = [];
+    let FORECAST_FROM = "AUG 2026";
     let charts = {};
     let currentModal = {};
     let currentForecastState = null;
@@ -236,6 +237,7 @@
         const j = await r.json();
         if (!j.ok) throw new Error(j.error || "Could not load ops hub");
         MONTHS = j.months || [];
+        FORECAST_FROM = j.forecastFrom || "AUG 2026";
         ENQ_DATA = j.enquiries || [];
         ORDER_DATA = j.orders || [];
         ENQ_MAP = {};
@@ -359,15 +361,29 @@
       });
     }
 
+    function fromForecastMonth(tag) {
+      const start = MONTHS.indexOf(FORECAST_FROM);
+      const i = MONTHS.indexOf(tag);
+      if (start < 0) return true;
+      return i >= start;
+    }
     function runForecast(globalEnq, globalOrd) {
-      const active = MONTHS.filter((m) => globalEnq.some((d) => d.month === m) || globalOrd.some((d) => d.month === m));
-      if (active.length < 1) {
-        document.getElementById("aiHeadline").textContent = "Not enough 2026 data for a forecast.";
+      const start = MONTHS.indexOf(FORECAST_FROM);
+      const withData = MONTHS.map((m, i) => ({ m, i })).filter((x) =>
+        (start < 0 || x.i >= start) &&
+        (globalEnq.some((d) => d.month === x.m) || globalOrd.some((d) => d.month === x.m))
+      );
+      if (!withData.length) {
+        document.getElementById("aiHeadline").textContent = "Not enough data from " + FORECAST_FROM + " for a forecast.";
         document.getElementById("aiConfidence").textContent = "Reliability: --%";
         document.getElementById("aiPrediction").innerHTML = "";
         document.getElementById("aiDrivers").innerHTML = "";
+        document.getElementById("aiWarnings").innerHTML = "<div class='warn'>Office data is only treated as complete from " + esc(FORECAST_FROM) + ".</div>";
         return;
       }
+      const lastI = withData[withData.length - 1].i;
+      const firstI = withData[0].i;
+      const active = MONTHS.slice(firstI, lastI + 1);
       const hist = active.map((m) => {
         const mE = globalEnq.filter((e) => e.month === m);
         const mO = globalOrd.filter((o) => o.month === m);
@@ -398,13 +414,13 @@
       const wmaAOV = getWMA(use.map((h) => h.aov));
       const wmaOnline = getWMA(use.map((h) => h.rev - h.linkedRev));
       const modelB = (nextEnqs * wmaQR * wmaOR * wmaAOV) + wmaOnline;
-      const open = globalEnq.filter((e) => e.is_q && !e.isLinked);
+      const open = globalEnq.filter((e) => e.is_q && !e.isLinked && fromForecastMonth(e.month));
       let ttc = 0, ttcN = 0;
-      globalOrd.filter((o) => o.isLinked).forEach((o) => {
+      globalOrd.filter((o) => o.isLinked && fromForecastMonth(o.month)).forEach((o) => {
         const em = ENQ_MAP[o.quoteNo] && ENQ_MAP[o.quoteNo].month;
         const iE = MONTHS.indexOf(em);
         const iO = MONTHS.indexOf(o.month);
-        if (iE > -1 && iO >= iE) { ttc += iO - iE; ttcN += 1; }
+        if (iE > -1 && iO >= iE && fromForecastMonth(em)) { ttc += iO - iE; ttcN += 1; }
       });
       const avgTTC = ttcN ? ttc / ttcN : 0;
       const velocity = 1 / (avgTTC + 1);
@@ -478,9 +494,9 @@
       document.getElementById("aiHeadline").textContent = incomplete
         ? ("End-of-month pacing for " + (partial && partial.month))
         : ("Ensemble forecast: " + nextM);
-      let warn = "";
+      let warn = "<div class='warn'>Forecast trains from " + esc(FORECAST_FROM) + " onwards. Earlier months stay on the funnel and trend, not in the model.</div>";
       if (incomplete) warn += "<div class='warn'>" + esc(partial.month) + " looks incomplete. Forecast treats it as in progress.</div>";
-      else if (use.length < 3) warn += "<div class='warn'>Fewer than 3 complete months — forecast is a simple average.</div>";
+      else if (use.length < 3) warn += "<div class='warn'>Fewer than 3 complete months from " + esc(FORECAST_FROM) + " — forecast is a simple average.</div>";
       if (dead.length) warn += "<div class='warn'>" + dead.length + " open quote" + (dead.length === 1 ? "" : "s") + " older than " + maxAge + " month" + (maxAge === 1 ? "" : "s") + " are treated as stale and left out of pipeline.</div>";
       document.getElementById("aiWarnings").innerHTML = warn;
       let pace = "";
@@ -526,7 +542,7 @@
       box.hidden = false;
       if (!st) { box.textContent = "Load the hub first so the forecast has office data to read."; return; }
       if (!q) { box.textContent = "Ask why the forecast moved, what the risks are, or how conversion and pipeline feed the number."; return; }
-      const bits = [];
+      const bits = ["The model trains from " + FORECAST_FROM + " only; earlier months stay on the funnel and trend."];
       if (/why|down|drop|low|risk/.test(q)) {
         bits.push(st.incomplete
           ? (st.partial.month + " is still in progress, so the engine is pacing to EOM " + zar.format(st.originalForecast) + " rather than treating logged " + zar.format(st.logged) + " as the full month.")

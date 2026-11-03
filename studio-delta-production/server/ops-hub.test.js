@@ -103,6 +103,8 @@ db.upsertOrder({
 
 const data = hub.build({ year: 2026 });
 assert.strictEqual(data.year, 2026);
+assert.strictEqual(data.forecastFrom, "AUG 2026");
+assert.strictEqual(hub.FORECAST_FROM, "AUG 2026");
 assert.strictEqual(data.enquiries.length, 3);
 assert.strictEqual(data.orders.length, 4, "cancelled orders stay off the hub");
 const ada = data.enquiries.find((e) => e.no === "E1001" || e.client === "Ada");
@@ -147,5 +149,8 @@ assert.ok(html.indexOf("Reset sliders") !== -1);
 assert.ok(html.indexOf("convertedQuotes") !== -1);
 assert.ok(html.indexOf("enquiry quote numbers only") !== -1);
 assert.ok(html.indexOf("or a SOQ") === -1);
+assert.ok(html.indexOf("AUG 2026") !== -1);
+assert.ok(html.indexOf("fromForecastMonth") !== -1);
+assert.ok(html.indexOf("trains from") !== -1);
 
 console.log("ops-hub.test.js ok");
