@@ -61,11 +61,11 @@ function enquiryQuotes(row) {
 }
 
 function isQuoted(row) {
-  const status = String((row && row.status) || "").toUpperCase();
-  if (status.indexOf("QUOTE") !== -1 || status.indexOf("ORDER") !== -1 || status.indexOf("PAID") !== -1) return true;
-  if (status.indexOf("FOLLOWED UP") !== -1 || status === "COSTED" || status === "COSTING") return true;
-  if (String((row && row.date_quoted) || "").trim() && String(row.date_quoted).trim() !== "-") return true;
   return enquiryQuotes(row).length > 0;
+}
+
+function isSoqToken(token) {
+  return String(token || "").indexOf("SOQ") === 0;
 }
 
 function enquiryRev(row) {
@@ -122,17 +122,19 @@ function build(query) {
     const month = monthTag(row.month_of_sale, sale || row.payment_date);
     if (!month || month.indexOf(yearBit) === -1) return;
     const quoteNo = quoteToken(row.quote_number);
-    const linked = !!(quoteNo && (quoteSet[quoteNo] || quoteNo.indexOf("SOQ") === 0));
+    const soq = isSoqToken(quoteNo);
+    const linked = !!(quoteNo && quoteSet[quoteNo]);
     orders.push({
       no: row.order_number || "",
       month,
       client: String(row.client_name || "").trim() || "Unknown",
-      source: String(row.source || "").trim() || (quoteNo.indexOf("SOQ") === 0 ? "Offline Direct" : (quoteNo ? "Unknown" : "Unknown")),
+      source: String(row.source || "").trim() || (soq ? "Offline Direct" : (quoteNo ? "Website" : "Unknown")),
       quoteNo,
       status: row.status || "",
       rev: orderRev(row),
       date: sale ? db.formatPaymentDate(sale) : String(row.payment_date || ""),
-      isLinked: linked
+      isLinked: linked,
+      isSoq: soq
     });
   });
 
@@ -161,5 +163,6 @@ module.exports = {
   quoteTokens,
   enquiryQuotes,
   isQuoted,
+  isSoqToken,
   build
 };
