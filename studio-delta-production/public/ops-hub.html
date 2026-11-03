@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — 2026 Ops hub</title>
+  <script src="/sd-pwa.js?v=pwa-committed-banner"></script>
+  <script src="/vendor/chartjs/chart.umd.min.js"></script>
+  <style>
+    :root { --ink:#000; --muted:#71717a; --bg:#f9f9f9; --blue:#3b82f6; --green:#22c55e; --red:#ef4444; --line:#e4e4e7; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); font-family: Inter, system-ui, sans-serif; color:var(--ink); }
+    header.hub { display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; padding:12px 16px; background:#fff; border-bottom:2px solid #000; }
+    header.hub h1 { margin:0; font-family: Outfit, Inter, sans-serif; font-size:18px; letter-spacing:.08em; text-transform:uppercase; }
+    header.hub h1 span { font-weight:400; letter-spacing:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:720px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    select, input[type=search], button { font:inherit; font-size:13px; }
+    select { border:1px solid #000; background:#fff; padding:6px 8px; }
+    button { border:1px solid #000; background:#000; color:#fff; padding:6px 12px; font-weight:700; cursor:pointer; }
+    button.ghost { background:#fff; color:#000; }
+    .page { padding:16px; }
+    .card { background:#fff; border:1px solid var(--line); padding:16px; margin-bottom:12px; }
+    .label { display:block; font-size:11px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+    .funnel { display:grid; grid-template-columns:repeat(6,1fr); gap:10px; text-align:center; }
+    .funnel b { display:block; font-size:22px; }
+    .funnel span { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; }
+    .sales { background:#000; color:#fff; }
+    .sales .label { color:#aaa; }
+    .sales b { font-size:28px; }
+    .row { display:grid; grid-template-columns:2fr 1fr; gap:12px; }
+    .trend { height:480px; }
+    .ai { background:#0f172a; color:#e2e8f0; padding:16px; margin-bottom:12px; }
+    .ai .label { color:#94a3b8; }
+    .pred { background:#1e293b; border:1px solid #334155; padding:12px; }
+    .pred b { font-size:22px; color:#fff; }
+    .sliders label { display:flex; justify-content:space-between; font-size:12px; margin:8px 0 2px; }
+    .sliders input { width:100%; }
+    .impact { background:#0f172a; border-left:3px solid var(--blue); padding:10px; margin-top:10px; }
+    .diag { font-size:13px; border-left:3px solid var(--blue); padding-left:10px; margin:6px 0; }
+    .diag.good { border-color:var(--green); }
+    .diag.bad { border-color:var(--red); }
+    .warn { background:rgba(245,158,11,.12); border-left:3px solid #f59e0b; color:#fde68a; padding:8px 10px; margin:8px 0; font-size:13px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:left; }
+    .mask { position:fixed; inset:0; background:rgba(0,0,0,.45); display:none; z-index:40; padding:20px; overflow:auto; }
+    .mask.open { display:block; }
+    .modal { background:#fff; max-width:1100px; margin:0 auto; border:2px solid #000; }
+    .modal header { display:flex; justify-content:space-between; background:#000; color:#fff; padding:12px 16px; }
+    .modal .body { padding:16px; display:grid; grid-template-columns:2fr 3fr; gap:16px; }
+    .clients { max-height:220px; overflow:auto; border:1px solid var(--line); padding:8px; background:#fff; min-width:220px; }
+    .load, .err { padding:40px; text-align:center; color:var(--muted); }
+    .err { color:#b42318; }
+    @media (max-width: 900px) {
+      .row, .funnel, .modal .body { grid-template-columns:1fr; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hub">
+    <div>
+      <nav class="tabs">
+        <a class="on" href="/ops">Ops hub</a>
+        <a href="/marketing">Campaign income</a>
+        <a href="/enquiries/dashboard">Enquiries</a>
+        <a href="/orders">Orders</a>
+      </nav>
+      <h1>Studio Delta // <span>2026 Ops hub</span></h1>
+      <p class="lede">Conversion funnel and revenue from office enquiries and orders. Linked orders share a quote number with an enquiry (or a SOQ). Direct/website orders sit in total revenue only. No ad-spend sheet.</p>
+    </div>
+    <div class="tools">
+      <label><input type="checkbox" id="showEnqQuo" checked onchange="applyFilters()"> Show enquiries &amp; quotes</label>
+      <select id="metricFilter" onchange="applyFilters()">
+        <option value="COUNT">Count</option>
+        <option value="REVENUE">Revenue</option>
+      </select>
+      <select id="monthFilter" onchange="applyFilters()"></select>
+      <details>
+        <summary>Exclude clients</summary>
+        <input type="search" id="clientSearch" placeholder="Search client" oninput="filterClientDropdown()">
+        <div class="clients" id="clientList"></div>
+      </details>
+      <button type="button" class="ghost" onclick="load()">Refresh</button>
+    </div>
+  </header>
+  <div class="page">
+    <div id="load" class="load">Loading ops hub…</div>
+    <div id="err" class="err" hidden></div>
+    <div id="app" hidden>
+      <div class="ai" id="aiBox">
+        <div class="label">Forecast &amp; diagnostic</div>
+        <div id="aiHeadline" style="font-weight:800;font-size:18px;color:#fff;margin-bottom:8px;">Working…</div>
+        <div id="aiWarnings"></div>
+        <div class="row">
+          <div id="aiPrediction"></div>
+          <div>
+            <div class="label">Model breakdown</div>
+            <div id="aiModels"></div>
+            <div class="sliders">
+              <div class="label" style="margin-top:12px">What if?</div>
+              <label><span>Enquiries volume</span><span id="valScenEnq">0%</span></label>
+              <input type="range" id="scenEnq" min="-50" max="100" value="0" oninput="updateScenario()">
+              <label><span>Quote-to-order conversion</span><span id="valScenConv">0%</span></label>
+              <input type="range" id="scenConv" min="-50" max="50" value="0" oninput="updateScenario()">
+              <label><span>Average order value</span><span id="valScenAOV">0%</span></label>
+              <input type="range" id="scenAOV" min="-30" max="50" value="0" oninput="updateScenario()">
+              <div class="impact">Expected change vs base forecast<div id="scenarioResult" style="font-size:22px;font-weight:800;color:#22c55e">+ R 0</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="card">
+          <span class="label" style="color:var(--blue)">2026 Linked conversion funnel (excludes direct/online orders)</span>
+          <div class="funnel">
+            <div><b id="fEnq">0</b><span>Enquiries</span></div>
+            <div><b id="fQuo">0</b><span>Quotes</span></div>
+            <div><b id="fOrd">0</b><span>Linked orders</span></div>
+            <div><b id="pEqQ" style="color:var(--blue)">0%</b><span>Enq to quote</span></div>
+            <div><b id="pQtoO" style="color:var(--green)">0%</b><span>Quote to order</span></div>
+            <div><b id="pAll">0%</b><span>Closing rate</span></div>
+          </div>
+        </div>
+        <div class="card sales">
+          <span class="label">2026 total revenue (excl VAT)</span>
+          <b id="totalSalesVal">R 0</b>
+          <div class="label">Offline &amp; online combined</div>
+        </div>
+      </div>
+      <div class="card">
+        <span class="label">2026 performance trend (click a point to drill down)</span>
+        <div class="trend"><canvas id="trendChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+  <div class="mask" id="drillMask" onclick="if(event.target.id==='drillMask')closeDrill()">
+    <div class="modal">
+      <header>
+        <h2 id="drillTitle" style="margin:0;font-size:14px;letter-spacing:.06em;text-transform:uppercase">Detail</h2>
+        <button type="button" class="ghost" onclick="closeDrill()">Close</button>
+      </header>
+      <div class="body">
+        <div>
+          <label id="convFilter" hidden><input type="checkbox" id="excludeNotConv" onchange="showDrillDown(true)"> Show converted only</label>
+          <span class="label" id="pieLifeTitle">Distribution</span>
+          <div style="height:220px"><canvas id="pieLifecycle"></canvas></div>
+          <span class="label">Source</span>
+          <div style="height:220px"><canvas id="pieSource"></canvas></div>
+        </div>
+        <div>
+          <span class="label" id="tableTitle">Details</span>
+          <div style="max-height:520px;overflow:auto">
+            <table>
+              <thead id="tableHead"></thead>
+              <tbody id="tableBody"></tbody>
+            </table>
+          </div>
+          <div style="background:#000;color:#fff;padding:12px;margin-top:12px;display:flex;justify-content:space-between">
+            <span id="footerLabel">Total</span><b id="footerValue"></b>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="/office-auth.js?v=login-msg-3"></script>
+  <script>
+    const zar = new Intl.NumberFormat("en-ZA", { style: "currency", currency: "ZAR", maximumFractionDigits: 0 });
+    let ENQ_DATA = [], ORDER_DATA = [], ENQ_MAP = {}, ORDER_MAP = {}, MONTHS = [];
+    let charts = {};
+    let currentModal = {};
+    let currentForecastState = null;
+    let cachedGlobalEnq = [], cachedGlobalOrd = [];
+
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+    }
+    function average(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+    function getWMA(arr) {
+      if (!arr.length) return 0;
+      let w = 0, v = 0;
+      for (let i = 0; i < arr.length; i++) { w += i + 1; v += arr[i] * (i + 1); }
+      return v / w;
+    }
+    function predictTimeSeries(data, ahead) {
+      if (!data.length) return [0];
+      if (data.length < 3) return [getWMA(data)];
+      let alpha = 0.4, beta = 0.3, level = data[0], trend = data[1] - data[0];
+      for (let i = 1; i < data.length; i++) {
+        const last = level;
+        level = alpha * data[i] + (1 - alpha) * (last + trend);
+        trend = beta * (level - last) + (1 - beta) * trend;
+      }
+      const out = [];
+      for (let h = 1; h <= ahead; h++) out.push(Math.max(0, level + h * trend));
+      return out;
+    }
+
+    async function load() {
+      document.getElementById("load").hidden = false;
+      document.getElementById("err").hidden = true;
+      document.getElementById("app").hidden = true;
+      try {
+        const r = await sdOfficeFetch("/api/office/ops-hub?year=2026");
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || "Could not load ops hub");
+        MONTHS = j.months || [];
+        ENQ_DATA = j.enquiries || [];
+        ORDER_DATA = j.orders || [];
+        ENQ_MAP = {};
+        ENQ_DATA.forEach((e) => {
+          (e.quotes || [e.quoteNo]).forEach((q) => {
+            if (q) ENQ_MAP[q] = { month: e.month, source: e.source };
+          });
+        });
+        ORDER_MAP = {};
+        ORDER_DATA.forEach((o) => { if (o.quoteNo) ORDER_MAP[o.quoteNo] = o.month; });
+        populateFilters();
+        populateClients();
+        applyFilters();
+        document.getElementById("load").hidden = true;
+        document.getElementById("app").hidden = false;
+      } catch (e) {
+        document.getElementById("load").hidden = true;
+        const err = document.getElementById("err");
+        err.hidden = false;
+        err.textContent = (e && e.message) || "Could not load ops hub.";
+      }
+    }
+
+    function populateFilters() {
+      const unique = [...new Set(ENQ_DATA.map((d) => d.month).concat(ORDER_DATA.map((d) => d.month)))];
+      const sel = document.getElementById("monthFilter");
+      sel.innerHTML = '<option value="ALL">2026 full year</option>';
+      MONTHS.filter((m) => unique.indexOf(m) !== -1).forEach((m) => {
+        sel.innerHTML += "<option value=\"" + esc(m) + "\">" + esc(m) + "</option>";
+      });
+    }
+    function populateClients() {
+      const names = [...new Set(ENQ_DATA.concat(ORDER_DATA).map((d) => d.client).filter((c) => c && c !== "Unknown"))].sort();
+      window.UNIQUE_CLIENTS = names;
+      document.getElementById("clientList").innerHTML = names.map((c, i) =>
+        "<label><input class='client-cb' type='checkbox' data-i='" + i + "' onchange='applyFilters()'> " + esc(c) + "</label><br>"
+      ).join("");
+    }
+    function filterClientDropdown() {
+      const term = document.getElementById("clientSearch").value.toLowerCase();
+      document.querySelectorAll("#clientList label").forEach((el) => {
+        el.style.display = el.textContent.toLowerCase().indexOf(term) === -1 ? "none" : "";
+      });
+    }
+    function excludedClients() {
+      return Array.from(document.querySelectorAll(".client-cb:checked")).map((cb) => window.UNIQUE_CLIENTS[Number(cb.getAttribute("data-i"))]);
+    }
+    function applyFilters() {
+      const m = document.getElementById("monthFilter").value;
+      const skip = excludedClients();
+      const globalEnq = ENQ_DATA.filter((d) => skip.indexOf(d.client) === -1);
+      const globalOrd = ORDER_DATA.filter((d) => skip.indexOf(d.client) === -1);
+      cachedGlobalEnq = globalEnq;
+      cachedGlobalOrd = globalOrd;
+      const monthEnq = globalEnq.filter((d) => m === "ALL" || d.month === m);
+      const monthOrd = globalOrd.filter((d) => m === "ALL" || d.month === m);
+      const tEnq = monthEnq.length;
+      const tQuo = monthEnq.filter((d) => d.is_q).length;
+      const linked = monthOrd.filter((o) => o.isLinked);
+      document.getElementById("fEnq").textContent = tEnq;
+      document.getElementById("fQuo").textContent = tQuo;
+      document.getElementById("fOrd").textContent = linked.length;
+      document.getElementById("totalSalesVal").textContent = zar.format(monthOrd.reduce((a, b) => a + Number(b.rev || 0), 0));
+      document.getElementById("pEqQ").textContent = tEnq ? Math.round(tQuo / tEnq * 100) + "%" : "0%";
+      document.getElementById("pQtoO").textContent = tQuo ? Math.round(linked.length / tQuo * 100) + "%" : "0%";
+      document.getElementById("pAll").textContent = tEnq ? Math.round(linked.length / tEnq * 100) + "%" : "0%";
+      updateTrendChart(globalEnq, globalOrd);
+      runForecast(globalEnq, globalOrd);
+    }
+
+    function updateTrendChart(globalEnq, globalOrd) {
+      const active = MONTHS.filter((m) => ENQ_DATA.some((d) => d.month === m) || ORDER_DATA.some((d) => d.month === m));
+      const metric = document.getElementById("metricFilter").value;
+      const show = document.getElementById("showEnqQuo").checked;
+      const eData = [], qData = [], totalOrd = [], off = [], on = [];
+      active.forEach((m) => {
+        const e = globalEnq.filter((d) => d.month === m);
+        const q = e.filter((d) => d.is_q);
+        const o = globalOrd.filter((d) => d.month === m);
+        const linked = o.filter((d) => d.isLinked);
+        const direct = o.filter((d) => !d.isLinked);
+        const val = (list) => metric === "REVENUE" ? list.reduce((s, x) => s + Number(x.rev || 0), 0) : list.length;
+        eData.push(val(e)); qData.push(val(q)); totalOrd.push(val(o)); off.push(val(linked)); on.push(val(direct));
+      });
+      const ds = [];
+      if (show) {
+        ds.push({ label: "Enquiries", data: eData, borderColor: "#d4d4d8", tension: 0.3, pointRadius: 3 });
+        ds.push({ label: "Quotes", data: qData, borderColor: "#3b82f6", tension: 0.3, pointRadius: 3 });
+      }
+      ds.push({ label: "Total orders", data: totalOrd, borderColor: "#000", borderWidth: 4, tension: 0.3, pointRadius: 5 });
+      ds.push({ label: "Offline orders", data: off, borderColor: "#71717a", borderWidth: 3, tension: 0.3, pointRadius: 5 });
+      ds.push({ label: "Online orders", data: on, borderColor: "#22c55e", borderWidth: 3, tension: 0.3, pointRadius: 5 });
+      if (charts.trend) charts.trend.destroy();
+      charts.trend = new Chart(document.getElementById("trendChart"), {
+        type: "line",
+        data: { labels: active, datasets: ds },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { tooltip: { callbacks: { label: (c) => (c.dataset.label || "") + ": " + (metric === "REVENUE" ? zar.format(c.parsed.y) : c.parsed.y) } } },
+          scales: { y: { ticks: { callback: (v) => metric === "REVENUE" ? "R " + Number(v).toLocaleString("en-ZA") : v } } },
+          onClick: (evt, el) => {
+            if (!el.length) return;
+            const label = charts.trend.data.datasets[el[0].datasetIndex].label;
+            currentModal = {
+              month: active[el[0].index],
+              type: /orders/i.test(label) ? "ORDER" : "ENQ",
+              label,
+              globalEnq, globalOrd
+            };
+            showDrillDown(false);
+          }
+        }
+      });
+    }
+
+    function runForecast(globalEnq, globalOrd) {
+      const active = MONTHS.filter((m) => globalEnq.some((d) => d.month === m) || globalOrd.some((d) => d.month === m));
+      if (active.length < 1) {
+        document.getElementById("aiHeadline").textContent = "Not enough 2026 data for a forecast.";
+        return;
+      }
+      const hist = active.map((m) => {
+        const mE = globalEnq.filter((e) => e.month === m);
+        const mO = globalOrd.filter((o) => o.month === m);
+        const linked = mO.filter((o) => o.isLinked);
+        const rev = mO.reduce((s, x) => s + Number(x.rev || 0), 0);
+        return {
+          month: m, rev, enq: mE.length, quo: mE.filter((e) => e.is_q).length, ord: mO.length,
+          linkedOrd: linked.length, linkedRev: linked.reduce((s, x) => s + Number(x.rev || 0), 0),
+          aov: mO.length ? rev / mO.length : 0
+        };
+      });
+      let incomplete = false;
+      let partial = null;
+      if (hist.length >= 2 && hist[hist.length - 1].rev < hist[hist.length - 2].rev * 0.85) {
+        incomplete = true;
+        partial = hist[hist.length - 1];
+      }
+      const train = incomplete ? hist.slice(0, -1) : hist;
+      const use = train.length ? train : hist;
+      const lastIdx = MONTHS.indexOf(use[use.length - 1].month);
+      const nextM = MONTHS[lastIdx + 1] || "JAN 2027";
+      const nextM2 = MONTHS[lastIdx + 2] || "FEB 2027";
+      const modelA = predictTimeSeries(use.map((h) => h.rev), 1)[0];
+      const nextEnqs = predictTimeSeries(use.map((h) => h.enq), 1)[0];
+      const wmaQR = getWMA(use.map((h) => h.enq ? h.quo / h.enq : 0));
+      const wmaOR = getWMA(use.map((h) => h.quo ? h.linkedOrd / h.quo : 0));
+      const wmaAOV = getWMA(use.map((h) => h.aov));
+      const wmaOnline = getWMA(use.map((h) => h.rev - h.linkedRev));
+      const modelB = (nextEnqs * wmaQR * wmaOR * wmaAOV) + wmaOnline;
+      const open = globalEnq.filter((e) => e.is_q && !e.isLinked);
+      let ttc = 0, ttcN = 0;
+      globalOrd.filter((o) => o.isLinked).forEach((o) => {
+        const em = ENQ_MAP[o.quoteNo] && ENQ_MAP[o.quoteNo].month;
+        const iE = MONTHS.indexOf(em);
+        const iO = MONTHS.indexOf(o.month);
+        if (iE > -1 && iO >= iE) { ttc += iO - iE; ttcN += 1; }
+      });
+      const avgTTC = ttcN ? ttc / ttcN : 0;
+      const velocity = 1 / (avgTTC + 1);
+      const maxAge = Math.ceil(avgTTC) + 2;
+      let pipe = 0;
+      open.forEach((q) => {
+        const age = Math.max(0, lastIdx + 1 - MONTHS.indexOf(q.month));
+        if (age <= maxAge) pipe += (Number(q.rev) > 0 ? Number(q.rev) : wmaAOV) * wmaOR * (1 - age / (maxAge + 1));
+      });
+      const modelC = (pipe * velocity) + wmaOnline;
+      let wA = 0.2, wB = 0.5, wC = 0.3;
+      if (use.length >= 4) {
+        const err = { A: [], B: [] };
+        for (let i = 3; i < use.length; i++) {
+          const sub = use.slice(0, i);
+          err.A.push(Math.abs(predictTimeSeries(sub.map((x) => x.rev), 1)[0] - use[i].rev));
+          const fb = (predictTimeSeries(sub.map((x) => x.enq), 1)[0] *
+            getWMA(sub.map((h) => h.enq ? h.quo / h.enq : 0)) *
+            getWMA(sub.map((h) => h.quo ? h.linkedOrd / h.quo : 0)) *
+            getWMA(sub.map((h) => h.aov))) + getWMA(sub.map((h) => h.rev - h.linkedRev));
+          err.B.push(Math.abs(fb - use[i].rev));
+        }
+        const a = 1 / (average(err.A) || 10000), b = 1 / (average(err.B) || 10000), c = b * 0.9;
+        const s = a + b + c;
+        wA = a / s; wB = b / s; wC = c / s;
+      }
+      const ensemble = modelA * wA + modelB * wB + modelC * wC;
+      currentForecastState = { baseEnqs: nextEnqs, baseQR: wmaQR, baseOR: wmaOR, baseAOV: wmaAOV, baseOnline: wmaOnline, originalForecast: ensemble };
+      document.getElementById("aiHeadline").textContent = incomplete
+        ? ("End-of-month pacing for " + (partial && partial.month))
+        : ("Ensemble forecast: " + nextM);
+      document.getElementById("aiWarnings").innerHTML = incomplete
+        ? "<div class='warn'>" + esc(partial.month) + " looks incomplete. Forecast treats it as in progress.</div>"
+        : (use.length < 3 ? "<div class='warn'>Fewer than 3 complete months — forecast is a simple average.</div>" : "");
+      document.getElementById("aiPrediction").innerHTML =
+        "<div class='pred'><div class='label'>Base projection " + esc(nextM) + (incomplete ? " (EOM)" : "") + "</div><b>" + zar.format(ensemble) + "</b>" +
+        "<div class='label' style='margin-top:10px'>Next month " + esc(nextM2) + "</div><div>" + zar.format(ensemble * 1.02) + "</div></div>";
+      document.getElementById("aiModels").innerHTML =
+        "<table><tr><th>Model</th><th>Projection</th><th>Weight</th></tr>" +
+        "<tr><td>Historical</td><td>" + zar.format(modelA) + "</td><td>" + Math.round(wA * 100) + "%</td></tr>" +
+        "<tr><td>Funnel driver</td><td>" + zar.format(modelB) + "</td><td>" + Math.round(wB * 100) + "%</td></tr>" +
+        "<tr><td>Open pipeline</td><td>" + zar.format(modelC) + "</td><td>" + Math.round(wC * 100) + "%</td></tr></table>";
+      updateScenario();
+    }
+
+    function updateScenario() {
+      if (!currentForecastState) return;
+      const pEnq = Number(document.getElementById("scenEnq").value) / 100;
+      const pConv = Number(document.getElementById("scenConv").value) / 100;
+      const pAOV = Number(document.getElementById("scenAOV").value) / 100;
+      document.getElementById("valScenEnq").textContent = (pEnq >= 0 ? "+" : "") + Math.round(pEnq * 100) + "%";
+      document.getElementById("valScenConv").textContent = (pConv >= 0 ? "+" : "") + Math.round(pConv * 100) + "%";
+      document.getElementById("valScenAOV").textContent = (pAOV >= 0 ? "+" : "") + Math.round(pAOV * 100) + "%";
+      const sDriver = (currentForecastState.baseEnqs * (1 + pEnq) * currentForecastState.baseQR * currentForecastState.baseOR * (1 + pConv) * currentForecastState.baseAOV * (1 + pAOV)) + currentForecastState.baseOnline;
+      const diff = sDriver - currentForecastState.originalForecast;
+      const el = document.getElementById("scenarioResult");
+      el.textContent = (diff >= 0 ? "+ " : "- ") + zar.format(Math.abs(diff));
+      el.style.color = diff >= 0 ? "#22c55e" : "#ef4444";
+    }
+
+    function showDrillDown() {
+      const { month: m, type, label, globalEnq, globalOrd } = currentModal;
+      document.getElementById("drillTitle").textContent = m + " — " + label;
+      const hideUnconv = document.getElementById("excludeNotConv").checked;
+      const life = {}, src = {};
+      const body = document.getElementById("tableBody");
+      body.innerHTML = "";
+      if (type === "ENQ") {
+        document.getElementById("convFilter").hidden = false;
+        let list = globalEnq.filter((e) => e.month === m);
+        if (label === "Quotes") list = list.filter((e) => e.is_q);
+        document.getElementById("tableHead").innerHTML = "<tr><th>Enq</th><th>Client</th><th>Source</th><th>Paid in</th></tr>";
+        list.forEach((e) => {
+          const paid = (e.quotes || [e.quoteNo]).map((q) => ORDER_MAP[q]).filter(Boolean)[0] || "NOT CONVERTED";
+          if (hideUnconv && paid === "NOT CONVERTED") return;
+          life[paid] = (life[paid] || 0) + 1;
+          src[e.source] = (src[e.source] || 0) + 1;
+          body.innerHTML += "<tr><td><b>" + esc(e.no) + "</b></td><td>" + esc(e.client) + "</td><td>" + esc(e.source) + "</td><td>" + esc(paid) + "</td></tr>";
+        });
+        document.getElementById("footerLabel").textContent = "Count";
+        document.getElementById("footerValue").textContent = Object.values(life).reduce((a, b) => a + b, 0);
+        pie("pieLifecycle", life, false);
+        pie("pieSource", src, false);
+      } else {
+        document.getElementById("convFilter").hidden = true;
+        let list = globalOrd.filter((o) => o.month === m);
+        if (/offline/i.test(label)) list = list.filter((o) => o.isLinked);
+        if (/online/i.test(label)) list = list.filter((o) => !o.isLinked);
+        document.getElementById("tableHead").innerHTML = "<tr><th>Order</th><th>Client</th><th>Origin</th><th>Value</th></tr>";
+        let sum = 0;
+        list.forEach((o) => {
+          sum += Number(o.rev || 0);
+          const origin = ENQ_MAP[o.quoteNo] ? ENQ_MAP[o.quoteNo].month : (o.isLinked ? "UNLINKED OFFLINE" : "DIRECT");
+          life[origin] = (life[origin] || 0) + Number(o.rev || 0);
+          src[o.source] = (src[o.source] || 0) + Number(o.rev || 0);
+          body.innerHTML += "<tr><td><b>" + esc(o.no) + "</b></td><td>" + esc(o.client) + "</td><td>" + esc(origin) + "</td><td>" + zar.format(o.rev) + "</td></tr>";
+        });
+        document.getElementById("footerLabel").textContent = "Total excl VAT";
+        document.getElementById("footerValue").textContent = zar.format(sum);
+        pie("pieLifecycle", life, true);
+        pie("pieSource", src, true);
+      }
+      document.getElementById("drillMask").classList.add("open");
+    }
+    function closeDrill() { document.getElementById("drillMask").classList.remove("open"); }
+    function pie(id, data, money) {
+      if (charts[id]) charts[id].destroy();
+      charts[id] = new Chart(document.getElementById(id), {
+        type: "doughnut",
+        data: { labels: Object.keys(data), datasets: [{ data: Object.values(data), backgroundColor: ["#000","#3b82f6","#22c55e","#71717a","#d4d4d8","#ef4444","#f59e0b"] }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: "bottom", labels: { boxWidth: 10, font: { size: 10 } } }, tooltip: { callbacks: { label: (c) => money ? c.label + ": " + zar.format(c.raw) : c.label + ": " + c.raw } } } }
+      });
+    }
+    sdRequireOffice("ops").then(load);
+  </script>
+</body>
+</html>

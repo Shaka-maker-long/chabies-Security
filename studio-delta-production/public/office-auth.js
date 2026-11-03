@@ -228,6 +228,7 @@ function sdMountOfficeShell(active) {
     ["/inventory", "inventory", "bi-box-seam", "Inventory Management"],
     ["/enquiries", "enquiries", "bi-journal-text", "Enquiries"],
     ["/marketing", "marketing", "bi-graph-up", "Marketing"],
+    ["/ops", "ops", "bi-speedometer2", "Ops hub"],
     ["/tasks", "tasks", "bi-check2-square", "My tasks"],
     ["/dropdowns", "dropdowns", "bi-list-ul", "Dropdowns"],
     ["/users", "users", "bi-person-plus", "Users", "users"],

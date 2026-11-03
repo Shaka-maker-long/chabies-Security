@@ -7,7 +7,7 @@ const css = fs.readFileSync(path.join(__dirname, "../public/office-shell.css"), 
 const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 
 const labels = [
-  "Home", "Orders", "Inventory Management", "Enquiries", "Marketing", "My tasks", "Dropdowns", "Users",
+  "Home", "Orders", "Inventory Management", "Enquiries", "Marketing", "Ops hub", "My tasks", "Dropdowns", "Users",
   "Task times", "Planning", "Reworks", "Debtors", "Production Tasks", "Production", "Workers", "Metrics",
   "QC Reports", "Delivery Forms", "Driver tracker", "Activity", "Schedule", "Log Out", "Change access code"
 ];
@@ -18,6 +18,8 @@ labels.forEach((label) => {
 assert.ok(js.indexOf("/enquiries") !== -1);
 assert.ok(js.indexOf("/marketing") !== -1);
 assert.ok(js.indexOf('"Marketing"') !== -1);
+assert.ok(js.indexOf("/ops") !== -1);
+assert.ok(js.indexOf('"Ops hub"') !== -1);
 assert.ok(js.indexOf("/tasks") !== -1);
 assert.ok(js.indexOf("Office schedule") === -1, "office schedule is an Orders subpage");
 assert.ok(js.indexOf("Glass rates") === -1, "glass rates is an Orders subpage");
@@ -42,6 +44,12 @@ assert.ok(indexJs.indexOf("/tasks/team") !== -1);
 assert.ok(indexJs.indexOf("/marketing") !== -1);
 assert.ok(officeJs.indexOf("/api/office/marketing/dashboard") !== -1);
 assert.ok(officeJs.indexOf("/api/office/marketing/dashboard/drill") !== -1);
+assert.ok(officeJs.indexOf("/api/office/ops-hub") !== -1);
+assert.ok(indexJs.indexOf("/ops") !== -1);
+const opsHtml = fs.readFileSync(path.join(__dirname, "../public/ops-hub.html"), "utf8");
+assert.ok(opsHtml.indexOf("2026 Linked conversion funnel") !== -1);
+assert.ok(opsHtml.indexOf("/api/office/ops-hub") !== -1);
+assert.ok(opsHtml.indexOf("Total Ad Spend") === -1);
 const marketingHtml = fs.readFileSync(path.join(__dirname, "../public/marketing-dashboard.html"), "utf8");
 assert.ok(marketingHtml.indexOf("Campaign income per month") !== -1);
 assert.ok(marketingHtml.indexOf("Weekly") !== -1);
