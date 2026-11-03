@@ -82,7 +82,7 @@
         <a href="/orders">Orders</a>
       </nav>
       <h1>Studio Delta // <span>2026 Ops hub</span></h1>
-      <p class="lede">Conversion funnel and revenue from office enquiries and orders. Linked orders share a quote number with an enquiry (or a SOQ). Direct/website orders sit in total revenue only. No ad-spend sheet.</p>
+      <p class="lede">Conversion funnel only counts orders that share a quote number with a 2026 enquiry. Walk-in SOQ jobs, website quotes, and orders with no quote stay in total revenue — they are not conversions. No ad-spend sheet.</p>
     </div>
     <div class="tools">
       <label><input type="checkbox" id="showEnqQuo" checked onchange="applyFilters()"> Show enquiries &amp; quotes</label>
@@ -142,20 +142,21 @@
       </div>
       <div class="row">
         <div class="card">
-          <span class="label" style="color:var(--blue)">2026 Linked conversion funnel (excludes direct/online orders)</span>
+          <span class="label" style="color:var(--blue)">2026 Linked conversion funnel (enquiry quote numbers only)</span>
           <div class="funnel">
             <div><b id="fEnq">0</b><span>Enquiries</span></div>
             <div><b id="fQuo">0</b><span>Quotes</span></div>
-            <div><b id="fOrd">0</b><span>Linked orders</span></div>
+            <div><b id="fOrd">0</b><span>Converted quotes</span></div>
             <div><b id="pEqQ" style="color:var(--blue)">0%</b><span>Enq to quote</span></div>
             <div><b id="pQtoO" style="color:var(--green)">0%</b><span>Quote to order</span></div>
             <div><b id="pAll">0%</b><span>Closing rate</span></div>
           </div>
+          <p class="lede" id="funnelNote" style="margin-top:10px;max-width:none">Rates use unique enquiries. Extra order lines (A/B) do not push conversion over 100%.</p>
         </div>
         <div class="card sales">
           <span class="label">2026 total revenue (excl VAT)</span>
           <b id="totalSalesVal">R 0</b>
-          <div class="label">Offline &amp; online combined</div>
+          <div class="label">Every 2026 order excl VAT — linked and unlinked</div>
         </div>
       </div>
       <div class="card">
@@ -293,14 +294,22 @@
       const monthOrd = globalOrd.filter((d) => m === "ALL" || d.month === m);
       const tEnq = monthEnq.length;
       const tQuo = monthEnq.filter((d) => d.is_q).length;
+      const convertedQuotes = monthEnq.filter((d) => d.is_q && d.isLinked).length;
+      const convertedEnq = monthEnq.filter((d) => d.isLinked).length;
       const linked = monthOrd.filter((o) => o.isLinked);
       document.getElementById("fEnq").textContent = tEnq;
       document.getElementById("fQuo").textContent = tQuo;
-      document.getElementById("fOrd").textContent = linked.length;
+      document.getElementById("fOrd").textContent = convertedQuotes;
       document.getElementById("totalSalesVal").textContent = zar.format(monthOrd.reduce((a, b) => a + Number(b.rev || 0), 0));
       document.getElementById("pEqQ").textContent = tEnq ? Math.round(tQuo / tEnq * 100) + "%" : "0%";
-      document.getElementById("pQtoO").textContent = tQuo ? Math.round(linked.length / tQuo * 100) + "%" : "0%";
-      document.getElementById("pAll").textContent = tEnq ? Math.round(linked.length / tEnq * 100) + "%" : "0%";
+      document.getElementById("pQtoO").textContent = tQuo ? Math.round(convertedQuotes / tQuo * 100) + "%" : "0%";
+      document.getElementById("pAll").textContent = tEnq ? Math.round(convertedEnq / tEnq * 100) + "%" : "0%";
+      const extraLines = Math.max(0, linked.length - convertedQuotes);
+      const unlinked = monthOrd.length - linked.length;
+      let note = "Rates use unique enquiries, so they cannot exceed 100%.";
+      if (extraLines) note += " " + extraLines + " extra order line" + (extraLines === 1 ? "" : "s") + " share a converted quote (A/B splits).";
+      if (unlinked) note += " " + unlinked + " order" + (unlinked === 1 ? "" : "s") + " have no matching enquiry quote and sit in total revenue only.";
+      document.getElementById("funnelNote").textContent = note;
       updateTrendChart(globalEnq, globalOrd);
       runForecast(globalEnq, globalOrd);
     }
@@ -314,10 +323,10 @@
         const e = globalEnq.filter((d) => d.month === m);
         const q = e.filter((d) => d.is_q);
         const o = globalOrd.filter((d) => d.month === m);
-        const linked = o.filter((d) => d.isLinked);
-        const direct = o.filter((d) => !d.isLinked);
+        const offRows = o.filter((d) => d.isSoq);
+        const onRows = o.filter((d) => !d.isSoq);
         const val = (list) => metric === "REVENUE" ? list.reduce((s, x) => s + Number(x.rev || 0), 0) : list.length;
-        eData.push(val(e)); qData.push(val(q)); totalOrd.push(val(o)); off.push(val(linked)); on.push(val(direct));
+        eData.push(val(e)); qData.push(val(q)); totalOrd.push(val(o)); off.push(val(offRows)); on.push(val(onRows));
       });
       const ds = [];
       if (show) {
@@ -365,7 +374,8 @@
         const linked = mO.filter((o) => o.isLinked);
         const rev = mO.reduce((s, x) => s + Number(x.rev || 0), 0);
         return {
-          month: m, rev, enq: mE.length, quo: mE.filter((e) => e.is_q).length, ord: mO.length,
+          month: m, rev, enq: mE.length,           quo: mE.filter((e) => e.is_q).length, ord: mO.length,
+          converted: mE.filter((e) => e.is_q && e.isLinked).length,
           linkedOrd: linked.length, linkedRev: linked.reduce((s, x) => s + Number(x.rev || 0), 0),
           aov: mO.length ? rev / mO.length : 0
         };
@@ -384,7 +394,7 @@
       const modelA = predictTimeSeries(use.map((h) => h.rev), 1)[0];
       const nextEnqs = predictTimeSeries(use.map((h) => h.enq), 1)[0];
       const wmaQR = getWMA(use.map((h) => h.enq ? h.quo / h.enq : 0));
-      const wmaOR = getWMA(use.map((h) => h.quo ? h.linkedOrd / h.quo : 0));
+      const wmaOR = getWMA(use.map((h) => h.quo ? Math.min(1, h.converted / h.quo) : 0));
       const wmaAOV = getWMA(use.map((h) => h.aov));
       const wmaOnline = getWMA(use.map((h) => h.rev - h.linkedRev));
       const modelB = (nextEnqs * wmaQR * wmaOR * wmaAOV) + wmaOnline;
@@ -413,7 +423,7 @@
           err.A.push(Math.abs(predictTimeSeries(sub.map((x) => x.rev), 1)[0] - use[i].rev));
           const fb = (predictTimeSeries(sub.map((x) => x.enq), 1)[0] *
             getWMA(sub.map((h) => h.enq ? h.quo / h.enq : 0)) *
-            getWMA(sub.map((h) => h.quo ? h.linkedOrd / h.quo : 0)) *
+            getWMA(sub.map((h) => h.quo ? Math.min(1, (h.converted || 0) / h.quo) : 0)) *
             getWMA(sub.map((h) => h.aov))) + getWMA(sub.map((h) => h.rev - h.linkedRev));
           err.B.push(Math.abs(fb - use[i].rev));
         }
@@ -431,7 +441,7 @@
           const a = predictTimeSeries(sub.map((x) => x.rev), 1)[0];
           const fb = (predictTimeSeries(sub.map((x) => x.enq), 1)[0] *
             getWMA(sub.map((h) => h.enq ? h.quo / h.enq : 0)) *
-            getWMA(sub.map((h) => h.quo ? h.linkedOrd / h.quo : 0)) *
+            getWMA(sub.map((h) => h.quo ? Math.min(1, (h.converted || 0) / h.quo) : 0)) *
             getWMA(sub.map((h) => h.aov))) + getWMA(sub.map((h) => h.rev - h.linkedRev));
           const pred = a * wA + fb * wB + fb * wC;
           const actual = use[i].rev || 0;
@@ -589,13 +599,13 @@
       } else {
         document.getElementById("convFilter").hidden = true;
         let list = globalOrd.filter((o) => o.month === m);
-        if (/offline/i.test(label)) list = list.filter((o) => o.isLinked);
-        if (/online/i.test(label)) list = list.filter((o) => !o.isLinked);
+        if (/offline/i.test(label)) list = list.filter((o) => o.isSoq);
+        if (/online/i.test(label)) list = list.filter((o) => !o.isSoq);
         document.getElementById("tableHead").innerHTML = "<tr><th>Order</th><th>Client</th><th>Origin</th><th>Value</th></tr>";
         let sum = 0;
         list.forEach((o) => {
           sum += Number(o.rev || 0);
-          const origin = ENQ_MAP[o.quoteNo] ? ENQ_MAP[o.quoteNo].month : (o.isLinked ? "UNLINKED OFFLINE" : "DIRECT");
+          const origin = ENQ_MAP[o.quoteNo] ? ENQ_MAP[o.quoteNo].month : (o.isSoq ? "SOQ — no enquiry" : "DIRECT / website");
           life[origin] = (life[origin] || 0) + Number(o.rev || 0);
           src[o.source] = (src[o.source] || 0) + Number(o.rev || 0);
           body.innerHTML += "<tr><td><b>" + esc(o.no) + "</b></td><td>" + esc(o.client) + "</td><td>" + esc(origin) + "</td><td>" + zar.format(o.rev) + "</td></tr>";
