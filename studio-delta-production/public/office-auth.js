@@ -244,7 +244,7 @@ function sdMountOfficeShell(active) {
     ["/delivery-forms", "deliveryforms", "bi-truck", "Delivery Forms"],
     ["/driver-tracker", "drivertracker", "bi-geo-alt", "Driver tracker"],
     ["/?view=activity", "activity", "bi-calendar3", "Activity"],
-    ["/shop-month", "shopmonth", "bi-person-lines-fill", "Month pack"],
+    ["/shop-month", "shopmonth", "bi-person-badge", "Month pack"],
     ["/?view=schedule", "floorschedule", "bi-calendar-week", "Schedule"]
   ];
   const nav = document.createElement("nav");
