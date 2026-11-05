@@ -833,6 +833,16 @@ assert.ok(costHtml.indexOf("Glass actual") === -1, "glass is inside Materials, n
 assert.ok(costHtml.indexOf("Powder actual") === -1, "powder is inside Materials, not its own column");
 assert.ok(costHtml.indexOf("wood and backboard") !== -1);
 assert.ok(costHtml.indexOf("o.materialCost") !== -1);
+assert.ok(costHtml.indexOf("id=\"matChart-steel\"") !== -1);
+assert.ok(costHtml.indexOf("id=\"matChart-glass\"") !== -1);
+assert.ok(costHtml.indexOf("id=\"matChart-powder\"") !== -1);
+assert.ok(costHtml.indexOf("id=\"matChart-wood\"") !== -1);
+assert.ok(costHtml.indexOf("<h3>Steel</h3>") !== -1);
+assert.ok(costHtml.indexOf("<h3>Glass</h3>") !== -1);
+assert.ok(costHtml.indexOf("<h3>Powder coating</h3>") !== -1);
+assert.ok(costHtml.indexOf("<h3>Wood</h3>") !== -1);
+assert.ok(costHtml.indexOf("renderMaterialPies") !== -1);
+assert.ok(costHtml.indexOf("id=\"steelChart\"") === -1);
 assert.ok(costHtml.indexOf("Steel rates") !== -1);
 assert.ok(costHtml.indexOf("Backboard rates") !== -1);
 assert.ok(costHtml.indexOf("/api/office/backboard-rates") !== -1);

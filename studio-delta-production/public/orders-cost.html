@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Production cost</title>
-  <script src="/sd-pwa.js?v=pwa-driverpin"></script>
+  <script src="/sd-pwa.js?v=pwa-committed-banner"></script>
   <script src="/vendor/chartjs/chart.umd.min.js"></script>
   <style>
     :root {
@@ -331,10 +331,28 @@
       <div id="tab-steel" style="display:none">
         <div class="charts-grid">
           <div class="chart-card">
-            <h3>Materials</h3>
-            <div class="chart-container"><canvas id="steelChart"></canvas></div>
-            <div class="chart-total">Total: <span id="steelTotal">R0</span></div>
-            <div id="steelDataList"></div>
+            <h3>Steel</h3>
+            <div class="chart-container"><canvas id="matChart-steel"></canvas></div>
+            <div class="chart-total">Total: <span id="matTotal-steel">R0</span></div>
+            <div id="matList-steel"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Glass</h3>
+            <div class="chart-container"><canvas id="matChart-glass"></canvas></div>
+            <div class="chart-total">Total: <span id="matTotal-glass">R0</span></div>
+            <div id="matList-glass"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Powder coating</h3>
+            <div class="chart-container"><canvas id="matChart-powder"></canvas></div>
+            <div class="chart-total">Total: <span id="matTotal-powder">R0</span></div>
+            <div id="matList-powder"></div>
+          </div>
+          <div class="chart-card">
+            <h3>Wood</h3>
+            <div class="chart-container"><canvas id="matChart-wood"></canvas></div>
+            <div class="chart-total">Total: <span id="matTotal-wood">R0</span></div>
+            <div id="matList-wood"></div>
           </div>
         </div>
       </div>
@@ -396,7 +414,13 @@
   <script>
     const TASKS = ["Profile Cutting", "Plate Cutting", "Tagging", "Welding", "Grinding", "Assembly"];
     let appData = { orders: [] };
-    let steelChartInstance = null;
+    const matCharts = {};
+    const MAT_PIES = [
+      { id: "steel", types: { steel: 1 }, hue: 211, empty: "No steel cost in this period. Log usage and set a steel rate." },
+      { id: "glass", types: { glass: 1 }, hue: 190, empty: "No glass actual in this period. Type the cost when the load is received." },
+      { id: "powder", types: { powder: 1 }, hue: 265, empty: "No powder coating actual in this period. Type the cost when the load is received." },
+      { id: "wood", types: { wood: 1, backboard: 1 }, hue: 32, empty: "No wood or backboard cost in this period. Log it on the floor and add a rate or actual." }
+    ];
     function esc(s) {
       return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
     }
@@ -488,7 +512,7 @@
       document.getElementById("mainSummaryCards").style.display = tab === "steel" || tab === "rates" ? "none" : "grid";
       const emptyBox = document.getElementById("costEmpty");
       if (emptyBox) emptyBox.hidden = tab === "rates" || tab === "steel" || !!(appData.orders || []).length;
-      if (tab === "steel") setTimeout(renderSteelChart, 80);
+      if (tab === "steel") setTimeout(renderMaterialPies, 80);
       if (tab === "logs") requestAnimationFrame(() => alignFreezeRows("logsMeta", "logsGrid"));
       if (tab === "monthly") requestAnimationFrame(() => alignFreezeRows("monthlyMeta", "monthlyGrid"));
     }
@@ -708,30 +732,46 @@
       totals += "<td>" + formatMoney(grand.sale) + "</td><td>" + formatMoney(grand.profit) + "</td><td>" + grandTest.toFixed(1) + "%</td></tr>";
       tbody.innerHTML += totals;
     }
-    function renderSteelChart() {
-      const s = {};
-      let total = 0;
+    function materialSliceLabel(order, entry) {
+      const kind = String(entry.type || "steel").toLowerCase();
+      if (kind === "powder") return String(order.product || entry.item || "Powder coating").trim() || "Powder coating";
+      return String(entry.item || kind).trim() || kind;
+    }
+    function renderMaterialPies() {
+      const buckets = {};
+      MAT_PIES.forEach((g) => { buckets[g.id] = { total: 0, items: {} }; });
       (appData.orders || []).forEach((o) => {
         (o.materialEntries || []).forEach((m) => {
-          const item = String(m.item || "Steel").toUpperCase();
-          if (!s[item]) s[item] = 0;
-          s[item] += m.cost || 0;
-          total += m.cost || 0;
+          const kind = String(m.type || "steel").toLowerCase();
+          const group = MAT_PIES.find((g) => g.types[kind]);
+          if (!group) return;
+          const label = materialSliceLabel(o, m);
+          const cost = Number(m.cost) || 0;
+          if (!(cost > 0)) return;
+          buckets[group.id].items[label] = (buckets[group.id].items[label] || 0) + cost;
+          buckets[group.id].total += cost;
         });
       });
-      document.getElementById("steelTotal").textContent = formatMoney(total);
-      const labels = Object.keys(s).sort((a, b) => s[b] - s[a]);
-      const colors = labels.map((_, i) => "hsl(211,100%," + (30 + (i / Math.max(labels.length - 1, 1)) * 45) + "%)");
-      document.getElementById("steelDataList").innerHTML = labels.length
-        ? labels.map((l, i) => "<div class='chart-data-item'><span><span class='color-dot' style='background:" + colors[i] + "'></span>" + esc(l) + "</span><span>" + formatMoney(s[l]) + "</span></div>").join("")
-        : "<div class='empty'>No material cost in this period. Add steel or backboard rates, receive glass / powder with an actual, or log wood on the floor.</div>";
-      const cvs = document.getElementById("steelChart");
-      if (steelChartInstance) steelChartInstance.destroy();
-      if (!labels.length) { steelChartInstance = null; return; }
-      steelChartInstance = new Chart(cvs.getContext("2d"), {
-        type: "pie",
-        data: { labels, datasets: [{ data: labels.map((l) => s[l]), backgroundColor: colors, borderColor: "#fff", borderWidth: 2 }] },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+      MAT_PIES.forEach((g) => {
+        const s = buckets[g.id].items;
+        const total = buckets[g.id].total;
+        document.getElementById("matTotal-" + g.id).textContent = formatMoney(total);
+        const labels = Object.keys(s).sort((a, b) => s[b] - s[a] || a.localeCompare(b));
+        const colors = labels.map((_, i) => "hsl(" + g.hue + ",70%," + (32 + (i / Math.max(labels.length - 1, 1)) * 40) + "%)");
+        document.getElementById("matList-" + g.id).innerHTML = labels.length
+          ? labels.map((l, i) => "<div class='chart-data-item'><span><span class='color-dot' style='background:" + colors[i] + "'></span>" + esc(l) + "</span><span>" + formatMoney(s[l]) + "</span></div>").join("")
+          : "<div class='empty'>" + g.empty + "</div>";
+        const cvs = document.getElementById("matChart-" + g.id);
+        if (matCharts[g.id]) {
+          matCharts[g.id].destroy();
+          matCharts[g.id] = null;
+        }
+        if (!labels.length) return;
+        matCharts[g.id] = new Chart(cvs.getContext("2d"), {
+          type: "pie",
+          data: { labels, datasets: [{ data: labels.map((l) => s[l]), backgroundColor: colors, borderColor: "#fff", borderWidth: 2 }] },
+          options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+        });
       });
     }
     function fillSelect(id, values, first) {
