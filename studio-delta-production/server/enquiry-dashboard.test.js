@@ -254,7 +254,49 @@ try {
   assert.ok(drillLesedi.rows.some((r) => r.enquiry_no === "#2003"));
   rows.pop();
   assert.ok(month.timeToOrder.buckets.some((b) => b.count === 1));
+  const tto3160 = month.timeToOrder.buckets.find((b) => b.label === "31-60d");
+  assert.ok(tto3160 && tto3160.count === 1);
+  assert.strictEqual(tto3160.enquiryWeeks.length, 5);
+  assert.strictEqual(tto3160.quoteWeeks.length, 5);
+  assert.ok(tto3160.enquiryWeeks.reduce((n, x) => n + x, 0) === 1);
   assert.ok(month.stageTime.some((s) => s.n >= 1));
+
+  rows.push({
+    enquiry_no: "#2010",
+    status: "Ordered",
+    created_at: "2026-06-03T08:00:00.000Z",
+    date_enquired: "03/06/2026",
+    date_quoted: "04/06/2026",
+    ordered_at: "2026-06-05T08:00:00.000Z",
+    lifespan_ms: 2 * 86400000,
+    enquiry_source: "Website",
+    enquiry_type: "Catologue",
+    category: "Chair",
+    product: "Air Chair",
+    client_name: "Fast Client",
+    events: [
+      { kind: "created", at: "2026-06-03T08:00:00.000Z" },
+      { kind: "complete_quote", at: "2026-06-04T08:00:00.000Z" },
+      { kind: "complete_order", at: "2026-06-05T08:00:00.000Z", status: "Ordered" }
+    ],
+    tasks: [],
+    correspondence: { mails: [] }
+  });
+  const withFast = dash.buildDashboard({ grain: "month", range: "6m" });
+  const fast = withFast.timeToOrder.buckets.find((b) => b.label === "0-3d");
+  assert.ok(fast && fast.count >= 1);
+  assert.ok(fast.enquiryWeeks[0] >= 1, "0-3d orders were enquired in week 1 of the month");
+  assert.ok(fast.quoteWeeks[0] >= 1, "0-3d orders were quoted in week 1 of the month");
+  const drillTto = dash.buildDrill({ grain: "month", range: "6m", kind: "tto", value: "0-3d" });
+  assert.ok(drillTto.rows.some((r) => r.enquiry_no === "#2010"));
+  assert.ok(/Time to order 0-3d/.test(drillTto.title));
+  const drillTtoW1 = dash.buildDrill({ grain: "month", range: "6m", kind: "tto", value: "0-3d", series: "enquiries", week: 1 });
+  assert.ok(drillTtoW1.rows.some((r) => r.enquiry_no === "#2010"));
+  const drillTtoW5 = dash.buildDrill({ grain: "month", range: "6m", kind: "tto", value: "0-3d", series: "enquiries", week: 5 });
+  assert.ok(!drillTtoW5.rows.some((r) => r.enquiry_no === "#2010"));
+  const drillTtoQ1 = dash.buildDrill({ grain: "month", range: "6m", kind: "tto", value: "0-3d", series: "quotes", week: 1 });
+  assert.ok(drillTtoQ1.rows.some((r) => r.enquiry_no === "#2010"));
+  rows.pop();
 
   const week = dash.buildDashboard({ grain: "week", range: "6m" });
   assert.strictEqual(week.grain, "week");

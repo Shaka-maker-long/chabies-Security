@@ -161,6 +161,7 @@
         </section>
         <section class="card">
           <h2>Time to order</h2>
+          <p class="hint">Click a bar to see whether those jobs were enquired or quoted in week 1, 2, 3, 4 or 5 of their month.</p>
           <canvas id="tto"></canvas>
         </section>
         <section class="card">
@@ -516,6 +517,79 @@
     window.addEventListener("scroll", hideProductShot, true);
     window.sdOnEnquiryProcessClose = function () { /* keep the drill list open */ };
 
+    function weekLabels() {
+      return ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"];
+    }
+    function peakWeek(weeks) {
+      const list = weeks || [];
+      let best = -1;
+      let idx = -1;
+      list.forEach((n, i) => {
+        if (n > best) {
+          best = n;
+          idx = i;
+        }
+      });
+      if (best <= 0 || idx < 0) return "";
+      return "week " + (idx + 1);
+    }
+    function openTtoSplit(bucketId) {
+      const buckets = ((data && data.timeToOrder) || {}).buckets || [];
+      const bucket = buckets.find((b) => b.label === bucketId);
+      const mask = document.getElementById("drillMask");
+      const list = document.getElementById("drillList");
+      document.getElementById("drillTitle").textContent = "Time to order " + bucketId;
+      const enqPeak = peakWeek(bucket && bucket.enquiryWeeks);
+      const qPeak = peakWeek(bucket && bucket.quoteWeeks);
+      let hint = "Week of the month the enquiry arrived, and the week the quote was sent.";
+      if (enqPeak || qPeak) {
+        hint = "Most of these " + bucketId + " orders "
+          + (enqPeak ? "were enquired in " + enqPeak : "")
+          + (enqPeak && qPeak ? " and " : "")
+          + (qPeak ? "quoted in " + qPeak : "")
+          + " of their month. Click a week for the list.";
+      }
+      document.getElementById("drillHint").hidden = false;
+      document.getElementById("drillHint").textContent = hint;
+      mask.classList.add("open");
+      if (!bucket || !bucket.count) {
+        openDrill({ kind: "tto", value: bucketId });
+        return;
+      }
+      list.innerHTML = "<p class=\"hint\" style=\"margin:0 0 8px\">Enquiries received</p>"
+        + "<canvas id=\"ttoEnqWeeks\" height=\"140\"></canvas>"
+        + "<p class=\"hint\" style=\"margin:12px 0 8px\">Quotes sent</p>"
+        + "<canvas id=\"ttoQuoteWeeks\" height=\"140\"></canvas>"
+        + "<p style=\"margin:12px 0 0\"><button type=\"button\" id=\"ttoAll\">See all " + bucket.count + " orders</button></p>";
+      kill("ttoEnqWeeks");
+      kill("ttoQuoteWeeks");
+      const labels = weekLabels();
+      charts.ttoEnqWeeks = new Chart(document.getElementById("ttoEnqWeeks"), {
+        type: "bar",
+        data: { labels, datasets: [{ data: bucket.enquiryWeeks || [0, 0, 0, 0, 0], backgroundColor: PAL[0] }] },
+        options: {
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            openDrill({ kind: "tto", value: bucketId, series: "enquiries", week: els[0].index + 1 });
+          }
+        }
+      });
+      charts.ttoQuoteWeeks = new Chart(document.getElementById("ttoQuoteWeeks"), {
+        type: "bar",
+        data: { labels, datasets: [{ data: bucket.quoteWeeks || [0, 0, 0, 0, 0], backgroundColor: PAL[1] }] },
+        options: {
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            openDrill({ kind: "tto", value: bucketId, series: "quotes", week: els[0].index + 1 });
+          }
+        }
+      });
+      document.getElementById("ttoAll").addEventListener("click", () => openDrill({ kind: "tto", value: bucketId }));
+    }
     function clickType(label, useValue) {
       if (label === "Custom" || label === "New Design") openTypeSplit(label, useValue);
       else openDrill({ kind: "type", value: label });
@@ -773,7 +847,9 @@
           }
         }
       });
-      bar("tto", d.timeToOrder.buckets.map((x) => x.label), d.timeToOrder.buckets.map((x) => x.count), PAL[3]);
+      bar("tto", d.timeToOrder.buckets.map((x) => x.label), d.timeToOrder.buckets.map((x) => x.count), PAL[3], false, (_i, label) => {
+        openTtoSplit(label);
+      });
 
       const st = d.stuck;
       document.getElementById("stuck").innerHTML =
