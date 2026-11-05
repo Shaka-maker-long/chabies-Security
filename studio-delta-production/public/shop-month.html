@@ -109,7 +109,7 @@
         <a href="/orders">Orders</a>
       </nav>
       <h1>Studio Delta // <span>Monthly pack</span></h1>
-      <p class="lede">Shop floor and Sales for the month. Shop cards show trophies vs overtime for the selected month, completed vs Task times, and utilisation (total hours ÷ 7.5 × workdays). Actual productivity takes indirect out. Paid shop shift is 07:45–15:45 minus lunch.</p>
+      <p class="lede">Shop floor and Sales for the month. Shop cards show trophies vs overtime for the selected month, actual clock time vs estimated Task times, and utilisation (total hours ÷ 7.5 × workdays). Actual productivity takes indirect out. Paid shop shift is 07:45–15:45 minus lunch.</p>
     </div>
     <div class="tools no-print">
       <label>Month <input type="month" id="monthPick" onchange="load()"></label>
@@ -229,9 +229,9 @@
       }
       badges.push(resultIcons(p.trophies, p.overtimeJobs, i));
       if (!p.clocked) badges.push("<span class='badge none'>No orders this month</span>");
-      const pred = p.predictedMins > 0 ? (" <em>predicted " + hm(p.predictedMins) + "</em>") : " <em>no predicted time</em>";
+      const pred = p.predictedMins > 0 ? (" <em>estimated " + hm(p.predictedMins) + "</em>") : " <em>no estimate</em>";
       const metrics = "<div class='metrics'>" +
-        "<div><span>Completed vs predicted</span><b>" + hm(p.completedMins) + "</b>" + pred + "</div>" +
+        "<div><span>Actual vs estimated</span><b>" + hm(p.completedMins) + "</b>" + pred + "</div>" +
         "<div><span>Workdays in month</span><b>" + (p.workDays || 0) + "</b><em>7.5h paid day</em></div>" +
         "<div><span>Utilisation</span><b>" + pct(p.productivityPct) + "</b><em>total hours ÷ 7.5 × workdays</em></div>" +
         "<div><span>Actual productivity</span><b>" + pct(p.actualProductivityPct) + "</b><em>less indirect ÷ 7.5 × workdays</em></div>" +
@@ -430,14 +430,14 @@
     function shopScoreCards(data) {
       const days = data.workDays || 0;
       const pred = data.predictedMins
-        ? (" <em>predicted " + hm(data.predictedMins) + "</em>")
-        : " <em>no predicted time</em>";
+        ? (" <em>estimated " + hm(data.predictedMins) + "</em>")
+        : " <em>no estimate</em>";
       return "<div class='score-grid'>" +
         "<article class='score'><h3>Trophies vs overtime</h3>" +
         "<p class='lede'>Order lines finished in " + esc(data.title) + ". Trophy if within Task times, alarm if overtime.</p>" +
         "<div class='hero'>" + resultIcons(data.trophies, data.overtimeJobs, "all") + "</div></article>" +
-        "<article class='score'><h3>Total completed vs predicted</h3>" +
-        "<p class='lede'>Finished production time this month, against Task times for those order lines.</p>" +
+        "<article class='score'><h3>Actual vs estimated</h3>" +
+        "<p class='lede'>Clocked production time this month, against Task times for those order lines.</p>" +
         "<div class='hero'>" + hm(data.completedMins) + pred + "</div></article>" +
         "<article class='score'><h3>Utilisation</h3>" +
         "<p class='lede'>Average of each person who worked: their hours ÷ (7.5 × " + days + " workday" + (days === 1 ? "" : "s") + ").</p>" +
