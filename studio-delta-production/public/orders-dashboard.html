@@ -53,8 +53,9 @@
     #productShot[hidden] { display:none !important; }
     #productShot img { display:block; width:100%; height:auto; max-height:280px; object-fit:contain; background:#f8f9fc; border-radius:6px; }
     #productShot .product-shot-name { margin:8px 2px 2px; font-size:12px; font-weight:700; color:var(--ink); }
-    .month-pick { display:flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--muted); }
-    .month-pick select { border:1px solid var(--line); border-radius:8px; padding:7px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink); background:#fff; }
+    .month-pick { display:flex; align-items:flex-start; gap:8px; font-size:12px; font-weight:600; color:var(--muted); }
+    .month-checks { display:flex; flex-wrap:wrap; gap:6px 10px; max-width:min(640px, 100%); max-height:72px; overflow:auto; }
+    .month-checks label { display:flex; align-items:center; gap:4px; font-weight:600; color:#344054; white-space:nowrap; }
     .window-chip { font-size:12px; font-weight:700; color:var(--ink); }
     .drill-mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
     .drill-mask.open { display:flex; }
@@ -102,14 +103,13 @@
       </nav>
       <h1>Orders dashboard</h1>
       <p class="window-chip" id="windowChip"></p>
-      <p class="lede">Income is amount paid excluding VAT. Shop charts are live status, not filtered by month.</p>
+      <p class="lede">Income is amount paid excluding VAT. Tick two or more months to compare top products. Shop charts are live status, not filtered by month.</p>
     </div>
     <div class="tools">
-      <label class="month-pick">Month
-        <select id="month" aria-label="Filter income charts to one month">
-          <option value="">All in range</option>
-        </select>
-      </label>
+      <div class="month-pick">
+        <span>Months</span>
+        <div id="monthChecks" class="month-checks" role="group" aria-label="Compare months"></div>
+      </div>
       <div class="seg" id="grain" role="group" aria-label="Time grain">
         <button type="button" data-v="week">Weekly</button>
         <button type="button" data-v="month" class="on">Monthly</button>
@@ -150,12 +150,12 @@
         </section>
         <section class="card">
           <h2>Top 10 items by income</h2>
-          <p class="hint">Products with the most amount paid (Excl VAT). Hover a product name for the catalog photo.</p>
+          <p class="hint">Products with the most amount paid (Excl VAT). Tick two or more months above to compare them side by side. Hover a product name for the catalog photo.</p>
           <canvas id="topIncome"></canvas>
         </section>
         <section class="card">
           <h2>Top 10 products by quantity</h2>
-          <p class="hint">Order count, not doors. Hover a product name for the catalog photo.</p>
+          <p class="hint">Order count, not doors. Tick two or more months above to compare them side by side. Hover a product name for the catalog photo.</p>
           <canvas id="topQty"></canvas>
         </section>
         <section class="card span2">
@@ -217,15 +217,20 @@
     let data = null;
     let grain = "month";
     let range = "6m";
-    let month = "";
+    let selectedMonths = [];
     const PAL = ["#1d2939", "#027a48", "#3538cd", "#b54708", "#b42318", "#667085", "#6941c6", "#026aa2"];
     const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
     function qs(over) {
-      const m = over && Object.prototype.hasOwnProperty.call(over, "month") ? over.month : month;
+      const one = over && Object.prototype.hasOwnProperty.call(over, "month") ? over.month : "";
+      const many = (over && over.months) || selectedMonths;
+      let extra = "";
+      if (one) extra = "&month=" + encodeURIComponent(one);
+      else if (many.length === 1) extra = "&month=" + encodeURIComponent(many[0]);
+      else if (many.length > 1) extra = "&months=" + encodeURIComponent(many.join(","));
       return "grain=" + encodeURIComponent(grain)
         + "&range=" + encodeURIComponent(range)
-        + (m ? "&month=" + encodeURIComponent(m) : "");
+        + extra;
     }
     function bindSeg(id, get, set) {
       const root = document.getElementById(id);
@@ -235,9 +240,7 @@
           set(b.dataset.v);
           root.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
           if (id === "range") {
-            month = "";
-            const sel = document.getElementById("month");
-            if (sel) sel.value = "";
+            selectedMonths = [];
           }
           load();
         });
@@ -245,10 +248,6 @@
     }
     bindSeg("grain", () => grain, (v) => (grain = v));
     bindSeg("range", () => range, (v) => (range = v));
-    document.getElementById("month").addEventListener("change", (e) => {
-      month = e.target.value || "";
-      load();
-    });
 
     function kill(id) {
       if (charts[id]) {
@@ -307,12 +306,54 @@
       const v = Number(n) || 0;
       return "R " + v.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
-    function fillMonths(list) {
-      const sel = document.getElementById("month");
-      const keep = month;
-      sel.innerHTML = "<option value=\"\">All in range</option>" +
-        (list || []).map((m) => "<option value=\"" + m.key + "\"" + (m.key === keep ? " selected" : "") + ">" + m.label + "</option>").join("");
-      sel.value = keep;
+    function fillMonthChecks(list) {
+      const host = document.getElementById("monthChecks");
+      host.innerHTML = (list || []).slice(0, 18).map((m) =>
+        "<label><input type=\"checkbox\" value=\"" + esc(m.key) + "\"" +
+        (selectedMonths.indexOf(m.key) >= 0 ? " checked" : "") + "> " + esc(m.label) + "</label>"
+      ).join("");
+      host.querySelectorAll("input").forEach((inp) => {
+        inp.addEventListener("change", () => {
+          const on = Array.from(host.querySelectorAll("input:checked")).map((x) => x.value).sort();
+          if (on.length > 6) {
+            inp.checked = false;
+            return;
+          }
+          selectedMonths = on;
+          load();
+        });
+      });
+    }
+    function groupedBar(id, labels, series, horizontal, money, images, onBar) {
+      const valueScale = { beginAtZero: true, ticks: money ? { callback: randTick } : { precision: 0 } };
+      const hover = horizontal && images ? productHoverOpt(labels, images, onBar) : {};
+      mk(id, {
+        type: "bar",
+        data: {
+          labels,
+          datasets: (series || []).map((s, i) => ({
+            label: s.label,
+            data: s.values,
+            backgroundColor: PAL[i % PAL.length]
+          }))
+        },
+        options: Object.assign({
+          indexAxis: horizontal ? "y" : "x",
+          plugins: { legend: { position: "bottom" } },
+          scales: horizontal
+            ? { x: valueScale, y: {} }
+            : { x: {}, y: valueScale }
+        }, hover, clickOpt((el) => {
+          const s = series[el.datasetIndex];
+          const label = labels[el.index];
+          if (onBar && s && label) onBar(label, s);
+        }))
+      });
+      const canvas = document.getElementById(id);
+      if (canvas && !canvas._productShotBound) {
+        canvas._productShotBound = true;
+        canvas.addEventListener("mouseleave", hideProductShot);
+      }
     }
     function esc(s) {
       return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
@@ -646,7 +687,7 @@
     function render(d) {
       data = d;
       document.getElementById("windowChip").textContent = d.windowLabel + " · income charts";
-      fillMonths(d.months);
+      fillMonthChecks(d.months);
       const k = d.kpis || {};
       document.getElementById("kpis").innerHTML =
         kpiHtml("open", "Open jobs", k.openJobs || 0)
@@ -671,8 +712,29 @@
       drawChannel();
       doughnut("cat", (d.categories || []).map((x) => x.label), (d.categories || []).map((x) => x.income), (_i, label) => openDrill({ kind: "category", value: label }));
       doughnut("source", (d.sources || []).map((x) => x.label), (d.sources || []).map((x) => x.income), (_i, label) => openDrill({ kind: "source", value: label }));
-      bar("topIncome", (d.topIncome || []).map((x) => x.label), (d.topIncome || []).map((x) => x.income), PAL[1], true, (_i, label) => openDrill({ kind: "productIncome", value: label }), true, imgMap(d.topIncome));
-      bar("topQty", (d.topQuantity || []).map((x) => x.label), (d.topQuantity || []).map((x) => x.count), PAL[2], true, (_i, label) => openDrill({ kind: "productQty", value: label }), false, imgMap(d.topQuantity));
+      if (d.compare && d.compare.topIncome) {
+        groupedBar(
+          "topIncome",
+          d.compare.topIncome.labels,
+          d.compare.topIncome.months,
+          true,
+          true,
+          d.compare.topIncome.images,
+          (label, s) => openDrill({ kind: "productIncome", value: label, month: s.key })
+        );
+        groupedBar(
+          "topQty",
+          d.compare.topQuantity.labels,
+          d.compare.topQuantity.months,
+          true,
+          false,
+          d.compare.topQuantity.images,
+          (label, s) => openDrill({ kind: "productQty", value: label, month: s.key })
+        );
+      } else {
+        bar("topIncome", (d.topIncome || []).map((x) => x.label), (d.topIncome || []).map((x) => x.income), PAL[1], true, (_i, label) => openDrill({ kind: "productIncome", value: label }), true, imgMap(d.topIncome));
+        bar("topQty", (d.topQuantity || []).map((x) => x.label), (d.topQuantity || []).map((x) => x.count), PAL[2], true, (_i, label) => openDrill({ kind: "productQty", value: label }), false, imgMap(d.topQuantity));
+      }
       bar("pipeline", (d.pipeline || []).map((x) => x.label), (d.pipeline || []).map((x) => x.count), PAL[0], false, (i) => {
         const row = (d.pipeline || [])[i];
         if (row) openDrill({ kind: "pipeline", group: row.id });
