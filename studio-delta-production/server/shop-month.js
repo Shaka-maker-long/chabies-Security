@@ -95,36 +95,43 @@ function meanPct(people, key) {
   return Math.round((sum / rows.length) * 10) / 10;
 }
 
-function attachMonthStats(person, dates, durMap) {
+function attachMonthStats(person, dates, durMap, month) {
+  const ym = String(month || "").slice(0, 7);
   const capacityMins = (dates || []).length * SHIFT_HOURS * 60;
   const byDayMap = {};
   (dates || []).forEach((d) => { byDayMap[d] = 0; });
   let completedMins = 0;
-  const seenPred = {};
-  let predictedMins = 0;
-  let trophies = 0;
-  let overtimeJobs = 0;
-  let noEstimate = 0;
+  const jobs = {};
   ((person && person.tasks) || []).forEach((t) => {
     if (isIndirectTask(t) || !t.end) return;
+    const day = taskDay(t);
+    if (ym && day.slice(0, 7) !== ym) return;
     const mins = Number(t.minutes || 0);
     completedMins += mins;
-    const day = taskDay(t);
     if (day && Object.prototype.hasOwnProperty.call(byDayMap, day)) byDayMap[day] += mins;
     const product = String(t.product || "").trim().toLowerCase();
     const process = String(t.role || t.task || "").trim().toLowerCase();
     const line = t.orderLine || orderLineId(t.order);
-    const target = (product && process) ? (durMap[product + "\0" + process] || 0) : 0;
+    const key = line + "\0" + process;
+    if (!jobs[key]) jobs[key] = { mins: 0, product, process };
+    jobs[key].mins += mins;
+    if (!jobs[key].product) jobs[key].product = product;
+    if (!jobs[key].process) jobs[key].process = process;
+  });
+  let predictedMins = 0;
+  let trophies = 0;
+  let overtimeJobs = 0;
+  let noEstimate = 0;
+  Object.keys(jobs).forEach((key) => {
+    const job = jobs[key];
+    const target = (job.product && job.process) ? (durMap[job.product + "\0" + job.process] || 0) : 0;
+    predictedMins += target;
     if (target > 0) {
-      if (mins <= target + 0.5) trophies += 1;
+      if (job.mins <= target + 0.5) trophies += 1;
       else overtimeJobs += 1;
     } else {
       noEstimate += 1;
     }
-    const key = line + "\0" + process;
-    if (!product || !process || seenPred[key]) return;
-    seenPred[key] = true;
-    predictedMins += target;
   });
   const total = Number((person && person.totalMinutes) || 0);
   const production = Number(person && person.productionMins != null
@@ -538,7 +545,7 @@ async function build(query) {
   });
   const dates = workDates(month);
   const durMap = durationIndex();
-  people.forEach((p) => attachMonthStats(p, dates, durMap));
+  people.forEach((p) => attachMonthStats(p, dates, durMap, month));
   people.sort((a, b) => {
     if (b.totalMinutes !== a.totalMinutes) return b.totalMinutes - a.totalMinutes;
     return String(a.worker).localeCompare(String(b.worker));
