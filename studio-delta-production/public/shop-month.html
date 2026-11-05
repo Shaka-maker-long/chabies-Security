@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Monthly pack</title>
   <script src="/sd-pwa.js?v=pwa-committed-banner"></script>
+  <link rel="stylesheet" href="/vendor/bootstrap-icons/bootstrap-icons.css">
   <style>
     :root { --ink:#101828; --muted:#667085; --line:#e4e7ec; --bg:#f8f9fc; }
     * { box-sizing: border-box; }
@@ -31,7 +32,13 @@
     .score .lede { margin:0 0 10px; max-width:none; }
     .score .hero { font-size:28px; font-family: Outfit, Inter, sans-serif; font-weight:700; }
     .score .hero em { font-style:normal; color:var(--muted); font-size:16px; font-weight:600; }
-    .score .spark { height:72px; }
+    .result-icons { display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+    .result { display:inline-flex; align-items:center; gap:6px; font-family: Outfit, Inter, sans-serif; font-weight:700; }
+    .result i { font-size:1.05em; line-height:1; }
+    .result.trophy { color:#b54708; }
+    .result.over { color:#b42318; }
+    .score .hero.result-icons { font-size:28px; }
+    .badges .result { background:#f8f9fc; padding:4px 8px; font-size:14px; }
     @media (max-width: 900px) { .score-grid { grid-template-columns:1fr; } }
     .people { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; }
     .pack-block { margin-top:28px; }
@@ -44,16 +51,11 @@
     .badge { background:#f2f4f7; font-size:11px; font-weight:700; padding:4px 8px; }
     .badge.ot { background:#fff7ed; }
     .badge.none { background:#fef3f2; color:#b42318; }
-    .badge.trophy { background:#fef7c3; color:#b54708; }
-    .badge.over { background:#fef3f2; color:#b42318; }
     .metrics { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0 10px; }
     .metrics div { background:#f8f9fc; padding:8px 10px; }
     .metrics span { display:block; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
     .metrics b { display:block; margin-top:3px; font-size:15px; font-family: Outfit, Inter, sans-serif; }
     .metrics em { font-style:normal; color:var(--muted); font-size:12px; font-weight:600; }
-    .spark-label { font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); margin:0 0 4px; }
-    .spark { display:flex; align-items:flex-end; gap:2px; height:40px; }
-    .spark i { display:block; flex:1; min-width:3px; max-width:12px; background:#1d2939; }
     .badge.orders { cursor:pointer; background:#1d2939; color:#fff; border:0; font:inherit; font-size:11px; font-weight:700; padding:4px 8px; }
     .badge.orders:disabled { cursor:default; background:#f2f4f7; color:var(--ink); }
     tr.station { cursor:pointer; }
@@ -107,7 +109,7 @@
         <a href="/orders">Orders</a>
       </nav>
       <h1>Studio Delta // <span>Monthly pack</span></h1>
-      <p class="lede">Shop floor and Sales for the month. Shop cards show completed vs Task times, completed over the month, and utilisation (total hours ÷ 7.5 × workdays). Actual productivity takes indirect out. Paid shop shift is 07:45–15:45 minus lunch.</p>
+      <p class="lede">Shop floor and Sales for the month. Shop cards show trophies vs overtime for the selected month, completed vs Task times, and utilisation (total hours ÷ 7.5 × workdays). Actual productivity takes indirect out. Paid shop shift is 07:45–15:45 minus lunch.</p>
     </div>
     <div class="tools no-print">
       <label>Month <input type="month" id="monthPick" onchange="load()"></label>
@@ -207,17 +209,11 @@
     function pct(n) {
       return n == null ? "—" : (Math.round(Number(n) * 10) / 10) + "%";
     }
-    function spark(days, hideLabel) {
-      const rows = days || [];
-      if (!rows.length) return "";
-      const max = Math.max.apply(null, rows.map((d) => Number(d.completedMins) || 0).concat([1]));
-      return (hideLabel ? "" : "<p class='spark-label'>Completed over time</p>") + "<div class='spark' aria-label='Completed over time'>" +
-        rows.map((d) => {
-          const mins = Number(d.completedMins) || 0;
-          const h = mins > 0 ? Math.max(4, Math.round(36 * mins / max)) : 2;
-          return "<i style='height:" + h + "px;opacity:" + (mins > 0 ? "1" : ".18") + "' title='" + esc(d.date) + " · " + hm(mins) + "'></i>";
-        }).join("") +
-        "</div>";
+    function resultIcons(trophies, overtime) {
+      return "<span class='result-icons'>" +
+        "<span class='result trophy' title='Finished within Task times'><i class='bi bi-trophy-fill' aria-hidden='true'></i> " + (trophies || 0) + "</span>" +
+        "<span class='result over' title='Went overtime'><i class='bi bi-alarm-fill' aria-hidden='true'></i> " + (overtime || 0) + "</span>" +
+        "</span>";
     }
     function personCard(p, i) {
       const badges = [];
@@ -230,9 +226,7 @@
       } else {
         badges.push("<span class='badge'>0 orders</span>");
       }
-      badges.push("<span class='badge trophy'>" + (p.trophies || 0) + " troph" + ((p.trophies || 0) === 1 ? "y" : "ies") + "</span>");
-      badges.push("<span class='badge over'>" + (p.overtimeJobs || 0) + " overtime</span>");
-      if (p.noEstimate) badges.push("<span class='badge'>" + p.noEstimate + " no estimate</span>");
+      badges.push(resultIcons(p.trophies, p.overtimeJobs));
       if (!p.clocked) badges.push("<span class='badge none'>No orders this month</span>");
       const pred = p.predictedMins > 0 ? (" <em>predicted " + hm(p.predictedMins) + "</em>") : " <em>no predicted time</em>";
       const metrics = "<div class='metrics'>" +
@@ -240,7 +234,7 @@
         "<div><span>Workdays in month</span><b>" + (p.workDays || 0) + "</b><em>7.5h paid day</em></div>" +
         "<div><span>Utilisation</span><b>" + pct(p.productivityPct) + "</b><em>total hours ÷ 7.5 × workdays</em></div>" +
         "<div><span>Actual productivity</span><b>" + pct(p.actualProductivityPct) + "</b><em>less indirect ÷ 7.5 × workdays</em></div>" +
-        "</div>" + spark(p.byDay);
+        "</div>";
       let proc = "";
       if (p.processes.length) {
         proc = "<table><thead><tr><th>Station</th><th class='r'>Orders</th><th class='r'>Time</th></tr></thead><tbody>" +
@@ -398,15 +392,11 @@
         : " <em>no predicted time</em>";
       return "<div class='score-grid'>" +
         "<article class='score'><h3>Trophies vs overtime</h3>" +
-        "<p class='lede'>Finished clocks within Task times get a trophy. Over time gets the alarm. Same as completed work on the floor.</p>" +
-        "<div class='hero'>" + (data.trophies || 0) + " troph" + ((data.trophies || 0) === 1 ? "y" : "ies") +
-        " <em>" + (data.overtimeJobs || 0) + " overtime</em></div></article>" +
+        "<p class='lede'>Order lines finished in " + esc(data.title) + ". Trophy if within Task times, alarm if overtime.</p>" +
+        "<div class='hero'>" + resultIcons(data.trophies, data.overtimeJobs) + "</div></article>" +
         "<article class='score'><h3>Total completed vs predicted</h3>" +
         "<p class='lede'>Finished production time this month, against Task times for those order lines.</p>" +
         "<div class='hero'>" + hm(data.completedMins) + pred + "</div></article>" +
-        "<article class='score'><h3>Total completed over time</h3>" +
-        "<p class='lede'>Finished production hours on each weekday in " + esc(data.title) + ".</p>" +
-        spark(data.byDay, true) + "</article>" +
         "<article class='score'><h3>Utilisation</h3>" +
         "<p class='lede'>Average of each person who worked: their hours ÷ (7.5 × " + days + " workday" + (days === 1 ? "" : "s") + ").</p>" +
         "<div class='hero'>" + pct(data.productivityPct) + "</div></article>" +
@@ -465,7 +455,7 @@
       const monthEl = document.getElementById("monthPick");
       if (!monthEl.value) monthEl.value = defaultMonth();
       try {
-        const r = await sdOfficeFetch("/api/office/shop-month?month=" + encodeURIComponent(monthEl.value));
+        const r = await sdOfficeFetch("/api/office/shop-month?month=" + encodeURIComponent(monthEl.value) + "&t=" + Date.now());
         const j = await r.json();
         if (!j.ok) throw new Error(j.error || "Could not load month pack");
         render(j);
