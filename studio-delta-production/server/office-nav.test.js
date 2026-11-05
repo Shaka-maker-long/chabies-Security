@@ -842,6 +842,8 @@ assert.ok(costHtml.indexOf("<h3>Glass</h3>") !== -1);
 assert.ok(costHtml.indexOf("<h3>Powder coating</h3>") !== -1);
 assert.ok(costHtml.indexOf("<h3>Wood</h3>") !== -1);
 assert.ok(costHtml.indexOf("renderMaterialPies") !== -1);
+assert.ok(costHtml.indexOf("selectedCostMonth") !== -1);
+assert.ok(/function renderAll\(\) \{[\s\S]*renderMaterialPies\(\);/.test(costHtml), "changing month redraws the material pies");
 assert.ok(costHtml.indexOf("id=\"steelChart\"") === -1);
 assert.ok(costHtml.indexOf("Steel rates") !== -1);
 assert.ok(costHtml.indexOf("Backboard rates") !== -1);

@@ -737,11 +737,25 @@
       if (kind === "powder") return String(order.product || entry.item || "Powder coating").trim() || "Powder coating";
       return String(entry.item || kind).trim() || kind;
     }
+    function selectedCostMonth() {
+      const mode = document.getElementById("filterMode").value;
+      const from = String(document.getElementById("dateFilter").value || "");
+      if (mode !== "month") return "";
+      const m = from.slice(0, 7);
+      return /^\d{4}-\d{2}$/.test(m) ? m : "";
+    }
+    function materialInSelectedMonth(entry) {
+      const month = selectedCostMonth();
+      if (!month) return true;
+      const key = String(entry && entry.month || "");
+      return key === month;
+    }
     function renderMaterialPies() {
       const buckets = {};
       MAT_PIES.forEach((g) => { buckets[g.id] = { total: 0, items: {} }; });
       (appData.orders || []).forEach((o) => {
         (o.materialEntries || []).forEach((m) => {
+          if (!materialInSelectedMonth(m)) return;
           const kind = String(m.type || "steel").toLowerCase();
           const group = MAT_PIES.find((g) => g.types[kind]);
           if (!group) return;
@@ -820,6 +834,7 @@
       renderMatrix();
       renderMonthly();
       renderRates();
+      renderMaterialPies();
       requestAnimationFrame(() => {
         if (document.getElementById("tab-logs").style.display !== "none") {
           alignFreezeRows("logsMeta", "logsGrid");
