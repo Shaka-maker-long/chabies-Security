@@ -3,11 +3,16 @@
 const staff = require("./staff");
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const SHIFT_HOURS = 7.5;
+
+function pad(n) {
+  return String(n).padStart(2, "0");
+}
 
 function sastParts(d) {
   const x = d instanceof Date ? d : new Date();
   const sast = new Date(x.getTime() + 2 * 60 * 60 * 1000);
-  return { y: sast.getUTCFullYear(), m: sast.getUTCMonth() + 1 };
+  return { y: sast.getUTCFullYear(), m: sast.getUTCMonth() + 1, d: sast.getUTCDate() };
 }
 
 function currentMonth() {
@@ -25,6 +30,100 @@ function monthTitle(ym) {
   const parts = String(ym).split("-");
   const m = Number(parts[1]) - 1;
   return (MONTH_NAMES[m] || ym) + " " + parts[0];
+}
+
+function todayIso() {
+  const p = sastParts(new Date());
+  return p.y + "-" + pad(p.m) + "-" + pad(p.d);
+}
+
+function sastYmdFrom(raw) {
+  if (!raw) return "";
+  const s = String(raw);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = raw instanceof Date ? raw : new Date(raw);
+  if (isNaN(d.getTime())) return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : "";
+  const p = sastParts(d);
+  return p.y + "-" + pad(p.m) + "-" + pad(p.d);
+}
+
+function workDates(ym) {
+  const parts = String(ym).split("-");
+  const y = Number(parts[0]);
+  const m = Number(parts[1]);
+  if (!y || !m) return [];
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const today = todayIso();
+  const current = String(ym) === today.slice(0, 7);
+  const out = [];
+  for (let d = 1; d <= last; d++) {
+    const iso = y + "-" + pad(m) + "-" + pad(d);
+    if (current && iso > today) break;
+    const dow = new Date(Date.UTC(y, m - 1, d, 12, 0, 0)).getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    out.push(iso);
+  }
+  return out;
+}
+
+function weekdayCount(ym) {
+  return workDates(ym).length;
+}
+
+function durationIndex() {
+  const map = {};
+  (staff.listDurations() || []).forEach((r) => {
+    const key = String(r.product || "").trim().toLowerCase() + "\0" + String(r.process || "").trim().toLowerCase();
+    if (Number(r.minutes) > 0) map[key] = Number(r.minutes);
+  });
+  return map;
+}
+
+function taskDay(t) {
+  return sastYmdFrom(t && t.date) || sastYmdFrom(t && t.start) || sastYmdFrom(t && t.end) || "";
+}
+
+function ratioPct(num, den) {
+  if (!(den > 0)) return null;
+  return Math.round(((Number(num) || 0) / den) * 1000) / 10;
+}
+
+function attachMonthStats(person, dates, durMap) {
+  const capacityMins = (dates || []).length * SHIFT_HOURS * 60;
+  const byDayMap = {};
+  (dates || []).forEach((d) => { byDayMap[d] = 0; });
+  let completedMins = 0;
+  const seenPred = {};
+  let predictedMins = 0;
+  ((person && person.tasks) || []).forEach((t) => {
+    if (isIndirectTask(t) || !t.end) return;
+    const mins = Number(t.minutes || 0);
+    completedMins += mins;
+    const day = taskDay(t);
+    if (day && Object.prototype.hasOwnProperty.call(byDayMap, day)) byDayMap[day] += mins;
+    const product = String(t.product || "").trim().toLowerCase();
+    const process = String(t.role || t.task || "").trim().toLowerCase();
+    const line = t.orderLine || orderLineId(t.order);
+    const key = line + "\0" + process;
+    if (!product || !process || seenPred[key]) return;
+    seenPred[key] = true;
+    predictedMins += durMap[product + "\0" + process] || 0;
+  });
+  const total = Number((person && person.totalMinutes) || 0);
+  const production = Number(person && person.productionMins != null
+    ? person.productionMins
+    : Math.max(0, total - Number((person && person.indirectMins) || 0)));
+  const clocked = !!(person && person.clocked);
+  return Object.assign(person, {
+    workDays: (dates || []).length,
+    shiftHours: SHIFT_HOURS,
+    capacityMins,
+    completedMins,
+    predictedMins,
+    productivityPct: clocked ? ratioPct(total, capacityMins) : null,
+    actualProductivityPct: clocked ? ratioPct(production, capacityMins) : null,
+    byDay: (dates || []).map((date) => ({ date, completedMins: byDayMap[date] || 0 }))
+  });
 }
 
 function refMs(ym) {
@@ -417,6 +516,9 @@ async function build(query) {
     seen[key] = true;
     people.push(summarize(w, profiles[key], orderMap));
   });
+  const dates = workDates(month);
+  const durMap = durationIndex();
+  people.forEach((p) => attachMonthStats(p, dates, durMap));
   people.sort((a, b) => {
     if (b.totalMinutes !== a.totalMinutes) return b.totalMinutes - a.totalMinutes;
     return String(a.worker).localeCompare(String(b.worker));
@@ -424,6 +526,8 @@ async function build(query) {
 
   const clocked = people.filter((p) => p.clocked);
   const absent = people.filter((p) => !p.clocked);
+  const capacityMins = dates.length * SHIFT_HOURS * 60;
+  const shopProduction = clocked.reduce((s, p) => s + Number(p.productionMins || 0), 0);
   const processTotals = {};
   clocked.forEach((p) => {
     p.processes.forEach((pr) => {
@@ -457,6 +561,13 @@ async function build(query) {
     totalRegular: clocked.reduce((s, p) => s + p.totalRegular, 0),
     totalOvertime: clocked.reduce((s, p) => s + p.totalOvertime, 0),
     orderCount: Object.keys(uniqueOrders).length,
+    workDays: dates.length,
+    shiftHours: SHIFT_HOURS,
+    capacityMins,
+    completedMins: clocked.reduce((s, p) => s + Number(p.completedMins || 0), 0),
+    predictedMins: clocked.reduce((s, p) => s + Number(p.predictedMins || 0), 0),
+    productivityPct: ratioPct(clocked.reduce((s, p) => s + p.totalMinutes, 0), capacityMins),
+    actualProductivityPct: ratioPct(shopProduction, capacityMins),
     stations,
     busiest: busiest ? { worker: busiest.worker, minutes: busiest.totalMinutes } : null,
     topStation: topStation ? { name: topStation.name, minutes: topStation.minutes } : null,
@@ -473,6 +584,9 @@ module.exports = {
   baseOrderNo,
   orderLineId,
   isIndirectTask,
+  weekdayCount,
+  workDates,
+  SHIFT_HOURS,
   summarize,
   orderMetaMap,
   durationLabel,
