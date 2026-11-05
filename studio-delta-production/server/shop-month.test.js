@@ -38,6 +38,20 @@ staff.upsertUser({
   role: "Marketing",
   password: "1234"
 });
+staff.upsertUser({
+  name: "Erin",
+  access: "Admin",
+  role: "Interior Designer",
+  password: "1234",
+  seeDebtors: "Yes"
+});
+staff.upsertUser({
+  name: "Shabana",
+  access: "Admin",
+  role: "Clients Relations Manager",
+  password: "1234",
+  seeDebtors: "Yes"
+});
 
 db.upsertOrder({
   order_number: "S260901",
@@ -105,12 +119,14 @@ const enquiry = db.upsertEnquiry({
   product: "Giselle Chair",
   category: "Chair",
   status: "New"
-}, { actor: "Lerato" });
+}, { actor: "Shabana" });
 const rawEnq = db.getEnquiryRaw(enquiry.enquiry_no);
 rawEnq.events = [
-  { id: "ev1", at: "2026-10-06T08:00:00.000Z", kind: "created", actor: "Lerato", label: "Enquiry captured", status: "New" },
-  { id: "ev2", at: "2026-10-06T10:00:00.000Z", kind: "complete_quote", actor: "Lerato", label: "Quote PDF issued", status: "Quoted" },
-  { id: "ev3", at: "2026-10-08T10:00:00.000Z", kind: "complete_order", actor: "Lerato", label: "POP saved", status: "Ordered" }
+  { id: "ev1", at: "2026-10-06T08:00:00.000Z", kind: "created", actor: "Shabana", label: "Enquiry captured", status: "New" },
+  { id: "ev2", at: "2026-10-06T10:00:00.000Z", kind: "complete_quote", actor: "Shabana", label: "Quote PDF issued", status: "Quoted" },
+  { id: "ev3", at: "2026-10-08T10:00:00.000Z", kind: "complete_order", actor: "Shabana", label: "POP saved", status: "Ordered" },
+  { id: "ev4", at: "2026-10-09T09:00:00.000Z", kind: "complete_drawing", actor: "Erin", label: "Drawing uploaded", status: "Ordered" },
+  { id: "ev5", at: "2026-10-09T11:00:00.000Z", kind: "complete_drawing_approval", actor: "Shabana", label: "Client approved drawing", status: "Ordered" }
 ];
 rawEnq.status = "Ordered";
 rawEnq.product = "Giselle Chair";
@@ -121,7 +137,7 @@ require("./order-created").record([{
   product: "Giselle Chair",
   client_name: "Ada"
 }], {
-  actor: "Lerato",
+  actor: "Shabana",
   at: "2026-10-08T12:00:00.000Z",
   readyAt: "2026-10-08T10:00:00.000Z"
 });
@@ -159,15 +175,23 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(sipho, "Sipho is listed even with no clocks");
   assert.ok(!sipho.clocked);
   assert.ok(!lerato, "Marketing is not a shop employee on this pack");
-  assert.ok(hub.isSalesUser({ name: "Lerato", access: "Marketing" }));
+  assert.ok(!hub.isSalesUser({ name: "Lerato", access: "Marketing" }));
+  assert.ok(hub.isSalesUser({ name: "Erin", access: "Admin", role: "Interior Designer" }));
+  assert.ok(hub.isSalesUser({ name: "Shabana Patel", access: "Admin" }));
   const sales = data.sales;
   assert.ok(sales, "sales pack is attached");
-  const salesLerato = sales.people.find((p) => p.worker === "Lerato");
-  assert.ok(salesLerato, "Lerato is on the sales pack");
-  assert.ok(salesLerato.worked);
-  assert.strictEqual(salesLerato.captured, 1);
-  assert.strictEqual(salesLerato.quoted, 1);
-  assert.strictEqual(salesLerato.ordered, 1);
+  assert.ok(!sales.people.some((p) => p.worker === "Lerato"), "Marketing is not on the Shabana/Erin pack");
+  const salesShabana = sales.people.find((p) => p.worker === "Shabana");
+  const salesErin = sales.people.find((p) => p.worker === "Erin");
+  assert.ok(salesShabana, "Shabana is on the sales pack");
+  assert.ok(salesErin, "Erin is on the sales pack");
+  assert.ok(salesShabana.worked);
+  assert.ok(salesErin.worked);
+  assert.strictEqual(salesShabana.captured, 1);
+  assert.strictEqual(salesShabana.quoted, 1);
+  assert.strictEqual(salesShabana.ordered, 1);
+  assert.strictEqual(salesShabana.approval, 1);
+  assert.strictEqual(salesErin.drawing, 1);
   assert.strictEqual(sales.addedCount, 1);
   assert.strictEqual(sales.medianLagLabel, "2h");
   assert.strictEqual(sales.added[0].order, "S260910");
@@ -190,7 +214,8 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("No clocks this month") === -1);
   assert.ok(html.indexOf("No orders this month") !== -1);
   assert.ok(html.indexOf("A and B lines are separate orders") !== -1);
-  assert.ok(html.indexOf("Sales team") !== -1);
+  assert.ok(html.indexOf("Shabana and Erin") !== -1);
+  assert.ok(html.indexOf("marketing employee") === -1);
   assert.ok(html.indexOf("Median time to add") !== -1);
   assert.ok(html.indexOf("function openAdded") !== -1);
   assert.strictEqual(hub.baseOrderNo("S260277 A"), "S260277");

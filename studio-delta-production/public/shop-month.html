@@ -89,7 +89,7 @@
         <a href="/orders">Orders</a>
       </nav>
       <h1>Studio Delta // <span>Monthly pack</span></h1>
-      <p class="lede">Shop floor and sales team for the month. Shop cards use stations and unique orders. Sales cards use captured enquiries, quotes, follow-ups and orders added. Paid shop shift is 07:45–15:45 minus lunch.</p>
+      <p class="lede">Shop floor plus Shabana and Erin for the month. Shop cards use stations and unique orders. Their cards use client work, drawings, and orders added. Paid shop shift is 07:45–15:45 minus lunch.</p>
     </div>
     <div class="tools no-print">
       <label>Month <input type="month" id="monthPick" onchange="load()"></label>
@@ -282,6 +282,8 @@
       if (p.followed) badges.push("<button type='button' class='badge orders' data-sales='" + i + "' data-kind='followed'>" + p.followed + " followed up</button>");
       if (p.ordered) badges.push("<button type='button' class='badge orders' data-sales='" + i + "' data-kind='ordered'>" + p.ordered + " client ordered</button>");
       if (p.added) badges.push("<button type='button' class='badge orders' data-sales='" + i + "' data-kind='added'>" + p.added + " added to Orders</button>");
+      if (p.drawing) badges.push("<button type='button' class='badge orders' data-sales='" + i + "' data-kind='drawing'>" + p.drawing + " drawing" + (p.drawing === 1 ? "" : "s") + "</button>");
+      if (p.approval) badges.push("<button type='button' class='badge orders' data-sales='" + i + "' data-kind='approval'>" + p.approval + " drawing approval" + (p.approval === 1 ? "" : "s") + "</button>");
       if (!p.worked) badges.push("<span class='badge none'>No sales work this month</span>");
       let proc = "";
       if (p.kinds && p.kinds.length) {
@@ -325,12 +327,13 @@
           (sales.untimedCount ? (", " + sales.untimedCount + " not timed") : "") + ".")
         : (sales.addedCount ? "Orders were added this month but older rows were not timed." : "New orders are timed from the moment POP is saved until the Orders row is created.");
       return "<div class='pack-block'>" +
-        "<div class='cover'><h2>Sales team</h2><p>What every marketing employee did this month: enquiries captured, quotes issued, follow-ups, client orders, and Orders rows added. Click a count. Time to add is POP to Orders, not shop clock time.</p></div>" +
+        "<div class='cover'><h2>Shabana and Erin</h2><p>What Shabana and Erin did this month: client work, quotes, follow-ups, drawings, drawing approval, and Orders rows added. Click a count. Time to add is POP to Orders, not shop clock time.</p></div>" +
         "<div class='kpis'>" +
-        "<div class='kpi'><span>Sales on the pack</span><b>" + sales.headcount + "</b></div>" +
+        "<div class='kpi'><span>On the pack</span><b>" + sales.headcount + "</b></div>" +
         "<div class='kpi'><span>Worked</span><b>" + sales.workedCount + "</b></div>" +
         "<div class='kpi'><span>Captured</span><b>" + sales.captured + "</b></div>" +
         "<div class='kpi'><span>Quoted</span><b>" + sales.quoted + "</b></div>" +
+        "<div class='kpi'><span>Drawings</span><b>" + (sales.drawing || 0) + "</b></div>" +
         "<div class='kpi'><span>Client ordered</span><b>" + sales.ordered + "</b></div>" +
         "<div class='kpi'><span>Orders added</span><b>" + sales.addedCount + "</b></div>" +
         "<div class='kpi'><span>Median time to add</span><b>" + (sales.medianLagLabel || "—") + "</b></div>" +

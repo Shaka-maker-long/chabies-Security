@@ -72,10 +72,25 @@ function isShopUser(u) {
   return access === "Production";
 }
 
+function salesSeatOf(name) {
+  if (staff.isDrawingOwnerName(name)) return "erin";
+  if (staff.isDrawingApprovalOwnerName(name)) return "shabana";
+  return "";
+}
+
 function isSalesUser(u) {
   if (!u || !u.name) return false;
-  if (staff.isMarketing(u)) return true;
-  return String(u.access || "") === "Marketing";
+  return !!salesSeatOf(u.name);
+}
+
+function salesRoster() {
+  const users = staff.listUsers() || [];
+  const erin = users.find((u) => staff.isDrawingOwnerName(u.name));
+  const shabana = users.find((u) => staff.isDrawingApprovalOwnerName(u.name));
+  return [
+    { seat: "erin", user: erin || { name: "Erin", role: "Interior Designer" } },
+    { seat: "shabana", user: shabana || { name: "Shabana", role: "Clients Relations Manager" } }
+  ];
 }
 
 function isoMonth(raw) {
@@ -110,7 +125,9 @@ const SALES_KINDS = [
   { kind: "complete_quote", key: "quoted", label: "Quoted" },
   { kind: "complete_followup", key: "followed", label: "Followed up" },
   { kind: "complete_order", key: "ordered", label: "Client ordered" },
-  { kind: "create_orders", key: "added", label: "Added to Orders" }
+  { kind: "create_orders", key: "added", label: "Added to Orders" },
+  { kind: "complete_drawing", key: "drawing", label: "Drawings" },
+  { kind: "complete_drawing_approval", key: "approval", label: "Drawing approval" }
 ];
 
 function salesKindOf(kind) {
@@ -127,6 +144,8 @@ function emptySalesPerson(name, profile) {
     followed: 0,
     ordered: 0,
     added: 0,
+    drawing: 0,
+    approval: 0,
     kinds: SALES_KINDS.map((k) => ({ name: k.label, key: k.key, count: 0 })),
     rows: []
   };
@@ -135,10 +154,9 @@ function emptySalesPerson(name, profile) {
 function buildSales(month) {
   const db = require("./db");
   const created = require("./order-created");
-  const users = staff.listUsers().filter(isSalesUser);
   const byName = {};
-  users.forEach((u) => {
-    byName[nameKey(u.name)] = emptySalesPerson(u.name, u);
+  salesRoster().forEach((seat) => {
+    byName[seat.seat] = emptySalesPerson(seat.user.name, seat.user);
   });
 
   const orders = db.listOrders() || [];
@@ -150,8 +168,8 @@ function buildSales(month) {
       if (isoMonth(ev.at) !== month) return;
       const actor = String((ev && ev.actor) || "").trim();
       if (!actor) return;
-      const key = nameKey(actor);
-      if (!byName[key]) return;
+      const key = salesSeatOf(actor);
+      if (!key || !byName[key]) return;
       const person = byName[key];
       person.worked = true;
       person[spec.key] = (person[spec.key] || 0) + 1;
@@ -201,8 +219,8 @@ function buildSales(month) {
     p.rows.sort((a, b) => String(a.at).localeCompare(String(b.at)));
   });
   people.sort((a, b) => {
-    const aN = a.captured + a.quoted + a.followed + a.ordered + a.added;
-    const bN = b.captured + b.quoted + b.followed + b.ordered + b.added;
+    const aN = a.captured + a.quoted + a.followed + a.ordered + a.added + a.drawing + a.approval;
+    const bN = b.captured + b.quoted + b.followed + b.ordered + b.added + b.drawing + b.approval;
     if (bN !== aN) return bN - aN;
     return String(a.worker).localeCompare(String(b.worker));
   });
@@ -217,6 +235,8 @@ function buildSales(month) {
     quoted: people.reduce((s, p) => s + p.quoted, 0),
     followed: people.reduce((s, p) => s + p.followed, 0),
     ordered: people.reduce((s, p) => s + p.ordered, 0),
+    drawing: people.reduce((s, p) => s + p.drawing, 0),
+    approval: people.reduce((s, p) => s + p.approval, 0),
     addedCount: added.length,
     timedCount: lags.length,
     untimedCount: added.length - lags.length,
