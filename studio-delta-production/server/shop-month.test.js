@@ -80,6 +80,12 @@ log.appendRow([
   "", "", "", 0, "", meta
 ]);
 log.appendRow([
+  "log-weld-b", "S260901B", "Thabo", "Welding", "Done",
+  new Date("2026-10-07T09:15:00+02:00"),
+  new Date("2026-10-07T10:15:00+02:00"),
+  "", "", "", 0, "", meta
+]);
+log.appendRow([
   "log-indirect", "", "Thabo", "Indirect", "Sweeping",
   new Date("2026-10-08T07:45:00+02:00"),
   new Date("2026-10-08T08:15:00+02:00"),
@@ -110,11 +116,11 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(thabo.totalMinutes > 0, "October clocks count");
   assert.ok(thabo.processes.some((p) => p.name === "Welding"));
   assert.ok(thabo.processes.some((p) => p.name === "Assembly"));
-  assert.strictEqual(thabo.orderCount, 2, "repeat clocks and S260901 A count as one order");
+  assert.strictEqual(thabo.orderCount, 4, "repeat clocks collapse; S260901, A and B are three lines plus S260902");
   const welding = thabo.processes.find((p) => p.name === "Welding");
   assert.ok(welding);
-  assert.ok(welding.orderCount <= thabo.orderCount);
-  assert.ok(welding.clocks > welding.orderCount, "clocks are not the same as unique orders");
+  assert.strictEqual(welding.orderCount, 3, "S260901, S260901 A and S260901 B are separate welding orders");
+  assert.ok(welding.clocks > welding.orderCount, "repeat sessions of the same line do not add extra orders");
   const indirect = thabo.processes.find((p) => p.name === "Indirect");
   assert.ok(indirect);
   assert.strictEqual(indirect.taskCount, 1);
@@ -143,8 +149,12 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("finished clock") === -1);
   assert.ok(html.indexOf("No clocks this month") === -1);
   assert.ok(html.indexOf("No orders this month") !== -1);
+  assert.ok(html.indexOf("A and B lines are separate orders") !== -1);
   assert.strictEqual(hub.baseOrderNo("S260277 A"), "S260277");
   assert.strictEqual(hub.baseOrderNo("S260277B"), "S260277");
+  assert.strictEqual(hub.orderLineId("S260300 A"), "S260300 A");
+  assert.strictEqual(hub.orderLineId("S260300B"), "S260300 B");
+  assert.notStrictEqual(hub.orderLineId("S260300 A"), hub.orderLineId("S260300 B"));
   console.log("shop-month.test.js ok");
 })().catch((e) => {
   console.error(e);
