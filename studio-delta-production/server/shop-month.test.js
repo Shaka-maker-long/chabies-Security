@@ -243,6 +243,7 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("function openAdded") !== -1);
   assert.ok(html.indexOf("Completed vs predicted") !== -1);
   assert.ok(html.indexOf("Completed over time") !== -1);
+  assert.ok(html.indexOf("Utilisation") !== -1);
   assert.ok(html.indexOf("Actual productivity") !== -1);
   assert.ok(html.indexOf("7.5") !== -1);
   assert.ok(html.indexOf("shopScoreCards") !== -1);
