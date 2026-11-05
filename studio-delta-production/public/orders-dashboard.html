@@ -53,9 +53,25 @@
     #productShot[hidden] { display:none !important; }
     #productShot img { display:block; width:100%; height:auto; max-height:280px; object-fit:contain; background:#f8f9fc; border-radius:6px; }
     #productShot .product-shot-name { margin:8px 2px 2px; font-size:12px; font-weight:700; color:var(--ink); }
-    .month-pick { display:flex; align-items:flex-start; gap:8px; font-size:12px; font-weight:600; color:var(--muted); }
-    .month-checks { display:flex; flex-wrap:wrap; gap:6px 10px; max-width:min(640px, 100%); max-height:72px; overflow:auto; }
-    .month-checks label { display:flex; align-items:center; gap:4px; font-weight:600; color:#344054; white-space:nowrap; }
+    .card-head { display:flex; gap:10px; align-items:flex-start; justify-content:space-between; margin-bottom:8px; }
+    .card-head h2 { margin:0 0 2px; }
+    .card-head .hint { margin:0; }
+    .month-dd { position:relative; flex:0 0 auto; }
+    .month-dd-btn {
+      border:1px solid var(--line); background:#fff; border-radius:8px;
+      padding:7px 10px; font:inherit; font-size:12px; font-weight:600; color:var(--ink);
+      cursor:pointer; white-space:nowrap; max-width:200px; overflow:hidden; text-overflow:ellipsis;
+    }
+    .month-dd.open .month-dd-btn { border-color:#1d2939; }
+    .month-dd-panel {
+      display:none; position:absolute; right:0; top:calc(100% + 4px); z-index:12;
+      background:#fff; border:1px solid var(--line); border-radius:10px;
+      box-shadow:0 10px 28px rgba(16,24,40,.16); min-width:196px; max-height:280px; overflow:auto; padding:6px;
+    }
+    .month-dd.open .month-dd-panel { display:block; }
+    .month-dd-panel label { display:flex; align-items:center; gap:8px; padding:5px 6px; font-size:12px; font-weight:600; color:#344054; white-space:nowrap; border-radius:6px; }
+    .month-dd-panel label:hover { background:#f2f4f7; }
+    .month-dd-clear { width:100%; border:0; background:transparent; text-align:left; padding:6px; font:inherit; font-size:11px; font-weight:700; color:var(--muted); cursor:pointer; }
     .window-chip { font-size:12px; font-weight:700; color:var(--ink); }
     .drill-mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; align-items:flex-start; justify-content:center; padding:24px 12px; overflow:auto; }
     .drill-mask.open { display:flex; }
@@ -103,13 +119,9 @@
       </nav>
       <h1>Orders dashboard</h1>
       <p class="window-chip" id="windowChip"></p>
-      <p class="lede">Income is amount paid excluding VAT. Tick two or more months to compare top products. Shop charts are live status, not filtered by month.</p>
+      <p class="lede">Income is amount paid excluding VAT. Shop charts are live status, not filtered by month.</p>
     </div>
     <div class="tools">
-      <div class="month-pick">
-        <span>Months</span>
-        <div id="monthChecks" class="month-checks" role="group" aria-label="Compare months"></div>
-      </div>
       <div class="seg" id="grain" role="group" aria-label="Time grain">
         <button type="button" data-v="week">Weekly</button>
         <button type="button" data-v="month" class="on">Monthly</button>
@@ -149,13 +161,35 @@
           <canvas id="source"></canvas>
         </section>
         <section class="card">
-          <h2>Top 10 items by income</h2>
-          <p class="hint">Products with the most amount paid (Excl VAT). Tick two or more months above to compare them side by side. Hover a product name for the catalog photo.</p>
+          <div class="card-head">
+            <div>
+              <h2>Top 10 items by income</h2>
+              <p class="hint">Products with the most amount paid (Excl VAT). Hover a product name for the catalog photo.</p>
+            </div>
+            <div class="month-dd" data-month-dd="income">
+              <button type="button" class="month-dd-btn" data-month-btn aria-haspopup="listbox" aria-expanded="false">Compare months</button>
+              <div class="month-dd-panel" role="listbox">
+                <button type="button" class="month-dd-clear" data-month-clear>All in range</button>
+                <div data-month-list></div>
+              </div>
+            </div>
+          </div>
           <canvas id="topIncome"></canvas>
         </section>
         <section class="card">
-          <h2>Top 10 products by quantity</h2>
-          <p class="hint">Order count, not doors. Tick two or more months above to compare them side by side. Hover a product name for the catalog photo.</p>
+          <div class="card-head">
+            <div>
+              <h2>Top 10 products by quantity</h2>
+              <p class="hint">Order count, not doors. Hover a product name for the catalog photo.</p>
+            </div>
+            <div class="month-dd" data-month-dd="qty">
+              <button type="button" class="month-dd-btn" data-month-btn aria-haspopup="listbox" aria-expanded="false">Compare months</button>
+              <div class="month-dd-panel" role="listbox">
+                <button type="button" class="month-dd-clear" data-month-clear>All in range</button>
+                <div data-month-list></div>
+              </div>
+            </div>
+          </div>
           <canvas id="topQty"></canvas>
         </section>
         <section class="card span2">
@@ -218,6 +252,7 @@
     let grain = "month";
     let range = "6m";
     let selectedMonths = [];
+    let monthMenuOpen = "";
     const PAL = ["#1d2939", "#027a48", "#3538cd", "#b54708", "#b42318", "#667085", "#6941c6", "#026aa2"];
     const WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
 
@@ -226,8 +261,7 @@
       const many = (over && over.months) || selectedMonths;
       let extra = "";
       if (one) extra = "&month=" + encodeURIComponent(one);
-      else if (many.length === 1) extra = "&month=" + encodeURIComponent(many[0]);
-      else if (many.length > 1) extra = "&months=" + encodeURIComponent(many.join(","));
+      else if (many.length) extra = "&months=" + encodeURIComponent(many.join(","));
       return "grain=" + encodeURIComponent(grain)
         + "&range=" + encodeURIComponent(range)
         + extra;
@@ -239,9 +273,6 @@
         b.addEventListener("click", () => {
           set(b.dataset.v);
           root.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b));
-          if (id === "range") {
-            selectedMonths = [];
-          }
           load();
         });
       });
@@ -306,24 +337,72 @@
       const v = Number(n) || 0;
       return "R " + v.toLocaleString("en-ZA", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
-    function fillMonthChecks(list) {
-      const host = document.getElementById("monthChecks");
-      host.innerHTML = (list || []).slice(0, 18).map((m) =>
+    function monthBtnLabel() {
+      if (!selectedMonths.length) return "Compare months";
+      const names = {};
+      ((data && data.months) || []).forEach((m) => { names[m.key] = m.label; });
+      return selectedMonths.map((k) => names[k] || k).join(" vs ");
+    }
+    function fillMonthDropdowns(list) {
+      const html = (list || []).slice(0, 18).map((m) =>
         "<label><input type=\"checkbox\" value=\"" + esc(m.key) + "\"" +
         (selectedMonths.indexOf(m.key) >= 0 ? " checked" : "") + "> " + esc(m.label) + "</label>"
       ).join("");
-      host.querySelectorAll("input").forEach((inp) => {
-        inp.addEventListener("change", () => {
-          const on = Array.from(host.querySelectorAll("input:checked")).map((x) => x.value).sort();
-          if (on.length > 6) {
-            inp.checked = false;
-            return;
-          }
-          selectedMonths = on;
-          load();
+      document.querySelectorAll("[data-month-list]").forEach((host) => {
+        host.innerHTML = html;
+        host.querySelectorAll("input").forEach((inp) => {
+          inp.addEventListener("change", () => {
+            const on = Array.from(host.querySelectorAll("input:checked")).map((x) => x.value).sort();
+            if (on.length > 6) {
+              inp.checked = false;
+              return;
+            }
+            selectedMonths = on;
+            const dd = host.closest("[data-month-dd]");
+            monthMenuOpen = dd ? dd.getAttribute("data-month-dd") : "";
+            load();
+          });
         });
       });
+      document.querySelectorAll("[data-month-btn]").forEach((btn) => {
+        btn.textContent = monthBtnLabel();
+      });
+      document.querySelectorAll("[data-month-dd]").forEach((dd) => {
+        const id = dd.getAttribute("data-month-dd");
+        const open = monthMenuOpen === id;
+        dd.classList.toggle("open", open);
+        const btn = dd.querySelector("[data-month-btn]");
+        if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+      });
     }
+    document.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-month-btn]");
+      const clear = e.target.closest("[data-month-clear]");
+      const dd = e.target.closest("[data-month-dd]");
+      if (clear) {
+        selectedMonths = [];
+        monthMenuOpen = "";
+        load();
+        return;
+      }
+      if (btn && dd) {
+        const id = dd.getAttribute("data-month-dd");
+        const willOpen = !dd.classList.contains("open");
+        document.querySelectorAll("[data-month-dd]").forEach((el) => el.classList.remove("open"));
+        monthMenuOpen = willOpen ? id : "";
+        dd.classList.toggle("open", willOpen);
+        btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+        return;
+      }
+      if (!dd) {
+        monthMenuOpen = "";
+        document.querySelectorAll("[data-month-dd]").forEach((el) => {
+          el.classList.remove("open");
+          const b = el.querySelector("[data-month-btn]");
+          if (b) b.setAttribute("aria-expanded", "false");
+        });
+      }
+    });
     function groupedBar(id, labels, series, horizontal, money, images, onBar) {
       const valueScale = { beginAtZero: true, ticks: money ? { callback: randTick } : { precision: 0 } };
       const hover = horizontal && images ? productHoverOpt(labels, images, onBar) : {};
@@ -687,7 +766,7 @@
     function render(d) {
       data = d;
       document.getElementById("windowChip").textContent = d.windowLabel + " · income charts";
-      fillMonthChecks(d.months);
+      fillMonthDropdowns(d.months);
       const k = d.kpis || {};
       document.getElementById("kpis").innerHTML =
         kpiHtml("open", "Open jobs", k.openJobs || 0)
@@ -712,7 +791,7 @@
       drawChannel();
       doughnut("cat", (d.categories || []).map((x) => x.label), (d.categories || []).map((x) => x.income), (_i, label) => openDrill({ kind: "category", value: label }));
       doughnut("source", (d.sources || []).map((x) => x.label), (d.sources || []).map((x) => x.income), (_i, label) => openDrill({ kind: "source", value: label }));
-      if (d.compare && d.compare.topIncome) {
+      if (d.compare && d.compare.topIncome && (d.compare.months || []).length >= 2) {
         groupedBar(
           "topIncome",
           d.compare.topIncome.labels,
@@ -731,6 +810,12 @@
           d.compare.topQuantity.images,
           (label, s) => openDrill({ kind: "productQty", value: label, month: s.key })
         );
+      } else if (d.compare && d.compare.topIncome && (d.compare.months || []).length === 1) {
+        const inc = d.compare.topIncome;
+        const qty = d.compare.topQuantity;
+        const mkey = inc.months[0].key;
+        bar("topIncome", inc.labels, inc.months[0].values, PAL[1], true, (_i, label) => openDrill({ kind: "productIncome", value: label, month: mkey }), true, inc.images);
+        bar("topQty", qty.labels, qty.months[0].values, PAL[2], true, (_i, label) => openDrill({ kind: "productQty", value: label, month: mkey }), false, qty.images);
       } else {
         bar("topIncome", (d.topIncome || []).map((x) => x.label), (d.topIncome || []).map((x) => x.income), PAL[1], true, (_i, label) => openDrill({ kind: "productIncome", value: label }), true, imgMap(d.topIncome));
         bar("topQty", (d.topQuantity || []).map((x) => x.label), (d.topQuantity || []).map((x) => x.count), PAL[2], true, (_i, label) => openDrill({ kind: "productQty", value: label }), false, imgMap(d.topQuantity));
