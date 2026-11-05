@@ -86,7 +86,7 @@
         <a href="/orders">Orders</a>
       </nav>
       <h1>Studio Delta // <span>Monthly shop pack</span></h1>
-      <p class="lede">What every shop employee clocked this month: stations, orders, regular time and overtime. Paid shift is 07:45–15:45 minus lunch. Print this for a stakeholder review.</p>
+      <p class="lede">What every shop employee worked this month: stations, orders, regular time and overtime. Paid shift is 07:45–15:45 minus lunch. Print this for a stakeholder review.</p>
     </div>
     <div class="tools no-print">
       <label>Month <input type="month" id="monthPick" onchange="load()"></label>
@@ -194,7 +194,7 @@
       } else {
         badges.push("<span class='badge'>0 orders</span>");
       }
-      if (!p.clocked) badges.push("<span class='badge none'>No clocks this month</span>");
+      if (!p.clocked) badges.push("<span class='badge none'>No orders this month</span>");
       let proc = "";
       if (p.processes.length) {
         proc = "<table><thead><tr><th>Station</th><th class='r'>Orders</th><th class='r'>Time</th></tr></thead><tbody>" +
@@ -206,7 +206,7 @@
           "</tbody></table>";
       }
       return "<article class='card'><h2>" + esc(p.worker) + "</h2><div class='meta'>" + esc(p.role || "Shop") +
-        (p.clocked ? (" · " + p.finished + " finished clock" + (p.finished === 1 ? "" : "s")) : "") +
+        (p.orderCount ? (" · " + p.orderCount + " order" + (p.orderCount === 1 ? "" : "s")) : "") +
         "</div><div class='badges'>" + badges.join("") + "</div>" + proc + "</article>";
     }
     function productCell(t) {
@@ -275,11 +275,11 @@
     function render(data) {
       const stations = (data.stations || []).slice(0, 8).map((s) => esc(s.name) + " " + hm(s.minutes)).join(" · ");
       const html =
-        "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Shop clocks for every production employee. Click a station or the order count. Repeat clocks and A/B lines of the same job count as one order. Station orders can overlap, so they do not add up to the badge. Indirect shows task names, not orders.</p></div>" +
+        "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Shop orders for every production employee. Click a station or the order count. Repeat sessions and A/B lines of the same job count as one order. Station orders can overlap, so they do not add up to the badge. Indirect shows task names, not orders.</p></div>" +
         "<div class='kpis'>" +
         "<div class='kpi'><span>People on the pack</span><b>" + data.headcount + "</b></div>" +
-        "<div class='kpi'><span>Clocked</span><b>" + data.clockedCount + "</b></div>" +
-        "<div class='kpi'><span>No clocks</span><b>" + data.absentCount + "</b></div>" +
+        "<div class='kpi'><span>Worked</span><b>" + data.clockedCount + "</b></div>" +
+        "<div class='kpi'><span>No orders</span><b>" + data.absentCount + "</b></div>" +
         "<div class='kpi'><span>Regular</span><b>" + hm(data.totalRegular) + "</b></div>" +
         "<div class='kpi'><span>Overtime</span><b>" + hm(data.totalOvertime) + "</b></div>" +
         "<div class='kpi'><span>Orders touched</span><b>" + data.orderCount + "</b></div>" +
