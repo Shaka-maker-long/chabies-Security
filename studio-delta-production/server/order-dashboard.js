@@ -151,6 +151,19 @@ function periodWindow(range, grain) {
   return { from, to: now, grain: grain === "week" ? "week" : "month" };
 }
 
+function parseMonthKeys(raw) {
+  const parts = String(raw || "").split(/[,\s]+/).map((s) => s.trim()).filter(Boolean);
+  const seen = {};
+  const out = [];
+  parts.forEach((s) => {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(s) || seen[s]) return;
+    seen[s] = true;
+    out.push(s);
+  });
+  out.sort();
+  return out.slice(0, 6);
+}
+
 function resolveWindow(query) {
   const grain = String((query && query.grain) || "month").toLowerCase() === "week" ? "week" : "month";
   const month = String((query && query.month) || "").trim();
@@ -164,8 +177,36 @@ function resolveWindow(query) {
       grain,
       range,
       month,
+      months: [month],
       windowLabel: monthLabel(month)
     };
+  }
+  const many = parseMonthKeys((query && query.months) || "");
+  if (many.length >= 2) {
+    const bounds = many.map(monthBounds).filter(Boolean);
+    return {
+      from: Math.min.apply(null, bounds.map((b) => b.from)),
+      to: Math.max.apply(null, bounds.map((b) => b.to)),
+      grain,
+      range,
+      month: "",
+      months: many,
+      windowLabel: many.map(monthLabel).join(" vs ")
+    };
+  }
+  if (many.length === 1) {
+    const one = monthBounds(many[0]);
+    if (one) {
+      return {
+        from: one.from,
+        to: one.to,
+        grain,
+        range,
+        month: many[0],
+        months: many,
+        windowLabel: monthLabel(many[0])
+      };
+    }
   }
   const win = periodWindow(range, grain);
   return {
@@ -174,6 +215,7 @@ function resolveWindow(query) {
     grain,
     range,
     month: "",
+    months: [],
     windowLabel: range === "all" ? "All time" : range === "year" ? "This year" : "Last 6 months"
   };
 }
@@ -417,6 +459,39 @@ function deliveryWeekSummary(items, weekKeyValue, today) {
   };
 }
 
+function compareProductSeries(monthProduct, metric, limit) {
+  const months = Object.keys(monthProduct || {}).sort();
+  const totals = {};
+  months.forEach((ym) => {
+    const map = (monthProduct[ym] && monthProduct[ym][metric]) || {};
+    Object.keys(map).forEach((p) => {
+      const n = metric === "income" ? (map[p] && map[p].income) : map[p];
+      totals[p] = (totals[p] || 0) + (Number(n) || 0);
+    });
+  });
+  const labels = Object.keys(totals)
+    .sort((a, b) => totals[b] - totals[a] || a.localeCompare(b))
+    .slice(0, limit || 10);
+  const images = {};
+  labels.forEach((p) => {
+    const img = productImg(p);
+    if (img) images[p] = img;
+  });
+  return {
+    labels,
+    images,
+    months: months.map((ym) => ({
+      key: ym,
+      label: monthLabel(ym),
+      values: labels.map((p) => {
+        const rec = monthProduct[ym][metric][p];
+        if (metric === "income") return roundMoney((rec && rec.income) || 0);
+        return rec || 0;
+      })
+    }))
+  };
+}
+
 function buildDashboard(query) {
   const win = resolveWindow(query || {});
   const rows = db.listOrders();
@@ -437,6 +512,11 @@ function buildDashboard(query) {
   const sourceMap = {};
   const productIncome = {};
   const productQty = {};
+  const compareKeys = (win.months || []).length >= 2 ? win.months.slice() : [];
+  const monthProduct = {};
+  compareKeys.forEach((k) => {
+    monthProduct[k] = { income: {}, qty: {} };
+  });
   const pipeCounts = {};
   const pipeAges = {};
   PIPELINE.forEach((p) => {
@@ -509,8 +589,14 @@ function buildDashboard(query) {
     if (channel === "offline") seriesMap[key].offline += 1;
     bumpMoney(catMap, blankLabel(row.category, "(Blank)"), money.paid);
     bumpMoney(sourceMap, blankLabel(row.source, "(Blank)"), money.paid);
-    bumpMoney(productIncome, blankLabel(row.product, "(No product)"), money.paid);
-    productQty[blankLabel(row.product, "(No product)")] = (productQty[blankLabel(row.product, "(No product)")] || 0) + 1;
+    const productName = blankLabel(row.product, "(No product)");
+    bumpMoney(productIncome, productName, money.paid);
+    productQty[productName] = (productQty[productName] || 0) + 1;
+    const ym = monthKey(new Date(ms));
+    if (monthProduct[ym]) {
+      bumpMoney(monthProduct[ym].income, productName, money.paid);
+      monthProduct[ym].qty[productName] = (monthProduct[ym].qty[productName] || 0) + 1;
+    }
   });
 
   const series = keys.map((key) => ({
@@ -561,7 +647,13 @@ function buildDashboard(query) {
     grain: win.grain,
     range: win.range,
     month: win.month,
+    selectedMonths: (win.months || []).slice(),
     months: pickerMonths(rows),
+    compare: compareKeys.length ? {
+      months: compareKeys.map((key) => ({ key, label: monthLabel(key) })),
+      topIncome: compareProductSeries(monthProduct, "income", 10),
+      topQuantity: compareProductSeries(monthProduct, "qty", 10)
+    } : null,
     kpis: {
       openJobs,
       waitingForDrawing,
