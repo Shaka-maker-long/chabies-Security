@@ -667,31 +667,11 @@ function mountOffice(app) {
     }
     const download = String((req.query && req.query.download) || "") === "1";
     res.setHeader("Content-Type", file.mime || "application/pdf");
-    res.setHeader("Cache-Control", "no-store");
     res.setHeader(
       "Content-Disposition",
       (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "purchase-order.pdf").replace(/"/g, "") + "\""
     );
     res.send(file.buffer);
-  });
-
-  app.get("/api/office/consumables/purchases/:id/qr-labels.pdf", requireOffice, async (req, res) => {
-    try {
-      const file = await consumables.readPurchaseQrPdf(req.params.id);
-      if (!file) {
-        res.status(404).json({ ok: false, error: "QR labels PDF not found." });
-        return;
-      }
-      res.setHeader("Content-Type", file.mime || "application/pdf");
-      res.setHeader("Cache-Control", "no-store");
-      res.setHeader(
-        "Content-Disposition",
-        "inline; filename=\"" + String(file.filename || "QR-labels.pdf").replace(/"/g, "") + "\""
-      );
-      res.send(file.buffer);
-    } catch (e) {
-      res.status(400).json({ ok: false, error: e.message || String(e) });
-    }
   });
 
   app.post("/api/office/consumables/purchases/:id/receive", requireOffice, (req, res) => {

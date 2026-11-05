@@ -190,9 +190,9 @@ function sdEnsureScript(src) {
   });
 }
 function sdLoadBrand() {
-  sdEnsureSheet("/sd-brand.css?v=committed-banner");
+  sdEnsureSheet("/sd-brand.css?v=logged-in-2");
   sdEnsureSheet("/office-shell.css?v=logged-in");
-  return sdEnsureScript("/sd-splash.js?v=committed-banner");
+  return sdEnsureScript("/sd-splash.js?v=erp-shell");
 }
 function sdForgetOffice() {
   sdClearOfficeProfile();
