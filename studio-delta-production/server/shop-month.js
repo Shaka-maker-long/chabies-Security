@@ -47,14 +47,52 @@ function isShopUser(u) {
   return access === "Production";
 }
 
-function summarize(w, profile) {
+function orderMetaMap() {
+  const db = require("./db");
+  const catalog = require("./product-catalog");
+  const map = {};
+  (db.listOrders() || []).forEach((o) => {
+    const id = db.formatOrderId(o.order_number);
+    if (!id) return;
+    const product = String(o.product || "").trim();
+    const found = product ? catalog.lookupProduct(product) : null;
+    map[id] = {
+      product,
+      imageUrl: (found && found.imageUrl) || ""
+    };
+  });
+  return map;
+}
+
+function decorateTasks(tasks, orderMap) {
+  const db = require("./db");
+  return (tasks || []).map((t) => {
+    const order = String(t.order || "").trim();
+    const meta = order ? (orderMap[db.formatOrderId(order)] || orderMap[order] || null) : null;
+    return {
+      order: order,
+      role: t.role || "",
+      task: t.task || t.role || "",
+      minutes: Number(t.minutes || 0),
+      date: t.date || "",
+      start: t.start || null,
+      end: t.end || null,
+      entryType: t.entryType || "production",
+      product: (meta && meta.product) || "",
+      imageUrl: (meta && meta.imageUrl) || ""
+    };
+  });
+}
+
+function summarize(w, profile, orderMap) {
   const processes = {};
   const orders = {};
   let finished = 0;
   let running = 0;
   let indirectMins = 0;
   let productionMins = 0;
-  (w.tasks || []).forEach((t) => {
+  const tasks = decorateTasks(w.tasks || [], orderMap || {});
+  tasks.forEach((t) => {
     const mins = Number(t.minutes || 0);
     const role = String(t.role || t.task || "Other").trim() || "Other";
     processes[role] = processes[role] || { name: role, minutes: 0, n: 0 };
@@ -76,25 +114,23 @@ function summarize(w, profile) {
   return {
     worker: w.worker,
     role: (profile && (profile.role || profile.jobTitle)) || "",
-    clocked: (w.totalMinutes || 0) > 0 || (w.tasks || []).length > 0,
+    clocked: (w.totalMinutes || 0) > 0 || tasks.length > 0,
     daysWorked: (w.days || []).length,
     totalMinutes: Number(w.totalMinutes || 0),
     totalRegular: Number(w.totalRegular || 0),
     totalOvertime: Number(w.totalOvertime || 0),
     overLimitDays: (w.days || []).filter((d) => d.overLimit).length,
     processes: processList,
-    orders: orderList,
     orderCount: orderList.length,
     finished,
     running,
     indirectMins,
     productionMins,
-    days: w.days || [],
-    tasks: w.tasks || []
+    tasks
   };
 }
 
-function emptyWorker(name, profile) {
+function emptyWorker(name, profile, orderMap) {
   return summarize({
     worker: name,
     days: [],
@@ -102,13 +138,14 @@ function emptyWorker(name, profile) {
     totalMinutes: 0,
     totalRegular: 0,
     totalOvertime: 0
-  }, profile);
+  }, profile, orderMap);
 }
 
 async function build(query) {
   const month = parseMonth(query && query.month);
   const { callShopFunction } = require("./gas");
   const report = await callShopFunction("getActivityReport", ["month", refMs(month), ""]);
+  const orderMap = orderMetaMap();
   const byName = {};
   (report.workers || []).forEach((w) => {
     byName[nameKey(w.worker)] = w;
@@ -123,13 +160,13 @@ async function build(query) {
     const key = nameKey(u.name);
     seen[key] = true;
     const rec = byName[key];
-    people.push(rec ? summarize(rec, u) : emptyWorker(u.name, u));
+    people.push(rec ? summarize(rec, u, orderMap) : emptyWorker(u.name, u, orderMap));
   });
   (report.workers || []).forEach((w) => {
     const key = nameKey(w.worker);
     if (seen[key]) return;
     seen[key] = true;
-    people.push(summarize(w, profiles[key]));
+    people.push(summarize(w, profiles[key], orderMap));
   });
   people.sort((a, b) => {
     if (b.totalMinutes !== a.totalMinutes) return b.totalMinutes - a.totalMinutes;
@@ -151,7 +188,11 @@ async function build(query) {
   const busiest = clocked[0] || null;
   const topStation = stations[0] || null;
   const uniqueOrders = {};
-  clocked.forEach((p) => p.orders.forEach((o) => { uniqueOrders[o.order] = true; }));
+  clocked.forEach((p) => {
+    (p.tasks || []).forEach((t) => {
+      if (t.order && t.entryType !== "indirect") uniqueOrders[t.order] = true;
+    });
+  });
 
   return {
     month,
@@ -177,5 +218,6 @@ module.exports = {
   currentMonth,
   isShopUser,
   summarize,
+  orderMetaMap,
   build
 };
