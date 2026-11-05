@@ -68,6 +68,24 @@ log.appendRow([
   "", "", "", 0, "", meta
 ]);
 log.appendRow([
+  "log-weld-2", "S260901", "Thabo", "Welding", "Done",
+  new Date("2026-10-05T12:30:00+02:00"),
+  new Date("2026-10-05T13:00:00+02:00"),
+  "", "", "", 0, "", meta
+]);
+log.appendRow([
+  "log-weld-a", "S260901 A", "Thabo", "Welding", "Done",
+  new Date("2026-10-07T07:45:00+02:00"),
+  new Date("2026-10-07T09:00:00+02:00"),
+  "", "", "", 0, "", meta
+]);
+log.appendRow([
+  "log-indirect", "", "Thabo", "Indirect", "Sweeping",
+  new Date("2026-10-08T07:45:00+02:00"),
+  new Date("2026-10-08T08:15:00+02:00"),
+  "", "", "", 0, "", JSON.stringify({ entryType: "indirect", pauses: [], overtimeContinue: false, batchShare: 1 })
+]);
+log.appendRow([
   "log-sep", "S260800", "Thabo", "Welding", "Done",
   new Date("2026-09-10T07:45:00+02:00"),
   new Date("2026-09-10T12:00:00+02:00"),
@@ -92,7 +110,14 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(thabo.totalMinutes > 0, "October clocks count");
   assert.ok(thabo.processes.some((p) => p.name === "Welding"));
   assert.ok(thabo.processes.some((p) => p.name === "Assembly"));
-  assert.strictEqual(thabo.orderCount, 2);
+  assert.strictEqual(thabo.orderCount, 2, "repeat clocks and S260901 A count as one order");
+  const welding = thabo.processes.find((p) => p.name === "Welding");
+  assert.ok(welding);
+  assert.ok(welding.orderCount <= thabo.orderCount);
+  assert.ok(welding.clocks > welding.orderCount, "clocks are not the same as unique orders");
+  const indirect = thabo.processes.find((p) => p.name === "Indirect");
+  assert.ok(indirect);
+  assert.strictEqual(indirect.taskCount, 1);
   assert.ok(!(thabo.orders && thabo.orders.length), "order lines stay off the card payload");
   const weld = (thabo.tasks || []).find((t) => t.order === "S260901");
   assert.ok(weld);
@@ -112,6 +137,11 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("function openOrders") !== -1);
   assert.ok(html.indexOf("data-product-shot") !== -1);
   assert.ok(html.indexOf("id=\"productShot\"") !== -1);
+  assert.ok(html.indexOf("tr.station") !== -1);
+  assert.ok(html.indexOf("function groupOrderRows") !== -1);
+  assert.ok(html.indexOf("function groupIndirectRows") !== -1);
+  assert.strictEqual(hub.baseOrderNo("S260277 A"), "S260277");
+  assert.strictEqual(hub.baseOrderNo("S260277B"), "S260277");
   console.log("shop-month.test.js ok");
 })().catch((e) => {
   console.error(e);

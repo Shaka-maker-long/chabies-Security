@@ -35,6 +35,8 @@
     .badge.none { background:#fef3f2; color:#b42318; }
     .badge.orders { cursor:pointer; background:#1d2939; color:#fff; border:0; font:inherit; font-size:11px; font-weight:700; padding:4px 8px; }
     .badge.orders:disabled { cursor:default; background:#f2f4f7; color:var(--ink); }
+    tr.station { cursor:pointer; }
+    tr.station:hover td { background:#f2f4f7; }
     .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; padding:24px 12px; overflow:auto; }
     .mask.open { display:block; }
     .modal { background:#fff; max-width:820px; margin:0 auto; border:2px solid #000; }
@@ -126,6 +128,61 @@
       return now.getUTCFullYear() + "-" + String(now.getUTCMonth() + 1).padStart(2, "0");
     }
     let PEOPLE = [];
+    function isIndirect(t) {
+      if (!t) return true;
+      if (String(t.entryType || "") === "indirect") return true;
+      if (!String(t.order || "").trim()) return true;
+      return String(t.role || t.task || "").toLowerCase() === "indirect";
+    }
+    function baseOrderNo(raw) {
+      const s = String(raw || "").trim().toUpperCase().replace(/\s+/g, " ");
+      if (!s) return "";
+      const tagged = s.match(/^(S\d+)\s*[A-Z]$/);
+      if (tagged) return tagged[1];
+      const glued = s.match(/^(S\d+)[A-Z]$/);
+      if (glued) return glued[1];
+      return s;
+    }
+    function stationOf(t) {
+      return String(t.role || t.task || "Other").trim() || "Other";
+    }
+    function groupOrderRows(tasks) {
+      const map = {};
+      (tasks || []).forEach((t) => {
+        if (isIndirect(t)) return;
+        const base = t.baseOrder || baseOrderNo(t.order);
+        const task = String(t.task || t.role || "").trim() || "Work";
+        const key = base + "\0" + task;
+        if (!map[key]) {
+          map[key] = { order: base, product: t.product || "", imageUrl: t.imageUrl || "", task: task, minutes: 0, running: false };
+        }
+        map[key].minutes += Number(t.minutes || 0);
+        if (t.product) map[key].product = t.product;
+        if (t.imageUrl) map[key].imageUrl = t.imageUrl;
+        if (!t.end) map[key].running = true;
+      });
+      return Object.keys(map).map((k) => map[k]).sort((a, b) => {
+        if (a.order !== b.order) return String(a.order).localeCompare(String(b.order));
+        return String(a.task).localeCompare(String(b.task));
+      });
+    }
+    function indirectName(t) {
+      const task = String(t.task || "").trim();
+      const role = String(t.role || "").trim();
+      if (task && task.toLowerCase() !== "indirect") return task;
+      if (role && role.toLowerCase() !== "indirect") return role;
+      return "Indirect";
+    }
+    function groupIndirectRows(tasks) {
+      const map = {};
+      (tasks || []).forEach((t) => {
+        if (!isIndirect(t)) return;
+        const label = indirectName(t);
+        if (!map[label]) map[label] = { task: label, minutes: 0 };
+        map[label].minutes += Number(t.minutes || 0);
+      });
+      return Object.keys(map).map((k) => map[k]).sort((a, b) => b.minutes - a.minutes);
+    }
     function personCard(p, i) {
       const badges = [];
       badges.push("<span class='badge'>" + hm(p.totalMinutes) + " total</span>");
@@ -140,8 +197,12 @@
       if (!p.clocked) badges.push("<span class='badge none'>No clocks this month</span>");
       let proc = "";
       if (p.processes.length) {
-        proc = "<table><thead><tr><th>Station</th><th class='r'>Clocks</th><th class='r'>Time</th></tr></thead><tbody>" +
-          p.processes.map((r) => "<tr><td>" + esc(r.name) + "</td><td class='r'>" + r.n + "</td><td class='r'>" + hm(r.minutes) + "</td></tr>").join("") +
+        proc = "<table><thead><tr><th>Station</th><th class='r'>Orders</th><th class='r'>Time</th></tr></thead><tbody>" +
+          p.processes.map((r) => {
+            const qty = r.indirect ? (r.taskCount || r.count || 0) : (r.orderCount || r.count || 0);
+            const qtyLabel = r.indirect ? (qty + " task" + (qty === 1 ? "" : "s")) : qty;
+            return "<tr class='station' data-person='" + i + "' data-station=\"" + esc(r.name) + "\"><td>" + esc(r.name) + "</td><td class='r'>" + qtyLabel + "</td><td class='r'>" + hm(r.minutes) + "</td></tr>";
+          }).join("") +
           "</tbody></table>";
       }
       return "<article class='card'><h2>" + esc(p.worker) + "</h2><div class='meta'>" + esc(p.role || "Shop") +
@@ -155,21 +216,40 @@
       }
       return esc(name);
     }
-    function openOrders(i) {
+    function showModal(title, html) {
+      document.getElementById("orderTitle").textContent = title;
+      document.getElementById("orderBody").innerHTML = html;
+      document.getElementById("orderMask").classList.add("open");
+    }
+    function openOrders(i, station) {
       const p = PEOPLE[i];
       if (!p) return;
-      document.getElementById("orderTitle").textContent = p.worker + " — orders this month";
-      const rows = (p.tasks || []).filter((t) => t.order && t.entryType !== "indirect");
-      if (!rows.length) {
-        document.getElementById("orderBody").innerHTML = "<p class='lede'>No order clocks this month.</p>";
-      } else {
-        document.getElementById("orderBody").innerHTML =
-          "<table><thead><tr><th>Order</th><th>Product</th><th>Task</th><th class='r'>Duration</th></tr></thead><tbody>" +
-          rows.map((t) => "<tr><td>" + esc(t.order) + "</td><td>" + productCell(t) + "</td><td>" + esc(t.task || t.role) +
-            (t.end ? "" : " (running)") + "</td><td class='r'>" + hm(t.minutes) + "</td></tr>").join("") +
-          "</tbody></table>";
+      let tasks = p.tasks || [];
+      if (station) tasks = tasks.filter((t) => stationOf(t) === station);
+      const indirectStation = String(station || "").toLowerCase() === "indirect";
+      if (indirectStation || (station && tasks.every(isIndirect))) {
+        const rows = groupIndirectRows(tasks.length ? tasks : (p.tasks || []).filter(isIndirect));
+        if (!rows.length) {
+          showModal(p.worker + " — Indirect", "<p class='lede'>No indirect tasks this month.</p>");
+          return;
+        }
+        showModal(p.worker + " — Indirect",
+          "<table><thead><tr><th>Task</th><th class='r'>Duration</th></tr></thead><tbody>" +
+          rows.map((t) => "<tr><td>" + esc(t.task) + "</td><td class='r'>" + hm(t.minutes) + "</td></tr>").join("") +
+          "</tbody></table>");
+        return;
       }
-      document.getElementById("orderMask").classList.add("open");
+      const rows = groupOrderRows(tasks);
+      const label = station ? (p.worker + " — " + station) : (p.worker + " — orders this month");
+      if (!rows.length) {
+        showModal(label, "<p class='lede'>No order work in this view.</p>");
+        return;
+      }
+      showModal(label,
+        "<table><thead><tr><th>Order</th><th>Product</th><th>Task</th><th class='r'>Duration</th></tr></thead><tbody>" +
+        rows.map((t) => "<tr><td>" + esc(t.order) + "</td><td>" + productCell(t) + "</td><td>" + esc(t.task) +
+          (t.running ? " (running)" : "") + "</td><td class='r'>" + hm(t.minutes) + "</td></tr>").join("") +
+        "</tbody></table>");
     }
     function closeOrders() {
       document.getElementById("orderMask").classList.remove("open");
@@ -195,7 +275,7 @@
     function render(data) {
       const stations = (data.stations || []).slice(0, 8).map((s) => esc(s.name) + " " + hm(s.minutes)).join(" · ");
       const html =
-        "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Shop clocks for every production employee. Unlinked office work is not on this pack. Regular time is capped at 7h30 paid per day; extra is overtime.</p></div>" +
+        "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Shop clocks for every production employee. Click a station or the order count. Repeat clocks and A/B lines of the same job count as one order. Station orders can overlap, so they do not add up to the badge. Indirect shows task names, not orders.</p></div>" +
         "<div class='kpis'>" +
         "<div class='kpi'><span>People on the pack</span><b>" + data.headcount + "</b></div>" +
         "<div class='kpi'><span>Clocked</span><b>" + data.clockedCount + "</b></div>" +
@@ -214,6 +294,9 @@
       document.getElementById("app").innerHTML = html;
       document.querySelectorAll(".badge.orders").forEach((btn) => {
         btn.addEventListener("click", () => openOrders(Number(btn.getAttribute("data-person"))));
+      });
+      document.querySelectorAll("tr.station").forEach((row) => {
+        row.addEventListener("click", () => openOrders(Number(row.getAttribute("data-person")), row.getAttribute("data-station")));
       });
     }
     async function load() {
