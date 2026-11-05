@@ -9,7 +9,7 @@ const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 const labels = [
   "Home", "Orders", "Inventory Management", "Enquiries", "Marketing", "Ops hub", "My tasks", "Dropdowns", "Users",
   "Task times", "Planning", "Reworks", "Debtors", "Production Tasks", "Production", "Workers", "Metrics",
-  "QC Reports", "Delivery Forms", "Driver tracker", "Activity", "Schedule", "Log Out", "Change access code"
+  "QC Reports", "Delivery Forms", "Driver tracker", "Activity", "Month pack", "Schedule", "Log Out", "Change access code"
 ];
 labels.forEach((label) => {
   assert.ok(js.indexOf('"' + label + '"') !== -1 || js.indexOf(">" + label + "<") !== -1, "office menu missing " + label);
@@ -45,7 +45,11 @@ assert.ok(indexJs.indexOf("/marketing") !== -1);
 assert.ok(officeJs.indexOf("/api/office/marketing/dashboard") !== -1);
 assert.ok(officeJs.indexOf("/api/office/marketing/dashboard/drill") !== -1);
 assert.ok(officeJs.indexOf("/api/office/ops-hub") !== -1);
-assert.ok(indexJs.indexOf("/ops") !== -1);
+assert.ok(officeJs.indexOf("/api/office/shop-month") !== -1);
+assert.ok(indexJs.indexOf("/shop-month") !== -1);
+assert.ok(js.indexOf("/shop-month") !== -1);
+assert.ok(js.indexOf('"Month pack"') !== -1);
+assert.ok(indexJs.indexOf('"/ops"') !== -1 || indexJs.indexOf("/ops") !== -1);
 const opsHtml = fs.readFileSync(path.join(__dirname, "../public/ops-hub.html"), "utf8");
 assert.ok(opsHtml.indexOf("2026 Linked conversion funnel") !== -1);
 assert.ok(opsHtml.indexOf("/api/office/ops-hub") !== -1);
@@ -532,7 +536,8 @@ assert.ok(inventoryHtml.indexOf("mobile-use") !== -1);
 assert.ok(inventoryHtml.indexOf("addUseLine") !== -1);
 assert.ok(inventoryHtml.indexOf("General") !== -1);
 assert.ok(inventoryHtml.indexOf("Generate purchase order") !== -1);
-assert.ok(inventoryHtml.indexOf("Open PDF") !== -1);
+assert.ok(inventoryHtml.indexOf("Open PO") !== -1);
+assert.ok(inventoryHtml.indexOf("Open QR code") !== -1);
 assert.ok(inventoryHtml.indexOf("sdRequireOffice(\"inventory\")") !== -1);
 assert.ok(inventoryHtml.indexOf("Steel stock in buy units") !== -1);
 assert.ok(inventoryHtml.indexOf("WIP Qty") !== -1);
@@ -1285,7 +1290,7 @@ assert.ok(repliesHtml.indexOf("enquiry=") !== -1 || enquiriesHtml.indexOf("/enqu
 assert.ok(enquiriesHtml.indexOf("Write email") !== -1);
 assert.ok(enquiriesHtml.indexOf("/enquiries/replies?enquiry=") !== -1);
 assert.ok(repliesHtml.indexOf("/enquiries/bookings") !== -1);
-assert.ok(repliesHtml.indexOf("/sd-pwa.js?v=pwa-driverpin") !== -1);
+assert.ok(repliesHtml.indexOf("/sd-pwa.js?v=pwa-committed-banner") !== -1);
 const bookingsHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries-bookings.html"), "utf8");
 assert.ok(bookingsHtml.indexOf("Showroom bookings") !== -1);
 assert.ok(bookingsHtml.indexOf("/api/office/enquiries/bookings") !== -1);
@@ -1321,7 +1326,7 @@ assert.ok(dashHtml.indexOf("prodSearch") !== -1);
 assert.ok(dashHtml.indexOf("Product value (excl VAT)") !== -1);
 assert.ok(dashHtml.indexOf("Open work that still needs doing") !== -1);
 assert.ok(dashHtml.indexOf("Follow-up only after 7 days") !== -1);
-assert.ok(dashHtml.indexOf("/sd-pwa.js?v=pwa-driverpin") !== -1, "dashboard must boot the PWA");
+assert.ok(dashHtml.indexOf("/sd-pwa.js?v=pwa-committed-banner") !== -1, "dashboard must boot the PWA");
 assert.ok(dashHtml.indexOf("qs(params)") !== -1, "week-of-month drill must send the clicked month");
 assert.ok(dashHtml.indexOf("drillMoneyHtml") !== -1);
 assert.ok(dashHtml.indexOf("Quoted excl VAT") !== -1);
@@ -1438,10 +1443,11 @@ assert.ok(indexJs.indexOf("/sd-brand.css") !== -1);
 assert.ok(indexJs.indexOf("/sd-splash.js") !== -1);
 assert.ok(indexJs.indexOf("/manifest.webmanifest") !== -1);
 assert.ok(indexJs.indexOf("/sw.js") !== -1);
-assert.ok(floor.indexOf("/sd-pwa.js?v=pwa-driverpin") !== -1 || floor.indexOf("/sd-pwa.js?v=pwa-driverpin") !== -1);
+assert.ok(floor.indexOf("/sd-pwa.js?v=pwa-committed-banner") !== -1 || floor.indexOf("/sd-pwa.js?v=pwa-committed-banner") !== -1);
 const splash = fs.readFileSync(path.join(__dirname, "../public/sd-splash.js"), "utf8");
 assert.ok(splash.indexOf("Welcome to Studio Delta") !== -1);
 assert.ok(splash.indexOf("sd-s") !== -1);
+assert.ok(splash.indexOf("Staging") !== -1 && splash.indexOf("isStaging") !== -1, "splash must label staging vs production");
 const brand = fs.readFileSync(path.join(__dirname, "../public/sd-brand.css"), "utf8");
 assert.ok(brand.indexOf(".sd-welcome") !== -1);
 assert.ok(brand.indexOf("#b08948") !== -1);

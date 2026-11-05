@@ -190,9 +190,9 @@ function sdEnsureScript(src) {
   });
 }
 function sdLoadBrand() {
-  sdEnsureSheet("/sd-brand.css?v=logged-in-2");
+  sdEnsureSheet("/sd-brand.css?v=committed-banner");
   sdEnsureSheet("/office-shell.css?v=logged-in");
-  return sdEnsureScript("/sd-splash.js?v=erp-shell");
+  return sdEnsureScript("/sd-splash.js?v=committed-banner");
 }
 function sdForgetOffice() {
   sdClearOfficeProfile();
@@ -244,6 +244,7 @@ function sdMountOfficeShell(active) {
     ["/delivery-forms", "deliveryforms", "bi-truck", "Delivery Forms"],
     ["/driver-tracker", "drivertracker", "bi-geo-alt", "Driver tracker"],
     ["/?view=activity", "activity", "bi-calendar3", "Activity"],
+    ["/shop-month", "shopmonth", "bi-person-lines-fill", "Month pack"],
     ["/?view=schedule", "floorschedule", "bi-calendar-week", "Schedule"]
   ];
   const nav = document.createElement("nav");
