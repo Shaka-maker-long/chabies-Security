@@ -49,6 +49,8 @@ assert.ok(officeJs.indexOf("/api/office/shop-month") !== -1);
 assert.ok(indexJs.indexOf("/shop-month") !== -1);
 assert.ok(js.indexOf("/shop-month") !== -1);
 assert.ok(js.indexOf('"Month pack"') !== -1);
+assert.ok(floor.indexOf('href="/shop-month"') !== -1, "Home sidebar links to the monthly shop pack");
+assert.ok(floor.indexOf("Open monthly shop pack") !== -1);
 assert.ok(indexJs.indexOf('"/ops"') !== -1 || indexJs.indexOf("/ops") !== -1);
 const opsHtml = fs.readFileSync(path.join(__dirname, "../public/ops-hub.html"), "utf8");
 assert.ok(opsHtml.indexOf("2026 Linked conversion funnel") !== -1);
