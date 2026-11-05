@@ -209,6 +209,11 @@
     function pct(n) {
       return n == null ? "—" : (Math.round(Number(n) * 10) / 10) + "%";
     }
+    function taskTimesNote(mins) {
+      return Number(mins) > 0
+        ? (" <em>Task times " + hm(mins) + "</em>")
+        : " <em>no Task times</em>";
+    }
     function resultIcons(trophies, overtime, personIdx) {
       const who = (personIdx === undefined || personIdx === null) ? "all" : String(personIdx);
       return "<span class='result-icons'>" +
@@ -229,13 +234,12 @@
       }
       badges.push(resultIcons(p.trophies, p.overtimeJobs, i));
       if (!p.clocked) badges.push("<span class='badge none'>No orders this month</span>");
-      const pred = p.predictedMins > 0 ? (" <em>estimated " + hm(p.predictedMins) + "</em>") : " <em>no estimate</em>";
       const days = p.workDays || 0;
       const metrics = "<div class='metrics'>" +
         "<div><span>Total hours available</span><b>" + hm(p.capacityMins) + "</b><em>" + days + " workday" + (days === 1 ? "" : "s") + " × 7.5 production hours/day</em></div>" +
         "<div><span>Total hours</span><b>" + hm(p.totalMinutes) + "</b><em>this employee</em></div>" +
         "<div><span>Utilisation</span><b>" + pct(p.productivityPct) + "</b><em>employee hours ÷ hours available</em></div>" +
-        "<div><span>Hours allocated to orders</span><b>" + hm(p.completedMins) + "</b>" + pred + "</div>" +
+        "<div><span>Hours allocated to orders</span><b>" + hm(p.completedMins) + "</b>" + taskTimesNote(p.predictedMins) + "</div>" +
         "<div><span>Actual productivity</span><b>" + pct(p.actualProductivityPct) + "</b><em>hours minus indirect ÷ hours available</em></div>" +
         "</div>";
       let proc = "";
@@ -327,7 +331,7 @@
       }
       const whoCol = pack.shop ? "<th>Person</th>" : "";
       showModal(who + title,
-        "<table><thead><tr>" + whoCol + "<th>Order</th><th>Product</th><th>Task</th><th class='r'>Estimated time</th><th class='r'>Actual time</th></tr></thead><tbody>" +
+        "<table><thead><tr>" + whoCol + "<th>Order</th><th>Product</th><th>Task</th><th class='r'>Task times</th><th class='r'>Time on clock</th></tr></thead><tbody>" +
         pack.rows.map((t) => "<tr>" +
           (pack.shop ? ("<td>" + esc(t.worker) + "</td>") : "") +
           "<td>" + esc(t.order) + "</td><td>" + productCell(t) + "</td><td>" + esc(t.task) + "</td>" +
@@ -433,9 +437,7 @@
       const days = data.workDays || 0;
       const n = data.clockedCount || 0;
       const available = Number(data.capacityMins || 0) * n;
-      const pred = data.predictedMins
-        ? (" <em>estimated " + hm(data.predictedMins) + "</em>")
-        : " <em>no estimate</em>";
+      const pred = taskTimesNote(data.predictedMins);
       return "<div class='score-grid'>" +
         "<article class='score'><h3>Total hours available</h3>" +
         "<p class='lede'>" + n + " people who worked × 7.5 production hours/day × " + days + " workday" + (days === 1 ? "" : "s") + ".</p>" +
@@ -447,7 +449,7 @@
         "<p class='lede'>Average of each person who worked: their hours ÷ hours available.</p>" +
         "<div class='hero'>" + pct(data.productivityPct) + "</div></article>" +
         "<article class='score'><h3>Hours allocated to orders</h3>" +
-        "<p class='lede'>Hours clocked on production orders this month, against Task times for those lines.</p>" +
+        "<p class='lede'>The large number is hours on the clock for production orders. Task times is what the task sheet said those jobs should take.</p>" +
         "<div class='hero'>" + hm(data.completedMins) + pred + "</div></article>" +
         "<article class='score'><h3>Actual productivity</h3>" +
         "<p class='lede'>Average of each person who worked: (hours − indirect) ÷ hours available.</p>" +
