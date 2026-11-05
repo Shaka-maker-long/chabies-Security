@@ -267,7 +267,7 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("marketing employee") === -1);
   assert.ok(html.indexOf("Median time to add") !== -1);
   assert.ok(html.indexOf("function openAdded") !== -1);
-  assert.ok(html.indexOf("Actual vs estimated") !== -1);
+  assert.ok(html.indexOf("Time allocated to orders") !== -1);
   assert.ok(html.indexOf("Completed over time") === -1);
   assert.ok(html.indexOf("Utilisation") !== -1);
   assert.ok(html.indexOf("Actual productivity") !== -1);
