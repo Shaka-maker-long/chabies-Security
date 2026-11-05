@@ -25,6 +25,14 @@
     .kpi { background:#fff; border:1px solid var(--line); padding:12px 14px; }
     .kpi span { display:block; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
     .kpi b { display:block; margin-top:4px; font-size:22px; font-family: Outfit, Inter, sans-serif; }
+    .score-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; margin:0 0 16px; }
+    .score { background:#fff; border:1px solid var(--line); padding:16px 18px; min-width:0; }
+    .score h3 { margin:0 0 4px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; }
+    .score .lede { margin:0 0 10px; max-width:none; }
+    .score .hero { font-size:28px; font-family: Outfit, Inter, sans-serif; font-weight:700; }
+    .score .hero em { font-style:normal; color:var(--muted); font-size:16px; font-weight:600; }
+    .score .spark { height:72px; }
+    @media (max-width: 900px) { .score-grid { grid-template-columns:1fr; } }
     .people { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; }
     .pack-block { margin-top:28px; }
     .pack-block h2 { margin:0 0 8px; font-size:14px; letter-spacing:.08em; text-transform:uppercase; }
@@ -197,11 +205,11 @@
     function pct(n) {
       return n == null ? "—" : (Math.round(Number(n) * 10) / 10) + "%";
     }
-    function spark(days) {
+    function spark(days, hideLabel) {
       const rows = days || [];
       if (!rows.length) return "";
       const max = Math.max.apply(null, rows.map((d) => Number(d.completedMins) || 0).concat([1]));
-      return "<p class='spark-label'>Completed over time</p><div class='spark' aria-label='Completed over time'>" +
+      return (hideLabel ? "" : "<p class='spark-label'>Completed over time</p>") + "<div class='spark' aria-label='Completed over time'>" +
         rows.map((d) => {
           const mins = Number(d.completedMins) || 0;
           const h = mins > 0 ? Math.max(4, Math.round(36 * mins / max)) : 2;
@@ -378,10 +386,31 @@
           : "") +
         "</div>";
     }
+    function shopScoreCards(data) {
+      const days = data.workDays || 0;
+      const pred = data.predictedMins
+        ? (" <em>predicted " + hm(data.predictedMins) + "</em>")
+        : " <em>no predicted time</em>";
+      return "<div class='score-grid'>" +
+        "<article class='score'><h3>Total completed vs predicted</h3>" +
+        "<p class='lede'>Finished production time this month, against Task times for those order lines.</p>" +
+        "<div class='hero'>" + hm(data.completedMins) + pred + "</div></article>" +
+        "<article class='score'><h3>Total completed over time</h3>" +
+        "<p class='lede'>Finished production hours on each weekday in " + esc(data.title) + ".</p>" +
+        spark(data.byDay, true) + "</article>" +
+        "<article class='score'><h3>Productivity</h3>" +
+        "<p class='lede'>Total hours ÷ (7.5 × " + days + " workday" + (days === 1 ? "" : "s") + " in the month).</p>" +
+        "<div class='hero'>" + pct(data.productivityPct) + "</div></article>" +
+        "<article class='score'><h3>Actual productivity</h3>" +
+        "<p class='lede'>(Total hours − indirect) ÷ (7.5 × " + days + " workday" + (days === 1 ? "" : "s") + ").</p>" +
+        "<div class='hero'>" + pct(data.actualProductivityPct) + "</div></article>" +
+        "</div>";
+    }
     function render(data) {
       const stations = (data.stations || []).slice(0, 8).map((s) => esc(s.name) + " " + hm(s.minutes)).join(" · ");
       const html =
         "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Shop orders for every production employee. Click a station or the order count. Repeat sessions of the same line count as one order. A and B lines are separate orders. Station orders can overlap, so they do not add up to the badge. Indirect shows task names, not orders.</p></div>" +
+        shopScoreCards(data) +
         "<div class='kpis'>" +
         "<div class='kpi'><span>People on the pack</span><b>" + data.headcount + "</b></div>" +
         "<div class='kpi'><span>Worked</span><b>" + data.clockedCount + "</b></div>" +
@@ -389,10 +418,6 @@
         "<div class='kpi'><span>Regular</span><b>" + hm(data.totalRegular) + "</b></div>" +
         "<div class='kpi'><span>Overtime</span><b>" + hm(data.totalOvertime) + "</b></div>" +
         "<div class='kpi'><span>Orders touched</span><b>" + data.orderCount + "</b></div>" +
-        "<div class='kpi'><span>Completed vs predicted</span><b>" + hm(data.completedMins) + "</b></div>" +
-        "<div class='kpi'><span>Predicted</span><b>" + (data.predictedMins ? hm(data.predictedMins) : "—") + "</b></div>" +
-        "<div class='kpi'><span>Productivity</span><b>" + pct(data.productivityPct) + "</b></div>" +
-        "<div class='kpi'><span>Actual productivity</span><b>" + pct(data.actualProductivityPct) + "</b></div>" +
         "</div>" +
         "<p class='lede' style='margin:0 0 12px'>" +
         (data.busiest ? ("Busiest: " + esc(data.busiest.worker) + " (" + hm(data.busiest.minutes) + "). ") : "") +

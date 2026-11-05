@@ -568,6 +568,13 @@ async function build(query) {
     predictedMins: clocked.reduce((s, p) => s + Number(p.predictedMins || 0), 0),
     productivityPct: ratioPct(clocked.reduce((s, p) => s + p.totalMinutes, 0), capacityMins),
     actualProductivityPct: ratioPct(shopProduction, capacityMins),
+    byDay: dates.map((date) => ({
+      date,
+      completedMins: clocked.reduce((s, p) => {
+        const row = (p.byDay || []).find((d) => d.date === date);
+        return s + Number((row && row.completedMins) || 0);
+      }, 0)
+    })),
     stations,
     busiest: busiest ? { worker: busiest.worker, minutes: busiest.totalMinutes } : null,
     topStation: topStation ? { name: topStation.name, minutes: topStation.minutes } : null,
