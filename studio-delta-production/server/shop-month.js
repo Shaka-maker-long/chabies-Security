@@ -88,6 +88,13 @@ function ratioPct(num, den) {
   return Math.round(((Number(num) || 0) / den) * 1000) / 10;
 }
 
+function meanPct(people, key) {
+  const rows = (people || []).filter((p) => p && p.clocked && p[key] != null);
+  if (!rows.length) return null;
+  const sum = rows.reduce((s, p) => s + Number(p[key] || 0), 0);
+  return Math.round((sum / rows.length) * 10) / 10;
+}
+
 function attachMonthStats(person, dates, durMap) {
   const capacityMins = (dates || []).length * SHIFT_HOURS * 60;
   const byDayMap = {};
@@ -95,6 +102,9 @@ function attachMonthStats(person, dates, durMap) {
   let completedMins = 0;
   const seenPred = {};
   let predictedMins = 0;
+  let trophies = 0;
+  let overtimeJobs = 0;
+  let noEstimate = 0;
   ((person && person.tasks) || []).forEach((t) => {
     if (isIndirectTask(t) || !t.end) return;
     const mins = Number(t.minutes || 0);
@@ -104,10 +114,17 @@ function attachMonthStats(person, dates, durMap) {
     const product = String(t.product || "").trim().toLowerCase();
     const process = String(t.role || t.task || "").trim().toLowerCase();
     const line = t.orderLine || orderLineId(t.order);
+    const target = (product && process) ? (durMap[product + "\0" + process] || 0) : 0;
+    if (target > 0) {
+      if (mins <= target + 0.5) trophies += 1;
+      else overtimeJobs += 1;
+    } else {
+      noEstimate += 1;
+    }
     const key = line + "\0" + process;
     if (!product || !process || seenPred[key]) return;
     seenPred[key] = true;
-    predictedMins += durMap[product + "\0" + process] || 0;
+    predictedMins += target;
   });
   const total = Number((person && person.totalMinutes) || 0);
   const production = Number(person && person.productionMins != null
@@ -120,6 +137,9 @@ function attachMonthStats(person, dates, durMap) {
     capacityMins,
     completedMins,
     predictedMins,
+    trophies,
+    overtimeJobs,
+    noEstimate,
     productivityPct: clocked ? ratioPct(total, capacityMins) : null,
     actualProductivityPct: clocked ? ratioPct(production, capacityMins) : null,
     byDay: (dates || []).map((date) => ({ date, completedMins: byDayMap[date] || 0 }))
@@ -527,7 +547,6 @@ async function build(query) {
   const clocked = people.filter((p) => p.clocked);
   const absent = people.filter((p) => !p.clocked);
   const capacityMins = dates.length * SHIFT_HOURS * 60;
-  const shopProduction = clocked.reduce((s, p) => s + Number(p.productionMins || 0), 0);
   const processTotals = {};
   clocked.forEach((p) => {
     p.processes.forEach((pr) => {
@@ -566,8 +585,11 @@ async function build(query) {
     capacityMins,
     completedMins: clocked.reduce((s, p) => s + Number(p.completedMins || 0), 0),
     predictedMins: clocked.reduce((s, p) => s + Number(p.predictedMins || 0), 0),
-    productivityPct: ratioPct(clocked.reduce((s, p) => s + p.totalMinutes, 0), capacityMins),
-    actualProductivityPct: ratioPct(shopProduction, capacityMins),
+    trophies: clocked.reduce((s, p) => s + Number(p.trophies || 0), 0),
+    overtimeJobs: clocked.reduce((s, p) => s + Number(p.overtimeJobs || 0), 0),
+    noEstimate: clocked.reduce((s, p) => s + Number(p.noEstimate || 0), 0),
+    productivityPct: meanPct(clocked, "productivityPct"),
+    actualProductivityPct: meanPct(clocked, "actualProductivityPct"),
     byDay: dates.map((date) => ({
       date,
       completedMins: clocked.reduce((s, p) => {

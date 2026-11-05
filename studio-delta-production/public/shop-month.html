@@ -44,6 +44,8 @@
     .badge { background:#f2f4f7; font-size:11px; font-weight:700; padding:4px 8px; }
     .badge.ot { background:#fff7ed; }
     .badge.none { background:#fef3f2; color:#b42318; }
+    .badge.trophy { background:#fef7c3; color:#b54708; }
+    .badge.over { background:#fef3f2; color:#b42318; }
     .metrics { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0 10px; }
     .metrics div { background:#f8f9fc; padding:8px 10px; }
     .metrics span { display:block; font-size:10px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
@@ -228,6 +230,9 @@
       } else {
         badges.push("<span class='badge'>0 orders</span>");
       }
+      badges.push("<span class='badge trophy'>" + (p.trophies || 0) + " troph" + ((p.trophies || 0) === 1 ? "y" : "ies") + "</span>");
+      badges.push("<span class='badge over'>" + (p.overtimeJobs || 0) + " overtime</span>");
+      if (p.noEstimate) badges.push("<span class='badge'>" + p.noEstimate + " no estimate</span>");
       if (!p.clocked) badges.push("<span class='badge none'>No orders this month</span>");
       const pred = p.predictedMins > 0 ? (" <em>predicted " + hm(p.predictedMins) + "</em>") : " <em>no predicted time</em>";
       const metrics = "<div class='metrics'>" +
@@ -392,6 +397,10 @@
         ? (" <em>predicted " + hm(data.predictedMins) + "</em>")
         : " <em>no predicted time</em>";
       return "<div class='score-grid'>" +
+        "<article class='score'><h3>Trophies vs overtime</h3>" +
+        "<p class='lede'>Finished clocks within Task times get a trophy. Over time gets the alarm. Same as completed work on the floor.</p>" +
+        "<div class='hero'>" + (data.trophies || 0) + " troph" + ((data.trophies || 0) === 1 ? "y" : "ies") +
+        " <em>" + (data.overtimeJobs || 0) + " overtime</em></div></article>" +
         "<article class='score'><h3>Total completed vs predicted</h3>" +
         "<p class='lede'>Finished production time this month, against Task times for those order lines.</p>" +
         "<div class='hero'>" + hm(data.completedMins) + pred + "</div></article>" +
@@ -399,10 +408,10 @@
         "<p class='lede'>Finished production hours on each weekday in " + esc(data.title) + ".</p>" +
         spark(data.byDay, true) + "</article>" +
         "<article class='score'><h3>Productivity</h3>" +
-        "<p class='lede'>Total hours ÷ (7.5 × " + days + " workday" + (days === 1 ? "" : "s") + " in the month).</p>" +
+        "<p class='lede'>Average of each person who worked: their hours ÷ (7.5 × " + days + " workday" + (days === 1 ? "" : "s") + ").</p>" +
         "<div class='hero'>" + pct(data.productivityPct) + "</div></article>" +
         "<article class='score'><h3>Actual productivity</h3>" +
-        "<p class='lede'>(Total hours − indirect) ÷ (7.5 × " + days + " workday" + (days === 1 ? "" : "s") + ").</p>" +
+        "<p class='lede'>Average of each person who worked: (hours − indirect) ÷ (7.5 × " + days + " workday" + (days === 1 ? "" : "s") + ").</p>" +
         "<div class='hero'>" + pct(data.actualProductivityPct) + "</div></article>" +
         "</div>";
     }
