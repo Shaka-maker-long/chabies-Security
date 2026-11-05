@@ -72,25 +72,39 @@ function isShopUser(u) {
   return access === "Production";
 }
 
+function hasCostingRole(u) {
+  return ((u && u.enquiryRoles) || []).indexOf("Costing") >= 0;
+}
+
 function salesSeatOf(name) {
   if (staff.isDrawingOwnerName(name)) return "erin";
   if (staff.isDrawingApprovalOwnerName(name)) return "shabana";
-  return "";
+  const n = nameKey(name);
+  return n || "";
 }
 
 function isSalesUser(u) {
   if (!u || !u.name) return false;
-  return !!salesSeatOf(u.name);
+  if (staff.isDrawingOwnerName(u.name) || staff.isDrawingApprovalOwnerName(u.name)) return true;
+  return hasCostingRole(u);
 }
 
 function salesRoster() {
   const users = staff.listUsers() || [];
   const erin = users.find((u) => staff.isDrawingOwnerName(u.name));
   const shabana = users.find((u) => staff.isDrawingApprovalOwnerName(u.name));
-  return [
+  const out = [
     { seat: "erin", user: erin || { name: "Erin", role: "Interior Designer" } },
     { seat: "shabana", user: shabana || { name: "Shabana", role: "Clients Relations Manager" } }
   ];
+  const taken = { erin: true, shabana: true };
+  users.filter(hasCostingRole).forEach((u) => {
+    const seat = salesSeatOf(u.name);
+    if (!seat || taken[seat]) return;
+    taken[seat] = true;
+    out.push({ seat, user: u });
+  });
+  return out;
 }
 
 function isoMonth(raw) {
@@ -124,6 +138,9 @@ const SALES_KINDS = [
   { kind: "created", key: "captured", label: "Captured" },
   { kind: "complete_quote", key: "quoted", label: "Quoted" },
   { kind: "complete_followup", key: "followed", label: "Followed up" },
+  { kind: "complete_cost_sheet", key: "costing", label: "Costing" },
+  { kind: "complete_supplier", key: "costing", label: "Costing" },
+  { kind: "complete_approval", key: "costing", label: "Costing" },
   { kind: "complete_order", key: "ordered", label: "Client ordered" },
   { kind: "create_orders", key: "added", label: "Added to Orders" },
   { kind: "complete_drawing", key: "drawing", label: "Drawings" },
@@ -142,11 +159,19 @@ function emptySalesPerson(name, profile) {
     captured: 0,
     quoted: 0,
     followed: 0,
+    costing: 0,
     ordered: 0,
     added: 0,
     drawing: 0,
     approval: 0,
-    kinds: SALES_KINDS.map((k) => ({ name: k.label, key: k.key, count: 0 })),
+    kinds: (function () {
+      const seen = {};
+      return SALES_KINDS.filter((k) => {
+        if (seen[k.key]) return false;
+        seen[k.key] = true;
+        return true;
+      }).map((k) => ({ name: k.label, key: k.key, count: 0 }));
+    })(),
     rows: []
   };
 }
@@ -219,8 +244,8 @@ function buildSales(month) {
     p.rows.sort((a, b) => String(a.at).localeCompare(String(b.at)));
   });
   people.sort((a, b) => {
-    const aN = a.captured + a.quoted + a.followed + a.ordered + a.added + a.drawing + a.approval;
-    const bN = b.captured + b.quoted + b.followed + b.ordered + b.added + b.drawing + b.approval;
+    const aN = a.captured + a.quoted + a.followed + a.costing + a.ordered + a.added + a.drawing + a.approval;
+    const bN = b.captured + b.quoted + b.followed + b.costing + b.ordered + b.added + b.drawing + b.approval;
     if (bN !== aN) return bN - aN;
     return String(a.worker).localeCompare(String(b.worker));
   });
@@ -234,6 +259,7 @@ function buildSales(month) {
     captured: people.reduce((s, p) => s + p.captured, 0),
     quoted: people.reduce((s, p) => s + p.quoted, 0),
     followed: people.reduce((s, p) => s + p.followed, 0),
+    costing: people.reduce((s, p) => s + p.costing, 0),
     ordered: people.reduce((s, p) => s + p.ordered, 0),
     drawing: people.reduce((s, p) => s + p.drawing, 0),
     approval: people.reduce((s, p) => s + p.approval, 0),

@@ -123,6 +123,7 @@ const enquiry = db.upsertEnquiry({
 const rawEnq = db.getEnquiryRaw(enquiry.enquiry_no);
 rawEnq.events = [
   { id: "ev1", at: "2026-10-06T08:00:00.000Z", kind: "created", actor: "Shabana", label: "Enquiry captured", status: "New" },
+  { id: "ev2a", at: "2026-10-06T09:00:00.000Z", kind: "complete_cost_sheet", actor: "Shabana", label: "Cost sheet uploaded", status: "Costed" },
   { id: "ev2", at: "2026-10-06T10:00:00.000Z", kind: "complete_quote", actor: "Shabana", label: "Quote PDF issued", status: "Quoted" },
   { id: "ev3", at: "2026-10-08T10:00:00.000Z", kind: "complete_order", actor: "Shabana", label: "POP saved", status: "Ordered" },
   { id: "ev4", at: "2026-10-09T09:00:00.000Z", kind: "complete_drawing", actor: "Erin", label: "Drawing uploaded", status: "Ordered" },
@@ -188,6 +189,7 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(salesShabana.worked);
   assert.ok(salesErin.worked);
   assert.strictEqual(salesShabana.captured, 1);
+  assert.strictEqual(salesShabana.costing, 1);
   assert.strictEqual(salesShabana.quoted, 1);
   assert.strictEqual(salesShabana.ordered, 1);
   assert.strictEqual(salesShabana.approval, 1);
@@ -214,7 +216,9 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("No clocks this month") === -1);
   assert.ok(html.indexOf("No orders this month") !== -1);
   assert.ok(html.indexOf("A and B lines are separate orders") !== -1);
-  assert.ok(html.indexOf("Shabana and Erin") !== -1);
+  assert.ok(html.indexOf(">Sales<") !== -1 || html.indexOf("Sales</h2>") !== -1);
+  assert.ok(html.indexOf("Shabana and Erin") === -1);
+  assert.ok(html.indexOf("Costing") !== -1);
   assert.ok(html.indexOf("marketing employee") === -1);
   assert.ok(html.indexOf("Median time to add") !== -1);
   assert.ok(html.indexOf("function openAdded") !== -1);
