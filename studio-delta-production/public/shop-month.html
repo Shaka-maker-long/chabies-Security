@@ -109,7 +109,7 @@
         <a href="/orders">Orders</a>
       </nav>
       <h1>Studio Delta // <span>Monthly pack</span></h1>
-      <p class="lede">Shop floor and Sales for the month. Each person shows hours available (7.5 production hours/day × workdays), their hours, utilisation, hours allocated to orders, then actual productivity. Paid shop shift is 07:45–15:45 minus lunch.</p>
+      <p class="lede">Shop floor and Sales for the month. Each person shows hours available (7.5 production hours/day × workdays), their hours, utilisation, hours allocated to orders, total estimate for orders completed, then actual productivity. Paid shop shift is 07:45–15:45 minus lunch.</p>
     </div>
     <div class="tools no-print">
       <label>Month <input type="month" id="monthPick" onchange="load()"></label>
@@ -209,10 +209,8 @@
     function pct(n) {
       return n == null ? "—" : (Math.round(Number(n) * 10) / 10) + "%";
     }
-    function taskTimesNote(mins) {
-      return Number(mins) > 0
-        ? (" <em>Task times " + hm(mins) + "</em>")
-        : " <em>no Task times</em>";
+    function estimateLabel(mins) {
+      return Number(mins) > 0 ? hm(mins) : "—";
     }
     function resultIcons(trophies, overtime, personIdx) {
       const who = (personIdx === undefined || personIdx === null) ? "all" : String(personIdx);
@@ -239,7 +237,8 @@
         "<div><span>Total hours available</span><b>" + hm(p.capacityMins) + "</b><em>" + days + " workday" + (days === 1 ? "" : "s") + " × 7.5 production hours/day</em></div>" +
         "<div><span>Total hours</span><b>" + hm(p.totalMinutes) + "</b><em>this employee</em></div>" +
         "<div><span>Utilisation</span><b>" + pct(p.productivityPct) + "</b><em>employee hours ÷ hours available</em></div>" +
-        "<div><span>Hours allocated to orders</span><b>" + hm(p.completedMins) + "</b>" + taskTimesNote(p.predictedMins) + "</div>" +
+        "<div><span>Hours allocated to orders</span><b>" + hm(p.completedMins) + "</b><em>on the clock</em></div>" +
+        "<div><span>Total estimate for orders completed</span><b>" + estimateLabel(p.predictedMins) + "</b><em>from the task sheet</em></div>" +
         "<div><span>Actual productivity</span><b>" + pct(p.actualProductivityPct) + "</b><em>hours minus indirect ÷ hours available</em></div>" +
         "</div>";
       let proc = "";
@@ -331,7 +330,7 @@
       }
       const whoCol = pack.shop ? "<th>Person</th>" : "";
       showModal(who + title,
-        "<table><thead><tr>" + whoCol + "<th>Order</th><th>Product</th><th>Task</th><th class='r'>Task times</th><th class='r'>Time on clock</th></tr></thead><tbody>" +
+        "<table><thead><tr>" + whoCol + "<th>Order</th><th>Product</th><th>Task</th><th class='r'>Estimate</th><th class='r'>Time on clock</th></tr></thead><tbody>" +
         pack.rows.map((t) => "<tr>" +
           (pack.shop ? ("<td>" + esc(t.worker) + "</td>") : "") +
           "<td>" + esc(t.order) + "</td><td>" + productCell(t) + "</td><td>" + esc(t.task) + "</td>" +
@@ -437,7 +436,6 @@
       const days = data.workDays || 0;
       const n = data.clockedCount || 0;
       const available = Number(data.capacityMins || 0) * n;
-      const pred = taskTimesNote(data.predictedMins);
       return "<div class='score-grid'>" +
         "<article class='score'><h3>Total hours available</h3>" +
         "<p class='lede'>" + n + " people who worked × 7.5 production hours/day × " + days + " workday" + (days === 1 ? "" : "s") + ".</p>" +
@@ -449,8 +447,11 @@
         "<p class='lede'>Average of each person who worked: their hours ÷ hours available.</p>" +
         "<div class='hero'>" + pct(data.productivityPct) + "</div></article>" +
         "<article class='score'><h3>Hours allocated to orders</h3>" +
-        "<p class='lede'>The large number is hours on the clock for production orders. Task times is what the task sheet said those jobs should take.</p>" +
-        "<div class='hero'>" + hm(data.completedMins) + pred + "</div></article>" +
+        "<p class='lede'>Hours on the clock for production orders this month.</p>" +
+        "<div class='hero'>" + hm(data.completedMins) + "</div></article>" +
+        "<article class='score'><h3>Total estimate for orders completed</h3>" +
+        "<p class='lede'>Task-sheet times for those finished order lines, added up.</p>" +
+        "<div class='hero'>" + estimateLabel(data.predictedMins) + "</div></article>" +
         "<article class='score'><h3>Actual productivity</h3>" +
         "<p class='lede'>Average of each person who worked: (hours − indirect) ÷ hours available.</p>" +
         "<div class='hero'>" + pct(data.actualProductivityPct) + "</div></article>" +
