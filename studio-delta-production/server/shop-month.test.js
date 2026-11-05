@@ -202,6 +202,22 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(data.absentCount >= 1);
   assert.ok(data.stations.some((s) => s.name === "Welding"));
 
+  staff.setDurations([
+    { product: "Giselle Chair", process: "Welding", hours: 2 }
+  ]);
+  const withPred = await hub.build({ month: "2026-10" });
+  const thaboPred = withPred.people.find((p) => p.worker === "Thabo");
+  assert.strictEqual(hub.weekdayCount("2026-10"), 22);
+  assert.strictEqual(thaboPred.workDays, 22);
+  assert.strictEqual(thaboPred.shiftHours, 7.5);
+  assert.ok(thaboPred.completedMins > 0);
+  assert.strictEqual(thaboPred.predictedMins, 360, "three Giselle welding lines × 2h");
+  assert.ok(thaboPred.productivityPct > 0);
+  assert.ok(thaboPred.actualProductivityPct <= thaboPred.productivityPct);
+  assert.ok(thaboPred.byDay.length === 22);
+  assert.ok(thaboPred.byDay.some((d) => d.completedMins > 0));
+  assert.ok(withPred.productivityPct != null);
+
   const html = fs.readFileSync(path.join(__dirname, "../public/shop-month.html"), "utf8");
   assert.ok(html.indexOf("/api/office/shop-month") !== -1);
   assert.ok(html.indexOf("Print pack") !== -1);
@@ -222,6 +238,10 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("marketing employee") === -1);
   assert.ok(html.indexOf("Median time to add") !== -1);
   assert.ok(html.indexOf("function openAdded") !== -1);
+  assert.ok(html.indexOf("Completed vs predicted") !== -1);
+  assert.ok(html.indexOf("Completed over time") !== -1);
+  assert.ok(html.indexOf("Actual productivity") !== -1);
+  assert.ok(html.indexOf("7.5") !== -1);
   assert.strictEqual(hub.baseOrderNo("S260277 A"), "S260277");
   assert.strictEqual(hub.baseOrderNo("S260277B"), "S260277");
   assert.strictEqual(hub.orderLineId("S260300 A"), "S260300 A");
