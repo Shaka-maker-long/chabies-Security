@@ -38,6 +38,23 @@ function nameKey(s) {
   return String(s || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
+function baseOrderNo(raw) {
+  const s = String(raw || "").trim().toUpperCase().replace(/\s+/g, " ");
+  if (!s) return "";
+  const tagged = s.match(/^(S\d+)\s*[A-Z]$/);
+  if (tagged) return tagged[1];
+  const glued = s.match(/^(S\d+)[A-Z]$/);
+  if (glued) return glued[1];
+  return s;
+}
+
+function isIndirectTask(t) {
+  if (!t) return true;
+  if (String(t.entryType || "") === "indirect") return true;
+  if (!String(t.order || "").trim()) return true;
+  return String(t.role || t.task || "").toLowerCase() === "indirect";
+}
+
 function isShopUser(u) {
   if (!u || !u.name) return false;
   const access = String(u.access || "");
@@ -56,10 +73,13 @@ function orderMetaMap() {
     if (!id) return;
     const product = String(o.product || "").trim();
     const found = product ? catalog.lookupProduct(product) : null;
-    map[id] = {
+    const rec = {
       product,
       imageUrl: (found && found.imageUrl) || ""
     };
+    map[id] = rec;
+    const base = baseOrderNo(id);
+    if (base && !map[base]) map[base] = rec;
   });
   return map;
 }
@@ -68,9 +88,11 @@ function decorateTasks(tasks, orderMap) {
   const db = require("./db");
   return (tasks || []).map((t) => {
     const order = String(t.order || "").trim();
-    const meta = order ? (orderMap[db.formatOrderId(order)] || orderMap[order] || null) : null;
+    const formatted = order ? db.formatOrderId(order) : "";
+    const meta = formatted ? (orderMap[formatted] || orderMap[baseOrderNo(formatted)] || orderMap[order] || null) : null;
     return {
-      order: order,
+      order: formatted || order,
+      baseOrder: formatted ? baseOrderNo(formatted) : "",
       role: t.role || "",
       task: t.task || t.role || "",
       minutes: Number(t.minutes || 0),
@@ -95,22 +117,38 @@ function summarize(w, profile, orderMap) {
   tasks.forEach((t) => {
     const mins = Number(t.minutes || 0);
     const role = String(t.role || t.task || "Other").trim() || "Other";
-    processes[role] = processes[role] || { name: role, minutes: 0, n: 0 };
+    const indirect = isIndirectTask(t);
+    processes[role] = processes[role] || { name: role, minutes: 0, clocks: 0, orders: {}, tasks: {} };
     processes[role].minutes += mins;
-    processes[role].n += 1;
-    const indirect = t.entryType === "indirect" || !t.order;
-    if (indirect) indirectMins += mins;
-    else {
+    processes[role].clocks += 1;
+    if (indirect) {
+      indirectMins += mins;
+      const taskName = String(t.task || t.role || "Indirect").trim() || "Indirect";
+      processes[role].tasks[taskName] = true;
+    } else {
       productionMins += mins;
-      const order = String(t.order || "").trim();
-      if (order) orders[order] = (orders[order] || 0) + mins;
+      const order = t.baseOrder || baseOrderNo(t.order);
+      if (order) {
+        orders[order] = (orders[order] || 0) + mins;
+        processes[role].orders[order] = true;
+      }
     }
     if (t.end) finished += 1;
     else running += 1;
   });
-  const processList = Object.keys(processes).map((k) => processes[k]).sort((a, b) => b.minutes - a.minutes);
-  const orderList = Object.keys(orders).map((order) => ({ order, minutes: orders[order] }))
-    .sort((a, b) => b.minutes - a.minutes);
+  const processList = Object.keys(processes).map((k) => {
+    const row = processes[k];
+    const indirect = String(row.name || "").toLowerCase() === "indirect";
+    return {
+      name: row.name,
+      minutes: row.minutes,
+      clocks: row.clocks,
+      orderCount: Object.keys(row.orders).length,
+      taskCount: Object.keys(row.tasks).length,
+      count: indirect ? Object.keys(row.tasks).length : Object.keys(row.orders).length,
+      indirect
+    };
+  }).sort((a, b) => b.minutes - a.minutes);
   return {
     worker: w.worker,
     role: (profile && (profile.role || profile.jobTitle)) || "",
@@ -121,7 +159,7 @@ function summarize(w, profile, orderMap) {
     totalOvertime: Number(w.totalOvertime || 0),
     overLimitDays: (w.days || []).filter((d) => d.overLimit).length,
     processes: processList,
-    orderCount: orderList.length,
+    orderCount: Object.keys(orders).length,
     finished,
     running,
     indirectMins,
@@ -190,7 +228,9 @@ async function build(query) {
   const uniqueOrders = {};
   clocked.forEach((p) => {
     (p.tasks || []).forEach((t) => {
-      if (t.order && t.entryType !== "indirect") uniqueOrders[t.order] = true;
+      if (isIndirectTask(t)) return;
+      const id = t.baseOrder || baseOrderNo(t.order);
+      if (id) uniqueOrders[id] = true;
     });
   });
 
@@ -217,6 +257,8 @@ module.exports = {
   monthTitle,
   currentMonth,
   isShopUser,
+  baseOrderNo,
+  isIndirectTask,
   summarize,
   orderMetaMap,
   build
