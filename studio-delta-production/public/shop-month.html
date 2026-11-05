@@ -33,7 +33,7 @@
     .score .hero { font-size:28px; font-family: Outfit, Inter, sans-serif; font-weight:700; }
     .score .hero em { font-style:normal; color:var(--muted); font-size:16px; font-weight:600; }
     .result-icons { display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
-    .result { display:inline-flex; align-items:center; gap:6px; font-family: Outfit, Inter, sans-serif; font-weight:700; }
+    .result { display:inline-flex; align-items:center; gap:6px; font-family: Outfit, Inter, sans-serif; font-weight:700; border:0; background:transparent; padding:0; cursor:pointer; color:inherit; }
     .result i { font-size:1.05em; line-height:1; }
     .result.trophy { color:#b54708; }
     .result.over { color:#b42318; }
@@ -209,10 +209,11 @@
     function pct(n) {
       return n == null ? "—" : (Math.round(Number(n) * 10) / 10) + "%";
     }
-    function resultIcons(trophies, overtime) {
+    function resultIcons(trophies, overtime, personIdx) {
+      const who = (personIdx === undefined || personIdx === null) ? "all" : String(personIdx);
       return "<span class='result-icons'>" +
-        "<span class='result trophy' title='Finished within Task times'><i class='bi bi-trophy-fill' aria-hidden='true'></i> " + (trophies || 0) + "</span>" +
-        "<span class='result over' title='Went overtime'><i class='bi bi-alarm-fill' aria-hidden='true'></i> " + (overtime || 0) + "</span>" +
+        "<button type='button' class='result trophy' data-kind='trophy' data-person='" + who + "' title='Finished within Task times'><i class='bi bi-trophy-fill' aria-hidden='true'></i> " + (trophies || 0) + "</button>" +
+        "<button type='button' class='result over' data-kind='overtime' data-person='" + who + "' title='Went overtime'><i class='bi bi-alarm-fill' aria-hidden='true'></i> " + (overtime || 0) + "</button>" +
         "</span>";
     }
     function personCard(p, i) {
@@ -226,7 +227,7 @@
       } else {
         badges.push("<span class='badge'>0 orders</span>");
       }
-      badges.push(resultIcons(p.trophies, p.overtimeJobs));
+      badges.push(resultIcons(p.trophies, p.overtimeJobs, i));
       if (!p.clocked) badges.push("<span class='badge none'>No orders this month</span>");
       const pred = p.predictedMins > 0 ? (" <em>predicted " + hm(p.predictedMins) + "</em>") : " <em>no predicted time</em>";
       const metrics = "<div class='metrics'>" +
@@ -289,6 +290,47 @@
         "<table><thead><tr><th>Order</th><th>Product</th><th>Task</th><th class='r'>Duration</th></tr></thead><tbody>" +
         rows.map((t) => "<tr><td>" + esc(t.order) + "</td><td>" + productCell(t) + "</td><td>" + esc(t.task) +
           (t.running ? " (running)" : "") + "</td><td class='r'>" + hm(t.minutes) + "</td></tr>").join("") +
+        "</tbody></table>");
+    }
+    function resultRows(kind, personIdx) {
+      const people = (personIdx === "all" || personIdx === "" || personIdx == null)
+        ? PEOPLE
+        : [PEOPLE[Number(personIdx)]].filter(Boolean);
+      const shop = personIdx === "all" || people.length > 1;
+      const rows = [];
+      people.forEach((p) => {
+        ((p && p.results) || []).forEach((r) => {
+          if (r.kind !== kind) return;
+          rows.push({
+            worker: r.worker || (p && p.worker) || "",
+            order: r.order,
+            product: r.product,
+            imageUrl: r.imageUrl,
+            task: r.task,
+            estimatedMins: r.estimatedMins,
+            actualMins: r.actualMins
+          });
+        });
+      });
+      return { shop, rows };
+    }
+    function openResults(kind, personIdx) {
+      const pack = resultRows(kind, personIdx);
+      const trophy = kind === "trophy";
+      const title = trophy ? "Trophies" : "Overtime";
+      const who = (personIdx !== "all" && PEOPLE[Number(personIdx)]) ? (PEOPLE[Number(personIdx)].worker + " — ") : "";
+      if (!pack.rows.length) {
+        showModal(who + title, "<p class='lede'>None in " + (trophy ? "trophies" : "overtime") + " for this month.</p>");
+        return;
+      }
+      const whoCol = pack.shop ? "<th>Person</th>" : "";
+      showModal(who + title,
+        "<table><thead><tr>" + whoCol + "<th>Order</th><th>Product</th><th>Task</th><th class='r'>Estimated time</th><th class='r'>Actual time</th></tr></thead><tbody>" +
+        pack.rows.map((t) => "<tr>" +
+          (pack.shop ? ("<td>" + esc(t.worker) + "</td>") : "") +
+          "<td>" + esc(t.order) + "</td><td>" + productCell(t) + "</td><td>" + esc(t.task) + "</td>" +
+          "<td class='r'>" + (t.estimatedMins ? hm(t.estimatedMins) : "—") + "</td>" +
+          "<td class='r'>" + hm(t.actualMins) + "</td></tr>").join("") +
         "</tbody></table>");
     }
     function closeOrders() {
@@ -393,7 +435,7 @@
       return "<div class='score-grid'>" +
         "<article class='score'><h3>Trophies vs overtime</h3>" +
         "<p class='lede'>Order lines finished in " + esc(data.title) + ". Trophy if within Task times, alarm if overtime.</p>" +
-        "<div class='hero'>" + resultIcons(data.trophies, data.overtimeJobs) + "</div></article>" +
+        "<div class='hero'>" + resultIcons(data.trophies, data.overtimeJobs, "all") + "</div></article>" +
         "<article class='score'><h3>Total completed vs predicted</h3>" +
         "<p class='lede'>Finished production time this month, against Task times for those order lines.</p>" +
         "<div class='hero'>" + hm(data.completedMins) + pred + "</div></article>" +
@@ -446,6 +488,9 @@
           return;
         }
         row.addEventListener("click", () => openOrders(Number(row.getAttribute("data-person")), row.getAttribute("data-station")));
+      });
+      document.querySelectorAll("button.result").forEach((btn) => {
+        btn.addEventListener("click", () => openResults(btn.getAttribute("data-kind"), btn.getAttribute("data-person")));
       });
     }
     async function load() {
