@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Monthly shop pack</title>
+  <script src="/sd-pwa.js?v=pwa-committed-banner"></script>
+  <style>
+    :root { --ink:#101828; --muted:#667085; --line:#e4e7ec; --bg:#f8f9fc; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:var(--bg); }
+    header.bar { display:flex; gap:16px; align-items:flex-end; flex-wrap:wrap; padding:12px 16px; background:#fff; border-bottom:2px solid #000; }
+    header.bar h1 { margin:0; font-family: Outfit, Inter, sans-serif; font-size:18px; letter-spacing:.06em; text-transform:uppercase; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:12px; max-width:720px; }
+    .tabs { display:flex; gap:4px; flex-wrap:wrap; }
+    .tabs a { font-size:13px; font-weight:600; color:#344054; text-decoration:none; padding:6px 10px; border-radius:6px; }
+    .tabs a.on { background:#1d2939; color:#fff; }
+    .tools { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+    select, button { font:inherit; font-size:13px; }
+    select { border:1px solid #000; background:#fff; padding:6px 8px; }
+    button { border:1px solid #000; background:#000; color:#fff; padding:6px 12px; font-weight:700; cursor:pointer; }
+    button.ghost { background:#fff; color:#000; }
+    .page { padding:16px; }
+    .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:14px; }
+    .kpi { background:#fff; border:1px solid var(--line); padding:12px 14px; }
+    .kpi span { display:block; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+    .kpi b { display:block; margin-top:4px; font-size:22px; font-family: Outfit, Inter, sans-serif; }
+    .people { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; }
+    .card { background:#fff; border:1px solid var(--line); padding:14px 16px; break-inside:avoid; page-break-inside:avoid; }
+    .card h2 { margin:0 0 4px; font-size:16px; }
+    .card .meta { color:var(--muted); font-size:12px; margin-bottom:10px; }
+    .badges { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+    .badge { background:#f2f4f7; font-size:11px; font-weight:700; padding:4px 8px; }
+    .badge.ot { background:#fff7ed; }
+    .badge.none { background:#fef3f2; color:#b42318; }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    th, td { padding:4px 0; border-bottom:1px solid var(--line); text-align:left; }
+    th { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
+    td.r, th.r { text-align:right; }
+    .tasks { margin:8px 0 0; padding-left:16px; font-size:12px; }
+    .tasks li { margin:0 0 4px; }
+    .load, .err { padding:40px; text-align:center; color:var(--muted); }
+    .err { color:#b42318; }
+    .cover { background:#000; color:#fff; padding:20px; margin-bottom:14px; }
+    .cover h2 { margin:0 0 6px; font-family: Outfit, Inter, sans-serif; font-size:22px; letter-spacing:.04em; text-transform:uppercase; }
+    .cover p { margin:0; color:#d0d5dd; font-size:13px; max-width:640px; }
+    @media print {
+      body { background:#fff; }
+      header.bar .tabs, header.bar .tools button.ghost, .no-print { display:none !important; }
+      .page { padding:0; }
+      .card { border:1px solid #000; }
+      .cover { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    }
+    @media (max-width: 700px) {
+      .people { grid-template-columns:1fr; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="bar">
+    <div>
+      <nav class="tabs">
+        <a href="/ops">Ops hub</a>
+        <a href="/?view=activity">Activity (hours)</a>
+        <a class="on" href="/shop-month">Month pack</a>
+        <a href="/orders">Orders</a>
+      </nav>
+      <h1>Studio Delta // <span>Monthly shop pack</span></h1>
+      <p class="lede">What every shop employee clocked this month: stations, orders, regular time and overtime. Paid shift is 07:45–15:45 minus lunch. Print this for a stakeholder review.</p>
+    </div>
+    <div class="tools no-print">
+      <label>Month <input type="month" id="monthPick" onchange="load()"></label>
+      <button type="button" class="ghost" onclick="load()">Refresh</button>
+      <button type="button" onclick="window.print()">Print pack</button>
+    </div>
+  </header>
+  <div class="page">
+    <div id="load" class="load">Loading month pack…</div>
+    <div id="err" class="err" hidden></div>
+    <div id="app" hidden></div>
+  </div>
+  <script src="/office-auth.js?v=login-msg-3"></script>
+  <script>
+    function esc(s) {
+      return String(s == null ? "" : s).replace(/&/g,"&amp;").replace(/</g,"&lt;");
+    }
+    function hm(mins) {
+      const n = Math.max(0, Math.round(Number(mins || 0)));
+      const h = Math.floor(n / 60);
+      const m = n % 60;
+      return String(h).padStart(2, "0") + ":" + String(m).padStart(2, "0");
+    }
+    function defaultMonth() {
+      const now = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      return now.getUTCFullYear() + "-" + String(now.getUTCMonth() + 1).padStart(2, "0");
+    }
+    function taskLine(t) {
+      const kind = t.entryType === "indirect" || !t.order ? "Non-order" : esc(t.order);
+      const when = t.date ? " · " + esc(t.date) : "";
+      const run = t.end ? "" : " (running)";
+      return "<li><b>" + esc(t.task || t.role) + "</b> · " + kind + when + " · " + hm(t.minutes) + run + "</li>";
+    }
+    function personCard(p) {
+      const badges = [];
+      badges.push("<span class='badge'>" + hm(p.totalMinutes) + " total</span>");
+      badges.push("<span class='badge'>" + hm(p.totalRegular) + " regular</span>");
+      if (p.totalOvertime) badges.push("<span class='badge ot'>OT " + hm(p.totalOvertime) + "</span>");
+      badges.push("<span class='badge'>" + p.daysWorked + " day" + (p.daysWorked === 1 ? "" : "s") + "</span>");
+      badges.push("<span class='badge'>" + p.orderCount + " order" + (p.orderCount === 1 ? "" : "s") + "</span>");
+      if (!p.clocked) badges.push("<span class='badge none'>No clocks this month</span>");
+      let proc = "";
+      if (p.processes.length) {
+        proc = "<table><thead><tr><th>Station</th><th class='r'>Clocks</th><th class='r'>Time</th></tr></thead><tbody>" +
+          p.processes.map((r) => "<tr><td>" + esc(r.name) + "</td><td class='r'>" + r.n + "</td><td class='r'>" + hm(r.minutes) + "</td></tr>").join("") +
+          "</tbody></table>";
+      }
+      let ords = "";
+      if (p.orders.length) {
+        ords = "<div class='meta' style='margin-top:8px'>Orders they worked</div><table><thead><tr><th>Order</th><th class='r'>Time</th></tr></thead><tbody>" +
+          p.orders.slice(0, 20).map((o) => "<tr><td>" + esc(o.order) + "</td><td class='r'>" + hm(o.minutes) + "</td></tr>").join("") +
+          "</tbody></table>";
+        if (p.orders.length > 20) ords += "<div class='meta'>+ " + (p.orders.length - 20) + " more orders</div>";
+      }
+      const tasks = (p.tasks || []).slice(0, 40);
+      const more = (p.tasks || []).length > 40 ? "<div class='meta'>+ " + ((p.tasks || []).length - 40) + " more clocks</div>" : "";
+      const list = tasks.length ? "<div class='meta' style='margin-top:8px'>What they did</div><ul class='tasks'>" + tasks.map(taskLine).join("") + "</ul>" + more : "";
+      return "<article class='card'><h2>" + esc(p.worker) + "</h2><div class='meta'>" + esc(p.role || "Shop") +
+        (p.clocked ? (" · " + p.finished + " finished clock" + (p.finished === 1 ? "" : "s")) : "") +
+        "</div><div class='badges'>" + badges.join("") + "</div>" + proc + ords + list + "</article>";
+    }
+    function render(data) {
+      const stations = (data.stations || []).slice(0, 8).map((s) => esc(s.name) + " " + hm(s.minutes)).join(" · ");
+      const html =
+        "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Shop clocks for every production employee. Unlinked office work is not on this pack. Regular time is capped at 7h30 paid per day; extra is overtime.</p></div>" +
+        "<div class='kpis'>" +
+        "<div class='kpi'><span>People on the pack</span><b>" + data.headcount + "</b></div>" +
+        "<div class='kpi'><span>Clocked</span><b>" + data.clockedCount + "</b></div>" +
+        "<div class='kpi'><span>No clocks</span><b>" + data.absentCount + "</b></div>" +
+        "<div class='kpi'><span>Regular</span><b>" + hm(data.totalRegular) + "</b></div>" +
+        "<div class='kpi'><span>Overtime</span><b>" + hm(data.totalOvertime) + "</b></div>" +
+        "<div class='kpi'><span>Orders touched</span><b>" + data.orderCount + "</b></div>" +
+        "</div>" +
+        "<p class='lede' style='margin:0 0 12px'>" +
+        (data.busiest ? ("Busiest: " + esc(data.busiest.worker) + " (" + hm(data.busiest.minutes) + "). ") : "") +
+        (data.topStation ? ("Heaviest station: " + esc(data.topStation.name) + " (" + hm(data.topStation.minutes) + "). ") : "") +
+        (stations ? ("Station mix: " + stations + ".") : "") +
+        "</p>" +
+        "<div class='people'>" + (data.people || []).map(personCard).join("") + "</div>";
+      document.getElementById("app").innerHTML = html;
+    }
+    async function load() {
+      document.getElementById("load").hidden = false;
+      document.getElementById("err").hidden = true;
+      document.getElementById("app").hidden = true;
+      const monthEl = document.getElementById("monthPick");
+      if (!monthEl.value) monthEl.value = defaultMonth();
+      try {
+        const r = await sdOfficeFetch("/api/office/shop-month?month=" + encodeURIComponent(monthEl.value));
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || "Could not load month pack");
+        render(j);
+        document.getElementById("load").hidden = true;
+        document.getElementById("app").hidden = false;
+      } catch (e) {
+        document.getElementById("load").hidden = true;
+        const err = document.getElementById("err");
+        err.hidden = false;
+        err.textContent = (e && e.message) || "Could not load month pack.";
+      }
+    }
+    sdRequireOffice("ops").then(load);
+  </script>
+</body>
+</html>

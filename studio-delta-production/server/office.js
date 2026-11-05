@@ -1406,6 +1406,14 @@ function mountOffice(app) {
     }
   });
 
+  app.get("/api/office/shop-month", requireOffice, async (req, res) => {
+    try {
+      res.json({ ok: true, ...await require("./shop-month").build(req.query || {}) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.get("/api/office/marketing/dashboard", requireOffice, (req, res) => {
     try { purgeFeeOrders(); } catch (e) {}
     try {

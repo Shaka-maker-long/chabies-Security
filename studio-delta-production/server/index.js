@@ -194,6 +194,10 @@ app.get("/ops", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "ops-hub.html"));
 });
+app.get("/shop-month", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "shop-month.html"));
+});
 app.get("/marketing", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "marketing-dashboard.html"));

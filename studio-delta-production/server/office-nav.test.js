@@ -9,7 +9,7 @@ const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 const labels = [
   "Home", "Orders", "Inventory Management", "Enquiries", "Marketing", "Ops hub", "My tasks", "Dropdowns", "Users",
   "Task times", "Planning", "Reworks", "Debtors", "Production Tasks", "Production", "Workers", "Metrics",
-  "QC Reports", "Delivery Forms", "Driver tracker", "Activity", "Schedule", "Log Out", "Change access code"
+  "QC Reports", "Delivery Forms", "Driver tracker", "Activity", "Month pack", "Schedule", "Log Out", "Change access code"
 ];
 labels.forEach((label) => {
   assert.ok(js.indexOf('"' + label + '"') !== -1 || js.indexOf(">" + label + "<") !== -1, "office menu missing " + label);
@@ -45,6 +45,10 @@ assert.ok(indexJs.indexOf("/marketing") !== -1);
 assert.ok(officeJs.indexOf("/api/office/marketing/dashboard") !== -1);
 assert.ok(officeJs.indexOf("/api/office/marketing/dashboard/drill") !== -1);
 assert.ok(officeJs.indexOf("/api/office/ops-hub") !== -1);
+assert.ok(officeJs.indexOf("/api/office/shop-month") !== -1);
+assert.ok(indexJs.indexOf("/shop-month") !== -1);
+assert.ok(js.indexOf("/shop-month") !== -1);
+assert.ok(js.indexOf('"Month pack"') !== -1);
 assert.ok(indexJs.indexOf('"/ops"') !== -1 || indexJs.indexOf("/ops") !== -1);
 const opsHtml = fs.readFileSync(path.join(__dirname, "../public/ops-hub.html"), "utf8");
 assert.ok(opsHtml.indexOf("2026 Linked conversion funnel") !== -1);
