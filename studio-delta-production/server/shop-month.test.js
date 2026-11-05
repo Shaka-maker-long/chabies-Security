@@ -99,6 +99,33 @@ log.appendRow([
 ]);
 persistWorkbook();
 
+const enquiry = db.upsertEnquiry({
+  date_enquired: "06/10/2026",
+  client_name: "Ada",
+  product: "Giselle Chair",
+  category: "Chair",
+  status: "New"
+}, { actor: "Lerato" });
+const rawEnq = db.getEnquiryRaw(enquiry.enquiry_no);
+rawEnq.events = [
+  { id: "ev1", at: "2026-10-06T08:00:00.000Z", kind: "created", actor: "Lerato", label: "Enquiry captured", status: "New" },
+  { id: "ev2", at: "2026-10-06T10:00:00.000Z", kind: "complete_quote", actor: "Lerato", label: "Quote PDF issued", status: "Quoted" },
+  { id: "ev3", at: "2026-10-08T10:00:00.000Z", kind: "complete_order", actor: "Lerato", label: "POP saved", status: "Ordered" }
+];
+rawEnq.status = "Ordered";
+rawEnq.product = "Giselle Chair";
+db.saveEnquiryRecord(rawEnq);
+require("./order-created").record([{
+  order_number: "S260910",
+  enquiry_no: enquiry.enquiry_no,
+  product: "Giselle Chair",
+  client_name: "Ada"
+}], {
+  actor: "Lerato",
+  at: "2026-10-08T12:00:00.000Z",
+  readyAt: "2026-10-08T10:00:00.000Z"
+});
+
 assert.strictEqual(hub.parseMonth("2026-10"), "2026-10");
 assert.strictEqual(hub.monthTitle("2026-10"), "October 2026");
 assert.ok(hub.isShopUser({ name: "Thabo", access: "Production", tasks: ["Welding"] }));
@@ -132,6 +159,19 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(sipho, "Sipho is listed even with no clocks");
   assert.ok(!sipho.clocked);
   assert.ok(!lerato, "Marketing is not a shop employee on this pack");
+  assert.ok(hub.isSalesUser({ name: "Lerato", access: "Marketing" }));
+  const sales = data.sales;
+  assert.ok(sales, "sales pack is attached");
+  const salesLerato = sales.people.find((p) => p.worker === "Lerato");
+  assert.ok(salesLerato, "Lerato is on the sales pack");
+  assert.ok(salesLerato.worked);
+  assert.strictEqual(salesLerato.captured, 1);
+  assert.strictEqual(salesLerato.quoted, 1);
+  assert.strictEqual(salesLerato.ordered, 1);
+  assert.strictEqual(sales.addedCount, 1);
+  assert.strictEqual(sales.medianLagLabel, "2h");
+  assert.strictEqual(sales.added[0].order, "S260910");
+  assert.strictEqual(sales.added[0].lagLabel, "2h");
   assert.ok(data.clockedCount >= 1);
   assert.ok(data.absentCount >= 1);
   assert.ok(data.stations.some((s) => s.name === "Welding"));
@@ -150,6 +190,9 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("No clocks this month") === -1);
   assert.ok(html.indexOf("No orders this month") !== -1);
   assert.ok(html.indexOf("A and B lines are separate orders") !== -1);
+  assert.ok(html.indexOf("Sales team") !== -1);
+  assert.ok(html.indexOf("Median time to add") !== -1);
+  assert.ok(html.indexOf("function openAdded") !== -1);
   assert.strictEqual(hub.baseOrderNo("S260277 A"), "S260277");
   assert.strictEqual(hub.baseOrderNo("S260277B"), "S260277");
   assert.strictEqual(hub.orderLineId("S260300 A"), "S260300 A");
