@@ -134,13 +134,11 @@
       if (!String(t.order || "").trim()) return true;
       return String(t.role || t.task || "").toLowerCase() === "indirect";
     }
-    function baseOrderNo(raw) {
+    function orderLineId(raw) {
       const s = String(raw || "").trim().toUpperCase().replace(/\s+/g, " ");
       if (!s) return "";
-      const tagged = s.match(/^(S\d+)\s*[A-Z]$/);
-      if (tagged) return tagged[1];
-      const glued = s.match(/^(S\d+)[A-Z]$/);
-      if (glued) return glued[1];
+      const tagged = s.match(/^(S\d+)\s*([A-Z])$/);
+      if (tagged) return tagged[1] + " " + tagged[2];
       return s;
     }
     function stationOf(t) {
@@ -150,11 +148,11 @@
       const map = {};
       (tasks || []).forEach((t) => {
         if (isIndirect(t)) return;
-        const base = t.baseOrder || baseOrderNo(t.order);
+        const line = t.orderLine || orderLineId(t.order);
         const task = String(t.task || t.role || "").trim() || "Work";
-        const key = base + "\0" + task;
+        const key = line + "\0" + task;
         if (!map[key]) {
-          map[key] = { order: base, product: t.product || "", imageUrl: t.imageUrl || "", task: task, minutes: 0, running: false };
+          map[key] = { order: line, product: t.product || "", imageUrl: t.imageUrl || "", task: task, minutes: 0, running: false };
         }
         map[key].minutes += Number(t.minutes || 0);
         if (t.product) map[key].product = t.product;
@@ -275,7 +273,7 @@
     function render(data) {
       const stations = (data.stations || []).slice(0, 8).map((s) => esc(s.name) + " " + hm(s.minutes)).join(" · ");
       const html =
-        "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Shop orders for every production employee. Click a station or the order count. Repeat sessions and A/B lines of the same job count as one order. Station orders can overlap, so they do not add up to the badge. Indirect shows task names, not orders.</p></div>" +
+        "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Shop orders for every production employee. Click a station or the order count. Repeat sessions of the same line count as one order. A and B lines are separate orders. Station orders can overlap, so they do not add up to the badge. Indirect shows task names, not orders.</p></div>" +
         "<div class='kpis'>" +
         "<div class='kpi'><span>People on the pack</span><b>" + data.headcount + "</b></div>" +
         "<div class='kpi'><span>Worked</span><b>" + data.clockedCount + "</b></div>" +

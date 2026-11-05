@@ -48,6 +48,14 @@ function baseOrderNo(raw) {
   return s;
 }
 
+function orderLineId(raw) {
+  const s = String(raw || "").trim().toUpperCase().replace(/\s+/g, " ");
+  if (!s) return "";
+  const tagged = s.match(/^(S\d+)\s*([A-Z])$/);
+  if (tagged) return tagged[1] + " " + tagged[2];
+  return s;
+}
+
 function isIndirectTask(t) {
   if (!t) return true;
   if (String(t.entryType || "") === "indirect") return true;
@@ -92,6 +100,7 @@ function decorateTasks(tasks, orderMap) {
     const meta = formatted ? (orderMap[formatted] || orderMap[baseOrderNo(formatted)] || orderMap[order] || null) : null;
     return {
       order: formatted || order,
+      orderLine: formatted ? orderLineId(formatted) : "",
       baseOrder: formatted ? baseOrderNo(formatted) : "",
       role: t.role || "",
       task: t.task || t.role || "",
@@ -127,7 +136,7 @@ function summarize(w, profile, orderMap) {
       processes[role].tasks[taskName] = true;
     } else {
       productionMins += mins;
-      const order = t.baseOrder || baseOrderNo(t.order);
+      const order = t.orderLine || orderLineId(t.order);
       if (order) {
         orders[order] = (orders[order] || 0) + mins;
         processes[role].orders[order] = true;
@@ -229,7 +238,7 @@ async function build(query) {
   clocked.forEach((p) => {
     (p.tasks || []).forEach((t) => {
       if (isIndirectTask(t)) return;
-      const id = t.baseOrder || baseOrderNo(t.order);
+      const id = t.orderLine || orderLineId(t.order);
       if (id) uniqueOrders[id] = true;
     });
   });
@@ -258,6 +267,7 @@ module.exports = {
   currentMonth,
   isShopUser,
   baseOrderNo,
+  orderLineId,
   isIndirectTask,
   summarize,
   orderMetaMap,
