@@ -535,6 +535,15 @@ function buildDashboard(query) {
   const assignee = {};
   const stuck = { Costing: [], Quoted: [], "Followed Up": [], Waiting: [] };
   const timeToOrderDays = [];
+  const ttoByBucket = {};
+  AGE_BUCKETS.forEach((b) => {
+    ttoByBucket[b.id] = {
+      label: b.id,
+      count: 0,
+      enquiryWeeks: [0, 0, 0, 0, 0],
+      quoteWeeks: [0, 0, 0, 0, 0]
+    };
+  });
   const stage = {
     toCosting: [],
     costing: [],
@@ -673,7 +682,15 @@ function buildDashboard(query) {
       wom.orderedRevenue[w] += rev;
       const days = (row.lifespan_ms ? row.lifespan_ms / 86400000 : 0)
         || (opened && ordered ? (ordered - opened) / 86400000 : 0);
-      if (days > 0) timeToOrderDays.push(days);
+      if (days > 0) {
+        timeToOrderDays.push(days);
+        const bucket = ttoByBucket[ageBucket(days)];
+        if (bucket) {
+          bucket.count += 1;
+          if (opened) bucket.enquiryWeeks[weekOfMonth(new Date(opened)) - 1] += 1;
+          if (quoted) bucket.quoteWeeks[weekOfMonth(new Date(quoted)) - 1] += 1;
+        }
+      }
     }
     if (openedIn) {
       const bucket = seriesMap[keyOf(new Date(opened))];
@@ -697,10 +714,7 @@ function buildDashboard(query) {
   });
 
   const series = keys.map((key) => seriesMap[key] || emptySeries([key], grain)[0]);
-  const timeToOrderHist = AGE_BUCKETS.map((b) => ({
-    label: b.id,
-    count: timeToOrderDays.filter((d) => ageBucket(d) === b.id).length
-  }));
+  const timeToOrderHist = AGE_BUCKETS.map((b) => ttoByBucket[b.id]);
 
   const stuckBars = Object.keys(stuck).map((label) => {
     const days = stuck[label];
@@ -870,6 +884,19 @@ function matchesDrill(row, query, win) {
     if (typeName === "New Design") return designKey(row) === value;
     return true;
   }
+  if (kind === "tto") {
+    if (!orderedIn) return false;
+    const days = (row.lifespan_ms ? row.lifespan_ms / 86400000 : 0)
+      || (opened && ordered ? (ordered - opened) / 86400000 : 0);
+    if (!(days > 0) || ageBucket(days) !== value) return false;
+    const week = Number((query && query.week) || 0);
+    if (!week) return true;
+    const series = String((query && query.series) || "enquiries");
+    if (series === "quotes") {
+      return !!(quoted && weekOfMonth(new Date(quoted)) === week);
+    }
+    return !!(opened && weekOfMonth(new Date(opened)) === week);
+  }
   if (kind === "wom") {
     const ym = String((query && query.month) || "");
     const week = Number((query && query.week) || 0);
@@ -936,6 +963,14 @@ function drillTitle(query, win) {
   if (kind === "ordered") return "Ordered · " + bucket;
   if (kind === "funnel") return (funnelNames[query.stage] || "Funnel") + " · " + win.windowLabel;
   if (kind === "typeSubtype") return (String((query && query.type) || "") + " · " + value + " · " + win.windowLabel).trim();
+  if (kind === "tto") {
+    const bucket = value || "this bar";
+    const week = String((query && query.week) || "");
+    const series = String((query && query.series) || "");
+    const seriesName = series === "quotes" ? "quotes sent" : "enquiries received";
+    if (week) return "Time to order " + bucket + " · " + seriesName + " in week " + week + " of the month";
+    return "Time to order " + bucket + " · " + win.windowLabel;
+  }
   if (kind === "wom") {
     const series = String((query && query.series) || "enquiries");
     const name = series === "quotes" || series === "quoteRevenue" ? "Quotes"

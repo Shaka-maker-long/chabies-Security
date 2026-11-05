@@ -1279,6 +1279,8 @@ assert.ok(floor.indexOf("Office schedule") === -1);
 assert.ok(floor.indexOf("id=\"link-office-schedule\"") === -1);
 
 const dashHtml = fs.readFileSync(path.join(__dirname, "../public/enquiries-dashboard.html"), "utf8");
+assert.ok(dashHtml.indexOf("function openTtoSplit") !== -1);
+assert.ok(dashHtml.indexOf("kind: \"tto\"") !== -1 || dashHtml.indexOf("kind: 'tto'") !== -1);
 assert.ok(dashHtml.indexOf("/enquiries/replies") !== -1);
 assert.ok(dashHtml.indexOf("/enquiries/bookings") !== -1);
 
