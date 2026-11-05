@@ -268,9 +268,9 @@ assert.strictEqual(monthOnly.kpis.openJobs, 5, "shop KPIs stay live when a month
 assert.ok(!monthOnly.categories.some((c) => c.label === "Mirror" && c.count > 1));
 assert.strictEqual(monthOnly.compare, null);
 
-const compared = dash.buildDashboard({ months: "2026-08,2026-09", grain: "month" });
-assert.strictEqual(compared.windowLabel, "Aug 2026 vs Sep 2026");
-assert.strictEqual(compared.windowCount, 3);
+const compared = dash.buildDashboard({ months: "2026-08,2026-09", range: "year", grain: "month" });
+assert.strictEqual(compared.windowLabel, "This year", "month compare does not shrink the rest of the dashboard");
+assert.strictEqual(compared.windowCount, year.windowCount);
 assert.ok(compared.compare);
 assert.deepStrictEqual(compared.compare.months.map((m) => m.key), ["2026-08", "2026-09"]);
 assert.ok(compared.compare.topIncome.labels[0] === "Daphne Rectangular Mirror");
@@ -345,9 +345,10 @@ assert.ok(html.indexOf("Income by CATERGORY") !== -1);
 assert.ok(html.indexOf("Income by source") !== -1);
 assert.ok(html.indexOf("Top 10 items by income") !== -1);
 assert.ok(html.indexOf("Top 10 products by quantity") !== -1);
-assert.ok(html.indexOf("monthChecks") !== -1);
+assert.ok(html.indexOf("data-month-dd") !== -1);
 assert.ok(html.indexOf("groupedBar") !== -1);
-assert.ok(html.indexOf("Tick two or more months") !== -1);
+assert.ok(html.indexOf("Compare months") !== -1);
+assert.ok(html.indexOf("id=\"monthChecks\"") === -1);
 assert.ok(html.indexOf("id=\"productShot\"") !== -1, "hover catalog photo on product names");
 assert.ok(html.indexOf("productHoverOpt") !== -1);
 assert.ok(html.indexOf("data-product-shot") !== -1);

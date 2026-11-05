@@ -181,33 +181,6 @@ function resolveWindow(query) {
       windowLabel: monthLabel(month)
     };
   }
-  const many = parseMonthKeys((query && query.months) || "");
-  if (many.length >= 2) {
-    const bounds = many.map(monthBounds).filter(Boolean);
-    return {
-      from: Math.min.apply(null, bounds.map((b) => b.from)),
-      to: Math.max.apply(null, bounds.map((b) => b.to)),
-      grain,
-      range,
-      month: "",
-      months: many,
-      windowLabel: many.map(monthLabel).join(" vs ")
-    };
-  }
-  if (many.length === 1) {
-    const one = monthBounds(many[0]);
-    if (one) {
-      return {
-        from: one.from,
-        to: one.to,
-        grain,
-        range,
-        month: many[0],
-        months: many,
-        windowLabel: monthLabel(many[0])
-      };
-    }
-  }
   const win = periodWindow(range, grain);
   return {
     from: win.from,
@@ -512,7 +485,7 @@ function buildDashboard(query) {
   const sourceMap = {};
   const productIncome = {};
   const productQty = {};
-  const compareKeys = (win.months || []).length >= 2 ? win.months.slice() : [];
+  const compareKeys = parseMonthKeys((query && query.months) || "");
   const monthProduct = {};
   compareKeys.forEach((k) => {
     monthProduct[k] = { income: {}, qty: {} };
@@ -572,6 +545,14 @@ function buildDashboard(query) {
     }
 
     const ms = saleMs(row);
+    if (ms) {
+      const ym = monthKey(new Date(ms));
+      if (monthProduct[ym]) {
+        const name = blankLabel(row.product, "(No product)");
+        bumpMoney(monthProduct[ym].income, name, money.paid);
+        monthProduct[ym].qty[name] = (monthProduct[ym].qty[name] || 0) + 1;
+      }
+    }
     if (!ms || !inWindow(ms, win.from, win.to)) return;
     windowCount += 1;
     income += money.paid;
@@ -592,11 +573,6 @@ function buildDashboard(query) {
     const productName = blankLabel(row.product, "(No product)");
     bumpMoney(productIncome, productName, money.paid);
     productQty[productName] = (productQty[productName] || 0) + 1;
-    const ym = monthKey(new Date(ms));
-    if (monthProduct[ym]) {
-      bumpMoney(monthProduct[ym].income, productName, money.paid);
-      monthProduct[ym].qty[productName] = (monthProduct[ym].qty[productName] || 0) + 1;
-    }
   });
 
   const series = keys.map((key) => ({
@@ -647,7 +623,7 @@ function buildDashboard(query) {
     grain: win.grain,
     range: win.range,
     month: win.month,
-    selectedMonths: (win.months || []).slice(),
+    selectedMonths: compareKeys.slice(),
     months: pickerMonths(rows),
     compare: compareKeys.length ? {
       months: compareKeys.map((key) => ({ key, label: monthLabel(key) })),
