@@ -271,7 +271,7 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("Hours allocated to orders") !== -1);
   assert.ok(html.indexOf("Total hours available") !== -1);
   assert.ok(html.indexOf("Workdays in month") === -1);
-  assert.ok(html.indexOf("7.5h production day") !== -1);
+  assert.ok(html.indexOf("7.5 production hours/day") !== -1);
   assert.ok(html.indexOf("Completed over time") === -1);
   const availAt = html.indexOf("Total hours available");
   const empAt = html.indexOf("<span>Total hours</span>");

@@ -109,7 +109,7 @@
         <a href="/orders">Orders</a>
       </nav>
       <h1>Studio Delta // <span>Monthly pack</span></h1>
-      <p class="lede">Shop floor and Sales for the month. Each person shows hours available (7.5 production hours × workdays), their hours, utilisation, hours allocated to orders, then actual productivity. Paid shop shift is 07:45–15:45 minus lunch.</p>
+      <p class="lede">Shop floor and Sales for the month. Each person shows hours available (7.5 production hours/day × workdays), their hours, utilisation, hours allocated to orders, then actual productivity. Paid shop shift is 07:45–15:45 minus lunch.</p>
     </div>
     <div class="tools no-print">
       <label>Month <input type="month" id="monthPick" onchange="load()"></label>
@@ -232,7 +232,7 @@
       const pred = p.predictedMins > 0 ? (" <em>estimated " + hm(p.predictedMins) + "</em>") : " <em>no estimate</em>";
       const days = p.workDays || 0;
       const metrics = "<div class='metrics'>" +
-        "<div><span>Total hours available</span><b>" + hm(p.capacityMins) + "</b><em>" + days + " workday" + (days === 1 ? "" : "s") + " × 7.5h production day</em></div>" +
+        "<div><span>Total hours available</span><b>" + hm(p.capacityMins) + "</b><em>" + days + " workday" + (days === 1 ? "" : "s") + " × 7.5 production hours/day</em></div>" +
         "<div><span>Total hours</span><b>" + hm(p.totalMinutes) + "</b><em>this employee</em></div>" +
         "<div><span>Utilisation</span><b>" + pct(p.productivityPct) + "</b><em>employee hours ÷ hours available</em></div>" +
         "<div><span>Hours allocated to orders</span><b>" + hm(p.completedMins) + "</b>" + pred + "</div>" +
@@ -438,7 +438,7 @@
         : " <em>no estimate</em>";
       return "<div class='score-grid'>" +
         "<article class='score'><h3>Total hours available</h3>" +
-        "<p class='lede'>" + n + " people who worked × 7.5h production day × " + days + " workday" + (days === 1 ? "" : "s") + ".</p>" +
+        "<p class='lede'>" + n + " people who worked × 7.5 production hours/day × " + days + " workday" + (days === 1 ? "" : "s") + ".</p>" +
         "<div class='hero'>" + hm(available) + "</div></article>" +
         "<article class='score'><h3>Total hours</h3>" +
         "<p class='lede'>All clocked hours this month for people who worked.</p>" +
