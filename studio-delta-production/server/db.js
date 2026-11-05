@@ -674,7 +674,8 @@ function renameOrderNumber(fromRaw, toRaw) {
     "./qc-pdf",
     "./reworks",
     "./consumables",
-    "./order-lifecycle"
+    "./order-lifecycle",
+    "./order-created"
   ].forEach((mod) => {
     try {
       const api = require(mod);
@@ -1566,7 +1567,7 @@ function synthesizeEnquiryEvents(row) {
 function appendEnquiryEvent(row, partial) {
   if (!row) return null;
   const events = normalizeEnquiryEvents(row);
-  const at = nowIso();
+  const at = String((partial && partial.at) || "").trim() || nowIso();
   const event = {
     id: nextEventId(events),
     at,
@@ -1916,7 +1917,7 @@ function createOrderDraftFromEnquiry(enquiryNo, now) {
   };
 }
 
-function savePlannedOrders(plan) {
+function savePlannedOrders(plan, actor) {
   const enquiry = plan.enquiry_no ? (getEnquiry(plan.enquiry_no) || getEnquiryRaw(plan.enquiry_no)) : null;
   // Already in the warehouse — skip manufacture / auto-plan (overrides Waiting for drawing).
   const status = plan && plan.from_stock ? IN_STOCK : initialOrderStatus(enquiry);
@@ -1960,10 +1961,50 @@ function savePlannedOrders(plan) {
     if (sched) setScheduleCell(sched.id, plan.delivery.date, plan.delivery.scheduleCode, false);
   });
   save();
+  noteOrdersAdded(rows, { actor, enquiryNo: plan.enquiry_no });
   return rows;
 }
 
-function createOrdersFromEnquiryForm(enquiryNo, body) {
+function readyAtForEnquiry(enquiryNo) {
+  const raw = getEnquiryRaw(enquiryNo);
+  if (!raw) return "";
+  const events = normalizeEnquiryEvents(raw);
+  const pop = events.filter((e) => e && e.kind === "complete_order").slice(-1)[0];
+  if (pop && pop.at) return pop.at;
+  const outcome = (raw && raw.client_outcome) || {};
+  if (outcome.decided_at) return String(outcome.decided_at);
+  const ordered = orderedAtFromRow(raw, events);
+  return (ordered && ordered.at) || "";
+}
+
+function noteOrdersAdded(rows, opts) {
+  const list = (rows || []).filter(Boolean);
+  if (!list.length) return;
+  const enquiryNo = String((opts && opts.enquiryNo) || (list[0] && list[0].enquiry_no) || "").trim();
+  const readyAt = String((opts && opts.readyAt) || "").trim() || (enquiryNo ? readyAtForEnquiry(enquiryNo) : "");
+  const at = String((opts && opts.at) || "").trim() || nowIso();
+  const actor = String((opts && opts.actor) || "").trim();
+  try {
+    require("./order-created").record(list, { actor, at, readyAt, enquiryNo });
+  } catch (e) {
+    console.warn("[db] order-created stamp failed:", e && e.message ? e.message : e);
+  }
+  if (!enquiryNo) return;
+  const raw = getEnquiryRaw(enquiryNo);
+  if (!raw) return;
+  const already = (raw.events || []).some((ev) => ev && ev.kind === "create_orders");
+  if (already) return;
+  appendEnquiryEvent(raw, {
+    kind: "create_orders",
+    actor,
+    at,
+    status: raw.status || "Ordered",
+    label: "Added to Orders (" + list.map((r) => formatOrderId(r.order_number)).filter(Boolean).join(", ") + ")"
+  });
+  saveEnquiryRecord(raw);
+}
+
+function createOrdersFromEnquiryForm(enquiryNo, body, actor) {
   const enquiry = getEnquiry(enquiryNo);
   if (!enquiry) throw new Error("Enquiry not found");
   if (!enquiry.ready_for_orders) {
@@ -1988,7 +2029,7 @@ function createOrdersFromEnquiryForm(enquiryNo, body) {
     };
   }
   const plan = fromEnquiry.planCreate(enquiry, body || {}, listOrders());
-  const rows = savePlannedOrders(plan);
+  const rows = savePlannedOrders(plan, actor);
   const raw = getEnquiryRaw(enquiry.enquiry_no);
   if (raw) {
     raw.order_number = rows[0].order_number;
@@ -2010,9 +2051,9 @@ function createBlankOrderDraft(now) {
   };
 }
 
-function createOrdersStandalone(body) {
+function createOrdersStandalone(body, actor) {
   const plan = fromEnquiry.planCreate(null, body || {}, listOrders());
-  const rows = savePlannedOrders(plan);
+  const rows = savePlannedOrders(plan, actor);
   return {
     existing: false,
     rows,
@@ -2020,7 +2061,7 @@ function createOrdersStandalone(body) {
   };
 }
 
-function onboardExistingOrder(body) {
+function onboardExistingOrder(body, actor) {
   const row = body || {};
   if (!row.confirmed) throw new Error("Tick that this is where the order is on the floor now.");
   const orderNumber = formatOrderId(row.order_number);
@@ -2097,10 +2138,11 @@ function onboardExistingOrder(body) {
     }
   }
   save();
+  noteOrdersAdded([saved], { actor, enquiryNo });
   return { row: saved };
 }
 
-function pasteOrdersFromSheet(body) {
+function pasteOrdersFromSheet(body, actor) {
   const src = body || {};
   const text = String(src.text || src.paste || "");
   const paidInFull = src.paid_in_full !== false;
@@ -2152,7 +2194,10 @@ function pasteOrdersFromSheet(body) {
     taken.add(orderNumber);
     added.push(saved);
   });
-  if (!preview && added.length) normalizeOrdersSheet();
+  if (!preview && added.length) {
+    normalizeOrdersSheet();
+    noteOrdersAdded(added, { actor });
+  }
   return {
     added,
     skipped,
@@ -2161,7 +2206,7 @@ function pasteOrdersFromSheet(body) {
   };
 }
 
-function createOrderFromEnquiry(enquiryNo) {
+function createOrderFromEnquiry(enquiryNo, actor) {
   const enquiry = getEnquiry(enquiryNo);
   if (!enquiry) throw new Error("Enquiry not found");
   if (!enquiry.ready_for_orders) {
@@ -2212,6 +2257,7 @@ function createOrderFromEnquiry(enquiryNo) {
     raw.order_number = saved.order_number;
     saveEnquiryRecord(raw);
   }
+  noteOrdersAdded([saved], { actor, enquiryNo: enquiry.enquiry_no });
   return { row: decorateMoney(saved), enquiry: getEnquiry(enquiry.enquiry_no), existing: false };
 }
 

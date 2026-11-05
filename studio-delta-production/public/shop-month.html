@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>Studio Delta — Monthly shop pack</title>
+  <title>Studio Delta — Monthly pack</title>
   <script src="/sd-pwa.js?v=pwa-committed-banner"></script>
   <style>
     :root { --ink:#101828; --muted:#667085; --line:#e4e7ec; --bg:#f8f9fc; }
@@ -26,6 +26,9 @@
     .kpi span { display:block; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
     .kpi b { display:block; margin-top:4px; font-size:22px; font-family: Outfit, Inter, sans-serif; }
     .people { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; }
+    .pack-block { margin-top:28px; }
+    .pack-block h2 { margin:0 0 8px; font-size:14px; letter-spacing:.08em; text-transform:uppercase; }
+    .sheet { background:#fff; border:1px solid var(--line); padding:12px 16px; margin-top:12px; overflow:auto; }
     .card { background:#fff; border:1px solid var(--line); padding:14px 16px; break-inside:avoid; page-break-inside:avoid; }
     .card h2 { margin:0 0 4px; font-size:16px; }
     .card .meta { color:var(--muted); font-size:12px; margin-bottom:10px; }
@@ -85,8 +88,8 @@
         <a class="on" href="/shop-month">Month pack</a>
         <a href="/orders">Orders</a>
       </nav>
-      <h1>Studio Delta // <span>Monthly shop pack</span></h1>
-      <p class="lede">What every shop employee worked this month: stations, orders, regular time and overtime. Paid shift is 07:45–15:45 minus lunch. Print this for a stakeholder review.</p>
+      <h1>Studio Delta // <span>Monthly pack</span></h1>
+      <p class="lede">Shop floor and sales team for the month. Shop cards use stations and unique orders. Sales cards use captured enquiries, quotes, follow-ups and orders added. Paid shop shift is 07:45–15:45 minus lunch.</p>
     </div>
     <div class="tools no-print">
       <label>Month <input type="month" id="monthPick" onchange="load()"></label>
@@ -128,6 +131,8 @@
       return now.getUTCFullYear() + "-" + String(now.getUTCMonth() + 1).padStart(2, "0");
     }
     let PEOPLE = [];
+    let SALES = [];
+    let ADDED = [];
     function isIndirect(t) {
       if (!t) return true;
       if (String(t.entryType || "") === "indirect") return true;
@@ -270,6 +275,74 @@
     function hideProductShot() {
       document.getElementById("productShot").hidden = true;
     }
+    function salesCard(p, i) {
+      const badges = [];
+      if (p.captured) badges.push("<button type='button' class='badge orders' data-sales='" + i + "' data-kind='captured'>" + p.captured + " captured</button>");
+      if (p.quoted) badges.push("<button type='button' class='badge orders' data-sales='" + i + "' data-kind='quoted'>" + p.quoted + " quoted</button>");
+      if (p.followed) badges.push("<button type='button' class='badge orders' data-sales='" + i + "' data-kind='followed'>" + p.followed + " followed up</button>");
+      if (p.ordered) badges.push("<button type='button' class='badge orders' data-sales='" + i + "' data-kind='ordered'>" + p.ordered + " client ordered</button>");
+      if (p.added) badges.push("<button type='button' class='badge orders' data-sales='" + i + "' data-kind='added'>" + p.added + " added to Orders</button>");
+      if (!p.worked) badges.push("<span class='badge none'>No sales work this month</span>");
+      let proc = "";
+      if (p.kinds && p.kinds.length) {
+        proc = "<table><thead><tr><th>Work</th><th class='r'>Count</th></tr></thead><tbody>" +
+          p.kinds.map((r) => "<tr class='station' data-sales='" + i + "' data-kind=\"" + esc(r.key) + "\"><td>" + esc(r.name) + "</td><td class='r'>" + r.count + "</td></tr>").join("") +
+          "</tbody></table>";
+      }
+      return "<article class='card'><h2>" + esc(p.worker) + "</h2><div class='meta'>" + esc(p.role || "Sales") + "</div><div class='badges'>" + badges.join("") + "</div>" + proc + "</article>";
+    }
+    function openSales(i, kind) {
+      const p = SALES[i];
+      if (!p) return;
+      const rows = (p.rows || []).filter((r) => !kind || r.kind === kind);
+      const title = kind ? (p.worker + " — " + (rows[0] && rows[0].kindLabel || kind)) : (p.worker + " — sales this month");
+      if (!rows.length) {
+        showModal(title, "<p class='lede'>Nothing in this view.</p>");
+        return;
+      }
+      showModal(title,
+        "<table><thead><tr><th>When</th><th>Enquiry</th><th>Client</th><th>Product</th><th>Order</th></tr></thead><tbody>" +
+        rows.map((r) => "<tr><td>" + esc(r.atLabel || r.at) + "</td><td>" + esc(r.enquiry_no) + "</td><td>" + esc(r.client) + "</td><td>" + esc(r.product) + "</td><td>" + esc(r.order) + "</td></tr>").join("") +
+        "</tbody></table>");
+    }
+    function openAdded() {
+      if (!ADDED.length) {
+        showModal("Orders added", "<p class='lede'>No orders were stamped as added to the system this month.</p>");
+        return;
+      }
+      showModal("Time to add orders",
+        "<table><thead><tr><th>Order</th><th>Product</th><th>Added by</th><th>Ready for Orders</th><th>Added</th><th class='r'>Time to add</th></tr></thead><tbody>" +
+        ADDED.map((r) => "<tr><td>" + esc(r.order) + "</td><td>" + esc(r.product) + "</td><td>" + esc(r.by || "—") + "</td><td>" + esc(r.readyLabel || "—") + "</td><td>" + esc(r.atLabel || "—") + "</td><td class='r'>" + esc(r.lagLabel) + "</td></tr>").join("") +
+        "</tbody></table>" +
+        "<p class='lede' style='margin-top:10px'>Time to add is from proof of payment (ready for Orders) until someone saved the Orders row. Older jobs without a stamp show as not timed.</p>");
+    }
+    function salesBlock(sales) {
+      if (!sales) return "";
+      const lagNote = sales.timedCount
+        ? ("Median time to add an order was " + esc(sales.medianLagLabel) +
+          (sales.averageLagLabel ? (" (average " + esc(sales.averageLagLabel) + ")") : "") +
+          ". " + sales.timedCount + " timed" +
+          (sales.untimedCount ? (", " + sales.untimedCount + " not timed") : "") + ".")
+        : (sales.addedCount ? "Orders were added this month but older rows were not timed." : "New orders are timed from the moment POP is saved until the Orders row is created.");
+      return "<div class='pack-block'>" +
+        "<div class='cover'><h2>Sales team</h2><p>What every marketing employee did this month: enquiries captured, quotes issued, follow-ups, client orders, and Orders rows added. Click a count. Time to add is POP to Orders, not shop clock time.</p></div>" +
+        "<div class='kpis'>" +
+        "<div class='kpi'><span>Sales on the pack</span><b>" + sales.headcount + "</b></div>" +
+        "<div class='kpi'><span>Worked</span><b>" + sales.workedCount + "</b></div>" +
+        "<div class='kpi'><span>Captured</span><b>" + sales.captured + "</b></div>" +
+        "<div class='kpi'><span>Quoted</span><b>" + sales.quoted + "</b></div>" +
+        "<div class='kpi'><span>Client ordered</span><b>" + sales.ordered + "</b></div>" +
+        "<div class='kpi'><span>Orders added</span><b>" + sales.addedCount + "</b></div>" +
+        "<div class='kpi'><span>Median time to add</span><b>" + (sales.medianLagLabel || "—") + "</b></div>" +
+        "</div>" +
+        "<p class='lede' style='margin:0 0 12px'>" + lagNote + "</p>" +
+        "<div class='people'>" + (sales.people || []).map(salesCard).join("") + "</div>" +
+        (sales.addedCount
+          ? ("<div class='sheet'><p class='lede' style='margin:0 0 8px'><button type='button' class='badge orders' id='openAdded'>Open time-to-add list</button> " +
+            sales.addedCount + " order" + (sales.addedCount === 1 ? "" : "s") + " added to the system this month.</p></div>")
+          : "") +
+        "</div>";
+    }
     function render(data) {
       const stations = (data.stations || []).slice(0, 8).map((s) => esc(s.name) + " " + hm(s.minutes)).join(" · ");
       const html =
@@ -287,13 +360,28 @@
         (data.topStation ? ("Heaviest station: " + esc(data.topStation.name) + " (" + hm(data.topStation.minutes) + "). ") : "") +
         (stations ? ("Station mix: " + stations + ".") : "") +
         "</p>" +
-        "<div class='people'>" + (data.people || []).map(personCard).join("") + "</div>";
+        "<div class='people'>" + (data.people || []).map(personCard).join("") + "</div>" +
+        salesBlock(data.sales);
       PEOPLE = data.people || [];
+      SALES = (data.sales && data.sales.people) || [];
+      ADDED = (data.sales && data.sales.added) || [];
       document.getElementById("app").innerHTML = html;
       document.querySelectorAll(".badge.orders").forEach((btn) => {
+        if (btn.id === "openAdded") {
+          btn.addEventListener("click", openAdded);
+          return;
+        }
+        if (btn.hasAttribute("data-sales")) {
+          btn.addEventListener("click", () => openSales(Number(btn.getAttribute("data-sales")), btn.getAttribute("data-kind")));
+          return;
+        }
         btn.addEventListener("click", () => openOrders(Number(btn.getAttribute("data-person"))));
       });
       document.querySelectorAll("tr.station").forEach((row) => {
+        if (row.hasAttribute("data-sales")) {
+          row.addEventListener("click", () => openSales(Number(row.getAttribute("data-sales")), row.getAttribute("data-kind")));
+          return;
+        }
         row.addEventListener("click", () => openOrders(Number(row.getAttribute("data-person")), row.getAttribute("data-station")));
       });
     }

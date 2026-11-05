@@ -72,6 +72,162 @@ function isShopUser(u) {
   return access === "Production";
 }
 
+function isSalesUser(u) {
+  if (!u || !u.name) return false;
+  if (staff.isMarketing(u)) return true;
+  return String(u.access || "") === "Marketing";
+}
+
+function isoMonth(raw) {
+  const n = Date.parse(raw);
+  if (!Number.isFinite(n)) return "";
+  const p = sastParts(new Date(n));
+  return p.y + "-" + String(p.m).padStart(2, "0");
+}
+
+function durationLabel(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const mins = Math.round(ms / 60000);
+  if (mins < 1) return "same time";
+  if (mins < 60) return mins + " min";
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  if (hours < 48) return hours + "h" + (rem ? " " + rem + "m" : "");
+  const days = Math.floor(hours / 24);
+  const h = hours % 24;
+  return days + "d" + (h ? " " + h + "h" : "");
+}
+
+function median(nums) {
+  const s = (nums || []).slice().filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+  if (!s.length) return 0;
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid] : Math.round((s[mid - 1] + s[mid]) / 2);
+}
+
+const SALES_KINDS = [
+  { kind: "created", key: "captured", label: "Captured" },
+  { kind: "complete_quote", key: "quoted", label: "Quoted" },
+  { kind: "complete_followup", key: "followed", label: "Followed up" },
+  { kind: "complete_order", key: "ordered", label: "Client ordered" },
+  { kind: "create_orders", key: "added", label: "Added to Orders" }
+];
+
+function salesKindOf(kind) {
+  return SALES_KINDS.find((k) => k.kind === kind) || null;
+}
+
+function emptySalesPerson(name, profile) {
+  return {
+    worker: name,
+    role: (profile && (profile.role || profile.jobTitle)) || "Sales",
+    worked: false,
+    captured: 0,
+    quoted: 0,
+    followed: 0,
+    ordered: 0,
+    added: 0,
+    kinds: SALES_KINDS.map((k) => ({ name: k.label, key: k.key, count: 0 })),
+    rows: []
+  };
+}
+
+function buildSales(month) {
+  const db = require("./db");
+  const created = require("./order-created");
+  const users = staff.listUsers().filter(isSalesUser);
+  const byName = {};
+  users.forEach((u) => {
+    byName[nameKey(u.name)] = emptySalesPerson(u.name, u);
+  });
+
+  const orders = db.listOrders() || [];
+  (db.listEnquiries() || []).forEach((row) => {
+    const list = Array.isArray(row.events) ? row.events : [];
+    list.forEach((ev) => {
+      const spec = salesKindOf(ev && ev.kind);
+      if (!spec) return;
+      if (isoMonth(ev.at) !== month) return;
+      const actor = String((ev && ev.actor) || "").trim();
+      if (!actor) return;
+      const key = nameKey(actor);
+      if (!byName[key]) return;
+      const person = byName[key];
+      person.worked = true;
+      person[spec.key] = (person[spec.key] || 0) + 1;
+      const kindRow = person.kinds.find((k) => k.key === spec.key);
+      if (kindRow) kindRow.count += 1;
+      person.rows.push({
+        kind: spec.key,
+        kindLabel: spec.label,
+        enquiry_no: row.enquiry_no || "",
+        client: row.client_name || "",
+        product: row.product || "",
+        order: row.order_number || "",
+        at: ev.at || "",
+        atLabel: ev.at_label || db.formatSastDateTime(ev.at) || ev.at || ""
+      });
+    });
+  });
+
+  const added = [];
+  const lags = [];
+  (created.list() || []).forEach((rec) => {
+    if (!rec || isoMonth(rec.at) !== month) return;
+    const start = Date.parse(rec.readyAt);
+    const end = Date.parse(rec.at);
+    const lagMs = Number.isFinite(start) && Number.isFinite(end) ? Math.max(0, end - start) : null;
+    if (lagMs != null) lags.push(lagMs);
+    const orderMeta = orders.find((o) => orderLineId(o.order_number) === orderLineId(rec.order_number));
+    added.push({
+      order: rec.order_number,
+      product: rec.product || (orderMeta && orderMeta.product) || "",
+      client: rec.client_name || (orderMeta && orderMeta.client_name) || "",
+      by: rec.by || "",
+      enquiry_no: rec.enquiryNo || "",
+      readyAt: rec.readyAt || "",
+      readyLabel: rec.readyAt ? (db.formatSastDateTime(rec.readyAt) || rec.readyAt) : "",
+      at: rec.at || "",
+      atLabel: rec.at ? (db.formatSastDateTime(rec.at) || rec.at) : "",
+      lagMs,
+      lagLabel: lagMs == null ? "Not timed" : durationLabel(lagMs)
+    });
+  });
+  added.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
+  const people = Object.keys(byName).map((k) => byName[k]);
+  people.forEach((p) => {
+    p.kinds = p.kinds.filter((k) => k.count > 0);
+    p.rows.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  });
+  people.sort((a, b) => {
+    const aN = a.captured + a.quoted + a.followed + a.ordered + a.added;
+    const bN = b.captured + b.quoted + b.followed + b.ordered + b.added;
+    if (bN !== aN) return bN - aN;
+    return String(a.worker).localeCompare(String(b.worker));
+  });
+
+  const worked = people.filter((p) => p.worked);
+  return {
+    people,
+    workedCount: worked.length,
+    idleCount: people.filter((p) => !p.worked).length,
+    headcount: people.length,
+    captured: people.reduce((s, p) => s + p.captured, 0),
+    quoted: people.reduce((s, p) => s + p.quoted, 0),
+    followed: people.reduce((s, p) => s + p.followed, 0),
+    ordered: people.reduce((s, p) => s + p.ordered, 0),
+    addedCount: added.length,
+    timedCount: lags.length,
+    untimedCount: added.length - lags.length,
+    medianLagMs: median(lags),
+    medianLagLabel: lags.length ? durationLabel(median(lags)) : "",
+    averageLagMs: lags.length ? Math.round(lags.reduce((s, n) => s + n, 0) / lags.length) : 0,
+    averageLagLabel: lags.length ? durationLabel(Math.round(lags.reduce((s, n) => s + n, 0) / lags.length)) : "",
+    added
+  };
+}
+
 function orderMetaMap() {
   const db = require("./db");
   const catalog = require("./product-catalog");
@@ -257,7 +413,8 @@ async function build(query) {
     orderCount: Object.keys(uniqueOrders).length,
     stations,
     busiest: busiest ? { worker: busiest.worker, minutes: busiest.totalMinutes } : null,
-    topStation: topStation ? { name: topStation.name, minutes: topStation.minutes } : null
+    topStation: topStation ? { name: topStation.name, minutes: topStation.minutes } : null,
+    sales: buildSales(month)
   };
 }
 
@@ -266,10 +423,13 @@ module.exports = {
   monthTitle,
   currentMonth,
   isShopUser,
+  isSalesUser,
   baseOrderNo,
   orderLineId,
   isIndirectTask,
   summarize,
   orderMetaMap,
+  durationLabel,
+  buildSales,
   build
 };

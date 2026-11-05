@@ -1048,7 +1048,7 @@ function mountOffice(app) {
 
   app.post("/api/office/orders/onboard", requireOffice, (req, res) => {
     try {
-      const created = onboardExistingOrder(req.body || {});
+      const created = onboardExistingOrder(req.body || {}, req.office && req.office.name);
       res.json({
         ok: true,
         row: created.row,
@@ -1061,7 +1061,7 @@ function mountOffice(app) {
 
   app.post("/api/office/orders/paste", requireOffice, (req, res) => {
     try {
-      const result = pasteOrdersFromSheet(req.body || {});
+      const result = pasteOrdersFromSheet(req.body || {}, req.office && req.office.name);
       res.json({
         ok: true,
         added: result.added,
@@ -1677,7 +1677,7 @@ function mountOffice(app) {
 
   app.post("/api/office/enquiries/:enquiryNo/create-order", requireOffice, (req, res) => {
     try {
-      const out = createOrderFromEnquiry(req.params.enquiryNo);
+      const out = createOrderFromEnquiry(req.params.enquiryNo, req.office && req.office.name);
       res.json({ ok: true, ...out });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
@@ -1695,7 +1695,7 @@ function mountOffice(app) {
 
   app.post("/api/office/enquiries/:enquiryNo/create-orders", requireOffice, (req, res) => {
     try {
-      const out = createOrdersFromEnquiryForm(req.params.enquiryNo, req.body || {});
+      const out = createOrdersFromEnquiryForm(req.params.enquiryNo, req.body || {}, req.office && req.office.name);
       res.json({ ok: true, ...out });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
@@ -1712,7 +1712,7 @@ function mountOffice(app) {
 
   app.post("/api/office/orders/create", requireOffice, (req, res) => {
     try {
-      const out = createOrdersStandalone(req.body || {});
+      const out = createOrdersStandalone(req.body || {}, req.office && req.office.name);
       res.json({ ok: true, ...out });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });

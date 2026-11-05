@@ -42,6 +42,7 @@ const ENQUIRY_STAGES = {
   complete_followup: "enquiry",
   follow_up: "enquiry",
   complete_order: "money",
+  create_orders: "order",
   complete_drawing: "enquiry",
   complete_drawing_approval: "enquiry",
   order_drawing_update: "enquiry"
