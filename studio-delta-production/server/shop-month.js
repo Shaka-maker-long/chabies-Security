@@ -109,30 +109,66 @@ function attachMonthStats(person, dates, durMap, month) {
     const mins = Number(t.minutes || 0);
     completedMins += mins;
     if (day && Object.prototype.hasOwnProperty.call(byDayMap, day)) byDayMap[day] += mins;
-    const product = String(t.product || "").trim().toLowerCase();
-    const process = String(t.role || t.task || "").trim().toLowerCase();
+    const productLabel = String(t.product || "").trim();
+    const processLabel = String(t.role || t.task || "").trim();
+    const product = productLabel.toLowerCase();
+    const process = processLabel.toLowerCase();
     const line = t.orderLine || orderLineId(t.order);
     const key = line + "\0" + process;
-    if (!jobs[key]) jobs[key] = { mins: 0, product, process };
+    if (!jobs[key]) {
+      jobs[key] = {
+        mins: 0,
+        product,
+        process,
+        order: line,
+        productLabel,
+        task: processLabel,
+        imageUrl: t.imageUrl || "",
+        worker: person && person.worker
+      };
+    }
     jobs[key].mins += mins;
     if (!jobs[key].product) jobs[key].product = product;
     if (!jobs[key].process) jobs[key].process = process;
+    if (!jobs[key].productLabel) jobs[key].productLabel = productLabel;
+    if (!jobs[key].task) jobs[key].task = processLabel;
+    if (!jobs[key].imageUrl && t.imageUrl) jobs[key].imageUrl = t.imageUrl;
   });
   let predictedMins = 0;
   let trophies = 0;
   let overtimeJobs = 0;
   let noEstimate = 0;
+  const results = [];
   Object.keys(jobs).forEach((key) => {
     const job = jobs[key];
     const target = (job.product && job.process) ? (durMap[job.product + "\0" + job.process] || 0) : 0;
     predictedMins += target;
+    let kind = "none";
     if (target > 0) {
-      if (job.mins <= target + 0.5) trophies += 1;
-      else overtimeJobs += 1;
+      if (job.mins <= target + 0.5) {
+        trophies += 1;
+        kind = "trophy";
+      } else {
+        overtimeJobs += 1;
+        kind = "overtime";
+      }
     } else {
       noEstimate += 1;
     }
+    if (kind === "trophy" || kind === "overtime") {
+      results.push({
+        kind,
+        order: job.order,
+        product: job.productLabel || "",
+        imageUrl: job.imageUrl || "",
+        task: job.task || "",
+        worker: job.worker || "",
+        estimatedMins: target,
+        actualMins: job.mins
+      });
+    }
   });
+  results.sort((a, b) => String(a.order).localeCompare(String(b.order)) || String(a.task).localeCompare(String(b.task)));
   const total = Number((person && person.totalMinutes) || 0);
   const production = Number(person && person.productionMins != null
     ? person.productionMins
@@ -147,6 +183,7 @@ function attachMonthStats(person, dates, durMap, month) {
     trophies,
     overtimeJobs,
     noEstimate,
+    results,
     productivityPct: clocked ? ratioPct(total, capacityMins) : null,
     actualProductivityPct: clocked ? ratioPct(production, capacityMins) : null,
     byDay: (dates || []).map((date) => ({ date, completedMins: byDayMap[date] || 0 }))
