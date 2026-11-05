@@ -13,6 +13,7 @@ delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
 const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
+const db = require("./db");
 const staff = require("./staff");
 const hub = require("./shop-month");
 
@@ -36,6 +37,19 @@ staff.upsertUser({
   access: "Marketing",
   role: "Marketing",
   password: "1234"
+});
+
+db.upsertOrder({
+  order_number: "S260901",
+  status: "Welding",
+  product: "Giselle Chair",
+  client_name: "Ada"
+});
+db.upsertOrder({
+  order_number: "S260902",
+  status: "Assembly",
+  product: "Charlotte Chair",
+  client_name: "Ben"
 });
 
 const book = getBook();
@@ -79,6 +93,11 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(thabo.processes.some((p) => p.name === "Welding"));
   assert.ok(thabo.processes.some((p) => p.name === "Assembly"));
   assert.strictEqual(thabo.orderCount, 2);
+  assert.ok(!(thabo.orders && thabo.orders.length), "order lines stay off the card payload");
+  const weld = (thabo.tasks || []).find((t) => t.order === "S260901");
+  assert.ok(weld);
+  assert.strictEqual(weld.product, "Giselle Chair");
+  assert.ok(weld.imageUrl, "catalog photo is attached for hover");
   assert.ok(sipho, "Sipho is listed even with no clocks");
   assert.ok(!sipho.clocked);
   assert.ok(!lerato, "Marketing is not a shop employee on this pack");
@@ -89,7 +108,10 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   const html = fs.readFileSync(path.join(__dirname, "../public/shop-month.html"), "utf8");
   assert.ok(html.indexOf("/api/office/shop-month") !== -1);
   assert.ok(html.indexOf("Print pack") !== -1);
-  assert.ok(html.indexOf("What they did") !== -1);
+  assert.ok(html.indexOf("Orders they worked") === -1);
+  assert.ok(html.indexOf("function openOrders") !== -1);
+  assert.ok(html.indexOf("data-product-shot") !== -1);
+  assert.ok(html.indexOf("id=\"productShot\"") !== -1);
   console.log("shop-month.test.js ok");
 })().catch((e) => {
   console.error(e);

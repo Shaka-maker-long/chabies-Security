@@ -33,6 +33,23 @@
     .badge { background:#f2f4f7; font-size:11px; font-weight:700; padding:4px 8px; }
     .badge.ot { background:#fff7ed; }
     .badge.none { background:#fef3f2; color:#b42318; }
+    .badge.orders { cursor:pointer; background:#1d2939; color:#fff; border:0; font:inherit; font-size:11px; font-weight:700; padding:4px 8px; }
+    .badge.orders:disabled { cursor:default; background:#f2f4f7; color:var(--ink); }
+    .mask { position:fixed; inset:0; background:rgba(16,24,40,.45); z-index:40; display:none; padding:24px 12px; overflow:auto; }
+    .mask.open { display:block; }
+    .modal { background:#fff; max-width:820px; margin:0 auto; border:2px solid #000; }
+    .modal header { display:flex; justify-content:space-between; gap:12px; align-items:center; padding:12px 16px; background:#000; color:#fff; }
+    .modal header h2 { margin:0; font-size:14px; letter-spacing:.06em; text-transform:uppercase; }
+    .modal .body { padding:16px; max-height:70vh; overflow:auto; }
+    .product-clip[data-product-shot] { cursor:help; text-decoration: underline dotted rgba(29,41,57,.35); text-underline-offset:2px; }
+    #productShot {
+      position:fixed; z-index:80; width:min(280px, calc(100vw - 24px));
+      background:#fff; border:1px solid var(--line); padding:8px; pointer-events:none;
+      box-shadow:0 12px 32px rgba(16,24,40,.2);
+    }
+    #productShot[hidden] { display:none !important; }
+    #productShot img { display:block; width:100%; height:auto; max-height:280px; object-fit:contain; background:#f8f9fc; }
+    #productShot .product-shot-name { margin:8px 2px 2px; font-size:12px; font-weight:700; }
     table { width:100%; border-collapse:collapse; font-size:12px; }
     th, td { padding:4px 0; border-bottom:1px solid var(--line); text-align:left; }
     th { color:var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
@@ -46,7 +63,7 @@
     .cover p { margin:0; color:#d0d5dd; font-size:13px; max-width:640px; }
     @media print {
       body { background:#fff; }
-      header.bar .tabs, header.bar .tools button.ghost, .no-print { display:none !important; }
+      header.bar .tabs, header.bar .tools button.ghost, .no-print, .mask { display:none !important; }
       .page { padding:0; }
       .card { border:1px solid #000; }
       .cover { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
@@ -80,6 +97,19 @@
     <div id="err" class="err" hidden></div>
     <div id="app" hidden></div>
   </div>
+  <div class="mask no-print" id="orderMask" onclick="if(event.target.id==='orderMask')closeOrders()">
+    <div class="modal">
+      <header>
+        <h2 id="orderTitle">Orders</h2>
+        <button type="button" class="ghost" onclick="closeOrders()">Close</button>
+      </header>
+      <div class="body" id="orderBody"></div>
+    </div>
+  </div>
+  <div id="productShot" hidden>
+    <img alt="">
+    <p class="product-shot-name"></p>
+  </div>
   <script src="/office-auth.js?v=login-msg-3"></script>
   <script>
     function esc(s) {
@@ -95,19 +125,18 @@
       const now = new Date(Date.now() + 2 * 60 * 60 * 1000);
       return now.getUTCFullYear() + "-" + String(now.getUTCMonth() + 1).padStart(2, "0");
     }
-    function taskLine(t) {
-      const kind = t.entryType === "indirect" || !t.order ? "Non-order" : esc(t.order);
-      const when = t.date ? " · " + esc(t.date) : "";
-      const run = t.end ? "" : " (running)";
-      return "<li><b>" + esc(t.task || t.role) + "</b> · " + kind + when + " · " + hm(t.minutes) + run + "</li>";
-    }
-    function personCard(p) {
+    let PEOPLE = [];
+    function personCard(p, i) {
       const badges = [];
       badges.push("<span class='badge'>" + hm(p.totalMinutes) + " total</span>");
       badges.push("<span class='badge'>" + hm(p.totalRegular) + " regular</span>");
       if (p.totalOvertime) badges.push("<span class='badge ot'>OT " + hm(p.totalOvertime) + "</span>");
       badges.push("<span class='badge'>" + p.daysWorked + " day" + (p.daysWorked === 1 ? "" : "s") + "</span>");
-      badges.push("<span class='badge'>" + p.orderCount + " order" + (p.orderCount === 1 ? "" : "s") + "</span>");
+      if (p.orderCount) {
+        badges.push("<button type='button' class='badge orders' data-person='" + i + "'>" + p.orderCount + " order" + (p.orderCount === 1 ? "" : "s") + "</button>");
+      } else {
+        badges.push("<span class='badge'>0 orders</span>");
+      }
       if (!p.clocked) badges.push("<span class='badge none'>No clocks this month</span>");
       let proc = "";
       if (p.processes.length) {
@@ -115,19 +144,53 @@
           p.processes.map((r) => "<tr><td>" + esc(r.name) + "</td><td class='r'>" + r.n + "</td><td class='r'>" + hm(r.minutes) + "</td></tr>").join("") +
           "</tbody></table>";
       }
-      let ords = "";
-      if (p.orders.length) {
-        ords = "<div class='meta' style='margin-top:8px'>Orders they worked</div><table><thead><tr><th>Order</th><th class='r'>Time</th></tr></thead><tbody>" +
-          p.orders.slice(0, 20).map((o) => "<tr><td>" + esc(o.order) + "</td><td class='r'>" + hm(o.minutes) + "</td></tr>").join("") +
-          "</tbody></table>";
-        if (p.orders.length > 20) ords += "<div class='meta'>+ " + (p.orders.length - 20) + " more orders</div>";
-      }
-      const tasks = (p.tasks || []).slice(0, 40);
-      const more = (p.tasks || []).length > 40 ? "<div class='meta'>+ " + ((p.tasks || []).length - 40) + " more clocks</div>" : "";
-      const list = tasks.length ? "<div class='meta' style='margin-top:8px'>What they did</div><ul class='tasks'>" + tasks.map(taskLine).join("") + "</ul>" + more : "";
       return "<article class='card'><h2>" + esc(p.worker) + "</h2><div class='meta'>" + esc(p.role || "Shop") +
         (p.clocked ? (" · " + p.finished + " finished clock" + (p.finished === 1 ? "" : "s")) : "") +
-        "</div><div class='badges'>" + badges.join("") + "</div>" + proc + ords + list + "</article>";
+        "</div><div class='badges'>" + badges.join("") + "</div>" + proc + "</article>";
+    }
+    function productCell(t) {
+      const name = t.product || "—";
+      if (t.imageUrl) {
+        return "<span class='product-clip' data-product-shot=\"" + esc(t.imageUrl) + "\">" + esc(name) + "</span>";
+      }
+      return esc(name);
+    }
+    function openOrders(i) {
+      const p = PEOPLE[i];
+      if (!p) return;
+      document.getElementById("orderTitle").textContent = p.worker + " — orders this month";
+      const rows = (p.tasks || []).filter((t) => t.order && t.entryType !== "indirect");
+      if (!rows.length) {
+        document.getElementById("orderBody").innerHTML = "<p class='lede'>No order clocks this month.</p>";
+      } else {
+        document.getElementById("orderBody").innerHTML =
+          "<table><thead><tr><th>Order</th><th>Product</th><th>Task</th><th class='r'>Duration</th></tr></thead><tbody>" +
+          rows.map((t) => "<tr><td>" + esc(t.order) + "</td><td>" + productCell(t) + "</td><td>" + esc(t.task || t.role) +
+            (t.end ? "" : " (running)") + "</td><td class='r'>" + hm(t.minutes) + "</td></tr>").join("") +
+          "</tbody></table>";
+      }
+      document.getElementById("orderMask").classList.add("open");
+    }
+    function closeOrders() {
+      document.getElementById("orderMask").classList.remove("open");
+      hideProductShot();
+    }
+    function showProductShot(url, label, x, y, anchor) {
+      const box = document.getElementById("productShot");
+      const img = box.querySelector("img");
+      const name = box.querySelector(".product-shot-name");
+      if (img.getAttribute("src") !== url) img.src = url;
+      name.textContent = label || "";
+      box.hidden = false;
+      const r = anchor && anchor.getBoundingClientRect ? anchor.getBoundingClientRect() : { left: x, right: x + 8, top: y, bottom: y };
+      const w = box.offsetWidth || 280;
+      const left = Math.min(window.innerWidth - w - 12, Math.max(12, r.right + 8));
+      const top = Math.min(window.innerHeight - 220, Math.max(12, r.top));
+      box.style.left = left + "px";
+      box.style.top = top + "px";
+    }
+    function hideProductShot() {
+      document.getElementById("productShot").hidden = true;
     }
     function render(data) {
       const stations = (data.stations || []).slice(0, 8).map((s) => esc(s.name) + " " + hm(s.minutes)).join(" · ");
@@ -147,7 +210,11 @@
         (stations ? ("Station mix: " + stations + ".") : "") +
         "</p>" +
         "<div class='people'>" + (data.people || []).map(personCard).join("") + "</div>";
+      PEOPLE = data.people || [];
       document.getElementById("app").innerHTML = html;
+      document.querySelectorAll(".badge.orders").forEach((btn) => {
+        btn.addEventListener("click", () => openOrders(Number(btn.getAttribute("data-person"))));
+      });
     }
     async function load() {
       document.getElementById("load").hidden = false;
@@ -169,6 +236,19 @@
         err.textContent = (e && e.message) || "Could not load month pack.";
       }
     }
+    document.addEventListener("pointerover", (e) => {
+      const hit = e.target.closest && e.target.closest("[data-product-shot]");
+      if (!hit) return;
+      showProductShot(hit.getAttribute("data-product-shot"), String(hit.textContent || "").trim(), 0, 0, hit);
+    });
+    document.addEventListener("pointerout", (e) => {
+      const from = e.target.closest && e.target.closest("[data-product-shot]");
+      const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest("[data-product-shot]") : null;
+      if (from && from !== to) hideProductShot();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeOrders();
+    });
     sdRequireOffice("ops").then(load);
   </script>
 </body>
