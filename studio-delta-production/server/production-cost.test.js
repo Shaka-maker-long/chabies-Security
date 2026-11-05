@@ -111,6 +111,22 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   const jan = await cost.getAppData({ mode: "month", from: "2026-01" });
   assert.ok(!jan.orders.some((o) => o.laborCost > 0 && o.orderNum === "S-COST-1") || jan.orders.length === 0);
 
+  const augStamp = new Date("2026-08-12T08:00:00.000Z");
+  book.getSheetByName("Steel_Usage").appendRow([
+    augStamp, "S-COST-1", "Willard", "Welding", "Tube - 25x25x2", 5
+  ]);
+  persistWorkbook();
+  const septOnly = await cost.getAppData({ mode: "month", from: "2026-09" });
+  const septRow = septOnly.orders.find((o) => o.orderNum === "S-COST-1");
+  assert.ok(septRow);
+  assert.ok(Math.abs(septRow.steelCost - 240) < 0.02, "September steel only, not August " + septRow.steelCost);
+  assert.ok(Math.abs(septRow.materialCost - 340) < 0.02, "September materials exclude August steel " + septRow.materialCost);
+  const augOnly = await cost.getAppData({ mode: "month", from: "2026-08" });
+  const augRow = augOnly.orders.find((o) => o.orderNum === "S-COST-1");
+  assert.ok(augRow);
+  assert.ok(Math.abs(augRow.steelCost - 400) < 0.02, "August steel only " + augRow.steelCost);
+  assert.ok(!(augRow.laborCost > 0), "August has steel but not September labour");
+
   db.upsertOrder({
     order_number: "S-COST-STATUS",
     product: "Stool",
@@ -157,7 +173,7 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   });
   const snapJson = await snap.json();
   assert.ok(snapJson.ok, JSON.stringify(snapJson));
-  assert.ok((snapJson.orders || []).some((o) => o.orderNum === "S-COST-1" && Math.abs((o.materialCost || 0) - 340) < 0.02));
+  assert.ok((snapJson.orders || []).some((o) => o.orderNum === "S-COST-1" && Math.abs((o.materialCost || 0) - 740) < 0.02));
   const saved = await fetch(base + "/api/office/labour-rates", {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-sd-token": session.token },
@@ -224,6 +240,13 @@ assert.strictEqual(cost.matchTask("Final QC"), "");
   assert.ok(Math.abs(matOrder.powderCost - 350) < 0.02, "powder actual " + matOrder.powderCost);
   assert.ok(matOrder.materialCost >= 475);
   assert.ok(!(matOrder.materialEntries || []).some((e) => e.type === "glass" && Math.abs((e.cost || 0) - 810) < 0.02), "glass estimates must not land on Cost");
+  const septRecv = await cost.getAppData({ mode: "month", from: "2026-09" });
+  const septRecvRow = septRecv.orders.find((o) => o.orderNum === "S-COST-2");
+  assert.ok(septRecvRow);
+  assert.ok(Math.abs(septRecvRow.glassCost - 125.5) < 0.02);
+  assert.ok(Math.abs(septRecvRow.powderCost - 350) < 0.02);
+  const marRecv = await cost.getAppData({ mode: "month", from: "2026-03" });
+  assert.ok(!marRecv.orders.some((o) => o.orderNum === "S-COST-2" && (o.glassCost > 0 || o.powderCost > 0)));
 
   const refuseSteel = await fetch(base + "/api/office/steel-usage/clear", {
     method: "POST",

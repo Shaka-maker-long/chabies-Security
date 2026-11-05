@@ -78,6 +78,19 @@ function inRange(date, range) {
   return date.getTime() >= range.start.getTime() && date.getTime() <= range.end.getTime();
 }
 
+function monthInRange(ym, range) {
+  const key = String(ym || "").trim();
+  if (!key || key === "unknown") return range && range.kind === "all";
+  if (!range || range.kind === "all" || !range.start) return true;
+  if (range.kind === "month") return key === monthKey(range.start);
+  const [y, mo] = key.split("-").map(Number);
+  if (!y || !mo) return false;
+  const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const mStart = sastDate(y, mo, 1, 0, 0, 0);
+  const mEnd = sastDate(y, mo, last, 23, 59, 59);
+  return mStart <= range.end && mEnd >= range.start;
+}
+
 function matchTask(task) {
   const s = String(task || "").toLowerCase();
   if (!s || /pre-powder|final qc|quality control|paint prep|painting|powder coating/.test(s)) return "";
@@ -581,38 +594,21 @@ async function getAppData(query) {
       prunedMats.push.apply(prunedMats, o.materialEntries);
     } else {
       Object.keys(o.monthHours).forEach((m) => {
-        const [y, mo] = m.split("-").map(Number);
-        const mStart = sastDate(y, mo, 1, 0, 0, 0);
-        const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
-        const mEnd = sastDate(y, mo, last, 23, 59, 59);
-        if (mStart <= range.end && mEnd >= range.start) {
-          prunedMonthHours[m] = o.monthHours[m];
-          prunedMonthCosts[m] = o.monthCosts[m];
-          fHours += o.monthHours[m];
-          fLabor += o.monthCosts[m];
-          displayOH += monthlyBreakdown[m] || 0;
-        }
+        if (!monthInRange(m, range)) return;
+        prunedMonthHours[m] = o.monthHours[m];
+        prunedMonthCosts[m] = o.monthCosts[m];
+        fHours += o.monthHours[m];
+        fLabor += o.monthCosts[m];
+        displayOH += monthlyBreakdown[m] || 0;
       });
       Object.keys(o.monthMaterials).forEach((m) => {
-        const [y, mo] = m.split("-").map(Number);
-        const mStart = sastDate(y, mo, 1, 0, 0, 0);
-        const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
-        const mEnd = sastDate(y, mo, last, 23, 59, 59);
-        if (mStart <= range.end && mEnd >= range.start) {
-          prunedMonthMaterials[m] = o.monthMaterials[m];
-        }
+        if (!monthInRange(m, range)) return;
+        prunedMonthMaterials[m] = o.monthMaterials[m];
       });
       o.materialEntries.forEach((entry) => {
-        if (entry.month === "unknown") return;
-        const [y, mo] = String(entry.month).split("-").map(Number);
-        if (!y || !mo) return;
-        const mStart = sastDate(y, mo, 1, 0, 0, 0);
-        const last = new Date(Date.UTC(y, mo, 0)).getUTCDate();
-        const mEnd = sastDate(y, mo, last, 23, 59, 59);
-        if (mStart <= range.end && mEnd >= range.start) {
-          prunedMats.push(entry);
-          fMat += entry.cost;
-        }
+        if (!monthInRange(entry.month, range)) return;
+        prunedMats.push(entry);
+        fMat += entry.cost;
       });
     }
 
