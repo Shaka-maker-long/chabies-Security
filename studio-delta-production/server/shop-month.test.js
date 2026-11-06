@@ -291,6 +291,7 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("Leave days") !== -1);
   assert.ok(html.indexOf("/api/office/shop-month/leave") !== -1);
   assert.ok(html.indexOf("label: \"Leave\"") !== -1);
+  assert.ok(html.indexOf('backgroundColor: "#fda29b"') !== -1, "leave stack is light red");
   assert.ok(html.indexOf("chart-person") !== -1);
   assert.ok(html.indexOf("Late completion") !== -1);
   assert.ok(html.indexOf("Utilisation") !== -1);
