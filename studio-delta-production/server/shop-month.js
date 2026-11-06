@@ -178,6 +178,7 @@ function attachMonthStats(person, dates, durMap, month, leaveMap) {
   });
   let predictedMins = 0;
   let trophies = 0;
+  let slightJobs = 0;
   let overtimeJobs = 0;
   let noEstimate = 0;
   const results = [];
@@ -190,6 +191,9 @@ function attachMonthStats(person, dates, durMap, month, leaveMap) {
       if (job.mins <= target + 0.5) {
         trophies += 1;
         kind = "trophy";
+      } else if (job.mins < target + 10) {
+        slightJobs += 1;
+        kind = "slight";
       } else {
         overtimeJobs += 1;
         kind = "overtime";
@@ -197,7 +201,7 @@ function attachMonthStats(person, dates, durMap, month, leaveMap) {
     } else {
       noEstimate += 1;
     }
-    if (kind === "trophy" || kind === "overtime") {
+    if (kind === "trophy" || kind === "slight" || kind === "overtime") {
       results.push({
         kind,
         order: job.order,
@@ -228,6 +232,7 @@ function attachMonthStats(person, dates, durMap, month, leaveMap) {
     completedMins,
     predictedMins,
     trophies,
+    slightJobs,
     overtimeJobs,
     noEstimate,
     results,
@@ -682,6 +687,7 @@ async function build(query) {
     completedMins: clocked.reduce((s, p) => s + Number(p.completedMins || 0), 0),
     predictedMins: clocked.reduce((s, p) => s + Number(p.predictedMins || 0), 0),
     trophies: clocked.reduce((s, p) => s + Number(p.trophies || 0), 0),
+    slightJobs: clocked.reduce((s, p) => s + Number(p.slightJobs || 0), 0),
     overtimeJobs: clocked.reduce((s, p) => s + Number(p.overtimeJobs || 0), 0),
     noEstimate: clocked.reduce((s, p) => s + Number(p.noEstimate || 0), 0),
     productivityPct: meanPct(clocked, "productivityPct"),
