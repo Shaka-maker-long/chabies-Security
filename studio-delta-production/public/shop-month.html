@@ -47,7 +47,9 @@
     .sheet { background:#fff; border:1px solid var(--line); padding:12px 16px; margin-top:12px; overflow:auto; }
     .card { background:#fff; border:1px solid var(--line); padding:14px 16px; break-inside:avoid; page-break-inside:avoid; }
     .card h2 { margin:0 0 4px; font-size:16px; }
-    .card .meta { color:var(--muted); font-size:12px; margin-bottom:10px; }
+    .card .meta { color:var(--muted); font-size:12px; margin:0 0 8px; }
+    .name-results { margin:0 0 10px; }
+    .name-results .result { font-size:18px; background:transparent; padding:0; }
     .badges { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
     .badge { background:#f2f4f7; font-size:11px; font-weight:700; padding:4px 8px; }
     .badge.ot { background:#fff7ed; }
@@ -115,7 +117,7 @@
         <a href="/orders">Orders</a>
       </nav>
       <h1>Studio Delta // <span>Monthly pack</span></h1>
-      <p class="lede">Shop floor and Sales for the month. Each person shows hours available (7.5 production hours/day × workdays), their hours, utilisation, hours allocated to orders, total estimate for orders completed, then actual productivity. Paid shop shift is 07:45–15:45 minus lunch.</p>
+      <p class="lede">Shop floor and Sales for the month. Each person shows trophies and late completions. Hours are on the chart above. Paid shop shift is 07:45–15:45 minus lunch.</p>
     </div>
     <div class="tools no-print">
       <label>Month <input type="month" id="monthPick" onchange="load()"></label>
@@ -374,32 +376,11 @@
     function resultIcons(trophies, overtime, personIdx) {
       const who = (personIdx === undefined || personIdx === null) ? "all" : String(personIdx);
       return "<span class='result-icons'>" +
-        "<button type='button' class='result trophy' data-kind='trophy' data-person='" + who + "' title='Finished within Task times'><i class='bi bi-trophy-fill' aria-hidden='true'></i> " + (trophies || 0) + "</button>" +
-        "<button type='button' class='result over' data-kind='overtime' data-person='" + who + "' title='Went overtime'><i class='bi bi-alarm-fill' aria-hidden='true'></i> " + (overtime || 0) + "</button>" +
+        "<button type='button' class='result trophy' data-kind='trophy' data-person='" + who + "' title='Trophies'><i class='bi bi-trophy-fill' aria-hidden='true'></i> " + (trophies || 0) + "</button>" +
+        "<button type='button' class='result over' data-kind='overtime' data-person='" + who + "' title='Late completion'><i class='bi bi-alarm-fill' aria-hidden='true'></i> " + (overtime || 0) + "</button>" +
         "</span>";
     }
     function personCard(p, i) {
-      const badges = [];
-      badges.push("<span class='badge'>" + hm(p.totalMinutes) + " total</span>");
-      badges.push("<span class='badge'>" + hm(p.totalRegular) + " regular</span>");
-      if (p.totalOvertime) badges.push("<span class='badge ot'>OT " + hm(p.totalOvertime) + "</span>");
-      badges.push("<span class='badge'>" + p.daysWorked + " day" + (p.daysWorked === 1 ? "" : "s") + "</span>");
-      if (p.orderCount) {
-        badges.push("<button type='button' class='badge orders' data-person='" + i + "'>" + p.orderCount + " order" + (p.orderCount === 1 ? "" : "s") + "</button>");
-      } else {
-        badges.push("<span class='badge'>0 orders</span>");
-      }
-      badges.push(resultIcons(p.trophies, p.overtimeJobs, i));
-      if (!p.clocked) badges.push("<span class='badge none'>No orders this month</span>");
-      const days = p.workDays || 0;
-      const metrics = "<div class='metrics'>" +
-        "<div><span>Total hours available</span><b>" + hm(p.capacityMins) + "</b><em>" + days + " workday" + (days === 1 ? "" : "s") + " × 7.5 production hours/day</em></div>" +
-        "<div><span>Total hours</span><b>" + hm(p.totalMinutes) + "</b><em>this employee</em></div>" +
-        "<div><span>Utilisation</span><b>" + pct(p.productivityPct) + "</b><em>employee hours ÷ hours available</em></div>" +
-        "<div><span>Hours allocated to orders</span><b>" + hm(p.completedMins) + "</b><em>on the clock</em></div>" +
-        "<div><span>Total estimate for orders completed</span><b>" + estimateLabel(p.predictedMins) + "</b><em>from the task sheet</em></div>" +
-        "<div><span>Actual productivity</span><b>" + pct(p.actualProductivityPct) + "</b><em>hours minus indirect ÷ hours available</em></div>" +
-        "</div>";
       let proc = "";
       if (p.processes.length) {
         proc = "<table><thead><tr><th>Station</th><th class='r'>Orders</th><th class='r'>Time</th></tr></thead><tbody>" +
@@ -410,9 +391,11 @@
           }).join("") +
           "</tbody></table>";
       }
-      return "<article class='card'><h2>" + esc(p.worker) + "</h2><div class='meta'>" + esc(p.role || "Shop") +
-        (p.orderCount ? (" · " + p.orderCount + " order" + (p.orderCount === 1 ? "" : "s")) : "") +
-        "</div><div class='badges'>" + badges.join("") + "</div>" + metrics + proc + "</article>";
+      return "<article class='card'><h2>" + esc(p.worker) + "</h2>" +
+        "<div class='name-results'>" + resultIcons(p.trophies, p.overtimeJobs, i) + "</div>" +
+        "<div class='meta'>" + esc(p.role || "Shop") +
+        (p.clocked ? "" : " · No orders this month") +
+        "</div>" + proc + "</article>";
     }
     function productCell(t) {
       const name = t.product || "—";
