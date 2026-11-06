@@ -945,6 +945,8 @@
       margin-bottom: 8px;
     }
     .ot-people label { display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 0; cursor: pointer; }
+    .ot-grant-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .ot-grant-row:last-child { border-bottom: 0; }
     .product-sub { font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
     .hours-regular { font-variant-numeric: tabular-nums; }
     .sched-order { cursor: pointer; border: 1px solid var(--border-strong); border-radius: 10px; padding: 10px 12px; background: var(--bg-surface); }
@@ -1876,6 +1878,7 @@
           <button type="button" class="btn btn-sm btn-outline-dark" onclick="setOtPeople(true)">Select all</button>
           <button type="button" class="btn btn-sm btn-outline-dark" onclick="setOtPeople(false)">Clear</button>
           <button type="button" class="btn btn-sm btn-dark" id="otGrantBtn" onclick="grantSelectedOvertime()">Grant overtime</button>
+          <button type="button" class="btn btn-sm btn-outline-danger" id="otCancelBtn" onclick="cancelSelectedOvertime()">Cancel selected</button>
         </div>
         <p class="small mb-2" id="otGrantMsg" role="status"></p>
         <div id="otPeople" class="ot-people mb-2"></div>
@@ -10423,9 +10426,62 @@
       if (!otBox) return;
       const day = (document.getElementById('otDay') || {}).value || sastYmd();
       const rows = grants || [];
-      otBox.textContent = rows.length
-        ? rows.map((g) => g.worker + ' ' + (g.start || '') + '–' + (g.end || '')).join(', ')
-        : ('No overtime granted for ' + day + '.');
+      if (!rows.length) {
+        otBox.textContent = 'No overtime granted for ' + day + '.';
+        return;
+      }
+      otBox.innerHTML = rows.map((g) => {
+        const who = String(g.worker || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        return '<div class="ot-grant-row"><span>' + who + ' · ' + (g.start || '') + '–' + (g.end || '') +
+          '</span><button type="button" class="btn btn-sm btn-outline-danger" data-cancel-ot="' + who + '">Cancel</button></div>';
+      }).join('');
+      otBox.querySelectorAll('[data-cancel-ot]').forEach((btn) => {
+        btn.addEventListener('click', () => cancelOvertimeGrant(btn.getAttribute('data-cancel-ot')));
+      });
+    }
+    function cancelOvertimeGrant(worker) {
+      const day = (document.getElementById('otDay') || {}).value || sastYmd();
+      if (!worker) return;
+      setOtGrantMsg('Cancelling ' + worker + '…');
+      google.script.run.withSuccessHandler(res => {
+        if (!res || !res.success) {
+          const err = (res && res.message) || 'Could not cancel overtime';
+          setOtGrantMsg(err, true);
+          showAlert(err);
+          return;
+        }
+        setOtGrantMsg('Cancelled overtime for ' + worker + ' on ' + day + '.');
+        loadIdleWorkers(true);
+      }).withFailureHandler(err => {
+        const text = String(err || 'Could not cancel overtime');
+        setOtGrantMsg(text, true);
+        showAlert(text);
+      }).cancelOvertime(worker, day);
+    }
+    function cancelSelectedOvertime() {
+      const workers = selectedOtPeople();
+      const day = (document.getElementById('otDay') || {}).value || sastYmd();
+      if (!workers.length) {
+        const text = 'Tick who to cancel, then Cancel selected.';
+        setOtGrantMsg(text, true);
+        showAlert(text);
+        return;
+      }
+      setOtGrantMsg('Cancelling…');
+      google.script.run.withSuccessHandler(res => {
+        if (!res || !res.success) {
+          const err = (res && res.message) || 'Could not cancel overtime';
+          setOtGrantMsg(err, true);
+          showAlert(err);
+          return;
+        }
+        setOtGrantMsg('Cancelled ' + (res.cancelled || []).join(', ') + ' for ' + day + '.');
+        loadIdleWorkers(true);
+      }).withFailureHandler(err => {
+        const text = String(err || 'Could not cancel overtime');
+        setOtGrantMsg(text, true);
+        showAlert(text);
+      }).cancelOvertimeMany(workers, day);
     }
     function setOtGrantMsg(text, bad) {
       const el = document.getElementById('otGrantMsg');
