@@ -932,6 +932,19 @@
     .ot-badge { background: #f59e0b; color: #111; }
     .over-limit-row { background: rgba(245, 158, 11, 0.12); }
     .idle-card { border: 1px dashed var(--border-strong); }
+    .ot-people {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 6px 10px;
+      max-height: 220px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: var(--bg-surface);
+      margin-bottom: 8px;
+    }
+    .ot-people label { display: flex; align-items: center; gap: 6px; font-size: 13px; margin: 0; cursor: pointer; }
     .product-sub { font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
     .hours-regular { font-variant-numeric: tabular-nums; }
     .sched-order { cursor: pointer; border: 1px solid var(--border-strong); border-radius: 10px; padding: 10px 12px; background: var(--bg-surface); }
@@ -1847,11 +1860,24 @@
         <hr>
         </div>
         <h5 class="brand-font">Overtime</h5>
-        <p class="small text-muted">After 15:45, weekends, and 8 hours, grant overtime here for today. If a name is missing from the list, add that person on Users and tick the shop tasks they do.</p>
-        <div class="d-flex gap-2 flex-wrap mb-2">
-          <select id="otWorker" class="form-select form-select-sm" style="max-width:220px"></select>
-          <button type="button" class="btn btn-sm btn-dark" onclick="grantSelectedOvertime()">Grant overtime today</button>
+        <p class="small text-muted">Tick who is coming, pick the day, and set the hours. Weekends default to 07:00–16:00. Weekdays default to 15:45–18:00 (stay late). They can open the floor app on that day and clock inside those hours. If a name is missing from the list, add that person on Users and tick the shop tasks they do.</p>
+        <div class="d-flex gap-2 flex-wrap align-items-end mb-2">
+          <label class="small mb-0">Day
+            <input id="otDay" type="date" class="form-control form-control-sm" style="max-width:160px" onchange="onOtDayChange()">
+          </label>
+          <label class="small mb-0">From
+            <input id="otStart" type="time" class="form-control form-control-sm" style="max-width:120px" value="15:45">
+          </label>
+          <label class="small mb-0">To
+            <input id="otEnd" type="time" class="form-control form-control-sm" style="max-width:120px" value="18:00">
+          </label>
         </div>
+        <div class="d-flex gap-2 flex-wrap mb-2">
+          <button type="button" class="btn btn-sm btn-outline-dark" onclick="setOtPeople(true)">Select all</button>
+          <button type="button" class="btn btn-sm btn-outline-dark" onclick="setOtPeople(false)">Clear</button>
+          <button type="button" class="btn btn-sm btn-dark" onclick="grantSelectedOvertime()">Grant overtime</button>
+        </div>
+        <div id="otPeople" class="ot-people mb-2"></div>
         <div id="otList" class="small mb-3"></div>
         <div class="idle-only">
         <h5 class="brand-font">Correct a clock</h5>
@@ -10288,21 +10314,17 @@
           box.innerHTML = '';
         }
         const names = (data && data.workers) || [];
-        const otSel = document.getElementById('otWorker');
-        if (otSel) {
-          otSel.innerHTML = '<option value="">Grant overtime to…</option>' + names.map(n => '<option>' + n + '</option>').join('');
-        }
+        fillOtPeople(names);
         const corrSel = document.getElementById('correctWorker');
         if (corrSel) {
           corrSel.innerHTML = '<option value="">Choose a person…</option>' + names.map(n => '<option>' + n + '</option>').join('');
         }
-        const otBox = document.getElementById('otList');
-        if (otBox) {
-          const grants = (data && data.overtime) || [];
-          otBox.textContent = grants.length
-            ? grants.map(g => g.worker + (g.note ? ' · ' + g.note : '')).join(', ')
-            : 'No overtime granted today.';
+        const dayEl = document.getElementById('otDay');
+        if (dayEl && !dayEl.value) {
+          dayEl.value = sastYmd();
+          fillOtDefaultHours();
         }
+        refreshOtList((data && data.overtime) || []);
         const chase = document.getElementById('resumeChaseList');
         if (chase) {
           const rows = (data && data.missedResumes) || [];
@@ -10349,13 +10371,66 @@
       }).managerCorrectStart(idleAssignerName(), worker, order, process, actualStart);
     }
 
+    function sastYmd(d) {
+      const at = d ? new Date(d) : new Date();
+      const sast = new Date(at.getTime() + 2 * 60 * 60 * 1000);
+      return sast.toISOString().slice(0, 10);
+    }
+    function otDayIsWeekend(ymd) {
+      const parts = String(ymd || '').split('-').map(Number);
+      if (parts.length < 3) return false;
+      const dow = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 10, 0, 0)).getUTCDay();
+      return dow === 0 || dow === 6;
+    }
+    function fillOtDefaultHours() {
+      const day = (document.getElementById('otDay') || {}).value || sastYmd();
+      const start = document.getElementById('otStart');
+      const end = document.getElementById('otEnd');
+      const weekend = otDayIsWeekend(day);
+      if (start) start.value = weekend ? '07:00' : '15:45';
+      if (end) end.value = weekend ? '16:00' : '18:00';
+    }
+    function onOtDayChange() {
+      fillOtDefaultHours();
+      const day = (document.getElementById('otDay') || {}).value;
+      if (!day) return;
+      google.script.run.withSuccessHandler(refreshOtList).withFailureHandler(() => refreshOtList([])).listOvertimeGrants(day);
+    }
+    function fillOtPeople(names) {
+      const box = document.getElementById('otPeople');
+      if (!box) return;
+      const kept = {};
+      box.querySelectorAll('input[type=checkbox]').forEach((el) => { if (el.checked) kept[el.value] = true; });
+      box.innerHTML = (names || []).length
+        ? names.map((n) => '<label><input type="checkbox" value="' + String(n).replace(/"/g, '&quot;') + '"' + (kept[n] ? ' checked' : '') + '> ' + String(n).replace(/</g, '') + '</label>').join('')
+        : '<span class="text-muted small">No production people on Users.</span>';
+    }
+    function setOtPeople(on) {
+      document.querySelectorAll('#otPeople input[type=checkbox]').forEach((el) => { el.checked = !!on; });
+    }
+    function selectedOtPeople() {
+      return Array.from(document.querySelectorAll('#otPeople input[type=checkbox]:checked')).map((el) => el.value).filter(Boolean);
+    }
+    function refreshOtList(grants) {
+      const otBox = document.getElementById('otList');
+      if (!otBox) return;
+      const day = (document.getElementById('otDay') || {}).value || sastYmd();
+      const rows = grants || [];
+      otBox.textContent = rows.length
+        ? rows.map((g) => g.worker + ' ' + (g.start || '') + '–' + (g.end || '')).join(', ')
+        : ('No overtime granted for ' + day + '.');
+    }
     function grantSelectedOvertime() {
-      const worker = (document.getElementById('otWorker') || {}).value;
-      if (!worker) { showAlert('Choose a worker'); return; }
+      const workers = selectedOtPeople();
+      const day = (document.getElementById('otDay') || {}).value;
+      const start = (document.getElementById('otStart') || {}).value;
+      const end = (document.getElementById('otEnd') || {}).value;
+      if (!workers.length) { showAlert('Tick who is coming'); return; }
+      if (!day) { showAlert('Pick the day'); return; }
       google.script.run.withSuccessHandler(res => {
         if (!res || !res.success) { showAlert((res && res.message) || 'Could not grant overtime'); return; }
         loadIdleWorkers();
-      }).grantOvertime(worker, '', session.name, 'Granted from Workers');
+      }).grantOvertimeMany(workers, day, session.name, 'Granted from Workers', start, end);
     }
 
     function noteResumeStarted(worker, row) {
