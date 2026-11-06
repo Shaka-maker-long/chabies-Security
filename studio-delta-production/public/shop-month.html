@@ -90,7 +90,8 @@
     .hours-chart { background:#fff; border:1px solid var(--line); padding:16px 18px; margin:0 0 16px; }
     .hours-chart h3 { margin:0 0 4px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; }
     .hours-chart .lede { margin:0 0 10px; max-width:none; }
-    .hours-chart .chart-wrap { position:relative; width:100%; min-height:220px; }
+    .hours-chart .chart-wrap { position:relative; width:100%; min-height:280px; overflow-x:auto; }
+    .pie-wrap { position:relative; height:320px; max-width:420px; margin:0 auto; }
     @media print {
       body { background:#fff; }
       header.bar .tabs, header.bar .tools button.ghost, .no-print, .mask { display:none !important; }
@@ -159,6 +160,8 @@
     let SALES = [];
     let ADDED = [];
     let hoursChart = null;
+    let stationPie = null;
+    const PIE_COLORS = ["#1d2939", "#b54708", "#026aa2", "#027a48", "#6941c6", "#c11574", "#dc6803", "#344054", "#12b76a", "#1570ef"];
     function isIndirect(t) {
       if (!t) return true;
       if (String(t.entryType || "") === "indirect") return true;
@@ -223,12 +226,64 @@
     }
     function hoursChartHtml(people) {
       if (!(people || []).length) return "";
-      const h = Math.max(240, Math.min(720, 48 + people.length * 28));
+      const minW = Math.max(480, (people.length || 1) * 56);
       return "<div class='hours-chart'>" +
         "<h3>Hours by person</h3>" +
-        "<p class='lede'>The line is hours available (7.5 production hours/day × workdays). Stacked bars are hours allocated to orders, indirect, and any other clocks.</p>" +
-        "<div class='chart-wrap' style='height:" + h + "px'><canvas id='hoursChart'></canvas></div>" +
+        "<p class='lede'>Names along the bottom. The line is hours available. Stacked bars are order hours and indirect. Click order hours for a station pie, then click a slice for that station’s orders.</p>" +
+        "<div class='chart-wrap' style='height:360px'><canvas id='hoursChart' style='min-width:" + minW + "px'></canvas></div>" +
         "</div>";
+    }
+    function destroyStationPie() {
+      if (stationPie) {
+        stationPie.destroy();
+        stationPie = null;
+      }
+    }
+    function openStationPie(i) {
+      const p = PEOPLE[i];
+      if (!p) return;
+      const slices = ((p.processes || []).filter((r) => !r.indirect && Number(r.minutes) > 0));
+      if (!slices.length) {
+        showModal(p.worker + " — stations", "<p class='lede'>No order hours this month.</p>");
+        return;
+      }
+      showModal(p.worker + " — order hours by station",
+        "<p class='lede'>Click a station to see orders, products, and duration.</p>" +
+        "<div class='pie-wrap'><canvas id='stationPie'></canvas></div>");
+      const canvas = document.getElementById("stationPie");
+      if (!canvas || typeof Chart === "undefined") return;
+      destroyStationPie();
+      stationPie = new Chart(canvas.getContext("2d"), {
+        type: "pie",
+        data: {
+          labels: slices.map((s) => s.name),
+          datasets: [{
+            data: slices.map((s) => hoursFromMins(s.minutes)),
+            backgroundColor: slices.map((_s, n) => PIE_COLORS[n % PIE_COLORS.length]),
+            borderWidth: 1,
+            borderColor: "#fff"
+          }]
+        },
+        options: {
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "bottom" },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  const slice = slices[ctx.dataIndex];
+                  return ctx.label + ": " + hm(slice && slice.minutes);
+                }
+              }
+            }
+          },
+          onClick: function (_evt, els) {
+            if (!els || !els.length) return;
+            const slice = slices[els[0].index];
+            if (slice && slice.name) openOrders(i, slice.name);
+          }
+        }
+      });
     }
     function drawHoursChart(people) {
       if (hoursChart) {
@@ -239,9 +294,8 @@
       if (!canvas || typeof Chart === "undefined") return;
       const rows = people || [];
       const labels = rows.map((p) => p.worker || "");
-      const orders = rows.map((p) => hoursFromMins(p.completedMins));
+      const orders = rows.map((p) => hoursFromMins(p.productionMins != null ? p.productionMins : p.completedMins));
       const indirect = rows.map((p) => hoursFromMins(p.indirectMins));
-      const other = rows.map((p) => hoursFromMins(Math.max(0, Number(p.totalMinutes || 0) - Number(p.completedMins || 0) - Number(p.indirectMins || 0))));
       const available = rows.map((p) => hoursFromMins(p.capacityMins));
       hoursChart = new Chart(canvas.getContext("2d"), {
         type: "bar",
@@ -249,11 +303,12 @@
           labels,
           datasets: [
             {
-              label: "Hours allocated to orders",
+              label: "Order hours",
               data: orders,
               stack: "hours",
               backgroundColor: "#1d2939",
               borderWidth: 0,
+              maxBarThickness: 42,
               order: 2
             },
             {
@@ -262,14 +317,7 @@
               stack: "hours",
               backgroundColor: "#98a2b3",
               borderWidth: 0,
-              order: 2
-            },
-            {
-              label: "Other clocks",
-              data: other,
-              stack: "hours",
-              backgroundColor: "#667085",
-              borderWidth: 0,
+              maxBarThickness: 42,
               order: 2
             },
             {
@@ -289,14 +337,13 @@
           ]
         },
         options: {
-          indexAxis: "y",
           maintainAspectRatio: false,
           plugins: {
             legend: { position: "bottom" },
             tooltip: {
               callbacks: {
                 label: function (ctx) {
-                  const hrs = Number(ctx.parsed.x) || 0;
+                  const hrs = Number((ctx.parsed && (ctx.parsed.y != null ? ctx.parsed.y : ctx.parsed.x)) || 0);
                   return ctx.dataset.label + ": " + hm(hrs * 60);
                 }
               }
@@ -305,14 +352,21 @@
           scales: {
             x: {
               stacked: true,
+              ticks: { maxRotation: 55, minRotation: 40, autoSkip: false }
+            },
+            y: {
+              stacked: true,
               beginAtZero: true,
               title: { display: true, text: "Hours" }
-            },
-            y: { stacked: true }
+            }
           },
           onClick: function (_evt, els) {
             if (!els || !els.length) return;
-            openOrders(els[0].index);
+            const hit = hoursChart.data.datasets[els[0].datasetIndex];
+            const i = els[0].index;
+            if (!hit) return;
+            if (hit.label === "Order hours") openStationPie(i);
+            if (hit.label === "Indirect") openOrders(i, "Indirect");
           }
         }
       });
@@ -368,6 +422,7 @@
       return esc(name);
     }
     function showModal(title, html) {
+      destroyStationPie();
       document.getElementById("orderTitle").textContent = title;
       document.getElementById("orderBody").innerHTML = html;
       document.getElementById("orderMask").classList.add("open");
@@ -444,6 +499,7 @@
         "</tbody></table>");
     }
     function closeOrders() {
+      destroyStationPie();
       document.getElementById("orderMask").classList.remove("open");
       hideProductShot();
     }
