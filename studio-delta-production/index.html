@@ -1875,8 +1875,9 @@
         <div class="d-flex gap-2 flex-wrap mb-2">
           <button type="button" class="btn btn-sm btn-outline-dark" onclick="setOtPeople(true)">Select all</button>
           <button type="button" class="btn btn-sm btn-outline-dark" onclick="setOtPeople(false)">Clear</button>
-          <button type="button" class="btn btn-sm btn-dark" onclick="grantSelectedOvertime()">Grant overtime</button>
+          <button type="button" class="btn btn-sm btn-dark" id="otGrantBtn" onclick="grantSelectedOvertime()">Grant overtime</button>
         </div>
+        <p class="small mb-2" id="otGrantMsg" role="status"></p>
         <div id="otPeople" class="ot-people mb-2"></div>
         <div id="otList" class="small mb-3"></div>
         <div class="idle-only">
@@ -10302,6 +10303,19 @@
       });
       if (!box) return;
       google.script.run.withSuccessHandler(data => {
+        const names = (data && data.workers) || [];
+        fillOtPeople(names);
+        const dayEl = document.getElementById('otDay');
+        if (dayEl && !dayEl.value) {
+          dayEl.value = sastYmd();
+          fillOtDefaultHours();
+        }
+        const selectedDay = (document.getElementById('otDay') || {}).value || sastYmd();
+        const todayStamp = sastYmd();
+        if (!selectedDay || selectedDay === todayStamp) refreshOtList((data && data.overtime) || []);
+        else {
+          google.script.run.withSuccessHandler(refreshOtList).withFailureHandler(() => refreshOtList([])).listOvertimeGrants(selectedDay);
+        }
         if (!force && !idleForceRefresh && idleAssignFormDirty()) return;
         const idle = (data && data.idle) || data || {};
         const workers = idle.workers || [];
@@ -10313,18 +10327,10 @@
         } else {
           box.innerHTML = '';
         }
-        const names = (data && data.workers) || [];
-        fillOtPeople(names);
         const corrSel = document.getElementById('correctWorker');
         if (corrSel) {
           corrSel.innerHTML = '<option value="">Choose a person…</option>' + names.map(n => '<option>' + n + '</option>').join('');
         }
-        const dayEl = document.getElementById('otDay');
-        if (dayEl && !dayEl.value) {
-          dayEl.value = sastYmd();
-          fillOtDefaultHours();
-        }
-        refreshOtList((data && data.overtime) || []);
         const chase = document.getElementById('resumeChaseList');
         if (chase) {
           const rows = (data && data.missedResumes) || [];
@@ -10340,6 +10346,7 @@
         }
       }).withFailureHandler(err => {
         box.innerHTML = '<span class="text-danger small">'+err+'</span>';
+        setOtGrantMsg(String(err || 'Could not load workers'), true);
       }).getFloorAdminDesk();
     }
 
@@ -10420,17 +10427,50 @@
         ? rows.map((g) => g.worker + ' ' + (g.start || '') + '–' + (g.end || '')).join(', ')
         : ('No overtime granted for ' + day + '.');
     }
+    function setOtGrantMsg(text, bad) {
+      const el = document.getElementById('otGrantMsg');
+      if (!el) return;
+      el.textContent = text || '';
+      el.classList.toggle('text-danger', !!bad);
+      el.classList.toggle('text-muted', !bad);
+    }
     function grantSelectedOvertime() {
       const workers = selectedOtPeople();
-      const day = (document.getElementById('otDay') || {}).value;
+      const day = (document.getElementById('otDay') || {}).value || sastYmd();
       const start = (document.getElementById('otStart') || {}).value;
       const end = (document.getElementById('otEnd') || {}).value;
-      if (!workers.length) { showAlert('Tick who is coming'); return; }
-      if (!day) { showAlert('Pick the day'); return; }
+      const btn = document.getElementById('otGrantBtn');
+      if (!workers.length) {
+        const text = 'Tick who is coming, then Grant overtime.';
+        setOtGrantMsg(text, true);
+        showAlert(text);
+        return;
+      }
+      if (!day) {
+        const text = 'Pick the day.';
+        setOtGrantMsg(text, true);
+        showAlert(text);
+        return;
+      }
+      if (btn) btn.disabled = true;
+      setOtGrantMsg('Saving…');
       google.script.run.withSuccessHandler(res => {
-        if (!res || !res.success) { showAlert((res && res.message) || 'Could not grant overtime'); return; }
-        loadIdleWorkers();
-      }).grantOvertimeMany(workers, day, session.name, 'Granted from Workers', start, end);
+        if (btn) btn.disabled = false;
+        if (!res || !res.success) {
+          const err = (res && res.message) || 'Could not grant overtime';
+          setOtGrantMsg(err, true);
+          showAlert(err);
+          return;
+        }
+        const names = [].concat(res.granted || [], res.already || []);
+        setOtGrantMsg('Granted ' + names.join(', ') + ' for ' + day + ' · ' + (start || '') + '–' + (end || '') + '.');
+        loadIdleWorkers(true);
+      }).withFailureHandler(err => {
+        if (btn) btn.disabled = false;
+        const text = String(err || 'Could not grant overtime');
+        setOtGrantMsg(text, true);
+        showAlert(text);
+      }).grantOvertimeMany(workers, day, session.name || '', 'Granted from Workers', start, end);
     }
 
     function noteResumeStarted(worker, row) {

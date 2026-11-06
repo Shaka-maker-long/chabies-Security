@@ -969,6 +969,8 @@ assert.ok(floor.indexOf("Start at that time") !== -1);
 assert.ok(floor.indexOf("If a name is missing from the list, add that person on Users") !== -1);
 assert.ok(floor.indexOf("id=\"otPeople\"") !== -1);
 assert.ok(floor.indexOf("grantOvertimeMany") !== -1);
+assert.ok(floor.indexOf("id=\"otGrantMsg\"") !== -1);
+assert.ok(floor.indexOf("withFailureHandler") !== -1);
 assert.ok(floor.indexOf("Weekends default to 07:00") !== -1);
 assert.ok(floor.indexOf("15:45–18:00") !== -1);
 const codeGs = fs.readFileSync(path.join(__dirname, "../Code.gs"), "utf8");
