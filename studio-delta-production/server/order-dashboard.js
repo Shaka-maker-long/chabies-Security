@@ -565,8 +565,10 @@ function buildDashboard(query) {
     seriesMap[key].billed += money.billed;
     seriesMap[key].count += 1;
     if (isDelivered(status)) seriesMap[key].delivered += 1;
-    const statusLabel = blankLabel(status, "(Blank)");
-    seriesMap[key].statuses[statusLabel] = (seriesMap[key].statuses[statusLabel] || 0) + 1;
+    else {
+      const statusLabel = blankLabel(status, "(Blank)");
+      seriesMap[key].statuses[statusLabel] = (seriesMap[key].statuses[statusLabel] || 0) + 1;
+    }
     const channel = quoteChannel(row.quote_number);
     if (channel === "website") seriesMap[key].website += 1;
     if (channel === "offline") seriesMap[key].offline += 1;
