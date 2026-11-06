@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Monthly pack</title>
   <script src="/sd-pwa.js?v=pwa-committed-banner"></script>
+  <script src="/vendor/chartjs/chart.umd.min.js"></script>
   <link rel="stylesheet" href="/vendor/bootstrap-icons/bootstrap-icons.css">
   <style>
     :root { --ink:#101828; --muted:#667085; --line:#e4e7ec; --bg:#f8f9fc; }
@@ -86,6 +87,10 @@
     .cover { background:#000; color:#fff; padding:20px; margin-bottom:14px; }
     .cover h2 { margin:0 0 6px; font-family: Outfit, Inter, sans-serif; font-size:22px; letter-spacing:.04em; text-transform:uppercase; }
     .cover p { margin:0; color:#d0d5dd; font-size:13px; max-width:640px; }
+    .hours-chart { background:#fff; border:1px solid var(--line); padding:16px 18px; margin:0 0 16px; }
+    .hours-chart h3 { margin:0 0 4px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; }
+    .hours-chart .lede { margin:0 0 10px; max-width:none; }
+    .hours-chart .chart-wrap { position:relative; width:100%; min-height:220px; }
     @media print {
       body { background:#fff; }
       header.bar .tabs, header.bar .tools button.ghost, .no-print, .mask { display:none !important; }
@@ -153,6 +158,7 @@
     let PEOPLE = [];
     let SALES = [];
     let ADDED = [];
+    let hoursChart = null;
     function isIndirect(t) {
       if (!t) return true;
       if (String(t.entryType || "") === "indirect") return true;
@@ -211,6 +217,105 @@
     }
     function estimateLabel(mins) {
       return Number(mins) > 0 ? hm(mins) : "—";
+    }
+    function hoursFromMins(mins) {
+      return Math.round((Number(mins) || 0) / 60 * 10) / 10;
+    }
+    function hoursChartHtml(people) {
+      if (!(people || []).length) return "";
+      const h = Math.max(240, Math.min(720, 48 + people.length * 28));
+      return "<div class='hours-chart'>" +
+        "<h3>Hours by person</h3>" +
+        "<p class='lede'>The line is hours available (7.5 production hours/day × workdays). Stacked bars are hours allocated to orders, indirect, and any other clocks.</p>" +
+        "<div class='chart-wrap' style='height:" + h + "px'><canvas id='hoursChart'></canvas></div>" +
+        "</div>";
+    }
+    function drawHoursChart(people) {
+      if (hoursChart) {
+        hoursChart.destroy();
+        hoursChart = null;
+      }
+      const canvas = document.getElementById("hoursChart");
+      if (!canvas || typeof Chart === "undefined") return;
+      const rows = people || [];
+      const labels = rows.map((p) => p.worker || "");
+      const orders = rows.map((p) => hoursFromMins(p.completedMins));
+      const indirect = rows.map((p) => hoursFromMins(p.indirectMins));
+      const other = rows.map((p) => hoursFromMins(Math.max(0, Number(p.totalMinutes || 0) - Number(p.completedMins || 0) - Number(p.indirectMins || 0))));
+      const available = rows.map((p) => hoursFromMins(p.capacityMins));
+      hoursChart = new Chart(canvas.getContext("2d"), {
+        type: "bar",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "Hours allocated to orders",
+              data: orders,
+              stack: "hours",
+              backgroundColor: "#1d2939",
+              borderWidth: 0,
+              order: 2
+            },
+            {
+              label: "Indirect",
+              data: indirect,
+              stack: "hours",
+              backgroundColor: "#98a2b3",
+              borderWidth: 0,
+              order: 2
+            },
+            {
+              label: "Other clocks",
+              data: other,
+              stack: "hours",
+              backgroundColor: "#667085",
+              borderWidth: 0,
+              order: 2
+            },
+            {
+              type: "line",
+              label: "Hours available",
+              data: available,
+              borderColor: "#b54708",
+              backgroundColor: "#b54708",
+              pointBackgroundColor: "#b54708",
+              pointRadius: 3,
+              pointHoverRadius: 5,
+              borderWidth: 2,
+              tension: 0,
+              fill: false,
+              order: 1
+            }
+          ]
+        },
+        options: {
+          indexAxis: "y",
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: "bottom" },
+            tooltip: {
+              callbacks: {
+                label: function (ctx) {
+                  const hrs = Number(ctx.parsed.x) || 0;
+                  return ctx.dataset.label + ": " + hm(hrs * 60);
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              stacked: true,
+              beginAtZero: true,
+              title: { display: true, text: "Hours" }
+            },
+            y: { stacked: true }
+          },
+          onClick: function (_evt, els) {
+            if (!els || !els.length) return;
+            openOrders(els[0].index);
+          }
+        }
+      });
     }
     function resultIcons(trophies, overtime, personIdx) {
       const who = (personIdx === undefined || personIdx === null) ? "all" : String(personIdx);
@@ -465,6 +570,7 @@
       const html =
         "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Shop orders for every production employee. Click a station or the order count. Repeat sessions of the same line count as one order. A and B lines are separate orders. Station orders can overlap, so they do not add up to the badge. Indirect shows task names, not orders.</p></div>" +
         shopScoreCards(data) +
+        hoursChartHtml(data.people) +
         "<div class='kpis'>" +
         "<div class='kpi'><span>People on the pack</span><b>" + data.headcount + "</b></div>" +
         "<div class='kpi'><span>Worked</span><b>" + data.clockedCount + "</b></div>" +
@@ -505,6 +611,7 @@
       document.querySelectorAll("button.result").forEach((btn) => {
         btn.addEventListener("click", () => openResults(btn.getAttribute("data-kind"), btn.getAttribute("data-person")));
       });
+      drawHoursChart(data.people || []);
     }
     async function load() {
       document.getElementById("load").hidden = false;
