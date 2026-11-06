@@ -478,7 +478,7 @@ function buildDashboard(query) {
   const keys = bucketKeys(win.grain, win.from, win.to);
   const seriesMap = {};
   keys.forEach((key) => {
-    seriesMap[key] = { key, income: 0, billed: 0, count: 0, delivered: 0, website: 0, offline: 0 };
+    seriesMap[key] = { key, income: 0, billed: 0, count: 0, delivered: 0, website: 0, offline: 0, statuses: {} };
   });
 
   const catMap = {};
@@ -559,12 +559,14 @@ function buildDashboard(query) {
     billed += money.billed;
     const key = bucketOf(ms, win.grain);
     if (!seriesMap[key]) {
-      seriesMap[key] = { key, income: 0, billed: 0, count: 0, delivered: 0, website: 0, offline: 0 };
+      seriesMap[key] = { key, income: 0, billed: 0, count: 0, delivered: 0, website: 0, offline: 0, statuses: {} };
     }
     seriesMap[key].income += money.paid;
     seriesMap[key].billed += money.billed;
     seriesMap[key].count += 1;
     if (isDelivered(status)) seriesMap[key].delivered += 1;
+    const statusLabel = blankLabel(status, "(Blank)");
+    seriesMap[key].statuses[statusLabel] = (seriesMap[key].statuses[statusLabel] || 0) + 1;
     const channel = quoteChannel(row.quote_number);
     if (channel === "website") seriesMap[key].website += 1;
     if (channel === "offline") seriesMap[key].offline += 1;
@@ -575,16 +577,24 @@ function buildDashboard(query) {
     productQty[productName] = (productQty[productName] || 0) + 1;
   });
 
-  const series = keys.map((key) => ({
-    key,
-    label: win.grain === "week" ? weekLabel(key) : monthLabel(key),
-    income: roundMoney(seriesMap[key] ? seriesMap[key].income : 0),
-    billed: roundMoney(seriesMap[key] ? seriesMap[key].billed : 0),
-    count: seriesMap[key] ? seriesMap[key].count : 0,
-    delivered: seriesMap[key] ? seriesMap[key].delivered : 0,
-    website: seriesMap[key] ? seriesMap[key].website : 0,
-    offline: seriesMap[key] ? seriesMap[key].offline : 0
-  }));
+  const series = keys.map((key) => {
+    const row = seriesMap[key];
+    const statuses = Object.keys((row && row.statuses) || {}).map((label) => ({
+      label,
+      count: row.statuses[label]
+    })).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    return {
+      key,
+      label: win.grain === "week" ? weekLabel(key) : monthLabel(key),
+      income: roundMoney(row ? row.income : 0),
+      billed: roundMoney(row ? row.billed : 0),
+      count: row ? row.count : 0,
+      delivered: row ? row.delivered : 0,
+      website: row ? row.website : 0,
+      offline: row ? row.offline : 0,
+      statuses
+    };
+  });
 
   stuck.sort((a, b) => b.days - a.days || String(a.order_number).localeCompare(String(b.order_number)));
 
@@ -685,7 +695,12 @@ function matchesDrill(row, query, win) {
   if (kind === "income" || kind === "billed" || kind === "period" || kind === "throughput" || kind === "channel") {
     if (!inWin) return false;
     if (key && bucketOf(ms, win.grain) !== key) return false;
-    if (kind === "throughput" && String((query && query.slice) || "") === "delivered") return isDelivered(status);
+    if (kind === "throughput") {
+      const slice = String((query && query.slice) || "").trim();
+      if (!slice || slice === "booked") return true;
+      if (slice === "delivered") return isDelivered(status);
+      return blankLabel(status, "(Blank)") === slice;
+    }
     if (kind === "channel") {
       const want = String((query && (query.slice || query.value)) || "").toLowerCase();
       return quoteChannel(row.quote_number) === want;
@@ -780,7 +795,10 @@ function drillTitle(query, win) {
   if (kind === "billed") return "Sale value · " + period;
   if (kind === "period") return period;
   if (kind === "throughput") {
-    return (String((query && query.slice) || "") === "delivered" ? "Delivered · " : "Booked · ") + period;
+    const slice = String((query && query.slice) || "").trim();
+    if (slice === "delivered") return "Delivered · " + period;
+    if (slice && slice !== "booked") return period + " · " + slice;
+    return "Booked · " + period;
   }
   if (kind === "channel") {
     const slice = String((query && (query.slice || query.value)) || "").toLowerCase();
