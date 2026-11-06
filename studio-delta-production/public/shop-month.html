@@ -101,6 +101,7 @@
     .chart-person .result { font-size:15px; }
     .chart-stat { font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-top:4px; }
     .chart-stat b { display:block; margin-top:1px; font-size:13px; font-family: Outfit, Inter, sans-serif; color:var(--ink); letter-spacing:0; text-transform:none; font-weight:700; }
+    .chart-leave { width:3.2em; font:inherit; font-size:13px; font-weight:700; text-align:center; border:1px solid var(--line); padding:2px 4px; margin-top:2px; }
     .pie-wrap { position:relative; height:320px; max-width:420px; margin:0 auto; }
     @media print {
       body { background:#fff; }
@@ -242,13 +243,14 @@
         "<div class='chart-person'>" +
           "<div class='chart-name'>" + esc(p.worker) + "</div>" +
           resultIcons(p.trophies, p.overtimeJobs, i) +
+          "<div class='chart-stat'>Leave days<input class='chart-leave' type='number' min='0' max='" + (p.workDays || 0) + "' step='1' value='" + (p.leaveDays || 0) + "' data-leave-worker=\"" + esc(p.worker) + "\"></div>" +
           "<div class='chart-stat'>Utilisation<b>" + pct(p.productivityPct) + "</b></div>" +
           "<div class='chart-stat'>Productivity<b>" + pct(p.actualProductivityPct) + "</b></div>" +
         "</div>"
       ).join("");
       return "<div class='hours-chart'>" +
         "<h3>Hours by person</h3>" +
-        "<p class='lede'>The line is hours available. Stacked bars are order hours and indirect. Click order hours for a station pie. Trophies, late completions, utilisation, and productivity sit under each name.</p>" +
+        "<p class='lede'>The line is hours available. Stacked bars are order hours, indirect, and leave (7.5 production hours/day each). Set leave days under the name. Click order hours for a station pie.</p>" +
         "<div class='hours-chart-scroll'><div class='hours-chart-inner' style='min-width:" + minW + "px'>" +
         "<div class='chart-wrap'><canvas id='hoursChart'></canvas></div>" +
         "<div class='chart-people' id='chartPeople'>" + feet + "</div>" +
@@ -323,6 +325,7 @@
       const labels = rows.map((p) => p.worker || "");
       const orders = rows.map((p) => hoursFromMins(p.productionMins != null ? p.productionMins : p.completedMins));
       const indirect = rows.map((p) => hoursFromMins(p.indirectMins));
+      const leave = rows.map((p) => hoursFromMins(p.leaveMins));
       const available = rows.map((p) => hoursFromMins(p.capacityMins));
       hoursChart = new Chart(canvas.getContext("2d"), {
         type: "bar",
@@ -343,6 +346,15 @@
               data: indirect,
               stack: "hours",
               backgroundColor: "#98a2b3",
+              borderWidth: 0,
+              maxBarThickness: 42,
+              order: 2
+            },
+            {
+              label: "Leave",
+              data: leave,
+              stack: "hours",
+              backgroundColor: "#12b76a",
               borderWidth: 0,
               maxBarThickness: 42,
               order: 2
@@ -396,6 +408,14 @@
             if (!hit) return;
             if (hit.label === "Order hours") openStationPie(i);
             if (hit.label === "Indirect") openOrders(i, "Indirect");
+            if (hit.label === "Leave") {
+              const p = PEOPLE[i];
+              if (!p) return;
+              const days = Number(p.leaveDays || 0);
+              showModal(p.worker + " — leave",
+                "<p class='lede'>" + days + " leave day" + (days === 1 ? "" : "s") +
+                " this month × 7.5 production hours/day = " + hm(p.leaveMins) + ".</p>");
+            }
           }
         },
         plugins: [{
@@ -665,6 +685,25 @@
         btn.addEventListener("click", () => openResults(btn.getAttribute("data-kind"), btn.getAttribute("data-person")));
       });
       drawHoursChart(data.people || []);
+      document.querySelectorAll("input.chart-leave").forEach((el) => {
+        el.addEventListener("change", () => saveLeave(el.getAttribute("data-leave-worker"), el.value));
+      });
+    }
+    async function saveLeave(worker, days) {
+      const monthEl = document.getElementById("monthPick");
+      try {
+        const r = await sdOfficeFetch("/api/office/shop-month/leave", {
+          method: "POST",
+          body: JSON.stringify({ month: monthEl && monthEl.value, worker: worker, days: days })
+        });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || "Could not save leave");
+        load();
+      } catch (e) {
+        const err = document.getElementById("err");
+        err.hidden = false;
+        err.textContent = (e && e.message) || "Could not save leave.";
+      }
     }
     async function load() {
       document.getElementById("load").hidden = false;

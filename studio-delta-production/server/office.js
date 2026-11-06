@@ -1414,6 +1414,15 @@ function mountOffice(app) {
     }
   });
 
+  app.post("/api/office/shop-month/leave", requireOffice, (req, res) => {
+    try {
+      const body = req.body || {};
+      res.json({ ok: true, ...require("./shop-month").setLeaveDays(body.month, body.worker, body.days) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.get("/api/office/marketing/dashboard", requireOffice, (req, res) => {
     try { purgeFeeOrders(); } catch (e) {}
     try {

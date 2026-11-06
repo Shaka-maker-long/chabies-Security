@@ -1,5 +1,7 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const staff = require("./staff");
 
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -95,7 +97,47 @@ function meanPct(people, key) {
   return Math.round((sum / rows.length) * 10) / 10;
 }
 
-function attachMonthStats(person, dates, durMap, month) {
+function leavePath() {
+  const { dataDir } = require("./workbook-store");
+  return path.join(dataDir(), "shop-leave.json");
+}
+
+function readLeaveBook() {
+  try {
+    const raw = JSON.parse(fs.readFileSync(leavePath(), "utf8"));
+    return raw && typeof raw === "object" ? raw : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function writeLeaveBook(book) {
+  fs.writeFileSync(leavePath(), JSON.stringify(book && typeof book === "object" ? book : {}));
+}
+
+function leaveMapFor(month) {
+  const ym = parseMonth(month);
+  const book = readLeaveBook();
+  const row = book[ym];
+  return row && typeof row === "object" ? row : {};
+}
+
+function setLeaveDays(month, worker, days) {
+  const ym = parseMonth(month);
+  const key = nameKey(worker);
+  if (!key) return { month: ym, worker: "", days: 0 };
+  const maxDays = weekdayCount(ym);
+  const n = Math.min(maxDays, Math.max(0, Math.round(Number(days) || 0)));
+  const book = readLeaveBook();
+  book[ym] = book[ym] && typeof book[ym] === "object" ? book[ym] : {};
+  if (n === 0) delete book[ym][key];
+  else book[ym][key] = n;
+  if (book[ym] && !Object.keys(book[ym]).length) delete book[ym];
+  writeLeaveBook(book);
+  return { month: ym, worker: String(worker || "").trim(), days: n, leaveMins: n * SHIFT_HOURS * 60 };
+}
+
+function attachMonthStats(person, dates, durMap, month, leaveMap) {
   const ym = String(month || "").slice(0, 7);
   const capacityMins = (dates || []).length * SHIFT_HOURS * 60;
   const byDayMap = {};
@@ -174,8 +216,11 @@ function attachMonthStats(person, dates, durMap, month) {
     ? person.productionMins
     : Math.max(0, total - Number((person && person.indirectMins) || 0)));
   const clocked = !!(person && person.clocked);
+  const workDays = (dates || []).length;
+  const leaveDays = Math.min(workDays, Math.max(0, Math.round(Number((leaveMap && leaveMap[nameKey(person && person.worker)]) || 0))));
+  const leaveMins = leaveDays * SHIFT_HOURS * 60;
   return Object.assign(person, {
-    workDays: (dates || []).length,
+    workDays,
     shiftHours: SHIFT_HOURS,
     capacityMins,
     completedMins,
@@ -184,8 +229,10 @@ function attachMonthStats(person, dates, durMap, month) {
     overtimeJobs,
     noEstimate,
     results,
-    productivityPct: clocked ? ratioPct(total, capacityMins) : null,
-    actualProductivityPct: clocked ? ratioPct(production, capacityMins) : null,
+    leaveDays,
+    leaveMins,
+    productivityPct: (clocked || leaveDays) ? ratioPct(total + leaveMins, capacityMins) : null,
+    actualProductivityPct: clocked ? ratioPct(production, capacityMins) : (leaveDays ? ratioPct(0, capacityMins) : null),
     byDay: (dates || []).map((date) => ({ date, completedMins: byDayMap[date] || 0 }))
   });
 }
@@ -582,7 +629,8 @@ async function build(query) {
   });
   const dates = workDates(month);
   const durMap = durationIndex();
-  people.forEach((p) => attachMonthStats(p, dates, durMap, month));
+  const leaveMap = leaveMapFor(month);
+  people.forEach((p) => attachMonthStats(p, dates, durMap, month, leaveMap));
   people.sort((a, b) => {
     if (b.totalMinutes !== a.totalMinutes) return b.totalMinutes - a.totalMinutes;
     return String(a.worker).localeCompare(String(b.worker));
@@ -664,5 +712,7 @@ module.exports = {
   orderMetaMap,
   durationLabel,
   buildSales,
-  build
+  build,
+  setLeaveDays,
+  leaveMapFor
 };
