@@ -5090,6 +5090,48 @@ function listOvertimeGrants(dateStamp) {
   return rows;
 }
 
+function cancelOvertime(workerName, dateStamp) {
+  try {
+    var worker = String(workerName || "").trim();
+    if (!worker) return { success: false, message: "Choose a worker." };
+    var day = String(dateStamp || sastDayStamp(new Date())).trim() || sastDayStamp(new Date());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { success: false, message: "Pick a valid day." };
+    var sheet = getOvertimeSheet();
+    if (sheet.getLastRow() < 2) return { success: false, message: "No overtime granted for that person on that day." };
+    var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    var removed = 0;
+    for (var i = data.length - 1; i >= 0; i--) {
+      if (String(data[i][0]) === day && String(data[i][1] || "").trim().toLowerCase() === worker.toLowerCase()) {
+        sheet.deleteRow(i + 2);
+        removed++;
+      }
+    }
+    if (!removed) return { success: false, message: worker + " has no overtime on " + day + "." };
+    bumpFloorCache();
+    return { success: true, worker: worker, date: day, removed: removed };
+  } catch (e) {
+    return { success: false, message: String((e && e.message) || e || "Could not cancel overtime.") };
+  }
+}
+
+function cancelOvertimeMany(workerNames, dateStamp) {
+  var names = Array.isArray(workerNames) ? workerNames : String(workerNames || "").split(",");
+  var cancelled = [];
+  var failed = [];
+  for (var i = 0; i < names.length; i++) {
+    var res = cancelOvertime(names[i], dateStamp);
+    if (!res || !res.success) {
+      failed.push({ worker: String(names[i] || ""), message: (res && res.message) || "Could not cancel." });
+      continue;
+    }
+    cancelled.push(res.worker);
+  }
+  if (!cancelled.length) {
+    return { success: false, message: failed[0] ? failed[0].message : "Choose someone with overtime on that day.", cancelled: cancelled, failed: failed };
+  }
+  return { success: true, cancelled: cancelled, failed: failed, date: String(dateStamp || sastDayStamp(new Date())) };
+}
+
 function logIsIndirect(row) {
   if (!row) return false;
   if (String(row[1] || "").trim().toUpperCase() === "INDIRECT") return true;

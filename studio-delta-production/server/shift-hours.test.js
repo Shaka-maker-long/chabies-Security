@@ -186,6 +186,12 @@ const CONFIRM = { understood: true, highlights: [] };
   assert.strictEqual(tooEarly.ok, false, JSON.stringify(tooEarly));
   const tooLate = await callShopFunction("floorChangeGate", ["Thabo", "start", new Date("2026-11-07T16:30:00+02:00")]);
   assert.strictEqual(tooLate.ok, false, JSON.stringify(tooLate));
+  const cancelled = await callShopFunction("cancelOvertime", ["Thabo", "2026-11-07"]);
+  assert.ok(cancelled.success, JSON.stringify(cancelled));
+  const afterCancel = await callShopFunction("listOvertimeGrants", ["2026-11-07"]);
+  assert.ok(!(afterCancel || []).some((g) => g.worker === "Thabo"));
+  const lockedAgain = await callShopFunction("floorChangeGate", ["Thabo", "start", satAt]);
+  assert.strictEqual(lockedAgain.ok, false, JSON.stringify(lockedAgain));
 
   console.log("shift-hours.test.js ok");
 })().catch((e) => {
