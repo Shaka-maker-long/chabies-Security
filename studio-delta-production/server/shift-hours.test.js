@@ -170,6 +170,23 @@ const CONFIRM = { understood: true, highlights: [] };
   const before = await callShopFunction("facilityShiftState", [new Date("2026-09-14T07:00:00+02:00")]);
   assert.strictEqual(before.id, "end", JSON.stringify(before));
 
+  const satAt = new Date("2026-11-07T08:00:00+02:00");
+  const lockedSat = await callShopFunction("floorChangeGate", ["Thabo", "start", satAt]);
+  assert.strictEqual(lockedSat.ok, false, JSON.stringify(lockedSat));
+  const many = await callShopFunction("grantOvertimeMany", [["Thabo"], "2026-11-07", "Admin", "Saturday OT", "07:00", "16:00"]);
+  assert.ok(many.success, JSON.stringify(many));
+  const satGrants = await callShopFunction("listOvertimeGrants", ["2026-11-07"]);
+  const thaboSat = (satGrants || []).find((g) => g.worker === "Thabo");
+  assert.ok(thaboSat, JSON.stringify(satGrants));
+  assert.strictEqual(thaboSat.start, "07:00");
+  assert.strictEqual(thaboSat.end, "16:00");
+  const openSat = await callShopFunction("floorChangeGate", ["Thabo", "start", satAt]);
+  assert.strictEqual(openSat.ok, true, JSON.stringify(openSat));
+  const tooEarly = await callShopFunction("floorChangeGate", ["Thabo", "start", new Date("2026-11-07T06:30:00+02:00")]);
+  assert.strictEqual(tooEarly.ok, false, JSON.stringify(tooEarly));
+  const tooLate = await callShopFunction("floorChangeGate", ["Thabo", "start", new Date("2026-11-07T16:30:00+02:00")]);
+  assert.strictEqual(tooLate.ok, false, JSON.stringify(tooLate));
+
   console.log("shift-hours.test.js ok");
 })().catch((e) => {
   console.error(e && e.stack ? e.stack : e);

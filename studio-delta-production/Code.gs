@@ -3376,15 +3376,18 @@ function calcRawServerMins(start, end, taskName, allowAfterShift) {
   function getWorkingMins(startDate, endDate) {
      var sMins = sastMinsOfDay(startDate);
      var eMins = sastMinsOfDay(endDate);
+     var startCap = allowAfterShift ? 0 : SHIFT_START_MINS;
      var endCap = allowAfterShift ? 24 * 60 : SHIFT_END_MINS;
+     var dow = sastDayOfWeek(startDate);
      
-     sMins = Math.max(SHIFT_START_MINS, Math.min(sMins, endCap));
-     eMins = Math.max(SHIFT_START_MINS, Math.min(eMins, endCap));
+     sMins = Math.max(startCap, Math.min(sMins, endCap));
+     eMins = Math.max(startCap, Math.min(eMins, endCap));
      
      if (sMins >= eMins) return 0;
      
      var total = eMins - sMins;
-     var lunchOverlap = Math.max(0, Math.min(eMins, LUNCH_END_MINS) - Math.max(sMins, LUNCH_START_MINS));
+     var skipLunch = !!(allowAfterShift && (dow === 0 || dow === 6));
+     var lunchOverlap = skipLunch ? 0 : Math.max(0, Math.min(eMins, LUNCH_END_MINS) - Math.max(sMins, LUNCH_START_MINS));
      return total - lunchOverlap;
   }
 
@@ -4907,9 +4910,7 @@ function facilityShiftState(now) {
 }
 
 function isOvertimeStartAllowed(now, workerName) {
-  var kind = paidWindowState(now).kind;
-  if (kind !== "end" && kind !== "weekend") return false;
-  return workerHasOvertime(workerName, now);
+  return overtimeGrantCovers(workerOvertimeGrant(workerName, now), now);
 }
 
 function applyShiftWindowToMeta(meta, now, workerName) {
@@ -4926,13 +4927,46 @@ function applyShiftWindowToMeta(meta, now, workerName) {
   return meta;
 }
 
+function parseHmToMins(raw, fallbackMins) {
+  var s = String(raw || "").trim();
+  var m = s.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return fallbackMins;
+  var h = Number(m[1]);
+  var min = Number(m[2]);
+  if (!isFinite(h) || !isFinite(min) || h < 0 || h > 23 || min < 0 || min > 59) return fallbackMins;
+  return h * 60 + min;
+}
+
+function formatMinsToHm(mins) {
+  var n = Math.max(0, Math.min(24 * 60, Math.round(Number(mins) || 0)));
+  var h = Math.floor(n / 60);
+  var m = n % 60;
+  return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
+}
+
+function isWeekendStamp(day) {
+  var parts = String(day || "").split("-");
+  if (parts.length < 3) return false;
+  var dt = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]), 10, 0, 0));
+  var dow = dt.getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+function defaultOtWindowForStamp(day) {
+  if (isWeekendStamp(day)) return { start: "07:00", end: "16:00", startMins: 7 * 60, endMins: 16 * 60 };
+  return { start: "15:45", end: "18:00", startMins: SHIFT_END_MINS, endMins: 18 * 60 };
+}
+
 function getOvertimeSheet(ss) {
   ss = ss || getSpreadsheet();
   var sheet = ss.getSheetByName(TAB_OVERTIME);
   if (!sheet) {
     sheet = ss.insertSheet(TAB_OVERTIME);
-    sheet.appendRow(["Date", "Worker", "Granted By", "Note", "Created"]);
+    sheet.appendRow(["Date", "Worker", "Granted By", "Note", "Created", "Start", "End"]);
     try { sheet.hideSheet(); } catch (e) {}
+  } else if (sheet.getLastColumn() < 7) {
+    sheet.getRange(1, 6).setValue("Start");
+    sheet.getRange(1, 7).setValue("End");
   }
   return sheet;
 }
@@ -4948,35 +4982,96 @@ function getResumeChaseSheet(ss) {
   return sheet;
 }
 
-function workerHasOvertime(workerName, now) {
-  var want = String(workerName || "").trim().toLowerCase();
-  if (!want) return false;
-  var day = sastDayStamp(now || new Date());
-  var sheet = getOvertimeSheet();
-  if (sheet.getLastRow() < 2) return false;
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
-  for (var i = 0; i < data.length; i++) {
-    if (String(data[i][0]) === day && String(data[i][1] || "").trim().toLowerCase() === want) return true;
-  }
-  return false;
+function decorateOvertimeGrant(row) {
+  var day = String((row && row[0]) || "");
+  var fallback = defaultOtWindowForStamp(day);
+  var hasStart = String((row && row[5]) || "").trim();
+  var hasEnd = String((row && row[6]) || "").trim();
+  var startMins = hasStart ? parseHmToMins(row[5], fallback.startMins) : 0;
+  var endMins = hasEnd ? parseHmToMins(row[6], fallback.endMins) : 24 * 60;
+  if (endMins <= startMins) endMins = fallback.endMins;
+  return {
+    date: day,
+    worker: String((row && row[1]) || ""),
+    grantedBy: String((row && row[2]) || ""),
+    note: String((row && row[3]) || ""),
+    start: formatMinsToHm(startMins),
+    end: formatMinsToHm(endMins),
+    startMins: startMins,
+    endMins: endMins
+  };
 }
 
-function grantOvertime(workerName, dateStamp, grantedBy, note) {
+function workerOvertimeGrant(workerName, now) {
+  var want = String(workerName || "").trim().toLowerCase();
+  if (!want) return null;
+  var day = sastDayStamp(now || new Date());
+  var sheet = getOvertimeSheet();
+  if (sheet.getLastRow() < 2) return null;
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
+  for (var i = 0; i < data.length; i++) {
+    if (String(data[i][0]) === day && String(data[i][1] || "").trim().toLowerCase() === want) {
+      return decorateOvertimeGrant(data[i]);
+    }
+  }
+  return null;
+}
+
+function workerHasOvertime(workerName, now) {
+  return !!workerOvertimeGrant(workerName, now);
+}
+
+function overtimeGrantCovers(grant, now) {
+  if (!grant) return false;
+  var mins = sastMinsOfDay(now || new Date());
+  return mins >= grant.startMins && mins < grant.endMins;
+}
+
+function grantOvertime(workerName, dateStamp, grantedBy, note, startHm, endHm) {
   var worker = String(workerName || "").trim();
   if (!worker) return { success: false, message: "Choose a worker." };
   var day = String(dateStamp || sastDayStamp(new Date())).trim() || sastDayStamp(new Date());
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { success: false, message: "Pick a valid day." };
+  var fallback = defaultOtWindowForStamp(day);
+  var startMins = parseHmToMins(startHm, fallback.startMins);
+  var endMins = parseHmToMins(endHm, fallback.endMins);
+  if (endMins <= startMins) return { success: false, message: "Overtime must end after it starts." };
+  var start = formatMinsToHm(startMins);
+  var end = formatMinsToHm(endMins);
   var sheet = getOvertimeSheet();
   if (sheet.getLastRow() >= 2) {
-    var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, 2).getValues();
+    var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
     for (var i = 0; i < existing.length; i++) {
       if (String(existing[i][0]) === day && String(existing[i][1] || "").trim().toLowerCase() === worker.toLowerCase()) {
-        return { success: true, already: true };
+        sheet.getRange(i + 2, 3, 1, 5).setValues([[String(grantedBy || ""), String(note || ""), new Date(), start, end]]);
+        bumpFloorCache();
+        return { success: true, already: true, date: day, worker: worker, start: start, end: end };
       }
     }
   }
-  sheet.appendRow([day, worker, String(grantedBy || ""), String(note || ""), new Date()]);
+  sheet.appendRow([day, worker, String(grantedBy || ""), String(note || ""), new Date(), start, end]);
   bumpFloorCache();
-  return { success: true };
+  return { success: true, date: day, worker: worker, start: start, end: end };
+}
+
+function grantOvertimeMany(workerNames, dateStamp, grantedBy, note, startHm, endHm) {
+  var names = Array.isArray(workerNames) ? workerNames : [workerNames];
+  var granted = [];
+  var already = [];
+  var failed = [];
+  for (var i = 0; i < names.length; i++) {
+    var res = grantOvertime(names[i], dateStamp, grantedBy, note, startHm, endHm);
+    if (!res || !res.success) {
+      failed.push({ worker: String(names[i] || ""), message: (res && res.message) || "Could not grant." });
+      continue;
+    }
+    if (res.already) already.push(res.worker);
+    else granted.push(res.worker);
+  }
+  if (!granted.length && !already.length) {
+    return { success: false, message: failed[0] ? failed[0].message : "Choose at least one person.", granted: granted, already: already, failed: failed };
+  }
+  return { success: true, granted: granted, already: already, failed: failed, date: String(dateStamp || sastDayStamp(new Date())) };
 }
 
 function listOvertimeGrants(dateStamp) {
@@ -4984,16 +5079,9 @@ function listOvertimeGrants(dateStamp) {
   var sheet = getOvertimeSheet();
   var rows = [];
   if (sheet.getLastRow() < 2) return rows;
-  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 5).getValues();
+  var data = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
   for (var i = 0; i < data.length; i++) {
-    if (String(data[i][0]) === day) {
-      rows.push({
-        date: String(data[i][0] || ""),
-        worker: String(data[i][1] || ""),
-        grantedBy: String(data[i][2] || ""),
-        note: String(data[i][3] || "")
-      });
-    }
+    if (String(data[i][0]) === day) rows.push(decorateOvertimeGrant(data[i]));
   }
   return rows;
 }
@@ -5097,14 +5185,18 @@ function floorChangeGate(workerName, action, now) {
   var profile = getUserProfileByName(workerName);
   if (profile && String(profile.access || "").toLowerCase() === "admin") return { ok: true, admin: true };
   var state = paidWindowState(at);
-  var ot = workerHasOvertime(workerName, at);
+  var grant = workerOvertimeGrant(workerName, at);
+  var ot = overtimeGrantCovers(grant, at);
   if ((state.kind === "end" || state.kind === "weekend") && !ot) {
+    var when = grant
+      ? ("Overtime on this day is " + grant.start + "–" + grant.end + ".")
+      : (state.kind === "weekend"
+        ? "Weekend work needs overtime from Admin."
+        : "The floor is closed after 15:45 unless Admin grants overtime.");
     return {
       ok: false,
       locked: true,
-      message: state.kind === "weekend"
-        ? "Weekend work needs overtime from Admin."
-        : "The floor is closed after 15:45 unless Admin grants overtime."
+      message: when
     };
   }
   if ((action === "start" || action === "resume") && !ot && workerMinutesToday(workerName, at) >= MAX_REGULAR_MINS) {
@@ -5905,7 +5997,7 @@ function enforceShiftHours(now) {
     }
     if (isPaused) continue;
     var worker = String(logs[i][2] || "").trim();
-    if (workerHasOvertime(worker, at) && (state.kind === "end" || state.kind === "weekend")) continue;
+    if (overtimeGrantCovers(workerOvertimeGrant(worker, at), at) && (state.kind === "end" || state.kind === "weekend")) continue;
     if (!workerHasOvertime(worker, at) && workerMinutesToday(worker, at) >= MAX_REGULAR_MINS && state.inPaid) {
       meta = addPauseToMeta(meta, "8 hour limit", at);
       writeLogPauseState(logSheet, sheetRow, meta, taskName);
