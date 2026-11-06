@@ -219,7 +219,7 @@
         </section>
         <section class="card span2">
           <h2>Throughput</h2>
-          <p class="hint">Booked is the payment date. Delivered is jobs now marked Delivered, counted in the week or month of that payment date — the sheet has no delivered-on date. Click a bar for a status pie, then a slice for the orders.</p>
+          <p class="hint">Booked is the payment date. Delivered is jobs now marked Delivered, counted in the week or month of that payment date — the sheet has no delivered-on date. Click the black bar for a status pie of jobs still open. Click the green bar for delivered orders.</p>
           <canvas id="throughput"></canvas>
         </section>
       </div>
@@ -600,12 +600,12 @@
       const splits = (point && point.statuses) || [];
       const mask = document.getElementById("drillMask");
       const list = document.getElementById("drillList");
-      document.getElementById("drillTitle").textContent = (point && point.label ? point.label : "Period") + " by status";
+      document.getElementById("drillTitle").textContent = "Booked · " + (point && point.label ? point.label : "period") + " · still open";
       document.getElementById("drillHint").hidden = false;
-      document.getElementById("drillHint").textContent = "Click a pie slice (or a status below) for those orders.";
+      document.getElementById("drillHint").textContent = "Delivered jobs from this month are on the green bar. Click a pie slice (or a status below) for those orders.";
       mask.classList.add("open");
       if (!splits.length) {
-        list.innerHTML = "<p class=\"empty\" style=\"border:0;padding:16px 0\">No orders in this period.</p>";
+        list.innerHTML = "<p class=\"empty\" style=\"border:0;padding:16px 0\">Nothing still open in this period. Use the green Delivered bar.</p>";
         return;
       }
       list.innerHTML = "<div class=\"split-pie\"><canvas id=\"thruStatusPie\"></canvas></div>"
@@ -658,7 +658,7 @@
         if (params && params.kind === "age" && params.slice && params.value) {
           showDrillBack(() => openAgeStatus(params.value));
         }
-        if (params && params.kind === "throughput" && params.slice && params.key) {
+        if (params && params.kind === "throughput" && params.slice && params.key && params.slice !== "delivered" && params.slice !== "booked") {
           const point = (data && data.series || []).find((s) => s.key === params.key);
           if (point) showDrillBack(() => openThroughputStatus(point));
         }
@@ -766,7 +766,8 @@
         }, clickOpt((el) => {
           const point = data.series[el.index];
           if (!point) return;
-          openThroughputStatus(point);
+          if (el.datasetIndex === 1) openDrill({ kind: "throughput", key: point.key, slice: "delivered" });
+          else openThroughputStatus(point);
         }))
       });
     }

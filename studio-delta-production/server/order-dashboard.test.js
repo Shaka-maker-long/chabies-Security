@@ -157,6 +157,7 @@ assert.ok(weldThru.title.indexOf("Welding") !== -1);
 const jul = year.series.find((s) => s.key === "2026-07");
 assert.ok(jul);
 assert.strictEqual(jul.delivered, 1);
+assert.ok(!(jul.statuses || []).some((s) => s.label === "Delivered"), "booked pie excludes delivered");
 assert.strictEqual(jul.website, 0);
 assert.strictEqual(jul.offline, 1, "Jul offline SOQ2900");
 
@@ -370,6 +371,7 @@ assert.ok(html.indexOf("Delivery this week and next") !== -1);
 assert.ok(html.indexOf("Throughput") !== -1);
 assert.ok(html.indexOf("openThroughputStatus") !== -1);
 assert.ok(html.indexOf("thruStatusPie") !== -1);
+assert.ok(html.indexOf("slice: \"delivered\"") !== -1);
 assert.ok(html.indexOf("Blockers") !== -1);
 assert.ok(html.indexOf("/vendor/chartjs/chart.umd.min.js") !== -1);
 assert.ok(html.indexOf("/api/office/orders/dashboard") !== -1);
