@@ -135,15 +135,33 @@
       margin:0; padding:1px 0;
       font-size:8px; font-weight:800; letter-spacing:.03em; text-transform:uppercase; color:var(--muted);
     }
+    .chart-box .chart-stat span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .chart-box .chart-stat + .chart-stat { border-top:1px solid #eaecf0; }
     .chart-box .chart-stat b {
       display:inline; margin:0; font-size:10px; font-family: Outfit, Inter, sans-serif;
       color:var(--ink); letter-spacing:0; text-transform:none; font-weight:700;
+      flex:0 0 auto;
     }
     .chart-leave {
-      width:2.4em; height:16px; font:inherit; font-size:10px; font-weight:700;
-      text-align:center; border:1px solid var(--line); border-radius:4px; padding:0 2px; margin:0; background:#fff;
+      flex: 0 0 2.8em;
+      width: 2.8em;
+      min-width: 2.8em;
+      height: 18px;
+      font: inherit;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--ink);
+      text-align: center;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 0;
+      margin: 0;
+      background: #fff;
+      appearance: textfield;
+      -moz-appearance: textfield;
     }
+    .chart-leave::-webkit-outer-spin-button,
+    .chart-leave::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
     .pie-wrap { position:relative; height:320px; max-width:420px; margin:0 auto; }
     @media print {
       body { background:#fff; }
