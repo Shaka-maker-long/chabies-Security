@@ -250,7 +250,7 @@
       ).join("");
       return "<div class='hours-chart'>" +
         "<h3>Hours by person</h3>" +
-        "<p class='lede'>The line is hours available after leave. Stacked bars are order hours, indirect, and leave. Utilisation and productivity divide by hours available minus leave. Set leave days under the name. Click order hours for a station pie.</p>" +
+        "<p class='lede'>The line is the full month of hours available. Leave is part of that month, stacked with order and indirect hours — it is not extra on top. Utilisation and productivity still divide by hours available minus leave. Set leave days under the name. Click order hours for a station pie.</p>" +
         "<div class='hours-chart-scroll'><div class='hours-chart-inner' style='min-width:" + minW + "px'>" +
         "<div class='chart-wrap'><canvas id='hoursChart'></canvas></div>" +
         "<div class='chart-people' id='chartPeople'>" + feet + "</div>" +
@@ -326,7 +326,7 @@
       const orders = rows.map((p) => hoursFromMins(p.productionMins != null ? p.productionMins : p.completedMins));
       const indirect = rows.map((p) => hoursFromMins(p.indirectMins));
       const leave = rows.map((p) => hoursFromMins(p.leaveMins));
-      const available = rows.map((p) => hoursFromMins(p.availableMins != null ? p.availableMins : Math.max(0, Number(p.capacityMins || 0) - Number(p.leaveMins || 0))));
+      const available = rows.map((p) => hoursFromMins(p.capacityMins));
       hoursChart = new Chart(canvas.getContext("2d"), {
         type: "bar",
         data: {

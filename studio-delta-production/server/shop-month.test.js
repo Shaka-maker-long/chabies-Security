@@ -311,6 +311,7 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("id='hoursChart'") !== -1);
   assert.ok(html.indexOf("Hours by person") !== -1);
   assert.ok(html.indexOf("Hours available") !== -1);
+  assert.ok(html.indexOf("hoursFromMins(p.capacityMins)") !== -1, "available line is the full month, not month minus leave");
   assert.ok(html.indexOf("Order hours") !== -1);
   assert.ok(html.indexOf("function openStationPie") !== -1);
   assert.ok(html.indexOf("id='stationPie'") !== -1);
