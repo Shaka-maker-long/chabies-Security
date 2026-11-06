@@ -304,6 +304,8 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("Total completed over time") === -1);
   assert.ok(html.indexOf("Trophies vs overtime") !== -1);
   assert.ok(html.indexOf("bi-trophy-fill") !== -1);
+  assert.ok(html.indexOf("button.result") !== -1);
+  assert.ok(html.indexOf("background:none") !== -1);
   assert.ok(html.indexOf("bi-alarm-fill") !== -1);
   assert.ok(html.indexOf("Average of each person") !== -1);
   assert.ok(html.indexOf("/vendor/chartjs/chart.umd.min.js") !== -1);
