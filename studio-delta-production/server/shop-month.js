@@ -219,10 +219,12 @@ function attachMonthStats(person, dates, durMap, month, leaveMap) {
   const workDays = (dates || []).length;
   const leaveDays = Math.min(workDays, Math.max(0, Math.round(Number((leaveMap && leaveMap[nameKey(person && person.worker)]) || 0))));
   const leaveMins = leaveDays * SHIFT_HOURS * 60;
+  const availableMins = Math.max(0, capacityMins - leaveMins);
   return Object.assign(person, {
     workDays,
     shiftHours: SHIFT_HOURS,
     capacityMins,
+    availableMins,
     completedMins,
     predictedMins,
     trophies,
@@ -231,8 +233,8 @@ function attachMonthStats(person, dates, durMap, month, leaveMap) {
     results,
     leaveDays,
     leaveMins,
-    productivityPct: (clocked || leaveDays) ? ratioPct(total + leaveMins, capacityMins) : null,
-    actualProductivityPct: clocked ? ratioPct(production, capacityMins) : (leaveDays ? ratioPct(0, capacityMins) : null),
+    productivityPct: clocked && availableMins > 0 ? ratioPct(total, availableMins) : null,
+    actualProductivityPct: clocked && availableMins > 0 ? ratioPct(production, availableMins) : null,
     byDay: (dates || []).map((date) => ({ date, completedMins: byDayMap[date] || 0 }))
   });
 }
@@ -675,6 +677,8 @@ async function build(query) {
     workDays: dates.length,
     shiftHours: SHIFT_HOURS,
     capacityMins,
+    availableMins: clocked.reduce((s, p) => s + Number(p.availableMins != null ? p.availableMins : p.capacityMins || 0), 0),
+    leaveMins: people.reduce((s, p) => s + Number(p.leaveMins || 0), 0),
     completedMins: clocked.reduce((s, p) => s + Number(p.completedMins || 0), 0),
     predictedMins: clocked.reduce((s, p) => s + Number(p.predictedMins || 0), 0),
     trophies: clocked.reduce((s, p) => s + Number(p.trophies || 0), 0),
