@@ -310,6 +310,7 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf('backgroundColor: "#fda29b"') !== -1, "leave stack is light red");
   assert.ok(html.indexOf("chart-person") !== -1);
   assert.ok(html.indexOf("chart-box") !== -1);
+  assert.ok(html.indexOf("min-width: 2.8em") !== -1);
   assert.ok(html.indexOf("title='Overtime'") !== -1);
   assert.ok(html.indexOf("Utilisation") !== -1);
   assert.ok(html.indexOf("Productivity") !== -1);
