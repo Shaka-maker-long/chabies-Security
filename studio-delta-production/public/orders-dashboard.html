@@ -219,7 +219,7 @@
         </section>
         <section class="card span2">
           <h2>Throughput</h2>
-          <p class="hint">Booked is the payment date. Delivered is jobs now marked Delivered, counted in the week or month of that payment date — the sheet has no delivered-on date.</p>
+          <p class="hint">Booked is the payment date. Delivered is jobs now marked Delivered, counted in the week or month of that payment date — the sheet has no delivered-on date. Click a bar for a status pie, then a slice for the orders.</p>
           <canvas id="throughput"></canvas>
         </section>
       </div>
@@ -524,6 +524,7 @@
     function closeDrill() {
       hideDrillBack();
       kill("ageStatusPie");
+      kill("thruStatusPie");
       document.getElementById("drillMask").classList.remove("open");
     }
     function openAgeStatus(label) {
@@ -592,9 +593,54 @@
     function openOrder(orderNumber) {
       location.href = "/orders?q=" + encodeURIComponent(orderNumber || "");
     }
+    function openThroughputStatus(point) {
+      hideDrillBack();
+      kill("thruStatusPie");
+      kill("ageStatusPie");
+      const splits = (point && point.statuses) || [];
+      const mask = document.getElementById("drillMask");
+      const list = document.getElementById("drillList");
+      document.getElementById("drillTitle").textContent = (point && point.label ? point.label : "Period") + " by status";
+      document.getElementById("drillHint").hidden = false;
+      document.getElementById("drillHint").textContent = "Click a pie slice (or a status below) for those orders.";
+      mask.classList.add("open");
+      if (!splits.length) {
+        list.innerHTML = "<p class=\"empty\" style=\"border:0;padding:16px 0\">No orders in this period.</p>";
+        return;
+      }
+      list.innerHTML = "<div class=\"split-pie\"><canvas id=\"thruStatusPie\"></canvas></div>"
+        + splits.map((s) => "<button type=\"button\" class=\"drill-item\" data-thru-status=\"" + esc(s.label) + "\"><b>" + esc(s.label) + "</b><span>" + s.count + " order" + (s.count === 1 ? "" : "s") + "</span></button>").join("");
+      charts.thruStatusPie = new Chart(document.getElementById("thruStatusPie"), {
+        type: "doughnut",
+        data: {
+          labels: splits.map((s) => s.label),
+          datasets: [{ data: splits.map((s) => s.count), backgroundColor: PAL }]
+        },
+        options: {
+          plugins: {
+            legend: {
+              position: "bottom",
+              onClick: (_evt, item) => {
+                const slice = splits[item.index];
+                if (slice) openDrill({ kind: "throughput", key: point.key, slice: slice.label });
+              }
+            }
+          },
+          onClick: (_evt, els) => {
+            if (!els || !els.length) return;
+            const slice = splits[els[0].index];
+            if (slice) openDrill({ kind: "throughput", key: point.key, slice: slice.label });
+          }
+        }
+      });
+      list.querySelectorAll("[data-thru-status]").forEach((btn) => {
+        btn.addEventListener("click", () => openDrill({ kind: "throughput", key: point.key, slice: btn.getAttribute("data-thru-status") }));
+      });
+    }
     async function openDrill(params) {
       hideDrillBack();
       kill("ageStatusPie");
+      kill("thruStatusPie");
       const mask = document.getElementById("drillMask");
       const list = document.getElementById("drillList");
       document.getElementById("drillTitle").textContent = "Loading…";
@@ -611,6 +657,10 @@
         document.getElementById("drillHint").textContent = "Money excludes VAT. Click a row to find it on the Orders sheet.";
         if (params && params.kind === "age" && params.slice && params.value) {
           showDrillBack(() => openAgeStatus(params.value));
+        }
+        if (params && params.kind === "throughput" && params.slice && params.key) {
+          const point = (data && data.series || []).find((s) => s.key === params.key);
+          if (point) showDrillBack(() => openThroughputStatus(point));
         }
         if (!(j.rows || []).length) {
           list.innerHTML = drillMoneyHtml(j) + "<p class=\"empty\" style=\"border:0;padding:16px 0\">No orders in this slice.</p>";
@@ -716,7 +766,7 @@
         }, clickOpt((el) => {
           const point = data.series[el.index];
           if (!point) return;
-          openDrill({ kind: "throughput", key: point.key, slice: el.datasetIndex === 1 ? "delivered" : "booked" });
+          openThroughputStatus(point);
         }))
       });
     }
