@@ -5028,34 +5028,38 @@ function overtimeGrantCovers(grant, now) {
 }
 
 function grantOvertime(workerName, dateStamp, grantedBy, note, startHm, endHm) {
-  var worker = String(workerName || "").trim();
-  if (!worker) return { success: false, message: "Choose a worker." };
-  var day = String(dateStamp || sastDayStamp(new Date())).trim() || sastDayStamp(new Date());
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { success: false, message: "Pick a valid day." };
-  var fallback = defaultOtWindowForStamp(day);
-  var startMins = parseHmToMins(startHm, fallback.startMins);
-  var endMins = parseHmToMins(endHm, fallback.endMins);
-  if (endMins <= startMins) return { success: false, message: "Overtime must end after it starts." };
-  var start = formatMinsToHm(startMins);
-  var end = formatMinsToHm(endMins);
-  var sheet = getOvertimeSheet();
-  if (sheet.getLastRow() >= 2) {
-    var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
-    for (var i = 0; i < existing.length; i++) {
-      if (String(existing[i][0]) === day && String(existing[i][1] || "").trim().toLowerCase() === worker.toLowerCase()) {
-        sheet.getRange(i + 2, 3, 1, 5).setValues([[String(grantedBy || ""), String(note || ""), new Date(), start, end]]);
-        bumpFloorCache();
-        return { success: true, already: true, date: day, worker: worker, start: start, end: end };
+  try {
+    var worker = String(workerName || "").trim();
+    if (!worker) return { success: false, message: "Choose a worker." };
+    var day = String(dateStamp || sastDayStamp(new Date())).trim() || sastDayStamp(new Date());
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { success: false, message: "Pick a valid day." };
+    var fallback = defaultOtWindowForStamp(day);
+    var startMins = parseHmToMins(startHm, fallback.startMins);
+    var endMins = parseHmToMins(endHm, fallback.endMins);
+    if (endMins <= startMins) return { success: false, message: "Overtime must end after it starts." };
+    var start = formatMinsToHm(startMins);
+    var end = formatMinsToHm(endMins);
+    var sheet = getOvertimeSheet();
+    if (sheet.getLastRow() >= 2) {
+      var existing = sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(sheet.getLastColumn(), 7)).getValues();
+      for (var i = 0; i < existing.length; i++) {
+        if (String(existing[i][0]) === day && String(existing[i][1] || "").trim().toLowerCase() === worker.toLowerCase()) {
+          sheet.getRange(i + 2, 3, 1, 5).setValues([[String(grantedBy || ""), String(note || ""), new Date(), start, end]]);
+          bumpFloorCache();
+          return { success: true, already: true, date: day, worker: worker, start: start, end: end };
+        }
       }
     }
+    sheet.appendRow([day, worker, String(grantedBy || ""), String(note || ""), new Date(), start, end]);
+    bumpFloorCache();
+    return { success: true, date: day, worker: worker, start: start, end: end };
+  } catch (e) {
+    return { success: false, message: String((e && e.message) || e || "Could not grant overtime.") };
   }
-  sheet.appendRow([day, worker, String(grantedBy || ""), String(note || ""), new Date(), start, end]);
-  bumpFloorCache();
-  return { success: true, date: day, worker: worker, start: start, end: end };
 }
 
 function grantOvertimeMany(workerNames, dateStamp, grantedBy, note, startHm, endHm) {
-  var names = Array.isArray(workerNames) ? workerNames : [workerNames];
+  var names = Array.isArray(workerNames) ? workerNames : String(workerNames || "").split(",");
   var granted = [];
   var already = [];
   var failed = [];
