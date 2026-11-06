@@ -34,12 +34,19 @@
     .score .hero { font-size:28px; font-family: Outfit, Inter, sans-serif; font-weight:700; }
     .score .hero em { font-style:normal; color:var(--muted); font-size:16px; font-weight:600; }
     .result-icons { display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
-    .result { display:inline-flex; align-items:center; gap:6px; font-family: Outfit, Inter, sans-serif; font-weight:700; border:0; background:transparent; padding:0; cursor:pointer; color:inherit; }
-    .result i { font-size:1.05em; line-height:1; }
-    .result.trophy { color:#b54708; }
-    .result.over { color:#b42318; }
+    button.result {
+      display:inline-flex; align-items:center; gap:6px;
+      font-family: Outfit, Inter, sans-serif; font-weight:700;
+      appearance:none; -webkit-appearance:none;
+      border:0; background:none; box-shadow:none; padding:0; margin:0;
+      cursor:pointer; color:inherit;
+    }
+    button.result:hover, button.result:focus { background:none; border:0; box-shadow:none; }
+    button.result i { font-size:1.05em; line-height:1; background:none; }
+    button.result.trophy { color:#b54708; }
+    button.result.over { color:#b42318; }
     .score .hero.result-icons { font-size:28px; }
-    .badges .result { background:#f8f9fc; padding:4px 8px; font-size:14px; }
+    .badges button.result { background:none; padding:0; font-size:14px; }
     @media (max-width: 900px) { .score-grid { grid-template-columns:1fr; } }
     .people { display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:12px; }
     .pack-block { margin-top:28px; }
@@ -49,7 +56,7 @@
     .card h2 { margin:0 0 4px; font-size:16px; }
     .card .meta { color:var(--muted); font-size:12px; margin:0 0 8px; }
     .name-results { margin:0 0 10px; }
-    .name-results .result { font-size:18px; background:transparent; padding:0; }
+    .name-results button.result { font-size:18px; }
     .badges { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
     .badge { background:#f2f4f7; font-size:11px; font-weight:700; padding:4px 8px; }
     .badge.ot { background:#fff7ed; }
@@ -98,7 +105,7 @@
     .chart-person { flex:1; min-width:84px; text-align:center; padding:8px 4px 0; }
     .chart-name { font-size:12px; font-weight:700; line-height:1.2; }
     .chart-person .result-icons { justify-content:center; gap:10px; margin:6px 0 4px; }
-    .chart-person .result { font-size:15px; }
+    .chart-person button.result { font-size:15px; }
     .chart-stat { font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-top:4px; }
     .chart-stat b { display:block; margin-top:1px; font-size:13px; font-family: Outfit, Inter, sans-serif; color:var(--ink); letter-spacing:0; text-transform:none; font-weight:700; }
     .chart-leave { width:3.2em; font:inherit; font-size:13px; font-weight:700; text-align:center; border:1px solid var(--line); padding:2px 4px; margin-top:2px; }
