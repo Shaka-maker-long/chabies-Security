@@ -250,7 +250,7 @@
       ).join("");
       return "<div class='hours-chart'>" +
         "<h3>Hours by person</h3>" +
-        "<p class='lede'>The line is hours available. Stacked bars are order hours, indirect, and leave (7.5 production hours/day each). Set leave days under the name. Click order hours for a station pie.</p>" +
+        "<p class='lede'>The line is hours available after leave. Stacked bars are order hours, indirect, and leave. Utilisation and productivity divide by hours available minus leave. Set leave days under the name. Click order hours for a station pie.</p>" +
         "<div class='hours-chart-scroll'><div class='hours-chart-inner' style='min-width:" + minW + "px'>" +
         "<div class='chart-wrap'><canvas id='hoursChart'></canvas></div>" +
         "<div class='chart-people' id='chartPeople'>" + feet + "</div>" +
@@ -326,7 +326,7 @@
       const orders = rows.map((p) => hoursFromMins(p.productionMins != null ? p.productionMins : p.completedMins));
       const indirect = rows.map((p) => hoursFromMins(p.indirectMins));
       const leave = rows.map((p) => hoursFromMins(p.leaveMins));
-      const available = rows.map((p) => hoursFromMins(p.capacityMins));
+      const available = rows.map((p) => hoursFromMins(p.availableMins != null ? p.availableMins : Math.max(0, Number(p.capacityMins || 0) - Number(p.leaveMins || 0))));
       hoursChart = new Chart(canvas.getContext("2d"), {
         type: "bar",
         data: {
@@ -614,16 +614,18 @@
     function shopScoreCards(data) {
       const days = data.workDays || 0;
       const n = data.clockedCount || 0;
-      const available = Number(data.capacityMins || 0) * n;
+      const available = data.availableMins != null
+        ? Number(data.availableMins)
+        : Number(data.capacityMins || 0) * n;
       return "<div class='score-grid'>" +
         "<article class='score'><h3>Total hours available</h3>" +
-        "<p class='lede'>" + n + " people who worked × 7.5 production hours/day × " + days + " workday" + (days === 1 ? "" : "s") + ".</p>" +
+        "<p class='lede'>" + n + " people who worked × 7.5 production hours/day × " + days + " workday" + (days === 1 ? "" : "s") + ", minus leave.</p>" +
         "<div class='hero'>" + hm(available) + "</div></article>" +
         "<article class='score'><h3>Total hours</h3>" +
         "<p class='lede'>All clocked hours this month for people who worked.</p>" +
         "<div class='hero'>" + hm(data.totalMinutes) + "</div></article>" +
         "<article class='score'><h3>Utilisation</h3>" +
-        "<p class='lede'>Average of each person who worked: their hours ÷ hours available.</p>" +
+        "<p class='lede'>Average of each person who worked: their hours ÷ (hours available minus leave).</p>" +
         "<div class='hero'>" + pct(data.productivityPct) + "</div></article>" +
         "<article class='score'><h3>Hours allocated to orders</h3>" +
         "<p class='lede'>Hours on the clock for production orders this month.</p>" +
@@ -632,7 +634,7 @@
         "<p class='lede'>Task-sheet times for those finished order lines, added up.</p>" +
         "<div class='hero'>" + estimateLabel(data.predictedMins) + "</div></article>" +
         "<article class='score'><h3>Actual productivity</h3>" +
-        "<p class='lede'>Average of each person who worked: (hours − indirect) ÷ hours available.</p>" +
+        "<p class='lede'>Average of each person who worked: (hours − indirect) ÷ (hours available minus leave).</p>" +
         "<div class='hero'>" + pct(data.actualProductivityPct) + "</div></article>" +
         "<article class='score'><h3>Trophies vs overtime</h3>" +
         "<p class='lede'>Order lines finished in " + esc(data.title) + ". Trophy if within Task times, alarm if overtime.</p>" +
