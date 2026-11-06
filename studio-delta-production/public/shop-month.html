@@ -92,7 +92,15 @@
     .hours-chart { background:#fff; border:1px solid var(--line); padding:16px 18px; margin:0 0 16px; }
     .hours-chart h3 { margin:0 0 4px; font-size:12px; letter-spacing:.06em; text-transform:uppercase; }
     .hours-chart .lede { margin:0 0 10px; max-width:none; }
-    .hours-chart .chart-wrap { position:relative; width:100%; min-height:280px; overflow-x:auto; }
+    .hours-chart-scroll { overflow-x:auto; }
+    .hours-chart .chart-wrap { position:relative; width:100%; height:300px; }
+    .chart-people { display:flex; align-items:flex-start; }
+    .chart-person { flex:1; min-width:84px; text-align:center; padding:8px 4px 0; }
+    .chart-name { font-size:12px; font-weight:700; line-height:1.2; }
+    .chart-person .result-icons { justify-content:center; gap:10px; margin:6px 0 4px; }
+    .chart-person .result { font-size:15px; }
+    .chart-stat { font-size:10px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); margin-top:4px; }
+    .chart-stat b { display:block; margin-top:1px; font-size:13px; font-family: Outfit, Inter, sans-serif; color:var(--ink); letter-spacing:0; text-transform:none; font-weight:700; }
     .pie-wrap { position:relative; height:320px; max-width:420px; margin:0 auto; }
     @media print {
       body { background:#fff; }
@@ -117,7 +125,7 @@
         <a href="/orders">Orders</a>
       </nav>
       <h1>Studio Delta // <span>Monthly pack</span></h1>
-      <p class="lede">Shop floor and Sales for the month. Each person shows trophies and late completions. Hours are on the chart above. Paid shop shift is 07:45–15:45 minus lunch.</p>
+      <p class="lede">Shop floor and Sales for the month. The graph shows hours, trophies, late completions, utilisation, and productivity per person. Paid shop shift is 07:45–15:45 minus lunch.</p>
     </div>
     <div class="tools no-print">
       <label>Month <input type="month" id="monthPick" onchange="load()"></label>
@@ -228,12 +236,29 @@
     }
     function hoursChartHtml(people) {
       if (!(people || []).length) return "";
-      const minW = Math.max(480, (people.length || 1) * 56);
+      const rows = people || [];
+      const minW = Math.max(640, rows.length * 92);
+      const feet = rows.map((p, i) =>
+        "<div class='chart-person'>" +
+          "<div class='chart-name'>" + esc(p.worker) + "</div>" +
+          resultIcons(p.trophies, p.overtimeJobs, i) +
+          "<div class='chart-stat'>Utilisation<b>" + pct(p.productivityPct) + "</b></div>" +
+          "<div class='chart-stat'>Productivity<b>" + pct(p.actualProductivityPct) + "</b></div>" +
+        "</div>"
+      ).join("");
       return "<div class='hours-chart'>" +
         "<h3>Hours by person</h3>" +
-        "<p class='lede'>Names along the bottom. The line is hours available. Stacked bars are order hours and indirect. Click order hours for a station pie, then click a slice for that station’s orders.</p>" +
-        "<div class='chart-wrap' style='height:360px'><canvas id='hoursChart' style='min-width:" + minW + "px'></canvas></div>" +
-        "</div>";
+        "<p class='lede'>The line is hours available. Stacked bars are order hours and indirect. Click order hours for a station pie. Trophies, late completions, utilisation, and productivity sit under each name.</p>" +
+        "<div class='hours-chart-scroll'><div class='hours-chart-inner' style='min-width:" + minW + "px'>" +
+        "<div class='chart-wrap'><canvas id='hoursChart'></canvas></div>" +
+        "<div class='chart-people' id='chartPeople'>" + feet + "</div>" +
+        "</div></div></div>";
+    }
+    function alignChartPeople(chart) {
+      const row = document.getElementById("chartPeople");
+      if (!row || !chart || !chart.chartArea) return;
+      row.style.paddingLeft = Math.max(0, chart.chartArea.left) + "px";
+      row.style.paddingRight = Math.max(0, chart.width - chart.chartArea.right) + "px";
     }
     function destroyStationPie() {
       if (stationPie) {
@@ -340,8 +365,9 @@
         },
         options: {
           maintainAspectRatio: false,
+          layout: { padding: { bottom: 4 } },
           plugins: {
-            legend: { position: "bottom" },
+            legend: { position: "top" },
             tooltip: {
               callbacks: {
                 label: function (ctx) {
@@ -354,7 +380,8 @@
           scales: {
             x: {
               stacked: true,
-              ticks: { maxRotation: 55, minRotation: 40, autoSkip: false }
+              ticks: { display: false },
+              grid: { drawOnChartArea: false }
             },
             y: {
               stacked: true,
@@ -370,8 +397,13 @@
             if (hit.label === "Order hours") openStationPie(i);
             if (hit.label === "Indirect") openOrders(i, "Indirect");
           }
-        }
+        },
+        plugins: [{
+          id: "alignPeople",
+          afterLayout: function (chart) { alignChartPeople(chart); }
+        }]
       });
+      alignChartPeople(hoursChart);
     }
     function resultIcons(trophies, overtime, personIdx) {
       const who = (personIdx === undefined || personIdx === null) ? "all" : String(personIdx);
@@ -379,23 +411,6 @@
         "<button type='button' class='result trophy' data-kind='trophy' data-person='" + who + "' title='Trophies'><i class='bi bi-trophy-fill' aria-hidden='true'></i> " + (trophies || 0) + "</button>" +
         "<button type='button' class='result over' data-kind='overtime' data-person='" + who + "' title='Late completion'><i class='bi bi-alarm-fill' aria-hidden='true'></i> " + (overtime || 0) + "</button>" +
         "</span>";
-    }
-    function personCard(p, i) {
-      let proc = "";
-      if (p.processes.length) {
-        proc = "<table><thead><tr><th>Station</th><th class='r'>Orders</th><th class='r'>Time</th></tr></thead><tbody>" +
-          p.processes.map((r) => {
-            const qty = r.indirect ? (r.taskCount || r.count || 0) : (r.orderCount || r.count || 0);
-            const qtyLabel = r.indirect ? (qty + " task" + (qty === 1 ? "" : "s")) : qty;
-            return "<tr class='station' data-person='" + i + "' data-station=\"" + esc(r.name) + "\"><td>" + esc(r.name) + "</td><td class='r'>" + qtyLabel + "</td><td class='r'>" + hm(r.minutes) + "</td></tr>";
-          }).join("") +
-          "</tbody></table>";
-      }
-      return "<article class='card'><h2>" + esc(p.worker) + "</h2>" +
-        "<div class='name-results'>" + resultIcons(p.trophies, p.overtimeJobs, i) + "</div>" +
-        "<div class='meta'>" + esc(p.role || "Shop") +
-        (p.clocked ? "" : " · No orders this month") +
-        "</div>" + proc + "</article>";
     }
     function productCell(t) {
       const name = t.product || "—";
@@ -607,7 +622,7 @@
     function render(data) {
       const stations = (data.stations || []).slice(0, 8).map((s) => esc(s.name) + " " + hm(s.minutes)).join(" · ");
       const html =
-        "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Shop orders for every production employee. Click a station or the order count. Repeat sessions of the same line count as one order. A and B lines are separate orders. Station orders can overlap, so they do not add up to the badge. Indirect shows task names, not orders.</p></div>" +
+        "<div class='cover'><h2>" + esc(data.title) + "</h2><p>Hours for every production employee. Click order hours on the graph for a station pie, then a slice for those orders. Repeat sessions of the same line count as one order. A and B lines are separate orders.</p></div>" +
         shopScoreCards(data) +
         hoursChartHtml(data.people) +
         "<div class='kpis'>" +
@@ -623,7 +638,6 @@
         (data.topStation ? ("Heaviest station: " + esc(data.topStation.name) + " (" + hm(data.topStation.minutes) + "). ") : "") +
         (stations ? ("Station mix: " + stations + ".") : "") +
         "</p>" +
-        "<div class='people'>" + (data.people || []).map(personCard).join("") + "</div>" +
         salesBlock(data.sales);
       PEOPLE = data.people || [];
       SALES = (data.sales && data.sales.people) || [];
