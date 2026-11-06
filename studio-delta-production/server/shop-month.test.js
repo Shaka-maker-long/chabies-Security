@@ -71,6 +71,12 @@ db.upsertOrder({
   product: "Giselle Chair",
   client_name: "Ada"
 });
+db.upsertOrder({
+  order_number: "S260905",
+  status: "Welding",
+  product: "Giselle Chair",
+  client_name: "Ada"
+});
 
 const book = getBook();
 const log = book.getSheetByName("Production_Log");
@@ -110,6 +116,12 @@ log.appendRow([
   new Date("2026-10-08T07:45:00+02:00"),
   new Date("2026-10-08T08:15:00+02:00"),
   "", "", "", 0, "", JSON.stringify({ entryType: "indirect", pauses: [], overtimeContinue: false, batchShare: 1 })
+]);
+log.appendRow([
+  "log-weld-slight", "S260905", "Thabo", "Welding", "Done",
+  new Date("2026-10-09T07:45:00+02:00"),
+  new Date("2026-10-09T09:50:00+02:00"),
+  "", "", "", 0, "", meta
 ]);
 log.appendRow([
   "log-sep", "S260800", "Thabo", "Welding", "Done",
@@ -217,10 +229,11 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.strictEqual(thaboPred.workDays, 22);
   assert.strictEqual(thaboPred.shiftHours, 7.5);
   assert.ok(thaboPred.completedMins > 0);
-  assert.strictEqual(thaboPred.predictedMins, 360, "three Giselle welding lines × 2h");
+  assert.strictEqual(thaboPred.predictedMins, 480, "four Giselle welding lines × 2h");
   assert.ok(thaboPred.productivityPct > 0);
   assert.ok(thaboPred.actualProductivityPct <= thaboPred.productivityPct);
   assert.strictEqual(thaboPred.trophies, 2, "October A and B welding finishes within 2h");
+  assert.strictEqual(thaboPred.slightJobs, 1, "S260905 is 5 minutes over 2h");
   assert.strictEqual(thaboPred.overtimeJobs, 1, "October S260901 welding is over 2h once the day is grouped");
   assert.strictEqual(thaboPred.noEstimate, 1);
   const trophyA = (thaboPred.results || []).find((r) => r.kind === "trophy" && r.order === "S260901 A");
@@ -232,7 +245,10 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(trophyA.imageUrl);
   const overtime901 = (thaboPred.results || []).find((r) => r.kind === "overtime" && r.order === "S260901");
   assert.ok(overtime901);
-  assert.ok(overtime901.actualMins > overtime901.estimatedMins);
+  assert.ok(overtime901.actualMins >= overtime901.estimatedMins + 10);
+  const slight905 = (thaboPred.results || []).find((r) => r.kind === "slight" && r.order === "S260905");
+  assert.ok(slight905);
+  assert.ok(slight905.actualMins > slight905.estimatedMins && slight905.actualMins < slight905.estimatedMins + 10);
   assert.ok(thaboPred.byDay.length === 22);
   assert.ok(thaboPred.byDay.some((d) => d.completedMins > 0));
   assert.ok(withPred.productivityPct != null);
@@ -305,6 +321,8 @@ assert.ok(!hub.isShopUser({ name: "Lerato", access: "Marketing", tasks: [] }));
   assert.ok(html.indexOf("Total completed over time") === -1);
   assert.ok(html.indexOf("Trophies vs overtime") !== -1);
   assert.ok(html.indexOf("bi-trophy-fill") !== -1);
+  assert.ok(html.indexOf("bi-stopwatch") !== -1);
+  assert.ok(html.indexOf("Overtime under 10 minutes") !== -1);
   assert.ok(html.indexOf("button.result") !== -1);
   assert.ok(html.indexOf("background:none") !== -1);
   assert.ok(html.indexOf("bi-alarm-fill") !== -1);
