@@ -787,6 +787,25 @@ function upsertItem(body, actor) {
     row.unit = unit;
     row.minThreshold = minThreshold;
     row.updatedAt = at;
+    if (body && Object.prototype.hasOwnProperty.call(body, "stock")) {
+      const next = parseStock(body.stock, "Current stock");
+      const before = Number(row.stock) || 0;
+      const delta = Math.round((next - before) * 1000) / 1000;
+      if (delta !== 0) {
+        row.stock = next;
+        addMovement(store, {
+          id: newId("cmove"),
+          at,
+          type: "count",
+          itemId: row.id,
+          itemName: row.name,
+          qty: delta,
+          orderNumber: "",
+          employee,
+          note: String((body && body.note) || "Edited on list")
+        });
+      }
+    }
   }
   if (body && Object.prototype.hasOwnProperty.call(body, "unitPrice")) {
     row.unitPrice = parsePrice(body.unitPrice);

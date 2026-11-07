@@ -266,6 +266,35 @@ assert.ok(seededWindow);
 assert.strictEqual(seededWindow.stock, 99, "catalog seed does not overwrite existing stock");
 assert.strictEqual(snap.items.filter((row) => row.name === "WINDOW CLEANER").length, 1);
 
+const listedHinge = consumables.upsertItem({
+  id: hinge.id,
+  name: hinge.name,
+  unit: "pcs",
+  minThreshold: "20",
+  stock: "18",
+  unitPrice: "12.50"
+}, "Office Boss");
+assert.strictEqual(listedHinge.stock, 18);
+assert.strictEqual(listedHinge.unitPrice, 12.5);
+consumables.upsertItem({
+  id: hinge.id,
+  name: hinge.name,
+  unit: "pcs",
+  minThreshold: "20",
+  stock: "14",
+  unitPrice: ""
+}, "Office Boss");
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 14);
+consumables.upsertItem({
+  id: hinge.id,
+  name: hinge.name,
+  unit: "pcs",
+  minThreshold: "20",
+  stock: "64",
+  unitPrice: ""
+}, "Office Boss");
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 64);
+
 const sticker = consumables.upsertItem({ name: "Powder colour sticker", unit: "pcs", minThreshold: 0 }, "Office Boss");
 assert.strictEqual(sticker.stock, 0);
 assert.strictEqual(sticker.low, false);

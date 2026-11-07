@@ -36,6 +36,19 @@
     td.r, th.r { text-align:right; }
     td.actions { white-space:nowrap; }
     td.actions button { padding:6px 8px; font-size:12px; margin:0 2px 2px 0; }
+    .item-table input.cell {
+      width:6.2em; text-align:right; padding:6px 8px; font-size:13px;
+    }
+    .item-table input.cell.wide { width:7.2em; }
+    .item-table .name-btn {
+      all:unset; cursor:pointer; font-weight:600; color:var(--ink);
+      text-align:left; max-width:100%;
+    }
+    .item-table .name-btn:hover { text-decoration:underline; }
+    .item-table tr.saving { opacity:.65; }
+    .item-table tr.just-saved td { background:#ecfdf3; }
+    .sheet .body label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+    .sheet .body input, .sheet .body select { font-size:16px; min-height:44px; }
     .add { display:flex; gap:8px; flex-wrap:wrap; align-items:end; padding:12px 16px; border-top:1px solid var(--line); background:#f8fafc; }
     .add label, .stack label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
     .add input, .add select { min-width:120px; }
@@ -97,6 +110,15 @@
       .use-line button { width:100%; }
       header .tools #btnLogUsage,
       header .tools #btnCreatePo { flex:1 1 140px; min-height:44px; }
+      .item-table thead { display:none; }
+      .item-table, .item-table tbody, .item-table tr, .item-table td { display:block; width:100%; }
+      .item-table tr { padding:12px; border-bottom:1px solid var(--line); }
+      .item-table td { border:0; padding:6px 0; display:flex; justify-content:space-between; align-items:center; gap:8px; text-align:left; }
+      .item-table td.r { text-align:left; }
+      .item-table td::before { content:attr(data-label); color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; flex:0 0 7.5em; }
+      .item-table td.actions { justify-content:flex-start; flex-wrap:wrap; }
+      .item-table td.actions::before { content:none; }
+      .item-table input.cell { min-height:44px; font-size:16px; width:8em; }
     }
   </style>
 </head>
@@ -132,7 +154,7 @@
     </div>
     <section class="card">
       <h2>On hand</h2>
-      <p class="hint">Name, Current Stock, Ordered Stock, Unit Price, ROP, Total Value.</p>
+      <p class="hint">Tap a name to rename. Change stock, price, or ROP in the row — it saves when you leave the box. Ordered stock comes from open purchase orders.</p>
       <div id="itemList"><div class="empty">Loading…</div></div>
       <form class="add" id="addForm">
         <label>Item name
@@ -308,7 +330,43 @@
     </div>
   </div>
 
-  <div class="mask" id="poMask">
+    <div class="mask" id="editMask">
+      <div class="sheet mobile-use" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+        <header>
+          <h1 id="editTitle">Edit item</h1>
+          <div class="tools">
+            <button class="ghost" type="button" onclick="closeEdit()">Cancel</button>
+          </div>
+        </header>
+        <form class="body" id="editForm">
+          <input type="hidden" id="editId">
+          <label>Name
+            <input id="editName" required autocomplete="off">
+          </label>
+          <label>Unit
+            <select id="editUnit"></select>
+          </label>
+          <label>Current stock
+            <input id="editStock" inputmode="decimal">
+          </label>
+          <label>Unit price (R)
+            <input id="editPrice" inputmode="decimal" placeholder="optional">
+          </label>
+          <label>ROP
+            <input id="editRop" inputmode="decimal">
+          </label>
+          <p class="hint" style="margin:0">Ordered stock is not typed here — it follows open purchase orders.</p>
+          <p class="err" id="editErr"></p>
+          <div class="foot">
+            <button class="danger" type="button" id="editDelete">Delete</button>
+            <button class="ghost" type="button" id="editUse">Use</button>
+            <button type="submit">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="mask" id="poMask">
     <div class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="poTitle">
       <header>
         <h1 id="poTitle">Create purchase order</h1>
@@ -429,26 +487,31 @@
         box.innerHTML = '<div class="empty">No items match that search.</div>';
         return;
       }
-      box.innerHTML = "<table><thead><tr>" +
+      box.innerHTML = "<table class='item-table'><thead><tr>" +
         "<th>Name</th><th class='r'>Current Stock</th><th class='r'>Ordered Stock</th>" +
         "<th class='r'>Unit Price</th><th class='r'>ROP</th><th class='r'>Total Value</th><th></th>" +
         "</tr></thead><tbody>" +
-        rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\"><td>" + esc(row.name) +
-          "</td><td class='r'>" + esc(row.stockLabel) +
-          "</td><td class='r'>" + esc(row.orderedLabel) +
-          "</td><td class='r'>" + esc(row.priceLabel) +
-          "</td><td class='r'>" + esc(row.ropLabel) +
-          "</td><td class='r'>" + esc(row.totalValueLabel) +
-          "</td><td class='actions'>" +
+        rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-id=\"" + esc(row.id) + "\">" +
+          "<td data-label='Name'><button class='name-btn' type='button' data-edit=\"" + esc(row.id) + "\">" + esc(row.name) + "</button></td>" +
+          "<td class='r' data-label='Current Stock'><input class='cell' data-f='stock' inputmode='decimal' value=\"" + esc(row.stockLabel) + "\"></td>" +
+          "<td class='r' data-label='Ordered Stock' data-f='ordered'>" + esc(row.orderedLabel) + "</td>" +
+          "<td class='r' data-label='Unit Price'><input class='cell wide' data-f='price' inputmode='decimal' placeholder='—' value=\"" + (row.unitPrice == null ? "" : esc(String(row.unitPrice))) + "\"></td>" +
+          "<td class='r' data-label='ROP'><input class='cell' data-f='rop' inputmode='decimal' value=\"" + esc(row.ropLabel) + "\"></td>" +
+          "<td class='r' data-label='Value' data-f='value'>" + esc(row.totalValueLabel) + "</td>" +
+          "<td class='actions' data-label=''>" +
           "<button class='ghost' type='button' data-use=\"" + esc(row.id) + "\">Use</button>" +
           "<button class='ghost' type='button' data-edit=\"" + esc(row.id) + "\">Edit</button>" +
-          "<button class='danger' type='button' data-del=\"" + esc(row.id) + "\">Delete</button>" +
           "</td></tr>").join("") + "</tbody></table>";
       box.querySelectorAll("[data-use]").forEach((btn) => {
         btn.onclick = () => openUse(btn.getAttribute("data-use"));
       });
-      box.querySelectorAll("[data-edit]").forEach((btn) => { btn.onclick = () => editMin(btn.getAttribute("data-edit")); });
-      box.querySelectorAll("[data-del]").forEach((btn) => { btn.onclick = () => removeItem(btn.getAttribute("data-del")); });
+      box.querySelectorAll("[data-edit]").forEach((btn) => { btn.onclick = () => openEdit(btn.getAttribute("data-edit")); });
+      box.querySelectorAll("input.cell").forEach((inp) => {
+        inp.addEventListener("change", () => saveRowFields(inp.closest("tr")));
+        inp.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+        });
+      });
     }
     function renderMoves() {
       const rows = data.movements || [];
@@ -556,22 +619,111 @@
     }
     window.closeUse = closeUse;
     window.closePo = closePo;
-    async function editMin(id) {
+    function closeEdit() {
+      document.getElementById("editMask").classList.remove("open");
+    }
+    window.closeEdit = closeEdit;
+    function fillEditUnits(selected) {
+      const el = document.getElementById("editUnit");
+      el.innerHTML = (data.units || ["pcs"]).map((u) =>
+        "<option value=\"" + esc(u) + "\"" + (u === selected ? " selected" : "") + ">" + esc(u) + "</option>"
+      ).join("");
+    }
+    function openEdit(id) {
       const row = (data.items || []).find((item) => item.id === id);
       if (!row) return;
-      const next = window.prompt("ROP (reorder point) for " + row.name, String(row.minThreshold));
-      if (next == null) return;
-      const price = window.prompt("Unit price in Rand for " + row.name + " (leave blank for none)", row.unitPrice == null ? "" : String(row.unitPrice));
-      if (price == null) return;
+      document.getElementById("editId").value = row.id;
+      document.getElementById("editName").value = row.name;
+      fillEditUnits(row.unit);
+      document.getElementById("editStock").value = row.stockLabel;
+      document.getElementById("editPrice").value = row.unitPrice == null ? "" : String(row.unitPrice);
+      document.getElementById("editRop").value = row.ropLabel;
+      document.getElementById("editErr").textContent = "";
+      document.getElementById("editMask").classList.add("open");
+      document.getElementById("editName").focus();
+    }
+    function patchFromSnapshot(j) {
+      data = j;
+      document.getElementById("kpiItems").textContent = String(j.itemCount || 0);
+      document.getElementById("kpiLow").textContent = String(j.lowCount || 0);
+      document.getElementById("kpiPo").textContent = String(j.openPurchaseCount || 0);
+      document.getElementById("kpiValue").textContent = j.totalValueLabel || "R 0.00";
+    }
+    async function saveRowFields(tr) {
+      if (!tr) return;
+      const id = tr.getAttribute("data-id");
+      const row = (data.items || []).find((item) => item.id === id);
+      if (!row) return;
+      const stock = tr.querySelector("[data-f=stock]").value;
+      const price = tr.querySelector("[data-f=price]").value;
+      const rop = tr.querySelector("[data-f=rop]").value;
+      tr.classList.add("saving");
       const r = await sdOfficeFetch("/api/office/consumables", {
         method: "POST",
-        body: JSON.stringify({ id: row.id, name: row.name, unit: row.unit, minThreshold: next, unitPrice: price })
+        body: JSON.stringify({
+          id: row.id,
+          name: row.name,
+          unit: row.unit,
+          stock,
+          minThreshold: rop,
+          unitPrice: price,
+          note: "Edited on list"
+        })
       });
       const j = await r.json();
+      tr.classList.remove("saving");
       if (!j.ok) { setMsg("status", j.error || "Could not save", true); return; }
-      applySnapshot(j);
-      setMsg("status", "Updated " + row.name + ".");
+      patchFromSnapshot(j);
+      const next = (j.items || []).find((item) => item.id === id) || j.item;
+      if (next) {
+        tr.classList.toggle("low-box", !!next.low);
+        tr.querySelector("[data-f=stock]").value = next.stockLabel;
+        tr.querySelector("[data-f=price]").value = next.unitPrice == null ? "" : String(next.unitPrice);
+        tr.querySelector("[data-f=rop]").value = next.ropLabel;
+        tr.querySelector("[data-f=value]").textContent = next.totalValueLabel;
+        tr.querySelector("[data-f=ordered]").textContent = next.orderedLabel;
+        tr.querySelector(".name-btn").textContent = next.name;
+        tr.classList.add("just-saved");
+        setTimeout(() => tr.classList.remove("just-saved"), 800);
+      }
+      setMsg("status", "Saved " + ((next && next.name) || row.name) + ".");
     }
+    document.getElementById("editForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("editId").value;
+      const err = document.getElementById("editErr");
+      err.textContent = "";
+      const r = await sdOfficeFetch("/api/office/consumables", {
+        method: "POST",
+        body: JSON.stringify({
+          id,
+          name: document.getElementById("editName").value,
+          unit: document.getElementById("editUnit").value,
+          stock: document.getElementById("editStock").value,
+          minThreshold: document.getElementById("editRop").value,
+          unitPrice: document.getElementById("editPrice").value,
+          note: "Edited on list"
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      closeEdit();
+      applySnapshot(j);
+      setMsg("status", "Saved " + (document.getElementById("editName").value || "item") + ".");
+    };
+    document.getElementById("editUse").onclick = () => {
+      const id = document.getElementById("editId").value;
+      closeEdit();
+      openUse(id);
+    };
+    document.getElementById("editDelete").onclick = () => {
+      const id = document.getElementById("editId").value;
+      closeEdit();
+      removeItem(id);
+    };
+    document.getElementById("editMask").addEventListener("click", (e) => {
+      if (e.target.id === "editMask") closeEdit();
+    });
     async function removeItem(id) {
       const row = (data.items || []).find((item) => item.id === id);
       if (!row) return;

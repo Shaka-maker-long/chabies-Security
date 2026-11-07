@@ -535,6 +535,9 @@ assert.ok(inventoryHtml.indexOf(">ROP<") !== -1 || inventoryHtml.indexOf(">ROP</
 assert.ok(inventoryHtml.indexOf("Unit Price") !== -1);
 assert.ok(inventoryHtml.indexOf("Total Value") !== -1);
 assert.ok(inventoryHtml.indexOf("Log usage") !== -1);
+assert.ok(inventoryHtml.indexOf("id=\"editForm\"") !== -1);
+assert.ok(inventoryHtml.indexOf("data-f='stock'") !== -1);
+assert.ok(inventoryHtml.indexOf("window.prompt") === -1, "consumables edit must not use prompt dialogs");
 assert.ok(inventoryHtml.indexOf("Create purchase order") !== -1);
 assert.ok(inventoryHtml.indexOf("useWorker") !== -1);
 assert.ok(inventoryHtml.indexOf("useLines") !== -1);
