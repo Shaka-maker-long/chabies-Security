@@ -3360,6 +3360,13 @@
     function setLoggedIn(on) {
       document.body.classList.toggle('is-logged-in', !!on);
     }
+    function applyStagingFloorNote() {
+      fetch('/health', { credentials: 'same-origin', cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (j) {
+        if (!(j && j.isStaging)) return;
+        const el = document.getElementById('workLockOffNote');
+        if (el) el.textContent = 'Staging: overtime lock is off. You can start, pause, and finish after 15:45, on weekends, and after 8 hours without a grant. A job already on someone else stays locked. Anyone can see completion times on this task. Start, pause, and finish stay with the person on the job. Admin is look-only except Quality Control when that task is ticked on Users. Only Admin can edit completed steel.';
+      }).catch(function () {});
+    }
     function applyAdminLinks() {
       const links = document.getElementById('adminLinks');
       if (links) links.classList.toggle('d-none-view', !session.canSeeOffice);
@@ -3773,6 +3780,7 @@
       persistSession();
       const openApp = function () {
         setLoggedIn(true);
+        applyStagingFloorNote();
         applyAdminLinks();
         updateFloorLink();
         startIdleAlertPolling();

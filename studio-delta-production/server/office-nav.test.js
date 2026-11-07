@@ -1153,6 +1153,9 @@ assert.ok(floor.indexOf("idleForceRefresh") !== -1, "Assign task refreshes the i
 assert.ok(codeGs.indexOf("var WORK_LOCKS_DISABLED = false") !== -1);
 assert.ok(floor.indexOf("const WORK_LOCKS_DISABLED = false") !== -1);
 assert.ok(codeGs.indexOf("function workLocksDisabled") !== -1);
+assert.ok(codeGs.indexOf("function overtimeLocksDisabled") !== -1);
+assert.ok(codeGs.indexOf("function isStagingApp") !== -1);
+assert.ok(floor.indexOf("applyStagingFloorNote") !== -1);
 assert.ok(codeGs.indexOf("hourPart") !== -1 && codeGs.indexOf("minPart") !== -1, "task times speak hours and minutes");
 assert.ok(codeGs.indexOf("minutesFromDurationHours") !== -1);
 assert.ok(codeGs.indexOf("function resumeCountdownResult") !== -1);
