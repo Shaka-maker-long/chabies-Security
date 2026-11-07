@@ -259,6 +259,7 @@ function decorateItem(row, store) {
     low,
     status: low ? "Low" : "OK",
     qr: qrPayloadForLine({ itemId: row.id }),
+    qrPdfUrl: "/api/office/consumables/" + encodeURIComponent(row.id) + "/qr.pdf",
     createdAt: row.createdAt || "",
     updatedAt: row.updatedAt || ""
   };
@@ -388,6 +389,11 @@ function qrPdfPathFor(id) {
 
 function stocktakeQrPath() {
   return path.join(pdfDir(), "stocktake-qr-labels.pdf");
+}
+
+function itemQrPath(id) {
+  const safe = String(id || "item").replace(/[^\w.-]+/g, "_");
+  return path.join(pdfDir(), "item-" + safe + "-qr.pdf");
 }
 
 function qrLinePdfPath(poId, itemId) {
@@ -1068,6 +1074,33 @@ function readStocktakeQrPdf() {
   };
 }
 
+async function writeItemQrPdf(itemId) {
+  const store = loadStore();
+  const row = findItem(store, itemId);
+  if (!row) throw new Error("Item not found.");
+  const item = decorateItem(row, store);
+  const buffer = await buildSingleQrPdf(
+    { number: item.stockLabel + " " + item.unit },
+    { itemId: item.id, itemName: item.name }
+  );
+  fs.writeFileSync(itemQrPath(item.id), buffer);
+  return {
+    url: item.qrPdfUrl,
+    filename: String(item.name || "item").replace(/[^\w.-]+/g, "_").slice(0, 40) + "-QR.pdf",
+    bytes: buffer.length
+  };
+}
+
+function readItemQrPdf(itemId) {
+  const file = itemQrPath(itemId);
+  if (!fs.existsSync(file)) return null;
+  return {
+    buffer: fs.readFileSync(file),
+    mime: "application/pdf",
+    filename: "item-QR-label.pdf"
+  };
+}
+
 function countStock(body, actor) {
   const note = String((body && body.note) || "").trim();
   if (!note) throw new Error("Say why the count changed.");
@@ -1292,6 +1325,8 @@ module.exports = {
   saveStocktake,
   writeStocktakeQrPdf,
   readStocktakeQrPdf,
+  writeItemQrPdf,
+  readItemQrPdf,
   receiveStock,
   countStock,
   createPurchase,

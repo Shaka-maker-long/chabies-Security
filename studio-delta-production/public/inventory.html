@@ -154,7 +154,7 @@
     </div>
     <section class="card">
       <h2>On hand</h2>
-      <p class="hint">Tap a name to rename. Change stock, price, or ROP in the row — it saves when you leave the box. Ordered stock comes from open purchase orders.</p>
+      <p class="hint">Change current stock only in <b>Edit</b>. Saving there makes a QR label you can open and print anytime. Price and ROP still save on the row.</p>
       <div id="itemList"><div class="empty">Loading…</div></div>
       <form class="add" id="addForm">
         <label>Item name
@@ -367,10 +367,11 @@
           <label>ROP
             <input id="editRop" inputmode="decimal">
           </label>
-          <p class="hint" style="margin:0">Ordered stock is not typed here — it follows open purchase orders.</p>
+          <p class="hint" style="margin:0">Saving current stock writes a locker QR you can print anytime from this item.</p>
           <p class="err" id="editErr"></p>
           <div class="foot">
             <button class="danger" type="button" id="editDelete">Delete</button>
+            <button class="ghost" type="button" id="editQr">Open QR / print</button>
             <button type="submit">Save</button>
           </div>
         </form>
@@ -525,15 +526,22 @@
         "</tr></thead><tbody>" +
         rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-id=\"" + esc(row.id) + "\">" +
           "<td data-label='Name'><button class='name-btn' type='button' data-edit=\"" + esc(row.id) + "\">" + esc(row.name) + "</button></td>" +
-          "<td class='r' data-label='Current Stock'><input class='cell' data-f='stock' inputmode='" + (row.integerQty === false ? "decimal" : "numeric") + "' step='" + (row.integerQty === false ? "0.001" : "1") + "' value=\"" + esc(row.stockLabel) + "\"></td>" +
+          "<td class='r' data-label='Current Stock' data-f='stock'>" + esc(row.stockLabel) + "</td>" +
           "<td class='r' data-label='Ordered Stock' data-f='ordered'>" + esc(row.orderedLabel) + "</td>" +
           "<td class='r' data-label='Unit Price'><input class='cell wide' data-f='price' inputmode='decimal' placeholder='—' value=\"" + (row.unitPrice == null ? "" : esc(String(row.unitPrice))) + "\"></td>" +
           "<td class='r' data-label='ROP'><input class='cell' data-f='rop' inputmode='decimal' value=\"" + esc(row.ropLabel) + "\"></td>" +
           "<td class='r' data-label='Value' data-f='value'>" + esc(row.totalValueLabel) + "</td>" +
           "<td class='actions' data-label=''>" +
           "<button class='ghost' type='button' data-edit=\"" + esc(row.id) + "\">Edit</button>" +
+          "<button type='button' data-qr=\"" + esc(row.qrPdfUrl || "") + "\">Open QR</button>" +
           "</td></tr>").join("") + "</tbody></table>";
       box.querySelectorAll("[data-edit]").forEach((btn) => { btn.onclick = () => openEdit(btn.getAttribute("data-edit")); });
+      box.querySelectorAll("[data-qr]").forEach((btn) => {
+        btn.onclick = () => {
+          const url = btn.getAttribute("data-qr");
+          if (url) window.open(url, "_blank", "noopener");
+        };
+      });
       box.querySelectorAll("input.cell").forEach((inp) => {
         inp.addEventListener("change", () => saveRowFields(inp.closest("tr")));
         inp.addEventListener("keydown", (e) => {
@@ -684,7 +692,6 @@
       const id = tr.getAttribute("data-id");
       const row = (data.items || []).find((item) => item.id === id);
       if (!row) return;
-      const stock = tr.querySelector("[data-f=stock]").value;
       const price = tr.querySelector("[data-f=price]").value;
       const rop = tr.querySelector("[data-f=rop]").value;
       tr.classList.add("saving");
@@ -695,7 +702,6 @@
           name: row.name,
           unit: row.unit,
           qtyKind: row.qtyKind,
-          stock,
           minThreshold: rop,
           unitPrice: price,
           note: "Edited on list"
@@ -708,7 +714,8 @@
       const next = (j.items || []).find((item) => item.id === id) || j.item;
       if (next) {
         tr.classList.toggle("low-box", !!next.low);
-        tr.querySelector("[data-f=stock]").value = next.stockLabel;
+        const stockCell = tr.querySelector("[data-f=stock]");
+        if (stockCell) stockCell.textContent = next.stockLabel;
         tr.querySelector("[data-f=price]").value = next.unitPrice == null ? "" : String(next.unitPrice);
         tr.querySelector("[data-f=rop]").value = next.ropLabel;
         tr.querySelector("[data-f=value]").textContent = next.totalValueLabel;
@@ -741,7 +748,17 @@
       if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
       closeEdit();
       applySnapshot(j);
-      setMsg("status", "Saved " + (document.getElementById("editName").value || "item") + ".");
+      const name = (j.item && j.item.name) || "item";
+      setMsg("status", "Saved " + name + ". QR label is ready to print.");
+      if (j.qrUrl || (j.item && j.item.qrPdfUrl)) {
+        window.open(j.qrUrl || j.item.qrPdfUrl, "_blank", "noopener");
+      }
+    };
+    document.getElementById("editQr").onclick = () => {
+      const id = document.getElementById("editId").value;
+      const row = (data.items || []).find((item) => item.id === id);
+      const url = row && row.qrPdfUrl;
+      if (url) window.open(url, "_blank", "noopener");
     };
     document.getElementById("editDelete").onclick = () => {
       const id = document.getElementById("editId").value;

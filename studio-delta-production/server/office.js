@@ -602,10 +602,38 @@ function mountOffice(app) {
     res.json({ ok: true, ...consumables.snapshot() });
   });
 
-  app.post("/api/office/consumables", requireOffice, (req, res) => {
+  app.post("/api/office/consumables", requireOffice, async (req, res) => {
     try {
       const item = consumables.upsertItem(req.body || {}, req.office && req.office.name);
-      res.json({ ok: true, item, ...consumables.snapshot() });
+      let qr = null;
+      if (item && item.id && req.body && Object.prototype.hasOwnProperty.call(req.body, "stock")) {
+        qr = await consumables.writeItemQrPdf(item.id);
+      }
+      res.json({ ok: true, item, qrUrl: qr && qr.url, ...consumables.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/consumables/:id/qr.pdf", requireOffice, async (req, res) => {
+    try {
+      let file = consumables.readItemQrPdf(req.params.id);
+      if (!file) {
+        await consumables.writeItemQrPdf(req.params.id);
+        file = consumables.readItemQrPdf(req.params.id);
+      }
+      if (!file) {
+        res.status(404).json({ ok: false, error: "QR label not found." });
+        return;
+      }
+      const download = String((req.query && req.query.download) || "") === "1";
+      res.setHeader("Content-Type", file.mime || "application/pdf");
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(
+        "Content-Disposition",
+        (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "item-QR.pdf").replace(/"/g, "") + "\""
+      );
+      res.send(file.buffer);
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

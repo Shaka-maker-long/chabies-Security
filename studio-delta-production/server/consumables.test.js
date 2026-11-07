@@ -411,6 +411,12 @@ return (async function main() {
   assert.strictEqual(qrApi.json.ok, true, JSON.stringify(qrApi.json));
   assert.ok(qrApi.json.count >= 1);
 
+  const itemQr = await consumables.writeItemQrPdf(hinge.id);
+  assert.ok(itemQr.url.indexOf("/qr.pdf") !== -1);
+  const itemQrGet = await fetch("http://127.0.0.1:" + port + "/api/office/consumables/" + encodeURIComponent(hinge.id) + "/qr.pdf", { headers });
+  assert.strictEqual(itemQrGet.status, 200);
+  assert.ok(String(itemQrGet.headers.get("content-type") || "").indexOf("pdf") !== -1);
+
   server.close();
   console.log("consumables.test.js ok");
 })();
