@@ -9,6 +9,8 @@ const CATALOG = require("./consumables-catalog");
 
 const UNITS = ["pcs", "box", "pack", "roll", "pair", "set", "ℓ", "mℓ"];
 const MEASURE_UNITS = { "ℓ": true, "ml": true, "mℓ": true, "l": true, "kg": true };
+/** Printed sticker size. Single-item PDFs sit on A4 so printers do not stretch them. */
+const QR_LABEL_CM = 6;
 
 function inferQtyKind(name, unit) {
   const u = String(unit || "").trim().toLowerCase();
@@ -259,7 +261,7 @@ function decorateItem(row, store) {
     low,
     status: low ? "Low" : "OK",
     qr: qrPayloadForLine({ itemId: row.id }),
-    qrPdfUrl: "/api/office/consumables/" + encodeURIComponent(row.id) + "/qr.pdf",
+    qrPdfUrl: "/api/office/consumables/" + encodeURIComponent(row.id) + "/qr.pdf?v=" + QR_LABEL_CM,
     createdAt: row.createdAt || "",
     updatedAt: row.updatedAt || ""
   };
@@ -400,9 +402,6 @@ function qrLinePdfPath(poId, itemId) {
   const safeItem = String(itemId || "item").replace(/[^\w.-]+/g, "_");
   return path.join(pdfDir(), String(poId) + "-qr-" + safeItem + ".pdf");
 }
-
-/** Printed sticker size. Single-item PDFs use a page of this size so they are not A4. */
-const QR_LABEL_CM = 6;
 
 function cmToPt(cm) {
   return (Number(cm) * 72) / 2.54;
@@ -683,13 +682,13 @@ async function buildPurchasePdf(po) {
   return done;
 }
 
-/** One material = one 6 cm × 6 cm sticker PDF (page is the sticker, not A4). */
+/** One material: A4 page with a 6 cm sticker in the corner so printers do not stretch it to fill the sheet. */
 async function buildSingleQrPdf(po, line) {
   const PDFDocument = require("pdfkit");
   const size = qrLabelSizePt();
   const chunks = [];
   const doc = new PDFDocument({
-    size: [size, size],
+    size: "A4",
     margin: 0,
     compress: false,
     info: {
@@ -702,11 +701,26 @@ async function buildSingleQrPdf(po, line) {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
   });
+  const x = 36;
+  const y = 72;
+  doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(13)
+    .text("Cut out the dashed 6 cm square — leave the rest of the page", x, 28, { width: 520 });
+  doc.fillColor("#6b6358").font("Helvetica").fontSize(9)
+    .text("Print at 100% / actual size. Do not use Fit to page or the sticker will fill the A4 sheet.", x, 48, { width: 520 });
   const png = await qrPngBuffer(qrPayloadForLine(line));
-  const footer = [String((po && po.number) || "").trim(), qrSizeCaption(), "print 100%"]
+  const footer = [String((po && po.number) || "").trim(), qrSizeCaption()]
     .filter(Boolean)
     .join(" · ");
-  drawQrSticker(doc, 0, 0, png, (line && line.itemName) || line.itemId, footer);
+  drawQrSticker(doc, x, y, png, (line && line.itemName) || line.itemId, footer);
+  doc.fillColor("#9a9080").font("Helvetica").fontSize(8)
+    .text("6 cm", x, y + size + 6, { width: size, align: "center" });
+  doc.save()
+    .strokeColor("#d7d0c6")
+    .lineWidth(0.4)
+    .moveTo(x, y + size + 22)
+    .lineTo(x + size, y + size + 22)
+    .stroke()
+    .restore();
   doc.end();
   return done;
 }

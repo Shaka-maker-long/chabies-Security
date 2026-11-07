@@ -631,13 +631,36 @@ function mountOffice(app) {
     }
   });
 
+  app.get("/api/office/consumables/stocktake/qr-labels.pdf", requireOffice, async (req, res) => {
+    try {
+      const all = String((req.query && req.query.all) || "") === "1" || String((req.query && req.query.all) || "") === "true";
+      const ids = String((req.query && (req.query.itemIds || req.query.ids)) || "")
+        .split(",")
+        .map((id) => String(id || "").trim())
+        .filter(Boolean);
+      if (all || ids.length) await consumables.writeStocktakeQrPdf(ids, { all });
+      const file = consumables.readStocktakeQrPdf();
+      if (!file) {
+        res.status(404).json({ ok: false, error: "Print QR labels from Stocktake first." });
+        return;
+      }
+      const download = String((req.query && req.query.download) || "") === "1";
+      res.setHeader("Content-Type", file.mime || "application/pdf");
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(
+        "Content-Disposition",
+        (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "stocktake-QR-labels.pdf").replace(/"/g, "") + "\""
+      );
+      res.send(file.buffer);
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.get("/api/office/consumables/:id/qr.pdf", requireOffice, async (req, res) => {
     try {
-      let file = consumables.readItemQrPdf(req.params.id);
-      if (!file) {
-        await consumables.writeItemQrPdf(req.params.id);
-        file = consumables.readItemQrPdf(req.params.id);
-      }
+      await consumables.writeItemQrPdf(req.params.id);
+      const file = consumables.readItemQrPdf(req.params.id);
       if (!file) {
         res.status(404).json({ ok: false, error: "QR label not found." });
         return;
@@ -742,21 +765,6 @@ function mountOffice(app) {
     }
   });
 
-  app.get("/api/office/consumables/stocktake/qr-labels.pdf", requireOffice, (req, res) => {
-    const file = consumables.readStocktakeQrPdf();
-    if (!file) {
-      res.status(404).json({ ok: false, error: "Print QR labels from Stocktake first." });
-      return;
-    }
-    const download = String((req.query && req.query.download) || "") === "1";
-    res.setHeader("Content-Type", file.mime || "application/pdf");
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader(
-      "Content-Disposition",
-      (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "stocktake-QR-labels.pdf").replace(/"/g, "") + "\""
-    );
-    res.send(file.buffer);
-  });
 
   app.post("/api/office/consumables/purchases", requireOffice, async (req, res) => {
     try {

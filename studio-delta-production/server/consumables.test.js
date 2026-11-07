@@ -450,6 +450,9 @@ return (async function main() {
   });
   assert.strictEqual(allQrApi.json.ok, true, JSON.stringify(allQrApi.json));
   assert.ok(allQrApi.json.count >= 2, "print-all includes every catalog item");
+  const allQrGet = await fetch("http://127.0.0.1:" + port + "/api/office/consumables/stocktake/qr-labels.pdf?all=1", { headers });
+  assert.strictEqual(allQrGet.status, 200, "print-all GET opens the PDF without a blocked popup");
+  assert.ok(String(allQrGet.headers.get("content-type") || "").indexOf("pdf") !== -1);
 
   const itemQr = await consumables.writeItemQrPdf(hinge.id);
   assert.ok(itemQr.url.indexOf("/qr.pdf") !== -1);

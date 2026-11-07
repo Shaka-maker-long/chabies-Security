@@ -558,6 +558,8 @@ assert.ok(inventoryHtml.indexOf("data-label='Current Stock' data-f='stock'>") !=
 assert.ok(inventoryHtml.indexOf("Open QR") !== -1);
 assert.ok(inventoryHtml.indexOf("Print all QR labels") !== -1);
 assert.ok(inventoryHtml.indexOf('id="btnPrintAllQr"') !== -1);
+assert.ok(inventoryHtml.indexOf("qr-labels.pdf?all=1") !== -1);
+assert.ok(inventoryHtml.indexOf("Fit to page") !== -1);
 assert.ok(inventoryHtml.indexOf("6×6 cm") !== -1);
 assert.ok(inventoryHtml.indexOf("5×5 cm") === -1, "locker stickers are 6 cm, not 5 cm");
 assert.ok(inventoryHtml.indexOf("data-qr") !== -1);
