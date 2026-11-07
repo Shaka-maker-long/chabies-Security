@@ -46,6 +46,26 @@ function workLocksDisabled() {
   } catch (e) {}
   return WORK_LOCKS_DISABLED === true;
 }
+function isStagingApp() {
+  try {
+    if (typeof process === "undefined" || !process.env) return false;
+    if (process.env.STAGING === "1" || process.env.STAGING === "true") return true;
+    var name = String(
+      process.env.APP_ENV
+        || process.env.SD_APP_ENV
+        || process.env.RAILWAY_ENVIRONMENT_NAME
+        || process.env.RAILWAY_ENVIRONMENT
+        || ""
+    ).trim().toLowerCase();
+    return name === "staging" || name === "preview" || name === "updates";
+  } catch (e) {
+    return false;
+  }
+}
+function overtimeLocksDisabled() {
+  if (workLocksDisabled()) return true;
+  return isStagingApp();
+}
 var TAB_GLASS_TYPES = "Glass_Types";
 var TAB_WOOD_TYPES = "Wood_Types";
 var TAB_STANDARD_GLASS = "Standard_Glass";
@@ -4917,6 +4937,10 @@ function applyShiftWindowToMeta(meta, now, workerName) {
   meta = meta || defaultLogMeta();
   if (workLocksDisabled()) return meta;
   var state = paidWindowState(now);
+  if (overtimeLocksDisabled() && state.kind !== "lunch") {
+    meta.overtimeContinue = true;
+    return meta;
+  }
   if (isOvertimeStartAllowed(now, workerName)) {
     meta.overtimeContinue = true;
     return meta;
@@ -5226,6 +5250,7 @@ function workerMinutesToday(workerName, now) {
 
 function floorChangeGate(workerName, action, now) {
   if (workLocksDisabled()) return { ok: true, unlocked: true };
+  if (overtimeLocksDisabled()) return { ok: true, overtime: true, unlocked: true };
   var at = now ? new Date(now) : new Date();
   if (isNaN(at.getTime())) at = new Date();
   var profile = getUserProfileByName(workerName);
@@ -6043,6 +6068,7 @@ function enforceShiftHours(now) {
     }
     if (isPaused) continue;
     var worker = String(logs[i][2] || "").trim();
+    if (overtimeLocksDisabled() && state.kind !== "lunch") continue;
     if (overtimeGrantCovers(workerOvertimeGrant(worker, at), at) && (state.kind === "end" || state.kind === "weekend")) continue;
     if (!workerHasOvertime(worker, at) && workerMinutesToday(worker, at) >= MAX_REGULAR_MINS && state.inPaid) {
       meta = addPauseToMeta(meta, "8 hour limit", at);

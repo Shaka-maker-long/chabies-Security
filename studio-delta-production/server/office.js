@@ -102,11 +102,27 @@ function officeCookie(token, clear, req) {
   return "sd_office=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + maxAge + secure;
 }
 
+function shopSessionCookieClear(req) {
+  const secure = cookieSecureFlag(req) ? "; Secure" : "";
+  return "sd_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" + secure;
+}
+
 function canUseOfficeApi(profile) {
   if (!profile) return false;
   if (profile.canSeeOffice) return true;
   if (profile.canSeeDrawingDesk || staff.isDrawingOwnerName(profile.name)) return true;
   return false;
+}
+
+function requireShopScan(req, res, next) {
+  const profile = staff.readSession(req);
+  if (!profile) {
+    res.status(401).json({ ok: false, error: "Log in first." });
+    return;
+  }
+  req.shop = profile;
+  req.office = profile;
+  next();
 }
 
 function requireOffice(req, res, next) {
@@ -276,7 +292,7 @@ function mountOffice(app) {
     if (profile) {
       auditLog.record("logout", { actor: profile.name, ok: true, deviceId: profile.deviceId }, req);
     }
-    res.setHeader("Set-Cookie", officeCookie("", true, req));
+    res.setHeader("Set-Cookie", [officeCookie("", true, req), shopSessionCookieClear(req)]);
     res.json({ ok: true });
   });
 
@@ -602,10 +618,38 @@ function mountOffice(app) {
     res.json({ ok: true, ...consumables.snapshot() });
   });
 
-  app.post("/api/office/consumables", requireOffice, (req, res) => {
+  app.post("/api/office/consumables", requireOffice, async (req, res) => {
     try {
       const item = consumables.upsertItem(req.body || {}, req.office && req.office.name);
-      res.json({ ok: true, item, ...consumables.snapshot() });
+      let qr = null;
+      if (item && item.id && req.body && Object.prototype.hasOwnProperty.call(req.body, "stock")) {
+        qr = await consumables.writeItemQrPdf(item.id);
+      }
+      res.json({ ok: true, item, qrUrl: qr && qr.url, ...consumables.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/consumables/:id/qr.pdf", requireOffice, async (req, res) => {
+    try {
+      let file = consumables.readItemQrPdf(req.params.id);
+      if (!file) {
+        await consumables.writeItemQrPdf(req.params.id);
+        file = consumables.readItemQrPdf(req.params.id);
+      }
+      if (!file) {
+        res.status(404).json({ ok: false, error: "QR label not found." });
+        return;
+      }
+      const download = String((req.query && req.query.download) || "") === "1";
+      res.setHeader("Content-Type", file.mime || "application/pdf");
+      res.setHeader("Cache-Control", "no-store");
+      res.setHeader(
+        "Content-Disposition",
+        (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "item-QR.pdf").replace(/"/g, "") + "\""
+      );
+      res.send(file.buffer);
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
@@ -632,6 +676,35 @@ function mountOffice(app) {
     }
   });
 
+  app.get("/api/office/consumables/scan-context", requireShopScan, (req, res) => {
+    const worker = (req.query && req.query.worker) || (req.shop && req.shop.name);
+    res.json({ ok: true, ...consumables.scanContext(worker) });
+  });
+
+  app.get("/api/office/consumables/lookup", requireShopScan, (req, res) => {
+    try {
+      const item = consumables.lookupByQr((req.query && (req.query.qr || req.query.code)) || "");
+      res.json({ ok: true, item });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/consumables/scan", requireShopScan, (req, res) => {
+    try {
+      const body = Object.assign({}, req.body || {});
+      if (!canUseOfficeApi(req.shop)) body.worker = req.shop.name;
+      const used = consumables.issueFromScan(body, req.shop && req.shop.name);
+      const payload = Array.isArray(used)
+        ? { usedItems: used, item: used[0] || null }
+        : { item: used, usedItems: [used] };
+      const extra = canUseOfficeApi(req.shop) ? consumables.snapshot() : consumables.scanContext();
+      res.json({ ok: true, ...extra, ...payload });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.post("/api/office/consumables/receive", requireOffice, (req, res) => {
     try {
       const item = consumables.receiveStock(req.body || {}, req.office && req.office.name);
@@ -648,6 +721,41 @@ function mountOffice(app) {
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
+  });
+
+  app.post("/api/office/consumables/stocktake", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...consumables.saveStocktake(req.body || {}, req.office && req.office.name) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/consumables/stocktake/qr-labels.pdf", requireOffice, async (req, res) => {
+    try {
+      const ids = (req.body && req.body.itemIds) || (req.body && req.body.ids);
+      const all = !!(req.body && (req.body.all === true || req.body.all === 1 || req.body.all === "1"));
+      const made = await consumables.writeStocktakeQrPdf(ids, { all });
+      res.json({ ok: true, ...made });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/consumables/stocktake/qr-labels.pdf", requireOffice, (req, res) => {
+    const file = consumables.readStocktakeQrPdf();
+    if (!file) {
+      res.status(404).json({ ok: false, error: "Print QR labels from Stocktake first." });
+      return;
+    }
+    const download = String((req.query && req.query.download) || "") === "1";
+    res.setHeader("Content-Type", file.mime || "application/pdf");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader(
+      "Content-Disposition",
+      (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "stocktake-QR-labels.pdf").replace(/"/g, "") + "\""
+    );
+    res.send(file.buffer);
   });
 
   app.post("/api/office/consumables/purchases", requireOffice, async (req, res) => {

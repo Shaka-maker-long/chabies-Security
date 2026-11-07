@@ -16,6 +16,26 @@
     path.style.strokeDashoffset = "0";
   }
 
+  function envLabel(isStaging) {
+    return isStaging ? "Staging" : "Production";
+  }
+
+  function readStagingHint() {
+    try {
+      if (document.documentElement.classList.contains("sd-staging")) return true;
+      if (document.getElementById("sdStagingBanner")) return true;
+      if (String(document.title || "").indexOf("STAGING") !== -1) return true;
+    } catch (e) {}
+    return false;
+  }
+
+  function fetchIsStaging() {
+    return fetch("/health", { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { return !!(j && j.isStaging); })
+      .catch(function () { return readStagingHint(); });
+  }
+
   function showWelcome(ms) {
     ms = Number(ms) > 0 ? Number(ms) : 5000;
     return new Promise(function (resolve) {
@@ -31,11 +51,16 @@
       wrap.setAttribute("aria-label", "Welcome to Studio Delta");
       wrap.innerHTML = sMark("sd-s") +
         "<h1>Welcome to Studio Delta</h1>" +
-        "<p>Production</p>" +
+        "<p data-sd-env>" + envLabel(readStagingHint()) + "</p>" +
         '<div class="sd-welcome-rule" aria-hidden="true"></div>';
       document.body.appendChild(wrap);
       var path = wrap.querySelector("path");
       requestAnimationFrame(function () { paintPath(path); });
+      fetchIsStaging().then(function (isStaging) {
+        var label = wrap.querySelector("[data-sd-env]");
+        if (label) label.textContent = envLabel(isStaging);
+        if (isStaging) wrap.classList.add("sd-welcome-staging");
+      });
       setTimeout(function () {
         wrap.classList.add("hide");
         setTimeout(function () {

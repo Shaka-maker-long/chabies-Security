@@ -35,6 +35,9 @@ function sdOfficePageAllowed(profile, page) {
 function sdOfficeProfile() {
   try { return JSON.parse(sessionStorage.getItem("sd-office") || "null"); } catch (e) { return null; }
 }
+function sdFloorProfile() {
+  try { return JSON.parse(sessionStorage.getItem("sd-session") || "null"); } catch (e) { return null; }
+}
 function sdSaveOffice(profile) {
   try { sessionStorage.setItem("sd-office", JSON.stringify(profile)); } catch (e) {}
   try { localStorage.removeItem("sd-office"); } catch (e) {}
@@ -60,7 +63,7 @@ function sdDeviceId() {
   }
 }
 function sdOfficeFetch(url, opts) {
-  const p = sdOfficeProfile() || {};
+  const p = sdOfficeProfile() || sdFloorProfile() || {};
   opts = opts || {};
   opts.credentials = opts.credentials || "same-origin";
   opts.headers = Object.assign({
@@ -190,12 +193,14 @@ function sdEnsureScript(src) {
   });
 }
 function sdLoadBrand() {
-  sdEnsureSheet("/sd-brand.css?v=logged-in-2");
+  sdEnsureSheet("/sd-brand.css?v=committed-banner");
   sdEnsureSheet("/office-shell.css?v=logged-in");
-  return sdEnsureScript("/sd-splash.js?v=erp-shell");
+  return sdEnsureScript("/sd-splash.js?v=committed-banner");
 }
 function sdForgetOffice() {
   sdClearOfficeProfile();
+  try { sessionStorage.removeItem("sd-session"); } catch (e) {}
+  try { localStorage.removeItem("sd-session"); } catch (e) {}
   return fetch("/api/office/logout", { method: "POST", credentials: "same-origin" }).catch(function () {});
 }
 function sdOfficeLogout() {
@@ -347,6 +352,41 @@ function sdShowLogin(message) {
         return;
       }
       if (!j || !j.ok) {
+        const prodOnly = /Production users can only use/i.test(String((j && j.error) || ""));
+        if (prodOnly) {
+          let floor;
+          try {
+            const r2 = await fetch("/api/run", {
+              method: "POST",
+              credentials: "same-origin",
+              headers: { "Content-Type": "application/json", "x-sd-device-id": sdDeviceId() },
+              body: JSON.stringify({
+                fn: "verifyGlobalLogin",
+                args: [body.name, body.password],
+                deviceId: sdDeviceId()
+              })
+            });
+            floor = await r2.json();
+          } catch (err) {
+            showErr("Could not reach Studio Delta. Try again.");
+            return;
+          }
+          const result = floor && floor.result;
+          if (result && result.success) {
+            try { sessionStorage.setItem("sd-session", JSON.stringify(result)); } catch (e) {}
+            try { localStorage.removeItem("sd-session"); } catch (e) {}
+            wrap.remove();
+            if (typeof sdShowWelcome === "function") await sdShowWelcome(5000);
+            resolve(result);
+            return;
+          }
+          if (result && result.pendingDevice) {
+            showErr(result.error || "Correct name and access code — this device is waiting for Manager approval.", true);
+            return;
+          }
+          showErr((result && result.error) || "Login failed. Check your name and access code.");
+          return;
+        }
         if (j && j.pendingDevice) {
           showErr(j.error || "Correct name and access code — this device is waiting for Manager approval.", true);
         } else {
@@ -363,6 +403,102 @@ function sdShowLogin(message) {
       resolve(j);
     };
   });
+}
+async function sdFetchMe(token) {
+  const headers = { "x-sd-device-id": sdDeviceId() };
+  if (token) headers["x-sd-token"] = token;
+  const r = await fetch("/api/office/me", { credentials: "same-origin", headers });
+  return r.json().catch(function () { return {}; });
+}
+function sdMountShopScanShell(profile) {
+  if (document.getElementById("sdSidebar")) {
+    sdApplyNavCollapsed();
+    sdPaintOfficeWho(profile);
+    return;
+  }
+  sdEnsureSheet("/vendor/bootstrap-icons/bootstrap-icons.css");
+  sdEnsureSheet("/office-shell.css?v=logged-in");
+  document.body.classList.add("office-app");
+  const nav = document.createElement("nav");
+  nav.className = "sd-sidebar";
+  nav.id = "sdSidebar";
+  nav.setAttribute("aria-label", "Main navigation");
+  const mark = typeof sdSMark === "function" ? sdSMark() : "";
+  nav.innerHTML =
+    '<div class="sd-sidebar-header">' + mark + '<h5 class="sd-brand-text">STUDIO DELTA</h5></div>' +
+    '<div class="sd-sidebar-scroll">' +
+    '<a class="sd-link" href="/"><i class="bi bi-grid-3x3-gap"></i><span class="sd-link-text">Production Tasks</span></a>' +
+    '<a class="sd-link active" href="/inventory/collect"><i class="bi bi-qr-code-scan"></i><span class="sd-link-text">Scan materials</span></a>' +
+    "</div>" +
+    '<div class="sd-sidebar-footer">' +
+    '<div class="office-who" id="officeWho">' +
+    '<span class="office-who-label">Logged in as</span>' +
+    '<strong class="office-who-name" id="officeWhoName"></strong>' +
+    '<span class="office-who-title" id="officeWhoTitle"></span>' +
+    "</div>" +
+    '<button type="button" class="sd-collapse-btn" id="sdCollapseBtn" title="Hide menu"><i class="bi bi-chevron-left"></i><span class="sd-link-text">Hide menu</span></button>' +
+    '<button type="button" class="sd-logout-btn" id="sdLogoutBtn"><i class="bi bi-box-arrow-right"></i><span class="sd-link-text">Log Out</span></button>' +
+    "</div>";
+  const burger = document.createElement("button");
+  burger.type = "button";
+  burger.className = "sd-nav-burger";
+  burger.id = "sdNavBurger";
+  burger.setAttribute("aria-label", "Open menu");
+  burger.innerHTML = '<i class="bi bi-list"></i>';
+  const backdrop = document.createElement("div");
+  backdrop.className = "sd-backdrop";
+  backdrop.id = "sdBackdrop";
+  document.body.insertBefore(backdrop, document.body.firstChild);
+  document.body.insertBefore(nav, document.body.firstChild);
+  document.body.insertBefore(burger, document.body.firstChild);
+  burger.onclick = () => document.body.classList.toggle("nav-open");
+  backdrop.onclick = () => document.body.classList.remove("nav-open");
+  document.getElementById("sdCollapseBtn").onclick = sdToggleNavCollapsed;
+  document.getElementById("sdLogoutBtn").onclick = sdOfficeLogout;
+  nav.querySelectorAll("a").forEach((a) => {
+    a.addEventListener("click", () => document.body.classList.remove("nav-open"));
+  });
+  sdApplyNavCollapsed();
+  sdPaintOfficeWho(profile);
+}
+async function sdRequireInventory() {
+  await sdLoadBrand();
+  const collect = location.pathname.indexOf("/inventory/collect") === 0;
+  const stored = sdOfficeProfile() || sdFloorProfile() || {};
+  let j = await sdFetchMe(stored.token);
+  let profile = j && j.ok ? Object.assign({}, stored, j.profile) : null;
+  if (!profile) {
+    profile = await sdShowLogin("Log in with your name and access code.");
+    j = await sdFetchMe(profile && profile.token);
+    if (j && j.ok) profile = Object.assign({}, profile, j.profile);
+  }
+  if (!profile || !profile.name) {
+    location.replace("/");
+    return null;
+  }
+  const office = !!(profile.canSeeOffice || profile.isAdmin || sdIsMarketing(profile));
+  if (office) {
+    if (profile.isAdmin) profile.canSeeOffice = true;
+    sdSaveOffice(profile);
+    sdMountOfficeShell("inventory");
+    sdPaintOfficeWho(profile);
+    sdHideDebtorsLinks(!!profile.canSeeDebtors);
+    sdHideUsersLink(!!profile.canManageUsers);
+    sdApplyMarketingLock(profile);
+    sdWarnPersistence();
+    sdBootDrawingPrintAlerts(profile);
+    return profile;
+  }
+  if (sdIsDrawingOwner(profile) && !collect) {
+    location.replace("/");
+    return null;
+  }
+  if (!collect) {
+    location.replace("/inventory/collect");
+    return null;
+  }
+  sdMountShopScanShell(profile);
+  return profile;
 }
 async function sdRequireOffice(page) {
   await sdLoadBrand();

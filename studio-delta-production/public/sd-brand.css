@@ -71,6 +71,10 @@
   opacity: 0;
   animation: sdFadeIn 0.7s 1.9s ease forwards;
 }
+.sd-welcome.sd-welcome-staging p[data-sd-env] {
+  color: #fdba74;
+  letter-spacing: 0.22em;
+}
 @keyframes sdFadeIn {
   to { opacity: 1; }
 }

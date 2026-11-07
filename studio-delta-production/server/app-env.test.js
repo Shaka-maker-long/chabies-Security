@@ -20,7 +20,9 @@ appEnv = require("./app-env");
 assert.strictEqual(appEnv.isStaging(), true);
 assert.strictEqual(appEnv.appEnv(), "staging");
 assert.ok(/STAGING/.test(appEnv.stagingBannerText()));
+assert.ok(/committed/i.test(appEnv.stagingBannerText()), "banner must say updates were committed");
 assert.ok(/Admin/.test(appEnv.stagingBannerText()));
+assert.ok(/QR/i.test(appEnv.stagingBannerText()));
 
 process.env.APP_ENV = "production";
 process.env.STAGING = "1";
@@ -35,5 +37,9 @@ assert.ok(healthJs.indexOf("appEnv") !== -1);
 const pwa = fs.readFileSync(path.join(__dirname, "..", "public", "sd-pwa.js"), "utf8");
 assert.ok(pwa.indexOf("sdStagingBanner") !== -1);
 assert.ok(pwa.indexOf("bootStagingBanner") !== -1);
+
+const splash = fs.readFileSync(path.join(__dirname, "..", "public", "sd-splash.js"), "utf8");
+assert.ok(splash.indexOf("Staging") !== -1);
+assert.ok(splash.indexOf("/health") !== -1);
 
 console.log("app-env.test.js ok");

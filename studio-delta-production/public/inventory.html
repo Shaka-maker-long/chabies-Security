@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Studio Delta — Inventory Management</title>
-  <script src="/sd-pwa.js?v=pwa-driverpin"></script>
+  <script src="/sd-pwa.js?v=pwa-committed-banner"></script>
   <style>
     :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --bad:#b42318; --ok:#027a48; }
     * { box-sizing: border-box; }
@@ -36,6 +36,19 @@
     td.r, th.r { text-align:right; }
     td.actions { white-space:nowrap; }
     td.actions button { padding:6px 8px; font-size:12px; margin:0 2px 2px 0; }
+    .item-table input.cell {
+      width:6.2em; text-align:right; padding:6px 8px; font-size:13px;
+    }
+    .item-table input.cell.wide { width:7.2em; }
+    .item-table .name-btn {
+      all:unset; cursor:pointer; font-weight:600; color:var(--ink);
+      text-align:left; max-width:100%;
+    }
+    .item-table .name-btn:hover { text-decoration:underline; }
+    .item-table tr.saving { opacity:.65; }
+    .item-table tr.just-saved td { background:#ecfdf3; }
+    .sheet .body label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+    .sheet .body input, .sheet .body select { font-size:16px; min-height:44px; }
     .add { display:flex; gap:8px; flex-wrap:wrap; align-items:end; padding:12px 16px; border-top:1px solid var(--line); background:#f8fafc; }
     .add label, .stack label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
     .add input, .add select { min-width:120px; }
@@ -77,6 +90,58 @@
     .sheet.mobile-use button { min-height:48px; font-size:15px; padding:12px 16px; }
     .sheet.mobile-use .foot { position:sticky; bottom:0; background:#fff; padding-bottom:4px; }
     .sheet.mobile-use .foot button[type=submit] { width:100%; }
+    #scanVideo { width:100%; max-height:240px; background:#111; border-radius:10px; display:none; object-fit:cover; }
+    #scanLook { display:none; padding:12px 16px; border-top:1px solid var(--line); }
+    #scanLook.open { display:block; }
+    .scan-go { width:100%; min-height:56px; font-size:18px; }
+    #scanPaste { margin:0 16px 16px; }
+    #scanPaste summary { cursor:pointer; color:var(--muted); font-size:13px; font-weight:600; }
+    #scanCamMask {
+      position:fixed; inset:0; z-index:20000; background:#000;
+      display:none; flex-direction:column;
+    }
+    #scanCamMask.open { display:flex; }
+    body.scan-cam-open { overflow:hidden; }
+    body.scan-cam-open .sd-sidebar,
+    body.scan-cam-open .sd-nav-burger,
+    body.scan-cam-open .sd-backdrop,
+    body.scan-cam-open #sdStagingBanner { visibility:hidden; }
+    #scanCamMask #scanVideo {
+      display:block; flex:1 1 auto; width:100%; height:100%;
+      max-height:none; border-radius:0; object-fit:cover; background:#000;
+    }
+    #scanCamBar {
+      position:absolute; top:0; left:0; right:0; z-index:2;
+      display:flex; justify-content:space-between; align-items:center; gap:12px;
+      padding:12px 16px; padding-top:max(12px, env(safe-area-inset-top));
+      background:linear-gradient(to bottom, rgba(0,0,0,.7), transparent); color:#fff;
+    }
+    #scanCamBar h2 { margin:0; font-size:16px; font-family:Outfit, Inter, sans-serif; }
+    #scanCamBar button { background:rgba(255,255,255,.15); border-color:#fff; color:#fff; }
+    #scanCamFrame {
+      position:absolute; inset:22% 10%; border:2px solid rgba(255,255,255,.9);
+      border-radius:18px; pointer-events:none; box-shadow:0 0 0 9999px rgba(0,0,0,.28);
+    }
+    #scanCamHint {
+      position:absolute; bottom:0; left:0; right:0; z-index:2;
+      padding:20px 16px max(24px, env(safe-area-inset-bottom));
+      color:#fff; text-align:center;
+      background:linear-gradient(to top, rgba(0,0,0,.75), transparent);
+      font-size:15px; font-weight:600;
+    }
+    #scanCamHint.bad { color:#fecaca; }
+    #scanIssueMask { z-index:20010; }
+    #scanIssueItem { margin:0; font-size:20px; font-family:Outfit, Inter, sans-serif; }
+    #scanIssueStock { margin:0; color:var(--muted); font-size:14px; }
+    .scan-lock {
+      display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+      margin:0; padding:10px 0; border-bottom:1px solid var(--line);
+    }
+    .scan-lock span {
+      color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+    }
+    .scan-lock b { font-size:16px; text-align:right; }
+    #scanQty { font-size:22px; min-height:52px; width:100%; }
     .sheet.mobile-use .use-line { grid-template-columns:1fr; }
     .sheet.mobile-use .use-line .use-qty { max-width:none; }
     .sheet.mobile-use .use-line button { width:100%; }
@@ -94,6 +159,15 @@
       .use-line button { width:100%; }
       header .tools #btnLogUsage,
       header .tools #btnCreatePo { flex:1 1 140px; min-height:44px; }
+      .item-table thead { display:none; }
+      .item-table, .item-table tbody, .item-table tr, .item-table td { display:block; width:100%; }
+      .item-table tr { padding:12px; border-bottom:1px solid var(--line); }
+      .item-table td { border:0; padding:6px 0; display:flex; justify-content:space-between; align-items:center; gap:8px; text-align:left; }
+      .item-table td.r { text-align:left; }
+      .item-table td::before { content:attr(data-label); color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; flex:0 0 7.5em; }
+      .item-table td.actions { justify-content:flex-start; flex-wrap:wrap; }
+      .item-table td.actions::before { content:none; }
+      .item-table input.cell { min-height:44px; font-size:16px; width:8em; }
     }
   </style>
 </head>
@@ -104,14 +178,17 @@
       <nav class="tabs" aria-label="Inventory">
         <a id="tab-cons" href="/inventory">Consumables</a>
         <a id="tab-pos" href="/inventory/purchases">Purchase orders</a>
+        <a id="tab-collect" href="/inventory/collect">Collect / scan</a>
+        <a id="tab-take" href="/inventory/stocktake">Stocktake</a>
         <a id="tab-steel" href="/inventory/steel">Steel</a>
         <a id="tab-glass" href="/inventory/glass">Glass</a>
       </nav>
-      <p class="lede" id="lede">Hinges, bullets, screws, stickers, and other hardware. Name, current stock, ordered stock, unit price, ROP, and total value.</p>
+      <p class="lede" id="lede">Hinges, bullets, screws, stickers, and other hardware. Print all 6×6 cm locker QRs at once, or open one from the row. Whole pieces stay whole numbers. Paint and litres can be 0.5.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input class="search" type="search" id="q" placeholder="Search items">
+      <button class="ghost" type="button" id="btnPrintAllQr">Print all QR labels</button>
       <button class="ghost" type="button" id="btnLogUsage">Log usage</button>
       <button type="button" id="btnCreatePo">Create purchase order</button>
       <button class="ghost" type="button" onclick="reloadPage()">Refresh</button>
@@ -127,11 +204,17 @@
     </div>
     <section class="card">
       <h2>On hand</h2>
-      <p class="hint">Name, Current Stock, Ordered Stock, Unit Price, ROP, Total Value.</p>
+      <p class="hint">Change current stock only in <b>Edit</b>. Saving there makes a 6×6 cm QR you can print anytime. Use <b>Print all QR labels</b> for every locker, or <b>Open QR</b> on a row for one sticker. Print at actual size (100%).</p>
       <div id="itemList"><div class="empty">Loading…</div></div>
       <form class="add" id="addForm">
         <label>Item name
           <input id="itemName" required placeholder="e.g. Bullet hinge" autocomplete="off">
+        </label>
+        <label>Counted as
+          <select id="itemKind">
+            <option value="each">Whole pieces (hinges, screws)</option>
+            <option value="measure">Paint / litres (0.5 allowed)</option>
+          </select>
         </label>
         <label>Unit
           <select id="itemUnit"></select>
@@ -163,8 +246,86 @@
     </div>
     <section class="card">
       <h2>Purchase orders</h2>
-      <p class="hint">Create a purchase order from Consumables. Open the PDF, receive when stock arrives, or cancel.</p>
+      <p class="hint">Each PO has two documents you can open anytime: <b>Open PO</b>, and <b>Open QR code</b> (one PDF with every item as a 6×6 cm cut-out). Receive when stock arrives.</p>
       <div id="poList"><div class="empty">Loading…</div></div>
+    </section>
+  </div>
+
+  <div class="page" id="collectPage" hidden>
+    <section class="card">
+      <h2>Scan materials</h2>
+      <p class="hint">Tap Scan. Materials go on the order you are clocked on now. If you are not on a job, start one on Production Tasks first.</p>
+      <div class="add" style="border-top:0">
+        <button type="button" id="btnCam" class="scan-go">Scan</button>
+      </div>
+      <p class="msg" id="scanMsg" style="padding:0 16px 12px"></p>
+      <input id="scanInput" type="hidden" value="">
+    </section>
+  </div>
+
+  <div id="scanCamMask" aria-modal="true" role="dialog" aria-label="Scan locker QR">
+    <div id="scanCamBar">
+      <h2>Scan locker</h2>
+      <button class="ghost" type="button" id="btnCamStop">Close</button>
+    </div>
+    <video id="scanVideo" playsinline webkit-playsinline muted></video>
+    <canvas id="scanCanvas" hidden></canvas>
+    <div id="scanCamFrame" aria-hidden="true"></div>
+    <p id="scanCamHint">Point the camera at the locker sticker.</p>
+  </div>
+
+  <div class="mask" id="scanIssueMask">
+    <div class="sheet mobile-use" role="dialog" aria-modal="true" aria-labelledby="scanIssueTitle">
+      <header>
+        <h1 id="scanIssueTitle">Material found</h1>
+        <div class="tools">
+          <button class="ghost" type="button" id="btnScanAgain">Scan again</button>
+        </div>
+      </header>
+      <form class="body" id="scanIssueForm">
+        <p id="scanIssueItem"></p>
+        <p id="scanIssueStock"></p>
+        <p class="scan-lock" id="scanWorkerLock" hidden>
+          <span>Worker</span>
+          <b id="scanWorkerLabel"></b>
+        </p>
+        <label id="scanWorkerWrap">Worker
+          <select id="scanWorker" required></select>
+        </label>
+        <p class="scan-lock">
+          <span>Order</span>
+          <b id="scanOrderLabel">No running order</b>
+        </p>
+        <input type="hidden" id="scanOrder" value="">
+        <p class="hint" id="scanOrderHint" style="margin:0">Taken from the job you are on now.</p>
+        <label>Quantity
+          <input id="scanQty" inputmode="decimal" value="1" required autocomplete="off">
+        </label>
+        <p class="msg" id="scanIssueMsg"></p>
+        <div class="foot">
+          <button type="submit">Issue to job</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="page" id="takePage" hidden>
+    <div class="kpis">
+      <div class="kpi"><span>Items</span><b id="takeItems">0</b></div>
+      <div class="kpi"><span>With stock</span><b id="takeStocked">0</b></div>
+    </div>
+    <section class="card">
+      <h2>Count existing stock</h2>
+      <p class="hint">Walk the lockers, type what is actually there, then save. Tick items and <b>Open QR labels</b> to print those 6×6 cm stickers, or <b>Print all QR labels</b> for every item. Same codes Collect / scan uses.</p>
+      <div class="add" style="border-top:0">
+        <button class="ghost" type="button" id="btnTakeAll">Tick all</button>
+        <button class="ghost" type="button" id="btnTakeStocked">Tick with stock</button>
+        <button class="ghost" type="button" id="btnTakeNone">Clear ticks</button>
+        <button type="button" id="btnTakeSave">Save counts</button>
+        <button type="button" id="btnTakeQr">Open QR labels</button>
+        <span class="msg" id="takeMsg"></span>
+      </div>
+      <div id="takeList"><div class="empty">Loading…</div></div>
     </section>
   </div>
 
@@ -244,7 +405,49 @@
     </div>
   </div>
 
-  <div class="mask" id="poMask">
+    <div class="mask" id="editMask">
+      <div class="sheet mobile-use" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+        <header>
+          <h1 id="editTitle">Edit item</h1>
+          <div class="tools">
+            <button class="ghost" type="button" onclick="closeEdit()">Cancel</button>
+          </div>
+        </header>
+        <form class="body" id="editForm">
+          <input type="hidden" id="editId">
+          <label>Name
+            <input id="editName" required autocomplete="off">
+          </label>
+          <label>Counted as
+            <select id="editKind">
+              <option value="each">Whole pieces (hinges, screws)</option>
+              <option value="measure">Paint / litres (0.5 allowed)</option>
+            </select>
+          </label>
+          <label>Unit
+            <select id="editUnit"></select>
+          </label>
+          <label>Current stock
+            <input id="editStock" inputmode="decimal">
+          </label>
+          <label>Unit price (R)
+            <input id="editPrice" inputmode="decimal" placeholder="optional">
+          </label>
+          <label>ROP
+            <input id="editRop" inputmode="decimal">
+          </label>
+          <p class="hint" style="margin:0">Saving current stock writes a locker QR you can print anytime from this item.</p>
+          <p class="err" id="editErr"></p>
+          <div class="foot">
+            <button class="danger" type="button" id="editDelete">Delete</button>
+            <button class="ghost" type="button" id="editQr">Open QR / print</button>
+            <button type="submit">Save</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="mask" id="poMask">
     <div class="sheet wide" role="dialog" aria-modal="true" aria-labelledby="poTitle">
       <header>
         <h1 id="poTitle">Create purchase order</h1>
@@ -273,13 +476,17 @@
     </div>
   </div>
 
-  <script src="/office-auth.js?v=login-msg-3"></script>
+  <script src="/office-auth.js?v=scan-floor-1"></script>
   <script>
     let data = { items: [], movements: [], purchases: [], openPurchases: [], units: [], activeOrderNumbers: [], productionWorkers: [] };
+    let shopScanOnly = false;
+    let shopScanName = "";
     let poLineN = 0;
     const pathTab = location.pathname.indexOf("/inventory/purchases") === 0 ? "pos"
-      : (location.pathname.indexOf("/inventory/steel") === 0 ? "steel"
-        : (location.pathname.indexOf("/inventory/glass") === 0 ? "glass" : "cons"));
+      : (location.pathname.indexOf("/inventory/collect") === 0 ? "collect"
+        : (location.pathname.indexOf("/inventory/stocktake") === 0 ? "take"
+          : (location.pathname.indexOf("/inventory/steel") === 0 ? "steel"
+            : (location.pathname.indexOf("/inventory/glass") === 0 ? "glass" : "cons"))));
     const matKind = pathTab === "steel" || pathTab === "glass" ? pathTab : "";
 
     function esc(s) {
@@ -307,23 +514,123 @@
       if (!el) return;
       el.innerHTML = (data.units || ["pcs"]).map((u) => "<option value=\"" + esc(u) + "\">" + esc(u) + "</option>").join("");
     }
-    function fillUseSelects() {
+    function tuneQtyInput(el, integer) {
+      if (!el) return;
+      if (integer) {
+        el.setAttribute("inputmode", "numeric");
+        el.setAttribute("step", "1");
+      } else {
+        el.setAttribute("inputmode", "decimal");
+        el.setAttribute("step", "0.001");
+      }
+    }
+    function rowInteger(row) {
+      return !row || row.integerQty !== false;
+    }
+    function fillJobWorkerSelects(orderId, workerId) {
       const orders = ["General"].concat(data.activeOrderNumbers || []);
-      document.getElementById("useOrder").innerHTML = orders.map((n) =>
-        "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>"
-      ).join("");
+      const orderEl = document.getElementById(orderId);
+      if (orderEl) {
+        orderEl.innerHTML = orders.map((n) =>
+          "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>"
+        ).join("");
+      }
       const workers = data.productionWorkers || [];
-      document.getElementById("useWorker").innerHTML = workers.length
+      const workerEl = document.getElementById(workerId);
+      if (!workerEl) return;
+      workerEl.innerHTML = workers.length
         ? ("<option value=\"\">Choose worker</option>" + workers.map((n) =>
             "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>"
           ).join(""))
         : "<option value=\"\">No production people on Users</option>";
     }
+    function fillUseSelects() {
+      fillJobWorkerSelects("useOrder", "useWorker");
+    }
+    function fillScanSelects() {
+      const workers = data.productionWorkers || [];
+      const workerEl = document.getElementById("scanWorker");
+      if (workerEl && !shopScanOnly) {
+        const current = workerEl.value;
+        workerEl.innerHTML = workers.length
+          ? ("<option value=\"\">Choose worker</option>" + workers.map((n) =>
+              "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>"
+            ).join(""))
+          : "<option value=\"\">No production people on Users</option>";
+        if (current) workerEl.value = current;
+      }
+      lockScanWorker();
+      paintScanJobLock();
+    }
+    function paintScanJobLock() {
+      const running = String(data.runningOrder || "").trim();
+      const orderEl = document.getElementById("scanOrder");
+      const orderLabel = document.getElementById("scanOrderLabel");
+      const hint = document.getElementById("scanOrderHint");
+      const btn = document.getElementById("btnCam");
+      if (orderEl) orderEl.value = running;
+      if (orderLabel) orderLabel.textContent = running || "No running order";
+      if (hint) {
+        hint.textContent = running
+          ? ("Goes to " + running + " — the job you are on now.")
+          : "Start an order on Production Tasks first. You cannot take materials without a running job.";
+      }
+      if (btn && shopScanOnly) btn.disabled = !running;
+      if (shopScanOnly) {
+        setMsg("scanMsg", running ? "" : "Start an order on Production Tasks first. You cannot take materials without a running job.", !running);
+      }
+    }
+    async function loadScanContext(worker) {
+      const q = worker ? ("?worker=" + encodeURIComponent(worker)) : "";
+      const r = await sdOfficeFetch("/api/office/consumables/scan-context" + q);
+      const j = await r.json();
+      if (!j.ok) return j;
+      data.runningOrder = j.runningOrder || "";
+      data.runningOrders = j.runningOrders || [];
+      if (j.productionWorkers) data.productionWorkers = j.productionWorkers;
+      paintScanJobLock();
+      return j;
+    }
+    function lockScanWorker() {
+      const wrap = document.getElementById("scanWorkerWrap");
+      const lock = document.getElementById("scanWorkerLock");
+      const label = document.getElementById("scanWorkerLabel");
+      if (wrap) wrap.hidden = !!shopScanOnly;
+      if (lock) lock.hidden = !shopScanOnly;
+      if (!shopScanOnly) return;
+      const workerEl = document.getElementById("scanWorker");
+      const name = shopScanName;
+      if (label) label.textContent = name || "—";
+      if (!workerEl) return;
+      if (name) {
+        workerEl.innerHTML = "<option value=\"" + esc(name) + "\">" + esc(name) + "</option>";
+        workerEl.value = name;
+      }
+      workerEl.disabled = true;
+      workerEl.removeAttribute("required");
+    }
+    function applyShopScanChrome(profile) {
+      shopScanOnly = true;
+      shopScanName = String((profile && profile.name) || "").trim();
+      const title = document.querySelector("header h1");
+      if (title) title.textContent = "Scan materials";
+      document.title = "Studio Delta — Scan materials";
+      const lede = document.getElementById("lede");
+      if (lede) lede.textContent = "Scan lockers onto the order you are clocked on. Start a job first if nothing is running.";
+      ["tab-cons", "tab-pos", "tab-take", "tab-steel", "tab-glass", "btnLogUsage", "btnCreatePo", "btnPrintAllQr", "q"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = true;
+      });
+      const collect = document.getElementById("tab-collect");
+      if (collect) collect.classList.add("on");
+      const workerWrap = document.getElementById("scanWorkerWrap");
+      if (workerWrap) workerWrap.hidden = true;
+    }
     function addUseLine(selected) {
       const wrap = document.createElement("div");
       wrap.className = "use-line";
       wrap.innerHTML = "<label>Item<select class='use-item' required>" + itemOptions(selected || "") + "</select></label>" +
-        "<label class='use-qty'>Quantity<input class='use-qty-input' inputmode='decimal' required placeholder='Qty'></label>" +
+        "<label class='use-qty'>Quantity<input class='use-qty-input' inputmode='numeric' step='1' required placeholder='Qty'></label>" +
         "<button class='ghost' type='button' aria-label='Remove item'>Remove</button>";
       wrap.querySelector("button").onclick = () => {
         const host = document.getElementById("useLines");
@@ -334,6 +641,14 @@
         }
         wrap.remove();
       };
+      const sel = wrap.querySelector(".use-item");
+      const qty = wrap.querySelector(".use-qty-input");
+      const syncUseQty = () => {
+        const row = (data.items || []).find((item) => item.id === sel.value);
+        tuneQtyInput(qty, rowInteger(row));
+      };
+      sel.onchange = syncUseQty;
+      syncUseQty();
       document.getElementById("useLines").appendChild(wrap);
       return wrap;
     }
@@ -352,26 +667,34 @@
         box.innerHTML = '<div class="empty">No items match that search.</div>';
         return;
       }
-      box.innerHTML = "<table><thead><tr>" +
+      box.innerHTML = "<table class='item-table'><thead><tr>" +
         "<th>Name</th><th class='r'>Current Stock</th><th class='r'>Ordered Stock</th>" +
         "<th class='r'>Unit Price</th><th class='r'>ROP</th><th class='r'>Total Value</th><th></th>" +
         "</tr></thead><tbody>" +
-        rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\"><td>" + esc(row.name) +
-          "</td><td class='r'>" + esc(row.stockLabel) +
-          "</td><td class='r'>" + esc(row.orderedLabel) +
-          "</td><td class='r'>" + esc(row.priceLabel) +
-          "</td><td class='r'>" + esc(row.ropLabel) +
-          "</td><td class='r'>" + esc(row.totalValueLabel) +
-          "</td><td class='actions'>" +
-          "<button class='ghost' type='button' data-use=\"" + esc(row.id) + "\">Use</button>" +
+        rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-id=\"" + esc(row.id) + "\">" +
+          "<td data-label='Name'><button class='name-btn' type='button' data-edit=\"" + esc(row.id) + "\">" + esc(row.name) + "</button></td>" +
+          "<td class='r' data-label='Current Stock' data-f='stock'>" + esc(row.stockLabel) + "</td>" +
+          "<td class='r' data-label='Ordered Stock' data-f='ordered'>" + esc(row.orderedLabel) + "</td>" +
+          "<td class='r' data-label='Unit Price'><input class='cell wide' data-f='price' inputmode='decimal' placeholder='—' value=\"" + (row.unitPrice == null ? "" : esc(String(row.unitPrice))) + "\"></td>" +
+          "<td class='r' data-label='ROP'><input class='cell' data-f='rop' inputmode='decimal' value=\"" + esc(row.ropLabel) + "\"></td>" +
+          "<td class='r' data-label='Value' data-f='value'>" + esc(row.totalValueLabel) + "</td>" +
+          "<td class='actions' data-label=''>" +
           "<button class='ghost' type='button' data-edit=\"" + esc(row.id) + "\">Edit</button>" +
-          "<button class='danger' type='button' data-del=\"" + esc(row.id) + "\">Delete</button>" +
+          "<button type='button' data-qr=\"" + esc(row.qrPdfUrl || "") + "\">Open QR</button>" +
           "</td></tr>").join("") + "</tbody></table>";
-      box.querySelectorAll("[data-use]").forEach((btn) => {
-        btn.onclick = () => openUse(btn.getAttribute("data-use"));
+      box.querySelectorAll("[data-edit]").forEach((btn) => { btn.onclick = () => openEdit(btn.getAttribute("data-edit")); });
+      box.querySelectorAll("[data-qr]").forEach((btn) => {
+        btn.onclick = () => {
+          const url = btn.getAttribute("data-qr");
+          if (url) window.open(url, "_blank", "noopener");
+        };
       });
-      box.querySelectorAll("[data-edit]").forEach((btn) => { btn.onclick = () => editMin(btn.getAttribute("data-edit")); });
-      box.querySelectorAll("[data-del]").forEach((btn) => { btn.onclick = () => removeItem(btn.getAttribute("data-del")); });
+      box.querySelectorAll("input.cell").forEach((inp) => {
+        inp.addEventListener("change", () => saveRowFields(inp.closest("tr")));
+        inp.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+        });
+      });
     }
     function renderMoves() {
       const rows = data.movements || [];
@@ -412,13 +735,14 @@
             "</td><td>" + lines + "</td><td class='r'>" + esc(po.totalValueLabel) +
             "</td><td><span class='pill " + pill + "'>" + esc(po.status) + "</span></td>" +
             "<td class='actions'>" +
-            (po.pdfUrl ? "<button class='ghost' type='button' data-pdf=\"" + esc(po.pdfUrl) + "\">Open PDF</button>" : "") +
+            (po.pdfUrl ? "<button class='ghost' type='button' data-open=\"" + esc(po.pdfUrl) + "\">Open PO</button>" : "") +
+            (po.qrPdfUrl ? "<button type='button' data-open=\"" + esc(po.qrPdfUrl) + "\">Open QR code</button>" : "") +
             (po.status === "Ordered" ? "<button type='button' data-recv-po=\"" + esc(po.id) + "\">Receive</button>" +
               "<button class='danger' type='button' data-cancel-po=\"" + esc(po.id) + "\">Cancel</button>" : "") +
             "</td></tr>";
         }).join("") + "</tbody></table>";
-      box.querySelectorAll("[data-pdf]").forEach((btn) => {
-        btn.onclick = () => window.open(btn.getAttribute("data-pdf"), "_blank", "noopener");
+      box.querySelectorAll("[data-open]").forEach((btn) => {
+        btn.onclick = () => window.open(btn.getAttribute("data-open"), "_blank", "noopener");
       });
       box.querySelectorAll("[data-recv-po]").forEach((btn) => { btn.onclick = () => receivePo(btn.getAttribute("data-recv-po")); });
       box.querySelectorAll("[data-cancel-po]").forEach((btn) => { btn.onclick = () => cancelPo(btn.getAttribute("data-cancel-po")); });
@@ -434,18 +758,35 @@
       document.getElementById("poLines").appendChild(wrap);
     }
     function applySnapshot(j) {
+      if (shopScanOnly) {
+        data.productionWorkers = j.productionWorkers || data.productionWorkers || [];
+        data.runningOrder = j.runningOrder || "";
+        data.runningOrders = j.runningOrders || [];
+        fillScanSelects();
+        return;
+      }
       data = j;
       document.getElementById("kpiItems").textContent = String(j.itemCount || 0);
       document.getElementById("kpiLow").textContent = String(j.lowCount || 0);
       document.getElementById("kpiPo").textContent = String(j.openPurchaseCount || 0);
       document.getElementById("kpiValue").textContent = j.totalValueLabel || "R 0.00";
       fillUnits();
+      fillScanSelects();
       renderItems();
       renderMoves();
       renderPurchases();
+      renderStocktake();
     }
     async function load() {
       setMsg("status", "Loading…");
+      if (shopScanOnly) {
+        const r = await sdOfficeFetch("/api/office/consumables/scan-context");
+        const j = await r.json();
+        if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
+        applySnapshot(j);
+        setMsg("status", shopScanName ? ("Collecting as " + shopScanName) : "");
+        return;
+      }
       const r = await sdOfficeFetch("/api/office/consumables");
       const j = await r.json();
       if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
@@ -476,22 +817,119 @@
     }
     window.closeUse = closeUse;
     window.closePo = closePo;
-    async function editMin(id) {
+    function closeEdit() {
+      document.getElementById("editMask").classList.remove("open");
+    }
+    window.closeEdit = closeEdit;
+    function fillEditUnits(selected) {
+      const el = document.getElementById("editUnit");
+      el.innerHTML = (data.units || ["pcs"]).map((u) =>
+        "<option value=\"" + esc(u) + "\"" + (u === selected ? " selected" : "") + ">" + esc(u) + "</option>"
+      ).join("");
+    }
+    function openEdit(id) {
       const row = (data.items || []).find((item) => item.id === id);
       if (!row) return;
-      const next = window.prompt("ROP (reorder point) for " + row.name, String(row.minThreshold));
-      if (next == null) return;
-      const price = window.prompt("Unit price in Rand for " + row.name + " (leave blank for none)", row.unitPrice == null ? "" : String(row.unitPrice));
-      if (price == null) return;
+      document.getElementById("editId").value = row.id;
+      document.getElementById("editName").value = row.name;
+      fillEditUnits(row.unit);
+      document.getElementById("editKind").value = row.qtyKind === "measure" ? "measure" : "each";
+      document.getElementById("editStock").value = row.stockLabel;
+      tuneQtyInput(document.getElementById("editStock"), rowInteger(row));
+      document.getElementById("editPrice").value = row.unitPrice == null ? "" : String(row.unitPrice);
+      document.getElementById("editRop").value = row.ropLabel;
+      document.getElementById("editErr").textContent = "";
+      document.getElementById("editMask").classList.add("open");
+      document.getElementById("editName").focus();
+    }
+    function patchFromSnapshot(j) {
+      data = j;
+      document.getElementById("kpiItems").textContent = String(j.itemCount || 0);
+      document.getElementById("kpiLow").textContent = String(j.lowCount || 0);
+      document.getElementById("kpiPo").textContent = String(j.openPurchaseCount || 0);
+      document.getElementById("kpiValue").textContent = j.totalValueLabel || "R 0.00";
+    }
+    async function saveRowFields(tr) {
+      if (!tr) return;
+      const id = tr.getAttribute("data-id");
+      const row = (data.items || []).find((item) => item.id === id);
+      if (!row) return;
+      const price = tr.querySelector("[data-f=price]").value;
+      const rop = tr.querySelector("[data-f=rop]").value;
+      tr.classList.add("saving");
       const r = await sdOfficeFetch("/api/office/consumables", {
         method: "POST",
-        body: JSON.stringify({ id: row.id, name: row.name, unit: row.unit, minThreshold: next, unitPrice: price })
+        body: JSON.stringify({
+          id: row.id,
+          name: row.name,
+          unit: row.unit,
+          qtyKind: row.qtyKind,
+          minThreshold: rop,
+          unitPrice: price,
+          note: "Edited on list"
+        })
       });
       const j = await r.json();
+      tr.classList.remove("saving");
       if (!j.ok) { setMsg("status", j.error || "Could not save", true); return; }
-      applySnapshot(j);
-      setMsg("status", "Updated " + row.name + ".");
+      patchFromSnapshot(j);
+      const next = (j.items || []).find((item) => item.id === id) || j.item;
+      if (next) {
+        tr.classList.toggle("low-box", !!next.low);
+        const stockCell = tr.querySelector("[data-f=stock]");
+        if (stockCell) stockCell.textContent = next.stockLabel;
+        tr.querySelector("[data-f=price]").value = next.unitPrice == null ? "" : String(next.unitPrice);
+        tr.querySelector("[data-f=rop]").value = next.ropLabel;
+        tr.querySelector("[data-f=value]").textContent = next.totalValueLabel;
+        tr.querySelector("[data-f=ordered]").textContent = next.orderedLabel;
+        tr.querySelector(".name-btn").textContent = next.name;
+        tr.classList.add("just-saved");
+        setTimeout(() => tr.classList.remove("just-saved"), 800);
+      }
+      setMsg("status", "Saved " + ((next && next.name) || row.name) + ".");
     }
+    document.getElementById("editForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("editId").value;
+      const err = document.getElementById("editErr");
+      err.textContent = "";
+      const r = await sdOfficeFetch("/api/office/consumables", {
+        method: "POST",
+        body: JSON.stringify({
+          id,
+          name: document.getElementById("editName").value,
+          unit: document.getElementById("editUnit").value,
+          qtyKind: document.getElementById("editKind").value,
+          stock: document.getElementById("editStock").value,
+          minThreshold: document.getElementById("editRop").value,
+          unitPrice: document.getElementById("editPrice").value,
+          note: "Edited on list"
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
+      closeEdit();
+      applySnapshot(j);
+      const name = (j.item && j.item.name) || "item";
+      setMsg("status", "Saved " + name + ". QR label is ready to print.");
+      if (j.qrUrl || (j.item && j.item.qrPdfUrl)) {
+        window.open(j.qrUrl || j.item.qrPdfUrl, "_blank", "noopener");
+      }
+    };
+    document.getElementById("editQr").onclick = () => {
+      const id = document.getElementById("editId").value;
+      const row = (data.items || []).find((item) => item.id === id);
+      const url = row && row.qrPdfUrl;
+      if (url) window.open(url, "_blank", "noopener");
+    };
+    document.getElementById("editDelete").onclick = () => {
+      const id = document.getElementById("editId").value;
+      closeEdit();
+      removeItem(id);
+    };
+    document.getElementById("editMask").addEventListener("click", (e) => {
+      if (e.target.id === "editMask") closeEdit();
+    });
     async function removeItem(id) {
       const row = (data.items || []).find((item) => item.id === id);
       if (!row) return;
@@ -520,11 +958,33 @@
     }
     document.getElementById("btnLogUsage").onclick = () => openUse("");
     document.getElementById("btnCreatePo").onclick = () => openPo();
+    document.getElementById("btnPrintAllQr").onclick = () => printAllQrLabels();
+    async function printAllQrLabels() {
+      const msgId = pathTab === "take" ? "takeMsg" : "status";
+      setMsg(msgId, "Building every locker QR…");
+      const r = await sdOfficeFetch("/api/office/consumables/stocktake/qr-labels.pdf", {
+        method: "POST",
+        body: JSON.stringify({ all: true })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg(msgId, j.error || "Could not print", true); return; }
+      setMsg(msgId, "QR labels for all " + (j.count || 0) + " items. Print at actual size (100%).");
+      window.open(j.url || "/api/office/consumables/stocktake/qr-labels.pdf", "_blank", "noopener");
+    }
     document.getElementById("addPoLine").onclick = () => addPoLine("");
     document.getElementById("addUseLine").onclick = () => addUseLine("");
     document.getElementById("useMask").addEventListener("click", (e) => { if (e.target.id === "useMask") closeUse(); });
     document.getElementById("poMask").addEventListener("click", (e) => { if (e.target.id === "poMask") closePo(); });
 
+    function syncKindUnit(kindId, unitId, stockId) {
+      const kind = document.getElementById(kindId).value;
+      const unit = document.getElementById(unitId);
+      if (kind === "measure" && (unit.value === "pcs" || !unit.value)) unit.value = "ℓ";
+      if (kind === "each" && (unit.value === "ℓ" || unit.value === "mℓ")) unit.value = "pcs";
+      tuneQtyInput(document.getElementById(stockId), kind !== "measure");
+    }
+    document.getElementById("itemKind").onchange = () => syncKindUnit("itemKind", "itemUnit", "itemOpen");
+    document.getElementById("editKind").onchange = () => syncKindUnit("editKind", "editUnit", "editStock");
     document.getElementById("addForm").onsubmit = async (e) => {
       e.preventDefault();
       setMsg("addMsg", "Saving…");
@@ -533,6 +993,7 @@
         body: JSON.stringify({
           name: document.getElementById("itemName").value,
           unit: document.getElementById("itemUnit").value,
+          qtyKind: document.getElementById("itemKind").value,
           minThreshold: document.getElementById("itemMin").value,
           unitPrice: document.getElementById("itemPrice").value,
           openingStock: document.getElementById("itemOpen").value
@@ -598,26 +1059,36 @@
       if (!j.ok) { err.textContent = j.error || "Could not save"; return; }
       closePo();
       applySnapshot(j);
-      setMsg("status", "Purchase order " + ((j.purchase && j.purchase.number) || "") + " created.");
-      if (j.purchase && j.purchase.pdfUrl) {
-        window.open(j.purchase.pdfUrl, "_blank", "noopener");
-      }
+      setMsg("status", "Purchase order " + ((j.purchase && j.purchase.number) || "") + " created — Open PO or Open QR code anytime.");
       if (pathTab !== "pos") location.href = "/inventory/purchases";
     };
 
     document.getElementById("tab-cons").classList.toggle("on", pathTab === "cons");
     document.getElementById("tab-pos").classList.toggle("on", pathTab === "pos");
+    document.getElementById("tab-collect").classList.toggle("on", pathTab === "collect");
+    document.getElementById("tab-take").classList.toggle("on", pathTab === "take");
     document.getElementById("tab-steel").classList.toggle("on", pathTab === "steel");
     document.getElementById("tab-glass").classList.toggle("on", pathTab === "glass");
     document.getElementById("consPage").hidden = pathTab !== "cons";
     document.getElementById("poPage").hidden = pathTab !== "pos";
+    document.getElementById("collectPage").hidden = pathTab !== "collect";
+    document.getElementById("takePage").hidden = pathTab !== "take";
     document.getElementById("matPage").hidden = !matKind;
     document.getElementById("btnLogUsage").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
     document.getElementById("btnCreatePo").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
+    document.getElementById("btnPrintAllQr").style.display = (pathTab === "cons" || pathTab === "take") ? "" : "none";
+    document.getElementById("q").style.display = pathTab === "collect" ? "none" : "";
 
     if (pathTab === "pos") {
-      document.getElementById("lede").textContent = "Consumables purchase orders. Open the PDF, receive stock when the order arrives, or cancel.";
+      document.getElementById("lede").textContent = "Consumables purchase orders. Open PO, or Open QR code (all 6×6 cm labels on one PDF). Receive stock when the order arrives, or cancel.";
       document.getElementById("q").placeholder = "Search purchase orders";
+    }
+    if (pathTab === "collect") {
+      document.getElementById("lede").textContent = "Scan a locker QR from a stocktake or PO label. Choose the worker and job, type the quantity, and issue — live consumables stock drops.";
+    }
+    if (pathTab === "take") {
+      document.getElementById("lede").textContent = "Count what is on the locker, save, then print QR stickers for those items.";
+      document.getElementById("q").placeholder = "Search items";
     }
     if (pathTab === "steel") {
       document.getElementById("lede").textContent = "Steel stock in buy units: lengths (6 m) for tubes/bars/angle, sheets for plates. Click a row to edit name, unit, current stock, unit price, ROP, and total used. WIP Qty and Value come from Steel_Usage on orders that are not Delivered.";
@@ -760,15 +1231,321 @@
     document.getElementById("q").oninput = () => {
       if (matKind) renderMat();
       else if (pathTab === "pos") renderPurchases();
+      else if (pathTab === "take") filterStocktake();
       else renderItems();
+    };
+    function takeRows() {
+      return Array.from(document.querySelectorAll("#takeList tbody tr"));
+    }
+    function selectedTakeIds() {
+      return takeRows().filter((tr) => tr.querySelector(".take-on") && tr.querySelector(".take-on").checked)
+        .map((tr) => tr.getAttribute("data-id")).filter(Boolean);
+    }
+    function filterStocktake() {
+      const needle = q();
+      takeRows().forEach((tr) => {
+        const name = String(tr.getAttribute("data-name") || "");
+        tr.style.display = !needle || name.indexOf(needle) !== -1 ? "" : "none";
+      });
+    }
+    function renderStocktake() {
+      const box = document.getElementById("takeList");
+      if (!box) return;
+      const rows = data.items || [];
+      const stocked = rows.filter((row) => (Number(row.stock) || 0) > 0).length;
+      document.getElementById("takeItems").textContent = String(rows.length);
+      document.getElementById("takeStocked").textContent = String(stocked);
+      if (!rows.length) {
+        box.innerHTML = '<div class="empty">No consumables yet.</div>';
+        return;
+      }
+      box.innerHTML = "<table><thead><tr><th></th><th>Name</th><th class='r'>System</th><th class='r'>Counted</th></tr></thead><tbody>" +
+        rows.map((row) => {
+          const has = (Number(row.stock) || 0) > 0;
+          return "<tr data-id=\"" + esc(row.id) + "\" data-name=\"" + esc(String(row.name || "").toLowerCase()) + "\">" +
+            "<td><input class='take-on' type='checkbox'" + (has ? " checked" : "") + "></td>" +
+            "<td>" + esc(row.name) + "</td>" +
+            "<td class='r'>" + esc(row.stockLabel) + " " + esc(row.unit) + "</td>" +
+            "<td class='r'><input class='take-qty' inputmode='" + (row.integerQty === false ? "decimal" : "numeric") + "' step='" + (row.integerQty === false ? "0.001" : "1") + "' value=\"" + esc(row.stockLabel) + "\" style='width:7em;text-align:right'></td></tr>";
+        }).join("") + "</tbody></table>";
+      filterStocktake();
+    }
+    function setTakeTicks(mode) {
+      takeRows().forEach((tr) => {
+        const box = tr.querySelector(".take-on");
+        if (!box) return;
+        if (mode === "all") box.checked = true;
+        else if (mode === "none") box.checked = false;
+        else {
+          const stock = Number((tr.querySelector(".take-qty") || {}).value);
+          box.checked = stock > 0;
+        }
+      });
+    }
+    document.getElementById("btnTakeAll").onclick = () => setTakeTicks("all");
+    document.getElementById("btnTakeNone").onclick = () => setTakeTicks("none");
+    document.getElementById("btnTakeStocked").onclick = () => setTakeTicks("stocked");
+    document.getElementById("btnTakeSave").onclick = async () => {
+      const lines = takeRows().filter((tr) => tr.querySelector(".take-on").checked).map((tr) => ({
+        itemId: tr.getAttribute("data-id"),
+        stock: tr.querySelector(".take-qty").value
+      }));
+      if (!lines.length) { setMsg("takeMsg", "Tick the items you counted.", true); return; }
+      setMsg("takeMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/consumables/stocktake", {
+        method: "POST",
+        body: JSON.stringify({ lines, note: "Stocktake" })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("takeMsg", j.error || "Could not save", true); return; }
+      applySnapshot(j);
+      setMsg("takeMsg", "Updated " + (j.changed || 0) + " of " + (j.counted || 0) + " counted lines.");
+    };
+    document.getElementById("btnTakeQr").onclick = async () => {
+      const itemIds = selectedTakeIds();
+      if (!itemIds.length) { setMsg("takeMsg", "Tick items to print QR stickers for.", true); return; }
+      setMsg("takeMsg", "Building QR labels…");
+      const r = await sdOfficeFetch("/api/office/consumables/stocktake/qr-labels.pdf", {
+        method: "POST",
+        body: JSON.stringify({ itemIds })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("takeMsg", j.error || "Could not print", true); return; }
+      setMsg("takeMsg", "QR labels for " + (j.count || itemIds.length) + " items.");
+      window.open(j.url || "/api/office/consumables/stocktake/qr-labels.pdf", "_blank", "noopener");
+    };
+    let lookedUp = null;
+    let scanStream = null;
+    let scanTimer = null;
+    let scanBusy = false;
+    let lastBadQr = "";
+    let lastScanOrder = "";
+    function setCamHint(text, bad) {
+      const el = document.getElementById("scanCamHint");
+      if (!el) return;
+      el.textContent = text || "Point the camera at the locker sticker.";
+      el.classList.toggle("bad", !!bad);
+    }
+    async function openScanIssue() {
+      const worker = document.getElementById("scanWorker").value || shopScanName;
+      await loadScanContext(worker);
+      fillScanSelects();
+      document.getElementById("scanIssueMask").classList.add("open");
+      const running = String(data.runningOrder || "").trim();
+      const issueBtn = document.querySelector("#scanIssueForm button[type=submit]");
+      if (issueBtn) issueBtn.disabled = !running;
+      if (!running) {
+        setMsg("scanIssueMsg", "Start an order on Production Tasks first. You cannot take materials without a running job.", true);
+      }
+      const qty = document.getElementById("scanQty");
+      if (qty) {
+        qty.value = "1";
+        if (running) qty.focus();
+      }
+    }
+    function closeScanIssue() {
+      document.getElementById("scanIssueMask").classList.remove("open");
+    }
+    function stopScanCam() {
+      if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+      if (scanStream) {
+        scanStream.getTracks().forEach((t) => t.stop());
+        scanStream = null;
+      }
+      const vid = document.getElementById("scanVideo");
+      if (vid) vid.srcObject = null;
+      const mask = document.getElementById("scanCamMask");
+      if (mask) mask.classList.remove("open");
+      document.body.classList.remove("scan-cam-open");
+    }
+    function loadJsQr() {
+      if (typeof window.jsQR === "function") return Promise.resolve();
+      return new Promise(function (resolve, reject) {
+        const s = document.createElement("script");
+        s.src = "/vendor/jsqr/jsQR.js";
+        s.onload = function () {
+          if (typeof window.jsQR === "function") resolve();
+          else reject(new Error("Scanner library missing"));
+        };
+        s.onerror = function () { reject(new Error("Could not load scanner")); };
+        document.head.appendChild(s);
+      });
+    }
+    async function onDecodedQr(raw) {
+      raw = String(raw || "").trim();
+      if (!raw || scanBusy) return;
+      if (raw === lastBadQr) return;
+      if (lookedUp && (raw === lookedUp.qr || raw === lookedUp.id) && document.getElementById("scanIssueMask").classList.contains("open")) return;
+      scanBusy = true;
+      try {
+        document.getElementById("scanInput").value = raw;
+        await lookupScan(raw);
+      } finally {
+        scanBusy = false;
+      }
+    }
+    function grabScanFrame(vid) {
+      const w = vid.videoWidth || 0;
+      const h = vid.videoHeight || 0;
+      if (!w || !h) return null;
+      const canvas = document.getElementById("scanCanvas");
+      if (!canvas) return null;
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(vid, 0, 0, w, h);
+      return ctx.getImageData(0, 0, w, h);
+    }
+    function cameraErrorMessage(err) {
+      const name = String((err && err.name) || "");
+      const msg = String((err && err.message) || err || "").toLowerCase();
+      if (name === "NotAllowedError" || /permission|denied|notallowed/i.test(msg)) {
+        return "Camera was blocked. Allow camera for this site, then tap Scan again.";
+      }
+      if (name === "NotFoundError" || /not found|no device/i.test(msg)) {
+        return "No camera found on this device. Paste the QR text instead.";
+      }
+      if (!window.isSecureContext) {
+        return "Camera scan needs https. Open the staging site, then try again.";
+      }
+      return "Could not open the camera. Paste the QR text instead.";
+    }
+    function paintFoundItem(item) {
+      document.getElementById("scanIssueItem").textContent = item.name || "";
+      document.getElementById("scanIssueStock").textContent =
+        (item.stockLabel || "0") + " " + (item.unit || "") + " on hand" +
+        (item.integerQty === false ? " · litres OK" : " · whole pieces");
+    }
+    async function lookupScan(code) {
+      const raw = String(code || document.getElementById("scanInput").value || "").trim();
+      const camOpen = document.getElementById("scanCamMask").classList.contains("open");
+      if (camOpen) setCamHint("Looking up…", false);
+      else setMsg("scanMsg", "Looking up…");
+      setMsg("scanIssueMsg", "");
+      const r = await sdOfficeFetch("/api/office/consumables/lookup?qr=" + encodeURIComponent(raw));
+      const j = await r.json();
+      if (!j.ok || !j.item) {
+        lookedUp = null;
+        lastBadQr = raw;
+        const err = (j && j.error) || "No match";
+        if (camOpen) setCamHint(err, true);
+        else setMsg("scanMsg", err, true);
+        return;
+      }
+      lastBadQr = "";
+      lookedUp = j.item;
+      document.getElementById("scanInput").value = j.item.qr || raw;
+      paintFoundItem(j.item);
+      tuneQtyInput(document.getElementById("scanQty"), rowInteger(j.item));
+      stopScanCam();
+      setMsg("scanMsg", "");
+      await openScanIssue();
+    }
+    async function startScanCam() {
+      closeScanIssue();
+      stopScanCam();
+      if (shopScanOnly) {
+        await loadScanContext(shopScanName);
+        if (!data.runningOrder) {
+          setMsg("scanMsg", "Start an order on Production Tasks first. You cannot take materials without a running job.", true);
+          return;
+        }
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setMsg("scanMsg", "This phone cannot open the camera here. Open Chrome or Safari on the staging site, or paste the QR text.", true);
+        return;
+      }
+      setMsg("scanMsg", "");
+      document.getElementById("scanCamMask").classList.add("open");
+      document.body.classList.add("scan-cam-open");
+      setCamHint("Opening camera…", false);
+      try {
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: { facingMode: { ideal: "environment" } }
+          });
+        } catch (first) {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+        }
+        scanStream = stream;
+        const vid = document.getElementById("scanVideo");
+        vid.setAttribute("playsinline", "true");
+        vid.setAttribute("webkit-playsinline", "true");
+        vid.muted = true;
+        vid.srcObject = stream;
+        await vid.play();
+        let detector = null;
+        if (window.BarcodeDetector) {
+          try { detector = new window.BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { detector = null; }
+        }
+        if (!detector) await loadJsQr();
+        scanTimer = setInterval(async () => {
+          try {
+            if (detector) {
+              const codes = await detector.detect(vid);
+              const raw = codes && codes[0] && codes[0].rawValue;
+              if (raw) await onDecodedQr(raw);
+              return;
+            }
+            const frame = grabScanFrame(vid);
+            if (!frame || typeof window.jsQR !== "function") return;
+            const code = window.jsQR(frame.data, frame.width, frame.height, { inversionAttempts: "attemptBoth" });
+            if (code && code.data) await onDecodedQr(code.data);
+          } catch (e) {}
+        }, 350);
+        setCamHint("Point the camera at the locker sticker.", false);
+      } catch (e) {
+        stopScanCam();
+        setMsg("scanMsg", cameraErrorMessage(e), true);
+      }
+    }
+    document.getElementById("scanWorker").addEventListener("change", function () {
+      loadScanContext(document.getElementById("scanWorker").value);
+    });
+    document.getElementById("btnCam").onclick = () => startScanCam();
+    document.getElementById("btnCamStop").onclick = () => stopScanCam();
+    document.getElementById("btnScanAgain").onclick = () => startScanCam();
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (document.getElementById("scanCamMask").classList.contains("open")) stopScanCam();
+      else if (document.getElementById("scanIssueMask").classList.contains("open")) closeScanIssue();
+    });
+    document.getElementById("scanIssueForm").onsubmit = async (e) => {
+      e.preventDefault();
+      if (!lookedUp) { setMsg("scanIssueMsg", "Scan a locker first.", true); return; }
+      const worker = document.getElementById("scanWorker").value;
+      const orderNumber = document.getElementById("scanOrder").value;
+      if (!shopScanOnly && !worker) { setMsg("scanIssueMsg", "Choose the worker.", true); return; }
+      if (!orderNumber) { setMsg("scanIssueMsg", "Start an order on Production Tasks first. You cannot take materials without a running job.", true); return; }
+      setMsg("scanIssueMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/consumables/scan", {
+        method: "POST",
+        body: JSON.stringify({
+          qr: lookedUp.qr,
+          qty: document.getElementById("scanQty").value,
+          worker,
+          orderNumber
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("scanIssueMsg", j.error || "Could not issue", true); return; }
+      lastScanOrder = orderNumber;
+      applySnapshot(j);
+      lookedUp = j.item || lookedUp;
+      if (j.item) paintFoundItem(j.item);
+      setMsg("scanIssueMsg", "Issued to " + orderNumber + ". Scan again for the next locker.");
+      document.getElementById("scanQty").value = "1";
     };
     function reloadPage() {
       if (matKind) loadMat();
       else load();
     }
     window.reloadPage = reloadPage;
-    sdRequireOffice("inventory").then((p) => {
+    sdRequireInventory().then((p) => {
       if (!p) return;
+      if (!p.canSeeOffice && !p.isAdmin) applyShopScanChrome(p);
       if (matKind) loadMat();
       else load();
     });

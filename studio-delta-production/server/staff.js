@@ -406,6 +406,28 @@ function seedLocalAdminIfEmpty() {
   return true;
 }
 
+/**
+ * Staging only: keep Admin / LOCAL_ADMIN_CODE (default admin) working even when
+ * the volume was duplicated from production with other users.
+ * Never runs on production.
+ */
+function ensureStagingAdmin() {
+  let staging = false;
+  try { staging = require("./app-env").isStaging(); } catch (e) { staging = false; }
+  if (!staging) return false;
+  const code = String(process.env.LOCAL_ADMIN_CODE || "admin").trim() || "admin";
+  upsertUser({
+    name: "Admin",
+    access: "Admin",
+    role: "Manager",
+    password: code,
+    seeDebtors: "Yes",
+    manageUsers: "Yes"
+  });
+  console.log("[staff] staging Admin access code set from LOCAL_ADMIN_CODE (or admin)");
+  return true;
+}
+
 function listUsers() {
   const sheet = usersSheet();
   const last = sheet.getLastRow();
@@ -833,6 +855,7 @@ module.exports = {
   MARKETING_WRITE_ERROR,
   listUsers,
   seedLocalAdminIfEmpty,
+  ensureStagingAdmin,
   upsertUser,
   deleteUser,
   changeOwnPassword,

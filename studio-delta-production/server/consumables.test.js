@@ -13,12 +13,32 @@ process.env.SD_TRUST_DEVICES = "0";
 delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
-const { initWorkbook } = require("./workbook-store");
+const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const staff = require("./staff");
 const { mountOffice } = require("./office");
 const consumables = require("./consumables");
 
 initWorkbook();
+
+function openJob(worker, orderNumber) {
+  getBook().getSheetByName("Production_Log").appendRow([
+    "log_" + String(orderNumber).replace(/\W+/g, "_") + "_" + String(worker).replace(/\W+/g, "_"),
+    orderNumber,
+    worker,
+    "Welding",
+    "Welding",
+    new Date(),
+    "",
+    "",
+    "",
+    "",
+    0,
+    "",
+    JSON.stringify({ pauses: [], entryType: "production" })
+  ]);
+  persistWorkbook();
+}
+
 staff.upsertUser({
   name: "Office Boss",
   access: "Admin",
@@ -72,6 +92,80 @@ try {
   overFailed = /on hand/i.test(e.message);
 }
 assert.ok(overFailed, "cannot use more than on-hand");
+assert.strictEqual(consumables.inferQtyKind("100mm BUTT HINGE", "pcs"), "each");
+assert.strictEqual(consumables.inferQtyKind("2K FAST HARDENER (5ℓ)", "pcs"), "measure");
+let halfFailed = false;
+try {
+  consumables.logUsage({ itemId: hinge.id, qty: "0.5", orderNumber: "S260100" }, "Admire");
+} catch (e) {
+  halfFailed = /whole pieces/i.test(e.message);
+}
+assert.ok(halfFailed, "hinges cannot be used as a fraction");
+const paint = consumables.upsertItem({
+  name: "2K shop paint",
+  unit: "ℓ",
+  qtyKind: "measure",
+  openingStock: "2.5"
+}, "Office Boss");
+assert.strictEqual(paint.qtyKind, "measure");
+assert.strictEqual(paint.integerQty, false);
+assert.strictEqual(paint.stock, 2.5);
+const usedPaint = consumables.logUsage({ itemId: paint.id, qty: "0.5", orderNumber: "S260100" }, "Admire");
+assert.strictEqual(usedPaint.stock, 2);
+
+const qr = "SDINV|C|" + hinge.id;
+const looked = consumables.lookupByQr(qr);
+assert.strictEqual(looked.id, hinge.id);
+assert.strictEqual(looked.qr, qr);
+assert.strictEqual(looked.stock, 34);
+let noJobFailed = false;
+try {
+  consumables.issueFromScan({ qr, qty: "1", orderNumber: "S260199", worker: "Admire" }, "Office Boss");
+} catch (e) {
+  noJobFailed = /running job/i.test(e.message);
+}
+assert.ok(noJobFailed, "scan needs a running order");
+openJob("Admire", "S260199");
+assert.strictEqual(consumables.runningOrdersForWorker("Admire")[0].orderNumber, "S260199");
+const scanned = consumables.issueFromScan({
+  qr,
+  qty: "1",
+  orderNumber: "S260199",
+  worker: "Admire"
+}, "Office Boss");
+assert.strictEqual(scanned.stock, 33);
+consumables.receiveStock({ itemId: hinge.id, qty: "1", note: "Restore after scan test" }, "Office Boss");
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 34);
+let protoFailed = false;
+try {
+  consumables.lookupByQr("SDINV|MAT|A");
+} catch (e) {
+  protoFailed = /prototype/i.test(e.message);
+}
+assert.ok(protoFailed, "prototype QR must not hit live stock");
+let missFailed = false;
+try {
+  consumables.lookupByQr("SDINV|C|citem_missing");
+} catch (e) {
+  missFailed = /no consumable/i.test(e.message);
+}
+assert.ok(missFailed);
+
+const take = consumables.saveStocktake({
+  lines: [
+    { itemId: hinge.id, stock: "40" },
+    { itemId: hinge.id, stock: "40" }
+  ]
+}, "Office Boss");
+assert.strictEqual(take.changed, 1);
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 40);
+const sameTake = consumables.saveStocktake({
+  lines: [{ itemId: hinge.id, stock: "40" }]
+}, "Office Boss");
+assert.strictEqual(sameTake.changed, 0);
+assert.strictEqual(sameTake.counted, 1);
+consumables.saveStocktake({ lines: [{ itemId: hinge.id, stock: "34" }] }, "Office Boss");
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 34);
 
 consumables.logUsage({ itemId: hinge.id, qty: "20", orderNumber: "S260101" }, "Admire");
 const afterUse = consumables.snapshot().items.find((row) => row.id === hinge.id);
@@ -133,8 +227,21 @@ assert.strictEqual(po.lines.length, 2);
 assert.ok(po.number);
 assert.ok(po.hasPdf);
 assert.ok(po.pdfUrl);
+assert.ok(po.hasQrPdf, "one QR PDF with all codes created with the PO");
+assert.ok(po.qrPdfUrl.indexOf("/qr-labels.pdf") !== -1);
 const pdf = consumables.readPurchasePdf(po.id);
 assert.ok(pdf && pdf.buffer && pdf.buffer.length > 100);
+const qrPdf = await consumables.readPurchaseQrPdf(po.id);
+assert.ok(qrPdf && qrPdf.buffer && qrPdf.buffer.length > 800);
+assert.ok(String(consumables.qrPayloadForLine(po.lines[0])).indexOf("SDINV|C|") === 0);
+const stocktakeLabels = await consumables.writeStocktakeQrPdf([hinge.id]);
+assert.ok(stocktakeLabels.count >= 1);
+assert.ok(stocktakeLabels.url.indexOf("stocktake/qr-labels.pdf") !== -1);
+assert.strictEqual(consumables.QR_LABEL_CM, 6);
+const allLabels = await consumables.writeStocktakeQrPdf([], { all: true });
+assert.ok(allLabels.count >= consumables.snapshot().items.length);
+const stocktakeFile = consumables.readStocktakeQrPdf();
+assert.ok(stocktakeFile && stocktakeFile.buffer && stocktakeFile.buffer.length > 800);
 const orderedSnap = consumables.snapshot();
 const orderedHinge = orderedSnap.items.find((row) => row.id === hinge.id);
 assert.strictEqual(orderedHinge.stock, 14, "ordering does not add stock yet");
@@ -211,6 +318,35 @@ assert.ok(seededWindow);
 assert.strictEqual(seededWindow.stock, 99, "catalog seed does not overwrite existing stock");
 assert.strictEqual(snap.items.filter((row) => row.name === "WINDOW CLEANER").length, 1);
 
+const listedHinge = consumables.upsertItem({
+  id: hinge.id,
+  name: hinge.name,
+  unit: "pcs",
+  minThreshold: "20",
+  stock: "18",
+  unitPrice: "12.50"
+}, "Office Boss");
+assert.strictEqual(listedHinge.stock, 18);
+assert.strictEqual(listedHinge.unitPrice, 12.5);
+consumables.upsertItem({
+  id: hinge.id,
+  name: hinge.name,
+  unit: "pcs",
+  minThreshold: "20",
+  stock: "14",
+  unitPrice: ""
+}, "Office Boss");
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 14);
+consumables.upsertItem({
+  id: hinge.id,
+  name: hinge.name,
+  unit: "pcs",
+  minThreshold: "20",
+  stock: "64",
+  unitPrice: ""
+}, "Office Boss");
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 64);
+
 const sticker = consumables.upsertItem({ name: "Powder colour sticker", unit: "pcs", minThreshold: 0 }, "Office Boss");
 assert.strictEqual(sticker.stock, 0);
 assert.strictEqual(sticker.low, false);
@@ -262,6 +398,19 @@ return (async function main() {
   assert.strictEqual(usedApi.json.ok, true, JSON.stringify(usedApi.json));
   assert.strictEqual(usedApi.json.item.stock, 62);
 
+  const lookedApi = await api("/api/office/consumables/lookup?qr=" + encodeURIComponent("SDINV|C|" + hinge.id), { headers });
+  assert.strictEqual(lookedApi.json.ok, true, JSON.stringify(lookedApi.json));
+  assert.strictEqual(lookedApi.json.item.id, hinge.id);
+
+  openJob("Admire", "S260201");
+  const scanApi = await api("/api/office/consumables/scan", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ qr: "SDINV|C|" + hinge.id, qty: 1, orderNumber: "S260201", worker: "Admire" })
+  });
+  assert.strictEqual(scanApi.json.ok, true, JSON.stringify(scanApi.json));
+  assert.strictEqual(scanApi.json.item.stock, 61);
+
   const batchApi = await api("/api/office/consumables/use", {
     method: "POST",
     headers,
@@ -278,8 +427,88 @@ return (async function main() {
   assert.strictEqual(batchApi.json.ok, true, JSON.stringify(batchApi.json));
   assert.ok(Array.isArray(batchApi.json.usedItems));
   assert.strictEqual(batchApi.json.usedItems.length, 2);
-  assert.strictEqual(batchApi.json.usedItems.find((row) => row.id === hinge.id).stock, 61);
+  assert.strictEqual(batchApi.json.usedItems.find((row) => row.id === hinge.id).stock, 60);
   assert.ok(Array.isArray(batchApi.json.items) && batchApi.json.items.length > 2, "snapshot items stay intact");
+
+  const takeApi = await api("/api/office/consumables/stocktake", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ lines: [{ itemId: hinge.id, stock: batchApi.json.usedItems.find((row) => row.id === hinge.id).stock }] })
+  });
+  assert.strictEqual(takeApi.json.ok, true, JSON.stringify(takeApi.json));
+  const qrApi = await api("/api/office/consumables/stocktake/qr-labels.pdf", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ itemIds: [hinge.id] })
+  });
+  assert.strictEqual(qrApi.json.ok, true, JSON.stringify(qrApi.json));
+  assert.ok(qrApi.json.count >= 1);
+  const allQrApi = await api("/api/office/consumables/stocktake/qr-labels.pdf", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ all: true })
+  });
+  assert.strictEqual(allQrApi.json.ok, true, JSON.stringify(allQrApi.json));
+  assert.ok(allQrApi.json.count >= 2, "print-all includes every catalog item");
+
+  const itemQr = await consumables.writeItemQrPdf(hinge.id);
+  assert.ok(itemQr.url.indexOf("/qr.pdf") !== -1);
+  const itemQrGet = await fetch("http://127.0.0.1:" + port + "/api/office/consumables/" + encodeURIComponent(hinge.id) + "/qr.pdf", { headers });
+  assert.strictEqual(itemQrGet.status, 200);
+  assert.ok(String(itemQrGet.headers.get("content-type") || "").indexOf("pdf") !== -1);
+
+  staff.upsertUser({
+    name: "Floor Welder",
+    access: "Production",
+    role: "Welding",
+    password: "floor",
+    tasks: ["Welding"]
+  });
+  const floorSess = staff.createSession({
+    name: "Floor Welder",
+    access: "Production",
+    role: "Welding",
+    canSeeOffice: false,
+    tasks: ["Welding"]
+  });
+  const floorHeaders = { "content-type": "application/json", "x-sd-token": floorSess.token };
+
+  const deniedList = await api("/api/office/consumables", { headers: floorHeaders });
+  assert.strictEqual(deniedList.status, 403, "production must not see inventory");
+
+  const ctxEmpty = await api("/api/office/consumables/scan-context", { headers: floorHeaders });
+  assert.strictEqual(ctxEmpty.json.ok, true, JSON.stringify(ctxEmpty.json));
+  assert.ok(!ctxEmpty.json.items);
+  assert.strictEqual(ctxEmpty.json.runningOrder, "");
+
+  const blockedScan = await api("/api/office/consumables/scan", {
+    method: "POST",
+    headers: floorHeaders,
+    body: JSON.stringify({ qr: "SDINV|C|" + hinge.id, qty: 1, orderNumber: "S260201" })
+  });
+  assert.strictEqual(blockedScan.status, 400);
+  assert.ok(/running job/i.test(blockedScan.json.error || ""), JSON.stringify(blockedScan.json));
+
+  openJob("Floor Welder", "S-LIVE-1");
+  const ctx = await api("/api/office/consumables/scan-context", { headers: floorHeaders });
+  assert.strictEqual(ctx.json.runningOrder, "S-LIVE-1", JSON.stringify(ctx.json));
+
+  const lookedFloor = await api("/api/office/consumables/lookup?qr=" + encodeURIComponent("SDINV|C|" + hinge.id), { headers: floorHeaders });
+  assert.strictEqual(lookedFloor.json.ok, true, JSON.stringify(lookedFloor.json));
+  assert.strictEqual(lookedFloor.json.item.id, hinge.id);
+
+  const before = Number(lookedFloor.json.item.stock);
+  const scanFloor = await api("/api/office/consumables/scan", {
+    method: "POST",
+    headers: floorHeaders,
+    body: JSON.stringify({ qr: "SDINV|C|" + hinge.id, qty: 1, orderNumber: "S260201", worker: "Someone Else" })
+  });
+  assert.strictEqual(scanFloor.json.ok, true, JSON.stringify(scanFloor.json));
+  assert.ok(!scanFloor.json.items, "scan must not return the inventory list to production");
+  assert.strictEqual(scanFloor.json.item.stock, before - 1);
+  const lastMove = consumables.loadStore().movements[0];
+  assert.strictEqual(lastMove.employee, "Floor Welder");
+  assert.strictEqual(lastMove.orderNumber, "S-LIVE-1");
 
   server.close();
   console.log("consumables.test.js ok");

@@ -8,6 +8,9 @@ process.env.DATA_DIR = dir;
 process.env.OFFICE_DB_PATH = path.join(dir, "studio-delta.json");
 process.env.TZ = "Africa/Johannesburg";
 process.env.WORK_LOCKS_DISABLED = "false";
+delete process.env.STAGING;
+delete process.env.APP_ENV;
+delete process.env.SD_APP_ENV;
 delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
@@ -170,6 +173,15 @@ const CONFIRM = { understood: true, highlights: [] };
   const before = await callShopFunction("facilityShiftState", [new Date("2026-09-14T07:00:00+02:00")]);
   assert.strictEqual(before.id, "end", JSON.stringify(before));
 
+  const otClear = book.getSheetByName("Overtime_Grants");
+  if (otClear && otClear.getLastRow() > 1) {
+    const n = otClear.getLastRow() - 1;
+    const blank = [];
+    for (let i = 0; i < n; i++) blank.push(["", "", "", "", "", "", ""]);
+    otClear.getRange(2, 1, n, 7).setValues(blank);
+    persistWorkbook();
+  }
+
   const satAt = new Date("2026-11-07T08:00:00+02:00");
   const lockedSat = await callShopFunction("floorChangeGate", ["Thabo", "start", satAt]);
   assert.strictEqual(lockedSat.ok, false, JSON.stringify(lockedSat));
@@ -192,6 +204,13 @@ const CONFIRM = { understood: true, highlights: [] };
   assert.ok(!(afterCancel || []).some((g) => g.worker === "Thabo"));
   const lockedAgain = await callShopFunction("floorChangeGate", ["Thabo", "start", satAt]);
   assert.strictEqual(lockedAgain.ok, false, JSON.stringify(lockedAgain));
+
+  process.env.STAGING = "1";
+  const stagingSat = await callShopFunction("floorChangeGate", ["Thabo", "start", satAt]);
+  assert.strictEqual(stagingSat.ok, true, "staging must not require overtime: " + JSON.stringify(stagingSat));
+  const stagingLate = await callShopFunction("floorChangeGate", ["Thabo", "start", new Date("2026-11-09T16:30:00+02:00")]);
+  assert.strictEqual(stagingLate.ok, true, JSON.stringify(stagingLate));
+  delete process.env.STAGING;
 
   console.log("shift-hours.test.js ok");
 })().catch((e) => {

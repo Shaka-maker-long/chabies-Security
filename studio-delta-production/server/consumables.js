@@ -7,7 +7,29 @@ const { dataDir } = require("./workbook-store");
 const { parseMoney, money, formatRand, formatOrderId } = require("./db");
 const CATALOG = require("./consumables-catalog");
 
-const UNITS = ["pcs", "box", "pack", "roll", "pair", "set", "ℓ"];
+const UNITS = ["pcs", "box", "pack", "roll", "pair", "set", "ℓ", "mℓ"];
+const MEASURE_UNITS = { "ℓ": true, "ml": true, "mℓ": true, "l": true, "kg": true };
+
+function inferQtyKind(name, unit) {
+  const u = String(unit || "").trim().toLowerCase();
+  if (MEASURE_UNITS[u] || u === "litre" || u === "litres") return "measure";
+  if (u && u !== "pcs") return "each";
+  const n = String(name || "");
+  if (/\b(spray\s*\d|silicon|silicone|\(\s*12\s*\))/i.test(n)) return "each";
+  if (/(paint|thinner|lacquer|enamel|turps|hardener|varnish|monocoat|top clear|self etch|2k matt|fgt)/i.test(n)) return "measure";
+  if (/ℓ|litre|liter|\bml\b|mℓ/i.test(n) && /(5ℓ|275|primer|clear|oak|white|black)/i.test(n)) return "measure";
+  return "each";
+}
+
+function qtyKindFor(row) {
+  const explicit = String((row && row.qtyKind) || "").trim().toLowerCase();
+  if (explicit === "measure" || explicit === "each") return explicit;
+  return inferQtyKind(row && row.name, row && row.unit);
+}
+
+function isIntegerQty(row) {
+  return qtyKindFor(row) === "each";
+}
 
 function storePath() {
   return path.join(dataDir(), "consumables.json");
@@ -62,24 +84,37 @@ function formatWhen(iso) {
   });
 }
 
-function formatQty(n) {
+function formatQty(n, integer) {
   const v = Number(n);
   if (!Number.isFinite(v)) return "0";
+  if (integer) return String(Math.round(v));
   const s = (Math.round(v * 1000) / 1000).toFixed(3);
   return s.replace(/\.?0+$/, "");
 }
 
-function parseQty(raw, label) {
+function parseQty(raw, label, row) {
   const n = Number(String(raw == null ? "" : raw).replace(/,/g, "").trim());
   if (!Number.isFinite(n) || n <= 0) throw new Error((label || "Quantity") + " must be more than 0.");
+  if (row && isIntegerQty(row)) {
+    if (Math.abs(n - Math.round(n)) > 0.0001) {
+      throw new Error((row.name || "This item") + " is counted in whole pieces, not litres. Use a whole number.");
+    }
+    return Math.round(n);
+  }
   return Math.round(n * 1000) / 1000;
 }
 
-function parseStock(raw, label) {
+function parseStock(raw, label, row) {
   const s = String(raw == null ? "" : raw).replace(/,/g, "").trim();
   if (s === "") return 0;
   const n = Number(s);
   if (!Number.isFinite(n) || n < 0) throw new Error((label || "Stock") + " must be 0 or more.");
+  if (row && isIntegerQty(row)) {
+    if (Math.abs(n - Math.round(n)) > 0.0001) {
+      throw new Error((row.name || "This item") + " is counted in whole pieces, not litres. Use a whole number.");
+    }
+    return Math.round(n);
+  }
   return Math.round(n * 1000) / 1000;
 }
 
@@ -101,7 +136,16 @@ function nameKey(name) {
 
 function normalizeUnit(unit) {
   const s = String(unit || "").trim();
+  const low = s.toLowerCase();
+  if (low === "l" || low === "litre" || low === "litres" || low === "liter") return "ℓ";
+  if (low === "ml" || low === "millilitre" || low === "millilitres") return "mℓ";
   return s || "pcs";
+}
+
+function normalizeQtyKind(raw, name, unit) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (s === "measure" || s === "each") return s;
+  return inferQtyKind(name, unit);
 }
 
 function actorName(actor) {
@@ -192,23 +236,30 @@ function decorateItem(row, store) {
   const unitPrice = row.unitPrice == null || row.unitPrice === "" ? null : Number(row.unitPrice);
   const totalValue = unitPrice == null ? null : Math.round(stock * unitPrice * 100) / 100;
   const low = minThreshold > 0 && stock <= minThreshold;
+  const qtyKind = qtyKindFor(row);
+  const integerQty = qtyKind === "each";
   return {
     id: row.id,
     name: row.name,
-    unit: row.unit || "pcs",
+    unit: row.unit || (qtyKind === "measure" ? "ℓ" : "pcs"),
+    qtyKind,
+    integerQty,
+    qtyKindLabel: integerQty ? "Whole pieces" : "Measured (paint / litres)",
     stock,
-    stockLabel: formatQty(stock),
+    stockLabel: formatQty(stock, integerQty),
     orderedQty,
-    orderedLabel: formatQty(orderedQty),
+    orderedLabel: formatQty(orderedQty, integerQty),
     minThreshold,
-    minLabel: formatQty(minThreshold),
-    ropLabel: formatQty(minThreshold),
+    minLabel: formatQty(minThreshold, integerQty),
+    ropLabel: formatQty(minThreshold, integerQty),
     unitPrice,
     priceLabel: unitPrice == null ? "—" : formatRand(unitPrice),
     totalValue,
     totalValueLabel: totalValue == null ? "—" : formatRand(totalValue),
     low,
     status: low ? "Low" : "OK",
+    qr: qrPayloadForLine({ itemId: row.id }),
+    qrPdfUrl: "/api/office/consumables/" + encodeURIComponent(row.id) + "/qr.pdf",
     createdAt: row.createdAt || "",
     updatedAt: row.updatedAt || ""
   };
@@ -259,11 +310,13 @@ function decoratePurchase(row) {
       priceLabel: unitPrice == null ? "—" : formatRand(unitPrice),
       lineTotal,
       lineTotalLabel: lineTotal == null ? "—" : formatRand(lineTotal),
-      receivedQty: Number(line.receivedQty) || 0
+      receivedQty: Number(line.receivedQty) || 0,
+      qr: qrPayloadForLine(line)
     };
   });
   const total = lines.reduce((sum, line) => sum + (line.lineTotal == null ? 0 : line.lineTotal), 0);
   const hasPrices = lines.some((line) => line.unitPrice != null);
+  const hasQrPdf = !!(row.hasQrPdf || (row.id && fs.existsSync(qrPdfPathFor(row.id))));
   return {
     id: row.id,
     number: row.number || row.id,
@@ -280,7 +333,12 @@ function decoratePurchase(row) {
     totalValue: hasPrices ? Math.round(total * 100) / 100 : null,
     totalValueLabel: hasPrices ? formatRand(total) : "—",
     pdfUrl: row.hasPdf ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/pdf") : "",
-    hasPdf: !!row.hasPdf
+    hasPdf: !!row.hasPdf,
+    // One QR PDF for the whole PO — all 6 cm × 6 cm codes on one sheet.
+    qrPdfUrl: (row.hasPdf || hasQrPdf || lines.length)
+      ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/qr-labels.pdf")
+      : "",
+    hasQrPdf
   };
 }
 
@@ -296,10 +354,13 @@ function seedCatalog() {
   CATALOG.forEach((row) => {
     const name = normalizeName(row && row.name);
     if (!name || findItemByName(store, name)) return;
+    const qtyKind = inferQtyKind(name, row.unit);
+    const unit = qtyKind === "measure" ? normalizeUnit(row.unit || "ℓ") : (normalizeUnit(row.unit || "pcs"));
     store.items.push({
       id: newId("citem"),
       name,
-      unit: "pcs",
+      unit: unit === "pcs" && qtyKind === "measure" ? "ℓ" : unit,
+      qtyKind,
       stock: Number(row.stock) || 0,
       minThreshold: Number(row.min) || 0,
       unitPrice: row.price == null || row.price === "" ? null : Number(row.price),
@@ -320,6 +381,142 @@ function pdfDir() {
 
 function pdfPathFor(id) {
   return path.join(pdfDir(), String(id) + ".pdf");
+}
+
+function qrPdfPathFor(id) {
+  return path.join(pdfDir(), String(id) + "-qr-labels.pdf");
+}
+
+function stocktakeQrPath() {
+  return path.join(pdfDir(), "stocktake-qr-labels.pdf");
+}
+
+function itemQrPath(id) {
+  const safe = String(id || "item").replace(/[^\w.-]+/g, "_");
+  return path.join(pdfDir(), "item-" + safe + "-qr.pdf");
+}
+
+function qrLinePdfPath(poId, itemId) {
+  const safeItem = String(itemId || "item").replace(/[^\w.-]+/g, "_");
+  return path.join(pdfDir(), String(poId) + "-qr-" + safeItem + ".pdf");
+}
+
+/** Printed sticker size. Single-item PDFs use a page of this size so they are not A4. */
+const QR_LABEL_CM = 6;
+
+function cmToPt(cm) {
+  return (Number(cm) * 72) / 2.54;
+}
+
+function qrLabelSizePt() {
+  return cmToPt(QR_LABEL_CM);
+}
+
+function qrSizeCaption() {
+  return QR_LABEL_CM + " cm × " + QR_LABEL_CM + " cm";
+}
+
+async function qrPngBuffer(payload) {
+  const QRCode = require("qrcode");
+  return QRCode.toBuffer(String(payload || ""), {
+    type: "png",
+    width: 560,
+    margin: 1,
+    errorCorrectionLevel: "M"
+  });
+}
+
+function drawQrSticker(doc, x, y, png, name, footer) {
+  const size = qrLabelSizePt();
+  const pad = cmToPt(0.4);
+  const captionH = footer ? 24 : 18;
+  doc.save()
+    .lineWidth(0.6)
+    .dash(3, { space: 2 })
+    .strokeColor("#9a9080")
+    .rect(x, y, size, size)
+    .stroke()
+    .undash()
+    .restore();
+  const imgSize = Math.max(cmToPt(3.5), size - pad * 2 - captionH);
+  doc.image(png, x + (size - imgSize) / 2, y + pad, { width: imgSize, height: imgSize });
+  const label = String(name || "").slice(0, 36);
+  doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(8)
+    .text(label, x + 3, y + size - captionH, { width: size - 6, align: "center", lineBreak: false });
+  if (footer) {
+    doc.fillColor("#6b6358").font("Helvetica").fontSize(6)
+      .text(String(footer), x + 3, y + size - 11, { width: size - 6, align: "center", lineBreak: false });
+  }
+}
+
+function qrPayloadForLine(line) {
+  const id = String((line && line.itemId) || "").trim();
+  return "SDINV|C|" + id;
+}
+
+function crc32(buf) {
+  let c = ~0;
+  for (let i = 0; i < buf.length; i++) {
+    c ^= buf[i];
+    for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
+  }
+  return ~c >>> 0;
+}
+
+function zipStoreFiles(files) {
+  const localParts = [];
+  const centralParts = [];
+  let offset = 0;
+  for (const file of files) {
+    const nameBuf = Buffer.from(String(file.name || "file"), "utf8");
+    const data = Buffer.isBuffer(file.data) ? file.data : Buffer.from(file.data || []);
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 6);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28);
+    const localFull = Buffer.concat([local, nameBuf, data]);
+    localParts.push(localFull);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 8);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    centralParts.push(Buffer.concat([central, nameBuf]));
+    offset += localFull.length;
+  }
+  const centralDir = Buffer.concat(centralParts);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(0, 4);
+  end.writeUInt16LE(0, 6);
+  end.writeUInt16LE(files.length, 8);
+  end.writeUInt16LE(files.length, 10);
+  end.writeUInt32LE(centralDir.length, 12);
+  end.writeUInt32LE(offset, 16);
+  end.writeUInt16LE(0, 20);
+  return Buffer.concat(localParts.concat([centralDir, end]));
 }
 
 function formatPoDate(iso) {
@@ -486,6 +683,159 @@ async function buildPurchasePdf(po) {
   return done;
 }
 
+/** One material = one 6 cm × 6 cm sticker PDF (page is the sticker, not A4). */
+async function buildSingleQrPdf(po, line) {
+  const PDFDocument = require("pdfkit");
+  const size = qrLabelSizePt();
+  const chunks = [];
+  const doc = new PDFDocument({
+    size: [size, size],
+    margin: 0,
+    compress: false,
+    info: {
+      Title: "QR " + String((line && line.itemName) || ""),
+      Author: "Studio Delta"
+    }
+  });
+  doc.on("data", (c) => chunks.push(c));
+  const done = new Promise((resolve, reject) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+  });
+  const png = await qrPngBuffer(qrPayloadForLine(line));
+  const footer = [String((po && po.number) || "").trim(), qrSizeCaption(), "print 100%"]
+    .filter(Boolean)
+    .join(" · ");
+  drawQrSticker(doc, 0, 0, png, (line && line.itemName) || line.itemId, footer);
+  doc.end();
+  return done;
+}
+
+/** Cut-out sheet: one 6 cm × 6 cm QR square per line for locker stickers. */
+async function buildQrLabelsPdf(po) {
+  const PDFDocument = require("pdfkit");
+  const size = qrLabelSizePt();
+  const gap = cmToPt(0.35);
+  const margin = 24;
+  const chunks = [];
+  const doc = new PDFDocument({
+    size: "A4",
+    margin,
+    compress: false,
+    info: { Title: "QR labels " + (po.number || po.id), Author: "Studio Delta" }
+  });
+  doc.on("data", (c) => chunks.push(c));
+  const done = new Promise((resolve, reject) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+  });
+
+  const pageW = doc.page.width;
+  const pageH = doc.page.height;
+  const cols = Math.max(1, Math.floor((pageW - margin * 2 + gap) / (size + gap)));
+  let col = 0;
+  let x = margin;
+  let y = margin + 28;
+
+  doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(11)
+    .text("Studio Delta · Material QR labels — cut on the dashed lines", margin, margin, { width: pageW - margin * 2 });
+  doc.fillColor("#6b6358").font("Helvetica").fontSize(8)
+    .text((po.number || "Stocktake") + " · each square is " + qrSizeCaption() + " · print at actual size (100%), not fit-to-page", margin, margin + 14, {
+      width: pageW - margin * 2
+    });
+
+  for (const line of po.lines || []) {
+    if (y + size > pageH - margin) {
+      doc.addPage();
+      y = margin;
+      col = 0;
+      x = margin;
+    }
+    const png = await qrPngBuffer(qrPayloadForLine(line));
+    drawQrSticker(doc, x, y, png, line.itemName || line.itemId, "");
+
+    col += 1;
+    if (col >= cols) {
+      col = 0;
+      x = margin;
+      y += size + gap;
+    } else {
+      x += size + gap;
+    }
+  }
+
+  doc.end();
+  return done;
+}
+
+function runningOrdersForWorker(workerName) {
+  const want = String(workerName || "").trim().toLowerCase();
+  if (!want) return [];
+  try {
+    const { getBook } = require("./workbook-store");
+    const sheet = getBook().getSheetByName("Production_Log");
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    const lastCol = Math.max(sheet.getLastColumn(), 13);
+    const grid = sheet.getRange(1, 1, sheet.getLastRow(), lastCol).getValues();
+    const found = [];
+    for (let i = 1; i < grid.length; i++) {
+      const row = grid[i];
+      if (String(row[2] || "").trim().toLowerCase() !== want) continue;
+      if (row[6]) continue;
+      if (String(row[3] || "").trim() === "Indirect") continue;
+      let meta = {};
+      try { meta = JSON.parse(String(row[12] || "{}")) || {}; } catch (e) { meta = {}; }
+      if (String(meta.entryType || "") === "indirect") continue;
+      const pauses = Array.isArray(meta.pauses) ? meta.pauses : [];
+      const paused = !!row[9] || pauses.some((p) => p && p.start && !p.end);
+      if (paused) continue;
+      const orderNumber = String(row[1] || "").trim();
+      if (!orderNumber) continue;
+      const start = row[5] ? new Date(row[5]).getTime() : 0;
+      found.push({
+        orderNumber,
+        start: isNaN(start) ? 0 : start,
+        process: String(row[4] || row[3] || "").trim()
+      });
+    }
+    found.sort((a, b) => (b.start || 0) - (a.start || 0));
+    const seen = {};
+    const unique = [];
+    found.forEach((row) => {
+      if (seen[row.orderNumber]) return;
+      seen[row.orderNumber] = true;
+      unique.push(row);
+    });
+    return unique;
+  } catch (e) {
+    return [];
+  }
+}
+
+function NO_RUNNING_ORDER_ERROR() {
+  return "Start an order on Production Tasks first. You cannot take materials without a running job.";
+}
+
+function orderForScan(workerName, requested) {
+  const running = runningOrdersForWorker(workerName);
+  if (!running.length) throw new Error(NO_RUNNING_ORDER_ERROR());
+  const allowed = running.map((row) => row.orderNumber);
+  const want = String(requested || "").trim();
+  if (want && allowed.indexOf(want) !== -1) return want;
+  return allowed[0];
+}
+
+function scanContext(workerName) {
+  seedCatalog();
+  const running = runningOrdersForWorker(workerName);
+  return {
+    productionWorkers: productionWorkers(),
+    runningOrders: running,
+    runningOrder: running[0] ? running[0].orderNumber : "",
+    runningOrderNumbers: running.map((row) => row.orderNumber)
+  };
+}
+
 function snapshot() {
   seedCatalog();
   const store = loadStore();
@@ -515,11 +865,10 @@ function snapshot() {
 function upsertItem(body, actor) {
   const name = normalizeName(body && body.name);
   if (!name) throw new Error("Item name is required.");
-  const unit = normalizeUnit(body && body.unit);
+  let unit = normalizeUnit(body && body.unit);
+  const qtyKind = normalizeQtyKind(body && body.qtyKind, name, unit);
+  if (qtyKind === "measure" && unit === "pcs") unit = "ℓ";
   const minThreshold = parseThreshold(body && body.minThreshold);
-  const opening = body && body.openingStock != null && String(body.openingStock).trim() !== ""
-    ? parseStock(body.openingStock, "Opening stock")
-    : 0;
   const store = loadStore();
   const existingId = String((body && body.id) || "").trim();
   let row = existingId ? findItem(store, existingId) : null;
@@ -533,6 +882,7 @@ function upsertItem(body, actor) {
       id: newId("citem"),
       name,
       unit,
+      qtyKind,
       stock: 0,
       minThreshold,
       unitPrice: body && Object.prototype.hasOwnProperty.call(body, "unitPrice") ? parsePrice(body.unitPrice) : null,
@@ -540,6 +890,9 @@ function upsertItem(body, actor) {
       updatedAt: at
     };
     store.items.push(row);
+    const opening = body && body.openingStock != null && String(body.openingStock).trim() !== ""
+      ? parseStock(body.openingStock, "Opening stock", row)
+      : 0;
     if (opening > 0) {
       row.stock = opening;
       addMovement(store, {
@@ -557,8 +910,28 @@ function upsertItem(body, actor) {
   } else {
     row.name = name;
     row.unit = unit;
+    row.qtyKind = qtyKind;
     row.minThreshold = minThreshold;
     row.updatedAt = at;
+    if (body && Object.prototype.hasOwnProperty.call(body, "stock")) {
+      const next = parseStock(body.stock, "Current stock", row);
+      const before = Number(row.stock) || 0;
+      const delta = Math.round((next - before) * 1000) / 1000;
+      if (delta !== 0) {
+        row.stock = next;
+        addMovement(store, {
+          id: newId("cmove"),
+          at,
+          type: "count",
+          itemId: row.id,
+          itemName: row.name,
+          qty: delta,
+          orderNumber: "",
+          employee,
+          note: String((body && body.note) || "Edited on list")
+        });
+      }
+    }
   }
   if (body && Object.prototype.hasOwnProperty.call(body, "unitPrice")) {
     row.unitPrice = parsePrice(body.unitPrice);
@@ -603,10 +976,10 @@ function logUsage(body, actor) {
     if (!row) throw new Error("Line " + (i + 1) + ": choose a consumable.");
     if (seen[row.id]) throw new Error(row.name + " is listed twice. Combine the quantities.");
     seen[row.id] = true;
-    const qty = parseQty(line && line.qty, row.name + " quantity");
+    const qty = parseQty(line && line.qty, row.name + " quantity", row);
     const stock = Number(row.stock) || 0;
     if (qty > stock) {
-      throw new Error(row.name + " has " + formatQty(stock) + " " + (row.unit || "pcs") + " on hand. You cannot use " + formatQty(qty) + ".");
+      throw new Error(row.name + " has " + formatQty(stock, isIntegerQty(row)) + " " + (row.unit || "pcs") + " on hand. You cannot use " + formatQty(qty, isIntegerQty(row)) + ".");
     }
     const lineNote = String((line && line.note) || note || "").trim();
     row.stock = Math.round((stock - qty) * 1000) / 1000;
@@ -628,13 +1001,45 @@ function logUsage(body, actor) {
   return used.length === 1 ? used[0] : used;
 }
 
+function parseConsumableQr(raw) {
+  const s = String(raw || "").trim();
+  if (!s) throw new Error("Scan a locker QR, or paste the code.");
+  if (/^SDINV\|MAT\|/i.test(s)) {
+    throw new Error("That code is from the inventory prototype, not live stock.");
+  }
+  const m = s.match(/^SDINV\|C\|(.+)$/i);
+  return { itemId: m ? String(m[1] || "").trim() : s };
+}
+
+function lookupByQr(raw) {
+  const parsed = parseConsumableQr(raw);
+  const store = loadStore();
+  let row = findItem(store, parsed.itemId);
+  if (!row) row = findItemByName(store, parsed.itemId);
+  if (!row) throw new Error("No consumable matches that code.");
+  return decorateItem(row, store);
+}
+
+function issueFromScan(body, actor) {
+  const item = lookupByQr(body && (body.qr || body.code || body.itemId));
+  const worker = String((body && (body.worker || body.employee)) || "").trim() || actorName(actor);
+  const orderNumber = orderForScan(worker, body && (body.orderNumber || body.order_number));
+  return logUsage({
+    itemId: item.id,
+    qty: body && body.qty,
+    orderNumber,
+    worker,
+    note: (body && body.note) || "Scanned from locker"
+  }, actor);
+}
+
 function receiveStock(body, actor) {
-  const qty = parseQty(body && body.qty, "Quantity received");
   const note = String((body && body.note) || "").trim();
   const supplier = String((body && body.supplier) || "").trim();
   const store = loadStore();
   const row = findItem(store, body && body.itemId);
   if (!row) throw new Error("Choose a consumable.");
+  const qty = parseQty(body && body.qty, "Quantity received", row);
   const at = nowIso();
   row.stock = Math.round(((Number(row.stock) || 0) + qty) * 1000) / 1000;
   row.updatedAt = at;
@@ -654,16 +1059,131 @@ function receiveStock(body, actor) {
   return decorateItem(row, store);
 }
 
+function saveStocktake(body, actor) {
+  const linesIn = Array.isArray(body && body.lines) ? body.lines : [];
+  if (!linesIn.length) throw new Error("Enter counted quantities for the items you checked.");
+  const note = String((body && body.note) || "Stocktake").trim() || "Stocktake";
+  const store = loadStore();
+  const at = nowIso();
+  const employee = actorName(actor);
+  let changed = 0;
+  let counted = 0;
+  linesIn.forEach((line, i) => {
+    const raw = line && line.stock;
+    if (raw == null || String(raw).trim() === "") return;
+    const row = findItem(store, line && (line.itemId || line.item_id));
+    if (!row) throw new Error("Line " + (i + 1) + ": choose a consumable.");
+    const next = parseStock(raw, row.name + " counted", row);
+    counted += 1;
+    const before = Number(row.stock) || 0;
+    const delta = Math.round((next - before) * 1000) / 1000;
+    if (delta === 0) return;
+    row.stock = next;
+    row.updatedAt = at;
+    addMovement(store, {
+      id: newId("cmove"),
+      at,
+      type: "count",
+      itemId: row.id,
+      itemName: row.name,
+      qty: delta,
+      orderNumber: "",
+      employee,
+      note
+    });
+    changed += 1;
+  });
+  if (!counted) throw new Error("Enter counted quantities for the items you checked.");
+  saveStore(store);
+  return { changed, counted, note, ...snapshot() };
+}
+
+async function writeStocktakeQrPdf(itemIds, opts) {
+  opts = opts || {};
+  const store = loadStore();
+  const want = (Array.isArray(itemIds) ? itemIds : String(itemIds || "").split(","))
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  let rows;
+  if (opts.all) {
+    rows = store.items.slice();
+  } else if (want.length) {
+    rows = [];
+    const seen = {};
+    want.forEach((id) => {
+      const row = findItem(store, id);
+      if (!row || seen[row.id]) return;
+      seen[row.id] = true;
+      rows.push(row);
+    });
+  } else {
+    rows = store.items.filter((row) => (Number(row.stock) || 0) > 0);
+  }
+  if (!rows.length) {
+    throw new Error(opts.all
+      ? "No consumables to print."
+      : "Tick items (or count stock first) so there is something to print.");
+  }
+  rows.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
+  const buffer = await buildQrLabelsPdf({
+    number: opts.all ? "All lockers" : "Stocktake",
+    lines: rows.map((row) => ({ itemId: row.id, itemName: row.name, unit: row.unit || "pcs" }))
+  });
+  fs.writeFileSync(stocktakeQrPath(), buffer);
+  return {
+    count: rows.length,
+    url: "/api/office/consumables/stocktake/qr-labels.pdf",
+    bytes: buffer.length
+  };
+}
+
+function readStocktakeQrPdf() {
+  const file = stocktakeQrPath();
+  if (!fs.existsSync(file)) return null;
+  return {
+    buffer: fs.readFileSync(file),
+    mime: "application/pdf",
+    filename: "stocktake-QR-labels-6cm.pdf"
+  };
+}
+
+async function writeItemQrPdf(itemId) {
+  const store = loadStore();
+  const row = findItem(store, itemId);
+  if (!row) throw new Error("Item not found.");
+  const item = decorateItem(row, store);
+  const buffer = await buildSingleQrPdf(
+    { number: item.stockLabel + " " + item.unit },
+    { itemId: item.id, itemName: item.name }
+  );
+  fs.writeFileSync(itemQrPath(item.id), buffer);
+  return {
+    url: item.qrPdfUrl,
+    filename: String(item.name || "item").replace(/[^\w.-]+/g, "_").slice(0, 40) + "-QR.pdf",
+    bytes: buffer.length
+  };
+}
+
+function readItemQrPdf(itemId) {
+  const file = itemQrPath(itemId);
+  if (!fs.existsSync(file)) return null;
+  return {
+    buffer: fs.readFileSync(file),
+    mime: "application/pdf",
+    filename: "item-QR-label.pdf"
+  };
+}
+
 function countStock(body, actor) {
-  const counted = parseStock(body && body.stock, "Counted stock");
   const note = String((body && body.note) || "").trim();
   if (!note) throw new Error("Say why the count changed.");
   const store = loadStore();
   const row = findItem(store, body && body.itemId);
   if (!row) throw new Error("Choose a consumable.");
+  const counted = parseStock(body && body.stock, "Counted stock", row);
   const before = Number(row.stock) || 0;
   const delta = Math.round((counted - before) * 1000) / 1000;
-  if (delta === 0) throw new Error(row.name + " is already " + formatQty(before) + ".");
+  if (delta === 0) throw new Error(row.name + " is already " + formatQty(before, isIntegerQty(row)) + ".");
   const at = nowIso();
   row.stock = counted;
   row.updatedAt = at;
@@ -692,7 +1212,7 @@ async function createPurchase(body, actor) {
   rawLines.forEach((line, i) => {
     const item = findItem(store, line && line.itemId);
     if (!item) throw new Error("Line " + (i + 1) + " needs a consumable.");
-    const qty = parseQty(line.qty, item.name + " quantity");
+    const qty = parseQty(line.qty, item.name + " quantity", item);
     if (lines.some((existing) => existing.itemId === item.id)) {
       throw new Error(item.name + " is already on this purchase. Combine the quantities.");
     }
@@ -716,11 +1236,16 @@ async function createPurchase(body, actor) {
     note,
     employee: actorName(actor),
     lines,
-    hasPdf: false
+    hasPdf: false,
+    hasQrPdf: false
   };
   const buffer = await buildPurchasePdf(po);
   fs.writeFileSync(pdfPathFor(po.id), buffer);
   po.hasPdf = true;
+  // One QR PDF for the PO: every line as a 6 cm × 6 cm cut-out on the same sheet.
+  const qrBuffer = await buildQrLabelsPdf(po);
+  fs.writeFileSync(qrPdfPathFor(po.id), qrBuffer);
+  po.hasQrPdf = true;
   store.purchases.unshift(po);
   lines.forEach((line) => {
     addMovement(store, {
@@ -759,7 +1284,31 @@ function readPurchasePdf(id) {
   if (!fs.existsSync(file)) return null;
   return {
     buffer: fs.readFileSync(file),
-    filename: (po.number || want) + ".pdf",
+    filename: (po.number || want) + "-purchase-order.pdf",
+    mime: "application/pdf"
+  };
+}
+
+async function readPurchaseQrPdf(id) {
+  const want = String(id || "").trim();
+  if (!want) return null;
+  const store = loadStore();
+  const po = store.purchases.find((row) => row.id === want);
+  if (!po) return null;
+  const file = qrPdfPathFor(want);
+  if (!fs.existsSync(file)) {
+    const buf = await buildQrLabelsPdf(po);
+    fs.writeFileSync(file, buf);
+    po.hasQrPdf = true;
+    const row = store.purchases.find((p) => p.id === want);
+    if (row) {
+      row.hasQrPdf = true;
+      saveStore(store);
+    }
+  }
+  return {
+    buffer: fs.readFileSync(file),
+    filename: (po.number || want) + "-QR-codes-6cm.pdf",
     mime: "application/pdf"
   };
 }
@@ -841,6 +1390,19 @@ module.exports = {
   upsertItem,
   deleteItem,
   logUsage,
+  inferQtyKind,
+  qtyKindFor,
+  lookupByQr,
+  issueFromScan,
+  scanContext,
+  runningOrdersForWorker,
+  parseConsumableQr,
+  saveStocktake,
+  QR_LABEL_CM,
+  writeStocktakeQrPdf,
+  readStocktakeQrPdf,
+  writeItemQrPdf,
+  readItemQrPdf,
   receiveStock,
   countStock,
   createPurchase,
@@ -848,6 +1410,9 @@ module.exports = {
   cancelPurchase,
   getPurchase,
   readPurchasePdf,
+  readPurchaseQrPdf,
+  buildQrLabelsPdf,
+  qrPayloadForLine,
   activeOrderNumbers,
   productionWorkers,
   loadStore,
