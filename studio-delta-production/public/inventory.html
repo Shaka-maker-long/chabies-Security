@@ -204,7 +204,7 @@
     </div>
     <section class="card">
       <h2>On hand</h2>
-      <p class="hint">Change current stock only in <b>Edit</b>. Saving there makes a 6×6 cm QR you can print anytime. Use <b>Print all QR labels</b> for every locker, or <b>Open QR</b> on a row for one sticker. Print at actual size (100%).</p>
+      <p class="hint">Change current stock only in <b>Edit</b>. Saving there makes a 6×6 cm QR on an A4 page — cut the dashed square, the rest of the sheet stays blank. Use <b>Print all QR labels</b> for every locker, or <b>Open QR</b> on a row for one sticker. Print at 100% (not Fit to page).</p>
       <div id="itemList"><div class="empty">Loading…</div></div>
       <form class="add" id="addForm">
         <label>Item name
@@ -686,7 +686,7 @@
       box.querySelectorAll("[data-qr]").forEach((btn) => {
         btn.onclick = () => {
           const url = btn.getAttribute("data-qr");
-          if (url) window.open(url, "_blank", "noopener");
+          if (url) openPdfTab(url + (url.indexOf("?") === -1 ? "?" : "&") + "t=" + Date.now(), "status");
         };
       });
       box.querySelectorAll("input.cell").forEach((inp) => {
@@ -959,17 +959,18 @@
     document.getElementById("btnLogUsage").onclick = () => openUse("");
     document.getElementById("btnCreatePo").onclick = () => openPo();
     document.getElementById("btnPrintAllQr").onclick = () => printAllQrLabels();
-    async function printAllQrLabels() {
+    function openPdfTab(url, msgId) {
+      const opened = window.open(url, "_blank");
+      if (!opened) {
+        setMsg(msgId, "The PDF was blocked. Allow pop-ups for this site, then try again.", true);
+        return false;
+      }
+      return true;
+    }
+    function printAllQrLabels() {
       const msgId = pathTab === "take" ? "takeMsg" : "status";
-      setMsg(msgId, "Building every locker QR…");
-      const r = await sdOfficeFetch("/api/office/consumables/stocktake/qr-labels.pdf", {
-        method: "POST",
-        body: JSON.stringify({ all: true })
-      });
-      const j = await r.json();
-      if (!j.ok) { setMsg(msgId, j.error || "Could not print", true); return; }
-      setMsg(msgId, "QR labels for all " + (j.count || 0) + " items. Print at actual size (100%).");
-      window.open(j.url || "/api/office/consumables/stocktake/qr-labels.pdf", "_blank", "noopener");
+      setMsg(msgId, "Opening every locker QR in a new tab. Wait for the PDF to finish, then print at 100%.");
+      openPdfTab("/api/office/consumables/stocktake/qr-labels.pdf?all=1&t=" + Date.now(), msgId);
     }
     document.getElementById("addPoLine").onclick = () => addPoLine("");
     document.getElementById("addUseLine").onclick = () => addUseLine("");
@@ -1301,18 +1302,11 @@
       applySnapshot(j);
       setMsg("takeMsg", "Updated " + (j.changed || 0) + " of " + (j.counted || 0) + " counted lines.");
     };
-    document.getElementById("btnTakeQr").onclick = async () => {
+    document.getElementById("btnTakeQr").onclick = () => {
       const itemIds = selectedTakeIds();
       if (!itemIds.length) { setMsg("takeMsg", "Tick items to print QR stickers for.", true); return; }
-      setMsg("takeMsg", "Building QR labels…");
-      const r = await sdOfficeFetch("/api/office/consumables/stocktake/qr-labels.pdf", {
-        method: "POST",
-        body: JSON.stringify({ itemIds })
-      });
-      const j = await r.json();
-      if (!j.ok) { setMsg("takeMsg", j.error || "Could not print", true); return; }
-      setMsg("takeMsg", "QR labels for " + (j.count || itemIds.length) + " items.");
-      window.open(j.url || "/api/office/consumables/stocktake/qr-labels.pdf", "_blank", "noopener");
+      setMsg("takeMsg", "Opening QR labels in a new tab. Print at 100% (not Fit to page).");
+      openPdfTab("/api/office/consumables/stocktake/qr-labels.pdf?itemIds=" + encodeURIComponent(itemIds.join(",")) + "&t=" + Date.now(), "takeMsg");
     };
     let lookedUp = null;
     let scanStream = null;
