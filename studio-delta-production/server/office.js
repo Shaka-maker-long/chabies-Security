@@ -632,6 +632,27 @@ function mountOffice(app) {
     }
   });
 
+  app.get("/api/office/consumables/lookup", requireOffice, (req, res) => {
+    try {
+      const item = consumables.lookupByQr((req.query && (req.query.qr || req.query.code)) || "");
+      res.json({ ok: true, item });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/consumables/scan", requireOffice, (req, res) => {
+    try {
+      const used = consumables.issueFromScan(req.body || {}, req.office && req.office.name);
+      const payload = Array.isArray(used)
+        ? { usedItems: used, item: used[0] || null }
+        : { item: used, usedItems: [used] };
+      res.json({ ok: true, ...consumables.snapshot(), ...payload });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.post("/api/office/consumables/receive", requireOffice, (req, res) => {
     try {
       const item = consumables.receiveStock(req.body || {}, req.office && req.office.name);

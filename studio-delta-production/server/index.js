@@ -122,6 +122,10 @@ app.get("/inventory/purchases", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "inventory.html"));
 });
+app.get("/inventory/collect", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "inventory.html"));
+});
 app.get("/inventory/steel", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "inventory.html"));

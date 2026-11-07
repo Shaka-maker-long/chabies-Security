@@ -521,6 +521,9 @@ const inventoryHtml = fs.readFileSync(path.join(__dirname, "../public/inventory.
 assert.ok(inventoryHtml.indexOf("Inventory Management") !== -1);
 assert.ok(inventoryHtml.indexOf('href="/inventory">Consumables<') !== -1);
 assert.ok(inventoryHtml.indexOf('href="/inventory/purchases">Purchase orders<') !== -1);
+assert.ok(inventoryHtml.indexOf('href="/inventory/collect">Collect / scan<') !== -1);
+assert.ok(inventoryHtml.indexOf("BarcodeDetector") !== -1);
+assert.ok(inventoryHtml.indexOf("/api/office/consumables/scan") !== -1);
 assert.ok(inventoryHtml.indexOf('href="/inventory/steel">Steel<') !== -1);
 assert.ok(inventoryHtml.indexOf('href="/inventory/glass">Glass<') !== -1);
 assert.ok(inventoryHtml.indexOf("/inventory/wood") === -1, "wood is not an inventory tab");
@@ -554,6 +557,9 @@ assert.ok(inventoryHtml.indexOf("Orders views") === -1, "inventory is not an Ord
 assert.ok(indexJs.indexOf('app.get("/inventory/steel"') !== -1);
 assert.ok(indexJs.indexOf('app.get("/inventory/glass"') !== -1);
 assert.ok(indexJs.indexOf('app.get("/inventory/purchases"') !== -1);
+assert.ok(indexJs.indexOf('app.get("/inventory/collect"') !== -1);
+assert.ok(officeJs.indexOf("/api/office/consumables/lookup") !== -1);
+assert.ok(officeJs.indexOf("/api/office/consumables/scan") !== -1);
 assert.ok(officeJs.indexOf("/api/office/inventory/steel") !== -1);
 assert.ok(officeJs.indexOf("/api/office/inventory/glass") !== -1);
 assert.ok(officeJs.indexOf("/api/office/consumables/purchases/:id/pdf") !== -1);

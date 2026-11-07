@@ -209,6 +209,7 @@ function decorateItem(row, store) {
     totalValueLabel: totalValue == null ? "—" : formatRand(totalValue),
     low,
     status: low ? "Low" : "OK",
+    qr: qrPayloadForLine({ itemId: row.id }),
     createdAt: row.createdAt || "",
     updatedAt: row.updatedAt || ""
   };
@@ -851,6 +852,36 @@ function logUsage(body, actor) {
   return used.length === 1 ? used[0] : used;
 }
 
+function parseConsumableQr(raw) {
+  const s = String(raw || "").trim();
+  if (!s) throw new Error("Scan a locker QR, or paste the code.");
+  if (/^SDINV\|MAT\|/i.test(s)) {
+    throw new Error("That code is from the inventory prototype, not live stock.");
+  }
+  const m = s.match(/^SDINV\|C\|(.+)$/i);
+  return { itemId: m ? String(m[1] || "").trim() : s };
+}
+
+function lookupByQr(raw) {
+  const parsed = parseConsumableQr(raw);
+  const store = loadStore();
+  let row = findItem(store, parsed.itemId);
+  if (!row) row = findItemByName(store, parsed.itemId);
+  if (!row) throw new Error("No consumable matches that code.");
+  return decorateItem(row, store);
+}
+
+function issueFromScan(body, actor) {
+  const item = lookupByQr(body && (body.qr || body.code || body.itemId));
+  return logUsage({
+    itemId: item.id,
+    qty: body && body.qty,
+    orderNumber: body && (body.orderNumber || body.order_number),
+    worker: body && (body.worker || body.employee),
+    note: (body && body.note) || "Scanned from locker"
+  }, actor);
+}
+
 function receiveStock(body, actor) {
   const qty = parseQty(body && body.qty, "Quantity received");
   const note = String((body && body.note) || "").trim();
@@ -1093,6 +1124,9 @@ module.exports = {
   upsertItem,
   deleteItem,
   logUsage,
+  lookupByQr,
+  issueFromScan,
+  parseConsumableQr,
   receiveStock,
   countStock,
   createPurchase,

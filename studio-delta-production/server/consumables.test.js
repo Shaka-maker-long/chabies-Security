@@ -73,6 +73,35 @@ try {
 }
 assert.ok(overFailed, "cannot use more than on-hand");
 
+const qr = "SDINV|C|" + hinge.id;
+const looked = consumables.lookupByQr(qr);
+assert.strictEqual(looked.id, hinge.id);
+assert.strictEqual(looked.qr, qr);
+assert.strictEqual(looked.stock, 34);
+const scanned = consumables.issueFromScan({
+  qr,
+  qty: "1",
+  orderNumber: "S260199",
+  worker: "Admire"
+}, "Office Boss");
+assert.strictEqual(scanned.stock, 33);
+consumables.receiveStock({ itemId: hinge.id, qty: "1", note: "Restore after scan test" }, "Office Boss");
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 34);
+let protoFailed = false;
+try {
+  consumables.lookupByQr("SDINV|MAT|A");
+} catch (e) {
+  protoFailed = /prototype/i.test(e.message);
+}
+assert.ok(protoFailed, "prototype QR must not hit live stock");
+let missFailed = false;
+try {
+  consumables.lookupByQr("SDINV|C|citem_missing");
+} catch (e) {
+  missFailed = /no consumable/i.test(e.message);
+}
+assert.ok(missFailed);
+
 consumables.logUsage({ itemId: hinge.id, qty: "20", orderNumber: "S260101" }, "Admire");
 const afterUse = consumables.snapshot().items.find((row) => row.id === hinge.id);
 assert.strictEqual(afterUse.stock, 14);
@@ -267,6 +296,18 @@ return (async function main() {
   assert.strictEqual(usedApi.json.ok, true, JSON.stringify(usedApi.json));
   assert.strictEqual(usedApi.json.item.stock, 62);
 
+  const lookedApi = await api("/api/office/consumables/lookup?qr=" + encodeURIComponent("SDINV|C|" + hinge.id), { headers });
+  assert.strictEqual(lookedApi.json.ok, true, JSON.stringify(lookedApi.json));
+  assert.strictEqual(lookedApi.json.item.id, hinge.id);
+
+  const scanApi = await api("/api/office/consumables/scan", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ qr: "SDINV|C|" + hinge.id, qty: 1, orderNumber: "S260201", worker: "Admire" })
+  });
+  assert.strictEqual(scanApi.json.ok, true, JSON.stringify(scanApi.json));
+  assert.strictEqual(scanApi.json.item.stock, 61);
+
   const batchApi = await api("/api/office/consumables/use", {
     method: "POST",
     headers,
@@ -283,7 +324,7 @@ return (async function main() {
   assert.strictEqual(batchApi.json.ok, true, JSON.stringify(batchApi.json));
   assert.ok(Array.isArray(batchApi.json.usedItems));
   assert.strictEqual(batchApi.json.usedItems.length, 2);
-  assert.strictEqual(batchApi.json.usedItems.find((row) => row.id === hinge.id).stock, 61);
+  assert.strictEqual(batchApi.json.usedItems.find((row) => row.id === hinge.id).stock, 60);
   assert.ok(Array.isArray(batchApi.json.items) && batchApi.json.items.length > 2, "snapshot items stay intact");
 
   server.close();
