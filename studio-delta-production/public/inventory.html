@@ -93,6 +93,46 @@
     #scanVideo { width:100%; max-height:240px; background:#111; border-radius:10px; display:none; object-fit:cover; }
     #scanLook { display:none; padding:12px 16px; border-top:1px solid var(--line); }
     #scanLook.open { display:block; }
+    .scan-go { width:100%; min-height:56px; font-size:18px; }
+    #scanPaste { margin:0 16px 16px; }
+    #scanPaste summary { cursor:pointer; color:var(--muted); font-size:13px; font-weight:600; }
+    #scanCamMask {
+      position:fixed; inset:0; z-index:20000; background:#000;
+      display:none; flex-direction:column;
+    }
+    #scanCamMask.open { display:flex; }
+    body.scan-cam-open { overflow:hidden; }
+    body.scan-cam-open .sd-sidebar,
+    body.scan-cam-open .sd-nav-burger,
+    body.scan-cam-open .sd-backdrop,
+    body.scan-cam-open #sdStagingBanner { visibility:hidden; }
+    #scanCamMask #scanVideo {
+      display:block; flex:1 1 auto; width:100%; height:100%;
+      max-height:none; border-radius:0; object-fit:cover; background:#000;
+    }
+    #scanCamBar {
+      position:absolute; top:0; left:0; right:0; z-index:2;
+      display:flex; justify-content:space-between; align-items:center; gap:12px;
+      padding:12px 16px; padding-top:max(12px, env(safe-area-inset-top));
+      background:linear-gradient(to bottom, rgba(0,0,0,.7), transparent); color:#fff;
+    }
+    #scanCamBar h2 { margin:0; font-size:16px; font-family:Outfit, Inter, sans-serif; }
+    #scanCamBar button { background:rgba(255,255,255,.15); border-color:#fff; color:#fff; }
+    #scanCamFrame {
+      position:absolute; inset:22% 10%; border:2px solid rgba(255,255,255,.9);
+      border-radius:18px; pointer-events:none; box-shadow:0 0 0 9999px rgba(0,0,0,.28);
+    }
+    #scanCamHint {
+      position:absolute; bottom:0; left:0; right:0; z-index:2;
+      padding:20px 16px max(24px, env(safe-area-inset-bottom));
+      color:#fff; text-align:center;
+      background:linear-gradient(to top, rgba(0,0,0,.75), transparent);
+      font-size:15px; font-weight:600;
+    }
+    #scanCamHint.bad { color:#fecaca; }
+    #scanIssueMask { z-index:20010; }
+    #scanIssueItem { margin:0; font-size:20px; font-family:Outfit, Inter, sans-serif; }
+    #scanIssueStock { margin:0; color:var(--muted); font-size:14px; }
     .sheet.mobile-use .use-line { grid-template-columns:1fr; }
     .sheet.mobile-use .use-line .use-qty { max-width:none; }
     .sheet.mobile-use .use-line button { width:100%; }
@@ -203,42 +243,61 @@
 
   <div class="page" id="collectPage" hidden>
     <section class="card">
-      <h2>Who is collecting</h2>
-      <p class="hint">Scan the locker QR from a stocktake or purchase-order label. Stock drops and the usage log records the worker and job.</p>
-      <form class="add" id="scanWho" onsubmit="return false;">
-        <label>Worker
-          <select id="scanWorker" required></select>
-        </label>
-        <label>Job
-          <select id="scanOrder" required></select>
-        </label>
-      </form>
-    </section>
-    <section class="card">
-      <h2>Scan material</h2>
-      <p class="hint">Point the camera at the 5×5 cm locker sticker, or paste <code>SDINV|C|…</code>.</p>
+      <h2>Scan materials</h2>
+      <p class="hint">Tap Scan. The camera fills the screen. When it reads the locker sticker, pick the order number and quantity.</p>
       <div class="add" style="border-top:0">
-        <label style="flex:1">QR / code
-          <input id="scanInput" placeholder="SDINV|C|…" autocomplete="off" autocapitalize="off">
-        </label>
-        <button class="ghost" type="button" id="btnLookup">Look up</button>
-        <button type="button" id="btnCam">Scan with camera</button>
-        <button class="ghost" type="button" id="btnCamStop" hidden>Stop camera</button>
-      </div>
-      <video id="scanVideo" playsinline webkit-playsinline muted></video>
-      <canvas id="scanCanvas" hidden></canvas>
-      <div id="scanLook">
-        <p id="scanLookText"></p>
-        <form class="add" id="scanIssueForm" style="border-top:0;padding:0">
-          <label>Quantity
-            <input id="scanQty" inputmode="decimal" value="1" required>
-          </label>
-          <button type="submit">Issue to job</button>
-          <span class="msg" id="scanIssueMsg"></span>
-        </form>
+        <button type="button" id="btnCam" class="scan-go">Scan</button>
       </div>
       <p class="msg" id="scanMsg" style="padding:0 16px 12px"></p>
+      <details id="scanPaste">
+        <summary>Paste a code instead</summary>
+        <div class="add" style="border-top:0;padding-left:0;padding-right:0">
+          <label style="flex:1">QR / code
+            <input id="scanInput" placeholder="SDINV|C|…" autocomplete="off" autocapitalize="off">
+          </label>
+          <button class="ghost" type="button" id="btnLookup">Look up</button>
+        </div>
+      </details>
     </section>
+  </div>
+
+  <div id="scanCamMask" aria-modal="true" role="dialog" aria-label="Scan locker QR">
+    <div id="scanCamBar">
+      <h2>Scan locker</h2>
+      <button class="ghost" type="button" id="btnCamStop">Close</button>
+    </div>
+    <video id="scanVideo" playsinline webkit-playsinline muted></video>
+    <canvas id="scanCanvas" hidden></canvas>
+    <div id="scanCamFrame" aria-hidden="true"></div>
+    <p id="scanCamHint">Point the camera at the locker sticker.</p>
+  </div>
+
+  <div class="mask" id="scanIssueMask">
+    <div class="sheet mobile-use" role="dialog" aria-modal="true" aria-labelledby="scanIssueTitle">
+      <header>
+        <h1 id="scanIssueTitle">Material found</h1>
+        <div class="tools">
+          <button class="ghost" type="button" id="btnScanAgain">Scan again</button>
+        </div>
+      </header>
+      <form class="body" id="scanIssueForm">
+        <p id="scanIssueItem"></p>
+        <p id="scanIssueStock"></p>
+        <label id="scanWorkerWrap">Worker
+          <select id="scanWorker" required></select>
+        </label>
+        <label>Order number
+          <select id="scanOrder" required></select>
+        </label>
+        <label>Quantity
+          <input id="scanQty" inputmode="decimal" value="1" required>
+        </label>
+        <p class="msg" id="scanIssueMsg"></p>
+        <div class="foot">
+          <button type="submit">Issue to job</button>
+        </div>
+      </form>
+    </div>
   </div>
 
   <div class="page" id="takePage" hidden>
@@ -480,10 +539,27 @@
       fillJobWorkerSelects("useOrder", "useWorker");
     }
     function fillScanSelects() {
-      fillJobWorkerSelects("scanOrder", "scanWorker");
+      const orders = data.activeOrderNumbers || [];
+      const orderEl = document.getElementById("scanOrder");
+      if (orderEl) {
+        orderEl.innerHTML = "<option value=\"\">Choose order number</option>" +
+          "<option value=\"General\">General</option>" +
+          orders.map((n) => "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>").join("");
+      }
+      const workers = data.productionWorkers || [];
+      const workerEl = document.getElementById("scanWorker");
+      if (workerEl) {
+        workerEl.innerHTML = workers.length
+          ? ("<option value=\"\">Choose worker</option>" + workers.map((n) =>
+              "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>"
+            ).join(""))
+          : "<option value=\"\">No production people on Users</option>";
+      }
       lockScanWorker();
     }
     function lockScanWorker() {
+      const wrap = document.getElementById("scanWorkerWrap");
+      if (wrap) wrap.hidden = !!shopScanOnly;
       if (!shopScanOnly) return;
       const workerEl = document.getElementById("scanWorker");
       if (!workerEl) return;
@@ -501,13 +577,15 @@
       if (title) title.textContent = "Scan materials";
       document.title = "Studio Delta — Scan materials";
       const lede = document.getElementById("lede");
-      if (lede) lede.textContent = "Scan a locker QR. Stock drops on the job you pick. You cannot open the inventory list from here.";
+      if (lede) lede.textContent = "Tap Scan. When the name comes up, pick the job and quantity. You cannot open the inventory list from here.";
       ["tab-cons", "tab-pos", "tab-take", "tab-steel", "tab-glass", "btnLogUsage", "btnCreatePo", "q"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.hidden = true;
       });
       const collect = document.getElementById("tab-collect");
       if (collect) collect.classList.add("on");
+      const workerWrap = document.getElementById("scanWorkerWrap");
+      if (workerWrap) workerWrap.hidden = true;
     }
     function addUseLine(selected) {
       const wrap = document.createElement("div");
@@ -1186,6 +1264,31 @@
     let scanStream = null;
     let scanTimer = null;
     let scanBusy = false;
+    let lastBadQr = "";
+    let lastScanOrder = "";
+    function setCamHint(text, bad) {
+      const el = document.getElementById("scanCamHint");
+      if (!el) return;
+      el.textContent = text || "Point the camera at the locker sticker.";
+      el.classList.toggle("bad", !!bad);
+    }
+    function openScanIssue() {
+      fillScanSelects();
+      const orderEl = document.getElementById("scanOrder");
+      if (orderEl && lastScanOrder) {
+        const hit = Array.from(orderEl.options).some((opt) => opt.value === lastScanOrder);
+        if (hit) orderEl.value = lastScanOrder;
+      }
+      document.getElementById("scanIssueMask").classList.add("open");
+      const qty = document.getElementById("scanQty");
+      if (qty) {
+        qty.value = "1";
+        qty.focus();
+      }
+    }
+    function closeScanIssue() {
+      document.getElementById("scanIssueMask").classList.remove("open");
+    }
     function stopScanCam() {
       if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
       if (scanStream) {
@@ -1193,12 +1296,10 @@
         scanStream = null;
       }
       const vid = document.getElementById("scanVideo");
-      if (vid) {
-        vid.srcObject = null;
-        vid.style.display = "none";
-      }
-      const stopBtn = document.getElementById("btnCamStop");
-      if (stopBtn) stopBtn.hidden = true;
+      if (vid) vid.srcObject = null;
+      const mask = document.getElementById("scanCamMask");
+      if (mask) mask.classList.remove("open");
+      document.body.classList.remove("scan-cam-open");
     }
     function loadJsQr() {
       if (typeof window.jsQR === "function") return Promise.resolve();
@@ -1216,7 +1317,8 @@
     async function onDecodedQr(raw) {
       raw = String(raw || "").trim();
       if (!raw || scanBusy) return;
-      if (lookedUp && (raw === lookedUp.qr || raw === lookedUp.id)) return;
+      if (raw === lastBadQr) return;
+      if (lookedUp && (raw === lookedUp.qr || raw === lookedUp.id) && document.getElementById("scanIssueMask").classList.contains("open")) return;
       scanBusy = true;
       try {
         document.getElementById("scanInput").value = raw;
@@ -1241,7 +1343,7 @@
       const name = String((err && err.name) || "");
       const msg = String((err && err.message) || err || "").toLowerCase();
       if (name === "NotAllowedError" || /permission|denied|notallowed/i.test(msg)) {
-        return "Camera was blocked. Allow camera for this site, then tap Scan with camera again.";
+        return "Camera was blocked. Allow camera for this site, then tap Scan again.";
       }
       if (name === "NotFoundError" || /not found|no device/i.test(msg)) {
         return "No camera found on this device. Paste the QR text instead.";
@@ -1251,35 +1353,48 @@
       }
       return "Could not open the camera. Paste the QR text instead.";
     }
+    function paintFoundItem(item) {
+      document.getElementById("scanIssueItem").textContent = item.name || "";
+      document.getElementById("scanIssueStock").textContent =
+        (item.stockLabel || "0") + " " + (item.unit || "") + " on hand" +
+        (item.integerQty === false ? " · litres OK" : " · whole pieces");
+    }
     async function lookupScan(code) {
       const raw = String(code || document.getElementById("scanInput").value || "").trim();
-      setMsg("scanMsg", "Looking up…");
+      const camOpen = document.getElementById("scanCamMask").classList.contains("open");
+      if (camOpen) setCamHint("Looking up…", false);
+      else setMsg("scanMsg", "Looking up…");
       setMsg("scanIssueMsg", "");
       const r = await sdOfficeFetch("/api/office/consumables/lookup?qr=" + encodeURIComponent(raw));
       const j = await r.json();
       if (!j.ok || !j.item) {
         lookedUp = null;
-        document.getElementById("scanLook").classList.remove("open");
-        setMsg("scanMsg", (j && j.error) || "No match", true);
+        lastBadQr = raw;
+        const err = (j && j.error) || "No match";
+        if (camOpen) setCamHint(err, true);
+        else setMsg("scanMsg", err, true);
         return;
       }
+      lastBadQr = "";
       lookedUp = j.item;
       document.getElementById("scanInput").value = j.item.qr || raw;
-      document.getElementById("scanLookText").textContent =
-        j.item.name + " · " + j.item.stockLabel + " " + j.item.unit + " on hand" +
-        (j.item.integerQty === false ? " · litres OK" : " · whole pieces");
-      document.getElementById("scanLook").classList.add("open");
-      setMsg("scanMsg", "");
+      paintFoundItem(j.item);
       tuneQtyInput(document.getElementById("scanQty"), rowInteger(j.item));
-      document.getElementById("scanQty").focus();
+      stopScanCam();
+      setMsg("scanMsg", "");
+      openScanIssue();
     }
     async function startScanCam() {
+      closeScanIssue();
       stopScanCam();
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setMsg("scanMsg", "This phone cannot open the camera here. Open Chrome or Safari on the staging site, or paste the QR text.", true);
         return;
       }
-      setMsg("scanMsg", "Opening camera…");
+      setMsg("scanMsg", "");
+      document.getElementById("scanCamMask").classList.add("open");
+      document.body.classList.add("scan-cam-open");
+      setCamHint("Opening camera…", false);
       try {
         let stream;
         try {
@@ -1296,9 +1411,7 @@
         vid.setAttribute("webkit-playsinline", "true");
         vid.muted = true;
         vid.srcObject = stream;
-        vid.style.display = "block";
         await vid.play();
-        document.getElementById("btnCamStop").hidden = false;
         let detector = null;
         if (window.BarcodeDetector) {
           try { detector = new window.BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { detector = null; }
@@ -1318,7 +1431,7 @@
             if (code && code.data) await onDecodedQr(code.data);
           } catch (e) {}
         }, 350);
-        setMsg("scanMsg", "Point the camera at the locker sticker.");
+        setCamHint("Point the camera at the locker sticker.", false);
       } catch (e) {
         stopScanCam();
         setMsg("scanMsg", cameraErrorMessage(e), true);
@@ -1327,15 +1440,22 @@
     document.getElementById("btnLookup").onclick = () => lookupScan();
     document.getElementById("btnCam").onclick = () => startScanCam();
     document.getElementById("btnCamStop").onclick = () => stopScanCam();
+    document.getElementById("btnScanAgain").onclick = () => startScanCam();
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if (document.getElementById("scanCamMask").classList.contains("open")) stopScanCam();
+      else if (document.getElementById("scanIssueMask").classList.contains("open")) closeScanIssue();
+    });
     document.getElementById("scanInput").addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); lookupScan(); }
     });
     document.getElementById("scanIssueForm").onsubmit = async (e) => {
       e.preventDefault();
-      if (!lookedUp) { setMsg("scanIssueMsg", "Look up a code first.", true); return; }
+      if (!lookedUp) { setMsg("scanIssueMsg", "Scan a locker first.", true); return; }
       const worker = document.getElementById("scanWorker").value;
       const orderNumber = document.getElementById("scanOrder").value;
-      if (!worker) { setMsg("scanIssueMsg", "Choose the worker.", true); return; }
+      if (!shopScanOnly && !worker) { setMsg("scanIssueMsg", "Choose the worker.", true); return; }
+      if (!orderNumber) { setMsg("scanIssueMsg", "Choose the order number.", true); return; }
       setMsg("scanIssueMsg", "Saving…");
       const r = await sdOfficeFetch("/api/office/consumables/scan", {
         method: "POST",
@@ -1348,13 +1468,11 @@
       });
       const j = await r.json();
       if (!j.ok) { setMsg("scanIssueMsg", j.error || "Could not issue", true); return; }
+      lastScanOrder = orderNumber;
       applySnapshot(j);
       lookedUp = j.item || lookedUp;
-      if (j.item) {
-        document.getElementById("scanLookText").textContent =
-          j.item.name + " · " + j.item.stockLabel + " " + j.item.unit + " on hand";
-      }
-      setMsg("scanIssueMsg", "Issued to " + orderNumber + ".");
+      if (j.item) paintFoundItem(j.item);
+      setMsg("scanIssueMsg", "Issued to " + orderNumber + ". Scan again for the next locker.");
       document.getElementById("scanQty").value = "1";
     };
     function reloadPage() {

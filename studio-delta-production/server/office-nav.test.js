@@ -528,6 +528,11 @@ assert.ok(inventoryHtml.indexOf('href="/inventory/stocktake">Stocktake<') !== -1
 assert.ok(inventoryHtml.indexOf("BarcodeDetector") !== -1);
 assert.ok(inventoryHtml.indexOf("/vendor/jsqr/jsQR.js") !== -1);
 assert.ok(inventoryHtml.indexOf("This browser cannot scan with the camera") === -1);
+assert.ok(inventoryHtml.indexOf('id="scanCamMask"') !== -1);
+assert.ok(inventoryHtml.indexOf('id="scanIssueMask"') !== -1);
+assert.ok(inventoryHtml.indexOf("Choose the order number") !== -1);
+assert.ok(inventoryHtml.indexOf("Choose order number") !== -1);
+assert.ok(inventoryHtml.indexOf("scan-cam-open") !== -1);
 assert.ok(fs.existsSync(path.join(__dirname, "../public/vendor/jsqr/jsQR.js")), "jsQR is vendored for phones without BarcodeDetector");
 assert.ok(inventoryHtml.indexOf("/api/office/consumables/scan") !== -1);
 assert.ok(inventoryHtml.indexOf("/api/office/consumables/stocktake") !== -1);
