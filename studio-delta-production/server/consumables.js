@@ -334,7 +334,7 @@ function decoratePurchase(row) {
     totalValueLabel: hasPrices ? formatRand(total) : "—",
     pdfUrl: row.hasPdf ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/pdf") : "",
     hasPdf: !!row.hasPdf,
-    // One QR PDF for the whole PO — all 5cm × 5cm codes on one sheet.
+    // One QR PDF for the whole PO — all 6 cm × 6 cm codes on one sheet.
     qrPdfUrl: (row.hasPdf || hasQrPdf || lines.length)
       ? ("/api/office/consumables/purchases/" + encodeURIComponent(row.id) + "/qr-labels.pdf")
       : "",
@@ -401,8 +401,52 @@ function qrLinePdfPath(poId, itemId) {
   return path.join(pdfDir(), String(poId) + "-qr-" + safeItem + ".pdf");
 }
 
+/** Printed sticker size. Single-item PDFs use a page of this size so they are not A4. */
+const QR_LABEL_CM = 6;
+
 function cmToPt(cm) {
   return (Number(cm) * 72) / 2.54;
+}
+
+function qrLabelSizePt() {
+  return cmToPt(QR_LABEL_CM);
+}
+
+function qrSizeCaption() {
+  return QR_LABEL_CM + " cm × " + QR_LABEL_CM + " cm";
+}
+
+async function qrPngBuffer(payload) {
+  const QRCode = require("qrcode");
+  return QRCode.toBuffer(String(payload || ""), {
+    type: "png",
+    width: 560,
+    margin: 1,
+    errorCorrectionLevel: "M"
+  });
+}
+
+function drawQrSticker(doc, x, y, png, name, footer) {
+  const size = qrLabelSizePt();
+  const pad = cmToPt(0.4);
+  const captionH = footer ? 24 : 18;
+  doc.save()
+    .lineWidth(0.6)
+    .dash(3, { space: 2 })
+    .strokeColor("#9a9080")
+    .rect(x, y, size, size)
+    .stroke()
+    .undash()
+    .restore();
+  const imgSize = Math.max(cmToPt(3.5), size - pad * 2 - captionH);
+  doc.image(png, x + (size - imgSize) / 2, y + pad, { width: imgSize, height: imgSize });
+  const label = String(name || "").slice(0, 36);
+  doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(8)
+    .text(label, x + 3, y + size - captionH, { width: size - 6, align: "center", lineBreak: false });
+  if (footer) {
+    doc.fillColor("#6b6358").font("Helvetica").fontSize(6)
+      .text(String(footer), x + 3, y + size - 11, { width: size - 6, align: "center", lineBreak: false });
+  }
 }
 
 function qrPayloadForLine(line) {
@@ -639,15 +683,13 @@ async function buildPurchasePdf(po) {
   return done;
 }
 
-/** One material = one 5cm × 5cm QR PDF page (open anytime, no ZIP). */
+/** One material = one 6 cm × 6 cm sticker PDF (page is the sticker, not A4). */
 async function buildSingleQrPdf(po, line) {
   const PDFDocument = require("pdfkit");
-  const QRCode = require("qrcode");
-  const size = cmToPt(5);
-  const page = size + cmToPt(1.2);
+  const size = qrLabelSizePt();
   const chunks = [];
   const doc = new PDFDocument({
-    size: [page, page],
+    size: [size, size],
     margin: 0,
     compress: false,
     info: {
@@ -660,46 +702,21 @@ async function buildSingleQrPdf(po, line) {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
     doc.on("error", reject);
   });
-
-  const pad = cmToPt(0.35);
-  const x = (page - size) / 2;
-  const y = (page - size) / 2 - 4;
-  const qr = qrPayloadForLine(line);
-  const png = await QRCode.toBuffer(qr, {
-    type: "png",
-    width: 480,
-    margin: 1,
-    errorCorrectionLevel: "M"
-  });
-
-  doc.save()
-    .lineWidth(0.6)
-    .dash(3, { space: 2 })
-    .strokeColor("#9a9080")
-    .rect(x, y, size, size)
-    .stroke()
-    .undash()
-    .restore();
-
-  const imgSize = size - pad * 2 - 18;
-  doc.image(png, x + (size - imgSize) / 2, y + pad, { width: imgSize, height: imgSize });
-  const label = String((line && line.itemName) || line.itemId || "").slice(0, 28);
-  doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(9)
-    .text(label, x + 2, y + size - 16, { width: size - 4, align: "center", lineBreak: false });
-  doc.fillColor("#6b6358").font("Helvetica").fontSize(6)
-    .text(String((po && po.number) || "") + " · 5 cm × 5 cm", 4, page - 12, { width: page - 8, align: "center" });
-
+  const png = await qrPngBuffer(qrPayloadForLine(line));
+  const footer = [String((po && po.number) || "").trim(), qrSizeCaption(), "print 100%"]
+    .filter(Boolean)
+    .join(" · ");
+  drawQrSticker(doc, 0, 0, png, (line && line.itemName) || line.itemId, footer);
   doc.end();
   return done;
 }
 
-/** Cut-out sheet: one 5cm × 5cm QR square per PO line for locker stickers. */
+/** Cut-out sheet: one 6 cm × 6 cm QR square per line for locker stickers. */
 async function buildQrLabelsPdf(po) {
   const PDFDocument = require("pdfkit");
-  const QRCode = require("qrcode");
-  const size = cmToPt(5);
-  const gap = cmToPt(0.6);
-  const margin = 36;
+  const size = qrLabelSizePt();
+  const gap = cmToPt(0.35);
+  const margin = 24;
   const chunks = [];
   const doc = new PDFDocument({
     size: "A4",
@@ -720,10 +737,10 @@ async function buildQrLabelsPdf(po) {
   let x = margin;
   let y = margin + 28;
 
-  doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(12)
+  doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(11)
     .text("Studio Delta · Material QR labels — cut on the dashed lines", margin, margin, { width: pageW - margin * 2 });
   doc.fillColor("#6b6358").font("Helvetica").fontSize(8)
-    .text((po.number || "Stocktake") + " · each square is 5 cm × 5 cm · stick on the locker", margin, margin + 14, {
+    .text((po.number || "Stocktake") + " · each square is " + qrSizeCaption() + " · print at actual size (100%), not fit-to-page", margin, margin + 14, {
       width: pageW - margin * 2
     });
 
@@ -734,29 +751,8 @@ async function buildQrLabelsPdf(po) {
       col = 0;
       x = margin;
     }
-    const qr = qrPayloadForLine(line);
-    const png = await QRCode.toBuffer(qr, {
-      type: "png",
-      width: 480,
-      margin: 1,
-      errorCorrectionLevel: "M"
-    });
-
-    doc.save()
-      .lineWidth(0.6)
-      .dash(3, { space: 2 })
-      .strokeColor("#9a9080")
-      .rect(x, y, size, size)
-      .stroke()
-      .undash()
-      .restore();
-
-    const pad = cmToPt(0.35);
-    const imgSize = size - pad * 2 - 22;
-    doc.image(png, x + (size - imgSize) / 2, y + pad, { width: imgSize, height: imgSize });
-    const label = String(line.itemName || line.itemId || "").slice(0, 28);
-    doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(9)
-      .text(label, x + 4, y + size - 18, { width: size - 8, align: "center", lineBreak: false });
+    const png = await qrPngBuffer(qrPayloadForLine(line));
+    drawQrSticker(doc, x, y, png, line.itemName || line.itemId, "");
 
     col += 1;
     if (col >= cols) {
@@ -1102,13 +1098,16 @@ function saveStocktake(body, actor) {
   return { changed, counted, note, ...snapshot() };
 }
 
-async function writeStocktakeQrPdf(itemIds) {
+async function writeStocktakeQrPdf(itemIds, opts) {
+  opts = opts || {};
   const store = loadStore();
   const want = (Array.isArray(itemIds) ? itemIds : String(itemIds || "").split(","))
     .map((id) => String(id || "").trim())
     .filter(Boolean);
   let rows;
-  if (want.length) {
+  if (opts.all) {
+    rows = store.items.slice();
+  } else if (want.length) {
     rows = [];
     const seen = {};
     want.forEach((id) => {
@@ -1120,10 +1119,14 @@ async function writeStocktakeQrPdf(itemIds) {
   } else {
     rows = store.items.filter((row) => (Number(row.stock) || 0) > 0);
   }
-  if (!rows.length) throw new Error("Tick items (or count stock first) so there is something to print.");
+  if (!rows.length) {
+    throw new Error(opts.all
+      ? "No consumables to print."
+      : "Tick items (or count stock first) so there is something to print.");
+  }
   rows.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
   const buffer = await buildQrLabelsPdf({
-    number: "Stocktake",
+    number: opts.all ? "All lockers" : "Stocktake",
     lines: rows.map((row) => ({ itemId: row.id, itemName: row.name, unit: row.unit || "pcs" }))
   });
   fs.writeFileSync(stocktakeQrPath(), buffer);
@@ -1140,7 +1143,7 @@ function readStocktakeQrPdf() {
   return {
     buffer: fs.readFileSync(file),
     mime: "application/pdf",
-    filename: "stocktake-QR-labels-5cm.pdf"
+    filename: "stocktake-QR-labels-6cm.pdf"
   };
 }
 
@@ -1239,7 +1242,7 @@ async function createPurchase(body, actor) {
   const buffer = await buildPurchasePdf(po);
   fs.writeFileSync(pdfPathFor(po.id), buffer);
   po.hasPdf = true;
-  // One QR PDF for the PO: every line as a 5cm × 5cm cut-out on the same sheet.
+  // One QR PDF for the PO: every line as a 6 cm × 6 cm cut-out on the same sheet.
   const qrBuffer = await buildQrLabelsPdf(po);
   fs.writeFileSync(qrPdfPathFor(po.id), qrBuffer);
   po.hasQrPdf = true;
@@ -1305,7 +1308,7 @@ async function readPurchaseQrPdf(id) {
   }
   return {
     buffer: fs.readFileSync(file),
-    filename: (po.number || want) + "-QR-codes-5cm.pdf",
+    filename: (po.number || want) + "-QR-codes-6cm.pdf",
     mime: "application/pdf"
   };
 }
@@ -1395,6 +1398,7 @@ module.exports = {
   runningOrdersForWorker,
   parseConsumableQr,
   saveStocktake,
+  QR_LABEL_CM,
   writeStocktakeQrPdf,
   readStocktakeQrPdf,
   writeItemQrPdf,

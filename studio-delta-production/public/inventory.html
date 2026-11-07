@@ -183,11 +183,12 @@
         <a id="tab-steel" href="/inventory/steel">Steel</a>
         <a id="tab-glass" href="/inventory/glass">Glass</a>
       </nav>
-      <p class="lede" id="lede">Hinges, bullets, screws, stickers, and other hardware. Whole pieces stay whole numbers. Paint and litres can be 0.5.</p>
+      <p class="lede" id="lede">Hinges, bullets, screws, stickers, and other hardware. Print all 6×6 cm locker QRs at once, or open one from the row. Whole pieces stay whole numbers. Paint and litres can be 0.5.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
       <input class="search" type="search" id="q" placeholder="Search items">
+      <button class="ghost" type="button" id="btnPrintAllQr">Print all QR labels</button>
       <button class="ghost" type="button" id="btnLogUsage">Log usage</button>
       <button type="button" id="btnCreatePo">Create purchase order</button>
       <button class="ghost" type="button" onclick="reloadPage()">Refresh</button>
@@ -203,7 +204,7 @@
     </div>
     <section class="card">
       <h2>On hand</h2>
-      <p class="hint">Change current stock only in <b>Edit</b>. Saving there makes a QR label you can open and print anytime. Price and ROP still save on the row.</p>
+      <p class="hint">Change current stock only in <b>Edit</b>. Saving there makes a 6×6 cm QR you can print anytime. Use <b>Print all QR labels</b> for every locker, or <b>Open QR</b> on a row for one sticker. Print at actual size (100%).</p>
       <div id="itemList"><div class="empty">Loading…</div></div>
       <form class="add" id="addForm">
         <label>Item name
@@ -245,7 +246,7 @@
     </div>
     <section class="card">
       <h2>Purchase orders</h2>
-      <p class="hint">Each PO has two documents you can open anytime: <b>Open PO</b>, and <b>Open QR code</b> (one PDF with every item as a 5×5 cm cut-out). Receive when stock arrives.</p>
+      <p class="hint">Each PO has two documents you can open anytime: <b>Open PO</b>, and <b>Open QR code</b> (one PDF with every item as a 6×6 cm cut-out). Receive when stock arrives.</p>
       <div id="poList"><div class="empty">Loading…</div></div>
     </section>
   </div>
@@ -315,7 +316,7 @@
     </div>
     <section class="card">
       <h2>Count existing stock</h2>
-      <p class="hint">Walk the lockers, type what is actually there, then save. Tick items and <b>Open QR labels</b> to print 5×5 cm stickers for those lockers — same codes Collect / scan uses.</p>
+      <p class="hint">Walk the lockers, type what is actually there, then save. Tick items and <b>Open QR labels</b> to print those 6×6 cm stickers, or <b>Print all QR labels</b> for every item. Same codes Collect / scan uses.</p>
       <div class="add" style="border-top:0">
         <button class="ghost" type="button" id="btnTakeAll">Tick all</button>
         <button class="ghost" type="button" id="btnTakeStocked">Tick with stock</button>
@@ -616,7 +617,7 @@
       document.title = "Studio Delta — Scan materials";
       const lede = document.getElementById("lede");
       if (lede) lede.textContent = "Scan lockers onto the order you are clocked on. Start a job first if nothing is running.";
-      ["tab-cons", "tab-pos", "tab-take", "tab-steel", "tab-glass", "btnLogUsage", "btnCreatePo", "q"].forEach((id) => {
+      ["tab-cons", "tab-pos", "tab-take", "tab-steel", "tab-glass", "btnLogUsage", "btnCreatePo", "btnPrintAllQr", "q"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.hidden = true;
       });
@@ -957,6 +958,19 @@
     }
     document.getElementById("btnLogUsage").onclick = () => openUse("");
     document.getElementById("btnCreatePo").onclick = () => openPo();
+    document.getElementById("btnPrintAllQr").onclick = () => printAllQrLabels();
+    async function printAllQrLabels() {
+      const msgId = pathTab === "take" ? "takeMsg" : "status";
+      setMsg(msgId, "Building every locker QR…");
+      const r = await sdOfficeFetch("/api/office/consumables/stocktake/qr-labels.pdf", {
+        method: "POST",
+        body: JSON.stringify({ all: true })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg(msgId, j.error || "Could not print", true); return; }
+      setMsg(msgId, "QR labels for all " + (j.count || 0) + " items. Print at actual size (100%).");
+      window.open(j.url || "/api/office/consumables/stocktake/qr-labels.pdf", "_blank", "noopener");
+    }
     document.getElementById("addPoLine").onclick = () => addPoLine("");
     document.getElementById("addUseLine").onclick = () => addUseLine("");
     document.getElementById("useMask").addEventListener("click", (e) => { if (e.target.id === "useMask") closeUse(); });
@@ -1062,10 +1076,11 @@
     document.getElementById("matPage").hidden = !matKind;
     document.getElementById("btnLogUsage").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
     document.getElementById("btnCreatePo").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
+    document.getElementById("btnPrintAllQr").style.display = (pathTab === "cons" || pathTab === "take") ? "" : "none";
     document.getElementById("q").style.display = pathTab === "collect" ? "none" : "";
 
     if (pathTab === "pos") {
-      document.getElementById("lede").textContent = "Consumables purchase orders. Open PO, or Open QR code (all 5×5 cm labels on one PDF). Receive stock when the order arrives, or cancel.";
+      document.getElementById("lede").textContent = "Consumables purchase orders. Open PO, or Open QR code (all 6×6 cm labels on one PDF). Receive stock when the order arrives, or cancel.";
       document.getElementById("q").placeholder = "Search purchase orders";
     }
     if (pathTab === "collect") {

@@ -237,6 +237,9 @@ assert.ok(String(consumables.qrPayloadForLine(po.lines[0])).indexOf("SDINV|C|") 
 const stocktakeLabels = await consumables.writeStocktakeQrPdf([hinge.id]);
 assert.ok(stocktakeLabels.count >= 1);
 assert.ok(stocktakeLabels.url.indexOf("stocktake/qr-labels.pdf") !== -1);
+assert.strictEqual(consumables.QR_LABEL_CM, 6);
+const allLabels = await consumables.writeStocktakeQrPdf([], { all: true });
+assert.ok(allLabels.count >= consumables.snapshot().items.length);
 const stocktakeFile = consumables.readStocktakeQrPdf();
 assert.ok(stocktakeFile && stocktakeFile.buffer && stocktakeFile.buffer.length > 800);
 const orderedSnap = consumables.snapshot();
@@ -440,6 +443,13 @@ return (async function main() {
   });
   assert.strictEqual(qrApi.json.ok, true, JSON.stringify(qrApi.json));
   assert.ok(qrApi.json.count >= 1);
+  const allQrApi = await api("/api/office/consumables/stocktake/qr-labels.pdf", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ all: true })
+  });
+  assert.strictEqual(allQrApi.json.ok, true, JSON.stringify(allQrApi.json));
+  assert.ok(allQrApi.json.count >= 2, "print-all includes every catalog item");
 
   const itemQr = await consumables.writeItemQrPdf(hinge.id);
   assert.ok(itemQr.url.indexOf("/qr.pdf") !== -1);

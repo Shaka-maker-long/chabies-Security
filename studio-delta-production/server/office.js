@@ -734,7 +734,8 @@ function mountOffice(app) {
   app.post("/api/office/consumables/stocktake/qr-labels.pdf", requireOffice, async (req, res) => {
     try {
       const ids = (req.body && req.body.itemIds) || (req.body && req.body.ids);
-      const made = await consumables.writeStocktakeQrPdf(ids);
+      const all = !!(req.body && (req.body.all === true || req.body.all === 1 || req.body.all === "1"));
+      const made = await consumables.writeStocktakeQrPdf(ids, { all });
       res.json({ ok: true, ...made });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
