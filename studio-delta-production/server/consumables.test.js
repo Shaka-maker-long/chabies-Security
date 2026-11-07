@@ -102,6 +102,22 @@ try {
 }
 assert.ok(missFailed);
 
+const take = consumables.saveStocktake({
+  lines: [
+    { itemId: hinge.id, stock: "40" },
+    { itemId: hinge.id, stock: "40" }
+  ]
+}, "Office Boss");
+assert.strictEqual(take.changed, 1);
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 40);
+const sameTake = consumables.saveStocktake({
+  lines: [{ itemId: hinge.id, stock: "40" }]
+}, "Office Boss");
+assert.strictEqual(sameTake.changed, 0);
+assert.strictEqual(sameTake.counted, 1);
+consumables.saveStocktake({ lines: [{ itemId: hinge.id, stock: "34" }] }, "Office Boss");
+assert.strictEqual(consumables.snapshot().items.find((row) => row.id === hinge.id).stock, 34);
+
 consumables.logUsage({ itemId: hinge.id, qty: "20", orderNumber: "S260101" }, "Admire");
 const afterUse = consumables.snapshot().items.find((row) => row.id === hinge.id);
 assert.strictEqual(afterUse.stock, 14);
@@ -169,6 +185,11 @@ assert.ok(pdf && pdf.buffer && pdf.buffer.length > 100);
 const qrPdf = await consumables.readPurchaseQrPdf(po.id);
 assert.ok(qrPdf && qrPdf.buffer && qrPdf.buffer.length > 800);
 assert.ok(String(consumables.qrPayloadForLine(po.lines[0])).indexOf("SDINV|C|") === 0);
+const stocktakeLabels = await consumables.writeStocktakeQrPdf([hinge.id]);
+assert.ok(stocktakeLabels.count >= 1);
+assert.ok(stocktakeLabels.url.indexOf("stocktake/qr-labels.pdf") !== -1);
+const stocktakeFile = consumables.readStocktakeQrPdf();
+assert.ok(stocktakeFile && stocktakeFile.buffer && stocktakeFile.buffer.length > 800);
 const orderedSnap = consumables.snapshot();
 const orderedHinge = orderedSnap.items.find((row) => row.id === hinge.id);
 assert.strictEqual(orderedHinge.stock, 14, "ordering does not add stock yet");
@@ -326,6 +347,20 @@ return (async function main() {
   assert.strictEqual(batchApi.json.usedItems.length, 2);
   assert.strictEqual(batchApi.json.usedItems.find((row) => row.id === hinge.id).stock, 60);
   assert.ok(Array.isArray(batchApi.json.items) && batchApi.json.items.length > 2, "snapshot items stay intact");
+
+  const takeApi = await api("/api/office/consumables/stocktake", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ lines: [{ itemId: hinge.id, stock: batchApi.json.usedItems.find((row) => row.id === hinge.id).stock }] })
+  });
+  assert.strictEqual(takeApi.json.ok, true, JSON.stringify(takeApi.json));
+  const qrApi = await api("/api/office/consumables/stocktake/qr-labels.pdf", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ itemIds: [hinge.id] })
+  });
+  assert.strictEqual(qrApi.json.ok, true, JSON.stringify(qrApi.json));
+  assert.ok(qrApi.json.count >= 1);
 
   server.close();
   console.log("consumables.test.js ok");

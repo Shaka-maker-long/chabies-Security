@@ -334,6 +334,10 @@ function qrPdfPathFor(id) {
   return path.join(pdfDir(), String(id) + "-qr-labels.pdf");
 }
 
+function stocktakeQrPath() {
+  return path.join(pdfDir(), "stocktake-qr-labels.pdf");
+}
+
 function qrLinePdfPath(poId, itemId) {
   const safeItem = String(itemId || "item").replace(/[^\w.-]+/g, "_");
   return path.join(pdfDir(), String(poId) + "-qr-" + safeItem + ".pdf");
@@ -661,7 +665,7 @@ async function buildQrLabelsPdf(po) {
   doc.fillColor("#1c1914").font("Helvetica-Bold").fontSize(12)
     .text("Studio Delta · Material QR labels — cut on the dashed lines", margin, margin, { width: pageW - margin * 2 });
   doc.fillColor("#6b6358").font("Helvetica").fontSize(8)
-    .text((po.number || "") + " · each square is 5 cm × 5 cm · stick on the locker", margin, margin + 14, {
+    .text((po.number || "Stocktake") + " · each square is 5 cm × 5 cm · stick on the locker", margin, margin + 14, {
       width: pageW - margin * 2
     });
 
@@ -908,6 +912,87 @@ function receiveStock(body, actor) {
   return decorateItem(row, store);
 }
 
+function saveStocktake(body, actor) {
+  const linesIn = Array.isArray(body && body.lines) ? body.lines : [];
+  if (!linesIn.length) throw new Error("Enter counted quantities for the items you checked.");
+  const note = String((body && body.note) || "Stocktake").trim() || "Stocktake";
+  const store = loadStore();
+  const at = nowIso();
+  const employee = actorName(actor);
+  let changed = 0;
+  let counted = 0;
+  linesIn.forEach((line, i) => {
+    const raw = line && line.stock;
+    if (raw == null || String(raw).trim() === "") return;
+    const row = findItem(store, line && (line.itemId || line.item_id));
+    if (!row) throw new Error("Line " + (i + 1) + ": choose a consumable.");
+    const next = parseStock(raw, row.name + " counted");
+    counted += 1;
+    const before = Number(row.stock) || 0;
+    const delta = Math.round((next - before) * 1000) / 1000;
+    if (delta === 0) return;
+    row.stock = next;
+    row.updatedAt = at;
+    addMovement(store, {
+      id: newId("cmove"),
+      at,
+      type: "count",
+      itemId: row.id,
+      itemName: row.name,
+      qty: delta,
+      orderNumber: "",
+      employee,
+      note
+    });
+    changed += 1;
+  });
+  if (!counted) throw new Error("Enter counted quantities for the items you checked.");
+  saveStore(store);
+  return { changed, counted, note, ...snapshot() };
+}
+
+async function writeStocktakeQrPdf(itemIds) {
+  const store = loadStore();
+  const want = (Array.isArray(itemIds) ? itemIds : String(itemIds || "").split(","))
+    .map((id) => String(id || "").trim())
+    .filter(Boolean);
+  let rows;
+  if (want.length) {
+    rows = [];
+    const seen = {};
+    want.forEach((id) => {
+      const row = findItem(store, id);
+      if (!row || seen[row.id]) return;
+      seen[row.id] = true;
+      rows.push(row);
+    });
+  } else {
+    rows = store.items.filter((row) => (Number(row.stock) || 0) > 0);
+  }
+  if (!rows.length) throw new Error("Tick items (or count stock first) so there is something to print.");
+  rows.sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { sensitivity: "base" }));
+  const buffer = await buildQrLabelsPdf({
+    number: "Stocktake",
+    lines: rows.map((row) => ({ itemId: row.id, itemName: row.name, unit: row.unit || "pcs" }))
+  });
+  fs.writeFileSync(stocktakeQrPath(), buffer);
+  return {
+    count: rows.length,
+    url: "/api/office/consumables/stocktake/qr-labels.pdf",
+    bytes: buffer.length
+  };
+}
+
+function readStocktakeQrPdf() {
+  const file = stocktakeQrPath();
+  if (!fs.existsSync(file)) return null;
+  return {
+    buffer: fs.readFileSync(file),
+    mime: "application/pdf",
+    filename: "stocktake-QR-labels-5cm.pdf"
+  };
+}
+
 function countStock(body, actor) {
   const counted = parseStock(body && body.stock, "Counted stock");
   const note = String((body && body.note) || "").trim();
@@ -1127,6 +1212,9 @@ module.exports = {
   lookupByQr,
   issueFromScan,
   parseConsumableQr,
+  saveStocktake,
+  writeStocktakeQrPdf,
+  readStocktakeQrPdf,
   receiveStock,
   countStock,
   createPurchase,

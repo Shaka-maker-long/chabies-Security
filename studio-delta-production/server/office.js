@@ -671,6 +671,40 @@ function mountOffice(app) {
     }
   });
 
+  app.post("/api/office/consumables/stocktake", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...consumables.saveStocktake(req.body || {}, req.office && req.office.name) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.post("/api/office/consumables/stocktake/qr-labels.pdf", requireOffice, async (req, res) => {
+    try {
+      const ids = (req.body && req.body.itemIds) || (req.body && req.body.ids);
+      const made = await consumables.writeStocktakeQrPdf(ids);
+      res.json({ ok: true, ...made });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/consumables/stocktake/qr-labels.pdf", requireOffice, (req, res) => {
+    const file = consumables.readStocktakeQrPdf();
+    if (!file) {
+      res.status(404).json({ ok: false, error: "Print QR labels from Stocktake first." });
+      return;
+    }
+    const download = String((req.query && req.query.download) || "") === "1";
+    res.setHeader("Content-Type", file.mime || "application/pdf");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader(
+      "Content-Disposition",
+      (download ? "attachment" : "inline") + "; filename=\"" + String(file.filename || "stocktake-QR-labels.pdf").replace(/"/g, "") + "\""
+    );
+    res.send(file.buffer);
+  });
+
   app.post("/api/office/consumables/purchases", requireOffice, async (req, res) => {
     try {
       const purchase = await consumables.createPurchase(req.body || {}, req.office && req.office.name);

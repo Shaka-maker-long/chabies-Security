@@ -108,6 +108,7 @@
         <a id="tab-cons" href="/inventory">Consumables</a>
         <a id="tab-pos" href="/inventory/purchases">Purchase orders</a>
         <a id="tab-collect" href="/inventory/collect">Collect / scan</a>
+        <a id="tab-take" href="/inventory/stocktake">Stocktake</a>
         <a id="tab-steel" href="/inventory/steel">Steel</a>
         <a id="tab-glass" href="/inventory/glass">Glass</a>
       </nav>
@@ -175,7 +176,7 @@
   <div class="page" id="collectPage" hidden>
     <section class="card">
       <h2>Who is collecting</h2>
-      <p class="hint">Scan the locker QR from a purchase-order label. Stock drops and the usage log records the worker and job.</p>
+      <p class="hint">Scan the locker QR from a stocktake or purchase-order label. Stock drops and the usage log records the worker and job.</p>
       <form class="add" id="scanWho" onsubmit="return false;">
         <label>Worker
           <select id="scanWorker" required></select>
@@ -208,6 +209,26 @@
         </form>
       </div>
       <p class="msg" id="scanMsg" style="padding:0 16px 12px"></p>
+    </section>
+  </div>
+
+  <div class="page" id="takePage" hidden>
+    <div class="kpis">
+      <div class="kpi"><span>Items</span><b id="takeItems">0</b></div>
+      <div class="kpi"><span>With stock</span><b id="takeStocked">0</b></div>
+    </div>
+    <section class="card">
+      <h2>Count existing stock</h2>
+      <p class="hint">Walk the lockers, type what is actually there, then save. Tick items and <b>Open QR labels</b> to print 5×5 cm stickers for those lockers — same codes Collect / scan uses.</p>
+      <div class="add" style="border-top:0">
+        <button class="ghost" type="button" id="btnTakeAll">Tick all</button>
+        <button class="ghost" type="button" id="btnTakeStocked">Tick with stock</button>
+        <button class="ghost" type="button" id="btnTakeNone">Clear ticks</button>
+        <button type="button" id="btnTakeSave">Save counts</button>
+        <button type="button" id="btnTakeQr">Open QR labels</button>
+        <span class="msg" id="takeMsg"></span>
+      </div>
+      <div id="takeList"><div class="empty">Loading…</div></div>
     </section>
   </div>
 
@@ -322,8 +343,9 @@
     let poLineN = 0;
     const pathTab = location.pathname.indexOf("/inventory/purchases") === 0 ? "pos"
       : (location.pathname.indexOf("/inventory/collect") === 0 ? "collect"
-        : (location.pathname.indexOf("/inventory/steel") === 0 ? "steel"
-          : (location.pathname.indexOf("/inventory/glass") === 0 ? "glass" : "cons")));
+        : (location.pathname.indexOf("/inventory/stocktake") === 0 ? "take"
+          : (location.pathname.indexOf("/inventory/steel") === 0 ? "steel"
+            : (location.pathname.indexOf("/inventory/glass") === 0 ? "glass" : "cons"))));
     const matKind = pathTab === "steel" || pathTab === "glass" ? pathTab : "";
 
     function esc(s) {
@@ -500,6 +522,7 @@
       renderItems();
       renderMoves();
       renderPurchases();
+      renderStocktake();
     }
     async function load() {
       setMsg("status", "Loading…");
@@ -662,11 +685,13 @@
     document.getElementById("tab-cons").classList.toggle("on", pathTab === "cons");
     document.getElementById("tab-pos").classList.toggle("on", pathTab === "pos");
     document.getElementById("tab-collect").classList.toggle("on", pathTab === "collect");
+    document.getElementById("tab-take").classList.toggle("on", pathTab === "take");
     document.getElementById("tab-steel").classList.toggle("on", pathTab === "steel");
     document.getElementById("tab-glass").classList.toggle("on", pathTab === "glass");
     document.getElementById("consPage").hidden = pathTab !== "cons";
     document.getElementById("poPage").hidden = pathTab !== "pos";
     document.getElementById("collectPage").hidden = pathTab !== "collect";
+    document.getElementById("takePage").hidden = pathTab !== "take";
     document.getElementById("matPage").hidden = !matKind;
     document.getElementById("btnLogUsage").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
     document.getElementById("btnCreatePo").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
@@ -677,7 +702,11 @@
       document.getElementById("q").placeholder = "Search purchase orders";
     }
     if (pathTab === "collect") {
-      document.getElementById("lede").textContent = "Scan a locker QR from a PO label. Choose the worker and job, type the quantity, and issue — live consumables stock drops.";
+      document.getElementById("lede").textContent = "Scan a locker QR from a stocktake or PO label. Choose the worker and job, type the quantity, and issue — live consumables stock drops.";
+    }
+    if (pathTab === "take") {
+      document.getElementById("lede").textContent = "Count what is on the locker, save, then print QR stickers for those items.";
+      document.getElementById("q").placeholder = "Search items";
     }
     if (pathTab === "steel") {
       document.getElementById("lede").textContent = "Steel stock in buy units: lengths (6 m) for tubes/bars/angle, sheets for plates. Click a row to edit name, unit, current stock, unit price, ROP, and total used. WIP Qty and Value come from Steel_Usage on orders that are not Delivered.";
@@ -820,7 +849,88 @@
     document.getElementById("q").oninput = () => {
       if (matKind) renderMat();
       else if (pathTab === "pos") renderPurchases();
+      else if (pathTab === "take") filterStocktake();
       else renderItems();
+    };
+    function takeRows() {
+      return Array.from(document.querySelectorAll("#takeList tbody tr"));
+    }
+    function selectedTakeIds() {
+      return takeRows().filter((tr) => tr.querySelector(".take-on") && tr.querySelector(".take-on").checked)
+        .map((tr) => tr.getAttribute("data-id")).filter(Boolean);
+    }
+    function filterStocktake() {
+      const needle = q();
+      takeRows().forEach((tr) => {
+        const name = String(tr.getAttribute("data-name") || "");
+        tr.style.display = !needle || name.indexOf(needle) !== -1 ? "" : "none";
+      });
+    }
+    function renderStocktake() {
+      const box = document.getElementById("takeList");
+      if (!box) return;
+      const rows = data.items || [];
+      const stocked = rows.filter((row) => (Number(row.stock) || 0) > 0).length;
+      document.getElementById("takeItems").textContent = String(rows.length);
+      document.getElementById("takeStocked").textContent = String(stocked);
+      if (!rows.length) {
+        box.innerHTML = '<div class="empty">No consumables yet.</div>';
+        return;
+      }
+      box.innerHTML = "<table><thead><tr><th></th><th>Name</th><th class='r'>System</th><th class='r'>Counted</th></tr></thead><tbody>" +
+        rows.map((row) => {
+          const has = (Number(row.stock) || 0) > 0;
+          return "<tr data-id=\"" + esc(row.id) + "\" data-name=\"" + esc(String(row.name || "").toLowerCase()) + "\">" +
+            "<td><input class='take-on' type='checkbox'" + (has ? " checked" : "") + "></td>" +
+            "<td>" + esc(row.name) + "</td>" +
+            "<td class='r'>" + esc(row.stockLabel) + " " + esc(row.unit) + "</td>" +
+            "<td class='r'><input class='take-qty' inputmode='decimal' value=\"" + esc(row.stockLabel) + "\" style='width:7em;text-align:right'></td></tr>";
+        }).join("") + "</tbody></table>";
+      filterStocktake();
+    }
+    function setTakeTicks(mode) {
+      takeRows().forEach((tr) => {
+        const box = tr.querySelector(".take-on");
+        if (!box) return;
+        if (mode === "all") box.checked = true;
+        else if (mode === "none") box.checked = false;
+        else {
+          const stock = Number((tr.querySelector(".take-qty") || {}).value);
+          box.checked = stock > 0;
+        }
+      });
+    }
+    document.getElementById("btnTakeAll").onclick = () => setTakeTicks("all");
+    document.getElementById("btnTakeNone").onclick = () => setTakeTicks("none");
+    document.getElementById("btnTakeStocked").onclick = () => setTakeTicks("stocked");
+    document.getElementById("btnTakeSave").onclick = async () => {
+      const lines = takeRows().filter((tr) => tr.querySelector(".take-on").checked).map((tr) => ({
+        itemId: tr.getAttribute("data-id"),
+        stock: tr.querySelector(".take-qty").value
+      }));
+      if (!lines.length) { setMsg("takeMsg", "Tick the items you counted.", true); return; }
+      setMsg("takeMsg", "Saving…");
+      const r = await sdOfficeFetch("/api/office/consumables/stocktake", {
+        method: "POST",
+        body: JSON.stringify({ lines, note: "Stocktake" })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("takeMsg", j.error || "Could not save", true); return; }
+      applySnapshot(j);
+      setMsg("takeMsg", "Updated " + (j.changed || 0) + " of " + (j.counted || 0) + " counted lines.");
+    };
+    document.getElementById("btnTakeQr").onclick = async () => {
+      const itemIds = selectedTakeIds();
+      if (!itemIds.length) { setMsg("takeMsg", "Tick items to print QR stickers for.", true); return; }
+      setMsg("takeMsg", "Building QR labels…");
+      const r = await sdOfficeFetch("/api/office/consumables/stocktake/qr-labels.pdf", {
+        method: "POST",
+        body: JSON.stringify({ itemIds })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg("takeMsg", j.error || "Could not print", true); return; }
+      setMsg("takeMsg", "QR labels for " + (j.count || itemIds.length) + " items.");
+      window.open(j.url || "/api/office/consumables/stocktake/qr-labels.pdf", "_blank", "noopener");
     };
     let lookedUp = null;
     let scanStream = null;
