@@ -772,6 +772,14 @@ async function buildQrLabelsPdf(po) {
   return done;
 }
 
+function scanContext() {
+  seedCatalog();
+  return {
+    activeOrderNumbers: activeOrderNumbers(),
+    productionWorkers: productionWorkers()
+  };
+}
+
 function snapshot() {
   seedCatalog();
   const store = loadStore();
@@ -1321,6 +1329,7 @@ module.exports = {
   qtyKindFor,
   lookupByQr,
   issueFromScan,
+  scanContext,
   parseConsumableQr,
   saveStocktake,
   writeStocktakeQrPdf,

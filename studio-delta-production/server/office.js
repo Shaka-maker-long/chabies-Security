@@ -102,11 +102,27 @@ function officeCookie(token, clear, req) {
   return "sd_office=" + encodeURIComponent(token) + "; Path=/; HttpOnly; SameSite=Lax; Max-Age=" + maxAge + secure;
 }
 
+function shopSessionCookieClear(req) {
+  const secure = cookieSecureFlag(req) ? "; Secure" : "";
+  return "sd_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0" + secure;
+}
+
 function canUseOfficeApi(profile) {
   if (!profile) return false;
   if (profile.canSeeOffice) return true;
   if (profile.canSeeDrawingDesk || staff.isDrawingOwnerName(profile.name)) return true;
   return false;
+}
+
+function requireShopScan(req, res, next) {
+  const profile = staff.readSession(req);
+  if (!profile) {
+    res.status(401).json({ ok: false, error: "Log in first." });
+    return;
+  }
+  req.shop = profile;
+  req.office = profile;
+  next();
 }
 
 function requireOffice(req, res, next) {
@@ -276,7 +292,7 @@ function mountOffice(app) {
     if (profile) {
       auditLog.record("logout", { actor: profile.name, ok: true, deviceId: profile.deviceId }, req);
     }
-    res.setHeader("Set-Cookie", officeCookie("", true, req));
+    res.setHeader("Set-Cookie", [officeCookie("", true, req), shopSessionCookieClear(req)]);
     res.json({ ok: true });
   });
 
@@ -660,7 +676,11 @@ function mountOffice(app) {
     }
   });
 
-  app.get("/api/office/consumables/lookup", requireOffice, (req, res) => {
+  app.get("/api/office/consumables/scan-context", requireShopScan, (_req, res) => {
+    res.json({ ok: true, ...consumables.scanContext() });
+  });
+
+  app.get("/api/office/consumables/lookup", requireShopScan, (req, res) => {
     try {
       const item = consumables.lookupByQr((req.query && (req.query.qr || req.query.code)) || "");
       res.json({ ok: true, item });
@@ -669,13 +689,16 @@ function mountOffice(app) {
     }
   });
 
-  app.post("/api/office/consumables/scan", requireOffice, (req, res) => {
+  app.post("/api/office/consumables/scan", requireShopScan, (req, res) => {
     try {
-      const used = consumables.issueFromScan(req.body || {}, req.office && req.office.name);
+      const body = Object.assign({}, req.body || {});
+      if (!canUseOfficeApi(req.shop)) body.worker = req.shop.name;
+      const used = consumables.issueFromScan(body, req.shop && req.shop.name);
       const payload = Array.isArray(used)
         ? { usedItems: used, item: used[0] || null }
         : { item: used, usedItems: [used] };
-      res.json({ ok: true, ...consumables.snapshot(), ...payload });
+      const extra = canUseOfficeApi(req.shop) ? consumables.snapshot() : consumables.scanContext();
+      res.json({ ok: true, ...extra, ...payload });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

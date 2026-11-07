@@ -407,9 +407,11 @@
     </div>
   </div>
 
-  <script src="/office-auth.js?v=login-msg-3"></script>
+  <script src="/office-auth.js?v=scan-floor-1"></script>
   <script>
     let data = { items: [], movements: [], purchases: [], openPurchases: [], units: [], activeOrderNumbers: [], productionWorkers: [] };
+    let shopScanOnly = false;
+    let shopScanName = "";
     let poLineN = 0;
     const pathTab = location.pathname.indexOf("/inventory/purchases") === 0 ? "pos"
       : (location.pathname.indexOf("/inventory/collect") === 0 ? "collect"
@@ -478,6 +480,33 @@
     }
     function fillScanSelects() {
       fillJobWorkerSelects("scanOrder", "scanWorker");
+      lockScanWorker();
+    }
+    function lockScanWorker() {
+      if (!shopScanOnly) return;
+      const workerEl = document.getElementById("scanWorker");
+      if (!workerEl) return;
+      const name = shopScanName;
+      if (name) {
+        workerEl.innerHTML = "<option value=\"" + esc(name) + "\">" + esc(name) + "</option>";
+        workerEl.value = name;
+      }
+      workerEl.disabled = true;
+    }
+    function applyShopScanChrome(profile) {
+      shopScanOnly = true;
+      shopScanName = String((profile && profile.name) || "").trim();
+      const title = document.querySelector("header h1");
+      if (title) title.textContent = "Scan materials";
+      document.title = "Studio Delta — Scan materials";
+      const lede = document.getElementById("lede");
+      if (lede) lede.textContent = "Scan a locker QR. Stock drops on the job you pick. You cannot open the inventory list from here.";
+      ["tab-cons", "tab-pos", "tab-take", "tab-steel", "tab-glass", "btnLogUsage", "btnCreatePo", "q"].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = true;
+      });
+      const collect = document.getElementById("tab-collect");
+      if (collect) collect.classList.add("on");
     }
     function addUseLine(selected) {
       const wrap = document.createElement("div");
@@ -611,6 +640,12 @@
       document.getElementById("poLines").appendChild(wrap);
     }
     function applySnapshot(j) {
+      if (shopScanOnly) {
+        data.activeOrderNumbers = j.activeOrderNumbers || data.activeOrderNumbers || [];
+        data.productionWorkers = j.productionWorkers || data.productionWorkers || [];
+        fillScanSelects();
+        return;
+      }
       data = j;
       document.getElementById("kpiItems").textContent = String(j.itemCount || 0);
       document.getElementById("kpiLow").textContent = String(j.lowCount || 0);
@@ -625,6 +660,14 @@
     }
     async function load() {
       setMsg("status", "Loading…");
+      if (shopScanOnly) {
+        const r = await sdOfficeFetch("/api/office/consumables/scan-context");
+        const j = await r.json();
+        if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
+        applySnapshot(j);
+        setMsg("status", shopScanName ? ("Collecting as " + shopScanName) : "");
+        return;
+      }
       const r = await sdOfficeFetch("/api/office/consumables");
       const j = await r.json();
       if (!j.ok) { setMsg("status", j.error || "Could not load", true); return; }
@@ -1244,8 +1287,9 @@
       else load();
     }
     window.reloadPage = reloadPage;
-    sdRequireOffice("inventory").then((p) => {
+    sdRequireInventory().then((p) => {
       if (!p) return;
+      if (!p.canSeeOffice && !p.isAdmin) applyShopScanChrome(p);
       if (matKind) loadMat();
       else load();
     });

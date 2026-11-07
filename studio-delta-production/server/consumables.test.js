@@ -417,6 +417,45 @@ return (async function main() {
   assert.strictEqual(itemQrGet.status, 200);
   assert.ok(String(itemQrGet.headers.get("content-type") || "").indexOf("pdf") !== -1);
 
+  staff.upsertUser({
+    name: "Floor Welder",
+    access: "Production",
+    role: "Welding",
+    password: "floor",
+    tasks: ["Welding"]
+  });
+  const floorSess = staff.createSession({
+    name: "Floor Welder",
+    access: "Production",
+    role: "Welding",
+    canSeeOffice: false,
+    tasks: ["Welding"]
+  });
+  const floorHeaders = { "content-type": "application/json", "x-sd-token": floorSess.token };
+
+  const deniedList = await api("/api/office/consumables", { headers: floorHeaders });
+  assert.strictEqual(deniedList.status, 403, "production must not see inventory");
+
+  const ctx = await api("/api/office/consumables/scan-context", { headers: floorHeaders });
+  assert.strictEqual(ctx.json.ok, true, JSON.stringify(ctx.json));
+  assert.ok(!ctx.json.items);
+
+  const lookedFloor = await api("/api/office/consumables/lookup?qr=" + encodeURIComponent("SDINV|C|" + hinge.id), { headers: floorHeaders });
+  assert.strictEqual(lookedFloor.json.ok, true, JSON.stringify(lookedFloor.json));
+  assert.strictEqual(lookedFloor.json.item.id, hinge.id);
+
+  const before = Number(lookedFloor.json.item.stock);
+  const scanFloor = await api("/api/office/consumables/scan", {
+    method: "POST",
+    headers: floorHeaders,
+    body: JSON.stringify({ qr: "SDINV|C|" + hinge.id, qty: 1, orderNumber: "S260201", worker: "Someone Else" })
+  });
+  assert.strictEqual(scanFloor.json.ok, true, JSON.stringify(scanFloor.json));
+  assert.ok(!scanFloor.json.items, "scan must not return the inventory list to production");
+  assert.strictEqual(scanFloor.json.item.stock, before - 1);
+  const lastMove = consumables.loadStore().movements[0];
+  assert.strictEqual(lastMove.employee, "Floor Welder");
+
   server.close();
   console.log("consumables.test.js ok");
 })();

@@ -1586,6 +1586,10 @@
       <i class="bi bi-house-door"></i>
       <span class="link-text">Home</span>
     </a>
+    <a id="link-scan-materials" class="sidebar-link d-none-view" href="/inventory/collect">
+      <i class="bi bi-qr-code-scan"></i>
+      <span class="link-text">Scan materials</span>
+    </a>
     <div id="adminLinks" class="d-none-view">
       <div class="sd-nav-label">Office</div>
       <a id="link-orders" class="sidebar-link" href="/orders">
@@ -3359,6 +3363,8 @@
     function applyAdminLinks() {
       const links = document.getElementById('adminLinks');
       if (links) links.classList.toggle('d-none-view', !session.canSeeOffice);
+      const scan = document.getElementById('link-scan-materials');
+      if (scan) scan.classList.toggle('d-none-view', !session.name);
       const homeText = document.querySelector('#link-roles .link-text');
       const homeIcon = document.querySelector('#link-roles i');
       if (homeText) homeText.textContent = session.canSeeOffice ? 'Home' : 'Production Tasks';
@@ -3940,15 +3946,20 @@
       const box = document.getElementById('myTaskChooser');
       if (!box) return;
       const stops = myTaskStops();
+      const scanCard = '<a class="card task-card role-card" href="/inventory/collect">' +
+        '<i class="bi bi-qr-code-scan"></i><h4>Scan materials</h4>' +
+        '<p class="text-muted small mb-0">Collect hardware from lockers with the camera or a QR code.</p></a>';
       if (!stops.length) {
-        box.innerHTML = session.canSeeOffice
+        box.innerHTML = (session.canSeeOffice
           ? ''
-          : '<div class="card p-4">No floor tasks are assigned to you yet. Ask an admin to tick the tasks you do on Users.</div>';
+          : '<div class="card p-4 mb-3">No floor tasks are assigned to you yet. Ask an admin to tick the tasks you do on Users.</div>') +
+          '<div class="task-chooser-grid">' + scanCard + '</div>';
         return;
       }
       box.innerHTML = '<h2 class="h5 fw-bold mb-1">What are you doing now?</h2>' +
-        '<p class="text-muted small mb-3">Select the task. The next screen lists every order ready for that work.</p>' +
+        '<p class="text-muted small mb-3">Select the task. The next screen lists every order ready for that work. Scan materials is for locker stock.</p>' +
         '<div class="task-chooser-grid">' +
+        scanCard +
         stops.map((step) => {
           const icon = TASK_ICONS[step.id] || TASK_ICONS[step.role] || 'bi-clipboard-check';
           const key = stopCountKey(step);
