@@ -536,6 +536,8 @@ assert.ok(inventoryHtml.indexOf("Unit Price") !== -1);
 assert.ok(inventoryHtml.indexOf("Total Value") !== -1);
 assert.ok(inventoryHtml.indexOf("Log usage") !== -1);
 assert.ok(inventoryHtml.indexOf("id=\"editForm\"") !== -1);
+assert.ok(inventoryHtml.indexOf("Whole pieces") !== -1);
+assert.ok(inventoryHtml.indexOf("Paint / litres") !== -1);
 assert.ok(inventoryHtml.indexOf("data-f='stock'") !== -1);
 assert.ok(inventoryHtml.indexOf("window.prompt") === -1, "consumables edit must not use prompt dialogs");
 assert.ok(inventoryHtml.indexOf("Create purchase order") !== -1);

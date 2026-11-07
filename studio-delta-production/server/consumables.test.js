@@ -72,6 +72,26 @@ try {
   overFailed = /on hand/i.test(e.message);
 }
 assert.ok(overFailed, "cannot use more than on-hand");
+assert.strictEqual(consumables.inferQtyKind("100mm BUTT HINGE", "pcs"), "each");
+assert.strictEqual(consumables.inferQtyKind("2K FAST HARDENER (5ℓ)", "pcs"), "measure");
+let halfFailed = false;
+try {
+  consumables.logUsage({ itemId: hinge.id, qty: "0.5", orderNumber: "S260100" }, "Admire");
+} catch (e) {
+  halfFailed = /whole pieces/i.test(e.message);
+}
+assert.ok(halfFailed, "hinges cannot be used as a fraction");
+const paint = consumables.upsertItem({
+  name: "2K shop paint",
+  unit: "ℓ",
+  qtyKind: "measure",
+  openingStock: "2.5"
+}, "Office Boss");
+assert.strictEqual(paint.qtyKind, "measure");
+assert.strictEqual(paint.integerQty, false);
+assert.strictEqual(paint.stock, 2.5);
+const usedPaint = consumables.logUsage({ itemId: paint.id, qty: "0.5", orderNumber: "S260100" }, "Admire");
+assert.strictEqual(usedPaint.stock, 2);
 
 const qr = "SDINV|C|" + hinge.id;
 const looked = consumables.lookupByQr(qr);

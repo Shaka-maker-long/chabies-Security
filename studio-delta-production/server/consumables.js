@@ -7,7 +7,29 @@ const { dataDir } = require("./workbook-store");
 const { parseMoney, money, formatRand, formatOrderId } = require("./db");
 const CATALOG = require("./consumables-catalog");
 
-const UNITS = ["pcs", "box", "pack", "roll", "pair", "set", "ℓ"];
+const UNITS = ["pcs", "box", "pack", "roll", "pair", "set", "ℓ", "mℓ"];
+const MEASURE_UNITS = { "ℓ": true, "ml": true, "mℓ": true, "l": true, "kg": true };
+
+function inferQtyKind(name, unit) {
+  const u = String(unit || "").trim().toLowerCase();
+  if (MEASURE_UNITS[u] || u === "litre" || u === "litres") return "measure";
+  if (u && u !== "pcs") return "each";
+  const n = String(name || "");
+  if (/\b(spray\s*\d|silicon|silicone|\(\s*12\s*\))/i.test(n)) return "each";
+  if (/(paint|thinner|lacquer|enamel|turps|hardener|varnish|monocoat|top clear|self etch|2k matt|fgt)/i.test(n)) return "measure";
+  if (/ℓ|litre|liter|\bml\b|mℓ/i.test(n) && /(5ℓ|275|primer|clear|oak|white|black)/i.test(n)) return "measure";
+  return "each";
+}
+
+function qtyKindFor(row) {
+  const explicit = String((row && row.qtyKind) || "").trim().toLowerCase();
+  if (explicit === "measure" || explicit === "each") return explicit;
+  return inferQtyKind(row && row.name, row && row.unit);
+}
+
+function isIntegerQty(row) {
+  return qtyKindFor(row) === "each";
+}
 
 function storePath() {
   return path.join(dataDir(), "consumables.json");
@@ -62,24 +84,37 @@ function formatWhen(iso) {
   });
 }
 
-function formatQty(n) {
+function formatQty(n, integer) {
   const v = Number(n);
   if (!Number.isFinite(v)) return "0";
+  if (integer) return String(Math.round(v));
   const s = (Math.round(v * 1000) / 1000).toFixed(3);
   return s.replace(/\.?0+$/, "");
 }
 
-function parseQty(raw, label) {
+function parseQty(raw, label, row) {
   const n = Number(String(raw == null ? "" : raw).replace(/,/g, "").trim());
   if (!Number.isFinite(n) || n <= 0) throw new Error((label || "Quantity") + " must be more than 0.");
+  if (row && isIntegerQty(row)) {
+    if (Math.abs(n - Math.round(n)) > 0.0001) {
+      throw new Error((row.name || "This item") + " is counted in whole pieces, not litres. Use a whole number.");
+    }
+    return Math.round(n);
+  }
   return Math.round(n * 1000) / 1000;
 }
 
-function parseStock(raw, label) {
+function parseStock(raw, label, row) {
   const s = String(raw == null ? "" : raw).replace(/,/g, "").trim();
   if (s === "") return 0;
   const n = Number(s);
   if (!Number.isFinite(n) || n < 0) throw new Error((label || "Stock") + " must be 0 or more.");
+  if (row && isIntegerQty(row)) {
+    if (Math.abs(n - Math.round(n)) > 0.0001) {
+      throw new Error((row.name || "This item") + " is counted in whole pieces, not litres. Use a whole number.");
+    }
+    return Math.round(n);
+  }
   return Math.round(n * 1000) / 1000;
 }
 
@@ -101,7 +136,16 @@ function nameKey(name) {
 
 function normalizeUnit(unit) {
   const s = String(unit || "").trim();
+  const low = s.toLowerCase();
+  if (low === "l" || low === "litre" || low === "litres" || low === "liter") return "ℓ";
+  if (low === "ml" || low === "millilitre" || low === "millilitres") return "mℓ";
   return s || "pcs";
+}
+
+function normalizeQtyKind(raw, name, unit) {
+  const s = String(raw || "").trim().toLowerCase();
+  if (s === "measure" || s === "each") return s;
+  return inferQtyKind(name, unit);
 }
 
 function actorName(actor) {
@@ -192,17 +236,22 @@ function decorateItem(row, store) {
   const unitPrice = row.unitPrice == null || row.unitPrice === "" ? null : Number(row.unitPrice);
   const totalValue = unitPrice == null ? null : Math.round(stock * unitPrice * 100) / 100;
   const low = minThreshold > 0 && stock <= minThreshold;
+  const qtyKind = qtyKindFor(row);
+  const integerQty = qtyKind === "each";
   return {
     id: row.id,
     name: row.name,
-    unit: row.unit || "pcs",
+    unit: row.unit || (qtyKind === "measure" ? "ℓ" : "pcs"),
+    qtyKind,
+    integerQty,
+    qtyKindLabel: integerQty ? "Whole pieces" : "Measured (paint / litres)",
     stock,
-    stockLabel: formatQty(stock),
+    stockLabel: formatQty(stock, integerQty),
     orderedQty,
-    orderedLabel: formatQty(orderedQty),
+    orderedLabel: formatQty(orderedQty, integerQty),
     minThreshold,
-    minLabel: formatQty(minThreshold),
-    ropLabel: formatQty(minThreshold),
+    minLabel: formatQty(minThreshold, integerQty),
+    ropLabel: formatQty(minThreshold, integerQty),
     unitPrice,
     priceLabel: unitPrice == null ? "—" : formatRand(unitPrice),
     totalValue,
@@ -304,10 +353,13 @@ function seedCatalog() {
   CATALOG.forEach((row) => {
     const name = normalizeName(row && row.name);
     if (!name || findItemByName(store, name)) return;
+    const qtyKind = inferQtyKind(name, row.unit);
+    const unit = qtyKind === "measure" ? normalizeUnit(row.unit || "ℓ") : (normalizeUnit(row.unit || "pcs"));
     store.items.push({
       id: newId("citem"),
       name,
-      unit: "pcs",
+      unit: unit === "pcs" && qtyKind === "measure" ? "ℓ" : unit,
+      qtyKind,
       stock: Number(row.stock) || 0,
       minThreshold: Number(row.min) || 0,
       unitPrice: row.price == null || row.price === "" ? null : Number(row.price),
@@ -743,11 +795,10 @@ function snapshot() {
 function upsertItem(body, actor) {
   const name = normalizeName(body && body.name);
   if (!name) throw new Error("Item name is required.");
-  const unit = normalizeUnit(body && body.unit);
+  let unit = normalizeUnit(body && body.unit);
+  const qtyKind = normalizeQtyKind(body && body.qtyKind, name, unit);
+  if (qtyKind === "measure" && unit === "pcs") unit = "ℓ";
   const minThreshold = parseThreshold(body && body.minThreshold);
-  const opening = body && body.openingStock != null && String(body.openingStock).trim() !== ""
-    ? parseStock(body.openingStock, "Opening stock")
-    : 0;
   const store = loadStore();
   const existingId = String((body && body.id) || "").trim();
   let row = existingId ? findItem(store, existingId) : null;
@@ -761,6 +812,7 @@ function upsertItem(body, actor) {
       id: newId("citem"),
       name,
       unit,
+      qtyKind,
       stock: 0,
       minThreshold,
       unitPrice: body && Object.prototype.hasOwnProperty.call(body, "unitPrice") ? parsePrice(body.unitPrice) : null,
@@ -768,6 +820,9 @@ function upsertItem(body, actor) {
       updatedAt: at
     };
     store.items.push(row);
+    const opening = body && body.openingStock != null && String(body.openingStock).trim() !== ""
+      ? parseStock(body.openingStock, "Opening stock", row)
+      : 0;
     if (opening > 0) {
       row.stock = opening;
       addMovement(store, {
@@ -785,10 +840,11 @@ function upsertItem(body, actor) {
   } else {
     row.name = name;
     row.unit = unit;
+    row.qtyKind = qtyKind;
     row.minThreshold = minThreshold;
     row.updatedAt = at;
     if (body && Object.prototype.hasOwnProperty.call(body, "stock")) {
-      const next = parseStock(body.stock, "Current stock");
+      const next = parseStock(body.stock, "Current stock", row);
       const before = Number(row.stock) || 0;
       const delta = Math.round((next - before) * 1000) / 1000;
       if (delta !== 0) {
@@ -850,10 +906,10 @@ function logUsage(body, actor) {
     if (!row) throw new Error("Line " + (i + 1) + ": choose a consumable.");
     if (seen[row.id]) throw new Error(row.name + " is listed twice. Combine the quantities.");
     seen[row.id] = true;
-    const qty = parseQty(line && line.qty, row.name + " quantity");
+    const qty = parseQty(line && line.qty, row.name + " quantity", row);
     const stock = Number(row.stock) || 0;
     if (qty > stock) {
-      throw new Error(row.name + " has " + formatQty(stock) + " " + (row.unit || "pcs") + " on hand. You cannot use " + formatQty(qty) + ".");
+      throw new Error(row.name + " has " + formatQty(stock, isIntegerQty(row)) + " " + (row.unit || "pcs") + " on hand. You cannot use " + formatQty(qty, isIntegerQty(row)) + ".");
     }
     const lineNote = String((line && line.note) || note || "").trim();
     row.stock = Math.round((stock - qty) * 1000) / 1000;
@@ -906,12 +962,12 @@ function issueFromScan(body, actor) {
 }
 
 function receiveStock(body, actor) {
-  const qty = parseQty(body && body.qty, "Quantity received");
   const note = String((body && body.note) || "").trim();
   const supplier = String((body && body.supplier) || "").trim();
   const store = loadStore();
   const row = findItem(store, body && body.itemId);
   if (!row) throw new Error("Choose a consumable.");
+  const qty = parseQty(body && body.qty, "Quantity received", row);
   const at = nowIso();
   row.stock = Math.round(((Number(row.stock) || 0) + qty) * 1000) / 1000;
   row.updatedAt = at;
@@ -945,7 +1001,7 @@ function saveStocktake(body, actor) {
     if (raw == null || String(raw).trim() === "") return;
     const row = findItem(store, line && (line.itemId || line.item_id));
     if (!row) throw new Error("Line " + (i + 1) + ": choose a consumable.");
-    const next = parseStock(raw, row.name + " counted");
+    const next = parseStock(raw, row.name + " counted", row);
     counted += 1;
     const before = Number(row.stock) || 0;
     const delta = Math.round((next - before) * 1000) / 1000;
@@ -1013,15 +1069,15 @@ function readStocktakeQrPdf() {
 }
 
 function countStock(body, actor) {
-  const counted = parseStock(body && body.stock, "Counted stock");
   const note = String((body && body.note) || "").trim();
   if (!note) throw new Error("Say why the count changed.");
   const store = loadStore();
   const row = findItem(store, body && body.itemId);
   if (!row) throw new Error("Choose a consumable.");
+  const counted = parseStock(body && body.stock, "Counted stock", row);
   const before = Number(row.stock) || 0;
   const delta = Math.round((counted - before) * 1000) / 1000;
-  if (delta === 0) throw new Error(row.name + " is already " + formatQty(before) + ".");
+  if (delta === 0) throw new Error(row.name + " is already " + formatQty(before, isIntegerQty(row)) + ".");
   const at = nowIso();
   row.stock = counted;
   row.updatedAt = at;
@@ -1050,7 +1106,7 @@ async function createPurchase(body, actor) {
   rawLines.forEach((line, i) => {
     const item = findItem(store, line && line.itemId);
     if (!item) throw new Error("Line " + (i + 1) + " needs a consumable.");
-    const qty = parseQty(line.qty, item.name + " quantity");
+    const qty = parseQty(line.qty, item.name + " quantity", item);
     if (lines.some((existing) => existing.itemId === item.id)) {
       throw new Error(item.name + " is already on this purchase. Combine the quantities.");
     }
@@ -1228,6 +1284,8 @@ module.exports = {
   upsertItem,
   deleteItem,
   logUsage,
+  inferQtyKind,
+  qtyKindFor,
   lookupByQr,
   issueFromScan,
   parseConsumableQr,

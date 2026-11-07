@@ -134,7 +134,7 @@
         <a id="tab-steel" href="/inventory/steel">Steel</a>
         <a id="tab-glass" href="/inventory/glass">Glass</a>
       </nav>
-      <p class="lede" id="lede">Hinges, bullets, screws, stickers, and other hardware. Name, current stock, ordered stock, unit price, ROP, and total value.</p>
+      <p class="lede" id="lede">Hinges, bullets, screws, stickers, and other hardware. Whole pieces stay whole numbers. Paint and litres can be 0.5.</p>
     </div>
     <div class="tools">
       <span class="msg" id="status"></span>
@@ -159,6 +159,12 @@
       <form class="add" id="addForm">
         <label>Item name
           <input id="itemName" required placeholder="e.g. Bullet hinge" autocomplete="off">
+        </label>
+        <label>Counted as
+          <select id="itemKind">
+            <option value="each">Whole pieces (hinges, screws)</option>
+            <option value="measure">Paint / litres (0.5 allowed)</option>
+          </select>
         </label>
         <label>Unit
           <select id="itemUnit"></select>
@@ -343,6 +349,12 @@
           <label>Name
             <input id="editName" required autocomplete="off">
           </label>
+          <label>Counted as
+            <select id="editKind">
+              <option value="each">Whole pieces (hinges, screws)</option>
+              <option value="measure">Paint / litres (0.5 allowed)</option>
+            </select>
+          </label>
           <label>Unit
             <select id="editUnit"></select>
           </label>
@@ -431,6 +443,19 @@
       if (!el) return;
       el.innerHTML = (data.units || ["pcs"]).map((u) => "<option value=\"" + esc(u) + "\">" + esc(u) + "</option>").join("");
     }
+    function tuneQtyInput(el, integer) {
+      if (!el) return;
+      if (integer) {
+        el.setAttribute("inputmode", "numeric");
+        el.setAttribute("step", "1");
+      } else {
+        el.setAttribute("inputmode", "decimal");
+        el.setAttribute("step", "0.001");
+      }
+    }
+    function rowInteger(row) {
+      return !row || row.integerQty !== false;
+    }
     function fillJobWorkerSelects(orderId, workerId) {
       const orders = ["General"].concat(data.activeOrderNumbers || []);
       const orderEl = document.getElementById(orderId);
@@ -458,7 +483,7 @@
       const wrap = document.createElement("div");
       wrap.className = "use-line";
       wrap.innerHTML = "<label>Item<select class='use-item' required>" + itemOptions(selected || "") + "</select></label>" +
-        "<label class='use-qty'>Quantity<input class='use-qty-input' inputmode='decimal' required placeholder='Qty'></label>" +
+        "<label class='use-qty'>Quantity<input class='use-qty-input' inputmode='numeric' step='1' required placeholder='Qty'></label>" +
         "<button class='ghost' type='button' aria-label='Remove item'>Remove</button>";
       wrap.querySelector("button").onclick = () => {
         const host = document.getElementById("useLines");
@@ -469,6 +494,14 @@
         }
         wrap.remove();
       };
+      const sel = wrap.querySelector(".use-item");
+      const qty = wrap.querySelector(".use-qty-input");
+      const syncUseQty = () => {
+        const row = (data.items || []).find((item) => item.id === sel.value);
+        tuneQtyInput(qty, rowInteger(row));
+      };
+      sel.onchange = syncUseQty;
+      syncUseQty();
       document.getElementById("useLines").appendChild(wrap);
       return wrap;
     }
@@ -493,7 +526,7 @@
         "</tr></thead><tbody>" +
         rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-id=\"" + esc(row.id) + "\">" +
           "<td data-label='Name'><button class='name-btn' type='button' data-edit=\"" + esc(row.id) + "\">" + esc(row.name) + "</button></td>" +
-          "<td class='r' data-label='Current Stock'><input class='cell' data-f='stock' inputmode='decimal' value=\"" + esc(row.stockLabel) + "\"></td>" +
+          "<td class='r' data-label='Current Stock'><input class='cell' data-f='stock' inputmode='" + (row.integerQty === false ? "decimal" : "numeric") + "' step='" + (row.integerQty === false ? "0.001" : "1") + "' value=\"" + esc(row.stockLabel) + "\"></td>" +
           "<td class='r' data-label='Ordered Stock' data-f='ordered'>" + esc(row.orderedLabel) + "</td>" +
           "<td class='r' data-label='Unit Price'><input class='cell wide' data-f='price' inputmode='decimal' placeholder='—' value=\"" + (row.unitPrice == null ? "" : esc(String(row.unitPrice))) + "\"></td>" +
           "<td class='r' data-label='ROP'><input class='cell' data-f='rop' inputmode='decimal' value=\"" + esc(row.ropLabel) + "\"></td>" +
@@ -635,7 +668,9 @@
       document.getElementById("editId").value = row.id;
       document.getElementById("editName").value = row.name;
       fillEditUnits(row.unit);
+      document.getElementById("editKind").value = row.qtyKind === "measure" ? "measure" : "each";
       document.getElementById("editStock").value = row.stockLabel;
+      tuneQtyInput(document.getElementById("editStock"), rowInteger(row));
       document.getElementById("editPrice").value = row.unitPrice == null ? "" : String(row.unitPrice);
       document.getElementById("editRop").value = row.ropLabel;
       document.getElementById("editErr").textContent = "";
@@ -664,6 +699,7 @@
           id: row.id,
           name: row.name,
           unit: row.unit,
+          qtyKind: row.qtyKind,
           stock,
           minThreshold: rop,
           unitPrice: price,
@@ -699,6 +735,7 @@
           id,
           name: document.getElementById("editName").value,
           unit: document.getElementById("editUnit").value,
+          qtyKind: document.getElementById("editKind").value,
           stock: document.getElementById("editStock").value,
           minThreshold: document.getElementById("editRop").value,
           unitPrice: document.getElementById("editPrice").value,
@@ -757,6 +794,15 @@
     document.getElementById("useMask").addEventListener("click", (e) => { if (e.target.id === "useMask") closeUse(); });
     document.getElementById("poMask").addEventListener("click", (e) => { if (e.target.id === "poMask") closePo(); });
 
+    function syncKindUnit(kindId, unitId, stockId) {
+      const kind = document.getElementById(kindId).value;
+      const unit = document.getElementById(unitId);
+      if (kind === "measure" && (unit.value === "pcs" || !unit.value)) unit.value = "ℓ";
+      if (kind === "each" && (unit.value === "ℓ" || unit.value === "mℓ")) unit.value = "pcs";
+      tuneQtyInput(document.getElementById(stockId), kind !== "measure");
+    }
+    document.getElementById("itemKind").onchange = () => syncKindUnit("itemKind", "itemUnit", "itemOpen");
+    document.getElementById("editKind").onchange = () => syncKindUnit("editKind", "editUnit", "editStock");
     document.getElementById("addForm").onsubmit = async (e) => {
       e.preventDefault();
       setMsg("addMsg", "Saving…");
@@ -765,6 +811,7 @@
         body: JSON.stringify({
           name: document.getElementById("itemName").value,
           unit: document.getElementById("itemUnit").value,
+          qtyKind: document.getElementById("itemKind").value,
           minThreshold: document.getElementById("itemMin").value,
           unitPrice: document.getElementById("itemPrice").value,
           openingStock: document.getElementById("itemOpen").value
@@ -1036,7 +1083,7 @@
             "<td><input class='take-on' type='checkbox'" + (has ? " checked" : "") + "></td>" +
             "<td>" + esc(row.name) + "</td>" +
             "<td class='r'>" + esc(row.stockLabel) + " " + esc(row.unit) + "</td>" +
-            "<td class='r'><input class='take-qty' inputmode='decimal' value=\"" + esc(row.stockLabel) + "\" style='width:7em;text-align:right'></td></tr>";
+            "<td class='r'><input class='take-qty' inputmode='" + (row.integerQty === false ? "decimal" : "numeric") + "' step='" + (row.integerQty === false ? "0.001" : "1") + "' value=\"" + esc(row.stockLabel) + "\" style='width:7em;text-align:right'></td></tr>";
         }).join("") + "</tbody></table>";
       filterStocktake();
     }
@@ -1116,9 +1163,11 @@
       lookedUp = j.item;
       document.getElementById("scanInput").value = j.item.qr || raw;
       document.getElementById("scanLookText").textContent =
-        j.item.name + " · " + j.item.stockLabel + " " + j.item.unit + " on hand";
+        j.item.name + " · " + j.item.stockLabel + " " + j.item.unit + " on hand" +
+        (j.item.integerQty === false ? " · litres OK" : " · whole pieces");
       document.getElementById("scanLook").classList.add("open");
       setMsg("scanMsg", "");
+      tuneQtyInput(document.getElementById("scanQty"), rowInteger(j.item));
       document.getElementById("scanQty").focus();
     }
     async function startScanCam() {
