@@ -371,7 +371,6 @@
           <p class="err" id="editErr"></p>
           <div class="foot">
             <button class="danger" type="button" id="editDelete">Delete</button>
-            <button class="ghost" type="button" id="editUse">Use</button>
             <button type="submit">Save</button>
           </div>
         </form>
@@ -532,12 +531,8 @@
           "<td class='r' data-label='ROP'><input class='cell' data-f='rop' inputmode='decimal' value=\"" + esc(row.ropLabel) + "\"></td>" +
           "<td class='r' data-label='Value' data-f='value'>" + esc(row.totalValueLabel) + "</td>" +
           "<td class='actions' data-label=''>" +
-          "<button class='ghost' type='button' data-use=\"" + esc(row.id) + "\">Use</button>" +
           "<button class='ghost' type='button' data-edit=\"" + esc(row.id) + "\">Edit</button>" +
           "</td></tr>").join("") + "</tbody></table>";
-      box.querySelectorAll("[data-use]").forEach((btn) => {
-        btn.onclick = () => openUse(btn.getAttribute("data-use"));
-      });
       box.querySelectorAll("[data-edit]").forEach((btn) => { btn.onclick = () => openEdit(btn.getAttribute("data-edit")); });
       box.querySelectorAll("input.cell").forEach((inp) => {
         inp.addEventListener("change", () => saveRowFields(inp.closest("tr")));
@@ -747,11 +742,6 @@
       closeEdit();
       applySnapshot(j);
       setMsg("status", "Saved " + (document.getElementById("editName").value || "item") + ".");
-    };
-    document.getElementById("editUse").onclick = () => {
-      const id = document.getElementById("editId").value;
-      closeEdit();
-      openUse(id);
     };
     document.getElementById("editDelete").onclick = () => {
       const id = document.getElementById("editId").value;

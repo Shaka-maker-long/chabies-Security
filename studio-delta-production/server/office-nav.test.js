@@ -535,6 +535,7 @@ assert.ok(inventoryHtml.indexOf(">ROP<") !== -1 || inventoryHtml.indexOf(">ROP</
 assert.ok(inventoryHtml.indexOf("Unit Price") !== -1);
 assert.ok(inventoryHtml.indexOf("Total Value") !== -1);
 assert.ok(inventoryHtml.indexOf("Log usage") !== -1);
+assert.ok(inventoryHtml.indexOf(">Use</button>") === -1, "row Use button is not needed");
 assert.ok(inventoryHtml.indexOf("id=\"editForm\"") !== -1);
 assert.ok(inventoryHtml.indexOf("Whole pieces") !== -1);
 assert.ok(inventoryHtml.indexOf("Paint / litres") !== -1);
