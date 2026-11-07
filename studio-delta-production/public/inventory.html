@@ -133,6 +133,15 @@
     #scanIssueMask { z-index:20010; }
     #scanIssueItem { margin:0; font-size:20px; font-family:Outfit, Inter, sans-serif; }
     #scanIssueStock { margin:0; color:var(--muted); font-size:14px; }
+    .scan-lock {
+      display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+      margin:0; padding:10px 0; border-bottom:1px solid var(--line);
+    }
+    .scan-lock span {
+      color:var(--muted); font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+    }
+    .scan-lock b { font-size:16px; text-align:right; }
+    #scanQty { font-size:22px; min-height:52px; width:100%; }
     .sheet.mobile-use .use-line { grid-template-columns:1fr; }
     .sheet.mobile-use .use-line .use-qty { max-width:none; }
     .sheet.mobile-use .use-line button { width:100%; }
@@ -249,15 +258,7 @@
         <button type="button" id="btnCam" class="scan-go">Scan</button>
       </div>
       <p class="msg" id="scanMsg" style="padding:0 16px 12px"></p>
-      <details id="scanPaste">
-        <summary>Paste a code instead</summary>
-        <div class="add" style="border-top:0;padding-left:0;padding-right:0">
-          <label style="flex:1">QR / code
-            <input id="scanInput" placeholder="SDINV|C|…" autocomplete="off" autocapitalize="off">
-          </label>
-          <button class="ghost" type="button" id="btnLookup">Look up</button>
-        </div>
-      </details>
+      <input id="scanInput" type="hidden" value="">
     </section>
   </div>
 
@@ -283,15 +284,21 @@
       <form class="body" id="scanIssueForm">
         <p id="scanIssueItem"></p>
         <p id="scanIssueStock"></p>
+        <p class="scan-lock" id="scanWorkerLock" hidden>
+          <span>Worker</span>
+          <b id="scanWorkerLabel"></b>
+        </p>
         <label id="scanWorkerWrap">Worker
           <select id="scanWorker" required></select>
         </label>
-        <label>Order number
-          <input id="scanOrder" readonly required placeholder="No running order">
-        </label>
+        <p class="scan-lock">
+          <span>Order</span>
+          <b id="scanOrderLabel">No running order</b>
+        </p>
+        <input type="hidden" id="scanOrder" value="">
         <p class="hint" id="scanOrderHint" style="margin:0">Taken from the job you are on now.</p>
         <label>Quantity
-          <input id="scanQty" inputmode="decimal" value="1" required>
+          <input id="scanQty" inputmode="decimal" value="1" required autocomplete="off">
         </label>
         <p class="msg" id="scanIssueMsg"></p>
         <div class="foot">
@@ -557,9 +564,11 @@
     function paintScanJobLock() {
       const running = String(data.runningOrder || "").trim();
       const orderEl = document.getElementById("scanOrder");
+      const orderLabel = document.getElementById("scanOrderLabel");
       const hint = document.getElementById("scanOrderHint");
       const btn = document.getElementById("btnCam");
       if (orderEl) orderEl.value = running;
+      if (orderLabel) orderLabel.textContent = running || "No running order";
       if (hint) {
         hint.textContent = running
           ? ("Goes to " + running + " — the job you are on now.")
@@ -583,16 +592,21 @@
     }
     function lockScanWorker() {
       const wrap = document.getElementById("scanWorkerWrap");
+      const lock = document.getElementById("scanWorkerLock");
+      const label = document.getElementById("scanWorkerLabel");
       if (wrap) wrap.hidden = !!shopScanOnly;
+      if (lock) lock.hidden = !shopScanOnly;
       if (!shopScanOnly) return;
       const workerEl = document.getElementById("scanWorker");
-      if (!workerEl) return;
       const name = shopScanName;
+      if (label) label.textContent = name || "—";
+      if (!workerEl) return;
       if (name) {
         workerEl.innerHTML = "<option value=\"" + esc(name) + "\">" + esc(name) + "</option>";
         workerEl.value = name;
       }
       workerEl.disabled = true;
+      workerEl.removeAttribute("required");
     }
     function applyShopScanChrome(profile) {
       shopScanOnly = true;
@@ -1475,7 +1489,6 @@
     document.getElementById("scanWorker").addEventListener("change", function () {
       loadScanContext(document.getElementById("scanWorker").value);
     });
-    document.getElementById("btnLookup").onclick = () => lookupScan();
     document.getElementById("btnCam").onclick = () => startScanCam();
     document.getElementById("btnCamStop").onclick = () => stopScanCam();
     document.getElementById("btnScanAgain").onclick = () => startScanCam();
@@ -1483,9 +1496,6 @@
       if (e.key !== "Escape") return;
       if (document.getElementById("scanCamMask").classList.contains("open")) stopScanCam();
       else if (document.getElementById("scanIssueMask").classList.contains("open")) closeScanIssue();
-    });
-    document.getElementById("scanInput").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") { e.preventDefault(); lookupScan(); }
     });
     document.getElementById("scanIssueForm").onsubmit = async (e) => {
       e.preventDefault();

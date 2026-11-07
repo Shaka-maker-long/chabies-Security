@@ -531,6 +531,10 @@ assert.ok(inventoryHtml.indexOf("This browser cannot scan with the camera") === 
 assert.ok(inventoryHtml.indexOf('id="scanCamMask"') !== -1);
 assert.ok(inventoryHtml.indexOf('id="scanIssueMask"') !== -1);
 assert.ok(inventoryHtml.indexOf("cannot take materials without a running job") !== -1);
+assert.ok(inventoryHtml.indexOf('id="scanOrderLabel"') !== -1);
+assert.ok(inventoryHtml.indexOf("Paste a code instead") === -1);
+assert.ok(inventoryHtml.indexOf('id="btnLookup"') === -1);
+assert.ok(/id="scanQty"[\s\S]*required/.test(inventoryHtml));
 assert.ok(officeJs.indexOf("runningOrdersForWorker") !== -1 || fs.readFileSync(path.join(__dirname, "consumables.js"), "utf8").indexOf("runningOrdersForWorker") !== -1);
 assert.ok(inventoryHtml.indexOf("scan-cam-open") !== -1);
 assert.ok(fs.existsSync(path.join(__dirname, "../public/vendor/jsqr/jsQR.js")), "jsQR is vendored for phones without BarcodeDetector");
