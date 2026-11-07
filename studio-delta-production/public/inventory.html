@@ -244,7 +244,7 @@
   <div class="page" id="collectPage" hidden>
     <section class="card">
       <h2>Scan materials</h2>
-      <p class="hint">Tap Scan. The camera fills the screen. When it reads the locker sticker, pick the order number and quantity.</p>
+      <p class="hint">Tap Scan. Materials go on the order you are clocked on now. If you are not on a job, start one on Production Tasks first.</p>
       <div class="add" style="border-top:0">
         <button type="button" id="btnCam" class="scan-go">Scan</button>
       </div>
@@ -287,8 +287,9 @@
           <select id="scanWorker" required></select>
         </label>
         <label>Order number
-          <select id="scanOrder" required></select>
+          <input id="scanOrder" readonly required placeholder="No running order">
         </label>
+        <p class="hint" id="scanOrderHint" style="margin:0">Taken from the job you are on now.</p>
         <label>Quantity
           <input id="scanQty" inputmode="decimal" value="1" required>
         </label>
@@ -539,23 +540,46 @@
       fillJobWorkerSelects("useOrder", "useWorker");
     }
     function fillScanSelects() {
-      const orders = data.activeOrderNumbers || [];
-      const orderEl = document.getElementById("scanOrder");
-      if (orderEl) {
-        orderEl.innerHTML = "<option value=\"\">Choose order number</option>" +
-          "<option value=\"General\">General</option>" +
-          orders.map((n) => "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>").join("");
-      }
       const workers = data.productionWorkers || [];
       const workerEl = document.getElementById("scanWorker");
-      if (workerEl) {
+      if (workerEl && !shopScanOnly) {
+        const current = workerEl.value;
         workerEl.innerHTML = workers.length
           ? ("<option value=\"\">Choose worker</option>" + workers.map((n) =>
               "<option value=\"" + esc(n) + "\">" + esc(n) + "</option>"
             ).join(""))
           : "<option value=\"\">No production people on Users</option>";
+        if (current) workerEl.value = current;
       }
       lockScanWorker();
+      paintScanJobLock();
+    }
+    function paintScanJobLock() {
+      const running = String(data.runningOrder || "").trim();
+      const orderEl = document.getElementById("scanOrder");
+      const hint = document.getElementById("scanOrderHint");
+      const btn = document.getElementById("btnCam");
+      if (orderEl) orderEl.value = running;
+      if (hint) {
+        hint.textContent = running
+          ? ("Goes to " + running + " — the job you are on now.")
+          : "Start an order on Production Tasks first. You cannot take materials without a running job.";
+      }
+      if (btn && shopScanOnly) btn.disabled = !running;
+      if (shopScanOnly) {
+        setMsg("scanMsg", running ? "" : "Start an order on Production Tasks first. You cannot take materials without a running job.", !running);
+      }
+    }
+    async function loadScanContext(worker) {
+      const q = worker ? ("?worker=" + encodeURIComponent(worker)) : "";
+      const r = await sdOfficeFetch("/api/office/consumables/scan-context" + q);
+      const j = await r.json();
+      if (!j.ok) return j;
+      data.runningOrder = j.runningOrder || "";
+      data.runningOrders = j.runningOrders || [];
+      if (j.productionWorkers) data.productionWorkers = j.productionWorkers;
+      paintScanJobLock();
+      return j;
     }
     function lockScanWorker() {
       const wrap = document.getElementById("scanWorkerWrap");
@@ -577,7 +601,7 @@
       if (title) title.textContent = "Scan materials";
       document.title = "Studio Delta — Scan materials";
       const lede = document.getElementById("lede");
-      if (lede) lede.textContent = "Tap Scan. When the name comes up, pick the job and quantity. You cannot open the inventory list from here.";
+      if (lede) lede.textContent = "Scan lockers onto the order you are clocked on. Start a job first if nothing is running.";
       ["tab-cons", "tab-pos", "tab-take", "tab-steel", "tab-glass", "btnLogUsage", "btnCreatePo", "q"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.hidden = true;
@@ -720,8 +744,9 @@
     }
     function applySnapshot(j) {
       if (shopScanOnly) {
-        data.activeOrderNumbers = j.activeOrderNumbers || data.activeOrderNumbers || [];
         data.productionWorkers = j.productionWorkers || data.productionWorkers || [];
+        data.runningOrder = j.runningOrder || "";
+        data.runningOrders = j.runningOrders || [];
         fillScanSelects();
         return;
       }
@@ -1272,18 +1297,21 @@
       el.textContent = text || "Point the camera at the locker sticker.";
       el.classList.toggle("bad", !!bad);
     }
-    function openScanIssue() {
+    async function openScanIssue() {
+      const worker = document.getElementById("scanWorker").value || shopScanName;
+      await loadScanContext(worker);
       fillScanSelects();
-      const orderEl = document.getElementById("scanOrder");
-      if (orderEl && lastScanOrder) {
-        const hit = Array.from(orderEl.options).some((opt) => opt.value === lastScanOrder);
-        if (hit) orderEl.value = lastScanOrder;
-      }
       document.getElementById("scanIssueMask").classList.add("open");
+      const running = String(data.runningOrder || "").trim();
+      const issueBtn = document.querySelector("#scanIssueForm button[type=submit]");
+      if (issueBtn) issueBtn.disabled = !running;
+      if (!running) {
+        setMsg("scanIssueMsg", "Start an order on Production Tasks first. You cannot take materials without a running job.", true);
+      }
       const qty = document.getElementById("scanQty");
       if (qty) {
         qty.value = "1";
-        qty.focus();
+        if (running) qty.focus();
       }
     }
     function closeScanIssue() {
@@ -1382,11 +1410,18 @@
       tuneQtyInput(document.getElementById("scanQty"), rowInteger(j.item));
       stopScanCam();
       setMsg("scanMsg", "");
-      openScanIssue();
+      await openScanIssue();
     }
     async function startScanCam() {
       closeScanIssue();
       stopScanCam();
+      if (shopScanOnly) {
+        await loadScanContext(shopScanName);
+        if (!data.runningOrder) {
+          setMsg("scanMsg", "Start an order on Production Tasks first. You cannot take materials without a running job.", true);
+          return;
+        }
+      }
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         setMsg("scanMsg", "This phone cannot open the camera here. Open Chrome or Safari on the staging site, or paste the QR text.", true);
         return;
@@ -1437,6 +1472,9 @@
         setMsg("scanMsg", cameraErrorMessage(e), true);
       }
     }
+    document.getElementById("scanWorker").addEventListener("change", function () {
+      loadScanContext(document.getElementById("scanWorker").value);
+    });
     document.getElementById("btnLookup").onclick = () => lookupScan();
     document.getElementById("btnCam").onclick = () => startScanCam();
     document.getElementById("btnCamStop").onclick = () => stopScanCam();
@@ -1455,7 +1493,7 @@
       const worker = document.getElementById("scanWorker").value;
       const orderNumber = document.getElementById("scanOrder").value;
       if (!shopScanOnly && !worker) { setMsg("scanIssueMsg", "Choose the worker.", true); return; }
-      if (!orderNumber) { setMsg("scanIssueMsg", "Choose the order number.", true); return; }
+      if (!orderNumber) { setMsg("scanIssueMsg", "Start an order on Production Tasks first. You cannot take materials without a running job.", true); return; }
       setMsg("scanIssueMsg", "Saving…");
       const r = await sdOfficeFetch("/api/office/consumables/scan", {
         method: "POST",

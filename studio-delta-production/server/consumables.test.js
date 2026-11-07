@@ -13,12 +13,32 @@ process.env.SD_TRUST_DEVICES = "0";
 delete process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
-const { initWorkbook } = require("./workbook-store");
+const { initWorkbook, getBook, persistWorkbook } = require("./workbook-store");
 const staff = require("./staff");
 const { mountOffice } = require("./office");
 const consumables = require("./consumables");
 
 initWorkbook();
+
+function openJob(worker, orderNumber) {
+  getBook().getSheetByName("Production_Log").appendRow([
+    "log_" + String(orderNumber).replace(/\W+/g, "_") + "_" + String(worker).replace(/\W+/g, "_"),
+    orderNumber,
+    worker,
+    "Welding",
+    "Welding",
+    new Date(),
+    "",
+    "",
+    "",
+    "",
+    0,
+    "",
+    JSON.stringify({ pauses: [], entryType: "production" })
+  ]);
+  persistWorkbook();
+}
+
 staff.upsertUser({
   name: "Office Boss",
   access: "Admin",
@@ -98,6 +118,15 @@ const looked = consumables.lookupByQr(qr);
 assert.strictEqual(looked.id, hinge.id);
 assert.strictEqual(looked.qr, qr);
 assert.strictEqual(looked.stock, 34);
+let noJobFailed = false;
+try {
+  consumables.issueFromScan({ qr, qty: "1", orderNumber: "S260199", worker: "Admire" }, "Office Boss");
+} catch (e) {
+  noJobFailed = /running job/i.test(e.message);
+}
+assert.ok(noJobFailed, "scan needs a running order");
+openJob("Admire", "S260199");
+assert.strictEqual(consumables.runningOrdersForWorker("Admire")[0].orderNumber, "S260199");
 const scanned = consumables.issueFromScan({
   qr,
   qty: "1",
@@ -370,6 +399,7 @@ return (async function main() {
   assert.strictEqual(lookedApi.json.ok, true, JSON.stringify(lookedApi.json));
   assert.strictEqual(lookedApi.json.item.id, hinge.id);
 
+  openJob("Admire", "S260201");
   const scanApi = await api("/api/office/consumables/scan", {
     method: "POST",
     headers,
@@ -436,9 +466,22 @@ return (async function main() {
   const deniedList = await api("/api/office/consumables", { headers: floorHeaders });
   assert.strictEqual(deniedList.status, 403, "production must not see inventory");
 
+  const ctxEmpty = await api("/api/office/consumables/scan-context", { headers: floorHeaders });
+  assert.strictEqual(ctxEmpty.json.ok, true, JSON.stringify(ctxEmpty.json));
+  assert.ok(!ctxEmpty.json.items);
+  assert.strictEqual(ctxEmpty.json.runningOrder, "");
+
+  const blockedScan = await api("/api/office/consumables/scan", {
+    method: "POST",
+    headers: floorHeaders,
+    body: JSON.stringify({ qr: "SDINV|C|" + hinge.id, qty: 1, orderNumber: "S260201" })
+  });
+  assert.strictEqual(blockedScan.status, 400);
+  assert.ok(/running job/i.test(blockedScan.json.error || ""), JSON.stringify(blockedScan.json));
+
+  openJob("Floor Welder", "S-LIVE-1");
   const ctx = await api("/api/office/consumables/scan-context", { headers: floorHeaders });
-  assert.strictEqual(ctx.json.ok, true, JSON.stringify(ctx.json));
-  assert.ok(!ctx.json.items);
+  assert.strictEqual(ctx.json.runningOrder, "S-LIVE-1", JSON.stringify(ctx.json));
 
   const lookedFloor = await api("/api/office/consumables/lookup?qr=" + encodeURIComponent("SDINV|C|" + hinge.id), { headers: floorHeaders });
   assert.strictEqual(lookedFloor.json.ok, true, JSON.stringify(lookedFloor.json));
@@ -455,6 +498,7 @@ return (async function main() {
   assert.strictEqual(scanFloor.json.item.stock, before - 1);
   const lastMove = consumables.loadStore().movements[0];
   assert.strictEqual(lastMove.employee, "Floor Welder");
+  assert.strictEqual(lastMove.orderNumber, "S-LIVE-1");
 
   server.close();
   console.log("consumables.test.js ok");

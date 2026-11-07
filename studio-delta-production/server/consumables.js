@@ -772,11 +772,71 @@ async function buildQrLabelsPdf(po) {
   return done;
 }
 
-function scanContext() {
+function runningOrdersForWorker(workerName) {
+  const want = String(workerName || "").trim().toLowerCase();
+  if (!want) return [];
+  try {
+    const { getBook } = require("./workbook-store");
+    const sheet = getBook().getSheetByName("Production_Log");
+    if (!sheet || sheet.getLastRow() < 2) return [];
+    const lastCol = Math.max(sheet.getLastColumn(), 13);
+    const grid = sheet.getRange(1, 1, sheet.getLastRow(), lastCol).getValues();
+    const found = [];
+    for (let i = 1; i < grid.length; i++) {
+      const row = grid[i];
+      if (String(row[2] || "").trim().toLowerCase() !== want) continue;
+      if (row[6]) continue;
+      if (String(row[3] || "").trim() === "Indirect") continue;
+      let meta = {};
+      try { meta = JSON.parse(String(row[12] || "{}")) || {}; } catch (e) { meta = {}; }
+      if (String(meta.entryType || "") === "indirect") continue;
+      const pauses = Array.isArray(meta.pauses) ? meta.pauses : [];
+      const paused = !!row[9] || pauses.some((p) => p && p.start && !p.end);
+      if (paused) continue;
+      const orderNumber = String(row[1] || "").trim();
+      if (!orderNumber) continue;
+      const start = row[5] ? new Date(row[5]).getTime() : 0;
+      found.push({
+        orderNumber,
+        start: isNaN(start) ? 0 : start,
+        process: String(row[4] || row[3] || "").trim()
+      });
+    }
+    found.sort((a, b) => (b.start || 0) - (a.start || 0));
+    const seen = {};
+    const unique = [];
+    found.forEach((row) => {
+      if (seen[row.orderNumber]) return;
+      seen[row.orderNumber] = true;
+      unique.push(row);
+    });
+    return unique;
+  } catch (e) {
+    return [];
+  }
+}
+
+function NO_RUNNING_ORDER_ERROR() {
+  return "Start an order on Production Tasks first. You cannot take materials without a running job.";
+}
+
+function orderForScan(workerName, requested) {
+  const running = runningOrdersForWorker(workerName);
+  if (!running.length) throw new Error(NO_RUNNING_ORDER_ERROR());
+  const allowed = running.map((row) => row.orderNumber);
+  const want = String(requested || "").trim();
+  if (want && allowed.indexOf(want) !== -1) return want;
+  return allowed[0];
+}
+
+function scanContext(workerName) {
   seedCatalog();
+  const running = runningOrdersForWorker(workerName);
   return {
-    activeOrderNumbers: activeOrderNumbers(),
-    productionWorkers: productionWorkers()
+    productionWorkers: productionWorkers(),
+    runningOrders: running,
+    runningOrder: running[0] ? running[0].orderNumber : "",
+    runningOrderNumbers: running.map((row) => row.orderNumber)
   };
 }
 
@@ -966,11 +1026,13 @@ function lookupByQr(raw) {
 
 function issueFromScan(body, actor) {
   const item = lookupByQr(body && (body.qr || body.code || body.itemId));
+  const worker = String((body && (body.worker || body.employee)) || "").trim() || actorName(actor);
+  const orderNumber = orderForScan(worker, body && (body.orderNumber || body.order_number));
   return logUsage({
     itemId: item.id,
     qty: body && body.qty,
-    orderNumber: body && (body.orderNumber || body.order_number),
-    worker: body && (body.worker || body.employee),
+    orderNumber,
+    worker,
     note: (body && body.note) || "Scanned from locker"
   }, actor);
 }
@@ -1330,6 +1392,7 @@ module.exports = {
   lookupByQr,
   issueFromScan,
   scanContext,
+  runningOrdersForWorker,
   parseConsumableQr,
   saveStocktake,
   writeStocktakeQrPdf,

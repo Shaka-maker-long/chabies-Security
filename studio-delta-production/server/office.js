@@ -676,8 +676,9 @@ function mountOffice(app) {
     }
   });
 
-  app.get("/api/office/consumables/scan-context", requireShopScan, (_req, res) => {
-    res.json({ ok: true, ...consumables.scanContext() });
+  app.get("/api/office/consumables/scan-context", requireShopScan, (req, res) => {
+    const worker = (req.query && req.query.worker) || (req.shop && req.shop.name);
+    res.json({ ok: true, ...consumables.scanContext(worker) });
   });
 
   app.get("/api/office/consumables/lookup", requireShopScan, (req, res) => {
