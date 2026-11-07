@@ -526,6 +526,9 @@ assert.ok(inventoryHtml.indexOf('href="/inventory/purchases">Purchase orders<') 
 assert.ok(inventoryHtml.indexOf('href="/inventory/collect">Collect / scan<') !== -1);
 assert.ok(inventoryHtml.indexOf('href="/inventory/stocktake">Stocktake<') !== -1);
 assert.ok(inventoryHtml.indexOf("BarcodeDetector") !== -1);
+assert.ok(inventoryHtml.indexOf("/vendor/jsqr/jsQR.js") !== -1);
+assert.ok(inventoryHtml.indexOf("This browser cannot scan with the camera") === -1);
+assert.ok(fs.existsSync(path.join(__dirname, "../public/vendor/jsqr/jsQR.js")), "jsQR is vendored for phones without BarcodeDetector");
 assert.ok(inventoryHtml.indexOf("/api/office/consumables/scan") !== -1);
 assert.ok(inventoryHtml.indexOf("/api/office/consumables/stocktake") !== -1);
 assert.ok(inventoryHtml.indexOf('href="/inventory/steel">Steel<') !== -1);

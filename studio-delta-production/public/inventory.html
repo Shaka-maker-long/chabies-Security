@@ -225,7 +225,8 @@
         <button type="button" id="btnCam">Scan with camera</button>
         <button class="ghost" type="button" id="btnCamStop" hidden>Stop camera</button>
       </div>
-      <video id="scanVideo" playsinline muted></video>
+      <video id="scanVideo" playsinline webkit-playsinline muted></video>
+      <canvas id="scanCanvas" hidden></canvas>
       <div id="scanLook">
         <p id="scanLookText"></p>
         <form class="add" id="scanIssueForm" style="border-top:0;padding:0">
@@ -1184,6 +1185,7 @@
     let lookedUp = null;
     let scanStream = null;
     let scanTimer = null;
+    let scanBusy = false;
     function stopScanCam() {
       if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
       if (scanStream) {
@@ -1197,6 +1199,57 @@
       }
       const stopBtn = document.getElementById("btnCamStop");
       if (stopBtn) stopBtn.hidden = true;
+    }
+    function loadJsQr() {
+      if (typeof window.jsQR === "function") return Promise.resolve();
+      return new Promise(function (resolve, reject) {
+        const s = document.createElement("script");
+        s.src = "/vendor/jsqr/jsQR.js";
+        s.onload = function () {
+          if (typeof window.jsQR === "function") resolve();
+          else reject(new Error("Scanner library missing"));
+        };
+        s.onerror = function () { reject(new Error("Could not load scanner")); };
+        document.head.appendChild(s);
+      });
+    }
+    async function onDecodedQr(raw) {
+      raw = String(raw || "").trim();
+      if (!raw || scanBusy) return;
+      if (lookedUp && (raw === lookedUp.qr || raw === lookedUp.id)) return;
+      scanBusy = true;
+      try {
+        document.getElementById("scanInput").value = raw;
+        await lookupScan(raw);
+      } finally {
+        scanBusy = false;
+      }
+    }
+    function grabScanFrame(vid) {
+      const w = vid.videoWidth || 0;
+      const h = vid.videoHeight || 0;
+      if (!w || !h) return null;
+      const canvas = document.getElementById("scanCanvas");
+      if (!canvas) return null;
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(vid, 0, 0, w, h);
+      return ctx.getImageData(0, 0, w, h);
+    }
+    function cameraErrorMessage(err) {
+      const name = String((err && err.name) || "");
+      const msg = String((err && err.message) || err || "").toLowerCase();
+      if (name === "NotAllowedError" || /permission|denied|notallowed/i.test(msg)) {
+        return "Camera was blocked. Allow camera for this site, then tap Scan with camera again.";
+      }
+      if (name === "NotFoundError" || /not found|no device/i.test(msg)) {
+        return "No camera found on this device. Paste the QR text instead.";
+      }
+      if (!window.isSecureContext) {
+        return "Camera scan needs https. Open the staging site, then try again.";
+      }
+      return "Could not open the camera. Paste the QR text instead.";
     }
     async function lookupScan(code) {
       const raw = String(code || document.getElementById("scanInput").value || "").trim();
@@ -1221,32 +1274,54 @@
       document.getElementById("scanQty").focus();
     }
     async function startScanCam() {
-      if (!window.BarcodeDetector) {
-        setMsg("scanMsg", "This browser cannot scan with the camera. Paste the QR text instead.", true);
+      stopScanCam();
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setMsg("scanMsg", "This phone cannot open the camera here. Open Chrome or Safari on the staging site, or paste the QR text.", true);
         return;
       }
+      setMsg("scanMsg", "Opening camera…");
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } } });
+        let stream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: { facingMode: { ideal: "environment" } }
+          });
+        } catch (first) {
+          stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+        }
         scanStream = stream;
         const vid = document.getElementById("scanVideo");
+        vid.setAttribute("playsinline", "true");
+        vid.setAttribute("webkit-playsinline", "true");
+        vid.muted = true;
         vid.srcObject = stream;
         vid.style.display = "block";
         await vid.play();
         document.getElementById("btnCamStop").hidden = false;
-        const det = new window.BarcodeDetector({ formats: ["qr_code"] });
+        let detector = null;
+        if (window.BarcodeDetector) {
+          try { detector = new window.BarcodeDetector({ formats: ["qr_code"] }); } catch (e) { detector = null; }
+        }
+        if (!detector) await loadJsQr();
         scanTimer = setInterval(async () => {
           try {
-            const codes = await det.detect(vid);
-            const raw = codes && codes[0] && codes[0].rawValue;
-            if (!raw) return;
-            if (lookedUp && (raw === lookedUp.qr || raw === lookedUp.id)) return;
-            document.getElementById("scanInput").value = raw;
-            await lookupScan(raw);
+            if (detector) {
+              const codes = await detector.detect(vid);
+              const raw = codes && codes[0] && codes[0].rawValue;
+              if (raw) await onDecodedQr(raw);
+              return;
+            }
+            const frame = grabScanFrame(vid);
+            if (!frame || typeof window.jsQR !== "function") return;
+            const code = window.jsQR(frame.data, frame.width, frame.height, { inversionAttempts: "attemptBoth" });
+            if (code && code.data) await onDecodedQr(code.data);
           } catch (e) {}
-        }, 450);
+        }, 350);
         setMsg("scanMsg", "Point the camera at the locker sticker.");
       } catch (e) {
-        setMsg("scanMsg", "Camera was blocked. Paste the QR text instead.", true);
+        stopScanCam();
+        setMsg("scanMsg", cameraErrorMessage(e), true);
       }
     }
     document.getElementById("btnLookup").onclick = () => lookupScan();
