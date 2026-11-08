@@ -8,11 +8,13 @@ const staff = require("./staff");
 const dates = require("./sast-date");
 const { remainingPlanForStatus, isProductionFinished, isParked, PLANNED_PROCESSES } = require("./shop-status");
 
-const PRODUCTIVE_MIN = 6 * 60; // 7.5h paid × 80%
+const SHIFT_MIN = 7.5 * 60;
+const PRODUCTIVE_MIN = 6 * 60; // fallback when a person has no daily clocks yet (80% of 7.5)
 const PAINT_WAIT_DAYS = 5;
 const DEFAULT_PROCESS_MIN = 90;
 const MIN_SAMPLE = 5;
 const MAX_SAMPLE = 12 * 60;
+const MIN_DAY_MIN = 30;
 
 function settingsPath() {
   return path.join(dataDir(), "closing-plan.json");
@@ -75,6 +77,66 @@ function median(nums) {
   if (!a.length) return 0;
   const mid = Math.floor(a.length / 2);
   return a.length % 2 ? a[mid] : Math.round((a[mid - 1] + a[mid]) / 2);
+}
+
+/**
+ * Typical output per calendar day from clocks, not a month total.
+ * A month average hides slow days and one long Saturday.
+ */
+function buildDailyRates(clocks) {
+  const byWorkerDay = {};
+  const names = {};
+  (clocks || []).forEach((row) => {
+    const worker = String(row.worker || "").trim();
+    const day = String(row.day || "").slice(0, 10);
+    if (!worker || !day) return;
+    names[worker.toLowerCase()] = worker;
+    const key = worker.toLowerCase() + "||" + day;
+    byWorkerDay[key] = (byWorkerDay[key] || 0) + (Number(row.minutes) || 0);
+  });
+  const buckets = {};
+  Object.keys(byWorkerDay).forEach((key) => {
+    const parts = key.split("||");
+    const wk = parts[0];
+    const day = parts[1];
+    const mins = Math.min(MAX_SAMPLE, byWorkerDay[key]);
+    if (mins < MIN_DAY_MIN) return;
+    buckets[wk] = buckets[wk] || { name: names[wk] || wk, days: [], weekday: { 1: [], 2: [], 3: [], 4: [], 5: [], 6: [] } };
+    buckets[wk].days.push(mins);
+    const wd = weekday(day);
+    if (buckets[wk].weekday[wd]) buckets[wk].weekday[wd].push(mins);
+  });
+  const out = {};
+  Object.keys(buckets).forEach((wk) => {
+    const row = buckets[wk];
+    const typicalMin = Math.min(SHIFT_MIN, median(row.days));
+    const byWeekday = {};
+    Object.keys(row.weekday).forEach((wd) => {
+      const list = row.weekday[wd];
+      if (list.length >= 2) byWeekday[wd] = Math.min(SHIFT_MIN, median(list));
+    });
+    out[wk] = {
+      worker: row.name,
+      typicalMin,
+      typicalHours: Math.round((typicalMin / 60) * 10) / 10,
+      dayCount: row.days.length,
+      pct: Math.round((typicalMin / SHIFT_MIN) * 1000) / 10,
+      byWeekday
+    };
+  });
+  return out;
+}
+
+function dayCapacity(rates, worker, day, extraMin) {
+  const row = rates && worker ? rates[String(worker).trim().toLowerCase()] : null;
+  const wd = weekday(day);
+  let base = PRODUCTIVE_MIN;
+  if (row) {
+    if (row.byWeekday && row.byWeekday[wd] != null) base = row.byWeekday[wd];
+    else base = row.typicalMin;
+  }
+  const paidRate = Math.min(1.15, Math.max(0.35, base / SHIFT_MIN));
+  return Math.max(60, Math.round(base + (Number(extraMin) || 0) * paidRate));
 }
 
 function parseMeta(raw) {
@@ -302,14 +364,15 @@ function pickPerson(process, product, people, learner, load) {
   return best;
 }
 
-function placeMinutes(left, days, used, extra) {
+function placeMinutes(left, days, used, extra, capForDay) {
   extra = extra || {};
   let startDay = "";
   let endDay = "";
   const remain = Object.assign({}, left);
   for (let i = 0; i < days.length && remain.minutes > 0; i++) {
     const day = days[i];
-    const cap = PRODUCTIVE_MIN + (Number(extra[day]) || 0);
+    const extraMin = Number(extra[day]) || 0;
+    const cap = capForDay ? capForDay(day, extraMin) : (PRODUCTIVE_MIN + extraMin);
     const already = used[day] || 0;
     const free = cap - already;
     if (free <= 0) continue;
@@ -343,11 +406,13 @@ function simulate(opts) {
       const name = step.worker;
       if (!used[name]) used[name] = {};
       const from = days.filter((d) => d >= ready);
+      const rates = opts.rates || {};
       const placed = placeMinutes(
         { minutes: step.minutes },
         from,
         used[name],
-        extra[name] || {}
+        extra[name] || {},
+        (day, extraMin) => dayCapacity(rates, name, day, extraMin)
       );
       leftoverMin += placed.leftover;
       if (placed.endDay) {
@@ -373,14 +438,13 @@ function simulate(opts) {
   return { assignments, lastFinish, leftoverMin, used };
 }
 
-function suggestOvertime(sim, settings, peopleNames, days) {
+function suggestOvertime(sim, settings, peopleNames, days, rates) {
   if (!sim.leftoverMin && sim.lastFinish && sim.lastFinish <= settings.closingDate) {
     return { rows: [], extra: {} };
   }
   const extra = {};
   const rows = [];
   const weekdayExtra = Math.round((Number(settings.weekdayOtHours) || 0) * 60);
-  const satExtra = settings.saturday ? PRODUCTIVE_MIN : 0;
   const load = peopleNames.map((name) => {
     let total = 0;
     Object.keys(sim.used[name] || {}).forEach((d) => { total += sim.used[name][d]; });
@@ -397,24 +461,28 @@ function suggestOvertime(sim, settings, peopleNames, days) {
     days.forEach((day) => {
       if (need <= 0) return;
       const wd = weekday(day);
-      let add = 0;
-      let why = "";
-      if (wd === 6 && satExtra) {
-        add = satExtra;
-        why = "Saturday shop day";
-      } else if (wd >= 1 && wd <= 5 && weekdayExtra) {
-        add = weekdayExtra;
-        why = "After 15:45 (" + settings.weekdayOtHours + " h)";
+      if (wd === 6 && settings.saturday) {
+        const satMin = dayCapacity(rates, row.name, day, 0);
+        need -= satMin;
+        rows.push({
+          worker: row.name,
+          day,
+          extraHours: Math.round((satMin / 60) * 10) / 10,
+          reason: "Saturday at this person's usual daily output"
+        });
+        return;
       }
-      if (!add) return;
+      if (wd < 1 || wd > 5 || !weekdayExtra) return;
       extra[row.name] = extra[row.name] || {};
-      extra[row.name][day] = (extra[row.name][day] || 0) + add;
-      need -= add;
+      extra[row.name][day] = (extra[row.name][day] || 0) + weekdayExtra;
+      const gained = dayCapacity(rates, row.name, day, weekdayExtra) - dayCapacity(rates, row.name, day, 0);
+      need -= gained;
       rows.push({
         worker: row.name,
         day,
-        extraHours: Math.round((add / 60) * 10) / 10,
-        reason: why
+        extraHours: Math.round((weekdayExtra / 60) * 10) / 10,
+        reason: "After 15:45 (" + settings.weekdayOtHours + " h paid; ~" +
+          (Math.round((gained / 60) * 10) / 10) + " h of their usual output)"
       });
     });
   });
@@ -457,6 +525,7 @@ function build(opts) {
   const clocks = loadFinishedClocks();
   const durationRows = staff.listDurations();
   const learner = buildLearner(clocks, durationRows);
+  const dailyRates = buildDailyRates(clocks);
   const users = staff.listUsers();
   const orders = openShopOrders();
 
@@ -512,16 +581,18 @@ function build(opts) {
     saturday: false,
     jobs,
     peopleNames,
-    extra: {}
+    extra: {},
+    rates: dailyRates
   });
-  const ot = suggestOvertime(base, settings, peopleNames, allDays);
+  const ot = suggestOvertime(base, settings, peopleNames, allDays, dailyRates);
   const withOt = simulate({
     now: today,
     closingDate: settings.closingDate,
     saturday: !!settings.saturday,
     jobs,
     peopleNames,
-    extra: ot.extra
+    extra: ot.extra,
+    rates: dailyRates
   });
 
   const canFinishPaid = !!(settings.closingDate && !base.leftoverMin && base.lastFinish && base.lastFinish <= settings.closingDate);
@@ -578,7 +649,8 @@ function build(opts) {
     })),
     learned: learner.learned,
     skills: learner.skills.slice(0, 80),
-    note: "This is not a neural net. It learns typical minutes from finished Production_Log clocks (pauses removed), then falls back to Task times. Paint shop is a 5-calendar-day wait. Paid days are planned at 6 productive hours (80% of 7.5)."
+    daily: Object.keys(dailyRates).map((k) => dailyRates[k]).sort((a, b) => a.worker.localeCompare(b.worker)),
+    note: "Each person's day is their median finished-clock minutes on days they actually worked — not a month-pack average. Weekdays with enough history use that weekday's median. No daily clocks yet → 6 h (80% of 7.5). Task times fill in when a product has too few finished jobs. Paint shop is a 5-calendar-day wait."
   };
 }
 
@@ -600,5 +672,8 @@ module.exports = {
   build,
   median,
   netMinutes,
-  formatHours
+  formatHours,
+  buildDailyRates,
+  dayCapacity,
+  SHIFT_MIN
 };
