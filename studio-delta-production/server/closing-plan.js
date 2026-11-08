@@ -489,6 +489,105 @@ function suggestOvertime(sim, settings, peopleNames, days, rates) {
   return { rows, extra };
 }
 
+function prettyDay(iso) {
+  const s = String(iso || "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return "";
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const parts = s.split("-");
+  return Number(parts[2]) + " " + months[Number(parts[1]) - 1] + " " + parts[0];
+}
+
+function shopDaysBetween(fromIso, toIso, saturday) {
+  if (!fromIso || !toIso || toIso <= fromIso) return 0;
+  return workdays(addDays(fromIso, 1), toIso, !!saturday).length;
+}
+
+function finishesFromAssignments(assignments) {
+  const out = {};
+  (assignments || []).forEach((row) => {
+    const id = row.orderNumber;
+    if (!id) return;
+    const cur = out[id] || { finish: "", leftoverMin: 0, lateProcess: "", worker: "" };
+    if (row.endDay && (!cur.finish || row.endDay > cur.finish)) cur.finish = row.endDay;
+    if (row.overflow) {
+      cur.leftoverMin += Number(row.minutes) || 0;
+      cur.lateProcess = row.process;
+      cur.worker = row.worker;
+    }
+    out[id] = cur;
+  });
+  return out;
+}
+
+function peopleLoad(sim, rates, today, closingDate, saturday) {
+  const days = workdays(today, closingDate, !!saturday);
+  return Object.keys(sim.used || {}).map((name) => {
+    let booked = 0;
+    Object.keys(sim.used[name] || {}).forEach((d) => { booked += sim.used[name][d]; });
+    let cap = 0;
+    days.forEach((day) => { cap += dayCapacity(rates, name, day, 0); });
+    return {
+      worker: name,
+      bookedHours: Math.round((booked / 60) * 10) / 10,
+      capacityHours: Math.round((cap / 60) * 10) / 10,
+      full: cap > 0 && booked >= cap * 0.95
+    };
+  }).sort((a, b) => b.bookedHours - a.bookedHours);
+}
+
+function explainOverrun(opts) {
+  const settings = opts.settings;
+  const closing = settings.closingDate;
+  const leftoverH = Math.round((opts.leftoverMin / 60) * 10) / 10;
+  const finish = opts.lastFinish || "";
+  const lateDays = finish ? shopDaysBetween(closing, finish, settings.saturday) : 0;
+  const missed = opts.missed || [];
+  const bottlenecks = (opts.load || []).filter((p) => p.full).slice(0, 4);
+  const drop = opts.drop || [];
+  const facts = [];
+  let headline = "";
+
+  if (finish && finish > closing) {
+    headline = "Last order finishes " + prettyDay(finish) + " — " + lateDays + " shop day" +
+      (lateDays === 1 ? "" : "s") + " after " + prettyDay(closing) + ".";
+  } else if (leftoverH > 0) {
+    headline = "About " + leftoverH + " h of shop work still has no seat before " + prettyDay(closing) + ".";
+  } else {
+    headline = "The open orders do not fit before " + prettyDay(closing) + ".";
+  }
+
+  if (leftoverH > 0) {
+    facts.push("After weekday overtime" + (settings.saturday ? " and Saturdays" : "") +
+      ", about " + leftoverH + " h still cannot be booked.");
+  }
+  if (finish && finish > closing) {
+    facts.push("If the same crew keeps going past closing, the last clock would fall on " + prettyDay(finish) + ".");
+  }
+  if (missed.length) {
+    const names = missed.slice(0, 8).map((j) => j.orderNumber + (j.finish ? " (" + prettyDay(j.finish) + ")" : "")).join(", ");
+    facts.push(missed.length + " order" + (missed.length === 1 ? "" : "s") + " miss the date: " + names +
+      (missed.length > 8 ? "…" : "."));
+  }
+  if (bottlenecks.length) {
+    facts.push("Full before closing: " + bottlenecks.map((p) => p.worker + " (" + p.bookedHours + " h booked / " +
+      p.capacityHours + " h typical)").join("; ") + ".");
+  }
+  const missingCrew = (opts.unassigned || []).slice(0, 5);
+  if (missingCrew.length) {
+    facts.push("No one on Users is ticked for: " + missingCrew.join(", ") + ".");
+  }
+  if (drop.length) {
+    facts.push("Dropping " + drop.map((j) => j.orderNumber).join(", ") + " would free about " +
+      drop.reduce((s, j) => s + j.hours, 0) + " h — enough to bring the rest inside the date.");
+  } else if (missed.length > 1) {
+    facts.push("Cutting the latest orders, adding a person on the full stations, or moving closing to " +
+      prettyDay(finish || closing) + " are the three ways to close the gap.");
+  } else if (finish) {
+    facts.push("Move closing to " + prettyDay(finish) + ", or add capacity on the full stations.");
+  }
+  return { headline, facts };
+}
+
 function openShopOrders() {
   const due = {};
   try {
@@ -598,8 +697,53 @@ function build(opts) {
   const canFinishPaid = !!(settings.closingDate && !base.leftoverMin && base.lastFinish && base.lastFinish <= settings.closingDate);
   const canFinishWithOt = !!(settings.closingDate && !withOt.leftoverMin && withOt.lastFinish && withOt.lastFinish <= settings.closingDate);
 
+  const farDate = addDays(today, 540);
+  const onward = simulate({
+    now: today,
+    closingDate: farDate,
+    saturday: !!settings.saturday,
+    jobs,
+    peopleNames,
+    extra: ot.extra,
+    rates: dailyRates
+  });
+  const finishMap = finishesFromAssignments(onward.assignments);
+  const load = peopleLoad(withOt, dailyRates, today, settings.closingDate, false);
+  const missed = jobs.map((job) => {
+    const fin = finishMap[job.orderNumber] || {};
+    const finish = fin.finish || "";
+    const miss = !!(fin.leftoverMin || (settings.closingDate && finish && finish > settings.closingDate) || (settings.closingDate && !finish && job.remainingMinutes));
+    return {
+      orderNumber: job.orderNumber,
+      product: job.product,
+      remainingLabel: job.remainingLabel,
+      remainingMinutes: job.remainingMinutes,
+      hours: Math.round((job.remainingMinutes / 60) * 10) / 10,
+      finish,
+      miss
+    };
+  }).filter((j) => j.miss).sort((a, b) => (b.finish || "").localeCompare(a.finish || "") || b.remainingMinutes - a.remainingMinutes);
+
+  let dropHours = 0;
+  const drop = [];
+  const rankedMiss = missed.slice().sort((a, b) => b.remainingMinutes - a.remainingMinutes);
+  for (let i = 0; i < rankedMiss.length; i++) {
+    if (withOt.leftoverMin > 0 && dropHours >= withOt.leftoverMin) break;
+    if (withOt.leftoverMin <= 0 && drop.length >= Math.min(3, missed.length)) break;
+    drop.push(rankedMiss[i]);
+    dropHours += rankedMiss[i].remainingMinutes;
+  }
+
+  const unassigned = [];
+  jobs.forEach((job) => {
+    job.steps.forEach((s) => {
+      if (s.worker === "Unassigned" && unassigned.indexOf(s.process) === -1) unassigned.push(s.process);
+    });
+  });
+
   let verdict = "Set the last shop day. The forecast uses finished clocks first, then Task times.";
   let verdictKind = "wait";
+  let why = [];
   if (!settings.closingDate) {
     verdict = "Set the last shop day. The forecast uses finished clocks first, then Task times.";
     verdictKind = "wait";
@@ -607,13 +751,29 @@ function build(opts) {
     verdict = "No open shop orders. Nothing left to manufacture before closing.";
     verdictKind = "ok";
   } else if (canFinishPaid) {
-    verdict = "Paid weekdays look enough. Last predicted finish is " + base.lastFinish + ".";
+    verdict = "Paid weekdays look enough. Last predicted finish is " + prettyDay(base.lastFinish) + ".";
+    why = ["No overtime needed if clocks keep matching history."];
     verdictKind = "ok";
   } else if (canFinishWithOt) {
-    verdict = "Not on paid weekdays alone. With the overtime below, last predicted finish is " + withOt.lastFinish + ".";
+    verdict = "Not on paid weekdays alone. With the overtime below, last predicted finish is " + prettyDay(withOt.lastFinish) + ".";
+    why = [
+      "Weekdays only would run to " + prettyDay(base.lastFinish || settings.closingDate) +
+        (base.leftoverMin ? " with " + (Math.round((base.leftoverMin / 60) * 10) / 10) + " h still unbooked" : "") + ".",
+      "The overtime list is what closes that gap."
+    ];
     verdictKind = "ot";
   } else {
-    verdict = "Even with suggested overtime this still overruns the closing date. Cut orders, add people, or move the date.";
+    const explained = explainOverrun({
+      settings,
+      leftoverMin: withOt.leftoverMin,
+      lastFinish: onward.lastFinish || withOt.lastFinish,
+      missed,
+      load,
+      drop: dropHours >= withOt.leftoverMin && withOt.leftoverMin > 0 ? drop : [],
+      unassigned
+    });
+    verdict = explained.headline;
+    why = explained.facts;
     verdictKind = "bad";
   }
 
@@ -626,27 +786,39 @@ function build(opts) {
     canFinishPaid,
     canFinishWithOt,
     lastFinishPaid: base.lastFinish || "",
-    lastFinishWithOt: withOt.lastFinish || "",
+    lastFinishWithOt: onward.lastFinish || withOt.lastFinish || "",
     leftoverPaidHours: Math.round((base.leftoverMin / 60) * 10) / 10,
     leftoverOtHours: Math.round((withOt.leftoverMin / 60) * 10) / 10,
+    finishIfWeContinue: onward.lastFinish || "",
+    shopDaysLate: onward.lastFinish && settings.closingDate
+      ? shopDaysBetween(settings.closingDate, onward.lastFinish, settings.saturday)
+      : 0,
+    missedOrders: missed,
+    bottlenecks: load.filter((p) => p.full),
+    why,
     verdict,
     verdictKind,
     overtime: ot.rows,
-    jobs: jobs.map((job) => ({
-      orderNumber: job.orderNumber,
-      product: job.product,
-      status: job.status,
-      deliveryDay: job.deliveryDay,
-      deliveryCode: job.deliveryCode,
-      remainingLabel: job.remainingLabel,
-      steps: job.steps.filter((s) => s.process && !s.waitDays).map((s) => ({
-        process: s.process,
-        worker: s.worker,
-        hoursLabel: formatHours(s.minutes),
-        source: s.source,
-        samples: s.samples
-      }))
-    })),
+    jobs: jobs.map((job) => {
+      const fin = finishMap[job.orderNumber] || {};
+      return {
+        orderNumber: job.orderNumber,
+        product: job.product,
+        status: job.status,
+        deliveryDay: job.deliveryDay,
+        deliveryCode: job.deliveryCode,
+        remainingLabel: job.remainingLabel,
+        finishDay: fin.finish || "",
+        miss: missed.some((m) => m.orderNumber === job.orderNumber),
+        steps: job.steps.filter((s) => s.process && !s.waitDays).map((s) => ({
+          process: s.process,
+          worker: s.worker,
+          hoursLabel: formatHours(s.minutes),
+          source: s.source,
+          samples: s.samples
+        }))
+      };
+    }),
     learned: learner.learned,
     skills: learner.skills.slice(0, 80),
     daily: Object.keys(dailyRates).map((k) => dailyRates[k]).sort((a, b) => a.worker.localeCompare(b.worker)),
