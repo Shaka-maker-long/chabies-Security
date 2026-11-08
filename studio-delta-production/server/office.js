@@ -67,6 +67,7 @@ const backboardRates = require("./backboard-rates");
 const productionCost = require("./production-cost");
 const orderCorrect = require("./order-correct");
 const floorPlanning = require("./floor-planning");
+const closingPlan = require("./closing-plan");
 const orderLife = require("./order-life");
 const orderDocs = require("./order-docs");
 const orderCellComments = require("./order-cell-comments");
@@ -986,6 +987,21 @@ function mountOffice(app) {
   app.put("/api/office/durations", requireOffice, (req, res) => {
     try {
       res.json({ ok: true, rows: staff.setDurations((req.body && req.body.rows) || []) });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
+  app.get("/api/office/closing-plan", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...closingPlan.snapshot() });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+  app.post("/api/office/closing-plan", requireOffice, (req, res) => {
+    try {
+      res.json({ ok: true, ...closingPlan.update(req.body || {}) });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Studio Delta — Closing plan</title>
+  <script src="/sd-pwa.js?v=pwa-committed-banner"></script>
+  <style>
+    :root { --line:#d0d5dd; --head:#f2f4f7; --ink:#1d2939; --muted:#667085; --ok:#067647; --bad:#b42318; --ot:#b54708; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: Inter, system-ui, sans-serif; color:var(--ink); background:#f8f9fc; }
+    header { display:flex; gap:12px; align-items:flex-start; padding:12px 16px; background:#fff; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    header h1 { font-family: Outfit, Inter, sans-serif; font-size:18px; margin:0; }
+    .lede { margin:4px 0 0; color:var(--muted); font-size:13px; max-width:720px; line-height:1.45; }
+    .tools { margin-left:auto; display:flex; gap:8px; align-items:end; flex-wrap:wrap; }
+    label { font-size:11px; font-weight:700; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
+    input, select, button { font:inherit; }
+    input, select { border:1px solid var(--line); border-radius:6px; padding:8px 10px; }
+    button { border:1px solid #1d2939; background:#1d2939; color:#fff; border-radius:6px; padding:8px 12px; font-weight:600; cursor:pointer; }
+    button.ghost { background:#fff; color:#1d2939; }
+    .page { padding:16px; max-width:1200px; }
+    .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:0 0 14px; }
+    .kpi { background:#fff; border:1px solid var(--line); border-radius:10px; padding:12px; }
+    .kpi span { display:block; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    .kpi b { display:block; font-size:22px; margin-top:4px; }
+    .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:0 0 12px; }
+    .card h2 { margin:0 0 8px; font-size:15px; }
+    .hint { color:var(--muted); font-size:13px; line-height:1.45; margin:0 0 10px; }
+    .verdict { border-radius:10px; padding:14px 16px; font-weight:700; margin:0 0 14px; }
+    .verdict.ok { background:#ecfdf3; color:var(--ok); }
+    .verdict.ot { background:#fffaeb; color:var(--ot); }
+    .verdict.bad { background:#fef3f2; color:var(--bad); }
+    .verdict.wait { background:#f2f4f7; color:#344054; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+    th { font-size:11px; text-transform:uppercase; color:var(--muted); }
+    .empty { color:var(--muted); padding:12px 0; }
+    .msg { font-size:12px; color:var(--muted); }
+    .msg.error { color:var(--bad); }
+    .src { color:var(--muted); font-size:11px; }
+    @media (max-width: 800px) {
+      .kpis { grid-template-columns:1fr 1fr; }
+      .tools { width:100%; margin-left:0; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Closing plan</h1>
+      <p class="lede">Learns how long products actually took from finished clocks, who did which station, then asks: can the open orders finish before the last shop day? Overtime is a suggestion — it does not grant it on Workers.</p>
+    </div>
+    <form class="tools" id="saveForm">
+      <label>Last shop day
+        <input type="date" id="closingDate" required>
+      </label>
+      <label>Weekday overtime
+        <select id="weekdayOtHours">
+          <option value="0">None</option>
+          <option value="1">1 hour after 15:45</option>
+          <option value="2" selected>2 hours after 15:45</option>
+          <option value="3">3 hours after 15:45</option>
+        </select>
+      </label>
+      <label>Saturdays
+        <select id="saturday">
+          <option value="1">Use Saturdays if needed</option>
+          <option value="0">Weekdays only</option>
+        </select>
+      </label>
+      <button type="submit">Recalculate</button>
+      <span class="msg" id="status"></span>
+    </form>
+  </header>
+  <div class="page">
+    <div class="verdict wait" id="verdict">Loading…</div>
+    <div class="kpis">
+      <div class="kpi"><span>Open shop orders</span><b id="kpiOrders">—</b></div>
+      <div class="kpi"><span>Finished clocks learned</span><b id="kpiClocks">—</b></div>
+      <div class="kpi"><span>Last finish (paid days)</span><b id="kpiPaid">—</b></div>
+      <div class="kpi"><span>Last finish (with OT)</span><b id="kpiOt">—</b></div>
+    </div>
+    <section class="card">
+      <h2>Suggested overtime</h2>
+      <p class="hint">Only if paid weekdays are not enough. Grant these on Workers if you agree. The model does not clock anyone on.</p>
+      <div id="otBox"><div class="empty">Loading…</div></div>
+    </section>
+    <section class="card">
+      <h2>Who should work which order</h2>
+      <p class="hint">Picks the person ticked for that station on Users who has been fastest on that product (or the usual station time if there is no history).</p>
+      <div id="jobBox"><div class="empty">Loading…</div></div>
+    </section>
+    <section class="card">
+      <h2>What the clocks taught</h2>
+      <p class="hint" id="note"></p>
+      <div id="learnBox"><div class="empty">Loading…</div></div>
+    </section>
+  </div>
+  <script src="/office-auth.js?v=login-msg-3"></script>
+  <script>
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function setMsg(text, err) {
+      const el = document.getElementById("status");
+      el.textContent = text || "";
+      el.classList.toggle("error", !!err);
+    }
+    function render(j) {
+      const v = document.getElementById("verdict");
+      v.className = "verdict " + (j.verdictKind || "wait");
+      v.textContent = j.verdict || "";
+      document.getElementById("kpiOrders").textContent = String(j.openOrderCount || 0);
+      document.getElementById("kpiClocks").textContent = String(j.clockCount || 0);
+      document.getElementById("kpiPaid").textContent = j.lastFinishPaid || "—";
+      document.getElementById("kpiOt").textContent = j.lastFinishWithOt || "—";
+      const s = j.settings || {};
+      if (s.closingDate) document.getElementById("closingDate").value = s.closingDate;
+      document.getElementById("weekdayOtHours").value = String(s.weekdayOtHours == null ? 2 : s.weekdayOtHours);
+      document.getElementById("saturday").value = s.saturday === false ? "0" : "1";
+      document.getElementById("note").textContent = j.note || "";
+      const ot = j.overtime || [];
+      if (!ot.length) {
+        document.getElementById("otBox").innerHTML = '<div class="empty">' +
+          (j.canFinishPaid ? "No overtime suggested — paid weekdays cover the remaining work." : "No overtime rows yet. Set a closing date.") +
+          "</div>";
+      } else {
+        document.getElementById("otBox").innerHTML = "<table><thead><tr><th>Person</th><th>Day</th><th>Extra</th><th>Why</th></tr></thead><tbody>" +
+          ot.map((row) => "<tr><td>" + esc(row.worker) + "</td><td>" + esc(row.day) + "</td><td>" +
+            esc(row.extraHours) + " h</td><td>" + esc(row.reason) + "</td></tr>").join("") +
+          "</tbody></table>";
+      }
+      const jobs = j.jobs || [];
+      if (!jobs.length) {
+        document.getElementById("jobBox").innerHTML = '<div class="empty">No open shop orders.</div>';
+      } else {
+        document.getElementById("jobBox").innerHTML = "<table><thead><tr><th>Order</th><th>Product</th><th>Now</th><th>Left</th><th>Suggested crew</th></tr></thead><tbody>" +
+          jobs.map((job) => {
+            const crew = (job.steps || []).map((st) => esc(st.process) + ": <b>" + esc(st.worker) + "</b> (" + esc(st.hoursLabel) +
+              ' <span class="src">' + esc(st.source) + (st.samples ? ", " + st.samples + " jobs" : "") + "</span>)").join("<br>");
+            return "<tr><td>" + esc(job.orderNumber) + "</td><td>" + esc(job.product) + "</td><td>" + esc(job.status) +
+              "</td><td>" + esc(job.remainingLabel) + "</td><td>" + crew + "</td></tr>";
+          }).join("") + "</tbody></table>";
+      }
+      const learned = j.learned || [];
+      if (!learned.length) {
+        document.getElementById("learnBox").innerHTML = '<div class="empty">No finished clocks yet. The forecast uses Task times until jobs are completed on the floor.</div>';
+      } else {
+        document.getElementById("learnBox").innerHTML = "<table><thead><tr><th>Product</th><th>Station</th><th>Typical time</th><th>Finished jobs</th></tr></thead><tbody>" +
+          learned.map((row) => "<tr><td>" + esc(row.product) + "</td><td>" + esc(row.process) + "</td><td>" +
+            esc(Math.round((row.medianMinutes / 60) * 10) / 10) + " h</td><td>" + esc(row.jobs) + "</td></tr>").join("") +
+          "</tbody></table>";
+      }
+    }
+    async function load() {
+      setMsg("Loading…");
+      const r = await sdOfficeFetch("/api/office/closing-plan");
+      const j = await r.json();
+      if (!j.ok) { setMsg(j.error || "Could not load", true); return; }
+      render(j);
+      setMsg(j.openOrderCount + " open order" + (j.openOrderCount === 1 ? "" : "s"));
+    }
+    document.getElementById("saveForm").onsubmit = async (e) => {
+      e.preventDefault();
+      setMsg("Recalculating…");
+      const r = await sdOfficeFetch("/api/office/closing-plan", {
+        method: "POST",
+        body: JSON.stringify({
+          closingDate: document.getElementById("closingDate").value,
+          weekdayOtHours: Number(document.getElementById("weekdayOtHours").value),
+          saturday: document.getElementById("saturday").value === "1"
+        })
+      });
+      const j = await r.json();
+      if (!j.ok) { setMsg(j.error || "Could not save", true); return; }
+      render(j);
+      setMsg("Saved closing date " + ((j.settings && j.settings.closingDate) || "") + ".");
+    };
+    sdRequireOffice("planning").then((p) => { if (p) load(); });
+  </script>
+</body>
+</html>

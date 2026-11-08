@@ -46,7 +46,7 @@ assert.ok(fs.existsSync(path.join(publicDir, "facility-floor.png")), "Home twin 
 assert.ok(sw.indexOf("facility-floor.png") !== -1, "PWA precaches the facility floor image");
 assert.ok(sw.indexOf("/delivery-run") !== -1, "PWA precaches the driver run for no-signal drops");
 assert.ok(sw.indexOf('\n  "/",\n') !== -1 || sw.indexOf('"/",') !== -1, "PWA precaches Home so login is available offline");
-assert.ok(sw.indexOf("sd-pwa-v105-qr-print-a4") !== -1, "new cache so locker QRs print as 6 cm cut-outs");
+assert.ok(sw.indexOf("sd-pwa-v106-closing-plan") !== -1, "new cache so office sees Closing plan");
 assert.ok(pwaJs.indexOf("alwaysShare") !== -1 || pwaJs.indexOf("bootDriverTrack") !== -1, "PWA shares location from the pinned driver phone");
 assert.ok(pwaJs.indexOf("/api/delivery/tracker-status") !== -1);
 assert.ok(pwaJs.indexOf("/api/delivery/location") !== -1);
@@ -84,6 +84,7 @@ const pages = [
   "public/users-backup.html",
   "public/durations.html",
   "public/planning.html",
+  "public/closing-plan.html",
   "public/orders-to-order.html",
   "public/inventory.html",
   "public/orders-glass-rates.html",

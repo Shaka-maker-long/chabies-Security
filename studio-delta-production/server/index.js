@@ -263,6 +263,10 @@ app.get("/planning", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "planning.html"));
 });
+app.get("/closing-plan", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "closing-plan.html"));
+});
 app.get("/gas-client.js", (_req, res) => {
   res.type("application/javascript").sendFile(path.join(publicDir, "gas-client.js"));
 });
