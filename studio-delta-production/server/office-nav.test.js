@@ -8,7 +8,7 @@ const floor = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
 
 const labels = [
   "Home", "Orders", "Inventory Management", "Enquiries", "Marketing", "Ops hub", "My tasks", "Dropdowns", "Users",
-  "Task times", "Planning", "Reworks", "Debtors", "Production Tasks", "Production", "Workers", "Metrics",
+  "Task times", "Planning", "Closing plan", "Reworks", "Debtors", "Production Tasks", "Production", "Workers", "Metrics",
   "QC Reports", "Delivery Forms", "Driver tracker", "Activity", "Month pack", "Schedule", "Log Out", "Change access code"
 ];
 labels.forEach((label) => {
@@ -28,6 +28,8 @@ assert.ok(js.indexOf("/inventory") !== -1);
 assert.ok(js.indexOf("Production cost") === -1, "production cost is an Orders subpage");
 assert.ok(js.indexOf('"/schedule"') === -1);
 assert.ok(js.indexOf("/planning") !== -1, "planning is an office page");
+assert.ok(js.indexOf("/closing-plan") !== -1, "closing plan is an office page");
+assert.ok(js.indexOf('"Closing plan"') !== -1);
 assert.ok(js.indexOf("/reworks") !== -1, "reworks is an office page");
 assert.ok(js.indexOf("/delivery-forms") !== -1, "delivery forms is an office page");
 assert.ok(js.indexOf("/driver-tracker") !== -1, "driver tracker is an office page");
@@ -1281,6 +1283,9 @@ assert.ok(planningHtml.indexOf("Office schedule") === -1);
 assert.ok(indexJs.indexOf('"/planning"') !== -1 || indexJs.indexOf("/planning") !== -1);
 assert.ok(officeJs.indexOf("/api/office/planning") !== -1);
 assert.ok(floor.indexOf('href="/planning"') !== -1);
+assert.ok(floor.indexOf('href="/closing-plan"') !== -1);
+assert.ok(officeJs.indexOf("/api/office/closing-plan") !== -1);
+assert.ok(indexJs.indexOf("/closing-plan") !== -1);
 assert.ok(floor.indexOf("Planning") !== -1);
 assert.ok(indexJs.indexOf('"/reworks"') !== -1 || indexJs.indexOf("/reworks") !== -1);
 assert.ok(officeJs.indexOf("/api/office/reworks") !== -1);
