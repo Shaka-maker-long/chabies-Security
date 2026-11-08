@@ -96,6 +96,11 @@ assert.strictEqual(weld.worker, "Sam");
 assert.ok(weld.source.indexOf("person") !== -1 || weld.samples >= 1, weld.source);
 assert.ok(far.canFinishPaid, far.verdict);
 assert.ok(far.learned.some((row) => row.process === "Welding" && row.jobs >= 2));
+const samDay = (far.daily || []).find((row) => row.worker === "Sam");
+assert.ok(samDay, "Sam has a day-to-day rate from clocks, not a month average");
+assert.ok(samDay.dayCount >= 2);
+assert.ok(samDay.typicalMin > 0 && samDay.typicalMin < 7.5 * 60);
+assert.ok(far.note.indexOf("median") !== -1);
 
 const tight = closing.build({ now: "2026-11-09", closingDate: "2026-11-10", settings: { weekdayOtHours: 2, saturday: true } });
 assert.ok(tight.openOrderCount === 1);

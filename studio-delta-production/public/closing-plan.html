@@ -49,7 +49,7 @@
   <header>
     <div>
       <h1>Closing plan</h1>
-      <p class="lede">Learns how long products actually took from finished clocks, who did which station, then asks: can the open orders finish before the last shop day? Overtime is a suggestion — it does not grant it on Workers.</p>
+      <p class="lede">Learns how long products took, and each person’s typical <b>workday</b> (not a month-pack average). Then: can the open orders finish before the last shop day? Overtime is a suggestion — it does not grant it on Workers.</p>
     </div>
     <form class="tools" id="saveForm">
       <label>Last shop day
@@ -81,6 +81,11 @@
       <div class="kpi"><span>Last finish (paid days)</span><b id="kpiPaid">—</b></div>
       <div class="kpi"><span>Last finish (with OT)</span><b id="kpiOt">—</b></div>
     </div>
+    <section class="card">
+      <h2>Day-to-day productivity</h2>
+      <p class="hint">Median order minutes on days that person actually clocked. A month total hides one long day and several short ones. If they have enough Mondays (or Fridays), that weekday uses its own median.</p>
+      <div id="dailyBox"><div class="empty">Loading…</div></div>
+    </section>
     <section class="card">
       <h2>Suggested overtime</h2>
       <p class="hint">Only if paid weekdays are not enough. Grant these on Workers if you agree. The model does not clock anyone on.</p>
@@ -121,6 +126,15 @@
       document.getElementById("weekdayOtHours").value = String(s.weekdayOtHours == null ? 2 : s.weekdayOtHours);
       document.getElementById("saturday").value = s.saturday === false ? "0" : "1";
       document.getElementById("note").textContent = j.note || "";
+      const daily = j.daily || [];
+      if (!daily.length) {
+        document.getElementById("dailyBox").innerHTML = '<div class="empty">No full workdays in the clocks yet. Until then the forecast uses 6 productive hours (80% of 7.5).</div>';
+      } else {
+        document.getElementById("dailyBox").innerHTML = "<table><thead><tr><th>Person</th><th>Typical day</th><th>Of paid 7.5 h</th><th>Days sampled</th></tr></thead><tbody>" +
+          daily.map((row) => "<tr><td>" + esc(row.worker) + "</td><td>" + esc(row.typicalHours) +
+            " h</td><td>" + esc(row.pct) + "%</td><td>" + esc(row.dayCount) + "</td></tr>").join("") +
+          "</tbody></table>";
+      }
       const ot = j.overtime || [];
       if (!ot.length) {
         document.getElementById("otBox").innerHTML = '<div class="empty">' +
