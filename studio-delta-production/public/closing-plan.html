@@ -27,11 +27,14 @@
     .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:0 0 12px; }
     .card h2 { margin:0 0 8px; font-size:15px; }
     .hint { color:var(--muted); font-size:13px; line-height:1.45; margin:0 0 10px; }
-    .verdict { border-radius:10px; padding:14px 16px; font-weight:700; margin:0 0 14px; }
+    .verdict { border-radius:10px; padding:14px 16px; margin:0 0 14px; }
+    .verdict h2 { margin:0 0 8px; font-size:16px; }
+    .verdict ul { margin:0; padding-left:18px; font-weight:500; font-size:14px; line-height:1.45; }
     .verdict.ok { background:#ecfdf3; color:var(--ok); }
     .verdict.ot { background:#fffaeb; color:var(--ot); }
     .verdict.bad { background:#fef3f2; color:var(--bad); }
     .verdict.wait { background:#f2f4f7; color:#344054; }
+    tr.miss td { background:#fef3f2; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th, td { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
     th { font-size:11px; text-transform:uppercase; color:var(--muted); }
@@ -79,8 +82,13 @@
       <div class="kpi"><span>Open shop orders</span><b id="kpiOrders">—</b></div>
       <div class="kpi"><span>Finished clocks learned</span><b id="kpiClocks">—</b></div>
       <div class="kpi"><span>Last finish (paid days)</span><b id="kpiPaid">—</b></div>
-      <div class="kpi"><span>Last finish (with OT)</span><b id="kpiOt">—</b></div>
+      <div class="kpi"><span>If we keep going</span><b id="kpiOt">—</b></div>
     </div>
+    <section class="card" id="missCard" hidden>
+      <h2>Orders that miss the date</h2>
+      <p class="hint">Predicted finish if the same people keep working after closing, using their typical days.</p>
+      <div id="missBox"></div>
+    </section>
     <section class="card">
       <h2>Day-to-day productivity</h2>
       <p class="hint">Median order minutes on days that person actually clocked. A month total hides one long day and several short ones. If they have enough Mondays (or Fridays), that weekday uses its own median.</p>
@@ -116,16 +124,30 @@
     function render(j) {
       const v = document.getElementById("verdict");
       v.className = "verdict " + (j.verdictKind || "wait");
-      v.textContent = j.verdict || "";
+      const facts = j.why || [];
+      v.innerHTML = "<h2>" + esc(j.verdict || "") + "</h2>" +
+        (facts.length ? "<ul>" + facts.map((line) => "<li>" + esc(line) + "</li>").join("") + "</ul>" : "");
       document.getElementById("kpiOrders").textContent = String(j.openOrderCount || 0);
       document.getElementById("kpiClocks").textContent = String(j.clockCount || 0);
       document.getElementById("kpiPaid").textContent = j.lastFinishPaid || "—";
-      document.getElementById("kpiOt").textContent = j.lastFinishWithOt || "—";
+      document.getElementById("kpiOt").textContent = j.finishIfWeContinue || j.lastFinishWithOt || "—";
       const s = j.settings || {};
       if (s.closingDate) document.getElementById("closingDate").value = s.closingDate;
       document.getElementById("weekdayOtHours").value = String(s.weekdayOtHours == null ? 2 : s.weekdayOtHours);
       document.getElementById("saturday").value = s.saturday === false ? "0" : "1";
       document.getElementById("note").textContent = j.note || "";
+      const missed = j.missedOrders || [];
+      const missCard = document.getElementById("missCard");
+      if (!missed.length) {
+        missCard.hidden = true;
+        document.getElementById("missBox").innerHTML = "";
+      } else {
+        missCard.hidden = false;
+        document.getElementById("missBox").innerHTML = "<table><thead><tr><th>Order</th><th>Product</th><th>Work left</th><th>Predicted finish</th></tr></thead><tbody>" +
+          missed.map((row) => "<tr><td>" + esc(row.orderNumber) + "</td><td>" + esc(row.product) + "</td><td>" +
+            esc(row.remainingLabel) + "</td><td>" + esc(row.finish || "Does not fit in the calendar") + "</td></tr>").join("") +
+          "</tbody></table>";
+      }
       const daily = j.daily || [];
       if (!daily.length) {
         document.getElementById("dailyBox").innerHTML = '<div class="empty">No full workdays in the clocks yet. Until then the forecast uses 6 productive hours (80% of 7.5).</div>';
@@ -150,12 +172,12 @@
       if (!jobs.length) {
         document.getElementById("jobBox").innerHTML = '<div class="empty">No open shop orders.</div>';
       } else {
-        document.getElementById("jobBox").innerHTML = "<table><thead><tr><th>Order</th><th>Product</th><th>Now</th><th>Left</th><th>Suggested crew</th></tr></thead><tbody>" +
+        document.getElementById("jobBox").innerHTML = "<table><thead><tr><th>Order</th><th>Product</th><th>Now</th><th>Left</th><th>Predicted finish</th><th>Suggested crew</th></tr></thead><tbody>" +
           jobs.map((job) => {
             const crew = (job.steps || []).map((st) => esc(st.process) + ": <b>" + esc(st.worker) + "</b> (" + esc(st.hoursLabel) +
               ' <span class="src">' + esc(st.source) + (st.samples ? ", " + st.samples + " jobs" : "") + "</span>)").join("<br>");
-            return "<tr><td>" + esc(job.orderNumber) + "</td><td>" + esc(job.product) + "</td><td>" + esc(job.status) +
-              "</td><td>" + esc(job.remainingLabel) + "</td><td>" + crew + "</td></tr>";
+            return "<tr class=\"" + (job.miss ? "miss" : "") + "\"><td>" + esc(job.orderNumber) + "</td><td>" + esc(job.product) + "</td><td>" + esc(job.status) +
+              "</td><td>" + esc(job.remainingLabel) + "</td><td>" + esc(job.finishDay || "—") + "</td><td>" + crew + "</td></tr>";
           }).join("") + "</tbody></table>";
       }
       const learned = j.learned || [];

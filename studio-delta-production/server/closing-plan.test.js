@@ -106,5 +106,11 @@ const tight = closing.build({ now: "2026-11-09", closingDate: "2026-11-10", sett
 assert.ok(tight.openOrderCount === 1);
 assert.ok(!tight.canFinishPaid, "one day cannot finish a full Air Chair: " + tight.verdict);
 assert.ok(tight.overtime.length >= 1, "should suggest overtime");
+if (!tight.canFinishWithOt) {
+  assert.ok(Array.isArray(tight.why) && tight.why.length >= 1, JSON.stringify(tight.why));
+  assert.ok(tight.verdict.indexOf("Cut orders") === -1, tight.verdict);
+  assert.ok(tight.missedOrders.length >= 1, "names the orders that miss");
+  assert.ok(tight.finishIfWeContinue, "says when work would actually finish");
+}
 
 console.log("closing-plan.test.js ok");

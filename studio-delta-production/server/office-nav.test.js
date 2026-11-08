@@ -1288,6 +1288,8 @@ assert.ok(officeJs.indexOf("/api/office/closing-plan") !== -1);
 const closingHtml = fs.readFileSync(path.join(__dirname, "../public/closing-plan.html"), "utf8");
 assert.ok(closingHtml.indexOf("Day-to-day productivity") !== -1);
 assert.ok(closingHtml.indexOf("month-pack average") !== -1);
+assert.ok(closingHtml.indexOf("Orders that miss the date") !== -1);
+assert.ok(closingHtml.indexOf("j.why") !== -1);
 assert.ok(indexJs.indexOf("/closing-plan") !== -1);
 assert.ok(floor.indexOf("Planning") !== -1);
 assert.ok(indexJs.indexOf('"/reworks"') !== -1 || indexJs.indexOf("/reworks") !== -1);
