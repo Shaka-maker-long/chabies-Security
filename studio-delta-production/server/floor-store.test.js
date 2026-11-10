@@ -319,6 +319,48 @@ async function main() {
   const finalBoards = book.getSheetByName("Backboard_Usage").getDataRange().getValues();
   assert.ok(!finalBoards.some((row, i) => i > 0 && String(row[1]) === "SD-QC-ADMIN"), "Final QC must not log backboard size");
 
+  const waitPlate = db.upsertOrder({
+    order_number: "SD-WAIT-PLATE",
+    status: "Ready for Welding",
+    product: "Gate",
+    client_name: "Test Client"
+  });
+  const liveWeldOrder = db.upsertOrder({
+    order_number: "SD-LIVE-WELD",
+    status: "Ready for Welding",
+    product: "Gate",
+    client_name: "Test Client"
+  });
+  await callShopFunction("grantOvertime", ["Thabo", "", "Admin", "test"]);
+  const waitWeld = await callShopFunction("startOrder", [waitPlate.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
+  assert.strictEqual(waitWeld.success, true, JSON.stringify(waitWeld));
+  const waitPaused = await callShopFunction("workerPauseOrder", [waitPlate.id, "SD-WAIT-PLATE", "Thabo", "No materials"]);
+  assert.strictEqual(waitPaused.success, true, JSON.stringify(waitPaused));
+  const liveWeld = await callShopFunction("startOrder", [liveWeldOrder.id, "Thabo", "Welding", [], "", false, null, CONFIRM]);
+  assert.strictEqual(liveWeld.success, true, JSON.stringify(liveWeld));
+  const laterPlate = await callShopFunction("startOrder", [waitPlate.id, "Sipho", "Plate Cutting", [], "", false, null, CONFIRM]);
+  assert.strictEqual(laterPlate.success, true, JSON.stringify(laterPlate));
+  const laterPlateFinish = await callShopFunction("finishOrder", [
+    waitPlate.id,
+    laterPlate.logId,
+    null,
+    "",
+    [],
+    "Sipho",
+    [{ category: "Plate", type: "3mm", size: "1 m²", isCustom: true }],
+    "SD-WAIT-PLATE",
+    []
+  ]);
+  assert.ok(laterPlateFinish && laterPlateFinish.success !== false, JSON.stringify(laterPlateFinish));
+  assert.ok(!(laterPlateFinish.switched || []).length, "plate finish must not auto-switch welders: " + JSON.stringify(laterPlateFinish.switched));
+  const thaboFloor = await callShopFunction("pollFloor", ["Welding", "Thabo"]);
+  const liveCard = (thaboFloor.orders || []).find((o) => o.order === "SD-LIVE-WELD");
+  const waitCard = (thaboFloor.orders || []).find((o) => o.order === "SD-WAIT-PLATE");
+  assert.ok(liveCard && !liveCard.isPaused, "live welding must stay running after plates: " + JSON.stringify(liveCard));
+  assert.ok(waitCard && waitCard.isPaused, "paused weld waiting for plates stays paused: " + JSON.stringify(waitCard));
+  const logGrid = book.getSheetByName("Production_Log").getDataRange().getValues();
+  assert.ok(!logGrid.some((row, i) => i > 0 && JSON.stringify(row).indexOf("Plate ready on") !== -1), "must not pause welders with Plate ready");
+
   const extraWeld = db.upsertOrder({
     order_number: "SD-WELD-ADMIN",
     status: "Ready for Welding",
