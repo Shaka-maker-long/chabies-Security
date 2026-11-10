@@ -40,11 +40,9 @@
       width:6.2em; text-align:right; padding:6px 8px; font-size:13px;
     }
     .item-table input.cell.wide { width:7.2em; }
-    .item-table .name-btn {
-      all:unset; cursor:pointer; font-weight:600; color:var(--ink);
-      text-align:left; max-width:100%;
-    }
-    .item-table .name-btn:hover { text-decoration:underline; }
+    .item-table tbody tr { cursor:pointer; }
+    .item-table tbody tr:hover { background:#f8fafc; }
+    .item-table .name-cell { font-weight:600; }
     .item-table tr.saving { opacity:.65; }
     .item-table tr.just-saved td { background:#ecfdf3; }
     .sheet .body label { font-size:11px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; color:var(--muted); display:flex; flex-direction:column; gap:4px; }
@@ -158,6 +156,7 @@
       .use-line .use-qty { max-width:none; }
       .use-line button { width:100%; }
       header .tools #btnLogUsage,
+      header .tools #btnAddMaterial,
       header .tools #btnCreatePo { flex:1 1 140px; min-height:44px; }
       .item-table thead { display:none; }
       .item-table, .item-table tbody, .item-table tr, .item-table td { display:block; width:100%; }
@@ -190,6 +189,7 @@
       <input class="search" type="search" id="q" placeholder="Search items">
       <button class="ghost" type="button" id="btnPrintAllQr">Print all QR labels</button>
       <button class="ghost" type="button" id="btnLogUsage">Log usage</button>
+      <button type="button" id="btnAddMaterial">Add material</button>
       <button type="button" id="btnCreatePo">Create purchase order</button>
       <button class="ghost" type="button" onclick="reloadPage()">Refresh</button>
     </div>
@@ -204,33 +204,8 @@
     </div>
     <section class="card">
       <h2>On hand</h2>
-      <p class="hint">Change current stock only in <b>Edit</b>. Saving there makes a 6×6 cm QR on an A4 page — cut the dashed square, the rest of the sheet stays blank. Use <b>Print all QR labels</b> for every locker, or <b>Open QR</b> on a row for one sticker. Print at 100% (not Fit to page).</p>
+      <p class="hint">Click a row to edit. Change current stock only in that form — saving writes a 6×6 cm QR. Use <b>Add material</b> for a new item. <b>Print all QR labels</b> or <b>Open QR</b> on a row for stickers. Print at 100% (not Fit to page).</p>
       <div id="itemList"><div class="empty">Loading…</div></div>
-      <form class="add" id="addForm">
-        <label>Item name
-          <input id="itemName" required placeholder="e.g. Bullet hinge" autocomplete="off">
-        </label>
-        <label>Counted as
-          <select id="itemKind">
-            <option value="each">Whole pieces (hinges, screws)</option>
-            <option value="measure">Paint / litres (0.5 allowed)</option>
-          </select>
-        </label>
-        <label>Unit
-          <select id="itemUnit"></select>
-        </label>
-        <label>ROP
-          <input id="itemMin" inputmode="decimal" placeholder="e.g. 20" value="0">
-        </label>
-        <label>Unit price (R)
-          <input id="itemPrice" inputmode="decimal" placeholder="optional">
-        </label>
-        <label>Opening stock
-          <input id="itemOpen" inputmode="decimal" placeholder="optional">
-        </label>
-        <button type="submit">Add item</button>
-        <span class="msg" id="addMsg"></span>
-      </form>
     </section>
     <section class="card">
       <h2>Usage and receive log</h2>
@@ -404,6 +379,44 @@
       </form>
     </div>
   </div>
+
+    <div class="mask" id="addMask">
+      <div class="sheet mobile-use" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+        <header>
+          <h1 id="addTitle">Add material</h1>
+          <div class="tools">
+            <button class="ghost" type="button" onclick="closeAdd()">Cancel</button>
+          </div>
+        </header>
+        <form class="body" id="addForm">
+          <label>Item name
+            <input id="itemName" required placeholder="e.g. Bullet hinge" autocomplete="off">
+          </label>
+          <label>Counted as
+            <select id="itemKind">
+              <option value="each">Whole pieces (hinges, screws)</option>
+              <option value="measure">Paint / litres (0.5 allowed)</option>
+            </select>
+          </label>
+          <label>Unit
+            <select id="itemUnit"></select>
+          </label>
+          <label>ROP
+            <input id="itemMin" inputmode="decimal" placeholder="e.g. 20" value="0">
+          </label>
+          <label>Unit price (R)
+            <input id="itemPrice" inputmode="decimal" placeholder="optional">
+          </label>
+          <label>Opening stock
+            <input id="itemOpen" inputmode="decimal" placeholder="optional">
+          </label>
+          <p class="err" id="addMsg"></p>
+          <div class="foot">
+            <button type="submit">Add material</button>
+          </div>
+        </form>
+      </div>
+    </div>
 
     <div class="mask" id="editMask">
       <div class="sheet mobile-use" role="dialog" aria-modal="true" aria-labelledby="editTitle">
@@ -617,7 +630,7 @@
       document.title = "Studio Delta — Scan materials";
       const lede = document.getElementById("lede");
       if (lede) lede.textContent = "Scan lockers onto the order you are clocked on. Start a job first if nothing is running.";
-      ["tab-cons", "tab-pos", "tab-take", "tab-steel", "tab-glass", "btnLogUsage", "btnCreatePo", "btnPrintAllQr", "q"].forEach((id) => {
+      ["tab-cons", "tab-pos", "tab-take", "tab-steel", "tab-glass", "btnLogUsage", "btnCreatePo", "btnAddMaterial", "btnPrintAllQr", "q"].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.hidden = true;
       });
@@ -660,7 +673,7 @@
       const rows = filteredItems();
       const box = document.getElementById("itemList");
       if (!(data.items || []).length) {
-        box.innerHTML = '<div class="empty">No consumables yet. Add the first hinge, screw, sticker, or other hardware below.</div>';
+        box.innerHTML = '<div class="empty">No consumables yet. Tap <b>Add material</b> for the first hinge, screw, sticker, or other hardware.</div>';
         return;
       }
       if (!rows.length) {
@@ -672,19 +685,24 @@
         "<th class='r'>Unit Price</th><th class='r'>ROP</th><th class='r'>Total Value</th><th></th>" +
         "</tr></thead><tbody>" +
         rows.map((row) => "<tr class=\"" + (row.low ? "low-box" : "") + "\" data-id=\"" + esc(row.id) + "\">" +
-          "<td data-label='Name'><button class='name-btn' type='button' data-edit=\"" + esc(row.id) + "\">" + esc(row.name) + "</button></td>" +
+          "<td class='name-cell' data-label='Name'>" + esc(row.name) + "</td>" +
           "<td class='r' data-label='Current Stock' data-f='stock'>" + esc(row.stockLabel) + "</td>" +
           "<td class='r' data-label='Ordered Stock' data-f='ordered'>" + esc(row.orderedLabel) + "</td>" +
           "<td class='r' data-label='Unit Price'><input class='cell wide' data-f='price' inputmode='decimal' placeholder='—' value=\"" + (row.unitPrice == null ? "" : esc(String(row.unitPrice))) + "\"></td>" +
           "<td class='r' data-label='ROP'><input class='cell' data-f='rop' inputmode='decimal' value=\"" + esc(row.ropLabel) + "\"></td>" +
           "<td class='r' data-label='Value' data-f='value'>" + esc(row.totalValueLabel) + "</td>" +
           "<td class='actions' data-label=''>" +
-          "<button class='ghost' type='button' data-edit=\"" + esc(row.id) + "\">Edit</button>" +
           "<button type='button' data-qr=\"" + esc(row.qrPdfUrl || "") + "\">Open QR</button>" +
           "</td></tr>").join("") + "</tbody></table>";
-      box.querySelectorAll("[data-edit]").forEach((btn) => { btn.onclick = () => openEdit(btn.getAttribute("data-edit")); });
+      box.querySelectorAll("tbody tr").forEach((tr) => {
+        tr.onclick = (e) => {
+          if (e.target.closest("input, button, a, select, textarea, label")) return;
+          openEdit(tr.getAttribute("data-id"));
+        };
+      });
       box.querySelectorAll("[data-qr]").forEach((btn) => {
-        btn.onclick = () => {
+        btn.onclick = (e) => {
+          e.stopPropagation();
           const url = btn.getAttribute("data-qr");
           if (url) openPdfTab(url + (url.indexOf("?") === -1 ? "?" : "&") + "t=" + Date.now(), "status");
         };
@@ -821,6 +839,22 @@
       document.getElementById("editMask").classList.remove("open");
     }
     window.closeEdit = closeEdit;
+    function closeAdd() {
+      document.getElementById("addMask").classList.remove("open");
+    }
+    window.closeAdd = closeAdd;
+    function openAdd() {
+      fillUnits();
+      document.getElementById("itemName").value = "";
+      document.getElementById("itemKind").value = "each";
+      document.getElementById("itemMin").value = "0";
+      document.getElementById("itemPrice").value = "";
+      document.getElementById("itemOpen").value = "";
+      setMsg("addMsg", "");
+      syncKindUnit("itemKind", "itemUnit", "itemOpen");
+      document.getElementById("addMask").classList.add("open");
+      document.getElementById("itemName").focus();
+    }
     function fillEditUnits(selected) {
       const el = document.getElementById("editUnit");
       el.innerHTML = (data.units || ["pcs"]).map((u) =>
@@ -882,7 +916,8 @@
         tr.querySelector("[data-f=rop]").value = next.ropLabel;
         tr.querySelector("[data-f=value]").textContent = next.totalValueLabel;
         tr.querySelector("[data-f=ordered]").textContent = next.orderedLabel;
-        tr.querySelector(".name-btn").textContent = next.name;
+        const nameCell = tr.querySelector(".name-cell");
+        if (nameCell) nameCell.textContent = next.name;
         tr.classList.add("just-saved");
         setTimeout(() => tr.classList.remove("just-saved"), 800);
       }
@@ -930,6 +965,10 @@
     document.getElementById("editMask").addEventListener("click", (e) => {
       if (e.target.id === "editMask") closeEdit();
     });
+    document.getElementById("addMask").addEventListener("click", (e) => {
+      if (e.target.id === "addMask") closeAdd();
+    });
+    document.getElementById("btnAddMaterial").onclick = () => openAdd();
     async function removeItem(id) {
       const row = (data.items || []).find((item) => item.id === id);
       if (!row) return;
@@ -1006,8 +1045,9 @@
       document.getElementById("itemMin").value = "0";
       document.getElementById("itemPrice").value = "";
       document.getElementById("itemOpen").value = "";
+      closeAdd();
       applySnapshot(j);
-      setMsg("addMsg", "Added " + (j.item && j.item.name ? j.item.name : "item") + ".");
+      setMsg("status", "Added " + (j.item && j.item.name ? j.item.name : "item") + ".");
     };
     document.getElementById("useForm").onsubmit = async (e) => {
       e.preventDefault();
@@ -1076,6 +1116,7 @@
     document.getElementById("takePage").hidden = pathTab !== "take";
     document.getElementById("matPage").hidden = !matKind;
     document.getElementById("btnLogUsage").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
+    document.getElementById("btnAddMaterial").style.display = pathTab === "cons" ? "" : "none";
     document.getElementById("btnCreatePo").style.display = (pathTab === "cons" || pathTab === "pos") ? "" : "none";
     document.getElementById("btnPrintAllQr").style.display = (pathTab === "cons" || pathTab === "take") ? "" : "none";
     document.getElementById("q").style.display = pathTab === "collect" ? "none" : "";
