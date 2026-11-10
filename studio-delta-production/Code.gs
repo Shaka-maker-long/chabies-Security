@@ -2979,9 +2979,7 @@ function finishOrder(rowIndex, logId, qcData, signatureUrl, filesData, workerNam
     SpreadsheetApp.flush();
 
     var switched = [];
-    if (role === 'Plate Cutting') {
-      switched = autoSwitchWeldersAfterPlate(ss, orderNum);
-    }
+    // Plate cutting finishing must not pause or resume the welding team.
 
     if (role === 'Quality Control' && qcData && signatureUrl && processName !== 'Powder Coating') {
         try {
@@ -5803,33 +5801,7 @@ function resumeWorkerLog(ss, workerName, orderNum, pack, at) {
 }
 
 function autoSwitchWeldersAfterPlate(ss, orderNum) {
-  var pack = getLogPack(ss);
-  var logs = pack.values;
-  var switched = [];
-  for (var i = 1; i < logs.length; i++) {
-    var role = String(logs[i][3]).trim();
-    if (String(logs[i][1]) !== String(orderNum)) continue;
-    if (role !== "Welding") continue;
-    if (logs[i][6]) continue;
-    var worker = String(logs[i][2]).trim();
-    var meta = parseLogMeta(logs[i].length > 12 ? logs[i][12] : "");
-    var isPaused = hasOpenPause(meta.pauses) || !!logs[i][9];
-    if (!isPaused) continue;
-
-    var pausedOthers = autoPauseWorkerOtherJobs(ss, worker, [orderNum], "Plate ready on " + orderNum, meta.batchId, pack);
-    closeIndirectTasksForWorker(ss, worker, pack);
-    resumeWorkerLog(ss, worker, orderNum, pack);
-    var notice = {
-      type: "plate-ready",
-      worker: worker,
-      resumedOrder: String(orderNum),
-      pausedOrders: pausedOthers,
-      message: "Plate ready — you are back on order " + orderNum
-    };
-    setWorkerNotice(worker, notice);
-    switched.push(notice);
-  }
-  return switched;
+  return [];
 }
 
 function setWorkerNotice(worker, notice) {
