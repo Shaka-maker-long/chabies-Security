@@ -1152,6 +1152,47 @@ async function deliveryCostYtd(opts) {
   }, summary);
 }
 
+function ratedStar(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v < 1 || v > 5) return 0;
+  return v;
+}
+
+function averageTeamField(records, key) {
+  let sum = 0;
+  let rated = 0;
+  let clientForms = 0;
+  (records || []).forEach((row) => {
+    if (!row) return;
+    if (String(row.drop_kind || "") === "courier" || String(row.drop_kind || "") === "third_party") return;
+    clientForms += 1;
+    const v = ratedStar(row[key]);
+    if (!v) return;
+    sum += v;
+    rated += 1;
+  });
+  return {
+    average: rated ? Math.round((sum / rated) * 10) / 10 : 0,
+    rated: rated,
+    forms: clientForms
+  };
+}
+
+function teamRatingAverages(records) {
+  const rows = records || loadStore().records || [];
+  const courierSkipped = rows.filter((row) => {
+    const kind = String((row && row.drop_kind) || "");
+    return kind === "courier" || kind === "third_party";
+  }).length;
+  return {
+    delivery: Object.assign({ key: "delivery", label: "Delivery team" }, averageTeamField(rows, "rating_delivery")),
+    sales: Object.assign({ key: "sales", label: "Sales team" }, averageTeamField(rows, "rating_sales")),
+    craft: Object.assign({ key: "craft", label: "Craftsmanship" }, averageTeamField(rows, "rating_craft")),
+    courier_skipped: courierSkipped,
+    forms: rows.length
+  };
+}
+
 function listForms() {
   return loadStore().records.map((row) => ({
     id: row.id,
@@ -1279,6 +1320,7 @@ module.exports = {
   formsForOrder,
   submitPod,
   listForms,
+  teamRatingAverages,
   deleteForm,
   renameOrder,
   readPdf,
