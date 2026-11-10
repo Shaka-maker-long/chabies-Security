@@ -29,6 +29,15 @@
     .cost .totals strong { display:block; font-size:18px; }
     .cost .totals span { font-size:12px; color:var(--muted); }
     .cost table { min-width:820px; }
+    .teams { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; padding:14px 16px 16px; }
+    .team { border:1px solid var(--line); border-radius:12px; padding:14px 16px; background:#fff; min-height:140px; }
+    .team h3 { margin:0; font-size:13px; letter-spacing:.04em; text-transform:uppercase; color:var(--muted); }
+    .team .avg { margin:8px 0 4px; font-family: Outfit, Inter, sans-serif; font-size:32px; font-weight:700; line-height:1; }
+    .team .avg span { font-size:16px; color:var(--muted); font-weight:600; }
+    .team .stars { display:block; margin-bottom:8px; }
+    .team .meta { margin:0; font-size:12px; color:var(--muted); line-height:1.45; }
+    .team.empty .avg { color:var(--muted); font-size:22px; }
+    @media (max-width: 900px) { .teams { grid-template-columns:1fr; } }
     .wrap { overflow:auto; }
     table { border-collapse:separate; border-spacing:0; width:100%; min-width:980px; font-size:13px; }
     th, td { border-bottom:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top; }
@@ -47,6 +56,7 @@
       <nav class="tabs" aria-label="Delivery forms views">
         <a id="tabForms" href="/delivery-forms">Forms</a>
         <a id="tabCost" href="/delivery-forms/cost">Cost</a>
+        <a id="tabRatings" href="/delivery-forms/ratings">Ratings</a>
       </nav>
       <h1 id="pageTitle">Delivery Forms</h1>
       <p class="lede" id="pageLede">Proof-of-delivery PDFs from the van: photos, GPS, receiver signature, and optional ratings.</p>
@@ -81,6 +91,13 @@
       </div>
     </section>
   </div>
+  <div class="page" id="ratingsPage" hidden>
+    <section class="card cost" id="ratingsCard">
+      <h2>Average ratings by team</h2>
+      <p class="meta" id="ratingsMeta">Loading averages from client delivery forms…</p>
+      <div class="teams" id="ratingsTeams"></div>
+    </section>
+  </div>
   <div class="page" id="costPage" hidden>
     <section class="card cost" id="costCard">
       <h2>Year-to-date delivery cost</h2>
@@ -109,6 +126,7 @@
   <script>
     let rows = [];
     let cost = null;
+    let ratings = null;
     let view = "forms";
     function esc(s) {
       return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");
@@ -122,18 +140,27 @@
       return "★★★★★".slice(0, v) + "☆☆☆☆☆".slice(0, 5 - v);
     }
     function setView(next) {
-      view = next === "cost" ? "cost" : "forms";
+      view = next === "cost" ? "cost" : (next === "ratings" ? "ratings" : "forms");
       document.getElementById("formsPage").hidden = view !== "forms";
       document.getElementById("costPage").hidden = view !== "cost";
+      document.getElementById("ratingsPage").hidden = view !== "ratings";
       document.getElementById("tabForms").classList.toggle("on", view === "forms");
       document.getElementById("tabCost").classList.toggle("on", view === "cost");
-      document.getElementById("pageTitle").textContent = view === "cost" ? "Delivery cost" : "Delivery Forms";
+      document.getElementById("tabRatings").classList.toggle("on", view === "ratings");
+      document.getElementById("pageTitle").textContent = view === "cost"
+        ? "Delivery cost"
+        : (view === "ratings" ? "Team ratings" : "Delivery Forms");
       document.getElementById("pageLede").textContent = view === "cost"
         ? "Year-to-date delivery cost from GPS pins on each form. Each day is costed facility → drops → facility at R6/km. Return to factory is weighted by each stop’s inbound km."
-        : "Proof-of-delivery PDFs from the van: photos, GPS, receiver signature, and optional ratings. Gauteng drops are at the client. Other provinces drop at Frankenwald. Use Cost for year-to-date R6/km.";
+        : (view === "ratings"
+          ? "Average client stars for Delivery, Sales, and Craftsmanship. Courier handovers at Frankenwald are not rated and are left out of the average."
+          : "Proof-of-delivery PDFs from the van: photos, GPS, receiver signature, and optional ratings. Gauteng drops are at the client. Other provinces drop at Frankenwald. Use Cost for year-to-date R6/km.");
       document.getElementById("q").hidden = view !== "forms";
-      document.title = view === "cost" ? "Studio Delta — Delivery cost" : "Studio Delta — Delivery Forms";
+      document.title = view === "cost"
+        ? "Studio Delta — Delivery cost"
+        : (view === "ratings" ? "Studio Delta — Team ratings" : "Studio Delta — Delivery Forms");
       if (view === "cost") renderCost();
+      else if (view === "ratings") renderRatings();
       else render();
     }
     function renderCost() {
@@ -185,6 +212,38 @@
       }
       grid.hidden = false;
     }
+    function renderRatings() {
+      const meta = document.getElementById("ratingsMeta");
+      const box = document.getElementById("ratingsTeams");
+      if (!ratings) {
+        meta.textContent = "Could not load team rating averages.";
+        box.innerHTML = "";
+        return;
+      }
+      const skipped = ratings.courier_skipped || 0;
+      meta.textContent = (ratings.forms || 0) + " form" + ((ratings.forms || 0) === 1 ? "" : "s") +
+        ". Averages use only client drops with a 1–5 star score" +
+        (skipped ? (" · " + skipped + " courier handover" + (skipped === 1 ? "" : "s") + " skipped") : "") + ".";
+      const teams = [
+        Object.assign({ label: "Delivery team" }, ratings.delivery || {}),
+        Object.assign({ label: "Sales team" }, ratings.sales || {}),
+        Object.assign({ label: "Craftsmanship" }, ratings.craft || {})
+      ];
+      box.innerHTML = teams.map((team) => {
+        const empty = !team || !team.rated;
+        const avg = empty ? "—" : String(team.average);
+        const count = empty
+          ? "No client ratings yet for this team."
+          : ("From " + team.rated + " rated form" + (team.rated === 1 ? "" : "s") +
+            (team.forms > team.rated ? (" · " + (team.forms - team.rated) + " left blank") : "") + ".");
+        return "<article class=\"team" + (empty ? " empty" : "") + "\">" +
+          "<h3>" + esc(team && team.label || "") + "</h3>" +
+          "<div class=\"avg\">" + esc(avg) + (empty ? "" : "<span> / 5</span>") + "</div>" +
+          "<span class=\"stars\">" + (empty ? "" : esc(stars(Math.round(team.average)))) + "</span>" +
+          "<p class=\"meta\">" + esc(count) + "</p>" +
+          "</article>";
+      }).join("");
+    }
     function render() {
       const q = String(document.getElementById("q").value || "").toLowerCase();
       const body = document.getElementById("body");
@@ -230,9 +289,11 @@
       const j = await formsRes.json().catch(() => ({}));
       if (!j || !j.ok) throw new Error((j && j.error) || "Could not load delivery forms");
       rows = j.rows || [];
+      ratings = j.ratings || null;
       const cj = await costRes.json().catch(() => ({}));
       cost = (cj && cj.ok) ? cj.cost : null;
       if (view === "cost") renderCost();
+      else if (view === "ratings") renderRatings();
       else render();
       setMsg(rows.length + " form" + (rows.length === 1 ? "" : "s") +
         (cost ? (" · YTD R " + money(cost.total_zar)) : ""));
@@ -242,7 +303,7 @@
       load().catch((e) => setMsg(e.message || String(e), true));
     });
     const path = location.pathname.replace(/\/+$/, "") || "/delivery-forms";
-    setView(path.indexOf("/delivery-forms/cost") === 0 ? "cost" : "forms");
+    setView(path.indexOf("/delivery-forms/cost") === 0 ? "cost" : (path.indexOf("/delivery-forms/ratings") === 0 ? "ratings" : "forms"));
     sdMountOfficeShell("deliveryforms");
     sdRequireOffice("reworks").then(() => load()).catch((e) => {
       document.getElementById("boot").className = "err";

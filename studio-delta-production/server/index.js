@@ -317,6 +317,10 @@ app.get("/delivery-forms/cost", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "delivery-forms.html"));
 });
+app.get("/delivery-forms/ratings", (_req, res) => {
+  noStore(res);
+  res.sendFile(path.join(publicDir, "delivery-forms.html"));
+});
 app.get("/driver-tracker", (_req, res) => {
   noStore(res);
   res.sendFile(path.join(publicDir, "driver-tracker.html"));
@@ -444,7 +448,7 @@ app.get("/api/delivery/forms", (req, res) => {
         res.status(403).json({ ok: false, error: "Delivery forms are for office, QC, and the driver." });
         return;
       }
-      res.json({ ok: true, rows: delivery.listForms() });
+      res.json({ ok: true, rows: delivery.listForms(), ratings: delivery.teamRatingAverages() });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }

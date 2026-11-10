@@ -1103,7 +1103,13 @@ assert.ok(
   "delivery cost is year-to-date"
 );
 assert.ok(deliveryFormsHtml.indexOf("/delivery-forms/cost") !== -1, "Cost is a Delivery Forms subpage");
-assert.ok(deliveryFormsHtml.indexOf(">Forms<") !== -1 && deliveryFormsHtml.indexOf(">Cost<") !== -1);
+assert.ok(deliveryFormsHtml.indexOf("/delivery-forms/ratings") !== -1, "Ratings is a Delivery Forms subpage");
+assert.ok(deliveryFormsHtml.indexOf(">Forms<") !== -1 && deliveryFormsHtml.indexOf(">Cost<") !== -1 && deliveryFormsHtml.indexOf(">Ratings<") !== -1);
+assert.ok(deliveryFormsHtml.indexOf("Average ratings by team") !== -1);
+assert.ok(deliveryFormsHtml.indexOf("Delivery team") !== -1);
+assert.ok(deliveryFormsHtml.indexOf("Sales team") !== -1);
+assert.ok(deliveryFormsHtml.indexOf("Craftsmanship") !== -1);
+assert.ok(indexJs.indexOf("/delivery-forms/ratings") !== -1);
 assert.ok(deliveryFormsHtml.indexOf("data-del") === -1 && deliveryFormsHtml.indexOf(">Delete<") === -1, "no delete buttons on delivery forms");
 assert.ok(deliveryFormsHtml.indexOf("stop.address") !== -1 || deliveryFormsHtml.indexOf("<th>Address</th>") !== -1, "cost table shows address");
 assert.ok(indexJs.indexOf("/api/delivery/cost") !== -1);

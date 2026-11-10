@@ -310,6 +310,12 @@ assert.ok(ALLOWED.has("submitDeliveryPod"));
     rating_craft: 3
   }, "Lebo");
   assert.ok(gautengPod.id);
+  const avgs = delivery.teamRatingAverages();
+  assert.strictEqual(avgs.delivery.average, 4);
+  assert.strictEqual(avgs.sales.average, 5);
+  assert.strictEqual(avgs.craft.average, 3);
+  assert.strictEqual(avgs.delivery.rated, 1);
+  assert.ok(avgs.courier_skipped >= 1, "Frankenwald handovers are not in the team average");
   const gautengDone = db.listOrders().find((o) => o.order_number === "S260404");
   assert.strictEqual(String(gautengDone.status), "Delivered");
   const gautengPdf = delivery.readPdf(gautengPod.id);
