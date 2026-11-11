@@ -948,6 +948,10 @@
     .ot-grant-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 4px 0; border-bottom: 1px solid var(--border); }
     .ot-grant-row:last-child { border-bottom: 0; }
     .product-sub { font-size: 0.75rem; color: var(--text-secondary); font-weight: 500; }
+    .plate-note { font-size: 12px; font-weight: 600; margin: 4px 0 8px; }
+    .plate-note.is-done { color: #027a48; }
+    .plate-note.is-wait { color: #b54708; }
+    .plate-note.is-none { color: #667085; }
     .hours-regular { font-variant-numeric: tabular-nums; }
     .sched-order { cursor: pointer; border: 1px solid var(--border-strong); border-radius: 10px; padding: 10px 12px; background: var(--bg-surface); }
     .sched-order.in-queue { border-color: var(--accent); background: var(--bg-surface-2); }
@@ -5150,6 +5154,40 @@
       const label = o.isPaused ? 'Paused · ' : 'On it: ';
       return '<div class="product-sub on-it-line">' + floorEsc(label + o.assigned) + '</div>';
     }
+    function plateNoteHtml(o) {
+      if (!o || !o.plateNote) return '';
+      const state = String(o.plateState || '');
+      const klass = state === 'done' ? 'is-done' : (state === 'no_plate' ? 'is-none' : 'is-wait');
+      return '<div class="product-sub plate-note ' + klass + '">' + floorEsc(o.plateNote) + '</div>';
+    }
+    function syncCardPlateNote(liveCard, o) {
+      if (!liveCard) return;
+      const html = plateNoteHtml(o);
+      let el = liveCard.querySelector('.plate-note');
+      if (!html) {
+        if (el) el.remove();
+        return;
+      }
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const next = tmp.firstElementChild;
+      if (el) {
+        el.replaceWith(next);
+        return;
+      }
+      const shot = liveCard.querySelector('.product-shot');
+      if (shot) {
+        shot.after(next);
+        return;
+      }
+      const onIt = liveCard.querySelector('.on-it-line');
+      if (onIt) {
+        onIt.after(next);
+        return;
+      }
+      const head = liveCard.querySelector('.card-body > .d-flex');
+      if (head) head.after(next);
+    }
     function syncCardOnIt(liveCard, o) {
       if (!liveCard) return;
       const html = onItLineHtml(o);
@@ -5580,6 +5618,7 @@
             : '';
           const plannedBadge = o.planned ? `<span class="badge bg-info text-dark me-2">Planned</span>` : '';
           const productShot = productShotHtml(o);
+          const plateLine = plateNoteHtml(o);
 
           let innerBtn = '';
           const deliveryStatus = String(o.status || '').toLowerCase();
@@ -5659,6 +5698,7 @@
             syncCardCountdown(liveCard, o);
             syncCardProductShot(liveCard, o);
             syncCardOnIt(liveCard, o);
+            syncCardPlateNote(liveCard, o);
             // Move card to correct container if assignment changed
             const showInProgress = inProgress;
             const targetContainer = showInProgress ? pr : av;
@@ -5689,6 +5729,7 @@
                     </div>
                     ${onItLineHtml(o)}
                     ${productShot}
+                    ${plateLine}
                     ${countdownHtml(o)}
                     ${btn}
                   </div>
@@ -5707,6 +5748,7 @@
                   </div>
                     ${onItLineHtml(o)}
                     ${productShot}
+                    ${plateLine}
                     ${countdownHtml(o)}
                     ${btn}
                 </div>
