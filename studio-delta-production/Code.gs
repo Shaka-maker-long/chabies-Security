@@ -1375,7 +1375,7 @@ function getOrdersForRole(role, workerName, skipCache) {
   var data = getSheetGrid(ss, TAB_ORDERS, 12);
   var logData = getLogPack(ss).values;
   var activeAssignments = getActiveAssignmentsFromData(logData);
-  var plateMap = (role === 'Plate Cutting') ? buildPlateStatusMap(logData) : {};
+  var plateMap = (role === 'Plate Cutting' || role === 'Welding') ? buildPlateStatusMap(logData) : {};
   var relevantOrders = [];
 
   if (role === "Rework") {
@@ -1468,7 +1468,7 @@ function getOrdersForRole(role, workerName, skipCache) {
     
     if (role === 'Admin' || includesStatusCaseInsensitive(allowedStatuses, mainStatus)) {
       var roleMins = getTaskDurationMinutes(productName, role);
-      relevantOrders.push(decorateOrderTiming({
+      var card = decorateOrderTiming({
         rowIndex: i + 1,
         order: orderNum,
         productName: productName,
@@ -1493,7 +1493,14 @@ function getOrdersForRole(role, workerName, skipCache) {
         dimensions: String(data[i][10] || ""),
         powderCoating: String(data[i][11] || ""),
         highlights: parseDescriptionHighlights(data[i][9])
-      }));
+      });
+      if (role === "Welding") {
+        var plateNote = weldPlateNote_(orderNum, plateMap);
+        card.plateState = plateNote.plateState;
+        card.plateNote = plateNote.plateNote;
+        card.noPlate = !!plateNote.noPlate;
+      }
+      relevantOrders.push(card);
     }
   }
   applyPlanningHints_(role, relevantOrders);
@@ -2285,6 +2292,17 @@ function orderHasNoPlate_(orderNum) {
     if (typeof noPlatesIs === "function") return !!noPlatesIs(String(orderNum || ""));
   } catch (ignoreNoPlate) {}
   return false;
+}
+
+function weldPlateNote_(orderNum, plateMap) {
+  if (orderHasNoPlate_(orderNum)) {
+    return { plateState: "no_plate", plateNote: "Marked as no plate", noPlate: true };
+  }
+  var plateInfo = (plateMap && plateMap[String(orderNum)]) || emptyPlateStatus();
+  if (plateInfo.status === "Finished") {
+    return { plateState: "done", plateNote: "Plate cutting completed", noPlate: false };
+  }
+  return { plateState: "not_done", plateNote: "Plate cutting not completed", noPlate: false };
 }
 
 function userHasPlateCuttingTask_(workerName) {

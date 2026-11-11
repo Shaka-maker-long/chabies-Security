@@ -44,6 +44,13 @@ staff.upsertUser({
   tasks: ["Plate Cutting"]
 });
 staff.upsertUser({
+  name: "Thabo",
+  access: "Production",
+  role: "Welder",
+  password: "1234",
+  tasks: ["Welding"]
+});
+staff.upsertUser({
   name: "Lesedi",
   access: "Admin",
   role: "Admin",
@@ -109,6 +116,46 @@ seed("SD-CUT", "Profile Cutting");
 
   const denied = await callShopFunction("markOrderNoPlate", ["SD-WELD", "Lesedi"]);
   assert.strictEqual(denied.success, false);
+
+  const weldBoard = await callShopFunction("pollFloor", ["Welding", "Thabo"]);
+  const weldRfw = ((weldBoard && weldBoard.orders) || []).find((o) => o.order === "SD-RFW");
+  const weldLive = ((weldBoard && weldBoard.orders) || []).find((o) => o.order === "SD-WELD");
+  assert.ok(weldRfw, "Ready for Welding is on the welding board");
+  assert.strictEqual(weldRfw.plateState, "not_done");
+  assert.ok(/not completed/i.test(weldRfw.plateNote || ""), JSON.stringify(weldRfw));
+  assert.ok(weldLive, "Welding status is on the welding board");
+  assert.strictEqual(weldLive.plateState, "not_done");
+
+  const noPlateNote = await callShopFunction("markOrderNoPlate", ["SD-RFW", "Thabile"]);
+  assert.ok(noPlateNote.success, JSON.stringify(noPlateNote));
+  const afterNoPlate = await callShopFunction("pollFloor", ["Welding", "Thabo"]);
+  const rfwNone = ((afterNoPlate && afterNoPlate.orders) || []).find((o) => o.order === "SD-RFW");
+  assert.ok(rfwNone);
+  assert.strictEqual(rfwNone.plateState, "no_plate");
+  assert.ok(/no plate/i.test(rfwNone.plateNote || ""), JSON.stringify(rfwNone));
+  assert.strictEqual(rfwNone.noPlate, true);
+
+  const plateStart = await callShopFunction("startOrder", [
+    seed("SD-WELD", "Welding").id, "Thabile", "Plate Cutting", [], "", false, null, { understood: true, highlights: [] }
+  ]);
+  assert.strictEqual(plateStart.success, true, JSON.stringify(plateStart));
+  const plateFinish = await callShopFunction("finishOrder", [
+    seed("SD-WELD", "Welding").id,
+    plateStart.logId,
+    null,
+    "",
+    [],
+    "Thabile",
+    [{ category: "Plate", type: "3mm", size: "1 m²", isCustom: true }],
+    "SD-WELD",
+    []
+  ]);
+  assert.ok(plateFinish && plateFinish.success !== false, JSON.stringify(plateFinish));
+  const afterPlate = await callShopFunction("pollFloor", ["Welding", "Thabo"]);
+  const weldDone = ((afterPlate && afterPlate.orders) || []).find((o) => o.order === "SD-WELD");
+  assert.ok(weldDone);
+  assert.strictEqual(weldDone.plateState, "done", JSON.stringify(weldDone));
+  assert.ok(/completed/i.test(weldDone.plateNote || ""), JSON.stringify(weldDone));
 
   const app = express();
   app.use(express.json());
