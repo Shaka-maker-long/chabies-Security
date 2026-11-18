@@ -1787,6 +1787,10 @@ assert.deepStrictEqual(erinSplit.map((t) => t.order_number), ["S260246 A", "S260
 assert.strictEqual(erinSplit[0].order_label, "S260246 A");
 assert.strictEqual(erinSplit[1].order_label, "S260246 B");
 assert.strictEqual(erinSplit[0].quote_no, "SOQ2934");
+assert.ok(
+  db.getEnquiry(splitEnq.enquiry_no).tasks.some((t) => t.kind === "drawing" && t.order_number === "S260246 A"),
+  "the enquiry view keeps each drawing task's order number"
+);
 assert.strictEqual(db.getEnquiry(splitEnq.enquiry_no).drawing.assignee, "Erin");
 assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "drawing" && t.enquiry_no === splitEnq.enquiry_no));
 const splitSnap = pipeline.processSnapshot(splitEnq.enquiry_no, "Erin");

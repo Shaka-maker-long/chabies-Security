@@ -2352,7 +2352,9 @@ function normalizeEnquiryTasks(row) {
     completed_by: (t && t.completed_by) || "",
     due_at: (t && t.due_at) || "",
     note: String((t && t.note) || "").trim(),
-    label: String((t && t.label) || "").trim()
+    label: String((t && t.label) || "").trim(),
+    // Drawing and drawing-approval tasks belong to one order row (S260354 A, B, ...).
+    order_number: formatOrderId(t && t.order_number)
   }));
 }
 

@@ -97,7 +97,10 @@
     ];
     function esc(s) { return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;"); }
     function typeHeading(row) {
-      return String(row.type_label || "").trim() || (TASK_TYPES.find((t) => t[0] === row.kind) || [])[1] || row.title || row.kind || "Task";
+      const base = String(row.type_label || "").trim() || (TASK_TYPES.find((t) => t[0] === row.kind) || [])[1] || row.title || row.kind || "Task";
+      // One drawing (and one approval) task per order row, so name the row on the card.
+      const drawing = row.kind === "drawing" || row.kind === "drawing_approval";
+      return drawing && row.order_number ? base + " · " + row.order_number : base;
     }
     function typeFilterValue() {
       return (document.getElementById("typeFilter") || {}).value || "";
