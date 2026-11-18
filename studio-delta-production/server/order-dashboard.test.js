@@ -445,4 +445,48 @@ const grindSlice = dash.buildDrill({ kind: "age", value: pieBucket.id, slice: "G
 assert.ok(grindSlice.rows.some((r) => r.order_number === "S260412"));
 assert.ok(!grindSlice.rows.some((r) => r.order_number === "S260411"));
 
+// Throughput by province: one month at a time, split by the province on the order.
+assert.strictEqual(dash.provinceLabel("gauteng "), "Gauteng");
+assert.strictEqual(dash.provinceLabel("GP"), "Gauteng");
+assert.strictEqual(dash.provinceLabel("KZN"), "KwaZulu-Natal");
+assert.strictEqual(dash.provinceLabel(""), "(No province)");
+assert.strictEqual(dash.provinceLabel("Gaborone"), "Gaborone", "unknown values are kept as typed");
+[
+  { order_number: "S250301", province: "Gauteng", status: "Delivered", payment_date: "03/03/2025" },
+  { order_number: "S250302", province: "gauteng", status: "Welding", payment_date: "10/03/2025" },
+  { order_number: "S250303", province: "KZN", status: "Delivered", payment_date: "12/03/2025" },
+  { order_number: "S250304", province: "", status: "Not Yet Started", payment_date: "20/03/2025" },
+  { order_number: "S250401", province: "Western Cape", status: "Welding", payment_date: "02/04/2025" }
+].forEach((o) => db.upsertOrder(Object.assign({ client_name: "Prov " + o.order_number, product: "Gate" }, o)));
+const provDash = dash.buildDashboard({ range: "year", grain: "month" });
+assert.ok(Array.isArray(provDash.provinceMonths));
+const keysDesc = provDash.provinceMonths.map((m) => m.key);
+assert.deepStrictEqual(keysDesc, keysDesc.slice().sort().reverse(), "newest month first in the picker");
+const mar = provDash.provinceMonths.find((m) => m.key === "2025-03");
+assert.ok(mar, "March 2025 is offered even outside the dashboard range");
+assert.ok(mar.label);
+const marGp = mar.provinces.find((p) => p.label === "Gauteng");
+assert.deepStrictEqual([marGp.booked, marGp.delivered], [2, 1], "gauteng and Gauteng share one bar");
+assert.strictEqual(mar.provinces[0].label, "Gauteng", "busiest province first");
+const marKzn = mar.provinces.find((p) => p.label === "KwaZulu-Natal");
+assert.deepStrictEqual([marKzn.booked, marKzn.delivered], [1, 1]);
+const marNone = mar.provinces.find((p) => p.label === "(No province)");
+assert.deepStrictEqual([marNone.booked, marNone.delivered], [1, 0]);
+assert.ok(!mar.provinces.some((p) => p.label === "Western Cape"), "April orders stay in April");
+const apr = provDash.provinceMonths.find((m) => m.key === "2025-04");
+assert.deepStrictEqual(apr.provinces.map((p) => p.label), ["Western Cape"]);
+
+const gpBooked = dash.buildDrill({ kind: "province", key: "2025-03", value: "Gauteng", slice: "booked", range: "6m", grain: "month" });
+assert.deepStrictEqual(gpBooked.rows.map((r) => r.order_number).sort(), ["S250301", "S250302"]);
+assert.ok(gpBooked.title.indexOf("Gauteng") !== -1 && gpBooked.title.indexOf("Booked") !== -1);
+const gpDelivered = dash.buildDrill({ kind: "province", key: "2025-03", value: "Gauteng", slice: "delivered", range: "6m", grain: "month" });
+assert.deepStrictEqual(gpDelivered.rows.map((r) => r.order_number), ["S250301"]);
+assert.ok(gpDelivered.title.indexOf("Delivered") !== -1);
+const noneDrill = dash.buildDrill({ kind: "province", key: "2025-03", value: "(No province)", slice: "booked" });
+assert.deepStrictEqual(noneDrill.rows.map((r) => r.order_number), ["S250304"]);
+
+assert.ok(html.indexOf("Throughput by province") !== -1);
+assert.ok(html.indexOf("id=\"provMonth\"") !== -1);
+assert.ok(html.indexOf("kind: \"province\"") !== -1);
+
 console.log("order-dashboard tests ok");

@@ -202,6 +202,52 @@ function saleMs(row) {
   return d ? d.getTime() : 0;
 }
 
+const PROVINCES = [
+  ["Gauteng", ["gauteng", "gp", "gt"]],
+  ["KwaZulu-Natal", ["kwazulu-natal", "kwazulu natal", "kzn", "natal"]],
+  ["Western Cape", ["western cape", "wc"]],
+  ["Eastern Cape", ["eastern cape", "ec"]],
+  ["Northern Cape", ["northern cape", "nc"]],
+  ["Free State", ["free state", "fs"]],
+  ["North West", ["north west", "north-west", "northwest", "nw"]],
+  ["Limpopo", ["limpopo", "lp"]],
+  ["Mpumalanga", ["mpumalanga", "mp"]]
+];
+
+// One spelling per province so "gauteng", "GP" and "Gauteng " land on the same bar.
+function provinceLabel(raw) {
+  const s = String(raw == null ? "" : raw).replace(/\s+/g, " ").trim();
+  if (!s) return "(No province)";
+  const low = s.toLowerCase();
+  const hit = PROVINCES.find(([, names]) => names.indexOf(low) !== -1);
+  return hit ? hit[0] : s;
+}
+
+// Throughput by province: for every payment month, how many orders each province booked
+// and how many of those are now Delivered. The dashboard picks one month to show.
+function provinceThroughput(rows) {
+  const byMonth = {};
+  (rows || []).forEach((row) => {
+    if (shop.isParked(row && row.status)) return;
+    const ms = saleMs(row);
+    if (!ms) return;
+    const ym = monthKey(new Date(ms));
+    const prov = provinceLabel(row.province);
+    if (!byMonth[ym]) byMonth[ym] = {};
+    if (!byMonth[ym][prov]) byMonth[ym][prov] = { label: prov, booked: 0, delivered: 0 };
+    byMonth[ym][prov].booked += 1;
+    if (isDelivered(row.status)) byMonth[ym][prov].delivered += 1;
+  });
+  return Object.keys(byMonth)
+    .sort((a, b) => b.localeCompare(a))
+    .map((key) => ({
+      key,
+      label: monthLabel(key),
+      provinces: Object.values(byMonth[key])
+        .sort((a, b) => b.booked - a.booked || a.label.localeCompare(b.label))
+    }));
+}
+
 function inWindow(ms, from, to) {
   return ms >= from && ms <= to;
 }
@@ -653,6 +699,7 @@ function buildDashboard(query) {
       windowCount
     },
     series,
+    provinceMonths: provinceThroughput(rows),
     categories: sortedMoney(catMap, 16),
     sources: sortedMoney(sourceMap, 16),
     topIncome: withProductImg(sortedMoney(productIncome, 10)),
@@ -707,6 +754,14 @@ function matchesDrill(row, query, win) {
       const want = String((query && (query.slice || query.value)) || "").toLowerCase();
       return quoteChannel(row.quote_number) === want;
     }
+    return true;
+  }
+  if (kind === "province") {
+    // key is the payment month (YYYY-MM) picked on the chart, not the dashboard range.
+    if (!ms || monthKey(new Date(ms)) !== key) return false;
+    if (provinceLabel(row.province) !== value) return false;
+    const slice = String((query && query.slice) || "").trim();
+    if (slice === "delivered") return isDelivered(status);
     return true;
   }
   if (kind === "category") return inWin && blankLabel(row.category, "(Blank)") === value;
@@ -807,6 +862,10 @@ function drillTitle(query, win) {
     const label = slice === "website" ? "Website quotes" : slice === "offline" ? "Offline (SOQ) quotes" : "Quote channel";
     return label + " · " + period;
   }
+  if (kind === "province") {
+    const slice = String((query && query.slice) || "").trim();
+    return value + " · " + (key ? monthLabel(key) : "") + " · " + (slice === "delivered" ? "Delivered" : "Booked");
+  }
   if (kind === "category") return "CATERGORY · " + value;
   if (kind === "source") return "Source · " + value;
   if (kind === "product" || kind === "productIncome") return "Income · " + value;
@@ -849,6 +908,8 @@ function buildDrill(query) {
 module.exports = {
   buildDashboard,
   buildDrill,
+  provinceLabel,
+  provinceThroughput,
   resolveWindow,
   saleDate,
   pipelineId,
