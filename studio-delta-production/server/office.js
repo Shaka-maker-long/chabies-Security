@@ -1819,11 +1819,21 @@ function mountOffice(app) {
   app.post("/api/office/enquiries/:enquiryNo/create-order", requireOffice, (req, res) => {
     try {
       const out = createOrderFromEnquiry(req.params.enquiryNo, req.office && req.office.name);
+      syncDrawingTasksAfterCreate(req.params.enquiryNo);
       res.json({ ok: true, ...out });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });
     }
   });
+
+  // New order rows give Erin one drawing task per order number straight away.
+  function syncDrawingTasksAfterCreate(enquiryNo) {
+    try {
+      pipeline.syncDrawingForEnquiry(enquiryNo);
+    } catch (e) {
+      console.error("drawing task sync after order create failed", e && e.message);
+    }
+  }
 
   app.get("/api/office/enquiries/:enquiryNo/create-order-draft", requireOffice, (req, res) => {
     try {
@@ -1837,6 +1847,7 @@ function mountOffice(app) {
   app.post("/api/office/enquiries/:enquiryNo/create-orders", requireOffice, (req, res) => {
     try {
       const out = createOrdersFromEnquiryForm(req.params.enquiryNo, req.body || {}, req.office && req.office.name);
+      syncDrawingTasksAfterCreate(req.params.enquiryNo);
       res.json({ ok: true, ...out });
     } catch (e) {
       res.status(400).json({ ok: false, error: e.message || String(e) });

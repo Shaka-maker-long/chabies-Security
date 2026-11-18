@@ -1,6 +1,14 @@
 "use strict";
 
-const { listEnquiries, formatOrderId, drawingIsRequired, drawingFilePresent } = require("./db");
+const {
+  listEnquiries,
+  formatOrderId,
+  drawingIsRequired,
+  drawingFilePresent,
+  drawingOrderEntry,
+  drawingFileKindForOrder,
+  orderDrawingState
+} = require("./db");
 const { normalizeBaseOrderNumber } = require("./create-order-from-enquiry");
 const { getBook } = require("./workbook-store");
 
@@ -89,15 +97,23 @@ function findEnquiry(order, index) {
   return null;
 }
 
-function drawingDoc(enquiry) {
+// Each order row shows its own drawing. An older single drawing on the enquiry is the
+// fallback for rows that do not have one of their own.
+function drawingDoc(enquiry, order) {
   if (!enquiry) return { drawing_url: "", drawing_required: false };
   const required = drawingIsRequired(enquiry.drawing);
-  const stored = drawingFilePresent(enquiry.drawing);
+  const orderNo = order ? formatOrderId(order.order_number) : "";
+  const own = orderNo ? drawingOrderEntry(enquiry.drawing, orderNo) : null;
+  const base = "/api/office/enquiries/" + encodeURIComponent(enquiry.enquiry_no) + "/files/";
+  let url = "";
+  if (own && drawingFilePresent(own)) {
+    url = base + encodeURIComponent(own.file.kind || drawingFileKindForOrder(orderNo));
+  } else if (drawingFilePresent(enquiry.drawing)) {
+    url = base + "drawing";
+  }
   return {
-    drawing_url: stored
-      ? "/api/office/enquiries/" + encodeURIComponent(enquiry.enquiry_no) + "/files/drawing"
-      : "",
-    drawing_required: required
+    drawing_url: url,
+    drawing_required: required && (!order || orderDrawingState(enquiry, order) !== "none")
   };
 }
 
@@ -115,7 +131,7 @@ function attachOrderDocs(rows) {
   const index = enquiryIndex();
   const qcMap = collectQcPdfs();
   (rows || []).forEach((row) => {
-    const draw = drawingDoc(findEnquiry(row, index));
+    const draw = drawingDoc(findEnquiry(row, index), row);
     row.drawing_url = draw.drawing_url;
     row.drawing_required = draw.drawing_required;
     row.qc_pdfs = qcForOrder(row, qcMap).slice(0, 2);

@@ -416,61 +416,34 @@ assert.strictEqual(ordered.row.payment_date, "2026-10-03");
 assert.ok(String(ordered.row.ordered_at || "").indexOf("2026-10-03") === 0, "ordered_at follows payment date, not attach day");
 assert.strictEqual(ordered.row.ready_for_orders, true);
 assert.strictEqual(ordered.row.drawing.assignee, "Erin");
-assert.ok(pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing"));
+assert.strictEqual(ordered.row.drawing.required, true);
+// Drawings are per order number: no order rows yet, so Erin has nothing to draw.
+assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === "#1996"),
+  "Erin's drawing task waits until the order numbers exist");
 assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "drawing"));
+assert.ok(!ordered.actions.some((a) => a.id === "complete_drawing"), "no upload before the order exists");
+assert.throws(
+  () => pipeline.applyAction("#1996", "Erin", {
+    action: "complete_drawing",
+    file_base64: pdfB64,
+    file_name: "drawing.pdf",
+    file_confirmed: true
+  }),
+  /Create the order first/
+);
 
-const drawn = pipeline.applyAction("#1996", "Erin", {
-  action: "complete_drawing",
-  file_base64: pdfB64,
-  file_name: "drawing.pdf",
-  file_confirmed: true
-});
-assert.strictEqual(drawn.row.ready_for_orders, true);
-assert.strictEqual(drawn.row.drawing.approval.status, "pending");
-assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === "#1996"));
-assert.ok(pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === "#1996"));
-assert.throws(
-  () => pipeline.applyAction("#1996", "Shabana", { action: "complete_drawing_approval" }),
-  /approved or rejected/
-);
-assert.throws(
-  () => pipeline.applyAction("#1996", "Shabana", { action: "complete_drawing_approval", decision: "reject" }),
-  /why the client rejected/
-);
-const rejectedDraw = pipeline.applyAction("#1996", "Shabana", {
-  action: "complete_drawing_approval",
-  decision: "reject",
-  comments: "Client wants the shelf higher"
-});
-assert.strictEqual(rejectedDraw.row.drawing.approval.status, "rejected");
-assert.ok(pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === "#1996"));
-assert.ok(!pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === "#1996"));
-pipeline.applyAction("#1996", "Erin", {
-  action: "complete_drawing",
-  file_base64: pdfB64,
-  file_name: "drawing-2.pdf",
-  file_confirmed: true
-});
-const approvedDraw = pipeline.applyAction("#1996", "Shabana", {
-  action: "complete_drawing_approval",
-  decision: "approve"
-});
-assert.strictEqual(approvedDraw.row.drawing.approval.status, "approved");
-assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === "#1996"));
-assert.ok(!pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === "#1996"));
-assert.ok(db.readEnquiryAttachment("#1996", "drawing"));
 assert.ok(db.readEnquiryAttachment("#1996", "pop"));
 assert.ok(db.readEnquiryAttachment("#1996", "cost_sheet"));
-const files = db.listEnquiryDeliverables(drawn.row);
+const files = db.listEnquiryDeliverables(ordered.row);
 const groups = files.map((f) => f.group);
-["correspondence", "cost_sheet", "quote", "follow_up", "pop", "drawing"].forEach((g) => {
+["correspondence", "cost_sheet", "quote", "follow_up", "pop"].forEach((g) => {
   assert.ok(groups.indexOf(g) >= 0, "missing deliverable " + g);
 });
 assert.ok(files.filter((f) => f.open).every((f) => f.kind || f.href), "open files need a server path or a link");
 assert.ok(files.every((f) => f.outlook === false), "do not treat files as Outlook attachments");
 assert.ok(files.some((f) => f.group === "correspondence" && f.href && f.title === "Correspondance link"));
-assert.ok(drawn.row.deliverable_count >= 6);
-assert.ok(db.getEnquiry("#1996").deliverable_count >= 6);
+assert.ok(ordered.row.deliverable_count >= 5);
+assert.ok(db.getEnquiry("#1996").deliverable_count >= 5);
 const emptyNew = db.upsertEnquiry({
   date_enquired: "07/01/2026",
   client_name: "No files yet",
@@ -851,6 +824,62 @@ assert.strictEqual(db.getEnquiry("#1996").order_number, fromEnquiry.row.order_nu
 const again = db.createOrderFromEnquiry("#1996");
 assert.strictEqual(again.existing, true);
 assert.strictEqual(again.row.order_number, fromEnquiry.row.order_number);
+
+// Once the order number exists, Erin gets a drawing task for that order number.
+const drawNo = fromEnquiry.row.order_number;
+assert.strictEqual(db.listOrders().find((o) => o.order_number === drawNo).status, "Waiting for drawing");
+const erin1996 = pipeline.listMyTasks("Erin").filter((t) => t.kind === "drawing" && t.enquiry_no === "#1996");
+assert.strictEqual(erin1996.length, 1);
+assert.strictEqual(erin1996[0].order_number, drawNo);
+assert.deepStrictEqual(erin1996[0].order_numbers, [drawNo]);
+const drawn = pipeline.applyAction("#1996", "Erin", {
+  action: "complete_drawing",
+  order_number: drawNo,
+  file_base64: pdfB64,
+  file_name: "drawing.pdf",
+  file_confirmed: true
+});
+assert.strictEqual(drawn.row.drawing.orders[drawNo].approval.status, "pending");
+assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === "#1996"));
+const shabana1996 = pipeline.listMyTasks("Shabana").filter((t) => t.kind === "drawing_approval" && t.enquiry_no === "#1996");
+assert.strictEqual(shabana1996.length, 1);
+assert.strictEqual(shabana1996[0].order_number, drawNo);
+assert.throws(
+  () => pipeline.applyAction("#1996", "Shabana", { action: "complete_drawing_approval", order_number: drawNo }),
+  /approved or rejected/
+);
+assert.throws(
+  () => pipeline.applyAction("#1996", "Shabana", { action: "complete_drawing_approval", order_number: drawNo, decision: "reject" }),
+  /why the client rejected/
+);
+const rejectedDraw = pipeline.applyAction("#1996", "Shabana", {
+  action: "complete_drawing_approval",
+  order_number: drawNo,
+  decision: "reject",
+  comments: "Client wants the shelf higher"
+});
+assert.strictEqual(rejectedDraw.row.drawing.orders[drawNo].approval.status, "rejected");
+assert.ok(pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.order_number === drawNo));
+assert.ok(!pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === "#1996"));
+assert.strictEqual(db.listOrders().find((o) => o.order_number === drawNo).status, "Waiting for drawing");
+pipeline.applyAction("#1996", "Erin", {
+  action: "complete_drawing",
+  order_number: drawNo,
+  file_base64: pdfB64,
+  file_name: "drawing-2.pdf",
+  file_confirmed: true
+});
+const approvedDraw = pipeline.applyAction("#1996", "Shabana", {
+  action: "complete_drawing_approval",
+  order_number: drawNo,
+  decision: "approve"
+});
+assert.strictEqual(approvedDraw.row.drawing.orders[drawNo].approval.status, "approved");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === drawNo).status, "Not Yet Started");
+assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === "#1996"));
+assert.ok(!pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === "#1996"));
+assert.ok(db.readEnquiryAttachment("#1996", db.drawingFileKindForOrder(drawNo)));
+assert.ok(db.listEnquiryDeliverables(approvedDraw.row).some((f) => f.group === "drawing" && f.order_no === drawNo));
 
 const dups = db.findOpenEnquiryDuplicates({
   client_email: "lock@example.com",
@@ -1412,9 +1441,9 @@ const drawWait = db.upsertEnquiry({
 }, { fromPipeline: true, fromMigrate: true });
 assert.strictEqual(db.getEnquiry(drawWait.enquiry_no).ready_for_orders, true, "drawing still needed must not block Add to Orders");
 pipeline.syncDrawingQueue();
-assert.ok(pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
+assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no),
+  "no drawing task until the order numbers exist");
 assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
-assert.strictEqual(db.getEnquiry(drawWait.enquiry_no).drawing.assignee, "Erin");
 
 const waitingRows = db.createOrdersFromEnquiryForm(drawWait.enquiry_no, {
   order_number: "S260410",
@@ -1441,6 +1470,10 @@ const waitingRows = db.createOrdersFromEnquiryForm(drawWait.enquiry_no, {
   }]
 });
 assert.strictEqual(waitingRows.rows[0].status, "Waiting for drawing");
+pipeline.syncDrawingForEnquiry(drawWait.enquiry_no);
+const erinAfterCreate = pipeline.listMyTasks("Erin").filter((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no);
+assert.deepStrictEqual(erinAfterCreate.map((t) => t.order_number), ["S260410"], "Erin's task appears once S260410 exists");
+assert.strictEqual(db.getEnquiry(drawWait.enquiry_no).drawing.assignee, "Erin");
 
 const alreadyOnShop = db.upsertOrder({
   order_number: "S260411",
@@ -1460,55 +1493,113 @@ const weldingKeep = db.upsertOrder({
 pipeline.syncDrawingQueue();
 assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260412").status, "Welding");
 
+const statusOf = (no) => db.listOrders().find((o) => o.order_number === no).status;
+const erinDrawOrders = () => pipeline.listMyTasks("Erin")
+  .filter((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no)
+  .map((t) => t.order_number)
+  .sort();
+const shabanaDrawOrders = () => pipeline.listMyTasks("Shabana")
+  .filter((t) => t.kind === "drawing_approval" && t.enquiry_no === drawWait.enquiry_no)
+  .map((t) => t.order_number)
+  .sort();
+// One drawing task per order number; the Welding row is already in production and gets none.
+assert.deepStrictEqual(erinDrawOrders(), ["S260410", "S260411"]);
 const pdfDraw = pdfB64;
+assert.throws(
+  () => pipeline.applyAction(drawWait.enquiry_no, "Erin", {
+    action: "complete_drawing",
+    file_base64: pdfDraw,
+    file_name: "drawing.pdf",
+    file_confirmed: true
+  }),
+  /Choose which order number/
+);
+assert.throws(
+  () => pipeline.applyAction(drawWait.enquiry_no, "Erin", {
+    action: "complete_drawing",
+    order_number: "S260412",
+    file_base64: pdfDraw,
+    file_name: "drawing.pdf",
+    file_confirmed: true
+  }),
+  /already in production/
+);
 pipeline.applyAction(drawWait.enquiry_no, "Erin", {
   action: "complete_drawing",
+  order_number: "S260410",
   file_base64: pdfDraw,
-  file_name: "drawing.pdf",
+  file_name: "drawing-410.pdf",
   file_confirmed: true
 });
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Waiting for drawing");
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").status, "Waiting for drawing");
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260412").status, "Welding");
-assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
-assert.ok(pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === drawWait.enquiry_no));
+assert.strictEqual(statusOf("S260410"), "Waiting for drawing");
+assert.strictEqual(statusOf("S260411"), "Waiting for drawing");
+assert.strictEqual(statusOf("S260412"), "Welding");
+assert.deepStrictEqual(erinDrawOrders(), ["S260411"], "S260411 still needs its own drawing");
+assert.deepStrictEqual(shabanaDrawOrders(), ["S260410"]);
 pipeline.applyAction(drawWait.enquiry_no, "Shabana", {
   action: "complete_drawing_approval",
+  order_number: "S260410",
   decision: "approve"
 });
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Not Yet Started");
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").status, "Not Yet Started");
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260412").status, "Welding");
-assert.ok(!pipeline.listMyTasks("Shabana").some((t) => t.kind === "drawing_approval" && t.enquiry_no === drawWait.enquiry_no));
+assert.strictEqual(statusOf("S260410"), "Not Yet Started", "approved order starts on its own");
+assert.strictEqual(statusOf("S260411"), "Waiting for drawing", "other order keeps waiting for its drawing");
+assert.strictEqual(statusOf("S260412"), "Welding");
+assert.deepStrictEqual(shabanaDrawOrders(), []);
+
 pipeline.applyAction(drawWait.enquiry_no, "Erin", {
   action: "complete_drawing",
+  order_number: "S260411",
   file_base64: pdfDraw,
-  file_name: "drawing-update.pdf",
+  file_name: "drawing-411.pdf",
   file_confirmed: true
 });
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Waiting for drawing");
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").status, "Waiting for drawing");
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260412").status, "Welding");
 pipeline.applyAction(drawWait.enquiry_no, "Shabana", {
   action: "complete_drawing_approval",
   decision: "reject",
   comments: "Client wants the frame taller"
 });
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Waiting for drawing");
-assert.ok(pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
+assert.strictEqual(statusOf("S260411"), "Waiting for drawing");
+assert.strictEqual(statusOf("S260410"), "Not Yet Started", "rejecting S260411 does not touch S260410");
+assert.deepStrictEqual(erinDrawOrders(), ["S260411"]);
 pipeline.applyAction(drawWait.enquiry_no, "Erin", {
   action: "complete_drawing",
+  order_number: "S260411",
   file_base64: pdfDraw,
-  file_name: "drawing-final.pdf",
+  file_name: "drawing-411-final.pdf",
   file_confirmed: true
 });
 pipeline.applyAction(drawWait.enquiry_no, "Shabana", {
   action: "complete_drawing_approval",
+  order_number: "S260411",
   decision: "approve"
 });
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260410").status, "Not Yet Started");
-assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260411").status, "Not Yet Started");
-assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === drawWait.enquiry_no));
+assert.strictEqual(statusOf("S260410"), "Not Yet Started");
+assert.strictEqual(statusOf("S260411"), "Not Yet Started");
+assert.deepStrictEqual(erinDrawOrders(), []);
+
+// Each order keeps its own file.
+assert.ok(db.readEnquiryAttachment(drawWait.enquiry_no, db.drawingFileKindForOrder("S260410")));
+assert.ok(db.readEnquiryAttachment(drawWait.enquiry_no, db.drawingFileKindForOrder("S260411")));
+const drawRaw = db.getEnquiryRaw(drawWait.enquiry_no);
+assert.notStrictEqual(drawRaw.drawing.orders.S260410.file.stored_as, drawRaw.drawing.orders.S260411.file.stored_as);
+
+// Updating one order's drawing sends only that order back for approval.
+pipeline.applyAction(drawWait.enquiry_no, "Erin", {
+  action: "complete_drawing",
+  order_number: "S260410",
+  file_base64: pdfDraw,
+  file_name: "drawing-410-update.pdf",
+  file_confirmed: true
+});
+assert.strictEqual(statusOf("S260410"), "Waiting for drawing");
+assert.strictEqual(statusOf("S260411"), "Not Yet Started");
+assert.strictEqual(statusOf("S260412"), "Welding");
+pipeline.applyAction(drawWait.enquiry_no, "Shabana", {
+  action: "complete_drawing_approval",
+  decision: "approve"
+});
+assert.strictEqual(statusOf("S260410"), "Not Yet Started", "single pending order is picked without an order number");
+assert.deepStrictEqual(erinDrawOrders(), []);
 
 const customNeed = db.upsertEnquiry({
   date_enquired: "15/09/2026",
@@ -1688,13 +1779,62 @@ db.upsertOrder({
   status: "Waiting for drawing"
 });
 assert.ok(db.enquiryNeedsOpenDrawingTask(db.getEnquiryRaw(splitEnq.enquiry_no)));
-const erinSplit = pipeline.listMyTasks("Erin").filter((t) => t.kind === "drawing" && t.enquiry_no === splitEnq.enquiry_no);
-assert.strictEqual(erinSplit.length, 1, "split A/B is one drawing task for Erin");
-assert.ok(String(erinSplit[0].order_label || "").indexOf("S260246 A") !== -1);
-assert.ok(String(erinSplit[0].order_label || "").indexOf("S260246 B") !== -1);
+const erinSplit = pipeline.listMyTasks("Erin")
+  .filter((t) => t.kind === "drawing" && t.enquiry_no === splitEnq.enquiry_no)
+  .sort((a, b) => a.order_number.localeCompare(b.order_number));
+assert.strictEqual(erinSplit.length, 2, "split A/B gives Erin one drawing task per order number");
+assert.deepStrictEqual(erinSplit.map((t) => t.order_number), ["S260246 A", "S260246 B"]);
+assert.strictEqual(erinSplit[0].order_label, "S260246 A");
+assert.strictEqual(erinSplit[1].order_label, "S260246 B");
 assert.strictEqual(erinSplit[0].quote_no, "SOQ2934");
 assert.strictEqual(db.getEnquiry(splitEnq.enquiry_no).drawing.assignee, "Erin");
 assert.ok(!pipeline.listMyTasks("Coster").some((t) => t.kind === "drawing" && t.enquiry_no === splitEnq.enquiry_no));
+const splitSnap = pipeline.processSnapshot(splitEnq.enquiry_no, "Erin");
+assert.deepStrictEqual(
+  splitSnap.actions.filter((a) => a.id === "complete_drawing").map((a) => a.order_number).sort(),
+  ["S260246 A", "S260246 B"],
+  "one upload card per order number"
+);
+pipeline.applyAction(splitEnq.enquiry_no, "Erin", {
+  action: "complete_drawing",
+  order_number: "S260246 A",
+  file_base64: pdfB64,
+  file_name: "split-a.pdf",
+  file_confirmed: true
+});
+assert.ok(db.readEnquiryAttachment(splitEnq.enquiry_no, "drawing_S260246_A"), "order A drawing has its own file");
+assert.ok(!db.readEnquiryAttachment(splitEnq.enquiry_no, "drawing_S260246_B"));
+assert.deepStrictEqual(
+  pipeline.listMyTasks("Erin").filter((t) => t.kind === "drawing" && t.enquiry_no === splitEnq.enquiry_no).map((t) => t.order_number),
+  ["S260246 B"]
+);
+
+// Older enquiries with one approved drawing for the whole enquiry keep working: no new tasks.
+const legacyEnq = db.upsertEnquiry({
+  date_enquired: "16/09/2026",
+  client_name: "Legacy Drawing Client",
+  product: "Air Chair",
+  category: "Chair",
+  status: "Ordered",
+  quote_no: "SOQLEG1",
+  products: [{ product: "Air Chair", category: "Chair", value_incl_vat: "9000.00" }],
+  ready_for_orders: true,
+  client_outcome: { kind: "approved", decided_at: db.nowIso(), decided_by: "Quoter" }
+}, { fromPipeline: true, fromMigrate: true });
+const legacyRaw = db.getEnquiryRaw(legacyEnq.enquiry_no);
+legacyRaw.drawing = {
+  required: true,
+  file: db.saveEnquiryAttachment(legacyEnq.enquiry_no, "drawing", pdfB64, "old.pdf"),
+  approval: { status: "approved" }
+};
+legacyRaw.tasks = [];
+db.saveEnquiryRecord(legacyRaw);
+db.upsertOrder({ order_number: "S260248 A", enquiry_no: legacyEnq.enquiry_no, client_name: "Legacy Drawing Client", status: "Not Yet Started" });
+db.upsertOrder({ order_number: "S260248 B", enquiry_no: legacyEnq.enquiry_no, client_name: "Legacy Drawing Client", status: "Not Yet Started" });
+pipeline.syncDrawingQueue();
+assert.ok(!pipeline.listMyTasks("Erin").some((t) => t.kind === "drawing" && t.enquiry_no === legacyEnq.enquiry_no));
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260248 A").status, "Not Yet Started");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260248 B").status, "Not Yet Started");
 
 const waitOnly = db.upsertEnquiry({
   date_enquired: "16/09/2026",

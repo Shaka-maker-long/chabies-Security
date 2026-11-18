@@ -643,15 +643,18 @@
       if (ok) ok.checked = false;
       state.file.confirmed = false;
       await previewFromFile(file, form.querySelector("[data-preview]"));
+      state.file.form = form;
     };
     const ok = form.querySelector('[name="file_ok"]');
     if (ok) ok.onchange = (e) => { state.file.confirmed = !!e.target.checked; };
   }
 
   function filePayload(form) {
+    // One file slot is shared by every card; only send it with the card it was picked on.
+    const mine = !state.file.form || state.file.form === form;
     return {
-      file_base64: state.file.base64,
-      file_name: state.file.name,
+      file_base64: mine ? state.file.base64 : "",
+      file_name: mine ? state.file.name : "",
       file_confirmed: !!(form.querySelector('[name="file_ok"]') && form.querySelector('[name="file_ok"]').checked)
     };
   }
@@ -905,15 +908,23 @@
         fileBlock("image/*,.png,.jpg,.jpeg,.webp,.gif,application/pdf,.pdf", "") +
         "<label>Payment date *<input type=\"date\" name=\"payment_date\" required>" +
         "<span class=\"hint\">The day the client paid — use this even if you attach the POP later. Ordered R on the dashboard uses this week.</span></label>" +
-        "<label>Requires drawing?<select name=\"drawing_required\" required><option value=\"\" disabled selected>Choose</option><option value=\"no\">No — production can start as Not Yet Started</option><option value=\"yes\">Yes — Erin uploads the drawing</option></select></label>" +
-        "<p class=\"sd-process-sub\">Not every order needs a drawing. If yes, Erin uploads it, then Shabana asks the client to approve. The order stays Waiting for drawing until the client approves — then production can be Not Yet Started. If the client rejects it, Erin draws again.</p>";
+        "<label>Requires drawing?<select name=\"drawing_required\" required><option value=\"\" disabled selected>Choose</option><option value=\"no\">No — production can start as Not Yet Started</option><option value=\"yes\">Yes — Erin draws each order number</option></select></label>" +
+        "<p class=\"sd-process-sub\">Not every order needs a drawing. If yes, create the order as usual. Erin then gets one drawing task per order number (for example S260001 A, B and C), and Shabana asks the client to approve each one. Each order stays Waiting for drawing until its own drawing is approved.</p>";
     }
     if (action.id === "complete_drawing") {
-      return "<p class=\"sd-process-sub\">Uploading or updating the drawing gives Shabana a task to ask the client for approval. Production stays Waiting for drawing until the client approves.</p>" +
+      const no = action.order_number || "";
+      return "<p class=\"sd-process-sub\">Drawing for <b>" + esc(no) + "</b>" + (action.product ? " · " + esc(action.product) : "") +
+        ". Saving it gives Shabana a task to ask the client to approve this order's drawing. Only " + esc(no || "this order") + " waits for that approval.</p>" +
         fileBlock("application/pdf,.pdf,image/*,.png,.jpg,.jpeg,.webp", "");
     }
     if (action.id === "complete_drawing_approval") {
-      return "<p class=\"sd-process-sub\">Ask the client if this drawing is accepted. Approved → Not Yet Started. Rejected → back to Erin for another drawing.</p>" +
+      const no = action.order_number || "";
+      const info = no ? ((state.snap && state.snap.drawingOrders) || []).find((d) => d.order_number === no) : null;
+      const open = info && info.file_kind
+        ? "<button type=\"button\" class=\"ghost\" data-open-file=\"" + esc(info.file_kind) + "\">Open drawing for " + esc(no) + "</button>"
+        : "";
+      return "<p class=\"sd-process-sub\">" + (no ? "Drawing for <b>" + esc(no) + "</b>" + (action.product ? " · " + esc(action.product) : "") + ". " : "") +
+        "Ask the client if this drawing is accepted. Approved → Not Yet Started. Rejected → back to Erin for another drawing.</p>" + open +
         "<label>Client decision<select name=\"decision\" required><option value=\"approve\">Approved — Not Yet Started</option><option value=\"reject\">Rejected — back to drawing</option></select></label>" +
         "<label>Note<textarea name=\"comments\"></textarea></label>";
     }
@@ -993,6 +1004,9 @@
     body.reason = field(form, "reason") || body.comments;
     if (action.id === "complete_chase") body.next = field(form, "next");
     if (action.id === "complete_approval" || action.id === "complete_drawing_approval") body.decision = field(form, "decision");
+    if ((action.id === "complete_drawing" || action.id === "complete_drawing_approval") && action.order_number) {
+      body.order_number = action.order_number;
+    }
     if (action.id === "complete_quote") body.follow_up_assignee = field(form, "assignee");
     if (action.id === "complete_quote") body.quote_no = field(form, "quote_no");
     if (action.id === "assign_costing" || action.id === "complete_chase" || action.id === "add_correspondence") {
@@ -1056,7 +1070,10 @@
     const focus = state.focusTaskId;
     if (focus) {
       const task = (row.tasks || []).find((t) => t.id === focus);
-      if (task) return action.id === actionForTaskKind(task.kind);
+      if (task) {
+        if (action.id !== actionForTaskKind(task.kind)) return false;
+        return !task.order_number || String(action.order_number || "") === String(task.order_number);
+      }
       return action.id === focus;
     }
     if (actions.length === 1) return true;
@@ -1128,6 +1145,15 @@
     } catch (e) {}
   }
 
+  function drawingWaitingCount(snap, row) {
+    if (!row || !row.drawing || !row.drawing.required) return 0;
+    const list = (snap && snap.drawingOrders) || [];
+    if (list.length) return list.filter((d) => d.state === "needed" || d.state === "pending").length;
+    const fileOn = !!(row.drawing.file && row.drawing.file.stored_as);
+    const status = String((row.drawing.approval && row.drawing.approval.status) || "");
+    return !fileOn || (status && status !== "approved") ? 1 : 0;
+  }
+
   function renderBody() {
     const snap = state.snap;
     const row = snap.row;
@@ -1148,8 +1174,8 @@
       (row.date_quoted ? "<span>Quoted " + esc(row.date_quoted) + (row.quote_options_label ? " · " + esc(row.quote_options_label) : (row.quote_no ? " · " + esc(row.quote_no) : "")) +
         ((row.quotes || []).length > 1 ? " · " + (row.quotes.length) + " quotes" : "") + "</span>" : "") +
       (row.ready_for_orders ? "<span>Ready for Orders</span>" : "") +
-      (row.drawing && row.drawing.required && (!(row.drawing.file && row.drawing.file.stored_as) || (row.drawing.approval && row.drawing.approval.status && row.drawing.approval.status !== "approved"))
-        ? "<span>Waiting for drawing</span>" : "") +
+      (drawingWaitingCount(snap, row)
+        ? "<span>Waiting for drawing" + (drawingWaitingCount(snap, row) > 1 ? " (" + drawingWaitingCount(snap, row) + " orders)" : "") + "</span>" : "") +
       (row.lifespan_label ? "<span class=\"sd-life\">Lifespan <b>" + esc(row.lifespan_label) + "</b></span>" : "") +
       "</div>";
     html += journeyHtml(enquiryFallbackEvents(row), "");
@@ -1163,12 +1189,16 @@
     }
     if (row.ready_for_orders) {
       if (row.drawing && row.drawing.required) {
-        const fileOn = !!(row.drawing.file && row.drawing.file.stored_as);
-        const approval = String((row.drawing.approval && row.drawing.approval.status) || "");
-        if (!fileOn || approval === "rejected") {
-          html += "<p class=\"sd-process-sub\">Erin still needs to upload the drawing. The order can go onto Orders as Waiting for drawing. Production becomes Not Yet Started after Shabana records that the client approved it.</p>";
-        } else if (approval === "pending") {
-          html += "<p class=\"sd-process-sub\">Drawing is on. Shabana must ask the client to approve it before production can be Not Yet Started.</p>";
+        const list = (snap.drawingOrders || []);
+        if (!list.length) {
+          html += "<p class=\"sd-process-sub\">A drawing is required. Create the order as usual — Erin then gets one drawing task per order number.</p>";
+        } else {
+          const label = { needed: "Erin to draw", pending: "Waiting for client approval", approved: "Approved", none: "No drawing needed" };
+          html += "<h2>Drawings per order</h2><ul class=\"sd-process-sub\">" + list.map((d) => {
+            return "<li><b>" + esc(d.order_number) + "</b>" + (d.product ? " · " + esc(d.product) : "") +
+              " — " + esc(label[d.state] || d.state) +
+              (d.file_kind ? " · <a href=\"#\" data-open-file=\"" + esc(d.file_kind) + "\">Open</a>" : "") + "</li>";
+          }).join("") + "</ul>";
         }
       }
       html += (row.order_number

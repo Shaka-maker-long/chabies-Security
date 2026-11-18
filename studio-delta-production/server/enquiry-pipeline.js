@@ -155,73 +155,170 @@ function rawEnquiryForOrder(order) {
   return null;
 }
 
+// Drawing tasks belong to one order number (S260001 A, S260001 B, ...). They only appear
+// once the order rows exist; before that the enquiry just remembers that a drawing is required.
+function taskOrderNo(task) {
+  return db.formatOrderId(task && task.order_number);
+}
+
+function openOfKindFor(row, kind, orderNo) {
+  const want = db.formatOrderId(orderNo);
+  return (row.tasks || []).find((t) => t.kind === kind && t.status === "open" && taskOrderNo(t) === want) || null;
+}
+
+function closeOpenKindFor(row, kind, orderNo, actor, note) {
+  const want = db.formatOrderId(orderNo);
+  for (const t of row.tasks || []) {
+    if (t.kind === kind && t.status === "open" && taskOrderNo(t) === want) {
+      t.status = "done";
+      t.completed_at = db.nowIso();
+      t.completed_by = actor;
+      if (note) t.note = note;
+    }
+  }
+}
+
+function cancelOpenKindFor(row, kind, orderNo) {
+  const want = db.formatOrderId(orderNo);
+  for (const t of row.tasks || []) {
+    if (t.kind === kind && t.status === "open" && taskOrderNo(t) === want) t.status = "cancelled";
+  }
+}
+
+function drawingOrderLabel(orderNo, product) {
+  return orderNo + (product ? " · " + product : "");
+}
+
+// Orders Erin can upload (or replace) a drawing for from the enquiry: not waiting on the
+// client, and production has not started yet.
+function uploadableDrawingOrders(row) {
+  return db.drawingOrdersFor(row).filter((x) => x.can_rewind && (x.state === "needed" || x.state === "approved"));
+}
+
+function pendingApprovalOrders(row) {
+  if (!row || !db.drawingIsRequired(row.drawing)) return [];
+  return db.drawingOrderEntries(row.drawing)
+    .filter((x) => db.drawingApprovalStatus(x.entry) === "pending")
+    .map((x) => x.order_number)
+    .sort();
+}
+
+function legacyApprovalPending(row) {
+  return !!(row && db.drawingIsRequired(row.drawing)
+    && db.drawingFilePresent(row.drawing)
+    && db.drawingApprovalStatus(row.drawing) === "pending");
+}
+
 function ensureOpenDrawingTask(row) {
-  if (!db.enquiryNeedsOpenDrawingTask(row)) return false;
   const erin = drawingAssignee();
   let dirty = false;
-  if (!row.drawing || typeof row.drawing !== "object") {
-    row.drawing = { required: true, file: null, assignee: erin };
-    dirty = true;
+  if (db.enquiryNeedsOpenDrawingTask(row)) {
+    if (!row.drawing || typeof row.drawing !== "object") {
+      row.drawing = { required: true, file: null, assignee: erin };
+      dirty = true;
+    }
+    if (row.drawing.required !== true) {
+      row.drawing.required = true;
+      dirty = true;
+    }
+    if (!row.drawing.assignee || (!namesMatch(row.drawing.assignee, erin) && !isDrawingOwnerName(row.drawing.assignee))) {
+      row.drawing.assignee = erin;
+      dirty = true;
+    }
+    if (!row.ready_for_orders) {
+      row.ready_for_orders = true;
+      dirty = true;
+    }
   }
-  if (row.drawing.required !== true) {
-    row.drawing.required = true;
-    dirty = true;
+  const want = new Map();
+  db.drawingOrdersFor(row)
+    .filter((x) => x.state === "needed" && x.can_rewind)
+    .forEach((x) => want.set(x.order_number, x.product));
+  if (!Array.isArray(row.tasks)) row.tasks = [];
+  for (const t of row.tasks) {
+    if (t.kind !== "drawing" || t.status !== "open") continue;
+    const no = taskOrderNo(t);
+    if (!no || !want.has(no)) {
+      t.status = "cancelled";
+      dirty = true;
+    }
   }
-  if (!namesMatch(row.drawing.assignee, erin) && !isDrawingOwnerName(row.drawing.assignee)) {
-    row.drawing.assignee = erin;
-    dirty = true;
-  } else if (!row.drawing.assignee) {
-    row.drawing.assignee = erin;
-    dirty = true;
-  }
-  const open = openOfKind(row, "drawing");
-  if (!open) {
-    addTask(row, "drawing", erin);
-    dirty = true;
-  } else if (!namesMatch(open.assignee, erin) && !isDrawingOwnerName(open.assignee)) {
-    open.assignee = erin;
-    dirty = true;
-  }
-  if (!row.ready_for_orders) {
-    row.ready_for_orders = true;
-    dirty = true;
-  }
+  want.forEach((product, no) => {
+    const open = openOfKindFor(row, "drawing", no);
+    if (!open) {
+      addTask(row, "drawing", erin, {
+        title: "Drawing " + no,
+        order_number: no,
+        note: product ? ("Drawing for " + drawingOrderLabel(no, product)) : ""
+      });
+      dirty = true;
+    } else if (!namesMatch(open.assignee, erin) && !isDrawingOwnerName(open.assignee)) {
+      open.assignee = erin;
+      dirty = true;
+    }
+  });
   return dirty;
 }
 
 function ensureOpenDrawingApprovalTask(row) {
-  if (!db.drawingAwaitingClientApproval(row)) return false;
+  if (!row) return false;
   const shabana = drawingApprovalAssignee();
   let dirty = false;
-  if (!row.drawing || typeof row.drawing !== "object") {
-    row.drawing = { required: true, file: row.drawing && row.drawing.file, assignee: drawingAssignee() };
-    dirty = true;
+  if (!Array.isArray(row.tasks)) row.tasks = [];
+  const pending = new Set(pendingApprovalOrders(row));
+  for (const t of row.tasks) {
+    if (t.kind !== "drawing_approval" || t.status !== "open") continue;
+    const no = taskOrderNo(t);
+    if (no && !pending.has(no)) {
+      t.status = "cancelled";
+      dirty = true;
+    }
   }
-  if (!row.drawing.approval || typeof row.drawing.approval !== "object") {
-    row.drawing.approval = { status: "pending", requested_from: shabana, requested_at: db.nowIso() };
-    dirty = true;
-  } else if (!row.drawing.approval.requested_from) {
-    row.drawing.approval.requested_from = shabana;
-    dirty = true;
-  }
-  const open = openOfKind(row, "drawing_approval");
-  if (!open) {
-    addTask(row, "drawing_approval", shabana, {
-      note: "Ask the client to approve the drawing"
-    });
-    dirty = true;
-  } else if (!namesMatch(open.assignee, shabana) && !isDrawingApprovalOwnerName(open.assignee)) {
-    open.assignee = shabana;
-    dirty = true;
+  pending.forEach((no) => {
+    const entry = db.drawingOrderEntry(row.drawing, no);
+    if (entry && entry.approval && !entry.approval.requested_from) {
+      entry.approval.requested_from = shabana;
+      dirty = true;
+    }
+    const open = openOfKindFor(row, "drawing_approval", no);
+    if (!open) {
+      addTask(row, "drawing_approval", shabana, {
+        title: "Drawing approval " + no,
+        order_number: no,
+        note: "Ask the client to approve the drawing for " + no
+      });
+      dirty = true;
+    } else if (!namesMatch(open.assignee, shabana) && !isDrawingApprovalOwnerName(open.assignee)) {
+      open.assignee = shabana;
+      dirty = true;
+    }
+  });
+  if (legacyApprovalPending(row)) {
+    if (!row.drawing.approval.requested_from) {
+      row.drawing.approval.requested_from = shabana;
+      dirty = true;
+    }
+    const open = openOfKindFor(row, "drawing_approval", "");
+    if (!open) {
+      addTask(row, "drawing_approval", shabana, {
+        note: "Ask the client to approve the drawing"
+      });
+      dirty = true;
+    } else if (!namesMatch(open.assignee, shabana) && !isDrawingApprovalOwnerName(open.assignee)) {
+      open.assignee = shabana;
+      dirty = true;
+    }
   }
   return dirty;
 }
 
 function enquiryAllowsDrawingUpload(row) {
   if (!row) return false;
-  if (db.drawingAwaitingClientApproval(row)) return false;
-  if (db.drawingIsRequired(row.drawing)) return true;
-  return db.enquiryNeedsOpenDrawingTask(row);
+  return uploadableDrawingOrders(row).length > 0;
+}
+
+function hasOpenDrawingWork(row) {
+  return (row.tasks || []).some((t) => t.status === "open" && (t.kind === "drawing" || t.kind === "drawing_approval"));
 }
 
 function touchDrawingQueueRow(raw, seen) {
@@ -231,8 +328,12 @@ function touchDrawingQueueRow(raw, seen) {
   seen.add(key);
   let n = 0;
   let dirty = false;
-  if (db.enquiryNeedsOpenDrawingTask(raw) && ensureOpenDrawingTask(raw)) dirty = true;
-  if (db.drawingAwaitingClientApproval(raw) && ensureOpenDrawingApprovalTask(raw)) dirty = true;
+  if (db.enquiryNeedsOpenDrawingTask(raw) || hasOpenDrawingWork(raw)) {
+    if (ensureOpenDrawingTask(raw)) dirty = true;
+  }
+  if (db.drawingAwaitingClientApproval(raw) || hasOpenDrawingWork(raw)) {
+    if (ensureOpenDrawingApprovalTask(raw)) dirty = true;
+  }
   if (dirty) {
     raw.updated_at = db.nowIso();
     db.saveEnquiryRecord(raw);
@@ -253,6 +354,11 @@ function syncDrawingQueue() {
     n += touchDrawingQueueRow(rawEnquiryForOrder(order), seen);
   });
   return n;
+}
+
+// Run right after order rows are created so Erin's per-order drawing tasks appear at once.
+function syncDrawingForEnquiry(enquiryNo) {
+  return touchDrawingQueueRow(db.getEnquiryRaw(enquiryNo), new Set());
 }
 
 function namesMatch(a, b) {
@@ -386,6 +492,7 @@ function addTask(row, kind, assignee, extra) {
     note: (extra && extra.note) || "",
     label: (extra && extra.label) || ""
   };
+  if (extra && extra.order_number) task.order_number = db.formatOrderId(extra.order_number);
   row.tasks.push(task);
   return task;
 }
@@ -754,14 +861,24 @@ function availableActions(row) {
   if (status === "Ordered" && db.enquiryReadyForOrders(row) && !row.ready_for_orders) {
     row.ready_for_orders = true;
   }
-  if (enquiryAllowsDrawingUpload(row)) {
-    const hasFile = db.drawingFilePresent(row.drawing);
+  uploadableDrawingOrders(row).forEach((x) => {
     actions.push({
       id: "complete_drawing",
-      label: hasFile ? "Update drawing" : "Upload drawing"
+      order_number: x.order_number,
+      product: x.product,
+      label: (x.state === "approved" ? "Update drawing — " : "Upload drawing — ") + drawingOrderLabel(x.order_number, x.product)
     });
-  }
-  if (db.drawingAwaitingClientApproval(row) || openOfKind(row, "drawing_approval")) {
+  });
+  const products = new Map(db.drawingOrdersFor(row).map((x) => [x.order_number, x.product]));
+  pendingApprovalOrders(row).forEach((no) => {
+    actions.push({
+      id: "complete_drawing_approval",
+      order_number: no,
+      product: products.get(no) || "",
+      label: "Client drawing approval — " + drawingOrderLabel(no, products.get(no) || "")
+    });
+  });
+  if (legacyApprovalPending(row) || (openOfKindFor(row, "drawing_approval", "") && !pendingApprovalOrders(row).length)) {
     actions.push({ id: "complete_drawing_approval", label: "Client drawing approval" });
   }
   return actions;
@@ -831,9 +948,12 @@ function listMyTasks(userName, opts) {
 function decorateTask(row, task, dueAt) {
   const correspondence = db.normalizeCorrespondence(row);
   const drawingTask = task && (task.kind === "drawing" || task.kind === "drawing_approval");
-  const orders = drawingTask
-    ? db.ordersLinkedToEnquiry(row).map((o) => String(o.order_number || "").trim()).filter(Boolean)
-    : [];
+  const ownOrder = drawingTask ? taskOrderNo(task) : "";
+  const linked = drawingTask ? db.ordersLinkedToEnquiry(row) : [];
+  const orders = ownOrder
+    ? [ownOrder]
+    : linked.map((o) => String(o.order_number || "").trim()).filter(Boolean);
+  const ownRow = ownOrder ? linked.find((o) => db.formatOrderId(o.order_number) === ownOrder) : null;
   return {
     ...task,
     due_at: dueAt || task.due_at || "",
@@ -843,7 +963,7 @@ function decorateTask(row, task, dueAt) {
     order_numbers: orders,
     order_label: orders.join(", "),
     client_name: row.client_name || "",
-    product: row.product || "",
+    product: (ownRow && ownRow.product) || row.product || "",
     enquiry_status: row.status || "",
     type_label: taskTypeLabel(task.kind),
     date_quoted: row.date_quoted || "",
@@ -881,6 +1001,7 @@ function processSnapshot(enquiryNo, actorName) {
     assignees: officeAssignees(),
     enquiryRoles: staff.enquiryRoleDefaults(),
     actions: decorateActions(row, actor),
+    drawingOrders: db.drawingOrdersFor(row),
     access: access.snapshotFor(row, actor, manager),
     waitingStatuses: WAITING_STATUSES,
     manualStatuses: MANUAL_STATUSES.slice(),
@@ -1046,7 +1167,15 @@ function eventLabel(action, row, fromStatus, body) {
     const base = row.drawing && row.drawing.required ? "POP saved — drawing required" : "POP saved — ready for Orders";
     return paid ? (base + " · paid " + paid) : base;
   }
-  if (action === "complete_drawing") return "Drawing uploaded — waiting for client approval";
+  const drawOrder = db.formatOrderId(body && body.order_number);
+  if (action === "complete_drawing") {
+    return "Drawing uploaded" + (drawOrder ? " for " + drawOrder : "") + " — waiting for client approval";
+  }
+  if (action === "complete_drawing_approval" && drawOrder) {
+    const s = db.drawingApprovalStatus(db.drawingOrderEntry(row.drawing, drawOrder));
+    if (s === "rejected") return "Client rejected drawing for " + drawOrder + " — back to drawing";
+    return "Client approved drawing for " + drawOrder + " — Not Yet Started";
+  }
   if (action === "complete_drawing_approval") {
     const s = db.drawingApprovalStatus(row.drawing);
     if (s === "rejected") return "Client rejected drawing — back to drawing";
@@ -1901,46 +2030,109 @@ function completeOrder(row, actor, body) {
 }
 
 function completeDrawing(row, actor, body) {
-  if (!enquiryAllowsDrawingUpload(row) && !db.enquiryNeedsOpenDrawingTask(row)) {
+  if (!db.drawingIsRequired(row.drawing) && !db.enquiryNeedsOpenDrawingTask(row)) {
     throw new Error("A drawing is only required when the office said this order needs one");
   }
-  if (!row.drawing || typeof row.drawing !== "object") {
-    row.drawing = { required: true, file: null, assignee: drawingAssignee() };
-  }
-  row.drawing.required = true;
-  row.drawing.assignee = drawingAssignee();
   ensureOpenDrawingTask(row);
+  const choices = uploadableDrawingOrders(row);
+  let orderNo = db.formatOrderId(body && body.order_number);
+  if (!orderNo && choices.length === 1) orderNo = choices[0].order_number;
+  if (!orderNo) {
+    if (!db.drawingOrdersFor(row).length) {
+      throw new Error("Create the order first. Erin uploads one drawing per order number once the order rows exist.");
+    }
+    throw new Error("Choose which order number this drawing is for");
+  }
+  const target = db.drawingOrdersFor(row).find((x) => x.order_number === orderNo);
+  if (!target) throw new Error("Order " + orderNo + " is not on this enquiry or does not need a drawing");
+  if (target.state === "pending") {
+    throw new Error("The drawing for " + orderNo + " is waiting for client approval");
+  }
+  if (!target.can_rewind) {
+    throw new Error(orderNo + " is already in production. Replace its drawing from Orders instead.");
+  }
   const filename = body.file_name || "drawing.pdf";
   const raw = requireFile(body, "Upload the drawing, check the preview, then confirm it");
   if (!isImage(filename, "") && !isPdf(filename, "", null)) {
     throw new Error("Drawing must be a PDF or image");
   }
-  row.drawing.file = db.saveEnquiryAttachment(row.enquiry_no, "drawing", raw, filename);
-  row.drawing.uploaded_at = db.nowIso();
-  row.drawing.uploaded_by = actor;
+  row.drawing.required = true;
+  row.drawing.assignee = drawingAssignee();
+  if (!row.drawing.orders || typeof row.drawing.orders !== "object") row.drawing.orders = {};
   const shabana = drawingApprovalAssignee();
-  row.drawing.approval = {
-    status: "pending",
-    requested_from: shabana,
-    requested_at: db.nowIso()
+  row.drawing.orders[orderNo] = {
+    file: db.saveEnquiryAttachment(row.enquiry_no, db.drawingFileKindForOrder(orderNo), raw, filename),
+    uploaded_at: db.nowIso(),
+    uploaded_by: actor,
+    approval: {
+      status: "pending",
+      requested_from: shabana,
+      requested_at: db.nowIso()
+    }
   };
-  closeOpenKind(row, "drawing", actor);
-  cancelOpenKind(row, "drawing_approval");
+  closeOpenKindFor(row, "drawing", orderNo, actor);
+  cancelOpenKindFor(row, "drawing_approval", orderNo);
   addTask(row, "drawing_approval", shabana, {
-    note: "Ask the client to approve the drawing"
+    title: "Drawing approval " + orderNo,
+    order_number: orderNo,
+    note: "Ask the client to approve the drawing for " + drawingOrderLabel(orderNo, target.product)
   });
+  body.order_number = orderNo;
   row.ready_for_orders = true;
   db.applyDrawingShopStatus(row);
 }
 
+function completeOrderDrawingApproval(row, actor, body, orderNo, approve) {
+  const entry = db.drawingOrderEntry(row.drawing, orderNo);
+  if (!entry || db.drawingApprovalStatus(entry) !== "pending") {
+    throw new Error("There is no drawing for " + orderNo + " waiting for client approval");
+  }
+  body.order_number = orderNo;
+  if (approve) {
+    entry.approval = {
+      status: "approved",
+      requested_from: drawingApprovalAssignee(),
+      decided_at: db.nowIso(),
+      decided_by: actor,
+      note: String((body && (body.comments || body.reason)) || "").trim()
+    };
+    closeOpenKindFor(row, "drawing_approval", orderNo, actor);
+    cancelOpenKindFor(row, "drawing", orderNo);
+    db.applyDrawingShopStatus(row);
+    return;
+  }
+  const reason = String((body && (body.reason || body.comments)) || "").trim();
+  if (!reason) throw new Error("Say why the client rejected the drawing");
+  entry.approval = {
+    status: "rejected",
+    requested_from: drawingApprovalAssignee(),
+    decided_at: db.nowIso(),
+    decided_by: actor,
+    reason,
+    note: reason
+  };
+  closeOpenKindFor(row, "drawing_approval", orderNo, actor, reason);
+  ensureOpenDrawingTask(row);
+  db.applyDrawingShopStatus(row);
+}
+
 function completeDrawingApproval(row, actor, body) {
-  if (!db.drawingAwaitingClientApproval(row) && !openOfKind(row, "drawing_approval")) {
+  const pendingNos = pendingApprovalOrders(row);
+  const legacy = legacyApprovalPending(row) || !!openOfKindFor(row, "drawing_approval", "");
+  if (!pendingNos.length && !legacy) {
     throw new Error("There is no drawing waiting for client approval");
   }
   const decision = String((body && body.decision) || "").trim().toLowerCase();
   const reject = decision.indexOf("reject") >= 0 || decision === "no";
   const approve = !reject && (decision === "approve" || decision === "approved" || decision === "yes");
   if (!approve && !reject) throw new Error("Choose whether the client approved or rejected the drawing");
+  let orderNo = db.formatOrderId(body && body.order_number);
+  if (!orderNo && !legacy && pendingNos.length === 1) orderNo = pendingNos[0];
+  if (orderNo) {
+    completeOrderDrawingApproval(row, actor, body, orderNo, approve);
+    return;
+  }
+  if (!legacy) throw new Error("Choose which order number the client decided on");
   if (!row.drawing || typeof row.drawing !== "object") {
     throw new Error("Upload the drawing before asking the client to approve it");
   }
@@ -1952,8 +2144,8 @@ function completeDrawingApproval(row, actor, body) {
       decided_by: actor,
       note: String((body && (body.comments || body.reason)) || "").trim()
     };
-    closeOpenKind(row, "drawing_approval", actor);
-    cancelOpenKind(row, "drawing");
+    closeOpenKindFor(row, "drawing_approval", "", actor);
+    cancelOpenKindFor(row, "drawing", "");
     row.ready_for_orders = true;
     db.applyDrawingShopStatus(row);
     return;
@@ -1968,7 +2160,7 @@ function completeDrawingApproval(row, actor, body) {
     reason,
     note: reason
   };
-  closeOpenKind(row, "drawing_approval", actor, reason);
+  closeOpenKindFor(row, "drawing_approval", "", actor, reason);
   row.ready_for_orders = true;
   ensureOpenDrawingTask(row);
   db.applyDrawingShopStatus(row);
@@ -2443,6 +2635,7 @@ module.exports = {
   isDrawingOwnerName,
   isDrawingApprovalOwnerName,
   syncDrawingQueue,
+  syncDrawingForEnquiry,
   DRAWING_OWNER,
   DRAWING_APPROVAL_OWNER
 };

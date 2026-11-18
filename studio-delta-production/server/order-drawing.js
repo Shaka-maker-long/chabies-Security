@@ -19,9 +19,15 @@ function isPdfOrImage(name) {
   return /\.(pdf|png|jpe?g|webp|gif)$/.test(n);
 }
 
-function closeOpenKind(row, kind, actor) {
+// Tasks for this order number only (or old enquiry-wide tasks with no order number).
+function taskIsForOrder(t, orderNumber) {
+  const own = db.formatOrderId(t && t.order_number);
+  return !own || own === orderNumber;
+}
+
+function closeOpenKind(row, kind, actor, orderNumber) {
   (row.tasks || []).forEach((t) => {
-    if (t.kind === kind && t.status === "open") {
+    if (t.kind === kind && t.status === "open" && taskIsForOrder(t, orderNumber)) {
       t.status = "done";
       t.completed_at = db.nowIso();
       t.completed_by = actor;
@@ -30,21 +36,22 @@ function closeOpenKind(row, kind, actor) {
   });
 }
 
-function cancelOpenKind(row, kind) {
+function cancelOpenKind(row, kind, orderNumber) {
   (row.tasks || []).forEach((t) => {
-    if (t.kind === kind && t.status === "open") t.status = "cancelled";
+    if (t.kind === kind && t.status === "open" && taskIsForOrder(t, orderNumber)) t.status = "cancelled";
   });
 }
 
-function drawingUrl(enquiryNo, uploadedAt) {
-  const base = "/api/office/enquiries/" + encodeURIComponent(enquiryNo) + "/files/drawing";
+function drawingUrl(enquiryNo, uploadedAt, orderNumber) {
+  const kind = orderNumber ? db.drawingFileKindForOrder(orderNumber) : "drawing";
+  const base = "/api/office/enquiries/" + encodeURIComponent(enquiryNo) + "/files/" + encodeURIComponent(kind);
   const v = String(uploadedAt || "").trim();
   return v ? (base + "?v=" + encodeURIComponent(v)) : base;
 }
 
+// Siya reprints only the order whose drawing changed.
 function notifyJobCards(enquiry, originOrder, actor, uploadedAt) {
-  const linked = db.ordersLinkedToEnquiry(enquiry);
-  const list = linked.length ? linked : (originOrder ? [originOrder] : []);
+  const list = originOrder ? [originOrder] : db.ordersLinkedToEnquiry(enquiry);
   const seen = new Set();
   const alerts = [];
   list.forEach((order) => {
@@ -56,7 +63,7 @@ function notifyJobCards(enquiry, originOrder, actor, uploadedAt) {
       order_number: num,
       client_name: order.client_name || originOrder.client_name || enquiry.client_name || "",
       product: order.product || originOrder.product || enquiry.product || "",
-      drawing_url: drawingUrl(enquiry.enquiry_no, uploadedAt),
+      drawing_url: drawingUrl(enquiry.enquiry_no, uploadedAt, db.drawingOrderEntry(enquiry.drawing, num) ? num : ""),
       uploaded_at: uploadedAt,
       uploaded_by: actor
     }));
@@ -80,18 +87,22 @@ function updateFromOrder(orderNumber, actor, body) {
   const fileRaw = requireFile(body);
   if (!raw.drawing || typeof raw.drawing !== "object") raw.drawing = { required: true, file: null };
   raw.drawing.required = true;
-  raw.drawing.file = db.saveEnquiryAttachment(raw.enquiry_no, "drawing", fileRaw, filename);
-  raw.drawing.uploaded_at = db.nowIso();
-  raw.drawing.uploaded_by = who;
-  raw.drawing.approval = {
-    status: "approved",
-    decided_at: raw.drawing.uploaded_at,
-    decided_by: who,
-    note: "Updated on the Orders sheet"
+  if (!raw.drawing.orders || typeof raw.drawing.orders !== "object") raw.drawing.orders = {};
+  const uploadedAt = db.nowIso();
+  raw.drawing.orders[want] = {
+    file: db.saveEnquiryAttachment(raw.enquiry_no, db.drawingFileKindForOrder(want), fileRaw, filename),
+    uploaded_at: uploadedAt,
+    uploaded_by: who,
+    approval: {
+      status: "approved",
+      decided_at: uploadedAt,
+      decided_by: who,
+      note: "Updated on the Orders sheet"
+    }
   };
   if (!Array.isArray(raw.tasks)) raw.tasks = [];
-  closeOpenKind(raw, "drawing", who);
-  cancelOpenKind(raw, "drawing_approval");
+  closeOpenKind(raw, "drawing", who, want);
+  cancelOpenKind(raw, "drawing_approval", want);
   raw.ready_for_orders = true;
   db.applyDrawingShopStatus(raw);
   db.appendEnquiryEvent(raw, {
@@ -103,12 +114,12 @@ function updateFromOrder(orderNumber, actor, body) {
   });
   raw.updated_at = db.nowIso();
   db.saveEnquiryRecord(raw);
-  const alerts = notifyJobCards(raw, order, who, raw.drawing.uploaded_at);
+  const alerts = notifyJobCards(raw, order, who, uploadedAt);
   const live = db.listOrders().find((o) => db.formatOrderId(o.order_number) === want) || order;
   return {
     order: live,
     enquiry_no: raw.enquiry_no,
-    drawing_url: drawingUrl(raw.enquiry_no, raw.drawing.uploaded_at),
+    drawing_url: drawingUrl(raw.enquiry_no, uploadedAt, want),
     notified_siya: alerts.length > 0,
     print_alerts: alerts
   };

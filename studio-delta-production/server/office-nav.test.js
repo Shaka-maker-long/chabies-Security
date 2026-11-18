@@ -259,7 +259,8 @@ assert.ok(processJs.indexOf("delivery_incl_vat") !== -1);
 assert.ok(processJs.indexOf('complete_cost_sheet') !== -1);
 assert.ok(/name=\\"drawing_required\\" required/.test(processJs), "POP form must choose whether a drawing is needed");
 assert.ok(/name=\\"payment_date\\" required/.test(processJs), "POP form must capture the payment date for Ordered R weeks");
-assert.ok(processJs.indexOf("Erin uploads the drawing") !== -1, "drawing tasks always go to Erin");
+assert.ok(processJs.indexOf("Erin draws each order number") !== -1, "drawing tasks always go to Erin, one per order number");
+assert.ok(processJs.indexOf("body.order_number = action.order_number") !== -1, "drawing upload and approval say which order number");
 assert.ok(!/complete_order[\s\S]{0,400}Drawing assigned to/.test(processJs), "POP must not ask who uploads the drawing");
 assert.ok(
   fs.readFileSync(path.join(__dirname, "../public/enquiries-dashboard.html"), "utf8").indexOf("payment date on the POP") !== -1,
@@ -452,7 +453,7 @@ assert.ok(enquiriesHtml.indexOf("data-create-order") !== -1);
 assert.ok(enquiriesHtml.indexOf("/orders/from-enquiry") !== -1);
 assert.ok(enquiriesHtml.indexOf("Save anyway") !== -1);
 assert.ok(enquiriesHtml.indexOf("has-filter::after") === -1, "do not fake column filters with a triangle");
-assert.ok(enquiriesHtml.indexOf("/enquiry-process.js?v=drawing-erin-tasks") !== -1);
+assert.ok(enquiriesHtml.indexOf("/enquiry-process.js?v=drawing-per-order") !== -1);
 assert.ok(enquiriesHtml.indexOf("Erin uploads the drawing") !== -1);
 assert.ok(enquiriesHtml.indexOf("ob_drawing_who") === -1, "drawing assignee stays Erin");
 assert.ok(processJs.indexOf("sd-option-line") !== -1);

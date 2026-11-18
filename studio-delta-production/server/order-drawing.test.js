@@ -52,11 +52,40 @@ const first = orderDrawing.updateFromOrder("S260880", "Office Boss", {
   file_name: "gate.pdf",
   file_confirmed: true
 });
-assert.ok(first.drawing_url.indexOf("/files/drawing") !== -1);
+assert.ok(first.drawing_url.indexOf("/files/drawing_S260880") !== -1, "drawing is stored for this order number");
 assert.strictEqual(first.notified_siya, false);
 assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260880").status, "Not Yet Started");
 assert.strictEqual(alerts.pollFor("Siya").alerts.length, 0);
-assert.strictEqual(db.getEnquiryRaw(waitEnq.enquiry_no).drawing.approval.status, "approved");
+assert.strictEqual(db.getEnquiryRaw(waitEnq.enquiry_no).drawing.orders.S260880.approval.status, "approved");
+assert.ok(db.readEnquiryAttachment(waitEnq.enquiry_no, "drawing_S260880"));
+
+// Two rows on one enquiry: replacing A's drawing leaves B waiting for its own.
+const pairEnq = db.upsertEnquiry({
+  date_enquired: "22/10/2026",
+  client_name: "Pair Draw",
+  product: "Gate",
+  status: "Ordered",
+  quote_no: "SOQ8803"
+});
+const pairRaw = db.getEnquiryRaw(pairEnq.enquiry_no);
+pairRaw.drawing = { required: true, file: null, assignee: "Erin" };
+db.saveEnquiryRecord(pairRaw);
+["S260882 A", "S260882 B"].forEach((no) => db.upsertOrder({
+  order_number: no,
+  enquiry_no: pairEnq.enquiry_no,
+  quote_number: "SOQ8803",
+  status: "Waiting for drawing",
+  product: "Gate",
+  client_name: "Pair Draw"
+}));
+const pairA = orderDrawing.updateFromOrder("S260882 A", "Office Boss", {
+  file_base64: pdf,
+  file_name: "gate-a.pdf",
+  file_confirmed: true
+});
+assert.ok(pairA.drawing_url.indexOf("/files/drawing_S260882_A") !== -1);
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260882 A").status, "Not Yet Started");
+assert.strictEqual(db.listOrders().find((o) => o.order_number === "S260882 B").status, "Waiting for drawing");
 
 const liveEnq = db.upsertEnquiry({
   date_enquired: "22/10/2026",

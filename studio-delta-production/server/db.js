@@ -1622,10 +1622,76 @@ function drawingClientApproved(drawing) {
   return s === "approved";
 }
 
+// Each order row (S260001 A, S260001 B, ...) carries its own drawing in drawing.orders[orderNumber]:
+// { file, uploaded_at, uploaded_by, approval }. An older single drawing on the enquiry
+// (drawing.file) still counts for any order row that has no drawing of its own.
+function drawingFileKindForOrder(orderNumber) {
+  return ("drawing_" + formatOrderId(orderNumber)).replace(/[^\w.-]/g, "_");
+}
+
+function drawingOrderEntry(drawing, orderNumber) {
+  const key = formatOrderId(orderNumber);
+  if (!key || !drawing || !drawing.orders || typeof drawing.orders !== "object") return null;
+  const entry = drawing.orders[key];
+  return entry && typeof entry === "object" ? entry : null;
+}
+
+function drawingOrderEntries(drawing) {
+  if (!drawing || !drawing.orders || typeof drawing.orders !== "object") return [];
+  return Object.keys(drawing.orders)
+    .map((key) => ({ order_number: key, entry: drawing.orders[key] }))
+    .filter((x) => x.entry && drawingFilePresent(x.entry));
+}
+
+function orderTakesDrawing(order) {
+  const st = normalizeShopStatus(order && order.status) || String((order && order.status) || "").trim();
+  return st !== IN_STOCK;
+}
+
+// "none" (no drawing needed), "needed" (Erin must upload), "pending" (waiting on client), "approved".
+function orderDrawingState(enquiry, order) {
+  const drawing = enquiry && enquiry.drawing;
+  if (!drawingIsRequired(drawing)) return "none";
+  if (order && !orderTakesDrawing(order)) return "none";
+  const entry = order ? drawingOrderEntry(drawing, order.order_number) : null;
+  const src = entry || (drawingFilePresent(drawing) ? drawing : null);
+  if (!src || !drawingFilePresent(src)) return "needed";
+  const s = drawingApprovalStatus(src);
+  if (s === "rejected") return "needed";
+  if (s === "pending") return "pending";
+  return "approved";
+}
+
+function orderDrawingStillNeeded(enquiry, order) {
+  const s = orderDrawingState(enquiry, order);
+  return s === "needed" || s === "pending";
+}
+
+function drawingOrdersFor(enquiry) {
+  if (!enquiry || !drawingIsRequired(enquiry.drawing)) return [];
+  return ordersLinkedToEnquiry(enquiry)
+    .filter(orderTakesDrawing)
+    .map((order) => {
+      const orderNumber = formatOrderId(order.order_number);
+      const entry = drawingOrderEntry(enquiry.drawing, orderNumber);
+      return {
+        order_number: orderNumber,
+        product: String(order.product || "").trim(),
+        status: String(order.status || "").trim(),
+        state: orderDrawingState(enquiry, order),
+        own_file: !!(entry && drawingFilePresent(entry)),
+        file_kind: entry && drawingFilePresent(entry) ? (entry.file.kind || drawingFileKindForOrder(orderNumber)) : "",
+        approval: entry && entry.approval ? entry.approval : null,
+        can_rewind: canRewindForDrawing(order.status)
+      };
+    })
+    .sort((a, b) => a.order_number.localeCompare(b.order_number));
+}
+
 function drawingAwaitingClientApproval(enquiry) {
-  return drawingIsRequired(enquiry && enquiry.drawing)
-    && drawingFilePresent(enquiry.drawing)
-    && drawingApprovalStatus(enquiry.drawing) === "pending";
+  if (!drawingIsRequired(enquiry && enquiry.drawing)) return false;
+  if (drawingFilePresent(enquiry.drawing) && drawingApprovalStatus(enquiry.drawing) === "pending") return true;
+  return drawingOrderEntries(enquiry.drawing).some((x) => drawingApprovalStatus(x.entry) === "pending");
 }
 
 function drawingStillNeeded(row) {
@@ -1640,11 +1706,15 @@ function linkedOrdersWaitingForDrawing(enquiry) {
   return ordersLinkedToEnquiry(enquiry).filter((o) => isWaitingForDrawing(o.status));
 }
 
+// Erin's drawing tasks are per order number, so they only exist once the order rows exist.
 function enquiryNeedsOpenDrawingTask(enquiry) {
   if (!enquiry) return false;
-  if (drawingAwaitingClientApproval(enquiry)) return false;
-  if (drawingStillNeeded(enquiry)) return true;
-  return linkedOrdersWaitingForDrawing(enquiry).length > 0;
+  if (!drawingIsRequired(enquiry.drawing)) return linkedOrdersWaitingForDrawing(enquiry).length > 0;
+  const legacyCovers = drawingFilePresent(enquiry.drawing) && drawingApprovalStatus(enquiry.drawing) !== "rejected";
+  if (legacyCovers && !drawingOrderEntries(enquiry.drawing).some((x) => drawingApprovalStatus(x.entry) === "rejected")) {
+    return false;
+  }
+  return drawingOrdersFor(enquiry).some((x) => x.state === "needed" && x.can_rewind);
 }
 
 function enquiryReadyForOrders(row) {
@@ -1666,11 +1736,10 @@ function applyDrawingShopStatus(enquiry) {
   if (!enquiry) return [];
   const linked = ordersLinkedToEnquiry(enquiry);
   if (!linked.length) return [];
-  const need = drawingStillNeeded(enquiry);
   const changed = [];
   linked.forEach((order) => {
     const st = normalizeShopStatus(order.status) || String(order.status || "").trim();
-    if (need) {
+    if (orderDrawingStillNeeded(enquiry, order)) {
       if (!canRewindForDrawing(st) || st === WAITING_FOR_DRAWING) return;
       upsertOrder(Object.assign({}, order, { status: WAITING_FOR_DRAWING }));
       changed.push(order.order_number);
@@ -2645,6 +2714,11 @@ function readEnquiryAttachment(enquiryNo, kind) {
   }
   else if (want === "pop") meta = row.client_outcome && row.client_outcome.file;
   else if (want === "drawing") meta = row.drawing && row.drawing.file;
+  else if (/^drawing_/.test(want)) {
+    const hit = drawingOrderEntries(row.drawing).find((x) => x.entry.file.kind === want
+      || drawingFileKindForOrder(x.order_number) === want);
+    meta = hit ? hit.entry.file : null;
+  }
   else if (want === "follow_up") {
     const list = Array.isArray(row.follow_ups) ? row.follow_ups : [];
     meta = list.length ? list[list.length - 1].file : null;
@@ -2828,6 +2902,20 @@ function listEnquiryDeliverables(row) {
       outlook: false
     });
   }
+  drawingOrderEntries(src.drawing).forEach(({ order_number: orderNo, entry }) => {
+    const f = entry.file;
+    items.push({
+      group: "drawing",
+      label: "Drawing " + orderNo,
+      title: f.filename || ("Drawing " + orderNo),
+      filename: f.filename || f.stored_as,
+      kind: f.kind || drawingFileKindForOrder(orderNo),
+      from: entry.uploaded_by || (src.drawing && src.drawing.assignee) || "",
+      order_no: orderNo,
+      open: true,
+      outlook: false
+    });
+  });
   return items;
 }
 
@@ -3478,6 +3566,12 @@ module.exports = {
   drawingClientApproved,
   drawingAwaitingClientApproval,
   drawingStillNeeded,
+  drawingFileKindForOrder,
+  drawingOrderEntry,
+  drawingOrderEntries,
+  orderDrawingState,
+  orderDrawingStillNeeded,
+  drawingOrdersFor,
   linkedOrdersWaitingForDrawing,
   enquiryNeedsOpenDrawingTask,
   enquiryReadyForOrders,
