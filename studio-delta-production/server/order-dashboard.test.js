@@ -485,6 +485,17 @@ assert.ok(gpDelivered.title.indexOf("Delivered") !== -1);
 const noneDrill = dash.buildDrill({ kind: "province", key: "2025-03", value: "(No province)", slice: "booked" });
 assert.deepStrictEqual(noneDrill.rows.map((r) => r.order_number), ["S250304"]);
 
+// Black bar status pie: jobs still open for that province and month, by shop status.
+assert.deepStrictEqual(marGp.statuses, [{ label: "Welding", count: 1 }], "delivered jobs stay out of the pie");
+assert.deepStrictEqual(marKzn.statuses, [], "nothing open for KZN in March");
+const gpWelding = dash.buildDrill({ kind: "province", key: "2025-03", value: "Gauteng", slice: "Welding" });
+assert.deepStrictEqual(gpWelding.rows.map((r) => r.order_number), ["S250302"]);
+assert.ok(gpWelding.title.indexOf("Welding") !== -1);
+const gpDeliveredSlice = dash.buildDrill({ kind: "province", key: "2025-03", value: "Gauteng", slice: "Delivered" });
+assert.deepStrictEqual(gpDeliveredSlice.rows, [], "a status slice never lists delivered jobs");
+assert.ok(html.indexOf("openProvinceStatus") !== -1);
+assert.ok(html.indexOf("provStatusPie") !== -1);
+
 assert.ok(html.indexOf("Throughput by province") !== -1);
 assert.ok(html.indexOf("id=\"provMonth\"") !== -1);
 assert.ok(html.indexOf("kind: \"province\"") !== -1);

@@ -234,9 +234,15 @@ function provinceThroughput(rows) {
     const ym = monthKey(new Date(ms));
     const prov = provinceLabel(row.province);
     if (!byMonth[ym]) byMonth[ym] = {};
-    if (!byMonth[ym][prov]) byMonth[ym][prov] = { label: prov, booked: 0, delivered: 0 };
-    byMonth[ym][prov].booked += 1;
-    if (isDelivered(row.status)) byMonth[ym][prov].delivered += 1;
+    if (!byMonth[ym][prov]) byMonth[ym][prov] = { label: prov, booked: 0, delivered: 0, statuses: {} };
+    const cell = byMonth[ym][prov];
+    cell.booked += 1;
+    if (isDelivered(row.status)) cell.delivered += 1;
+    else {
+      // Status pie behind the black (Booked) bar: jobs still open, by shop status.
+      const statusLabel = blankLabel(row.status, "(Blank)");
+      cell.statuses[statusLabel] = (cell.statuses[statusLabel] || 0) + 1;
+    }
   });
   return Object.keys(byMonth)
     .sort((a, b) => b.localeCompare(a))
@@ -244,6 +250,14 @@ function provinceThroughput(rows) {
       key,
       label: monthLabel(key),
       provinces: Object.values(byMonth[key])
+        .map((cell) => ({
+          label: cell.label,
+          booked: cell.booked,
+          delivered: cell.delivered,
+          statuses: Object.keys(cell.statuses)
+            .map((label) => ({ label, count: cell.statuses[label] }))
+            .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+        }))
         .sort((a, b) => b.booked - a.booked || a.label.localeCompare(b.label))
     }));
 }
@@ -761,8 +775,9 @@ function matchesDrill(row, query, win) {
     if (!ms || monthKey(new Date(ms)) !== key) return false;
     if (provinceLabel(row.province) !== value) return false;
     const slice = String((query && query.slice) || "").trim();
+    if (!slice || slice === "booked") return true;
     if (slice === "delivered") return isDelivered(status);
-    return true;
+    return !isDelivered(status) && blankLabel(status, "(Blank)") === slice;
   }
   if (kind === "category") return inWin && blankLabel(row.category, "(Blank)") === value;
   if (kind === "source") return inWin && blankLabel(row.source, "(Blank)") === value;
@@ -864,7 +879,8 @@ function drillTitle(query, win) {
   }
   if (kind === "province") {
     const slice = String((query && query.slice) || "").trim();
-    return value + " · " + (key ? monthLabel(key) : "") + " · " + (slice === "delivered" ? "Delivered" : "Booked");
+    const what = slice === "delivered" ? "Delivered" : (!slice || slice === "booked") ? "Booked" : slice;
+    return value + " · " + (key ? monthLabel(key) : "") + " · " + what;
   }
   if (kind === "category") return "CATERGORY · " + value;
   if (kind === "source") return "Source · " + value;
