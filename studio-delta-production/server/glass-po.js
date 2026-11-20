@@ -601,6 +601,56 @@ function updateReceivedCosts(payload, actor) {
   };
 }
 
+// Read a glass supplier PDF invoice and suggest which outstanding PO lines it covers, and
+// what each costs (excl VAT). Nothing is saved: the office checks it, then receives as usual.
+async function parseInvoiceForCosts(payload) {
+  const body = payload || {};
+  const decoded = decodeInvoice(body.invoice);
+  if (decoded.mime !== "application/pdf") {
+    throw new Error("Upload the supplier's PDF invoice to read it automatically (photos need typing for now).");
+  }
+  const reader = require("./glass-invoice-parse");
+  const { extractPdfText } = require("./paint-invoice-parse");
+  const text = await extractPdfText(decoded.buffer);
+  const parsed = reader.parseGlassInvoiceText(text);
+  if (!parsed.ok) throw new Error(parsed.error || "Could not read that invoice.");
+  const snap = snapshot();
+  const matched = reader.matchPiecesToLines(parsed.pieces, snap.outstanding || []);
+  const subtotal = parsed.invoiceSubtotal != null ? parsed.invoiceSubtotal : parsed.piecesTotal;
+  const difference = Number(money(subtotal - parsed.piecesTotal));
+  return {
+    filename: decoded.filename,
+    invoiceNo: parsed.invoiceNo,
+    supplier: parsed.supplier,
+    warnings: parsed.warnings || [],
+    pieces: matched.results.map((r) => Object.assign({}, r.piece, {
+      costLabel: formatRand(r.piece.cost),
+      status: r.status,
+      reason: r.reason,
+      sizeOff: !!r.sizeOff,
+      byRef: !!r.byRef,
+      lines: r.lines
+    })),
+    perLine: matched.perLine,
+    notOnInvoice: matched.notOnInvoice,
+    templateLines: matched.templateLines,
+    matchedCount: matched.results.filter((r) => r.status === "matched").length,
+    pieceCount: matched.results.length,
+    matchedTotal: matched.matchedTotal,
+    matchedTotalLabel: formatRand(matched.matchedTotal),
+    unmatchedTotal: matched.unmatchedTotal,
+    unmatchedTotalLabel: formatRand(matched.unmatchedTotal),
+    piecesTotal: parsed.piecesTotal,
+    piecesTotalLabel: formatRand(parsed.piecesTotal),
+    invoiceSubtotal: subtotal,
+    invoiceSubtotalLabel: formatRand(subtotal),
+    invoiceTotalLabel: parsed.invoiceTotal != null ? formatRand(parsed.invoiceTotal) : "",
+    difference,
+    differenceLabel: formatRand(difference),
+    totalsMatch: Math.abs(difference) < 0.05
+  };
+}
+
 function findPo(poId) {
   const store = loadStore();
   const want = String(poId || "").trim();
@@ -802,6 +852,7 @@ module.exports = {
   snapshot,
   createPurchaseOrder,
   receiveGlass,
+  parseInvoiceForCosts,
   updateReceivedCosts,
   readInvoiceFile,
   readGlassLines,

@@ -58,6 +58,14 @@
     .edit.dim { width:88px; }
     textarea.edit { min-height:56px; resize:vertical; }
     .need { color:var(--bad); font-size:12px; font-weight:600; }
+    #invoiceReview { padding:12px 16px 16px; border-top:1px solid var(--line); }
+    #invoiceReview h3 { margin:12px 0 6px; font-size:14px; }
+    #invoiceReview table { min-width:0; }
+    .pill.bad { background:#fef3f2; color:var(--bad); }
+    .pill.warn { background:#fffaeb; color:#b54708; }
+    .totals { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; margin:8px 0 0; }
+    .totals b.bad { color:var(--bad); }
+    .totals b.ok { color:var(--ok); }
     @media print {
       header .tabs, .tools, .subtabs, .foot, td input, button { display:none !important; }
       body { background:#fff; }
@@ -130,9 +138,11 @@
             <label class="file">Invoice for this received batch
               <input id="invoiceFile" type="file" accept="application/pdf,image/jpeg,image/png,image/webp">
             </label>
+            <button type="button" class="ghost" id="readInvBtn" onclick="readInvoiceAndMatch()">Read invoice</button>
             <button type="button" id="recvBtn" onclick="receiveSelected()" disabled>Receive selected</button>
             <span class="msg" id="recvMsg"></span>
           </div>
+          <div id="invoiceReview" hidden></div>
         </section>
       </div>
       <section class="card">
@@ -461,6 +471,84 @@
         reader.readAsDataURL(file);
       });
     }
+    // Read the supplier PDF, tick the outstanding lines it covers, fill their costs,
+    // and show what matched, what did not, and what is still outstanding.
+    async function readInvoiceAndMatch() {
+      let invoice;
+      try { invoice = await readInvoice(); }
+      catch (e) { setMsg("recvMsg", e.message || "Attach the invoice.", true); return; }
+      const btn = document.getElementById("readInvBtn");
+      btn.disabled = true;
+      setMsg("recvMsg", "Reading invoice…");
+      try {
+        const r = await sdOfficeFetch("/api/office/glass-po/parse-invoice", {
+          method: "POST",
+          body: JSON.stringify({ invoice })
+        });
+        const j = await r.json();
+        if (!j.ok) throw new Error(j.error || "Could not read that invoice");
+        applyInvoiceCosts(j.perLine || {});
+        renderInvoiceReview(j);
+        setMsg("recvMsg", j.matchedCount + " of " + j.pieceCount + " invoice pieces matched. Check the costs, then Receive selected.");
+      } catch (e) {
+        setMsg("recvMsg", e.message || "Could not read that invoice", true);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+    function applyInvoiceCosts(perLine) {
+      document.querySelectorAll(".out-chk").forEach((el) => {
+        el.checked = Object.prototype.hasOwnProperty.call(perLine, el.value);
+      });
+      syncButtons();
+      Object.keys(perLine).forEach((id) => {
+        const input = document.querySelector('#outBox .cost[data-id="' + id + '"]');
+        if (input) input.value = Number(perLine[id]).toFixed(2);
+      });
+    }
+    function invoicePieceLabel(p) {
+      return p.quantity + " × " + p.height + "×" + p.width + " · " + (p.thickness ? p.thickness + "mm " : "") +
+        (p.type || p.typeText || "glass") + (p.toughened ? " · toughened" : "");
+    }
+    function renderInvoiceReview(j) {
+      const box = document.getElementById("invoiceReview");
+      const pieces = j.pieces || [];
+      let html = "<h3>Invoice " + esc(j.invoiceNo || j.filename || "") + (j.supplier ? " · " + esc(j.supplier) : "") + "</h3>";
+      html += "<div class='table-wrap'><table><thead><tr><th>#</th><th>Invoice piece</th><th>Cost (R)</th><th>Matched to</th><th></th></tr></thead><tbody>" +
+        pieces.map((p) => {
+          const matched = p.status === "matched";
+          const to = matched
+            ? p.lines.map((l) => "<b>" + esc(l.order) + "</b> (" + esc(l.quantity) + ") R " + esc(Number(l.cost).toFixed(2)) +
+                (l.exact ? "" : " <span class='pill warn'>" + esc(l.height) + "×" + esc(l.width) + " ordered</span>")).join("<br>")
+            : "<span class='msg bad'>" + esc(p.reason || "No match") + "</span>";
+          const tag = !matched
+            ? "<span class='pill bad'>No match</span>"
+            : (p.sizeOff ? "<span class='pill warn'>Check size</span>" : "<span class='pill ok'>Matched</span>") +
+              (p.costGuessed ? " <span class='pill warn'>Check cost</span>" : "");
+          return "<tr><td>" + esc(p.index) + "</td><td>" + esc(invoicePieceLabel(p)) +
+            (p.refs && p.refs.length ? "<div class='msg'>Ref " + esc(p.refs.join(", ")) + "</div>" : "") +
+            "</td><td>" + esc(Number(p.cost).toFixed(2)) + "</td><td>" + to + "</td><td>" + tag + "</td></tr>";
+        }).join("") + "</tbody></table></div>";
+      const still = j.notOnInvoice || [];
+      if (still.length) {
+        html += "<h3>Still outstanding (not on this invoice)</h3><p class='msg'>" + still.map((l) =>
+          esc(l.order) + " · " + esc(l.quantity) + " × " + esc(l.height) + "×" + esc(l.width) + " " + esc(l.thickness) + " " + esc(l.type) +
+          (l.poNumber ? " · " + esc(l.poNumber) : "")).join("<br>") + "</p>";
+      }
+      if ((j.templateLines || []).length) {
+        html += "<p class='msg'>Template glass can't be matched by size. Tick and cost these yourself: " +
+          j.templateLines.map((l) => esc(l.order)).join(", ") + ".</p>";
+      }
+      (j.warnings || []).forEach((w) => { html += "<p class='msg bad'>" + esc(w) + "</p>"; });
+      html += "<div class='totals'><span>Invoice excl VAT <b>R " + esc(Number(j.invoiceSubtotal).toFixed(2)) + "</b></span>" +
+        "<span>Read from lines <b class='" + (j.totalsMatch ? "ok" : "bad") + "'>R " + esc(Number(j.piecesTotal).toFixed(2)) + "</b></span>" +
+        "<span>Matched to orders <b>R " + esc(Number(j.matchedTotal).toFixed(2)) + "</b></span>" +
+        (j.unmatchedTotal ? "<span>Not matched <b class='bad'>R " + esc(Number(j.unmatchedTotal).toFixed(2)) + "</b></span>" : "") +
+        (!j.totalsMatch ? "<span><b class='bad'>Lines differ from the invoice by R " + esc(Number(j.difference).toFixed(2)) + "</b></span>" : "") +
+        "</div>";
+      box.innerHTML = html;
+      box.hidden = false;
+    }
     async function receiveSelected() {
       const ids = selectedOut();
       if (!ids.length) return;
@@ -485,6 +573,7 @@
       if (!j.ok) { setMsg("recvMsg", j.error || "Could not receive", true); document.getElementById("recvBtn").disabled = false; return; }
       data = j;
       document.getElementById("invoiceFile").value = "";
+      document.getElementById("invoiceReview").hidden = true;
       render();
       setMsg("recvMsg", "Received " + (j.lineIds || []).length + " with one invoice.");
       setMsg("status", (j.toOrderCount || 0) + " to put on a PO · " + (j.outstandingCount || 0) + " outstanding");

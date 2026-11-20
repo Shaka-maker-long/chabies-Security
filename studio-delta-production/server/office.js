@@ -520,6 +520,15 @@ function mountOffice(app) {
     }
   });
 
+  app.post("/api/office/glass-po/parse-invoice", requireOffice, async (req, res) => {
+    try {
+      const result = await glassPo.parseInvoiceForCosts(req.body || {});
+      res.json({ ok: true, ...result });
+    } catch (e) {
+      res.status(400).json({ ok: false, error: e.message || String(e) });
+    }
+  });
+
   app.post("/api/office/glass-po/received-costs", requireOffice, (req, res) => {
     try {
       const result = glassPo.updateReceivedCosts(req.body || {}, req.office && req.office.name);
