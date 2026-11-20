@@ -52,7 +52,8 @@ function moneyLists(text) {
   return [spaced, glued];
 }
 
-// Find unit price and gross where measure × unit ≈ gross; net is the last amount after gross.
+// Find unit price and gross where measure × unit ≈ gross; net is the amount right after gross.
+// Only a row's own money passes this check, so a neighbouring row's price is never taken.
 function pricedFromAmounts(measure, text) {
   const lists = moneyLists(text);
   for (const list of lists) {
@@ -62,14 +63,21 @@ function pricedFromAmounts(measure, text) {
       if (!(unit > 0) || !(gross >= 0)) continue;
       const want = measure * unit;
       if (Math.abs(want - gross) <= Math.max(0.06, gross * 0.002)) {
-        const after = list.slice(i + 2);
-        const net = after.length ? after[after.length - 1] : gross;
-        return { unit, gross, net: round2(net <= gross + 0.01 ? net : gross) };
+        const next = list[i + 2];
+        const net = next != null && next <= gross + 0.01 ? next : gross;
+        return { unit, gross, net: round2(net) };
       }
     }
   }
-  const fallback = lists[0].length ? lists[0] : lists[1];
-  return fallback.length ? { unit: null, gross: null, net: round2(fallback[fallback.length - 1]), guessed: true } : null;
+  return null;
+}
+
+// PDF text layers put a row's money either after its "0.282 M2" (as printed) or before it
+// (money columns first). The invoice's layout is decided once, then every row is read that way.
+function rowPrice(measure, afterText, beforeText, layout) {
+  if (layout === "before") return pricedFromAmounts(measure, beforeText);
+  if (layout === "after") return pricedFromAmounts(measure, afterText);
+  return pricedFromAmounts(measure, afterText) || pricedFromAmounts(measure, beforeText);
 }
 
 function glassTypeKey(raw) {
@@ -153,6 +161,25 @@ function parseGlassInvoiceText(text) {
   const glassAt = events.filter((e) => e.unit === "M2");
   const pieces = [];
   const warnings = [];
+  // Text between the previous qty/unit token and this one (where money sits when a PDF
+  // writes each row's numbers before its quantity).
+  function textBefore(ev) {
+    const prev = events.filter((e) => e.end <= ev.index).pop();
+    const from = Math.max(prev ? prev.end : 0, ev.index - 260);
+    return flat.slice(from, ev.index).replace(/\d\s*-\s*\d+\s*mm/gi, " ");
+  }
+  const DISCOUNT_RE = /100(?:[.,]0+)?\s*%/;
+  function textAfter(ev) {
+    const next = events.find((e) => e.index >= ev.end);
+    return flat.slice(ev.end, Math.min(next ? next.index : flat.length, ev.end + 400)).replace(/\d\s*-\s*\d+\s*mm/gi, " ");
+  }
+  let afterHits = 0;
+  let beforeHits = 0;
+  glassAt.forEach((ev) => {
+    if (pricedFromAmounts(ev.measure, textAfter(ev))) afterHits += 1;
+    if (pricedFromAmounts(ev.measure, textBefore(ev))) beforeHits += 1;
+  });
+  const layout = beforeHits > afterHits ? "before" : (afterHits > 0 ? "after" : "");
   glassAt.forEach((ev, gi) => {
     const segEnd = gi + 1 < glassAt.length ? glassAt[gi + 1].index : flat.length;
     const seg = flat.slice(ev.end, segEnd);
@@ -161,17 +188,23 @@ function parseGlassInvoiceText(text) {
     let glassEnd = pieceMatch ? pieceMatch.index : seg.length;
     if (firstOther && firstOther.index - ev.end < glassEnd) glassEnd = firstOther.index - ev.end;
     const glassText = seg.slice(0, Math.min(glassEnd, 260));
-    const priced = pricedFromAmounts(ev.measure, glassText);
+    const priced = rowPrice(ev.measure, glassText, textBefore(ev), layout);
     let polish = 0;
+    let costCheck = !priced;
     events
       .filter((e) => e.unit === "M" && e.index > ev.index && e.index < segEnd)
       .forEach((pe) => {
         const next = events.find((e) => e.index > pe.index);
         const stop = Math.min(next ? next.index : segEnd, pe.end + 160, segEnd);
-        const tail = flat.slice(pe.end, stop).replace(/\d\s*-\s*\d+\s*mm/gi, " ");
-        if (/100(?:[.,]0+)?\s*%/.test(tail)) return;
-        const p = pricedFromAmounts(pe.measure, tail);
-        if (p && Number.isFinite(p.net)) polish += p.net;
+        const after = flat.slice(pe.end, stop).replace(/\d\s*-\s*\d+\s*mm/gi, " ");
+        const before = textBefore(pe);
+        const p = rowPrice(pe.measure, after, before, layout);
+        if (p) {
+          polish += p.net;
+          return;
+        }
+        // No priced polish row: fine when it is discounted 100% (toughened), otherwise check it.
+        if (!DISCOUNT_RE.test(after) && !DISCOUNT_RE.test(before)) costCheck = true;
       });
     const refText = glassText.split(STOCK_CODE_RE)[0] + " " +
       (pieceMatch ? ((seg.slice(pieceMatch.index, pieceMatch.index + 120).match(/\(([^)]*)\)/) || [])[1] || "") : "");
@@ -196,7 +229,7 @@ function parseGlassInvoiceText(text) {
       glassCost: round2(glassCost),
       polishCost: round2(polish),
       cost: round2(glassCost + polish),
-      costGuessed: !!(priced && priced.guessed),
+      costCheck,
       refs: parseOrderRefs(refText)
     });
   });

@@ -156,6 +156,44 @@ assert.deepStrictEqual(
   [4, "reeded", 135.08, 133]
 );
 
+// Money-first text (each row's mass/price/gross/net comes BEFORE its "0.282 M2"), as the live
+// server's PDF reader produced. Each piece must keep its own price, not the next row's.
+const moneyFirst = reader.parseGlassInvoiceText([
+  "Qty Unit Reference Stock Code Description Mass(kg) Unit Price (R) GrossValue (R) Disc% Net Value (R)",
+  "2.82 479.00 135.08 135.08 0.282 M2 S26270A+B, XTOBS4.35 4mm SLENDER (NREED) CTS 283A+B,",
+  "4 of 775 X 91 +Polish All Round (S26270A+B, 283A+B, 1)",
+  "19.00 133.00 133.00 7.000 M POL3.15 S/Edge Mach Matt Polish 2-6mm",
+  "6.63 588.00 389.85 389.85 0.663 M2 XTOBS4.35 + TGPR.04 4mm SLENDER (NREED) CTS TSG",
+  "2 of 780 X 425 +Polish All Round +Toughening (S26270A+B, 283A+B, 1)",
+  "100.00% 4.900 M POL3.15 S/Edge Mach Matt Polish 2-6mm",
+  "2.000 EA LOGOPOS.STD LOGO POS NG STD",
+  "4.40 305.00 89.37 89.37 0.293 M2 6mm XTCFG06.01 6mm CLEAR FLOAT CTS",
+  "8 of 398 X 92 +Polish All Round (6mm)",
+  "19.00 152.00 152.00 8.000 M POL3.15 S/Edge Mach Matt Polish 2-6mm",
+  "8.70 436.00 252.88 252.88 0.580 M2 XTCFG06.01 + TGPR.06 6mm CLEAR FLOAT CTS TSG",
+  "3 of 730 X 265 +Polish All Round +Toughening (6mm)",
+  "100.00% 6.150 M POL3.15 S/Edge Mach Matt Polish 2-6mm"
+].join("\n"));
+assert.ok(moneyFirst.ok, moneyFirst.error);
+assert.deepStrictEqual(
+  moneyFirst.pieces.map((p) => [p.quantity, p.height, p.width, p.thickness, p.type, p.toughened, p.glassCost, p.polishCost, p.cost, p.costCheck]),
+  [
+    [4, 775, 91, 4, "reeded", false, 135.08, 133, 268.08, false],
+    [2, 780, 425, 4, "reeded", true, 389.85, 0, 389.85, false],
+    [8, 398, 92, 6, "clear", false, 89.37, 152, 241.37, false],
+    [3, 730, 265, 6, "clear", true, 252.88, 0, 252.88, false]
+  ]
+);
+// The printed layout reads the same, and no piece needs a cost check.
+assert.ok(parsed.pieces.every((p) => !p.costCheck));
+
+// A polish row with no money and no 100% discount is flagged, never filled from a neighbour.
+const missingPolish = reader.parseGlassInvoiceText(
+  "0.282 M2 XTOBS4.35 4mm SLENDER (NREED) CTS 2.82 479.00 135.08 135.08 4 of 775 X 91 +Polish 7.000 M POL3.15 S/Edge Mach Matt Polish 2-6mm 0.663 M2 XTOBS4.35 + TGPR.04 4mm SLENDER (NREED) CTS TSG 6.63 588.00 389.85 389.85 2 of 780 X 425 +Toughening"
+);
+assert.strictEqual(missingPolish.pieces[0].cost, 135.08);
+assert.strictEqual(missingPolish.pieces[0].costCheck, true);
+
 // Matching against open PO lines: order numbers mostly NOT on the invoice.
 const L = (id, order, type, thickness, height, width, quantity, extra) =>
   Object.assign({ id, order, type, thickness, height, width, quantity, isTemplate: false, poNumber: "GPO-0007" }, extra || {});

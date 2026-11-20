@@ -521,10 +521,10 @@
             ? p.lines.map((l) => "<b>" + esc(l.order) + "</b> (" + esc(l.quantity) + ") R " + esc(Number(l.cost).toFixed(2)) +
                 (l.exact ? "" : " <span class='pill warn'>" + esc(l.height) + "×" + esc(l.width) + " ordered</span>")).join("<br>")
             : "<span class='msg bad'>" + esc(p.reason || "No match") + "</span>";
-          const tag = !matched
+          const tag = (!matched
             ? "<span class='pill bad'>No match</span>"
-            : (p.sizeOff ? "<span class='pill warn'>Check size</span>" : "<span class='pill ok'>Matched</span>") +
-              (p.costGuessed ? " <span class='pill warn'>Check cost</span>" : "");
+            : (p.sizeOff ? "<span class='pill warn'>Check size</span>" : "<span class='pill ok'>Matched</span>")) +
+            (p.costCheck ? " <span class='pill warn'>Check cost</span>" : "");
           return "<tr><td>" + esc(p.index) + "</td><td>" + esc(invoicePieceLabel(p)) +
             (p.refs && p.refs.length ? "<div class='msg'>Ref " + esc(p.refs.join(", ")) + "</div>" : "") +
             "</td><td>" + esc(Number(p.cost).toFixed(2)) + "</td><td>" + to + "</td><td>" + tag + "</td></tr>";
